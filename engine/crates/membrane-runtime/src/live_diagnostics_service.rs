@@ -475,10 +475,96 @@ impl DiagnosticsService {
                 profile_name: profile_name.to_string(),
             })?;
         let mut effective = stored.clone();
-        effective.required_capabilities = required_capabilities.to_vec();
+        if required_capabilities.is_empty() {
+            if stored.required_capabilities.is_empty() {
+                effective.required_capabilities = vec![CapabilityVocabulary::TypeSemantics];
+            } else {
+                effective.required_capabilities = stored.required_capabilities.clone();
+            }
+        } else {
+            effective.required_capabilities = required_capabilities.to_vec();
+        }
         effective.policy_digest = String::new();
         effective.policy_digest = effective.canonical_digest();
         Ok(effective)
+    }
+
+    fn ensure_workspace_providers(&mut self, repo_id: &str, worktree_id: &str) {
+        let has_match = self
+            .supervisor
+            .registered_keys()
+            .iter()
+            .any(|key| key.repo_id == repo_id && key.worktree_id == worktree_id);
+        if has_match {
+            return;
+        }
+        self.register_production_providers_for(repo_id, worktree_id);
+    }
+
+    fn register_production_providers_for(&mut self, repo_id: &str, worktree_id: &str) {
+        use crate::providers::{rust_analyzer_provider, typescript_provider};
+        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let canonical_root = project_root.to_string_lossy().to_string();
+        let search_path = crate::providers::default_search_path();
+
+        let ts_root = project_root.clone();
+        let ts_search = search_path.clone();
+        let ts_key = WorkspaceEngineKey {
+            repo_id: repo_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            canonical_worktree_root: canonical_root.clone(),
+            project_root: ts_root.to_string_lossy().to_string(),
+            engine_id: typescript_provider::PROVIDER_ID.to_string(),
+            engine_version: typescript_provider::ADAPTER_VERSION.to_string(),
+            binary_digest: "sha256:prod-typescript".to_string(),
+            toolchain_digest: "sha256:prod-toolchain".to_string(),
+            project_config_digest: "sha256:prod-config".to_string(),
+            sandbox_policy_digest: "sha256:prod-sandbox".to_string(),
+        };
+        self.register_provider(
+            ts_key,
+            typescript_provider::qualified_capabilities(),
+            Box::new(move || {
+                Box::new(typescript_provider::TypeScriptProvider::with_search_path(
+                    ts_root.clone(),
+                    ts_search.clone(),
+                )) as Box<dyn DiagnosticsProvider>
+            }),
+        );
+
+        let ra_root = project_root.clone();
+        let ra_search = search_path.clone();
+        let ra_key = WorkspaceEngineKey {
+            repo_id: repo_id.to_string(),
+            worktree_id: worktree_id.to_string(),
+            canonical_worktree_root: canonical_root,
+            project_root: ra_root.to_string_lossy().to_string(),
+            engine_id: rust_analyzer_provider::PROVIDER_ID.to_string(),
+            engine_version: rust_analyzer_provider::ADAPTER_VERSION.to_string(),
+            binary_digest: "sha256:prod-rust-analyzer".to_string(),
+            toolchain_digest: "sha256:prod-toolchain".to_string(),
+            project_config_digest: "sha256:prod-config".to_string(),
+            sandbox_policy_digest: "sha256:prod-sandbox".to_string(),
+        };
+        self.register_provider(
+            ra_key,
+            rust_analyzer_provider::qualified_capabilities(),
+            Box::new(move || {
+                Box::new(rust_analyzer_provider::RustAnalyzerProvider::with_search_path(
+                    ra_root.clone(),
+                    ra_search.clone(),
+                )) as Box<dyn DiagnosticsProvider>
+            }),
+        );
+    }
+
+    /// Production service constructor that registers D1 providers with default
+    /// project roots probing PATH. Used by `resident_diagnostics_routes` and
+    /// available to hosts that need an immediately runnable service.
+    pub fn production_service() -> Result<Self, LiveDiagnosticsServiceError> {
+        let mut service = Self::new()?;
+        service.register_production_providers_for("default", "default");
+        Ok(service)
     }
 
     /// Run every registered provider for the workspace within the request's
@@ -489,6 +575,7 @@ impl DiagnosticsService {
         &mut self,
         request: &SnapshotAwaitRequest,
     ) -> Result<DiagnosticGateDecisionV1, LiveDiagnosticsServiceError> {
+        self.ensure_workspace_providers(&request.repo_id, &request.worktree_id);
         let deadline_ms = request
             .deadline_ms
             .unwrap_or(self.supervisor.config().default_deadline_ms);
@@ -591,12 +678,17 @@ impl DiagnosticsService {
                 "no registered provider key matches digest {key_digest}"
             )));
         }
-        let restarted = self.supervisor.evict_idle();
+        let mut restarted = Vec::new();
+        for key in &matched {
+            if self.supervisor.shutdown_key(key) {
+                restarted.push(key.clone());
+            }
+        }
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "keyDigest": key_digest,
             "matched": true,
-            "semantics": "evict_idle",
+            "semantics": "shutdown_key",
             "restarted": restarted
                 .iter()
                 .map(|key| json!({
@@ -739,7 +831,7 @@ fn seeded_policies() -> HashMap<String, GatePolicyProfileV1> {
             policy_version: "v1".to_string(),
             policy_digest: String::new(),
             blocking_codes: Vec::new(),
-            required_capabilities: Vec::new(),
+            required_capabilities: vec![CapabilityVocabulary::Syntax],
         },
     );
     policies
@@ -946,7 +1038,7 @@ pub fn diagnostics_router(service: Arc<Mutex<DiagnosticsService>>) -> Router {
 /// service could not be constructed, which cannot happen under the default
 /// configuration.
 pub fn resident_diagnostics_routes(expected_bearer: Option<String>) -> Option<Router> {
-    let service = DiagnosticsService::new().ok()?;
+    let service = DiagnosticsService::production_service().ok()?;
     Some(diagnostics_router_with_state(DiagnosticsRouteState {
         service: Arc::new(Mutex::new(service)),
         bearer: expected_bearer.map(Arc::<str>::from),
@@ -1313,7 +1405,7 @@ pub fn static_capabilities() -> Value {
 mod tests {
     use super::*;
     use membrane_protocol::diagnostics::{
-        DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION, WORKSPACE_EPOCH_SCHEMA_VERSION,
+        GateOutcome, DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION, WORKSPACE_EPOCH_SCHEMA_VERSION,
     };
 
     fn service_at(dir: &tempfile::TempDir) -> DiagnosticsService {
@@ -1435,12 +1527,19 @@ mod tests {
             json!(false)
         );
 
-        // Empty requirements with no blockers clear the fence exactly, and
-        // reconciliation then confirms the same bytes are still current.
-        service
+        // Empty requirements now resolve to default Syntax (seeded policy) and
+        // carry an Unsatisfied coverage obligation, so with no exact lane they
+        // cannot clear the fence (empty-ensemble fix). Reconciliation reports
+        // unknown_conflict when no cleared decision exists.
+        let empty_decision = service
             .snapshot_await(&snapshot_request(&[]))
             .unwrap();
-        let cleared = service
+        assert_eq!(empty_decision.outcome, GateOutcome::UnknownIncomplete);
+        assert_eq!(
+            service.workspace_status("repo-1", "wt-1").unwrap()["fenceCleared"],
+            json!(false)
+        );
+        let not_cleared = service
             .workspace_reconcile(
                 "repo-1",
                 "wt-1",
@@ -1448,10 +1547,13 @@ mod tests {
                 &test_epoch(1).changed_file_hashes,
             )
             .unwrap();
-        assert_eq!(cleared, "cleared");
+        assert_eq!(not_cleared, "unknown_conflict");
+        assert_eq!(
+            service.workspace_status("repo-1", "wt-1").unwrap()["fenceCleared"],
+            json!(false)
+        );
 
-        // External-write drift classifies unknown_conflict and invalidates
-        // the clearance.
+        // External-write drift still classifies unknown_conflict.
         let conflicted = service
             .workspace_reconcile("repo-1", "wt-1", "externally-modified", &[])
             .unwrap();
@@ -1472,9 +1574,10 @@ mod tests {
                 LiveDiagnosticsError::EpochNotMonotonic(_)
             ))
         ));
-        service
+        let empty_decision2 = service
             .snapshot_await(&snapshot_request(&[]))
             .unwrap();
+        assert_eq!(empty_decision2.outcome, GateOutcome::UnknownIncomplete);
         assert_eq!(
             service
                 .workspace_reconcile(
@@ -1484,11 +1587,10 @@ mod tests {
                     &test_epoch(2).changed_file_hashes,
                 )
                 .unwrap(),
-            "cleared"
+            "unknown_conflict"
         );
 
-        // Drift again invalidates clearance, so baselines refuse until the
-        // fence re-clears.
+        // Drift again keeps fence uncleared, so baselines refuse.
         assert_eq!(
             service
                 .workspace_reconcile("repo-1", "wt-1", "externally-modified", &[])
@@ -1502,21 +1604,17 @@ mod tests {
                 .code(),
             "fence_not_cleared"
         );
-        service
+        let empty_decision3 = service
             .snapshot_await(&snapshot_request(&[]))
             .unwrap();
-        let baseline = service
-            .baseline_capture("repo-1", "wt-1", "before-tests")
-            .unwrap();
-        assert!(baseline.get("decisionRef").is_some());
+        assert_eq!(empty_decision3.outcome, GateOutcome::UnknownIncomplete);
         assert_eq!(
-            baseline["manifestDigest"],
-            json!("manifest-2")
+            service
+                .baseline_capture("repo-1", "wt-1", "before-tests")
+                .unwrap_err()
+                .code(),
+            "fence_not_cleared"
         );
-        let updated = service
-            .baseline_update("repo-1", "wt-1", "before-tests")
-            .unwrap();
-        assert_eq!(updated["action"], json!("update"));
 
         // Closing removes the session; further queries fail closed.
         service.workspace_close("repo-1", "wt-1").unwrap();
@@ -1525,9 +1623,10 @@ mod tests {
             "workspace_not_open"
         );
 
-        // The audit recorded every persisted class of state (design §14).
+        // The audit recorded persisted state (design §14). Baseline is not
+        // expected when the fence never cleared (empty-ensemble fix).
         let kinds = audit_kinds(&dir);
-        for expected in ["epoch_sealed", "gate_decision", "reconcile", "baseline"] {
+        for expected in ["epoch_sealed", "gate_decision", "reconcile"] {
             assert!(
                 kinds.iter().any(|kind| kind == expected),
                 "missing audit kind {expected}: {kinds:?}"
@@ -1548,13 +1647,25 @@ mod tests {
 
         let without_requirements =
             service.resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[]);
-        assert_ne!(
+        // Empty falls back to seeded default Syntax, so digests are equal;
+        // a different capability must diverge.
+        assert_eq!(
             service
                 .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax])
                 .unwrap()
                 .policy_digest,
             without_requirements.unwrap().policy_digest
         );
+        let with_type = service
+            .resolve_policy(
+                DEFAULT_POLICY_PROFILE_NAME,
+                &[CapabilityVocabulary::TypeSemantics],
+            )
+            .unwrap();
+        let with_syntax_again = service
+            .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax])
+            .unwrap();
+        assert_ne!(with_type.policy_digest, with_syntax_again.policy_digest);
 
         assert_eq!(
             service

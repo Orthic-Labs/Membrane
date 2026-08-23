@@ -40,6 +40,7 @@ use membrane_protocol::diagnostics::{
     SeverityHint, SourceClass, SourceRange, TypedOmission, WorkspaceEpochV1,
 };
 use serde_json::{json, Value};
+use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -317,12 +318,57 @@ struct SyncTarget {
     content: String,
 }
 
+fn hash_matches(bytes: &[u8], declared: &str) -> bool {
+    let hex_digest = hex::encode(Sha256::digest(bytes));
+    let declared_hex = declared.strip_prefix("sha256:").unwrap_or(declared);
+    hex_digest == declared_hex
+}
+
+fn current_hash_mismatches(project_root: &Path, epoch: &WorkspaceEpochV1) -> Vec<TypedOmission> {
+    if epoch.changed_file_hashes.is_empty() {
+        return Vec::new();
+    }
+    let mut mismatches = Vec::new();
+    for entry in &epoch.changed_file_hashes {
+        let candidate = Path::new(&entry.path);
+        let absolute = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            project_root.join(candidate)
+        };
+        match std::fs::read(&absolute) {
+            Ok(bytes) => {
+                if !hash_matches(&bytes, &entry.hash) {
+                    let hex_digest = hex::encode(Sha256::digest(&bytes));
+                    mismatches.push(TypedOmission {
+                        code: "hash_mismatch".to_string(),
+                        detail: format!(
+                            "{}: on-disk sha256:{hex_digest} does not match declared {}",
+                            entry.path, entry.hash
+                        ),
+                    });
+                }
+            }
+            Err(error) => mismatches.push(TypedOmission {
+                code: "source_unreadable".to_string(),
+                detail: format!("{}: {error}", entry.path),
+            }),
+        }
+    }
+    mismatches
+}
+
 fn collect_sync_targets(
     project_root: &Path,
     epoch: &WorkspaceEpochV1,
 ) -> (Vec<SyncTarget>, Vec<TypedOmission>) {
     let mut ordered: BTreeMap<String, SyncTarget> = BTreeMap::new();
     let mut omissions = Vec::new();
+    let declared_by_path: BTreeMap<String, String> = epoch
+        .changed_file_hashes
+        .iter()
+        .map(|entry| (entry.path.clone(), entry.hash.clone()))
+        .collect();
     let paths: Vec<&str> = if epoch.changed_file_hashes.is_empty() {
         epoch.changed_paths.iter().map(String::as_str).collect()
     } else {
@@ -346,6 +392,17 @@ fn collect_sync_targets(
             .replace('\\', "/");
         match std::fs::read(&absolute) {
             Ok(bytes) => {
+                if let Some(declared) = declared_by_path.get(raw_path) {
+                    if !hash_matches(&bytes, declared) {
+                        let hex_digest = hex::encode(Sha256::digest(&bytes));
+                        omissions.push(TypedOmission {
+                            code: "hash_mismatch".to_string(),
+                            detail: format!(
+                                "{raw_path}: on-disk sha256:{hex_digest} does not match declared {declared}"
+                            ),
+                        });
+                    }
+                }
                 ordered.insert(
                     relative.clone(),
                     SyncTarget {
@@ -423,13 +480,16 @@ impl RustAnalyzerProvider {
     }
 
     /// Native-only analysis options: cargo build scripts off, all targets
-    /// off, flycheck command null, check-on-save off (design §6).
+    /// off, proc macros off, flycheck command null, check-on-save off (design §6).
+    /// PureAnalysis requires proc macros disabled in addition to build scripts
+    /// and flycheck (otherwise proc-macro crates execute arbitrary code).
     fn native_only_initialization_options() -> Value {
         json!({
             "cargo": {
                 "allTargets": false,
                 "buildScripts": { "enable": false },
             },
+            "procMacro": { "enable": false },
             "flycheck": Value::Null,
             "checkOnSave": false,
         })
@@ -579,14 +639,27 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         if self.synced_epoch != Some(epoch.epoch) {
             self.synchronize(epoch)?;
         }
+        // Hash verification before claiming exact: re-hash current disk bytes
+        // against declared epoch hashes; any mismatch prevents exact claim.
+        let pre_hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         if self.sync_targets.is_empty() {
+            let has_mismatch = !pre_hash_mismatches.is_empty()
+                || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+            let exact = !has_mismatch;
             self.convergence = Some(ConvergenceRecord {
                 epoch: epoch.epoch,
-                exact: true,
-                detail: format!(
-                    "pull_exact: empty changed-file scope for epoch {}",
-                    epoch.epoch
-                ),
+                exact,
+                detail: if has_mismatch {
+                    format!(
+                        "hash_mismatch for epoch {}: on-disk bytes do not match declared changed_file_hashes",
+                        epoch.epoch
+                    )
+                } else {
+                    format!(
+                        "pull_exact: empty changed-file scope for epoch {}",
+                        epoch.epoch
+                    )
+                },
             });
             return Ok(self.build_output(epoch, BTreeMap::new(), 0, 0));
         }
@@ -687,16 +760,28 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         self.active_lsp_ids.clear();
         let overflow_after = session.overflow_dropped.load(Ordering::Relaxed);
         let overflow_delta = overflow_after.saturating_sub(overflow_before);
-        let exact = published.values().all(|record| record.version == Some(expected_version));
+        let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
+        let has_hash_mismatch = !hash_mismatches.is_empty()
+            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+        let all_versioned = published.values().all(|record| record.version == Some(expected_version));
+        let exact = !has_hash_mismatch && all_versioned;
         self.convergence = Some(ConvergenceRecord {
             epoch: epoch.epoch,
             exact,
-            detail: format!(
-                "pull_exact: didOpen batch acked and publishDiagnostics received for {} file(s) at epoch {}{}",
-                published.len(),
-                epoch.epoch,
-                if exact { "" } else { " (some publishes were unversioned)" }
-            ),
+            detail: if has_hash_mismatch {
+                format!(
+                    "pull_exact: hash_mismatch for epoch {} prevents exact convergence ({} file(s) published, hash_mismatch)",
+                    epoch.epoch,
+                    published.len()
+                )
+            } else {
+                format!(
+                    "pull_exact: didOpen batch acked and publishDiagnostics received for {} file(s) at epoch {}{}",
+                    published.len(),
+                    epoch.epoch,
+                    if exact { "" } else { " (some publishes were unversioned)" }
+                )
+            },
         });
         Ok(self.build_output(epoch, published, overflow_delta, flycheck_dropped))
     }
@@ -722,9 +807,24 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         }
     }
 
-    /// Converged exactly when the current epoch's didOpen batch was acked and
-    /// version-exact publishes arrived for every synchronized file.
+    /// Converged exactly when the current epoch's didOpen batch was acked,
+    /// version-exact publishes arrived for every synchronized file, and
+    /// current on-disk hashes still match the declared epoch hashes.
     fn prove_convergence(&mut self, epoch: &WorkspaceEpochV1) -> ConvergenceProof {
+        // Hash verification gates exact convergence: current disk bytes must
+        // still match declared changed_file_hashes.
+        let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
+        let has_hash_mismatch = !hash_mismatches.is_empty()
+            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+        if has_hash_mismatch {
+            return ConvergenceProof {
+                converged: false,
+                detail: format!(
+                    "hash_mismatch for epoch {}: on-disk bytes do not match declared changed_file_hashes",
+                    epoch.epoch
+                ),
+            };
+        }
         let record = self
             .convergence
             .as_ref()
@@ -774,6 +874,13 @@ impl RustAnalyzerProvider {
         flycheck_dropped: usize,
     ) -> ProviderOutput {
         let mut omissions = self.sync_omissions.clone();
+        // Re-verify current disk hashes at output time (TOCTOU): if disk
+        // changed after synchronize, we must not claim exact.
+        for mismatch in current_hash_mismatches(&self.project_root, epoch) {
+            if !omissions.iter().any(|o| o.detail == mismatch.detail) {
+                omissions.push(mismatch);
+            }
+        }
         for (uri, record) in &published {
             if record.version.is_none() {
                 let detail = self
@@ -804,10 +911,16 @@ impl RustAnalyzerProvider {
                 ),
             });
         }
+        let has_hash_mismatch = omissions.iter().any(|o| o.code == "hash_mismatch");
         let state = if !omissions.is_empty() {
             LaneState::Partial
         } else {
             LaneState::Complete
+        };
+        let convergence_class = if has_hash_mismatch {
+            ConvergenceClass::PushUnversionedAdvisory
+        } else {
+            ConvergenceClass::PullExact
         };
         let observations = published
             .into_values()
@@ -824,7 +937,7 @@ impl RustAnalyzerProvider {
                     CapabilityVocabulary::NameResolution,
                     CapabilityVocabulary::TypeSemantics,
                 ],
-                convergence_class: ConvergenceClass::PullExact,
+                convergence_class,
                 bound_workspace_epoch: epoch.epoch,
                 state,
                 omissions,
@@ -1008,6 +1121,7 @@ mod tests {
         let options = RustAnalyzerProvider::native_only_initialization_options();
         assert_eq!(options["cargo"]["buildScripts"]["enable"], json!(false));
         assert_eq!(options["cargo"]["allTargets"], json!(false));
+        assert_eq!(options["procMacro"]["enable"], json!(false));
         assert_eq!(options["flycheck"], Value::Null);
         assert_eq!(options["checkOnSave"], json!(false));
     }

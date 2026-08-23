@@ -78,7 +78,11 @@ function makeEffectiveExports({ surfaces, fileSet, maxStarDepth, omissions }) {
         omissions.push(omission({ path, reason: "star_depth_exceeded", specifier: star.specifier, line: star.line }));
         return null;
       }
-      const { resolved } = resolveSpecifier(path, star.specifier, fileSet);
+      const { resolved, alternatives } = resolveSpecifier(path, star.specifier, fileSet);
+      if (alternatives > 0) {
+        omissions.push(omission({ path, reason: "resolution_ambiguous", detail: `ambiguous specifier "${star.specifier}" matches ${alternatives + 1} files`, specifier: star.specifier, line: star.line }));
+        return null;
+      }
       if (!resolved) {
         omissions.push(omission({ path, reason: "open_export_surface", detail: "unresolved_star_target", specifier: star.specifier, line: star.line }));
         return null;
@@ -143,7 +147,11 @@ export async function detectFindings({ files, generationId = null, existsOutside
         omissions.push(omission({ path: file.path, reason: "package_specifier", specifier: request.specifier, line: request.line }));
         continue;
       }
-      const { resolved } = resolveSpecifier(file.path, request.specifier, fileSet);
+      const { resolved, alternatives } = resolveSpecifier(file.path, request.specifier, fileSet);
+      if (alternatives > 0) {
+        omissions.push(omission({ path: file.path, reason: "resolution_ambiguous", detail: `ambiguous specifier "${request.specifier}" matches ${alternatives + 1} files`, specifier: request.specifier, line: request.line }));
+        continue;
+      }
       if (!resolved) {
         // A specifier that resolves on disk but was never scanned (ignored
         // prefix, submodule, generated tree) is a gap in coverage, not a

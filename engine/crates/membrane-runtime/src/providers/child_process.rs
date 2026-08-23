@@ -131,33 +131,73 @@ pub fn sanitized_child_env(search_path: &[PathBuf]) -> Vec<(String, String)> {
 /// Spawn `binary` with piped stdio under the given environment.
 ///
 /// The child sees exactly `env` — nothing else leaks from the parent process.
+/// On Unix the child is placed in a new session/process group via `setsid`
+/// (`pre_exec`) so that [`kill_direct_child`] can terminate the whole tree
+/// with `killpg`. This is best-effort: descendants that explicitly escape the
+/// group may survive, but configuration disables long-lived children (build
+/// scripts, flycheck, watch) so well-behaved engines hold none.
 pub fn spawn_sanitized(
     binary: &Path,
     args: &[String],
     working_dir: &Path,
     env: &[(String, String)],
 ) -> std::io::Result<Child> {
-    Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .args(args)
         .current_dir(working_dir)
         .env_clear()
         .envs(env.iter().map(|(key, value)| (key.as_str(), value.as_str())))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // SAFETY: setsid is async-signal-safe and has no Rust-specific
+        // preconditions. Called in the child after fork, before exec.
+        unsafe {
+            command.pre_exec(|| {
+                extern "C" {
+                    fn setsid() -> i32;
+                }
+                // Ignore error: if setsid fails we still exec; cleanup falls
+                // back to direct child kill.
+                let _ = setsid();
+                Ok(())
+            });
+        }
+    }
+    command.spawn()
 }
 
-/// Terminate a direct engine child via [`Child::kill`].
+/// Terminate a process tree via process-group kill on Unix, falling back to
+/// direct child kill.
 ///
-/// Process-tree limitation (documented deliberately): `std::process` has no
-/// process-group termination, so descendants the server itself spawned (node
-/// workers, editors' helpers) are not in the killed set. Both adapters
-/// mitigate this by configuration — build scripts, flycheck, and watch modes
-/// are disabled at initialization — so well-behaved engines hold no long-lived
-/// children of their own. Introducing a process-group kill would require a new
-/// dependency or unsafe platform code, both out of scope here.
+/// On Unix the child was spawned in its own process group (see
+/// [`spawn_sanitized`]), so `killpg(pgid, SIGTERM/SIGKILL)` terminates the
+/// group. On Windows or if the group kill fails, falls back to
+/// [`Child::kill`] which terminates only the direct child. This is best-effort:
+/// descendants that double-forked or changed groups may not be covered. Adapters
+/// mitigate by disabling build scripts, flycheck, watch and proc macros so
+/// well-behaved engines spawn no long-lived children.
 pub fn kill_direct_child(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let pid = child.id() as i32;
+        unsafe {
+            extern "C" {
+                fn killpg(pgrp: i32, sig: i32) -> i32;
+            }
+            const SIGTERM: i32 = 15;
+            const SIGKILL: i32 = 9;
+            // Best-effort: TERM then KILL the whole group. Errors mean the
+            // group already exited or we lack permission; fall through to
+            // direct kill below.
+            let _ = killpg(pid, SIGTERM);
+            let _ = killpg(pid, SIGKILL);
+        }
+    }
     let _ = child.kill();
     let _ = child.wait();
 }

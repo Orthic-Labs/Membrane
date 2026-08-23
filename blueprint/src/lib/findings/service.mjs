@@ -340,7 +340,20 @@ export function createFindingsService({
   freshnessOverlay = defaultFreshnessOverlay,
   clock = () => new Date().toISOString(),
 } = {}) {
-  const bundleCache = new Map(); // `${root}\0${generationId}` -> bundle
+  const bundleCache = new Map(); // `${root}\0${generationId}\0${manifestDigest}` -> bundle
+
+  function sourceDigestForFiles(files) {
+    const hash = createHash("sha256");
+    const sorted = [...(files ?? [])].sort((left, right) => String(left.path).localeCompare(String(right.path)));
+    for (const file of sorted) {
+      const bytes = Buffer.isBuffer(file.bytes) ? file.bytes : Buffer.from(String(file.text ?? ""), "utf8");
+      hash.update(String(file.path));
+      hash.update("\0");
+      hash.update(bytes);
+      hash.update("\0");
+    }
+    return `sha256:${hash.digest("hex")}`;
+  }
 
   function resolveRoot(input = {}) {
     return resolve(String(input.repoRoot ?? process.cwd()));
@@ -387,12 +400,17 @@ export function createFindingsService({
   }
 
   async function bundleFor(root, effectiveOutDir, sealed, { signal } = {}) {
-    const cacheKey = `${root}\u0000${sealed.generationId}`;
+    const manifestPart = sealed.manifestDigest ?? "";
+    const cacheKey = `${root}\u0000${sealed.generationId}\u0000${manifestPart}`;
     const cached = bundleCache.get(cacheKey);
     if (cached) return cached;
     throwIfAborted(signal);
     const config = repositoryConfig(root, effectiveOutDir);
     const files = await Promise.resolve(scanRepository(root, config));
+    const sourceDigest = sourceDigestForFiles(files);
+    const contentKey = `${cacheKey}\u0000${sourceDigest}`;
+    const contentCached = bundleCache.get(contentKey);
+    if (contentCached) return contentCached;
     const bundle = await buildGenerationBoundBundle({
       files,
       generationId: sealed.generationId,
@@ -400,6 +418,7 @@ export function createFindingsService({
       manifestDigest: sealed.manifestDigest,
     });
     bundleCache.set(cacheKey, bundle);
+    bundleCache.set(contentKey, bundle);
     if (bundleCache.size > MAX_CACHED_BUNDLES) bundleCache.delete(bundleCache.keys().next().value);
     return bundle;
   }
@@ -492,8 +511,9 @@ export function createFindingsService({
     };
     throwIfAborted(signal);
     writeJsonAtomic(path, record);
-    // The bundle's generationName may now resolve; drop any cached copy.
-    bundleCache.delete(`${root}\u0000${sealed.generationId}`);
+    for (const key of [...bundleCache.keys()]) {
+      if (key.startsWith(`${root}\u0000${sealed.generationId}\u0000`)) bundleCache.delete(key);
+    }
     return {
       schemaVersion: 1,
       kind: "findings.baseline.capture",

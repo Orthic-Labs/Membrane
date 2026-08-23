@@ -52,8 +52,8 @@ test("resolveSpecifier exact-first first match wins with alternatives evidence",
   const result = resolveSpecifier("src/a.ts", "./b.js", fileSet);
   // candidates[0] is exact src/b.js which matches, so exact wins even though ts also exists
   assert.equal(result.resolved, "src/b.js");
-  // alternatives counts remaining matches
-  assert.equal(result.alternatives, 1); // src/b.ts also matches
+  // alternatives counts remaining matches (src/b.ts + src/b/index.ts)
+  assert.equal(result.alternatives, 2); // src/b.ts and src/b/index.ts also match
   const onlyExact = resolveSpecifier("src/a.ts", "./b", new Set(["src/b.ts"]));
   assert.equal(onlyExact.resolved, "src/b.ts");
   const missing = resolveSpecifier("src/a.ts", "./missing.js", new Set(["src/other.ts"]));

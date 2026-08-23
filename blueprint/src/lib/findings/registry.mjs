@@ -58,4 +58,5 @@ export const OMISSION_REASONS = Object.freeze([
   "outside_scanned_set",        // target exists on disk but was not scanned
   "star_depth_exceeded",        // `export *` chain deeper than the bound
   "star_cycle",                 // `export *` cycle
+  "resolution_ambiguous",       // multiple candidates match — fail-closed
 ]);

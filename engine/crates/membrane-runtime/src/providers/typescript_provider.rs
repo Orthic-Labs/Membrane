@@ -22,15 +22,17 @@ use crate::live_diagnostics::{
     ProviderCapabilities, ProviderError, ProviderOutput, RequestId, SideEffectClass,
 };
 use crate::providers::child_process::{
-    default_search_path, kill_direct_child, probe_search_path, recv_with_deadline,
-    sanitized_child_env, spawn_bounded_reader, spawn_sanitized, spawn_stderr_drainer,
-    tsserver_line_bytes, FrameOutcome, LineFrameDecoder,
+    default_search_path, drain_frames_until, kill_direct_child, lsp_frame_bytes,
+    probe_search_path, recv_with_deadline, recv_within, sanitized_child_env,
+    spawn_bounded_reader, spawn_sanitized, spawn_stderr_drainer, tsserver_line_bytes,
+    FrameOutcome, LineFrameDecoder, LspDecoder,
 };
 use membrane_protocol::diagnostics::{
     CapabilityVocabulary, ConvergenceClass, CoverageLaneV1, CostClass, LaneState, ObservationV1,
     SeverityHint, SourceClass, SourceRange, TypedOmission, WorkspaceEpochV1,
 };
 use serde_json::{json, Value};
+use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -39,6 +41,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::Instant;
 
 /// Stable provider identity used for qualification and selection.
 pub const PROVIDER_ID: &str = "typescript-native-d1";
@@ -61,30 +64,136 @@ pub fn qualified_capabilities() -> ProviderCapabilities {
 }
 
 // ---------------------------------------------------------------------------
-// Session plumbing
+// Session plumbing and TypeScript 7 LSP/tsserver dual-mode
 // ---------------------------------------------------------------------------
 
-struct TsserverSession {
+const INITIALIZE_HANDSHAKE_TIMEOUT_MS: u64 = 15_000;
+const SHUTDOWN_HANDSHAKE_TIMEOUT_MS: u64 = 5_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineProtocol {
+    Lsp,
+    Tsserver,
+}
+
+struct CandidateSpec {
+    binary_name: &'static str,
+    args: &'static [&'static str],
+    protocol: EngineProtocol,
+}
+
+/// Probe order: prefer `tsc --lsp --stdio` (TypeScript 7 primary, LSP),
+/// then `tsgo`/`typescript-go` with LSP args, fallback to `tsserver` tsserver
+/// protocol. Bare `tsgo` with no args is never launched.
+const CANDIDATE_SPECS: &[CandidateSpec] = &[
+    CandidateSpec {
+        binary_name: "tsc",
+        args: &["--lsp", "--stdio"],
+        protocol: EngineProtocol::Lsp,
+    },
+    CandidateSpec {
+        binary_name: "tsgo",
+        args: &["lsp", "--stdio"],
+        protocol: EngineProtocol::Lsp,
+    },
+    CandidateSpec {
+        binary_name: "tsgo",
+        args: &["--lsp", "--stdio"],
+        protocol: EngineProtocol::Lsp,
+    },
+    CandidateSpec {
+        binary_name: "typescript-go",
+        args: &["lsp", "--stdio"],
+        protocol: EngineProtocol::Lsp,
+    },
+    CandidateSpec {
+        binary_name: "typescript-go",
+        args: &["--lsp", "--stdio"],
+        protocol: EngineProtocol::Lsp,
+    },
+    CandidateSpec {
+        binary_name: "tsserver",
+        args: &[],
+        protocol: EngineProtocol::Tsserver,
+    },
+];
+
+fn uri_from_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    let with_scheme = if text.starts_with('/') {
+        format!("file://{text}")
+    } else {
+        format!("file:///{text}")
+    };
+    let mut encoded = String::with_capacity(with_scheme.len());
+    for byte in with_scheme.bytes() {
+        let allowed = byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'-' | b'.'
+                    | b'_'
+                    | b'~'
+                    | b'!'
+                    | b'$'
+                    | b'&'
+                    | b'\''
+                    | b'('
+                    | b')'
+                    | b'*'
+                    | b'+'
+                    | b','
+                    | b';'
+                    | b'='
+                    | b':'
+                    | b'@'
+                    | b'/'
+            );
+        if allowed {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
+struct TsSession {
     child: Child,
     stdin: Option<ChildStdin>,
     frames: Receiver<String>,
     overflow_dropped: Arc<AtomicUsize>,
     reader_handle: JoinHandle<()>,
     stderr_handle: JoinHandle<()>,
+    protocol: EngineProtocol,
 }
 
-impl TsserverSession {
+impl TsSession {
     fn write_json(&mut self, value: &Value) -> Result<(), ProviderError> {
-        let wire = tsserver_line_bytes(&value.to_string());
+        let wire = match self.protocol {
+            EngineProtocol::Lsp => lsp_frame_bytes(value.to_string().as_bytes()),
+            EngineProtocol::Tsserver => tsserver_line_bytes(&value.to_string()),
+        };
         let Some(stdin) = self.stdin.as_mut() else {
-            return Err(ProviderError::Crashed(
-                "tsserver stdin already closed".into(),
-            ));
+            return Err(ProviderError::Crashed(format!(
+                "{} stdin already closed",
+                match self.protocol {
+                    EngineProtocol::Lsp => "ts lsp",
+                    EngineProtocol::Tsserver => "tsserver",
+                }
+            )));
         };
         stdin
             .write_all(&wire)
             .and_then(|()| stdin.flush())
-            .map_err(|error| ProviderError::Crashed(format!("tsserver stdin write failed: {error}")))
+            .map_err(|error| {
+                ProviderError::Crashed(format!(
+                    "{} stdin write failed: {error}",
+                    match self.protocol {
+                        EngineProtocol::Lsp => "ts lsp",
+                        EngineProtocol::Tsserver => "tsserver",
+                    }
+                ))
+            })
     }
 
     fn kill_and_join(&mut self) {
@@ -95,36 +204,99 @@ impl TsserverSession {
     }
 }
 
-fn start_session(binary: &Path, project_root: &Path, search_path: &[PathBuf]) -> Result<TsserverSession, ProviderError> {
+fn start_session(
+    binary: &Path,
+    args: &[String],
+    project_root: &Path,
+    search_path: &[PathBuf],
+    protocol: EngineProtocol,
+) -> Result<TsSession, ProviderError> {
     let env = sanitized_child_env(search_path);
-    let mut child = spawn_sanitized(binary, &[], project_root, &env).map_err(|error| {
+    let mut child = spawn_sanitized(binary, args, project_root, &env).map_err(|error| {
         ProviderError::Unavailable(format!("failed to spawn {}: {error}", binary.display()))
     })?;
     let stdin = child.stdin.take();
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| ProviderError::Crashed("tsserver stdout was not piped".into()))?;
+        .ok_or_else(|| {
+            ProviderError::Crashed(format!(
+                "{} stdout was not piped",
+                match protocol {
+                    EngineProtocol::Lsp => "ts lsp",
+                    EngineProtocol::Tsserver => "tsserver",
+                }
+            ))
+        })?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| ProviderError::Crashed("tsserver stderr was not piped".into()))?;
+        .ok_or_else(|| {
+            ProviderError::Crashed(format!(
+                "{} stderr was not piped",
+                match protocol {
+                    EngineProtocol::Lsp => "ts lsp",
+                    EngineProtocol::Tsserver => "tsserver",
+                }
+            ))
+        })?;
     let overflow_dropped = Arc::new(AtomicUsize::new(0));
-    let pump = spawn_bounded_reader(
-        stdout,
-        LineFrameDecoder::new(),
-        EVENT_QUEUE_CAPACITY,
-        Arc::clone(&overflow_dropped),
-    );
+    let pump = match protocol {
+        EngineProtocol::Lsp => spawn_bounded_reader(
+            stdout,
+            LspDecoder::new(),
+            EVENT_QUEUE_CAPACITY,
+            Arc::clone(&overflow_dropped),
+        ),
+        EngineProtocol::Tsserver => spawn_bounded_reader(
+            stdout,
+            LineFrameDecoder::new(),
+            EVENT_QUEUE_CAPACITY,
+            Arc::clone(&overflow_dropped),
+        ),
+    };
     let stderr_handle = spawn_stderr_drainer(stderr);
-    Ok(TsserverSession {
+    Ok(TsSession {
         child,
         stdin,
         frames: pump.frames,
         overflow_dropped,
         reader_handle: pump.handle,
         stderr_handle,
+        protocol,
     })
+}
+
+fn await_lsp_initialize_response(session: &TsSession, request_id: i64) -> Result<(), ProviderError> {
+    let started = Instant::now();
+    loop {
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        if elapsed_ms >= INITIALIZE_HANDSHAKE_TIMEOUT_MS {
+            return Err(ProviderError::Crashed(
+                "ts lsp initialize handshake timed out".into(),
+            ));
+        }
+        match recv_within(
+            &session.frames,
+            INITIALIZE_HANDSHAKE_TIMEOUT_MS - elapsed_ms,
+        ) {
+            FrameOutcome::Frame(text) => {
+                if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                    if value["id"].as_i64() == Some(request_id)
+                        && (value.get("result").is_some() || value.get("error").is_some())
+                    {
+                        return Ok(());
+                    }
+                }
+            }
+            FrameOutcome::QueueClosed => {
+                return Err(ProviderError::Crashed(
+                    "ts lsp exited during the initialize handshake".into(),
+                ));
+            }
+            FrameOutcome::DeadlineExceeded => continue,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +375,87 @@ fn parse_server_message(line: &str) -> ServerEvent {
             None => ServerEvent::Ignored,
         },
         _ => ServerEvent::Ignored,
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum LspInboundMessage {
+    Response(i64),
+    Notification { method: String, params: Value },
+    Ignored,
+}
+
+fn parse_lsp_message(text: &str) -> LspInboundMessage {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return LspInboundMessage::Ignored;
+    };
+    if let Some(method) = value["method"].as_str() {
+        return LspInboundMessage::Notification {
+            method: method.to_string(),
+            params: value.get("params").cloned().unwrap_or(Value::Null),
+        };
+    }
+    if value["id"].as_i64().is_some()
+        && (value.get("result").is_some() || value.get("error").is_some())
+    {
+        return LspInboundMessage::Response(value["id"].as_i64().unwrap_or_default());
+    }
+    LspInboundMessage::Ignored
+}
+
+fn lsp_ts_severity_hint(diagnostic: &Value) -> SeverityHint {
+    if diagnostic["severity"].as_i64() == Some(1) {
+        SeverityHint::Blocking
+    } else {
+        SeverityHint::Advisory
+    }
+}
+
+fn lsp_ts_code_string(diagnostic: &Value) -> String {
+    match diagnostic.get("code") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn lsp_ts_position_u32(value: &Value) -> u32 {
+    value
+        .as_u64()
+        .map(|pos| u32::try_from(pos).unwrap_or(u32::MAX))
+        .unwrap_or(0)
+}
+
+fn lsp_ts_range_to_source_range(diagnostic: &Value) -> SourceRange {
+    let range = &diagnostic["range"];
+    SourceRange {
+        start_line: lsp_ts_position_u32(&range["start"]["line"]).saturating_add(1),
+        start_column: lsp_ts_position_u32(&range["start"]["character"]).saturating_add(1),
+        end_line: lsp_ts_position_u32(&range["end"]["line"]).saturating_add(1),
+        end_column: lsp_ts_position_u32(&range["end"]["character"]).saturating_add(1),
+    }
+}
+
+fn observation_from_lsp_ts_diagnostic(
+    provider_version: &str,
+    _request_seq_or_zero: u64,
+    relative_path: &str,
+    index: usize,
+    diagnostic: &Value,
+) -> ObservationV1 {
+    let code_raw = lsp_ts_code_string(diagnostic);
+    ObservationV1 {
+        observation_id: format!("{PROVIDER_ID}:publish:{relative_path}:{index}"),
+        provider_id: PROVIDER_ID.to_string(),
+        provider_version: provider_version.to_string(),
+        code: normalize_ts_code(&code_raw),
+        path: relative_path.to_string(),
+        range: lsp_ts_range_to_source_range(diagnostic),
+        message: diagnostic["message"].as_str().unwrap_or_default().to_string(),
+        semantic_anchor: None,
+        source_class: SourceClass::NativeLanguageService,
+        cost_class: CostClass::Interactive,
+        severity_hint: lsp_ts_severity_hint(diagnostic),
     }
 }
 
@@ -311,20 +564,64 @@ fn resolve_under_root(root: &Path, raw: &str) -> (PathBuf, String) {
 // Provider
 // ---------------------------------------------------------------------------
 
+fn hash_matches(bytes: &[u8], declared: &str) -> bool {
+    let hex_digest = hex::encode(Sha256::digest(bytes));
+    let declared_hex = declared.strip_prefix("sha256:").unwrap_or(declared);
+    hex_digest == declared_hex
+}
+
+fn current_hash_mismatches(project_root: &Path, epoch: &WorkspaceEpochV1) -> Vec<TypedOmission> {
+    if epoch.changed_file_hashes.is_empty() {
+        return Vec::new();
+    }
+    let mut mismatches = Vec::new();
+    for entry in &epoch.changed_file_hashes {
+        let (absolute, _) = resolve_under_root(project_root, &entry.path);
+        match std::fs::read(&absolute) {
+            Ok(bytes) => {
+                if !hash_matches(&bytes, &entry.hash) {
+                    let hex_digest = hex::encode(Sha256::digest(&bytes));
+                    mismatches.push(TypedOmission {
+                        code: "hash_mismatch".to_string(),
+                        detail: format!(
+                            "{}: on-disk sha256:{hex_digest} does not match declared {}",
+                            entry.path, entry.hash
+                        ),
+                    });
+                }
+            }
+            Err(error) => mismatches.push(TypedOmission {
+                code: "source_unreadable".to_string(),
+                detail: format!("{}: {error}", entry.path),
+            }),
+        }
+    }
+    mismatches
+}
+
 struct SyncTarget {
+    absolute: String,
+    uri: String,
     relative: String,
     content: String,
 }
 
 /// Collect the epoch's changed files under `project_root`, reading exact bytes
 /// for full-content synchronization. Unreadable files become typed omissions
-/// rather than aborting the whole epoch.
+/// rather than aborting the whole epoch. When `changed_file_hashes` is
+/// populated, hashes are verified immediately; mismatches become `hash_mismatch`
+/// omissions and prevent exact convergence.
 fn collect_sync_targets(
     project_root: &Path,
     epoch: &WorkspaceEpochV1,
 ) -> (BTreeMap<String, SyncTarget>, Vec<TypedOmission>) {
     let mut targets = BTreeMap::new();
     let mut omissions = Vec::new();
+    let declared_by_path: BTreeMap<String, String> = epoch
+        .changed_file_hashes
+        .iter()
+        .map(|entry| (entry.path.clone(), entry.hash.clone()))
+        .collect();
     let paths: Vec<&str> = if epoch.changed_file_hashes.is_empty() {
         epoch.changed_paths.iter().map(String::as_str).collect()
     } else {
@@ -336,11 +633,25 @@ fn collect_sync_targets(
     };
     for raw_path in paths {
         let (absolute, relative) = resolve_under_root(project_root, raw_path);
+        let absolute_str = absolute.to_string_lossy().into_owned();
         match std::fs::read(&absolute) {
             Ok(bytes) => {
+                if let Some(declared) = declared_by_path.get(raw_path) {
+                    if !hash_matches(&bytes, declared) {
+                        let hex_digest = hex::encode(Sha256::digest(&bytes));
+                        omissions.push(TypedOmission {
+                            code: "hash_mismatch".to_string(),
+                            detail: format!(
+                                "{raw_path}: on-disk sha256:{hex_digest} does not match declared {declared}"
+                            ),
+                        });
+                    }
+                }
                 targets.insert(
-                    absolute.to_string_lossy().into_owned(),
+                    absolute_str.clone(),
                     SyncTarget {
+                        absolute: absolute_str,
+                        uri: uri_from_path(&absolute),
                         relative,
                         content: String::from_utf8_lossy(&bytes).into_owned(),
                     },
@@ -362,16 +673,23 @@ fn collect_sync_targets(
 pub struct TypeScriptProvider {
     project_root: PathBuf,
     search_path: Vec<PathBuf>,
-    session: Option<TsserverSession>,
+    session: Option<TsSession>,
     engine_name: String,
+    engine_protocol: EngineProtocol,
     declared_version: String,
     next_seq: u64,
+    next_id: i64,
     synced_epoch: Option<u64>,
     sync_targets: BTreeMap<String, SyncTarget>,
+    uri_relative: BTreeMap<String, String>,
     sync_omissions: Vec<TypedOmission>,
     active_geterr: Option<u64>,
+    active_lsp_ids: HashSet<i64>,
+    cancelled_lsp_ids: HashSet<i64>,
     cancelled_seqs: HashSet<u64>,
     last_completed: Option<(u64, u64)>,
+    lsp_published_versions: BTreeMap<String, Option<i64>>,
+    lsp_ack_received: bool,
 }
 
 impl TypeScriptProvider {
@@ -388,22 +706,31 @@ impl TypeScriptProvider {
             search_path,
             session: None,
             engine_name: String::new(),
+            engine_protocol: EngineProtocol::Tsserver,
             declared_version: ADAPTER_VERSION.to_string(),
             next_seq: 1,
+            next_id: 1,
             synced_epoch: None,
             sync_targets: BTreeMap::new(),
+            uri_relative: BTreeMap::new(),
             sync_omissions: Vec::new(),
             active_geterr: None,
+            active_lsp_ids: HashSet::new(),
+            cancelled_lsp_ids: HashSet::new(),
             cancelled_seqs: HashSet::new(),
             last_completed: None,
+            lsp_published_versions: BTreeMap::new(),
+            lsp_ack_received: false,
         }
     }
 }
 
 impl DiagnosticsProvider for TypeScriptProvider {
-    /// Probe `tsgo` then `tsserver` on the injected search path and spawn the
-    /// first match with a sanitized environment. Missing binaries degrade
-    /// typed: `Err(ProviderError::Unavailable)`, no auto-install (design §13).
+    /// Probe TypeScript engines on the injected search path, preferring
+    /// `tsc --lsp --stdio` (LSP) then `tsgo`/`typescript-go` with LSP args,
+    /// falling back to `tsserver` tsserver protocol. Bare `tsgo` with no args
+    /// is never launched (design §6, TS7). Missing binaries degrade typed to
+    /// `Err(ProviderError::Unavailable)`, no auto-install (design §13).
     fn initialize(&mut self, capabilities: &ProviderCapabilities) -> Result<(), ProviderError> {
         if self.session.is_some() {
             return Err(ProviderError::InvalidRequest(
@@ -415,77 +742,148 @@ impl DiagnosticsProvider for TypeScriptProvider {
         } else {
             capabilities.version.clone()
         };
-        const CANDIDATES: [&str; 2] = ["tsgo", "tsserver"];
-        let mut found = None;
-        for name in CANDIDATES {
-            if let Some(binary) = probe_search_path(name, &self.search_path) {
-                found = Some((name, binary));
+        let mut found: Option<(CandidateSpec, PathBuf)> = None;
+        for spec in CANDIDATE_SPECS {
+            if let Some(binary) = probe_search_path(spec.binary_name, &self.search_path) {
+                found = Some((
+                    CandidateSpec {
+                        binary_name: spec.binary_name,
+                        args: spec.args,
+                        protocol: spec.protocol,
+                    },
+                    binary,
+                ));
                 break;
             }
         }
-        let Some((engine_name, binary)) = found else {
+        let Some((spec, binary)) = found else {
             return Err(ProviderError::Unavailable(
-                "neither tsgo nor tsserver was found on the injected search path; \
-                 automatic installation is disabled"
+                "neither tsc (lsp) nor tsgo/typescript-go (lsp) nor tsserver was found on the injected search path;                  automatic installation is disabled"
                     .into(),
             ));
         };
-        self.engine_name = engine_name.to_string();
-        self.session = Some(start_session(
+        let args: Vec<String> = spec.args.iter().map(|s| s.to_string()).collect();
+        let mut session = start_session(
             &binary,
+            &args,
             &self.project_root,
             &self.search_path,
-        )?);
+            spec.protocol,
+        )?;
+        if spec.protocol == EngineProtocol::Lsp {
+            let request_id = self.next_id;
+            self.next_id += 1;
+            let envelope = json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "initialize",
+                "params": {
+                    "processId": Value::Null,
+                    "rootUri": uri_from_path(&self.project_root),
+                    "capabilities": {},
+                    "initializationOptions": {}
+                }
+            });
+            session.write_json(&envelope)?;
+            await_lsp_initialize_response(&session, request_id)?;
+            session.write_json(&json!({
+                "jsonrpc": "2.0",
+                "method": "initialized",
+                "params": {}
+            }))?;
+        }
+        self.engine_name = spec.binary_name.to_string();
+        self.engine_protocol = spec.protocol;
+        self.session = Some(session);
         Ok(())
     }
 
     /// Full-content resynchronization on every epoch change: close all
     /// previously opened files, then open the new epoch's changed files with
-    /// their exact sealed bytes. Document versions are therefore pinned to the
-    /// workspace epoch number.
+    /// their exact sealed bytes. For LSP mode uses `textDocument/didClose` and
+    /// `textDocument/didOpen` with `version = epoch`; for tsserver uses
+    /// `close`/`open`. Document versions are therefore pinned to the workspace
+    /// epoch number.
     fn synchronize(&mut self, epoch: &WorkspaceEpochV1) -> Result<(), ProviderError> {
         let session = self.session.as_mut().ok_or_else(|| {
             ProviderError::InvalidRequest("synchronize called before initialize".into())
         })?;
         let (targets, omissions) = collect_sync_targets(&self.project_root, epoch);
 
-        for previous in self.sync_targets.keys() {
-            session.write_json(&json!({
-                "seq": self.next_seq,
-                "type": "request",
-                "command": "close",
-                "arguments": { "file": previous },
-            }))?;
-            self.next_seq += 1;
-        }
-        for (absolute, target) in &targets {
-            session.write_json(&json!({
-                "seq": self.next_seq,
-                "type": "request",
-                "command": "open",
-                "arguments": {
-                    "file": absolute,
-                    "fileContent": target.content,
-                    "scriptKindName": script_kind_for(&target.relative),
-                },
-            }))?;
-            self.next_seq += 1;
+        match session.protocol {
+            EngineProtocol::Tsserver => {
+                for previous in self.sync_targets.keys() {
+                    session.write_json(&json!({
+                        "seq": self.next_seq,
+                        "type": "request",
+                        "command": "close",
+                        "arguments": { "file": previous },
+                    }))?;
+                    self.next_seq += 1;
+                }
+                for target in targets.values() {
+                    session.write_json(&json!({
+                        "seq": self.next_seq,
+                        "type": "request",
+                        "command": "open",
+                        "arguments": {
+                            "file": target.absolute,
+                            "fileContent": target.content,
+                            "scriptKindName": script_kind_for(&target.relative),
+                        },
+                    }))?;
+                    self.next_seq += 1;
+                }
+            }
+            EngineProtocol::Lsp => {
+                let version = i64::try_from(epoch.epoch).unwrap_or(i64::MAX);
+                let stale_uris: Vec<String> = self.sync_targets.values().map(|t| t.uri.clone()).collect();
+                for uri in &stale_uris {
+                    session.write_json(&json!({
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didClose",
+                        "params": { "textDocument": { "uri": uri } }
+                    }))?;
+                }
+                for target in targets.values() {
+                    session.write_json(&json!({
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didOpen",
+                        "params": {
+                            "textDocument": {
+                                "uri": target.uri,
+                                "languageId": "typescript",
+                                "version": version,
+                                "text": target.content,
+                            }
+                        }
+                    }))?;
+                }
+            }
         }
 
         self.synced_epoch = Some(epoch.epoch);
+        self.uri_relative = targets
+            .values()
+            .map(|t| (t.uri.clone(), t.relative.clone()))
+            .collect();
         self.sync_targets = targets;
         self.sync_omissions = omissions;
         self.active_geterr = None;
+        self.active_lsp_ids.clear();
+        self.cancelled_lsp_ids.clear();
         self.cancelled_seqs.clear();
         self.last_completed = None;
+        self.lsp_published_versions.clear();
+        self.lsp_ack_received = false;
         Ok(())
     }
 
-    /// Issue one `geterr` over the epoch's synchronized files and pump framed
-    /// events until the completion barrier for that exact request sequence
-    /// arrives or `deadline` expires. Honoring the deadline here is mandatory:
-    /// the supervisor re-enforces it, but the provider reports its own
-    /// `DeadlineExceeded` from the reader timeout.
+    /// Acquire for both protocols: tsserver pumps `geterr` until
+    /// `requestCompleted` for that exact seq; LSP sends a post-open `hover`
+    /// ack and collects `publishDiagnostics` until every synchronized file has
+    /// published at the exact epoch version, or deadline expires. Hash
+    /// mismatches before claiming exact downgrade the lane.
     fn acquire(
         &mut self,
         epoch: &WorkspaceEpochV1,
@@ -499,127 +897,336 @@ impl DiagnosticsProvider for TypeScriptProvider {
         if self.synced_epoch != Some(epoch.epoch) {
             self.synchronize(epoch)?;
         }
+        // Hash verification gates exactness for both protocols.
+        let pre_hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
+        let has_pre_mismatch = !pre_hash_mismatches.is_empty()
+            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
         if self.sync_targets.is_empty() {
-            self.last_completed = Some((epoch.epoch, 0));
+            // Even empty scope must not claim exact if hashes mismatched.
+            let exact = !has_pre_mismatch;
+            self.last_completed = if exact {
+                Some((epoch.epoch, 0))
+            } else {
+                None
+            };
+            self.lsp_ack_received = exact;
             return Ok(self.build_output(epoch, Vec::new(), 0));
         }
 
-        let request_seq = self.next_seq;
-        self.next_seq += 1;
-        let session = self.session.as_mut().expect("session checked above");
-        let overflow_before = session.overflow_dropped.load(Ordering::Relaxed);
-        let files: Vec<&String> = self.sync_targets.keys().collect();
-        session.write_json(&json!({
-            "seq": request_seq,
-            "type": "request",
-            "command": "geterr",
-            "arguments": { "delay": 0, "files": files },
-        }))?;
-        self.active_geterr = Some(request_seq);
+        match self.session.as_mut().expect("session checked above").protocol {
+            EngineProtocol::Tsserver => {
+                let request_seq = self.next_seq;
+                self.next_seq += 1;
+                let overflow_before;
+                {
+                    let session = self.session.as_mut().unwrap();
+                    overflow_before = session.overflow_dropped.load(Ordering::Relaxed);
+                    let files: Vec<String> = self.sync_targets.keys().cloned().collect();
+                    session.write_json(&json!({
+                        "seq": request_seq,
+                        "type": "request",
+                        "command": "geterr",
+                        "arguments": { "delay": 0, "files": files },
+                    }))?;
+                }
+                self.active_geterr = Some(request_seq);
 
-        let mut observations = Vec::new();
-        loop {
-            match recv_with_deadline(&session.frames, deadline) {
-                FrameOutcome::DeadlineExceeded => {
-                    self.cancelled_seqs.clear();
-                    self.cancelled_seqs.insert(request_seq);
-                    self.active_geterr = None;
-                    return Err(ProviderError::DeadlineExceeded);
-                }
-                FrameOutcome::QueueClosed => {
-                    self.active_geterr = None;
-                    return Err(ProviderError::Crashed(
-                        "tsserver closed its output before completing geterr".into(),
-                    ));
-                }
-                FrameOutcome::Frame(line) => {
-                    if self.cancelled_seqs.contains(&request_seq) {
-                        continue;
-                    }
-                    match parse_server_message(&line) {
-                        ServerEvent::RequestCompleted(completed) if completed == request_seq => {
-                            break;
+                let mut observations = Vec::new();
+                loop {
+                    let frame = {
+                        let session = self.session.as_mut().unwrap();
+                        recv_with_deadline(&session.frames, deadline)
+                    };
+                    match frame {
+                        FrameOutcome::DeadlineExceeded => {
+                            self.cancelled_seqs.clear();
+                            self.cancelled_seqs.insert(request_seq);
+                            self.active_geterr = None;
+                            return Err(ProviderError::DeadlineExceeded);
                         }
-                        ServerEvent::Diagnostics { kind, file, spans } => {
-                            let Some(target) = self.sync_targets.get(&file) else {
+                        FrameOutcome::QueueClosed => {
+                            self.active_geterr = None;
+                            return Err(ProviderError::Crashed(
+                                "tsserver closed its output before completing geterr".into(),
+                            ));
+                        }
+                        FrameOutcome::Frame(line) => {
+                            if self.cancelled_seqs.contains(&request_seq) {
                                 continue;
-                            };
-                            for (index, span) in spans.iter().enumerate() {
-                                observations.push(observation_from_span(
-                                    &self.declared_version,
-                                    request_seq,
-                                    kind,
-                                    &target.relative,
-                                    index,
-                                    span,
-                                ));
+                            }
+                            match parse_server_message(&line) {
+                                ServerEvent::RequestCompleted(completed) if completed == request_seq => {
+                                    break;
+                                }
+                                ServerEvent::Diagnostics { kind, file, spans } => {
+                                    let Some(target) = self.sync_targets.get(&file) else {
+                                        continue;
+                                    };
+                                    for (index, span) in spans.iter().enumerate() {
+                                        observations.push(observation_from_span(
+                                            &self.declared_version,
+                                            request_seq,
+                                            kind,
+                                            &target.relative,
+                                            index,
+                                            span,
+                                        ));
+                                    }
+                                }
+                                ServerEvent::RequestCompleted(_) | ServerEvent::Ignored => {}
                             }
                         }
-                        ServerEvent::RequestCompleted(_) | ServerEvent::Ignored => {}
+                    }
+                }
+                self.active_geterr = None;
+                // Only claim exact completion if hashes still match at barrier time.
+                let fresh_mismatches = current_hash_mismatches(&self.project_root, epoch);
+                if !fresh_mismatches.is_empty() || has_pre_mismatch {
+                    self.last_completed = None;
+                } else {
+                    self.last_completed = Some((epoch.epoch, request_seq));
+                }
+                let overflow_after = self
+                    .session
+                    .as_ref()
+                    .unwrap()
+                    .overflow_dropped
+                    .load(Ordering::Relaxed);
+                Ok(self.build_output(epoch, observations, overflow_after.saturating_sub(overflow_before)))
+            }
+            EngineProtocol::Lsp => {
+                let request_id = self.next_id;
+                self.next_id += 1;
+                let ack_uri = self
+                    .sync_targets
+                    .values()
+                    .next()
+                    .map(|t| t.uri.clone())
+                    .unwrap_or_else(|| uri_from_path(&self.project_root));
+                let expected_version = i64::try_from(epoch.epoch).unwrap_or(i64::MAX);
+                let target_uris: Vec<String> =
+                    self.sync_targets.values().map(|t| t.uri.clone()).collect();
+                let overflow_before;
+                {
+                    let session = self.session.as_mut().unwrap();
+                    overflow_before = session.overflow_dropped.load(Ordering::Relaxed);
+                    session.write_json(&json!({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "method": "textDocument/hover",
+                        "params": {
+                            "textDocument": { "uri": ack_uri },
+                            "position": { "line": 0, "character": 0 }
+                        }
+                    }))?;
+                }
+                self.active_lsp_ids.insert(request_id);
+                let mut published: BTreeMap<String, (Option<i64>, Vec<ObservationV1>)> =
+                    BTreeMap::new();
+                let mut ack_received = false;
+                loop {
+                    let frame = {
+                        let session = self.session.as_mut().unwrap();
+                        recv_with_deadline(&session.frames, deadline)
+                    };
+                    match frame {
+                        FrameOutcome::DeadlineExceeded => {
+                            self.cancelled_lsp_ids.insert(request_id);
+                            self.active_lsp_ids.remove(&request_id);
+                            if let Some(s) = self.session.as_mut() {
+                                let _ = s.write_json(&json!({
+                                    "jsonrpc": "2.0",
+                                    "method": "$/cancelRequest",
+                                    "params": { "id": request_id }
+                                }));
+                            }
+                            return Err(ProviderError::DeadlineExceeded);
+                        }
+                        FrameOutcome::QueueClosed => {
+                            self.active_lsp_ids.clear();
+                            return Err(ProviderError::Crashed(
+                                "ts lsp closed its output before publishing diagnostics".into(),
+                            ));
+                        }
+                        FrameOutcome::Frame(text) => match parse_lsp_message(&text) {
+                            LspInboundMessage::Response(id) if id == request_id => {
+                                if !self.cancelled_lsp_ids.contains(&id) {
+                                    ack_received = true;
+                                    self.active_lsp_ids.remove(&id);
+                                }
+                            }
+                            LspInboundMessage::Notification { method, params }
+                                if method == "textDocument/publishDiagnostics" =>
+                            {
+                                let Some(uri) = params["uri"].as_str().map(str::to_string) else {
+                                    continue;
+                                };
+                                if !self.uri_relative.contains_key(&uri) {
+                                    continue;
+                                }
+                                let relative =
+                                    self.uri_relative.get(&uri).cloned().unwrap_or_default();
+                                let mut observations = Vec::new();
+                                if let Some(diagnostics) = params["diagnostics"].as_array() {
+                                    for (index, diagnostic) in diagnostics.iter().enumerate() {
+                                        observations.push(
+                                            observation_from_lsp_ts_diagnostic(
+                                                &self.declared_version,
+                                                request_id as u64,
+                                                &relative,
+                                                index,
+                                                diagnostic,
+                                            ),
+                                        );
+                                    }
+                                }
+                                let version = params.get("version").and_then(Value::as_i64);
+                                published.insert(uri, (version, observations));
+                            }
+                            _ => {}
+                        },
+                    }
+                    let every_published = target_uris.iter().all(|uri| published.contains_key(uri));
+                    if ack_received && every_published {
+                        break;
+                    }
+                }
+                self.active_lsp_ids.clear();
+                let overflow_after = self
+                    .session
+                    .as_ref()
+                    .unwrap()
+                    .overflow_dropped
+                    .load(Ordering::Relaxed);
+                let overflow_delta = overflow_after.saturating_sub(overflow_before);
+                let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
+                let has_hash_mismatch = !hash_mismatches.is_empty() || has_pre_mismatch;
+                let all_versioned = published.values().all(|(v, _)| *v == Some(expected_version));
+                let exact = !has_hash_mismatch && ack_received && all_versioned;
+                self.lsp_ack_received = ack_received;
+                self.lsp_published_versions = published
+                    .iter()
+                    .map(|(uri, (v, _))| (uri.clone(), *v))
+                    .collect();
+                if exact {
+                    self.last_completed = Some((epoch.epoch, request_id as u64));
+                } else {
+                    self.last_completed = None;
+                }
+                // Flatten observations for output
+                let observations: Vec<ObservationV1> = published
+                    .into_values()
+                    .flat_map(|(_, obs)| obs)
+                    .collect();
+                Ok(self.build_output(epoch, observations, overflow_delta))
+            }
+        }
+    }
+
+    /// Map supervisor cancellation onto the active protocol.
+    fn cancel(&mut self, request_id: &RequestId) {
+        match self.session.as_mut().map(|s| s.protocol) {
+            Some(EngineProtocol::Lsp) => {
+                if let Some(session) = self.session.as_mut() {
+                    let outstanding: Vec<i64> = self.active_lsp_ids.drain().collect();
+                    for lsp_id in outstanding {
+                        let _ = session.write_json(&json!({
+                            "jsonrpc": "2.0",
+                            "method": "$/cancelRequest",
+                            "params": { "id": lsp_id }
+                        }));
+                        self.cancelled_lsp_ids.insert(lsp_id);
                     }
                 }
             }
-        }
-        self.active_geterr = None;
-        self.last_completed = Some((epoch.epoch, request_seq));
-        let overflow_after = session.overflow_dropped.load(Ordering::Relaxed);
-        Ok(self.build_output(epoch, observations, overflow_after.saturating_sub(overflow_before)))
-    }
-
-    /// Map supervisor cancellation onto the tsserver protocol.
-    ///
-    /// Limitation (documented): tsserver has no wire-level cancellation
-    /// command. The cancelled request's sequence is remembered so any late
-    /// diagnostics or completion events for it are dropped by the routing
-    /// loop, and the next full-content synchronize supersedes pending server
-    /// work by replacing the documents it refers to.
-    fn cancel(&mut self, request_id: &RequestId) {
-        let matches_active = self.active_geterr == Some(request_id.0);
-        if matches_active {
-            self.cancelled_seqs.clear();
-            self.cancelled_seqs.insert(request_id.0);
-            self.active_geterr = None;
+            _ => {
+                let matches_active = self.active_geterr == Some(request_id.0);
+                if matches_active {
+                    self.cancelled_seqs.clear();
+                    self.cancelled_seqs.insert(request_id.0);
+                    self.active_geterr = None;
+                }
+            }
         }
     }
 
-    /// Converged exactly when the `geterr` completion barrier for the current
-    /// epoch's document versions has been observed.
+    /// Converged exactly when the completion barrier for the current epoch's
+    /// document versions has been observed and on-disk hashes still match.
     fn prove_convergence(&mut self, epoch: &WorkspaceEpochV1) -> ConvergenceProof {
+        let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
+        let has_hash_mismatch = !hash_mismatches.is_empty()
+            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+        if has_hash_mismatch {
+            return ConvergenceProof {
+                converged: false,
+                detail: format!(
+                    "hash_mismatch for epoch {}: on-disk bytes do not match declared changed_file_hashes",
+                    epoch.epoch
+                ),
+            };
+        }
         let converged = self.last_completed.is_some_and(|(barrier_epoch, _)| {
             barrier_epoch == epoch.epoch && self.synced_epoch == Some(epoch.epoch)
         });
         let detail = match self.last_completed {
-            Some((barrier_epoch, seq)) if barrier_epoch == epoch.epoch => format!(
-                "push_versioned_exact: geterr request {seq} completed for epoch {} over {} synchronized file(s)",
-                epoch.epoch,
-                self.sync_targets.len()
-            ),
+            Some((barrier_epoch, seq)) if barrier_epoch == epoch.epoch => match self.engine_protocol {
+                EngineProtocol::Lsp => format!(
+                    "pull_exact: lsp ack {seq} and versioned publishDiagnostics for epoch {} over {} file(s)",
+                    epoch.epoch,
+                    self.sync_targets.len()
+                ),
+                EngineProtocol::Tsserver => format!(
+                    "push_versioned_exact: geterr request {seq} completed for epoch {} over {} synchronized file(s)",
+                    epoch.epoch,
+                    self.sync_targets.len()
+                ),
+            },
             Some((barrier_epoch, seq)) => format!(
-                "stale barrier: geterr request {seq} completed for epoch {barrier_epoch}, not {}",
+                "stale barrier: request {seq} completed for epoch {barrier_epoch}, not {}",
                 epoch.epoch
             ),
             None => format!(
-                "no geterr completion barrier observed yet for epoch {} ({})",
+                "no completion barrier observed yet for epoch {} ({})",
                 epoch.epoch, self.engine_name
             ),
         };
         ConvergenceProof { converged, detail }
     }
 
-    /// Best-effort `exit` command, then direct-child kill and reader joins.
+    /// Best-effort shutdown: LSP `shutdown`+`exit` or tsserver `exit`, then
+    /// process-group kill and reader joins.
     fn shutdown(mut self) -> Result<(), ProviderError> {
         if let Some(mut session) = self.session.take() {
-            let exit = json!({
-                "seq": self.next_seq,
-                "type": "request",
-                "command": "exit",
-            });
-            let _ = session.write_json(&exit);
+            match session.protocol {
+                EngineProtocol::Lsp => {
+                    let request_id = self.next_id;
+                    self.next_id += 1;
+                    let _ = session.write_json(&json!({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "method": "shutdown",
+                        "params": Value::Null
+                    }));
+                    drain_frames_until(&session.frames, SHUTDOWN_HANDSHAKE_TIMEOUT_MS);
+                    let _ = session.write_json(&json!({
+                        "jsonrpc": "2.0",
+                        "method": "exit",
+                        "params": Value::Null
+                    }));
+                }
+                EngineProtocol::Tsserver => {
+                    let exit = json!({
+                        "seq": self.next_seq,
+                        "type": "request",
+                        "command": "exit",
+                    });
+                    let _ = session.write_json(&exit);
+                }
+            }
             session.kill_and_join();
         }
         Ok(())
     }
-}
 
 impl TypeScriptProvider {
     fn build_output(
@@ -628,11 +1235,29 @@ impl TypeScriptProvider {
         observations: Vec<ObservationV1>,
         overflow_delta: usize,
     ) -> ProviderOutput {
-        let omissions = lane_omissions(&self.sync_omissions, overflow_delta);
+        let mut omissions = lane_omissions(&self.sync_omissions, overflow_delta);
+        // Re-verify current disk hashes at output time (TOCTOU); merge fresh mismatches
+        for mismatch in current_hash_mismatches(&self.project_root, epoch) {
+            if !omissions.iter().any(|o| o.detail == mismatch.detail) {
+                omissions.push(mismatch);
+            }
+        }
+        let has_hash_mismatch = omissions.iter().any(|o| o.code == "hash_mismatch");
         let state = if omissions.is_empty() {
             LaneState::Complete
         } else {
             LaneState::Partial
+        };
+        let convergence_class = if has_hash_mismatch {
+            ConvergenceClass::PushUnversionedAdvisory
+        } else {
+            // Preserve exact class; for LSP mode PullExact also qualifies as exact,
+            // but we keep PushVersionedExact for tsserver and either is fine for
+            // LSP – both are in the exact trio. Use protocol-appropriate exact.
+            match self.engine_protocol {
+                EngineProtocol::Lsp => ConvergenceClass::PullExact,
+                EngineProtocol::Tsserver => ConvergenceClass::PushVersionedExact,
+            }
         };
         ProviderOutput {
             observations,
@@ -649,7 +1274,7 @@ impl TypeScriptProvider {
                     CapabilityVocabulary::NameResolution,
                     CapabilityVocabulary::TypeSemantics,
                 ],
-                convergence_class: ConvergenceClass::PushVersionedExact,
+                convergence_class,
                 bound_workspace_epoch: epoch.epoch,
                 state,
                 omissions,

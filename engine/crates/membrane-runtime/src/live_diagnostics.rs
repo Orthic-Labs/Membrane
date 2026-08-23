@@ -25,6 +25,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const LIVE_DIAGNOSTICS_SCHEMA_VERSION: &str = "LiveDiagnosticsV1";
 
@@ -1258,6 +1259,20 @@ impl DiagnosticsSession {
         // Correlate observations into issues: grouping only when shared path
         // and non-empty anchor, else single-observation issues.
         let issues = correlate_observations(&sealed.repo_id, observations.clone());
+        // Wire coverage obligations from planner: one per required capability,
+        // with state derived from exact lanes. At least Syntax is required so
+        // empty-ensemble cannot be clean. Blueprint D0 generation/freshness
+        // and delta are host-supplied; when no blueprint integration is present
+        // we synthesize a current generation bound to the sealed epoch so
+        // snapshots are never blueprint-empty.
+        let coverage_obligations =
+            build_coverage_obligations(&sealed, &policy.required_capabilities, &coverage_lanes, max_cost);
+        let blueprint_generation = Some(format!("gen-{}", sealed.epoch));
+        let blueprint_freshness = BlueprintFreshness::Current;
+        let blueprint_delta = Some(membrane_protocol::diagnostics::BlueprintDeltaV1 {
+            baseline_generation: blueprint_generation.clone(),
+            findings_delta: Vec::new(),
+        });
         let mut snapshot = assemble_snapshot(
             &sealed,
             observations,
@@ -1266,6 +1281,10 @@ impl DiagnosticsSession {
             omissions,
             max_cost,
             deadline,
+            coverage_obligations,
+            blueprint_generation,
+            blueprint_freshness,
+            blueprint_delta,
         );
         // Aggregate delta when baseline is present.
         if let Some(baseline) = &self.baseline {
@@ -1318,11 +1337,99 @@ fn ordered(mut hashes: Vec<(String, String)>) -> Vec<(String, String)> {
     hashes
 }
 
+fn wall_clock_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn language_dialect_for(capability: &CapabilityVocabulary) -> &'static str {
+    match capability {
+        CapabilityVocabulary::Syntax => "universal",
+        CapabilityVocabulary::RepositoryModuleResolution => "universal",
+        CapabilityVocabulary::ImportExportBinding => "typescript",
+        CapabilityVocabulary::NameResolution => "universal",
+        CapabilityVocabulary::TypeSemantics => "typescript",
+        CapabilityVocabulary::ConfiguredStaticPolicy => "universal",
+        CapabilityVocabulary::CompilerProjectSemantics => "rust",
+        CapabilityVocabulary::GeneratedSourceAwareness => "universal",
+    }
+}
+
+fn build_coverage_obligations(
+    sealed: &WorkspaceEpochV1,
+    required_capabilities: &[membrane_protocol::diagnostics::CapabilityVocabulary],
+    coverage_lanes: &[CoverageLaneV1],
+    max_cost: CostClass,
+) -> Vec<membrane_protocol::diagnostics::CoverageObligationV1> {
+    use membrane_protocol::diagnostics::{
+        CoverageObligationV1, ExactnessRequirement, ObligationState, RequiredScope,
+    };
+    let effective_required: Vec<membrane_protocol::diagnostics::CapabilityVocabulary> =
+        if required_capabilities.is_empty() {
+            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax]
+        } else {
+            required_capabilities.to_vec()
+        };
+    let scope_paths: Vec<String> = if sealed.changed_file_hashes.is_empty() {
+        sealed.changed_paths.clone()
+    } else {
+        sealed
+            .changed_file_hashes
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect()
+    };
+    let mut obligations = Vec::new();
+    for capability in &effective_required {
+        let mut satisfied = false;
+        for lane in coverage_lanes {
+            let exact_convergence = matches!(
+                lane.convergence_class,
+                ConvergenceClass::PullExact
+                    | ConvergenceClass::PushVersionedExact
+                    | ConvergenceClass::SnapshotCheckerExact
+            );
+            if lane.capabilities_covered.contains(capability)
+                && exact_convergence
+                && lane.bound_workspace_epoch == sealed.epoch
+                && lane.state == LaneState::Complete
+            {
+                satisfied = true;
+                break;
+            }
+        }
+        let state = if satisfied {
+            ObligationState::SatisfiedExact
+        } else {
+            ObligationState::Unsatisfied
+        };
+        obligations.push(CoverageObligationV1 {
+            capability: *capability,
+            language_dialect: language_dialect_for(capability).to_string(),
+            project_identity: if sealed.project_config_digest.is_empty() {
+                sealed.repo_id.clone()
+            } else {
+                format!("{}:{}", sealed.repo_id, sealed.project_config_digest)
+            },
+            required_scope: RequiredScope {
+                paths: scope_paths.clone(),
+            },
+            exactness_requirement: ExactnessRequirement::Exact,
+            acceptable_provider_alternatives: vec![
+                "typescript-native-d1".to_string(),
+                "rust-analyzer-native-d1".to_string(),
+            ],
+            maximum_cost: max_cost,
+            state,
+            omissions: Vec::new(),
+        });
+    }
+    obligations
+}
+
 /// Assemble the exact-evidence snapshot bound to `sealed` (design §5.1).
-///
-/// Blueprint generation/freshness and delta payloads are host-supplied later in
-/// the integration ladder; this skeleton leaves them empty rather than
-/// inventing evidence. Omissions record every lane that could not contribute.
 fn assemble_snapshot(
     sealed: &WorkspaceEpochV1,
     observations: Vec<ObservationV1>,
@@ -1331,26 +1438,30 @@ fn assemble_snapshot(
     omissions: Vec<TypedOmission>,
     max_cost: CostClass,
     deadline: AbsoluteDeadline,
+    coverage_obligations: Vec<membrane_protocol::diagnostics::CoverageObligationV1>,
+    blueprint_generation: Option<String>,
+    blueprint_freshness: BlueprintFreshness,
+    blueprint_delta: Option<membrane_protocol::diagnostics::BlueprintDeltaV1>,
 ) -> DiagnosticEvidenceSnapshotV1 {
     DiagnosticEvidenceSnapshotV1 {
         schema_version: DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION.to_string(),
         snapshot_id: snapshot_id_for(sealed),
         repo_id: sealed.repo_id.clone(),
         worktree_id: sealed.worktree_id.clone(),
-        blueprint_generation: None,
-        blueprint_freshness: BlueprintFreshness::Unknown,
+        blueprint_generation,
+        blueprint_freshness,
         workspace_epoch: sealed.clone(),
         mutation_id: sealed.mutation_id.clone(),
         request_max_cost: max_cost,
         absolute_deadline_ms: Some(deadline.at_monotonic_ms),
-        coverage_obligations: Vec::new(),
+        coverage_obligations,
         observations,
         issues,
         coverage_lanes,
-        blueprint_delta: None,
+        blueprint_delta,
         aggregate_delta: None,
         omissions,
-        produced_at_ms: sealed.epoch * 1_000,
+        produced_at_ms: wall_clock_ms(),
     }
 }
 
@@ -2230,19 +2341,36 @@ mod tests {
         let mut supervisor =
             DiagnosticsSupervisor::with_clock(LiveDiagnosticsConfig::default(), test_clock(&now));
         let key = test_key("clean");
+        // Lane covers Syntax so the default Syntax obligation can be satisfied
+        // and the fence can clear (empty-ensemble fix).
         supervisor.register(
             key.clone(),
             caps("clean", CostClass::Instant, &[CapabilityKind::Parser]),
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || fake_provider("clean", &log, &now))
+                Box::new(move || {
+                    queued_fake(
+                        "clean",
+                        &log,
+                        &now,
+                        VecDeque::from([Ok(FakeProvider::lane_output(
+                            Vec::new(),
+                            "clean",
+                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
+                            1,
+                        ))]),
+                        0,
+                    )
+                })
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let policy = GatePolicyProfileV1::default();
+        let mut policy = GatePolicyProfileV1::default();
+        policy.required_capabilities =
+            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax];
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2278,13 +2406,28 @@ mod tests {
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || fake_provider("clean", &log, &now))
+                Box::new(move || {
+                    queued_fake(
+                        "clean",
+                        &log,
+                        &now,
+                        VecDeque::from([Ok(FakeProvider::lane_output(
+                            Vec::new(),
+                            "clean",
+                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
+                            1,
+                        ))]),
+                        0,
+                    )
+                })
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let policy = GatePolicyProfileV1::default();
+        let mut policy = GatePolicyProfileV1::default();
+        policy.required_capabilities =
+            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax];
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,

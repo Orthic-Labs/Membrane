@@ -332,41 +332,173 @@ export function createWorkspaceMemoryOperations(options = {}) {
     },
     async observeMutation(event) {
       const root = rootFor(event);
-      const target = event.payload.tool_input?.file_path || event.payload.file_path;
-      if (typeof target !== "string" || !target.trim()) return typedStatus("skipped", "diagnostics_not_applicable");
-      let bytes;
-      try { bytes = readFileSync(target); } catch { return typedStatus("skipped", "diagnostics_target_unreadable"); }
-      const hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-      const path = relative(root, resolve(target)).replaceAll("\\", "/") || basename(target);
       const env = process.env;
       const repoId = env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root);
       const worktreeId = env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
-      const configuredEpoch = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+
+      const tool = toolName(event);
+      const input = event.payload.tool_input ?? {};
+      const rawCandidates = [];
+      const pushCandidate = (value) => {
+        if (typeof value === "string" && value.trim()) rawCandidates.push(value.trim());
+      };
+      pushCandidate(input.file_path);
+      pushCandidate(input.filePath);
+      pushCandidate(event.payload.file_path);
+      pushCandidate(event.payload.filePath);
+      if (Array.isArray(input.edits)) {
+        for (const edit of input.edits) {
+          if (edit && typeof edit === "object") {
+            pushCandidate(edit.file_path);
+            pushCandidate(edit.filePath);
+          }
+        }
+      }
+      const patchText = String(input.patch ?? input.content ?? "");
+      if (tool === "apply_patch" || patchText.includes("*** Begin Patch") || patchText.includes("diff --git") || patchText.includes("*** Update File") || patchText.includes("*** Add File")) {
+        for (const line of patchText.split(/\r?\n/)) {
+          let match = line.match(/^\*\*\*\s*(?:Update|Add)\s+File:\s*(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^---\s+a\/(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^\+\+\+\s+b\/(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^diff\s+--git\s+a\/(.+)\s+b\/(.+)$/);
+          if (match) { pushCandidate(match[1].trim()); pushCandidate(match[2].trim()); }
+        }
+      }
+      const seen = new Set();
+      const changedPaths = [];
+      for (const candidate of rawCandidates) {
+        let rel;
+        try {
+          const absolute = resolve(root, candidate);
+          rel = relative(root, absolute).replaceAll("\\", "/");
+          if (rel.startsWith("..") || rel.startsWith("/")) rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
+        } catch {
+          rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
+        }
+        if (!rel) rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
+        if (!rel || seen.has(rel)) continue;
+        seen.add(rel);
+        changedPaths.push(rel);
+      }
+      if (changedPaths.length === 0) return typedStatus("skipped", "diagnostics_not_applicable");
+      const changedFileHashes = [];
+      for (const relPath of changedPaths) {
+        const absolute = resolve(root, relPath);
+        let bytes;
+        try { bytes = readFileSync(absolute); } catch { continue; }
+        const hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+        changedFileHashes.push({ path: relPath, hash });
+      }
+      if (changedFileHashes.length === 0) return typedStatus("skipped", "diagnostics_target_unreadable");
+      const manifestHash = createHash("sha256");
+      const sortedHashes = [...changedFileHashes].sort((left, right) => left.path.localeCompare(right.path));
+      for (const entry of sortedHashes) {
+        manifestHash.update(entry.path);
+        manifestHash.update("\0");
+        manifestHash.update(entry.hash);
+        manifestHash.update("\0");
+      }
+      const sourceManifestDigest = `sha256:${manifestHash.digest("hex")}`;
+      const digestOf = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      const digestOfFiles = (paths) => {
+        const hasher = createHash("sha256");
+        let found = false;
+        for (const candidatePath of paths) {
+          try {
+            const bytes = readFileSync(join(root, candidatePath));
+            hasher.update(candidatePath);
+            hasher.update("\0");
+            hasher.update(bytes);
+            hasher.update("\0");
+            found = true;
+          } catch {}
+        }
+        if (!found) hasher.update("empty");
+        return `sha256:${hasher.digest("hex")}`;
+      };
+      const projectConfigDigest = digestOfFiles(["package.json", "pyproject.toml", "Cargo.toml", "pnpm-workspace.yaml", ".agent/config.json", "blueprint.json", "membrane.json"]);
+      const toolchainDigest = digestOf(Buffer.from(`${process.version}\0${process.platform}\0${process.arch}`, "utf8"));
+      const sandboxPolicyDigest = digestOfFiles(["tools/lib/memory/runtime.json", ".agent/sandbox.json", "sandbox.json"]);
+      let nextEpoch = 0;
+      let parentEpoch = undefined;
+      try {
+        const statusResult = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
+        if (statusResult.ok && statusResult.body && typeof statusResult.body === "object") {
+          const latest = statusResult.body.latestSealedEpoch;
+          if (Number.isInteger(latest) && latest >= 0) {
+            nextEpoch = latest + 1;
+            parentEpoch = latest;
+          } else if (latest === null || latest === undefined) {
+            const configured = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+            if (Number.isInteger(configured) && configured >= 0) {
+              nextEpoch = configured;
+              parentEpoch = configured > 0 ? configured - 1 : undefined;
+            } else {
+              nextEpoch = 0;
+            }
+          }
+        } else {
+          throw new Error("status_unavailable");
+        }
+      } catch {
+        const configured = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+        const counterPath = join(root, "tools", ".cache", "diagnostics", "observed-epoch.json");
+        let current = null;
+        try {
+          const raw = readFileSync(counterPath, "utf8");
+          const parsed = JSON.parse(raw);
+          if (Number.isInteger(parsed.epoch) && parsed.epoch >= 0) current = parsed.epoch;
+        } catch {}
+        if (Number.isInteger(current)) {
+          nextEpoch = current + 1;
+          parentEpoch = current;
+        } else if (Number.isInteger(configured) && configured >= 0) {
+          nextEpoch = configured + 1;
+          parentEpoch = configured;
+        } else {
+          nextEpoch = 0;
+        }
+        try {
+          mkdirSync(dirname(counterPath), { recursive: true });
+          writeFileSync(counterPath, `${JSON.stringify({ repoId, worktreeId, epoch: nextEpoch, parentEpoch: parentEpoch ?? null, updatedAt: new Date().toISOString() })}\n`, "utf8");
+        } catch {}
+      }
+      try {
+        const counterPath = join(root, "tools", ".cache", "diagnostics", "observed-epoch.json");
+        mkdirSync(dirname(counterPath), { recursive: true });
+        writeFileSync(counterPath, `${JSON.stringify({ repoId, worktreeId, epoch: nextEpoch, parentEpoch: parentEpoch ?? null, updatedAt: new Date().toISOString() })}\n`, "utf8");
+      } catch {}
       const epoch = {
         schemaVersion: "workspace-epoch.v1",
         repoId,
         worktreeId,
-        epoch: Number.isInteger(configuredEpoch) && configuredEpoch >= 0 ? configuredEpoch : 0,
-        sourceManifestDigest: hash,
-        changedPaths: [path],
-        changedFileHashes: [{ path, hash }],
-        projectConfigDigest: "",
-        toolchainDigest: "",
-        sandboxPolicyDigest: "",
+        epoch: nextEpoch,
+        ...(parentEpoch !== undefined ? { parentEpoch } : {}),
+        sourceManifestDigest,
+        changedPaths,
+        changedFileHashes,
+        projectConfigDigest,
+        toolchainDigest,
+        sandboxPolicyDigest,
         origin: "observed_hook",
       };
       let posted;
       try {
         posted = await diagnosticsPost("/diagnostics/mutation/registerObserved", { method: "POST", body: { repoId, worktreeId, epoch }, timeoutMs: 1200 });
       } catch {
-        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", path });
-        return typedStatus("unavailable", "diagnostics_register_failed", { path, hash });
+        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });
+        return typedStatus("unavailable", "diagnostics_register_failed", { paths: changedPaths, hashes: changedFileHashes });
       }
       if (!posted.ok) {
-        audit("diagnostics-registerObserved", "degraded", { code: posted.error.code, path });
-        return typedStatus("unavailable", posted.error.code, { path, hash });
+        audit("diagnostics-registerObserved", "degraded", { code: posted.error.code, paths: changedPaths.join(",") });
+        return typedStatus("unavailable", posted.error.code, { paths: changedPaths, hashes: changedFileHashes });
       }
-      return typedStatus("available", "mutation_observed", { path, hash });
+      const primaryPath = changedPaths[0];
+      const primaryHash = changedFileHashes.find((entry) => entry.path === primaryPath)?.hash ?? changedFileHashes[0]?.hash;
+      return typedStatus("available", "mutation_observed", { path: primaryPath, hash: primaryHash, paths: changedPaths, hashes: changedFileHashes });
     },
     async nag(event) {
       const root = rootFor(event);
