@@ -17,3 +17,8 @@ rayon = "=1.12.0"
 
 [features]
 fastembed = ["dep:fastembed"]
+
+[[bench]]
+name = "vector_scale"
+path = "../../benches/vector_scale.rs"
+harness = false

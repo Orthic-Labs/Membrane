@@ -19,6 +19,8 @@
 //! argv or stdout. ScopeGrant enforcement happens in the Python script.
 
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
+use super::{federation_sources, native_federation};
+use super::federation_sources::RuntimeReleaseSource;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -77,84 +79,244 @@ pub fn run_federate(
     federation_script: Option<PathBuf>,
     accepted_receipt_versions: Vec<u32>,
 ) -> Result<(), String> {
-    let script = match federation_script {
-        // Caller supplied an explicit script — skip the walk-up entirely.
-        Some(explicit) => explicit,
-        None => find_federation_gateway(&repo).ok_or_else(|| {
-            let layouts = GATEWAY_LAYOUTS
-                .iter()
-                .map(|layout| layout.join("/"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "could not locate federation gateway by walking up from {}; probed layouts: {layouts}; pass --federation-script",
-                repo.display()
-            )
-        })?,
-    };
-    if !script.exists() {
-        return Err(format!(
-            "federation gateway script missing at {}. Run `python3 tools/setup-workspace.py` or pass --federation-script.",
-            script.display()
-        ));
-    }
+    // `federation_script` remains a legacy/shadow-test input until MEM-028;
+    // production execution is native and never consults it.
+    let _ = federation_script;
+    let root = repo
+        .canonicalize()
+        .map_err(|error| format!("resolve repository root: {error}"))?;
     let session_id = federation_session_id(session);
-    let versions = if accepted_receipt_versions.is_empty() {
-        vec![2u32]
-    } else {
-        accepted_receipt_versions
-    };
-
-    let mut cmd = resolve_python_invoker();
-    cmd.arg(&script)
-        .arg("--task")
-        .arg(&task)
-        .arg("--repo")
-        .arg(&repo)
-        .arg("--max-tokens")
-        .arg(max_tokens.to_string())
-        .arg("--client")
-        .arg(&client)
-        .arg("--session")
-        .arg(&session_id);
-    if !anchors.is_empty() {
-        cmd.arg("--anchors").arg(anchors.join(","));
-    }
-    if let Some(grant_id) = scope_grant_id.as_ref() {
-        cmd.arg("--scope-grant-id").arg(grant_id);
-    }
-    let gateway_started = Instant::now();
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("spawn federation gateway: {e}"))?;
-    let gateway_process_ms = gateway_started.elapsed().as_secs_f64() * 1000.0;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() {
-        return Err(format!(
-            "federation gateway failed (exit={}): {}",
-            output.status,
-            stderr.chars().take(800).collect::<String>()
-        ));
-    }
-    let payload = envelope_from_ccs(
-        &stdout,
+    let release_generation = RuntimeReleaseSource::generation()?;
+    let request = native_request(
+        &task,
+        &root,
+        max_tokens,
+        2_000,
+        release_generation,
+        &client,
+        &session_id,
+        anchors,
+        scope_grant_id.clone(),
+    );
+    let started = Instant::now();
+    let (response, native_metrics, freshness) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| format!("create native federation runtime: {error}"))?
+        .block_on(async {
+            let bindings = federation_sources::NativeSourceBindings::for_repository(
+                &root,
+                scope_grant_id.as_deref(),
+            )?;
+            let native = native_federation::NativeFederation::new(bindings)?;
+            let response = native
+                .federate(&request, tokio_util::sync::CancellationToken::new())
+                .await?;
+            let freshness = native
+                .freshness_snapshot()
+                .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
+            Ok::<_, String>((response, native.metrics_snapshot(), freshness))
+        })?;
+    let ccs = native_response_to_ccs(&response, &request, &freshness);
+    let mut payload = envelope_from_ccs(
+        &serde_json::to_string(&ccs).map_err(|error| format!("serialize native candidates: {error}"))?,
         EnvelopeInput {
             max_tokens,
             packet_char_budget_override,
             packet_char_budget_model,
-            accepted_receipt_versions: versions,
+            accepted_receipt_versions: if accepted_receipt_versions.is_empty() { vec![2] } else { accepted_receipt_versions },
             scope_grant_present: scope_grant_id.is_some(),
-            gateway_process_ms,
+            gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
     )?;
+    if let Some(fields) = payload.as_object_mut() {
+        fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+        fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+    }
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
     );
     Ok(())
+}
+
+/// Resident `/federate` entrypoint. Production routes call this native path;
+/// legacy worker framing remains isolated for shadow qualification only.
+pub fn native_route_response(body: &str) -> (u16, String) {
+    let value: Value = match serde_json::from_str(body) {
+        Ok(value) => value,
+        Err(_) => return (400, "{\"error\":\"invalid JSON body\"}".to_owned()),
+    };
+    let Some(task) = value.get("task").and_then(Value::as_str) else {
+        return (400, "{\"error\":\"task required\"}".to_owned());
+    };
+    let Some(repo_text) = value.get("repo").and_then(Value::as_str) else {
+        return (400, "{\"error\":\"repo required\"}".to_owned());
+    };
+    let root = match PathBuf::from(repo_text).canonicalize() {
+        Ok(path) if path.is_dir() => path,
+        _ => return (400, "{\"error\":\"repo must be an existing directory\"}".to_owned()),
+    };
+    let max_tokens = value
+        .get("maxTokens")
+        .and_then(Value::as_u64)
+        .map_or(4096, |n| n.clamp(1, 1_000_000) as usize);
+    let deadline_ms = value
+        .get("maxWaitMs")
+        .and_then(Value::as_u64)
+        .unwrap_or(2_000)
+        .clamp(1, 2_000);
+    let client = value
+        .get("client")
+        .and_then(Value::as_str)
+        .unwrap_or("claude")
+        .to_owned();
+    let session = federation_session_id(
+        value
+            .get("session")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    );
+    let anchors = value
+        .get("anchors")
+        .and_then(Value::as_str)
+        .map(|text| text.split(',').map(str::trim).filter(|item| !item.is_empty()).map(str::to_owned).collect())
+        .unwrap_or_default();
+    let scope_grant_id = value
+        .get("scopeGrantId")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let started = Instant::now();
+    let result = (|| -> Result<Value, String> {
+        let release_generation = RuntimeReleaseSource::generation()?;
+        let request = native_request(
+            task,
+            &root,
+            max_tokens,
+            deadline_ms,
+            release_generation,
+            &client,
+            &session,
+            anchors,
+            scope_grant_id.clone(),
+        );
+        let bindings = federation_sources::NativeSourceBindings::for_repository(
+            &root,
+            scope_grant_id.as_deref(),
+        )?;
+        let native = native_federation::NativeFederation::new(bindings)?;
+        let response = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| format!("create native federation runtime: {error}"))?
+            .block_on(native.federate(
+                &request,
+                tokio_util::sync::CancellationToken::new(),
+        ))?;
+        let native_metrics = native.metrics_snapshot();
+        let freshness = native
+            .freshness_snapshot()
+            .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
+        let ccs = native_response_to_ccs(&response, &request, &freshness);
+        let mut payload = envelope_from_ccs(
+            &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
+            EnvelopeInput {
+                max_tokens,
+                packet_char_budget_override: value
+                    .get("packetCharBudget")
+                    .and_then(Value::as_u64)
+                    .map(|n| n as usize),
+                packet_char_budget_model: value
+                    .get("packetCharBudgetModel")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                accepted_receipt_versions: vec![2],
+                scope_grant_present: scope_grant_id.is_some(),
+                gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
+            },
+        )?;
+        if let Some(fields) = payload.as_object_mut() {
+            fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+            fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+        }
+        Ok(payload)
+    })();
+    match result {
+        Ok(payload) => serde_json::to_string(&payload)
+            .map(|body| (200, body))
+            .unwrap_or_else(|_| (500, "{\"error\":\"federation envelope serialization failed\"}".to_owned())),
+        Err(error) => (502, serde_json::json!({"error": error}).to_string()),
+    }
+}
+
+fn native_request(
+    task: &str,
+    root: &Path,
+    max_tokens: usize,
+    deadline_ms: u64,
+    release_generation: String,
+    client: &str,
+    session: &str,
+    anchors: Vec<String>,
+    scope_grant_id: Option<String>,
+) -> membrane_protocol::FederationRequestV1 {
+    let repository_root = root.to_string_lossy().into_owned();
+    let request_id = crate::store::opaque_correlation_token(task, "federation");
+    membrane_protocol::FederationRequestV1 {
+        schema_version: membrane_protocol::FEDERATION_REQUEST_SCHEMA_VERSION,
+        request_id,
+        trace_id: String::new(),
+        task: task.to_owned(),
+        repository_root: repository_root.clone(),
+        client: client.to_owned(),
+        session_id: session.to_owned(),
+        deadline_ms,
+        max_tokens: max_tokens.min(u32::MAX as usize) as u32,
+        anchors,
+        scope_grant_id,
+        manifest_digest: None,
+        release_generation: Some(release_generation),
+        blueprint_generation: None,
+        skills_generation: None,
+        extensions: std::collections::BTreeMap::from([
+            ("repositoryId".to_owned(), serde_json::json!(membrane_federation::root::canonical_repository_id(root))),
+            ("worktreeRoot".to_owned(), serde_json::json!(repository_root)),
+        ]),
+    }
+}
+
+fn native_response_to_ccs(
+    response: &membrane_protocol::FederationResponseV1,
+    request: &membrane_protocol::FederationRequestV1,
+    freshness: &membrane_protocol::FreshnessSnapshotV1,
+) -> Value {
+    let candidates = serde_json::to_value(&response.candidates).unwrap_or_else(|_| Value::Array(Vec::new()));
+    let omissions = response
+        .omissions
+        .iter()
+        .enumerate()
+        .map(|(index, omission)| serde_json::json!({
+            "id": omission.candidate_id.clone().unwrap_or_else(|| format!("omission:{index}")),
+            "layer": Value::Null,
+            "reason": omission.reason.as_str(),
+        }))
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "schemaVersion": 1,
+        "traceId": request.trace_id,
+        "indexedAt": freshness.snapshot_id.clone().unwrap_or_else(|| request.release_generation.clone().unwrap_or_default()),
+        "task": request.task,
+        "mode": "native",
+        "provider": "federation",
+        "freshness": {
+            "revision": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+            "indexedAt": freshness.snapshot_id.clone().unwrap_or_default(),
+            "stale": freshness.stale,
+        },
+        "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": request.max_tokens},
+        "candidates": candidates,
+        "omissions": omissions,
+    })
 }
 
 /// Planner-side half of one federation cycle, shared verbatim by the CLI
@@ -467,7 +629,7 @@ fn sha256_hex(s: &str) -> String {
     hex::encode(Sha256::digest(s.as_bytes()))
 }
 
-fn db_path_for(workspace: &Path) -> PathBuf {
+pub(crate) fn db_path_for(workspace: &Path) -> PathBuf {
     std::env::var("CORTEX_DB")
         .ok()
         .map(PathBuf::from)

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "membrane://migration/native-rust/executable-ledger.schema.json",
+  "title": "Membrane native-runtime executable ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "repository", "baselineCommit", "allowedDispositions", "complete", "artifacts", "launchSites", "blockers"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "repository": { "const": "Orthic-Labs/Membrane" },
+    "baselineCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "allowedDispositions": {
+      "type": "array",
+      "const": ["port", "replace-with-data", "direct-call", "external-typed-protocol", "dev-only", "delete"]
+    },
+    "complete": { "type": "boolean" },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "launchSites": { "type": "array", "items": { "$ref": "#/$defs/launch" } },
+    "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "symbol"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "symbol": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "currentPath", "kind", "surface", "semantics", "disposition", "targetPacket", "parityFixture", "cutoverGate", "deletionPacket", "evidence", "generation", "trust", "provenance", "ordering", "errors"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^membrane:[a-z0-9._/-]+$" },
+        "currentPath": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["python", "rust", "node", "cjs", "storage", "script", "dev-tool"] },
+        "surface": { "type": "string", "minLength": 1 },
+        "semantics": { "type": "string", "minLength": 1 },
+        "disposition": { "enum": ["port", "replace-with-data", "direct-call", "external-typed-protocol", "dev-only", "delete"] },
+        "targetPacket": { "type": "string", "minLength": 1 },
+        "targetCrate": { "type": "string" },
+        "parityFixture": { "type": "string", "minLength": 1 },
+        "cutoverGate": { "type": "string", "minLength": 1 },
+        "deletionPacket": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" }, "minItems": 1 },
+        "generation": { "type": "string", "minLength": 1 },
+        "trust": { "type": "string", "minLength": 1 },
+        "provenance": { "type": "string", "minLength": 1 },
+        "ordering": { "type": "string", "minLength": 1 },
+        "errors": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "launch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "caller", "callee", "operation", "disposition", "targetPacket", "evidence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^launch:[a-z0-9._/-]+$" },
+        "caller": { "type": "string", "minLength": 1 },
+        "callee": { "type": "string", "minLength": 1 },
+        "operation": { "type": "string", "minLength": 1 },
+        "disposition": { "enum": ["port", "replace-with-data", "direct-call", "external-typed-protocol", "dev-only", "delete"] },
+        "targetPacket": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" }, "minItems": 1 }
+      }
+    },
+    "blocker": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "row", "reason"],
+      "properties": {
+        "code": { "enum": ["SOURCE_DRIFT", "SEMANTIC_BLOCKER", "OWNERSHIP_COLLISION", "BOUND_EXCEEDED", "UNRELATED_CHANGES"] },
+        "row": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

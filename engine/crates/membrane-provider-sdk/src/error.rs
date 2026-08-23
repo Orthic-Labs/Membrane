@@ -53,6 +53,47 @@ pub enum ProviderError {
     #[error("provider unavailable: {0}")]
     Unavailable(String),
 
+    /// The request was cancelled before the provider could complete.
+    #[error("provider request cancelled")]
+    Cancelled,
+
+    /// The provider reached the one absolute request deadline.
+    #[error("provider deadline exhausted")]
+    DeadlineExceeded,
+
+    /// A required source was not supplied by composition.
+    #[error("required provider source is missing: {0}")]
+    MissingSource(&'static str),
+
+    /// Provider output violated the federation envelope contract.
+    #[error("malformed provider output: {0}")]
+    MalformedOutput(String),
+
+    /// Provider output was validly shaped but did not cover the requested lane.
+    #[error("provider output is incomplete: {0}")]
+    Incomplete(String),
+
+    /// Provider output was bound to a different provider or generation.
+    #[error("provider output identity mismatch: {0}")]
+    IdentityMismatch(String),
+
+    /// A source returned an explicit typed failure.
+    #[error("provider source failed: {0}")]
+    SourceFailure(String),
+
+    /// A composition or adapter invariant failed.
+    #[error("provider internal error: {0}")]
+    Internal(String),
+
+    #[error("duplicate provider registration: {0}")]
+    DuplicateProvider(String),
+
+    #[error("unknown provider registration: {0}")]
+    UnknownProvider(String),
+
+    #[error("invalid provider registry: {0}")]
+    InvalidRegistry(String),
+
     /// The conformance harness detected that the actual response did not
     /// match the expected response. Produced only by `run_conformance`.
     #[error("conformance mismatch on fixture {fixture}: {reason}")]

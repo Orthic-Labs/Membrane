@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "benchmarkId": "vector-scale-v1",
+  "status": "measurement-pending",
+  "runner": {
+    "path": "engine/benches/vector_scale.rs",
+    "modes": ["--quick", "full"],
+    "output": "one JSON object on stdout"
+  },
+  "oracle": {
+    "crate": "cortex-core",
+    "type": "VectorIndex",
+    "operation": "top_k",
+    "kind": "exact resident brute-force",
+    "candidateRecall": "ordered ID overlap against oracle top-k"
+  },
+  "corpus": {
+    "recordCounts": [2361, 30549, 100000],
+    "embeddingDimensions": [256],
+    "quantization": ["f32"],
+    "scopeFilterBasisPoints": [10000, 1000],
+    "topK": 128,
+    "fixture": "deterministic synthetic vectors; no memory content"
+  },
+  "metrics": [
+    "buildNs",
+    "coldQueryNs",
+    "warmQueryMeanNs",
+    "warmQueryP50Ns",
+    "warmQueryP95Ns",
+    "recallAtK",
+    "updateP95Ns",
+    "deleteP95Ns",
+    "residentBytes",
+    "kernel"
+  ],
+  "hardwareCapture": ["os", "platform", "architecture", "simd", "threads"],
+  "cacheModes": ["coldQuery", "warmQuery"],
+  "policy": {
+    "defaultDecision": "no-ann",
+    "revisitRequires": "reproducible checked-in result breaching every populated threshold",
+    "thresholds": {
+      "p95WarmQueryNs": null,
+      "minimumRecallAtK": null,
+      "p95UpdateNs": null,
+      "p95DeleteNs": null,
+      "residentBytes": null
+    },
+    "minimumRuns": null,
+    "note": "Null thresholds are intentional until integrator records measured results."
+  },
+  "measuredResults": null
+}

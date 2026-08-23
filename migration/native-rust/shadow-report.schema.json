@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic-labs.local/membrane/shadow-report.v1.schema.json",
+  "title": "Membrane federation shadow report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "operation", "status", "requestDigest", "snapshotDigest",
+    "legacyOutputDigest", "nativeOutputDigest", "differences", "legacyEffects",
+    "nativeEffects", "accounting"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "operation": { "const": "federation.shadow.v1" },
+    "status": { "enum": ["matched", "differed"] },
+    "requestDigest": { "$ref": "#/$defs/digest" },
+    "snapshotDigest": { "$ref": "#/$defs/digest" },
+    "legacyOutputDigest": { "$ref": "#/$defs/digest" },
+    "nativeOutputDigest": { "$ref": "#/$defs/digest" },
+    "differences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "classification", "legacyHash", "nativeHash"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "classification": {
+            "enum": ["intentional_version_change", "baseline_defect", "regression", "unexplained"]
+          },
+          "legacyHash": { "$ref": "#/$defs/digest" },
+          "nativeHash": { "$ref": "#/$defs/digest" }
+        }
+      }
+    },
+    "legacyEffects": { "$ref": "#/$defs/effects" },
+    "nativeEffects": { "$ref": "#/$defs/effects" },
+    "accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outerDeadlineMs", "legacy", "native"],
+      "properties": {
+        "outerDeadlineMs": { "type": "integer", "minimum": 0 },
+        "legacy": { "$ref": "#/$defs/timing" },
+        "native": { "$ref": "#/$defs/timing" }
+      }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["simulatedWrites", "persistentWrites", "duplicateEffects", "nativeUserVisibleOutput"],
+      "properties": {
+        "simulatedWrites": { "type": "integer", "minimum": 0 },
+        "persistentWrites": { "type": "integer", "minimum": 0 },
+        "duplicateEffects": { "type": "integer", "minimum": 0 },
+        "nativeUserVisibleOutput": { "type": "boolean" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["elapsedMs", "remainingMs"],
+      "properties": {
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "remainingMs": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

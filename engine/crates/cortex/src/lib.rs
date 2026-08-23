@@ -2,6 +2,10 @@
 //!
 //! Membrane owns orchestration & its Pull, Push, Guide, Blueprint, & Adapt
 //! namespaces. Cortex exposes only durable-memory storage primitives here.
+//!
+//! This crate is the stable executable-facing API: consumers depend on its
+//! semver and schema-versioned records, while runtime module layout stays
+//! private to the implementation.
 
 pub use membrane_runtime::{MemDb, MemoryStore};
 

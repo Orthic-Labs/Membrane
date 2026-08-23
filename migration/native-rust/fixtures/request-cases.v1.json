@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "domain": "request",
+  "cases": [
+    {"case_id":"request-deadline-single-budget","contract":"request-absolute-deadline-propagation","input":{"task":"find federation contract","repoRoot":"D:/Claude","client":"codex","session":"sess-1","deadlineMs":1500},"expected":{"status":"accepted","absoluteDeadline":true,"nestedTimeoutsReset":false,"canonicalScope":"D--Claude"},"evidenceRefs":["engine/federation/gateway.py","engine/federation/fixtures/warm-federation-v1.json"],"futurePacket":"MEM-013"},
+    {"case_id":"request-invalid-root","contract":"request-root-validation-fail-closed","input":{"task":"find","repoRoot":"relative/repo","client":"codex","session":"sess-1"},"expected":{"status":"rejected","errorCode":"invalid_root","fanout":false},"evidenceRefs":["engine/federation/gateway.py","engine/federation/test_equivalence_net.py"],"futurePacket":"MEM-013"},
+    {"case_id":"request-missing-task","contract":"request-required-task-validation","input":{"repoRoot":"D:/Claude","client":"codex","session":"sess-1"},"expected":{"status":"rejected","errorCode":"invalid_request","fanout":false},"evidenceRefs":["engine/federation/gateway.py","schemas/context-candidate-set.v1.schema.json"],"futurePacket":"MEM-010"},
+    {"case_id":"request-scope-grant-missing","contract":"request-scope-grant-presence-fail-closed","input":{"task":"read","repoRoot":"D:/Claude","client":"codex","session":"sess-1","scopeGrantId":"sgv1-missing"},"expected":{"status":"rejected","errorCode":"scope_grant_missing","fanout":false,"publication":false},"evidenceRefs":["engine/federation/providers/scope_grant.py","engine/federation/test_equivalence_net.py"],"futurePacket":"MEM-014"},
+    {"case_id":"request-scope-path-slug-equivalent","contract":"request-path-slug-scope-normalization","input":{"forms":["D:/Claude","D--Claude"],"task":"scope isolation exact target"},"expected":{"status":"accepted","canonicalScope":"D--Claude","pathSlugParity":true},"evidenceRefs":["engine/federation/fixtures/planner-conformance-v1.json","engine/federation/fixtures/scope-isolation-v1.json"],"futurePacket":"MEM-013"},
+    {"case_id":"request-trace-binding","contract":"request-trace-transport-normalization","input":{"task":"trace","repoRoot":"D:/Claude","client":"codex","session":"sess-1","requestId":"uuid-fixture"},"expected":{"status":"accepted","traceId":"fixture-trace","requestIdNotSemantic":true},"evidenceRefs":["engine/federation/test_gateway_merge_order.py","schemas/context-candidate-set.v1.schema.json"],"futurePacket":"MEM-010"}
+  ]
+}

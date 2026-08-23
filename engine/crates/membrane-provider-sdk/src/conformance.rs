@@ -17,8 +17,11 @@
 //! `cargo test --workspace` sweep separately.
 
 use crate::error::ProviderError;
+use crate::context::ProviderContext;
+use crate::output::validate_output;
+use crate::output::ProviderOutput;
 use crate::provider::{Provider, ProviderReadinessStateV1};
-use membrane_protocol::canonicalize;
+use membrane_protocol::{canonicalize, FederationProviderStatusV1, ProviderId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -255,4 +258,135 @@ pub fn mismatch_error(failure: &FixtureFailure) -> ProviderError {
         fixture: failure.fixture.clone(),
         reason: failure.reason.clone(),
     }
+}
+
+/// One native-provider conformance failure.  Details are content-free so the
+/// report can be persisted in receipts without leaking candidate text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderConformanceFailure {
+    pub check: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderConformanceReport {
+    pub provider: String,
+    pub passed: Vec<String>,
+    pub failed: Vec<ProviderConformanceFailure>,
+}
+
+impl ProviderConformanceReport {
+    pub fn is_conformant(&self) -> bool {
+        self.failed.is_empty()
+    }
+}
+
+/// Run deterministic native-provider contract checks against one immutable
+/// context.  This function does not create a second deadline or cancellation
+/// source.  It exercises the observable failure states required by native
+/// federation: cancellation, deadline, identity/generation, completeness,
+/// warning/omission accounting, and malformed output.
+pub async fn run_provider_conformance<P: Provider + ?Sized>(
+    provider: &P,
+    context: &ProviderContext,
+    expected_provider: ProviderId,
+) -> ProviderConformanceReport {
+    let mut report = ProviderConformanceReport {
+        provider: expected_provider.as_str().to_string(),
+        ..ProviderConformanceReport::default()
+    };
+
+    let check = |report: &mut ProviderConformanceReport,
+                 name: &str,
+                 result: std::result::Result<(), String>| {
+        match result {
+            Ok(()) => report.passed.push(name.to_string()),
+            Err(reason) => report.failed.push(ProviderConformanceFailure {
+                check: name.to_string(),
+                reason,
+            }),
+        }
+    };
+
+    let cancellation_result = provider.run(context).await;
+    let cancellation_ok = if context.is_cancelled() {
+        match &cancellation_result {
+            Err(ProviderError::Cancelled) => true,
+            Ok(output) => output.status == FederationProviderStatusV1::Cancelled,
+            _ => false,
+        }
+    } else {
+        true
+    };
+    check(
+        &mut report,
+        "cancellation",
+        cancellation_ok
+            .then_some(())
+            .ok_or_else(|| "cancelled context did not return cancelled result".into()),
+    );
+
+    let deadline_result = if context.is_deadline_exhausted() {
+        match provider.run(context).await {
+            Err(ProviderError::DeadlineExceeded) => Ok(()),
+            Ok(output) if output.status == FederationProviderStatusV1::Cancelled => Ok(()),
+            Err(error) => Err(format!("deadline returned {error}")),
+            Ok(output) => Err(format!("deadline returned status {:?}", output.status)),
+        }
+    } else {
+        Ok(())
+    };
+    check(&mut report, "deadline", deadline_result);
+
+    if !context.is_cancelled() && !context.is_deadline_exhausted() {
+        match provider.run(context).await {
+            Err(error) => report.failed.push(ProviderConformanceFailure {
+                check: "provider-output".into(),
+                reason: error.to_string(),
+            }),
+            Ok(output) => {
+                let validation = validate_output(
+                    &output,
+                    expected_provider,
+                    context.release_generation.as_deref(),
+                )
+                .map_err(|error| error.to_string());
+                check(&mut report, "identity-generation-completeness", validation);
+                check(
+                    &mut report,
+                    "warning-omission-accounting",
+                    explicit_coverage(&output),
+                );
+                check(
+                    &mut report,
+                    "malformed-output",
+                    malformed_output_is_rejected(&output, expected_provider),
+                );
+            }
+        }
+    }
+    report
+}
+
+fn explicit_coverage(output: &ProviderOutput) -> std::result::Result<(), String> {
+    if output.status == FederationProviderStatusV1::Complete
+        && output.candidates.is_empty()
+        && output.warnings.is_empty()
+        && output.omissions.is_empty()
+    {
+        return Err("empty complete output has no explicit coverage or omission".into());
+    }
+    Ok(())
+}
+
+fn malformed_output_is_rejected(
+    output: &ProviderOutput,
+    expected_provider: ProviderId,
+) -> std::result::Result<(), String> {
+    if output.provider != expected_provider || output.schema_version == 0 {
+        return Err("malformed provider identity or schema was accepted".into());
+    }
+    Ok(())
 }

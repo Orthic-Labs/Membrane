@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "packetId": "MEM-I02",
+  "benchmarkId": "vector-scale-v1",
+  "status": "measured",
+  "runner": {
+    "path": "engine/benches/vector_scale.rs",
+    "oracle": "cortex_core::VectorIndex",
+    "modes": ["--quick", "full"],
+    "output": "one JSON object on stdout"
+  },
+  "decision": "no-ann",
+  "policy": {
+    "revisitRequires": "reproducible checked-in result breaching every populated threshold while preserving recall floor",
+    "thresholds": {
+      "p95WarmQueryNs": null,
+      "minimumRecallAtK": null,
+      "p95UpdateNs": null,
+      "p95DeleteNs": null,
+      "residentBytes": null
+    }
+  },
+  "measuredResults": {
+    "request": "ff40d602-df6f-4a65-b3a0-7105b9e6fa2f",
+    "os": "macos",
+    "platform": "macos",
+    "architecture": "aarch64",
+    "simd": "platform-vector",
+    "threads": 8,
+    "warmQueries": 2,
+    "cases": [
+      {"records":256,"dimension":256,"quantization":"f32","scopeFilterBps":10000,"eligible":256,"residentBytes":262144,"kernel":"scalar-full","buildNs":885208,"coldQueryNs":5215583,"warmQueryMeanNs":77187,"warmQueryP50Ns":59791,"warmQueryP95Ns":94583,"updateP95Ns":2584,"deleteP95Ns":52875,"recallAtK":1.0},
+      {"records":256,"dimension":256,"quantization":"f32","scopeFilterBps":1000,"eligible":26,"residentBytes":262144,"kernel":"scalar-full","buildNs":814584,"coldQueryNs":221000,"warmQueryMeanNs":21395,"warmQueryP50Ns":21333,"warmQueryP95Ns":21458,"updateP95Ns":1208,"deleteP95Ns":25333,"recallAtK":1.0},
+      {"records":2361,"dimension":256,"quantization":"f32","scopeFilterBps":10000,"eligible":2361,"residentBytes":2417664,"kernel":"scalar-full","buildNs":8363750,"coldQueryNs":2308459,"warmQueryMeanNs":687375,"warmQueryP50Ns":660000,"warmQueryP95Ns":714750,"updateP95Ns":2334,"deleteP95Ns":419291,"recallAtK":1.0}
+    ]
+  },
+  "commands": [
+    {
+      "command": "rightkit cargo bench --manifest-path engine/Cargo.toml --bench vector_scale -- --quick",
+      "state": "failed-command",
+      "evidence": "Concurrent rerun RightKit request 52be2b4b-efd8-4153-b11b-14ee22d2db44 ran after queue wait and failed with `error: no bench target named vector_scale in default-run packages`; no timing, recall, hardware, or SIMD value is asserted."
+    },
+    {
+      "command": "rightkit cargo bench -p cortex-core --bench vector_scale -- --quick",
+      "state": "pass",
+      "evidence": "RightKit request ff40d602-df6f-4a65-b3a0-7105b9e6fa2f; optimized bench completed with 3 quick cases, recallAtK=1.0 for every case, no ANN arm."
+    }
+  ],
+  "notes": [
+    "Exact resident VectorIndex remains correctness oracle.",
+    "ANN implementation/dependency is not introduced by MEM-I02."
+  ]
+}

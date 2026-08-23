@@ -11,6 +11,7 @@ members = [
     "crates/membrane-core",
     "crates/membrane-mcp",
     "crates/membrane-provider-sdk",
+    "crates/membrane-federation",
     "crates/membrane-testkit",
     "crates/membrane-updater",
     "crates/membrane-client",
@@ -30,6 +31,10 @@ serde_json  = "1"
 thiserror   = "2"
 tiktoken-rs = "0.12"
 hex         = "0.4"
+async-trait = "0.1"
+tokio       = { version = "1", features = ["rt", "time", "macros"] }
+tokio-util  = "0.7"
+gix         = { version = "0.55", default-features = false }
 
 [profile.release]
 opt-level = 3

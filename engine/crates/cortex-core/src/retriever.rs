@@ -7,6 +7,10 @@ use crate::quant::QuantizedVector;
 use crate::registry::MemoryRegistry;
 use crate::types::MemoryEntry;
 
+#[path = "lexical.rs"]
+mod lexical;
+pub use lexical::LexicalHit;
+
 /// Ranks entries in a [`MemoryRegistry`] against a textual query.
 pub struct MemoryRetriever;
 
@@ -16,33 +20,91 @@ const RRF_K: f64 = 60.0;
 impl MemoryRetriever {
     /// Tokenize a query into lowercased whitespace-separated terms.
     fn query_terms(query: &str) -> Vec<String> {
-        query
-            .to_lowercase()
-            .split_whitespace()
-            .map(|t| t.to_string())
-            .collect()
+        lexical::query_terms(query)
     }
 
     /// Compute the rank score for a single entry against pre-tokenized query terms.
     ///
     /// `rank = (keyword_matches * 2.0) + content_substring_hits + entry.score`.
     pub fn score_entry(entry: &MemoryEntry, query_terms: &[String]) -> f64 {
-        let entry_keywords: Vec<String> = entry.keywords.iter().map(|k| k.to_lowercase()).collect();
-        let content_lower = entry.content.to_lowercase();
+        lexical::fallback_score(entry, query_terms)
+    }
 
-        let mut keyword_matches = 0.0_f64;
-        let mut content_hits = 0.0_f64;
-
-        for term in query_terms {
-            if entry_keywords.iter().any(|k| k == term) {
-                keyword_matches += 1.0;
-            }
-            if content_lower.contains(term.as_str()) {
-                content_hits += 1.0;
-            }
+    /// Fuse pre-ranked FTS5 lexical hits with the existing semantic lane.
+    /// Qualification is applied before ranking; unknown or stale projection
+    /// rows are ignored, allowing callers to rebuild or use the fallback lane.
+    pub fn retrieve_hybrid_with_lexical_hits<'a>(
+        registry: &'a MemoryRegistry,
+        lexical_hits: &[LexicalHit],
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+        eligible_scopes: Option<&[&str]>,
+    ) -> Vec<&'a MemoryEntry> {
+        let entries = registry
+            .all()
+            .into_iter()
+            .filter(|entry| {
+                eligible_scopes.is_none_or(|scopes| scopes.contains(&entry.scope_id.as_str()))
+            })
+            .collect::<Vec<_>>();
+        if entries.is_empty() || limit == 0 {
+            return Vec::new();
         }
-
-        (keyword_matches * 2.0) + content_hits + entry.score
+        let lexical_rank = lexical::rank_hits(&entries, lexical_hits);
+        let mut semantic = query_embedding.map(|query| {
+            let mut ranked = entries
+                .iter()
+                .map(|entry| {
+                    let score = entry
+                        .embedding
+                        .as_deref()
+                        .map(|embedding| cosine(embedding, query) as f64)
+                        .unwrap_or(0.0);
+                    (entry.id.as_str(), score)
+                })
+                .collect::<Vec<_>>();
+            ranked.sort_by(|left, right| {
+                right
+                    .1
+                    .total_cmp(&left.1)
+                    .then_with(|| left.0.cmp(right.0))
+            });
+            ranked
+                .into_iter()
+                .enumerate()
+                .map(|(rank, (entry_id, score))| (entry_id, (rank, score)))
+                .collect::<HashMap<_, _>>()
+        });
+        let mut ranked = entries
+            .into_iter()
+            .filter_map(|entry| {
+                let mut score = 0.05 * entry.score.clamp(0.0, 1.0);
+                if let Some((rank, lexical_score)) = lexical_rank.get(entry.id.as_str()) {
+                    if *lexical_score > 0.0 {
+                        score += 1.0 / (RRF_K + *rank as f64);
+                    }
+                }
+                if let Some(semantic_rank) = semantic.as_mut() {
+                    if let Some((rank, semantic_score)) = semantic_rank.get(entry.id.as_str()) {
+                        if *semantic_score > 0.0 {
+                            score += 1.0 / (RRF_K + *rank as f64);
+                        }
+                    }
+                }
+                (score > 0.0).then_some((entry, score))
+            })
+            .collect::<Vec<_>>();
+        ranked.sort_by(|left, right| {
+            right
+                .1
+                .total_cmp(&left.1)
+                .then_with(|| left.0.id.cmp(&right.0.id))
+        });
+        ranked
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| entry)
+            .collect()
     }
 
     /// Retrieve the top `limit` entries ranked by relevance to `query`.
@@ -92,57 +154,9 @@ impl MemoryRetriever {
         let Some(qvec) = query_embedding else {
             return Self::retrieve(registry, query, limit);
         };
-        let terms = Self::query_terms(query);
         let entries = registry.all();
-
-        // Rank list 1: lexical (keyword + content + stored score).
-        let mut lexical: Vec<(usize, f64)> = entries
-            .iter()
-            .enumerate()
-            .map(|(i, e)| (i, Self::score_entry(e, &terms)))
-            .collect();
-        lexical.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Rank list 2: semantic (cosine vs the query embedding).
-        let mut semantic: Vec<(usize, f64)> = entries
-            .iter()
-            .enumerate()
-            .map(|(i, e)| {
-                let sim = e
-                    .embedding
-                    .as_deref()
-                    .map(|emb| cosine(emb, qvec) as f64)
-                    .unwrap_or(0.0);
-                (i, sim)
-            })
-            .collect();
-        semantic.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Reciprocal Rank Fusion: rank position (not raw score) feeds 1/(k+rank).
-        // A signal only contributes if the entry actually scored on it.
-        let mut fused: Vec<(usize, f64)> = (0..entries.len()).map(|i| (i, 0.0)).collect();
-        for (rank, (idx, score)) in lexical.iter().enumerate() {
-            if *score > 0.0 {
-                fused[*idx].1 += 1.0 / (RRF_K + rank as f64);
-            }
-        }
-        for (rank, (idx, sim)) in semantic.iter().enumerate() {
-            if *sim > 0.0 {
-                fused[*idx].1 += 1.0 / (RRF_K + rank as f64);
-            }
-        }
-        // Outcome nudge: stored score in [0,1] gently lifts proven memories.
-        for (idx, fscore) in fused.iter_mut() {
-            *fscore += 0.05 * entries[*idx].score.clamp(0.0, 1.0);
-        }
-
-        let mut ranked: Vec<(usize, f64)> = fused.into_iter().filter(|(_, s)| *s > 0.0).collect();
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        ranked
-            .into_iter()
-            .take(limit)
-            .map(|(i, _)| entries[i])
-            .collect()
+        let lexical = lexical::fallback_hits(&entries, query);
+        Self::retrieve_hybrid_with_lexical_hits(registry, &lexical, Some(qvec), limit, None)
     }
 
     /// Hybrid retrieval using the registry's resident contiguous vector index.

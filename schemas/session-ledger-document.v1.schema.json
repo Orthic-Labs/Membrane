@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/session-ledger-document.v1.schema.json",
+  "title": "Guide session ledger document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentId", "sessionId", "title", "markdown", "sourceCursor", "sourceContentHash", "derivation", "invalidationParent", "contentHash", "links", "omissions", "generated"],
+  "properties": {
+    "schemaVersion": {"type": "integer", "const": 1},
+    "documentId": {"type": "string", "minLength": 1},
+    "sessionId": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "markdown": {"type": "string"},
+    "sourceCursor": {"$ref": "#/$defs/cursor"},
+    "sourceContentHash": {"type": "string", "minLength": 1},
+    "derivation": {"type": "string", "minLength": 1},
+    "invalidationParent": {"type": "string", "minLength": 1},
+    "contentHash": {"type": "string", "minLength": 1},
+    "links": {"type": "array", "items": {"$ref": "#/$defs/link"}},
+    "omissions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "generated": {"type": "boolean"}
+  },
+  "$defs": {
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "lastSeq"],
+      "properties": {
+        "sessionId": {"type": "string", "minLength": 1},
+        "lastSeq": {"type": "integer", "minimum": 0}
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "target"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "id": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

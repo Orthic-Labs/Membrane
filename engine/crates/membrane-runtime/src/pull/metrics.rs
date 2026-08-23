@@ -104,6 +104,55 @@ pub struct LastFallbackSnapshot {
     pub at_unix: i64,
 }
 
+/// Content-free native federation failure taxonomy.  These values are stable
+/// telemetry labels, not planner decisions or provider content.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FederationMetricStatus {
+    Unavailable,
+    Timeout,
+    Stale,
+    Incoherent,
+    Unauthorized,
+    Malformed,
+    EmptyComplete,
+    Cancellation,
+}
+
+impl FederationMetricStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unavailable => "unavailable",
+            Self::Timeout => "timeout",
+            Self::Stale => "stale",
+            Self::Incoherent => "incoherent",
+            Self::Unauthorized => "unauthorized",
+            Self::Malformed => "malformed",
+            Self::EmptyComplete => "empty_complete",
+            Self::Cancellation => "cancellation",
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct FederationMetrics {
+    counts: Mutex<std::collections::BTreeMap<String, u64>>,
+}
+
+impl FederationMetrics {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn record(&self, status: FederationMetricStatus) {
+        let mut counts = self.counts.lock().unwrap();
+        *counts.entry(status.as_str().to_owned()).or_default() += 1;
+    }
+
+    pub fn snapshot(&self) -> std::collections::BTreeMap<String, u64> {
+        self.counts.lock().unwrap().clone()
+    }
+}
+
 impl LastFallbackSnapshot {
     pub fn is_set(&self) -> bool {
         !self.reason.is_empty() || !self.mode.is_empty()

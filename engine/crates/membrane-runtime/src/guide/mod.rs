@@ -9,6 +9,7 @@ pub mod doc_projection;
 pub mod doc_shadow;
 pub mod doc_spine;
 pub mod identifier;
+pub mod ledger;
 pub mod outline;
 
 pub use db::GuideDb;

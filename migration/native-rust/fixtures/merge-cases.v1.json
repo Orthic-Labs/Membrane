@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "domain": "merge",
+  "cases": [
+    {"case_id":"merge-canonical-order","contract":"merge-provider-order-canonicalization","completionOrder":["skills","cortex","blueprint","anchors","rules","git","live_files","audit","architect"],"expected":{"providerOrder":["anchors","blueprint","rules","live_files","git","audit","architect","skills","cortex"],"warningOrder":"providerOrder","candidateOrder":"providerOrder_then_local_score","serialization":"map-order-independent"},"evidenceRefs":["engine/federation/fixtures/provider-merge-order-v1.json","engine/federation/test_gateway_merge_order.py"],"futurePacket":"MEM-016"},
+    {"case_id":"merge-duplicate-first-wins","contract":"merge-duplicate-identity-first-wins","input":{"candidates":[{"provider":"blueprint","id":"shared","sourceHash":"sha256:1"},{"provider":"audit","id":"shared","sourceHash":"sha256:2"}]},"expected":{"candidateIds":["shared"],"winner":"blueprint","duplicatePolicy":"first-wins-after-canonical-order","warning":"none"},"evidenceRefs":["engine/federation/test_equivalence_net.py","engine/crates/membrane-core/src/fusion.rs"],"futurePacket":"MEM-016"},
+    {"case_id":"merge-protected-source-hash","contract":"merge-protected-candidate-preservation","input":{"candidates":[{"provider":"anchors","id":"a","sourceHash":"same","protected":true},{"provider":"git","id":"g","sourceHash":"same","protected":false}]},"expected":{"candidateIds":["a","g"],"protectedDuplicateNotDropped":true,"identityFieldsPreserved":true},"evidenceRefs":["engine/crates/membrane-core/src/fusion.rs","schemas/context-candidate-set.v1.schema.json"],"futurePacket":"MEM-016"},
+    {"case_id":"merge-warning-omission-accounting","contract":"merge-warning-omission-attribution","input":{"warnings":["provider_timeout","generation_mismatch"],"omissions":["live:path"]},"expected":{"warningsAttributable":true,"omissionsAttributable":true,"failureScope":"lane_local","contentFree":true},"evidenceRefs":["engine/federation/test_gateway_failure_taxonomy.py","engine/federation/fixtures/equivalence-net-v1.json"],"futurePacket":"MEM-016"}
+  ]
+}

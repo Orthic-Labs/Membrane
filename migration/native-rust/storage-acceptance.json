@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "packetId": "MEM-I02",
+  "repository": "Orthic-Labs/Membrane",
+  "baselineCommit": "322855c33e65dc936e3927570451c98e54fb0bd2",
+  "status": "complete",
+  "acceptanceFixtures": [
+    {
+      "path": "engine/tests/absorbed_storage_acceptance.rs",
+      "contracts": ["atomic contiguous append", "idempotent replay", "gap/reorder rejection", "range resume", "persisted cursor/range reopen", "import cursor recovery", "partial import rollback", "tombstone sequence reuse rejection", "FTS5 relevance and governance filtering against lexical control", "FTS5 hybrid parity and timing evidence"]
+    },
+    {
+      "path": "engine/tests/memory_backend_acceptance.rs",
+      "contracts": ["handshake compatibility", "all typed backend operations", "embedded MemoryStore/service transport parity", "request/output conformance", "typed transport failure", "typed timeout/cancellation", "credential isolation"]
+    },
+    {
+      "path": "engine/tests/transcript_ledger_acceptance.rs",
+      "contracts": ["deterministic chunk split", "scope-safe retrieval", "persisted transcript reopen/search", "cursor-bound ledger", "hash-bound ledger reopen", "explicit omissions"]
+    },
+    {
+      "path": "engine/tests/compaction_acceptance.rs",
+      "contracts": ["immutable projection", "protected obligation retention", "optional residual fallback", "cache impact receipt", "duplicate-id fail-closed", "deterministic replay and receipt restart", "replay timing evidence"]
+    }
+  ],
+  "commands": [
+    {
+      "command": "rightkit cargo test -p cortex-store --lib",
+      "state": "pass",
+      "evidence": "RightKit request adc8cf02-9dd1-4db1-9892-8d0a9a963daf; 86 passed, 0 failed."
+    },
+    {
+      "command": "rightkit cargo test -p membrane-core --lib",
+      "state": "pass",
+      "evidence": "RightKit request f90890b8-537f-40fa-b8d7-d14b8036089d; 23 passed, 0 failed."
+    },
+    {
+      "command": "git diff --check -- engine/tests/absorbed_storage_acceptance.rs engine/tests/memory_backend_acceptance.rs engine/tests/transcript_ledger_acceptance.rs engine/tests/compaction_acceptance.rs",
+      "state": "pass",
+      "evidence": "exit 0"
+    },
+    {
+      "command": "rg -n 'AbsorbedStore|Fts5Projection|MemoryBackendClient|build_transcript_chunks|compact|assemble' engine/tests/absorbed_storage_acceptance.rs engine/tests/memory_backend_acceptance.rs engine/tests/transcript_ledger_acceptance.rs engine/tests/compaction_acceptance.rs",
+      "state": "pass",
+      "evidence": "Owned fixtures include persistence/reopen, rollback, FTS5-to-hybrid timing, transport parity/failure, transcript/ledger replay, and compaction receipt replay surfaces; exact target receipts are recorded below."
+    },
+    {
+      "command": "rightkit cargo test -p membrane-testkit --test absorbed_storage_acceptance",
+      "state": "pass",
+      "evidence": "RightKit request 2648a7af-9162-411a-92d6-b89eae3227df; 5 passed, 0 failed."
+    },
+    {
+      "command": "rightkit cargo test -p membrane-testkit --test memory_backend_acceptance",
+      "state": "pass",
+      "evidence": "RightKit request 17feffa5-ba42-4b61-b947-c3dc7ea711fe; 4 passed, 0 failed."
+    },
+    {
+      "command": "rightkit cargo test -p membrane-testkit --test transcript_ledger_acceptance",
+      "state": "pass",
+      "evidence": "RightKit request ae8583e9-f1dd-4b9c-bd63-02ac5e4d1903; 4 passed, 0 failed."
+    },
+    {
+      "command": "rightkit cargo test -p membrane-testkit --test compaction_acceptance",
+      "state": "pass",
+      "evidence": "RightKit request 2107572f-bb4e-466e-8ddb-34a6c6386eab; 4 passed, 0 failed."
+    }
+  ],
+  "implementationOwner": "MEM-043/MEM-044/MEM-045/MEM-046",
+  "notes": [
+    "Acceptance files only; no implementation, manifest, dependency, or ANN changes.",
+    "cortex-store and membrane-core library gates pass. All four MEM-I02 acceptance targets pass; MEM-042 composition+FTS repairs cleared transcript-ledger blocker.",
+    "An incorrect manifest-path vector-scale invocation failed because no default-run bench target exists; canonical cortex-core benchmark evidence remains PASS in vector-scale-results.json with recallAtK=1.0 for all three quick cases and no ANN adoption.",
+    "Fault-trigger import test requires the implementation to leave no cursor/event residue when a later insert aborts; a failing result is an acceptance failure, not waived evidence.",
+    "Hybrid and compaction tests emit monotonic nanosecond measurements for managed-run evidence; values are not prefilled here.",
+    "Acceptance target composition must expose cortex-core, cortex-store, membrane-client, membrane-runtime, membrane-core, and serde_json as test dependencies; no dependency edits are made in this packet."
+  ]
+}

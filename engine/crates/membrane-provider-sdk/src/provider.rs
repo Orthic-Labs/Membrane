@@ -20,7 +20,10 @@
 //! response is identical (canonical-bytes-equal) to the fixture's expected
 //! response for every fixture in the supplied set.
 
-use crate::error::Result;
+use crate::context::ProviderContext;
+use crate::error::{ProviderError, Result};
+use crate::output::ProviderOutput;
+use async_trait::async_trait;
 pub use membrane_protocol::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
@@ -47,17 +50,46 @@ pub struct CapabilityV1 {
 /// The three required methods are the only surface area an adapter must
 /// implement. Adapters MAY add helper methods (for example, a Cortex
 /// `MemoryStore` accessor) but those helpers are not part of the SDK.
+#[async_trait]
 pub trait Provider: Send + Sync {
+    /// Native federation entrypoint.  A provider returns one canonical
+    /// output or one typed error; it never returns an untyped JSON envelope.
+    /// The default preserves compatibility for external MCP adapters that
+    /// still implement only the legacy operation surface.
+    async fn provide(&self, _context: &ProviderContext) -> Result<ProviderOutput> {
+        Err(ProviderError::Unavailable(
+            "provider does not implement native federation".into(),
+        ))
+    }
+
+    /// Alias used by composition code that calls providers as lanes.
+    async fn run(&self, context: &ProviderContext) -> Result<ProviderOutput> {
+        self.provide(context).await
+    }
+
     /// Initialize the provider with a configuration document.
     ///
     /// Called exactly once, before any other method. The provider MUST be
     /// ready to serve `handle_operation` after a successful `initialize`.
     /// A second call MUST be idempotent or return
     /// `ProviderError::Uninitialized`-class error.
-    fn initialize(&mut self, config: &serde_json::Value) -> Result<()>;
+    fn initialize(&mut self, _config: &serde_json::Value) -> Result<()> {
+        Ok(())
+    }
 
     /// Return one authoritative, typed observation; process existence is not readiness.
-    fn readiness(&self) -> ProviderReadinessV1;
+    fn readiness(&self) -> ProviderReadinessV1 {
+        ProviderReadinessV1::unknown(
+            ProviderIdentityV1 {
+                provider_id: "unknown".into(),
+                installation_id: "sdk".into(),
+                service_id: "membrane-provider-sdk".into(),
+                release_generation: "unknown".into(),
+                data_root_digest: "sha256:unknown".into(),
+            },
+            "readiness_not_declared",
+        )
+    }
 
     /// Every operation this provider claims to support.
     ///
@@ -65,7 +97,9 @@ pub trait Provider: Send + Sync {
     /// `membrane_protocol::operations_slice()`. Returning a name that is
     /// not in the registry is permitted (the registry is the only
     /// authority), but the conformance harness will flag the mismatch.
-    fn list_capabilities(&self) -> Vec<CapabilityV1>;
+    fn list_capabilities(&self) -> Vec<CapabilityV1> {
+        Vec::new()
+    }
 
     /// Handle one request and return one response.
     ///
@@ -85,5 +119,8 @@ pub trait Provider: Send + Sync {
         &self,
         operation: &str,
         request: &serde_json::Value,
-    ) -> Result<serde_json::Value>;
+    ) -> Result<serde_json::Value> {
+        let _ = request;
+        Err(ProviderError::UnknownOperation(operation.to_string()))
+    }
 }

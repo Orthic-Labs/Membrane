@@ -27,6 +27,7 @@ pub mod canonical;
 pub mod compatibility_policy;
 pub mod compression;
 pub mod fusion;
+pub mod federation;
 pub mod heartbeat;
 pub mod hub;
 pub mod installation;
@@ -51,6 +52,20 @@ pub use compression::{
     NonEmptyString, SpanV1, COMPRESSION_RECEIPT_SCHEMA_VERSION,
 };
 pub use fusion::{FusionDecisionV1, FusionReceiptV1};
+pub use federation::{
+    sort_candidates, sort_omissions, sort_provider_ids, sort_provider_outputs, sort_warnings,
+    DeadlineBudget,
+    Candidate, FederationCandidate, FederationCandidateV1, FederationDiagnosticsV1,
+    FederationError, FederationErrorV1, FederationOmission, FederationOmissionV1,
+    FederationRequest, FederationRequestV1, FederationResponse, FederationResponseV1,
+    FederationStatus, FederationValidationError, FreshnessSnapshotV1, ProviderContext,
+    ProviderContextV1, ProviderDiagnosticsV1, ProviderId, ProviderIdV1, ProviderKind,
+    ProviderKindV1, ProviderOmissionV1, ProviderOutput, ProviderOutputV1,
+    FederationProviderStatus, FederationProviderStatusV1, ProviderStatusV1, ProviderWarningV1,
+    ReasonCode, ReasonCodeV1, WarningSeverity,
+    FEDERATION_REQUEST_SCHEMA_VERSION, FEDERATION_RESPONSE_SCHEMA_VERSION,
+    PROVIDER_OUTPUT_SCHEMA_VERSION, PROVIDER_ORDER,
+};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };

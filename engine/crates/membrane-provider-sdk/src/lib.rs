@@ -75,16 +75,32 @@
 
 pub mod batch;
 pub mod conformance;
+pub mod context;
 pub mod error;
 pub mod provider;
+pub mod output;
+pub mod registry;
+pub mod source;
 
 pub use batch::{
     CodeBatchItemV1, CodeBatchReceiptV1, MAX_BATCH_BYTES, MAX_BATCH_DEADLINE_MS, MAX_BATCH_ITEMS,
     MAX_BATCH_TOKENS,
 };
-pub use conformance::{run_conformance, ConformanceReport, Fixture, FixtureFailure};
+pub use conformance::{
+    run_conformance, run_provider_conformance, ConformanceReport, Fixture, FixtureFailure,
+    ProviderConformanceFailure, ProviderConformanceReport,
+};
+pub use context::{ProviderContext, ValidatedScopeGrantView};
 pub use error::{ProviderError, Result};
+pub use output::{empty_output, validate_output, ProviderOutput, ProviderStatusV1};
 pub use provider::{CapabilityV1, Provider};
+pub use registry::{ProviderRegistration, ProviderRegistry};
+pub use source::{
+    AuditFinding, AuditFindingSource, BlueprintResult, BlueprintSource, DecisionRecord,
+    DecisionRecordSource, FreshnessSource, MemoryCandidate, MemoryCandidateSource,
+    ScopeGrantSource, ScopeGrantView, SkillCatalogEntry, SkillCatalogSource, SourceQuery,
+    SourceResponse, SourceResult, SourceSet, SourceWarning,
+};
 
 /// Re-export the membrane-protocol operations slice accessor so adapter
 /// authors can pin their `CapabilityV1` to the same registry the runtime

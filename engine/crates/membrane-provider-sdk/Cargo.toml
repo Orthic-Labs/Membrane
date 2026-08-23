@@ -22,6 +22,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = "0.11"
+async-trait = "0.1"
+tokio-util = "0.7"
 
 [dev-dependencies]
 membrane-testkit = { path = "../membrane-testkit" }

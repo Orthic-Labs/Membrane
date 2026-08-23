@@ -2,7 +2,12 @@
 //!
 //! Models memory tiers, retrieval ranking, a quality eval gate, and rough token
 //! accounting. Persistence lives in a separate storage crate; this crate has no I/O.
+//!
+//! The re-exports below form the stable crate API. Compatibility is governed
+//! by crate semver and each typed record's schema version; internal modules
+//! remain private unless explicitly marked as part of this surface.
 
+pub mod absorbed;
 mod accounting;
 mod calibration;
 mod dream;
@@ -17,10 +22,16 @@ mod quant;
 mod registry;
 pub mod retriever;
 mod routing;
+pub mod transcript;
 pub mod types;
 mod vector_index;
 
 pub use accounting::{estimate_tokens, ContextTokenAccounting};
+pub use absorbed::{
+    content_hash, event_range, validate_event, validate_event_import, AbsorbedValidationError,
+    ArtifactRecord, EventCursor, ProvenanceRef, RecordGovernance, SessionEvent, SessionRecord,
+    TaskRecord, ABSORBED_SCHEMA_VERSION,
+};
 pub use calibration::ConfidenceCalibrator;
 pub use dream::{
     consolidate_dream_memories, DreamAgentPolicy, DreamConsolidatedMemory, DreamPlan, DreamStatus,
@@ -40,8 +51,12 @@ pub use planner::{
 };
 pub use quant::{quantized_cosine, QuantizedVector};
 pub use registry::{MemoryRegistry, RegistryError};
-pub use retriever::MemoryRetriever;
+pub use retriever::{LexicalHit, MemoryRetriever};
 pub use routing::{QueryFeatures, RetrievalTier, RoutingPolicy};
+pub use transcript::{
+    build_transcript_chunks, retrieve_transcript_chunks, TranscriptChunk, TranscriptChunkBuilder,
+    TranscriptChunkConfig, TranscriptError, TranscriptRetrievalHit, TRANSCRIPT_CHUNK_SCHEMA_VERSION,
+};
 pub use types::{default_scope, MemoryEntry, MemoryTier};
 pub use vector_index::{
     HostVectorPolicy, VectorCandidate, VectorIndex, VectorKernel, VectorSearchError,
