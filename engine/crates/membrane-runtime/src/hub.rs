@@ -1,6 +1,7 @@
 use membrane_protocol::{
-    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, ProviderIdentityV1,
-    ProviderReadinessStateV1, ProviderReadinessV1, HUB_SCHEMA_VERSION,
+    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HubSubsystemV1,
+    HubSubsystemsV1, MembraneParentState, ProviderIdentityV1, ProviderReadinessStateV1,
+    ProviderReadinessV1, SubsystemStateV1, HUB_SCHEMA_VERSION,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -171,6 +172,59 @@ impl HubReadV1 {
             Self::Unavailable { reason } => HubSectionV1::unavailable(reason),
         }
     }
+
+    /// Typed subsystem projection. `Unavailable` with the `not_instrumented`
+    /// reason becomes a first-class `NotConfigured` on the wire so no
+    /// presentation layer has to reconstruct that semantic from a reason
+    /// string.
+    fn subsystem(self) -> HubSubsystemV1 {
+        match self {
+            Self::Available { items, metadata } => {
+                let metadata = metadata.normalized();
+                HubSubsystemV1 {
+                    state: SubsystemStateV1::Available,
+                    reason: "observed".into(),
+                    items: Some(items),
+                    evidence: metadata.evidence,
+                    observed_at_unix_ms: (metadata.observed_at_unix_ms > 0)
+                        .then_some(metadata.observed_at_unix_ms),
+                }
+            }
+            Self::Degraded {
+                reason,
+                items,
+                metadata,
+            } => {
+                let metadata = metadata.normalized();
+                HubSubsystemV1 {
+                    state: SubsystemStateV1::Degraded,
+                    reason: if reason.is_empty() {
+                        "reason_unavailable".into()
+                    } else {
+                        reason
+                    },
+                    items: Some(items),
+                    evidence: metadata.evidence,
+                    observed_at_unix_ms: (metadata.observed_at_unix_ms > 0)
+                        .then_some(metadata.observed_at_unix_ms),
+                }
+            }
+            Self::Unavailable { reason } if reason == "not_instrumented" => {
+                HubSubsystemV1::not_configured(reason)
+            }
+            Self::Unavailable { reason } => HubSubsystemV1 {
+                state: SubsystemStateV1::Unavailable,
+                reason: if reason.is_empty() {
+                    "reason_unavailable".into()
+                } else {
+                    reason
+                },
+                items: None,
+                evidence: None,
+                observed_at_unix_ms: None,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -231,16 +285,18 @@ impl HubSubsystemInputsV1 {
         }
     }
 
-    /// Map to the wire representation consumed by `HubSnapshotV1::subsystems`.
-    pub fn sections(&self) -> BTreeMap<String, HubSectionV1> {
-        BTreeMap::from([
-            ("pull".into(), self.pull.clone().section()),
-            ("push".into(), self.push.clone().section()),
-            ("cortex".into(), self.cortex.clone().section()),
-            ("blueprint".into(), self.blueprint.clone().section()),
-            ("guide".into(), self.guide.clone().section()),
-            ("adapt".into(), self.adapt.clone().section()),
-        ])
+    /// Map to the typed wire representation consumed by
+    /// `HubSnapshotV1::subsystems`. Exactly the six named subsystems, each
+    /// carrying a first-class state including `NotConfigured`.
+    pub fn subsystems(&self) -> HubSubsystemsV1 {
+        HubSubsystemsV1 {
+            pull: self.pull.clone().subsystem(),
+            push: self.push.clone().subsystem(),
+            cortex: self.cortex.clone().subsystem(),
+            blueprint: self.blueprint.clone().subsystem(),
+            guide: self.guide.clone().subsystem(),
+            adapt: self.adapt.clone().subsystem(),
+        }
     }
 }
 
@@ -301,8 +357,8 @@ impl HubFacadeV1 {
         &self,
         observed_at_unix_ms: u64,
         inputs: HubInputsV1,
-        membrane_state: Option<String>,
-        subsystems: Option<BTreeMap<String, HubSectionV1>>,
+        membrane_state: Option<MembraneParentState>,
+        subsystems: Option<HubSubsystemsV1>,
     ) -> HubSnapshotV1 {
         HubSnapshotV1 {
             schema_version: HUB_SCHEMA_VERSION,

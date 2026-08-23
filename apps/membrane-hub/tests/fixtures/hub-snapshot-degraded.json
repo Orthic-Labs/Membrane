@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "productId": "membrane",
+  "observedAtUnixMs": 42,
+  "sections": {
+    "adapters": {
+      "state": "unavailable",
+      "reason": "missing_input",
+      "observedAtUnixMs": 42
+    },
+    "alerts": {
+      "state": "unavailable",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "deliveries": {
+      "state": "unavailable",
+      "reason": "delivery_health_missing",
+      "observedAtUnixMs": 42
+    },
+    "devices": {
+      "state": "unavailable",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "memory": {
+      "state": "degraded",
+      "reason": "catalog_or_database_unhealthy",
+      "items": [
+        {
+          "catalog": "error",
+          "database": {
+            "status": "ok"
+          },
+          "databaseStatus": "ok",
+          "memoryCount": null
+        }
+      ],
+      "resolver": "hub_inputs::live_inputs_from_local_service",
+      "evidence": "GET /health",
+      "observedAtUnixMs": 42
+    },
+    "providers": {
+      "state": "available",
+      "reason": "observed",
+      "items": [
+        {
+          "ok": false,
+          "service": "membrane"
+        },
+        {
+          "dailyAnalysis": "fresh"
+        }
+      ],
+      "resolver": "hub_inputs::live_inputs_from_local_service",
+      "evidence": "GET /health",
+      "observedAtUnixMs": 42
+    },
+    "repositories": {
+      "state": "unavailable",
+      "reason": "blueprint_unavailable",
+      "observedAtUnixMs": 42
+    },
+    "sentinel": {
+      "state": "unavailable",
+      "reason": "missing_input",
+      "observedAtUnixMs": 42
+    }
+  },
+  "membraneState": "degraded",
+  "subsystems": {
+    "pull": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "push": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "cortex": {
+      "state": "degraded",
+      "reason": "cortex_degraded",
+      "items": [
+        {
+          "owner": "cortex"
+        }
+      ],
+      "evidence": "GET /health + sentinel",
+      "observedAtUnixMs": 42
+    },
+    "blueprint": {
+      "state": "unavailable",
+      "reason": "blueprint_unavailable",
+      "observedAtUnixMs": 42
+    },
+    "guide": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "adapt": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    }
+  }
+}

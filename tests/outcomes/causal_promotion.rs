@@ -10,7 +10,7 @@ const WORKSPACE: &str = "ws.22222222222222222222222222222222";
 const ACTIVATION: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn sha(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    hex::encode(Sha256::digest(value.as_bytes()))
 }
 
 #[rustfmt::skip]

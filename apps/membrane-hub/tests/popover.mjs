@@ -29,6 +29,31 @@ test('fresh Blueprint remains local while Membrane remains Running', () => {
   assert.equal(vm.overall, 'Running'); assert.equal(vm.blueprint, 'Available');
 });
 
+test('cached Running payload never masks a failed live fetch while resident stays healthy', () => {
+  // Previous cycle froze membraneState=running; this cycle the poll served
+  // cache (snapshotState=degraded). Current observation wins: Degraded.
+  const cachedRunning = { payload: { ...golden(), membraneState: 'running' } };
+  const vm = viewModel(cachedRunning, { serviceState: 'running', snapshotState: 'degraded', lastReason: 'cached_snapshot' });
+  assert.equal(vm.overall, 'Degraded');
+  assert.equal(vm.service.state, 'degraded');
+  assert.equal(vm.reason, 'cached_snapshot');
+});
+
+test('resident loss promotes Offline regardless of any cached parent state', () => {
+  const cachedRunning = { payload: { ...golden(), membrane_state: 'running' } };
+  const vm = viewModel(cachedRunning, { serviceState: 'unavailable', snapshotState: 'available', lastReason: 'supervisor_lost' });
+  assert.equal(vm.overall, 'Offline');
+});
+
+test('typed subsystem contract carries Not configured natively without reason decoding', () => {
+  const vm = running({ payload: { ...golden(), subsystems: { pull: { state: 'not_configured', reason: 'no_producer' }, blueprint: { state: 'unavailable', reason: 'blueprint_unavailable' }, cortex: { state: 'available', reason: 'observed' } } } });
+  assert.equal(vm.subsystems.pull.status, 'Not configured');
+  assert.equal(vm.subsystems.pull.state, 'not_configured');
+  assert.equal(vm.subsystems.blueprint.status, 'Unavailable');
+  assert.equal(vm.subsystems.cortex.status, 'Available');
+  assert.equal(vm.overall, 'Running', 'child states stay local');
+});
+
 test('not_instrumented is presented as Not configured, never Degraded', () => {
   const vm = running({ payload: golden({ devices: section('unavailable', 'not_instrumented'), alerts: section('unavailable', 'not_instrumented') }) });
   assert.equal(vm.resources.devices.status, 'Not configured'); assert.equal(vm.resources.alerts.status, 'Not configured'); assert.equal(vm.overall, 'Running');

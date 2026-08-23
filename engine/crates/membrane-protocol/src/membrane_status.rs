@@ -124,4 +124,37 @@ mod tests {
             MembraneParentState::Running
         );
     }
+
+    #[test]
+    fn parent_state_wire_form_is_typed_snake_case() {
+        for (value, wire) in [
+            (MembraneParentState::Running, "\"running\""),
+            (MembraneParentState::Degraded, "\"degraded\""),
+            (MembraneParentState::Offline, "\"offline\""),
+        ] {
+            assert_eq!(serde_json::to_string(&value).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<MembraneParentState>(wire).unwrap(),
+                value
+            );
+        }
+        assert!(serde_json::from_str::<MembraneParentState>("\"ok\"").is_err());
+    }
+
+    #[test]
+    fn subsystem_state_carries_not_configured_on_the_wire() {
+        assert_eq!(
+            serde_json::to_string(&crate::hub::SubsystemStateV1::NotConfigured).unwrap(),
+            "\"not_configured\""
+        );
+        let decoded: crate::hub::SubsystemStateV1 =
+            serde_json::from_str("\"not_configured\"").unwrap();
+        assert_eq!(decoded, crate::hub::SubsystemStateV1::NotConfigured);
+        // Not configured is distinct from unavailable and degraded by type.
+        assert_ne!(
+            decoded,
+            crate::hub::SubsystemStateV1::Unavailable,
+            "NotConfigured must not collapse into Unavailable"
+        );
+    }
 }

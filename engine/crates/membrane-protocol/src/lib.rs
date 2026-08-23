@@ -71,7 +71,8 @@ pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };
 pub use hub::{
-    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HUB_SCHEMA_VERSION,
+    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HubSubsystemV1,
+    HubSubsystemsV1, SubsystemStateV1, HUB_SCHEMA_VERSION,
 };
 pub use membrane_status::{
     membrane_parent_state, membrane_parent_state_from_supervisor_str, MembraneParentState,

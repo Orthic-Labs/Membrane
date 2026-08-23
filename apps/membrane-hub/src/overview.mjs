@@ -35,18 +35,22 @@ const pill = state => `<span class="state-pill state-${esc(state || "unknown")}"
 const metric = (label, value, detail, state) => `<article class="metric state-${esc(state || "unknown")}"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(detail)}</small></article>`;
 
 function residentServiceState(data, runtime) {
+  // Frozen producer mapping reaches this view as payload membraneState. A
+  // CACHED payload state is trusted only while the current poll still
+  // delivers a valid live snapshot; a previously cached Running never masks
+  // degradation or loss of the live snapshot.
+  const fresh = ["available", "live"].includes(String(runtime?.snapshotState ?? "").toLowerCase());
+  const service = String(runtime?.serviceState ?? runtime?.service_state ?? "unknown").toLowerCase();
+  if (service === "degraded") return "degraded";
+  if (!runtime) return "offline";
+  if (service !== "running" && service !== "unknown") return "offline";
+  if (!fresh || !data) return "degraded";
   const membraneState = data?.membrane_state ?? data?.membraneState;
   if (membraneState) {
     const ps = String(membraneState).toLowerCase();
     if (["running", "degraded", "offline"].includes(ps)) return ps;
   }
-  if (!runtime) return "offline";
-  const service = String(runtime.serviceState ?? runtime.service_state ?? "unknown").toLowerCase();
-  if (service === "degraded") return "degraded";
-  if (service !== "running") return "offline";
-  if (!data) return "degraded";
-  const snapshot = String(runtime.snapshotState ?? runtime.snapshot_state ?? "unknown").toLowerCase();
-  return snapshot === "available" || snapshot === "live" ? "running" : "degraded";
+  return "running";
 }
 export function dashboardModel(data, runtime) {
   const sections = data?.sections || {}, subsystems = data?.subsystems || {}, memory = firstItem(sections.memory), sentinel = firstItem(sections.sentinel), delivery = firstItem(sections.deliveries), adapters = firstItem(sections.adapters).adapters || [];

@@ -107,11 +107,23 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     }
     if matches!(tail, [operation] if operation == "hub-capabilities" || operation == "hub-snapshot")
     {
-        let operation = if tail[0] == "hub-capabilities" {
-            "hub.capabilities"
-        } else {
-            "hub.snapshot"
-        };
+        // The Hub's Tauri sidecar fetches its snapshot through exactly this
+        // path ("membrane cli hub-snapshot"), so it MUST emit the canonical
+        // snapshot: the same composition as the resident's /hub/snapshot
+        // route, with the typed frozen membraneState and all six subsystems.
+        if tail[0] == "hub-snapshot" {
+            return match serde_json::to_string(
+                &membrane_runtime::hub_inputs::compose_live_hub_snapshot(),
+            ) {
+                Ok(json) => {
+                    println!("{json}");
+                    DispatchOutcome::Ok
+                }
+                Err(error) => {
+                    DispatchOutcome::InternalError(format!("hub.snapshot: {error}"))
+                }
+            };
+        }
         // MBR: read live state from local Membrane resident's /health endpoint
         // instead of hardcoding "Offline" regardless of whether the service is
         // up. Falls back to the honest unavailable facade on any failure.
@@ -119,14 +131,14 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
             membrane_runtime::hub_inputs::live_inputs_from_local_service().unwrap_or_else(|| {
                 membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected")
             });
-        return match dispatch_hub(operation, inputs)
+        return match dispatch_hub("hub.capabilities", inputs)
             .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
         {
             Ok(json) => {
                 println!("{json}");
                 DispatchOutcome::Ok
             }
-            Err(error) => DispatchOutcome::InternalError(format!("{operation}: {error}")),
+            Err(error) => DispatchOutcome::InternalError(format!("hub.capabilities: {error}")),
         };
     }
     let mut argv: Vec<String> = Vec::with_capacity(tail.len() + 1);

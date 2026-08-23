@@ -1,3 +1,4 @@
+use crate::membrane_status::MembraneParentState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -69,6 +70,57 @@ pub struct HubCapabilitiesV1 {
     pub stream: Option<HubStreamV1>,
 }
 
+/// Semantic state of one Membrane subsystem. `NotConfigured` is a first-class
+/// wire value: "no instrumentation exists" must never be encoded as
+/// `Unavailable` plus a magic reason that presentation code has to decode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubsystemStateV1 {
+    Available,
+    Degraded,
+    Unavailable,
+    NotConfigured,
+}
+
+/// One semantic subsystem surface (Pull/Push/Cortex/Blueprint/Guide/Adapt).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubSubsystemV1 {
+    pub state: SubsystemStateV1,
+    pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at_unix_ms: Option<u64>,
+}
+
+impl HubSubsystemV1 {
+    pub fn not_configured(reason: impl Into<String>) -> Self {
+        Self {
+            state: SubsystemStateV1::NotConfigured,
+            reason: reason.into(),
+            items: None,
+            evidence: None,
+            observed_at_unix_ms: None,
+        }
+    }
+}
+
+/// The six semantic Membrane subsystems — closed, named fields so no producer
+/// can emit an unnamed or missing subsystem on the wire.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HubSubsystemsV1 {
+    pub pull: HubSubsystemV1,
+    pub push: HubSubsystemV1,
+    pub cortex: HubSubsystemV1,
+    pub blueprint: HubSubsystemV1,
+    pub guide: HubSubsystemV1,
+    pub adapt: HubSubsystemV1,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HubSnapshotV1 {
@@ -76,8 +128,11 @@ pub struct HubSnapshotV1 {
     pub product_id: String,
     pub observed_at_unix_ms: u64,
     pub sections: BTreeMap<String, HubSectionV1>,
+    /// Frozen parent service state from the resident producer. Typed, never a
+    /// free-form string; `None` only for snapshots written before this field
+    /// existed (old cached payloads).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub membrane_state: Option<String>,
+    pub membrane_state: Option<MembraneParentState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subsystems: Option<BTreeMap<String, HubSectionV1>>,
+    pub subsystems: Option<HubSubsystemsV1>,
 }

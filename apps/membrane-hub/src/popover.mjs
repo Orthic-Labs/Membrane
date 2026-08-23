@@ -5,12 +5,22 @@ const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', availabl
 const state = section => typeof section === 'object' && section ? section.state : null;
 const sectionStatus = section => {
   const s = state(section);
+  // Typed wire contract: subsystems carry Not configured natively.
+  if (s === 'not_configured') return s;
+  // Operational resources still encode it as unavailable+not_instrumented.
   if (s === 'unavailable' && section.reason === 'not_instrumented') return 'not_configured';
   return STATUS_ORDER.includes(s) ? s : 'unavailable';
+};
+const freshLiveSnapshot = runtime => ['available', 'live'].includes(String(runtime?.snapshotState ?? '').toLowerCase());
+const payloadParentState = snapshot => {
+  const ps = snapshot?.payload?.membrane_state ?? snapshot?.payload?.membraneState;
+  const s = String(ps ?? '').toLowerCase();
+  return ['running', 'degraded', 'offline'].includes(s) ? s : null;
 };
 const serviceReason = (snapshot, runtime, status) => {
   if (status === 'offline') return String(runtime?.lastReason ?? runtime?.reason ?? 'Resident service offline');
   if (!snapshot) return 'No snapshot available';
+  if (status === 'degraded' && !freshLiveSnapshot(runtime)) return String(runtime?.lastReason ?? 'Cached snapshot while resident healthy');
   // Prefer payload membrane_state when present — frozen producer-path mapping
   const payloadState = snapshot?.payload?.membrane_state ?? snapshot?.payload?.membraneState;
   if (payloadState) {
@@ -21,19 +31,18 @@ const serviceReason = (snapshot, runtime, status) => {
   return String(runtime?.lastReason ?? runtime?.reason ?? (status === 'running' ? 'Resident service healthy' : 'Resident service degraded'));
 };
 function serviceState(snapshot, runtime) {
-  // Frozen parent mapping lives in the Rust producer (health ok + snapshot validity + supervisor).
-  // The Hub snapshot carries the canonical parent state as `membrane_state`.
-  const payloadState = snapshot?.payload?.membrane_state ?? snapshot?.payload?.membraneState;
-  if (payloadState) {
-    const ps = String(payloadState).toLowerCase();
-    if (['running', 'degraded', 'offline'].includes(ps)) return ps;
-  }
+  // Frozen parent mapping lives in the Rust producer (health ok + snapshot
+  // validity + supervisor) and reaches this view as payload `membraneState`.
+  // A CACHED payload state is trusted only while the current poll still
+  // delivers a valid live snapshot; otherwise the frozen mapping applies to
+  // the current observation — a previously cached Running never masks
+  // degradation or loss of the live snapshot.
   const service = String(runtime?.serviceState ?? runtime?.service_state ?? 'unknown').toLowerCase();
   if (service === 'degraded') return 'degraded';
-  if (service !== 'running') return 'offline';
-  if (!snapshot) return 'degraded';
-  const snapshotState = String(runtime?.snapshotState ?? runtime?.snapshot_state ?? 'unknown').toLowerCase();
-  return snapshotState === 'available' || snapshotState === 'live' ? 'running' : 'degraded';
+  if (!runtime) return 'offline';
+  if (service !== 'running' && service !== 'unknown') return 'offline';
+  if (!freshLiveSnapshot(runtime) || !snapshot) return 'degraded';
+  return payloadParentState(snapshot) ?? 'running';
 }
 export function viewModel(snapshot, runtime) {
   const p = snapshot?.payload || {};

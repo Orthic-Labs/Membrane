@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "productId": "membrane",
+  "observedAtUnixMs": 42,
+  "sections": {
+    "adapters": {
+      "state": "unavailable",
+      "reason": "missing_input",
+      "observedAtUnixMs": 42
+    },
+    "alerts": {
+      "state": "unavailable",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "deliveries": {
+      "state": "unavailable",
+      "reason": "delivery_health_missing",
+      "observedAtUnixMs": 42
+    },
+    "devices": {
+      "state": "unavailable",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "memory": {
+      "state": "available",
+      "reason": "observed",
+      "items": [
+        {
+          "catalog": "ok",
+          "database": {
+            "memoryCount": 7,
+            "status": "ok"
+          },
+          "memoryCount": 7
+        }
+      ],
+      "resolver": "hub_inputs::live_inputs_from_local_service",
+      "evidence": "GET /health",
+      "observedAtUnixMs": 42
+    },
+    "providers": {
+      "state": "available",
+      "reason": "observed",
+      "items": [
+        {
+          "ok": true,
+          "service": "membrane"
+        },
+        {
+          "dailyAnalysis": "fresh"
+        }
+      ],
+      "resolver": "hub_inputs::live_inputs_from_local_service",
+      "evidence": "GET /health",
+      "observedAtUnixMs": 42
+    },
+    "repositories": {
+      "state": "unavailable",
+      "reason": "blueprint_unavailable",
+      "observedAtUnixMs": 42
+    },
+    "sentinel": {
+      "state": "unavailable",
+      "reason": "missing_input",
+      "observedAtUnixMs": 42
+    }
+  },
+  "membraneState": "running",
+  "subsystems": {
+    "pull": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "push": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "cortex": {
+      "state": "unavailable",
+      "reason": "missing_input",
+      "observedAtUnixMs": 42
+    },
+    "blueprint": {
+      "state": "unavailable",
+      "reason": "blueprint_unavailable",
+      "observedAtUnixMs": 42
+    },
+    "guide": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    },
+    "adapt": {
+      "state": "not_configured",
+      "reason": "not_instrumented",
+      "observedAtUnixMs": 42
+    }
+  }
+}

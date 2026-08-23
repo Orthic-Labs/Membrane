@@ -2759,17 +2759,9 @@ fn route_with_context_ingest_lease(
         };
     }
     if method == "GET" && path == "/hub/snapshot" {
-        let parts = crate::hub_inputs::live_snapshot_parts_from_local_service()
-            .unwrap_or_else(crate::hub_inputs::offline_snapshot_parts);
-        let reachable = parts.membrane_state != "offline";
-        let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(reachable));
-        let snapshot = facade.snapshot_with_subsystems(
-            now_unix_ms(),
-            parts.inputs,
-            Some(parts.membrane_state),
-            Some(parts.subsystems),
-        );
-        return match serde_json::to_value(snapshot) {
+        // Canonical composition shared with `membrane cli hub-snapshot` — one
+        // producer, one parent truth, typed membraneState + six subsystems.
+        return match serde_json::to_value(crate::hub_inputs::compose_live_hub_snapshot()) {
             Ok(value) => (200, value.to_string()),
             Err(error) => (500, serde_json::json!({"error": error.to_string()}).to_string()),
         };
@@ -5443,9 +5435,27 @@ mod tests {
             payload_down["sections"]["providers"]["state"], "unavailable",
             "body: {body_down}"
         );
+        // Canonical snapshot carries typed parent state and six subsystems on
+        // every path, including the offline fallback.
+        assert_eq!(
+            payload_down["membraneState"], "offline",
+            "body: {body_down}"
+        );
+        let down_subsystems = payload_down["subsystems"].as_object().unwrap();
+        assert_eq!(down_subsystems.len(), 6, "body: {body_down}");
+        for name in membrane_protocol::SUBSYSTEM_NAMES {
+            assert!(down_subsystems.contains_key(name), "body: {body_down}");
+        }
         let snapshot_fields = payload_down.as_object().unwrap();
-        assert_eq!(snapshot_fields.len(), 4, "body: {body_down}");
-        for field in ["schemaVersion", "productId", "observedAtUnixMs", "sections"] {
+        assert_eq!(snapshot_fields.len(), 6, "body: {body_down}");
+        for field in [
+            "schemaVersion",
+            "productId",
+            "observedAtUnixMs",
+            "sections",
+            "membraneState",
+            "subsystems",
+        ] {
             assert!(snapshot_fields.contains_key(field), "body: {body_down}");
         }
 
@@ -5465,6 +5475,14 @@ mod tests {
         assert_ne!(
             payload_down["sections"]["providers"], payload_up["sections"]["providers"],
             "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
+        );
+        // Healthy resident + live snapshot => Running even though Blueprint is
+        // unavailable; parent state is resident-local, never child-derived.
+        assert_eq!(payload_up["membraneState"], "running", "body: {body_up}");
+        assert_eq!(
+            payload_up["subsystems"]["blueprint"]["state"],
+            "unavailable",
+            "body: {body_up}"
         );
     }
 

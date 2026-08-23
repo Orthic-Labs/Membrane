@@ -14,7 +14,6 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 use crate::hub::{HubInputsV1, HubMetadataV1, HubReadV1, HubSubsystemInputsV1};
-use std::collections::BTreeMap;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const IO_TIMEOUT: Duration = Duration::from_millis(300);
@@ -25,8 +24,8 @@ pub const DEFAULT_LOCAL_SERVICE_PORT: u16 = 47851;
 #[derive(Debug, Clone)]
 pub struct LiveSnapshotParts {
     pub inputs: HubInputsV1,
-    pub membrane_state: String,
-    pub subsystems: BTreeMap<String, membrane_protocol::HubSectionV1>,
+    pub membrane_state: membrane_protocol::MembraneParentState,
+    pub subsystems: membrane_protocol::HubSubsystemsV1,
 }
 
 /// Best-effort live read of local Membrane resident's `/health` endpoint,
@@ -49,6 +48,38 @@ pub fn live_snapshot_parts_from_local_service() -> Option<LiveSnapshotParts> {
     Some(snapshot_parts_from_health(&health, delivery.as_ref(), blueprint))
 }
 
+/// Canonical Hub snapshot composition from observed parts.
+///
+/// This is the ONE producer for the canonical snapshot shape. Both the HTTP
+/// `/hub/snapshot` route and `membrane cli hub-snapshot` must emit exactly
+/// this — same sections, typed frozen `membraneState`, and all six typed
+/// subsystems — so no consumer can observe two different parent truths.
+pub fn compose_hub_snapshot(
+    parts: LiveSnapshotParts,
+    observed_at_unix_ms: u64,
+) -> membrane_protocol::HubSnapshotV1 {
+    let reachable = parts.membrane_state != membrane_protocol::MembraneParentState::Offline;
+    let facade = crate::hub::HubFacadeV1::new(reachable.then(|| membrane_protocol::HubStreamV1 {
+        state: membrane_protocol::HubStateV1::Available,
+        reason: "observed".into(),
+        resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
+    }));
+    facade.snapshot_with_subsystems(
+        observed_at_unix_ms,
+        parts.inputs,
+        Some(parts.membrane_state),
+        Some(parts.subsystems),
+    )
+}
+
+/// Canonical snapshot straight from the live resident (or the honest offline
+/// fallback). The exact function behind `membrane cli hub-snapshot` and the
+/// resident's `/hub/snapshot` route.
+pub fn compose_live_hub_snapshot() -> membrane_protocol::HubSnapshotV1 {
+    let parts = live_snapshot_parts_from_local_service().unwrap_or_else(offline_snapshot_parts);
+    compose_hub_snapshot(parts, now_unix_ms())
+}
+
 /// Pure mapping for tests — same as `live_snapshot_parts_from_local_service`
 /// but with injected health/blueprint values.
 pub fn snapshot_parts_from_health(
@@ -62,10 +93,10 @@ pub fn snapshot_parts_from_health(
     let live_available = true;
     let parent = membrane_protocol::membrane_parent_state(true, health_ok, live_available);
     let subsystems = subsystem_inputs_from_health(health, blueprint, &inputs.memory, &inputs.sentinel)
-        .sections();
+        .subsystems();
     LiveSnapshotParts {
         inputs,
-        membrane_state: parent.as_str().to_string(),
+        membrane_state: parent,
         subsystems,
     }
 }
@@ -73,12 +104,10 @@ pub fn snapshot_parts_from_health(
 /// Snapshot parts for the offline fallback (health unreachable).
 pub fn offline_snapshot_parts() -> LiveSnapshotParts {
     let inputs = HubInputsV1::unavailable("source_not_connected");
-    let subsystems = HubSubsystemInputsV1::unavailable("source_not_connected").sections();
+    let subsystems = HubSubsystemInputsV1::unavailable("source_not_connected").subsystems();
     LiveSnapshotParts {
         inputs,
-        membrane_state: membrane_protocol::MembraneParentState::Offline
-            .as_str()
-            .to_string(),
+        membrane_state: membrane_protocol::MembraneParentState::Offline,
         subsystems,
     }
 }
@@ -945,7 +974,7 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        assert_eq!(parts.membrane_state, "running");
+        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
         // Also prove via protocol helper directly
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, Some(true), true),
@@ -960,7 +989,7 @@ mod tests {
             r#"{"ok": false, "catalog": {"status": "error"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        assert_eq!(parts.membrane_state, "degraded");
+        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Degraded);
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, Some(false), true),
             membrane_protocol::MembraneParentState::Degraded
@@ -981,7 +1010,7 @@ mod tests {
     #[test]
     fn parent_unreachable_resident_is_offline() {
         let offline = offline_snapshot_parts();
-        assert_eq!(offline.membrane_state, "offline");
+        assert_eq!(offline.membrane_state, membrane_protocol::MembraneParentState::Offline);
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, None, true),
             membrane_protocol::MembraneParentState::Offline
@@ -999,7 +1028,7 @@ mod tests {
         ).unwrap();
         // Force all child resources to unavailable (no DB, no delivery, blueprint missing)
         let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
-        assert_eq!(parts.membrane_state, "running");
+        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
         // Children are unavailable/degraded but parent is Running
         assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
         assert!(matches!(parts.inputs.repositories, HubReadV1::Unavailable { .. }));
@@ -1011,16 +1040,18 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        assert_eq!(parts.subsystems.len(), 6);
+        // The wire shape is a closed six-field struct — no unnamed or missing
+        // subsystem is representable.
+        let encoded = serde_json::to_value(&parts.subsystems).unwrap();
+        let mut keys: Vec<&str> = encoded.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["adapt", "blueprint", "cortex", "guide", "pull", "push"]);
         for name in membrane_protocol::SUBSYSTEM_NAMES {
-            assert!(parts.subsystems.contains_key(name), "missing subsystem {name}");
+            assert!(encoded.get(name).is_some_and(|value| value.is_object()), "missing subsystem {name}");
         }
         // Operational resources are 8 and distinct from subsystems
         assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
-        assert!(parts.subsystems.contains_key("blueprint"));
-        // Ensure subsystem keys are not confused with resource keys
-        assert!(!parts.subsystems.contains_key("deliveries"));
-        assert!(!parts.subsystems.contains_key("memory"));
+        assert!(serde_json::to_value(&parts.subsystems).unwrap().get("deliveries").is_none());
     }
 
     #[test]
@@ -1030,8 +1061,8 @@ mod tests {
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
         for name in ["pull", "push", "guide", "adapt"] {
-            let section = &parts.subsystems[name];
-            assert_eq!(section.state, membrane_protocol::HubStateV1::Unavailable);
+            let section = subsystem_section(&parts.subsystems, name);
+            assert_eq!(section.state, membrane_protocol::SubsystemStateV1::NotConfigured);
             assert_eq!(section.reason, "not_instrumented");
         }
     }
@@ -1042,9 +1073,12 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("connect refused".into()));
-        assert_eq!(parts.membrane_state, "running");
-        assert_eq!(parts.subsystems["blueprint"].state, membrane_protocol::HubStateV1::Unavailable);
-        assert_eq!(parts.subsystems["blueprint"].reason, "blueprint_unavailable");
+        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
+        assert_eq!(
+            parts.subsystems.blueprint.state,
+            membrane_protocol::SubsystemStateV1::Unavailable
+        );
+        assert_eq!(parts.subsystems.blueprint.reason, "blueprint_unavailable");
         // Parent remains Running even though Blueprint subsystem is Unavailable
     }
 
@@ -1055,12 +1089,27 @@ mod tests {
         ).unwrap();
         let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
         // Operational sentinel should NOT be presented as Guide
-        let guide_section = &parts.subsystems["guide"];
-        assert_eq!(guide_section.reason, "not_instrumented");
+        assert_eq!(parts.subsystems.guide.state, membrane_protocol::SubsystemStateV1::NotConfigured);
+        assert_eq!(parts.subsystems.guide.reason, "not_instrumented");
         // Cortex owns sentinel/memory, not Guide
-        let cortex_section = &parts.subsystems["cortex"];
-        // With missing DB, sentinel is unavailable, so cortex is unavailable with missing_input or not_instrumented?
-        // Accept either but ensure Guide is not sentinel
-        assert_ne!(guide_section.reason, cortex_section.reason);
+        assert_ne!(
+            parts.subsystems.guide.reason, parts.subsystems.cortex.reason,
+            "Guide must stay distinct from Cortex/sentinel"
+        );
+    }
+
+    fn subsystem_section<'a>(
+        subsystems: &'a membrane_protocol::HubSubsystemsV1,
+        name: &str,
+    ) -> &'a membrane_protocol::HubSubsystemV1 {
+        match name {
+            "pull" => &subsystems.pull,
+            "push" => &subsystems.push,
+            "cortex" => &subsystems.cortex,
+            "blueprint" => &subsystems.blueprint,
+            "guide" => &subsystems.guide,
+            "adapt" => &subsystems.adapt,
+            _ => panic!("unknown subsystem {name}"),
+        }
     }
 }
