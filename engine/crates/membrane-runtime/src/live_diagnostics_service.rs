@@ -699,6 +699,155 @@ impl DiagnosticsService {
         }))
     }
 
+    // -- snapshots ------------------------------------------------------------
+
+    /// Return the latest evidence snapshot for the workspace if one exists.
+    pub fn snapshot_get(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        let snapshot = entry
+            .session
+            .latest_snapshot()
+            .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
+        Ok(serde_json::to_value(snapshot).unwrap_or(Value::Null))
+    }
+
+    /// Explain the latest gate decision for the workspace: outcome, blocking
+    /// issues, reason codes and the bound snapshot id.
+    pub fn snapshot_explain(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        let snapshot = entry
+            .session
+            .latest_snapshot()
+            .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
+        let decision = entry
+            .session
+            .latest_decision()
+            .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
+        Ok(json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "repoId": repo_id,
+            "worktreeId": worktree_id,
+            "snapshotId": snapshot.snapshot_id,
+            "outcome": gate_outcome_label(decision.outcome),
+            "blockingIssueIds": decision.blocking_issue_ids,
+            "reasonCodes": decision.reason_codes,
+            "omissions": decision.omissions,
+            "coverageObligations": snapshot.coverage_obligations,
+        }))
+    }
+
+    /// Return the aggregate delta between the latest snapshot issues and the
+    /// stored baseline, if any.
+    pub fn snapshot_delta(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        let snapshot = entry
+            .session
+            .latest_snapshot()
+            .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
+        Ok(json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "repoId": repo_id,
+            "worktreeId": worktree_id,
+            "snapshotId": snapshot.snapshot_id,
+            "aggregateDelta": snapshot.aggregate_delta,
+            "issues": snapshot.issues,
+        }))
+    }
+
+    // -- provider list/status -------------------------------------------------
+
+    /// List all registered providers with their digests and declared capabilities (§12 provider.list).
+    pub fn provider_list(&self) -> Value {
+        let mut keys: Vec<&WorkspaceEngineKey> = self.supervisor.registered_keys();
+        keys.sort();
+        let providers = keys
+            .iter()
+            .filter_map(|key| {
+                let caps = self.supervisor.registry_capabilities(key)?;
+                Some(json!({
+                    "keyDigest": key.digest(),
+                    "repoId": key.repo_id,
+                    "worktreeId": key.worktree_id,
+                    "engineId": key.engine_id,
+                    "engineVersion": key.engine_version,
+                    "providerId": caps.provider_id,
+                    "version": caps.version,
+                    "capabilities": caps.capabilities.iter().map(capability_kind_label).collect::<Vec<_>>(),
+                    "sideEffectClass": side_effect_class_label(caps.side_effect_class),
+                    "convergenceClass": convergence_class_label(caps.convergence_class),
+                    "costClass": cost_class_label(caps.cost_class),
+                }))
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "providers": providers,
+        })
+    }
+
+    /// Status for a single provider by digest, or typed provider_error if unknown (§12 provider.status).
+    pub fn provider_status(
+        &self,
+        key_digest: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let key = self
+            .supervisor
+            .registered_keys()
+            .into_iter()
+            .find(|key| key.digest() == key_digest)
+            .cloned()
+            .ok_or_else(|| LiveDiagnosticsServiceError::Provider(
+                format!("no registered provider key matches digest {key_digest}")
+            ))?;
+        let caps = self.supervisor.registry_capabilities(&key)
+            .ok_or_else(|| LiveDiagnosticsServiceError::Provider(
+                format!("no capabilities for key digest {key_digest}")
+            ))?;
+        Ok(json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "keyDigest": key.digest(),
+            "repoId": key.repo_id,
+            "worktreeId": key.worktree_id,
+            "engineId": key.engine_id,
+            "engineVersion": key.engine_version,
+            "providerId": caps.provider_id,
+            "version": caps.version,
+            "capabilities": caps.capabilities.iter().map(capability_kind_label).collect::<Vec<_>>(),
+            "sideEffectClass": side_effect_class_label(caps.side_effect_class),
+            "convergenceClass": convergence_class_label(caps.convergence_class),
+            "costClass": cost_class_label(caps.cost_class),
+        }))
+    }
+
+    /// Host fence query for enforcement: true if the session's fence is cleared (clean_exact).
+    pub fn is_fence_cleared(&self, repo_id: &str, worktree_id: &str) -> bool {
+        self.sessions
+            .get(&session_key(repo_id, worktree_id))
+            .map(|entry| entry.session.cleared_decision().is_some())
+            .unwrap_or(false)
+    }
+
     // -- reporting ------------------------------------------------------------
 
     /// Declared provider inventory, seeded policy profiles, and per-session
@@ -789,12 +938,29 @@ impl DiagnosticsService {
         })
     }
 
-    /// Subscribe placeholder: returns the current status snapshot. Streaming
-    /// presentation events are telemetry-only and can never clear the fence
-    /// (design §12), so the placeholder stays truthful until a consumer needs
-    /// more than the snapshot.
+    /// Subscribe: returns a subscription id plus the current status snapshot.
+    /// Streaming presentation events are telemetry-only and can never clear the
+    /// fence (design §12). This long-poll placeholder stays truthful until a
+    /// consumer needs real SSE; the id is derived from the current time so the
+    /// caller can deduplicate. Hosts should treat the returned status as the
+    /// immediate snapshot and not assume fence clearance from subscription alone.
     pub fn subscribe(&self) -> Value {
-        self.status()
+        let status = self.status();
+        let subscription_id = format!("sub-{}", now_unix_ms());
+        json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "subscriptionId": subscription_id,
+            "status": status,
+            "note": "presentation events are telemetry-only and never clear the fence; poll status or snapshot.await for enforcement",
+        })
+    }
+
+    /// Host fence enforcement helper: returns whether the given workspace's
+    /// fence is cleared. CodeRight, Claude Code and Codex hosts should call
+    /// this before allowing tests/builds/releases when they have opted into
+    /// fence enforcement. Returns false for unknown workspaces (fail-closed).
+    pub fn fence_allows_build(&self, repo_id: &str, worktree_id: &str) -> bool {
+        self.is_fence_cleared(repo_id, worktree_id)
     }
 }
 
@@ -1060,10 +1226,16 @@ fn diagnostics_router_with_state(state: DiagnosticsRouteState) -> Router {
             post(post_mutation_register_observed),
         )
         .route("/diagnostics/snapshot/await", post(post_snapshot_await))
+        .route("/diagnostics/snapshot/get", get(get_snapshot))
+        .route("/diagnostics/snapshot/explain", get(get_snapshot_explain))
+        .route("/diagnostics/snapshot/delta", get(get_snapshot_delta))
         .route("/diagnostics/fence/evaluate", post(post_fence_evaluate))
         .route("/diagnostics/baseline/capture", post(post_baseline_capture))
         .route("/diagnostics/baseline/update", post(post_baseline_update))
+        .route("/diagnostics/provider/list", get(get_provider_list))
+        .route("/diagnostics/provider/status", get(get_provider_status))
         .route("/diagnostics/provider/restart", post(post_provider_restart))
+        .route("/diagnostics/subscribe", get(get_subscribe))
         .with_state(state.clone())
         .layer(DefaultBodyLimit::max(MAX_DIAGNOSTICS_BODY_BYTES))
         .layer(TimeoutLayer::with_status_code(
@@ -1364,6 +1536,52 @@ async fn post_provider_restart(
     respond(service.provider_restart(&request.key_digest))
 }
 
+async fn get_snapshot(
+    State(state): State<DiagnosticsRouteState>,
+    Query(query): Query<WorkspaceScopeQuery>,
+) -> Response {
+    let service = lock_service(&state.service);
+    respond(service.snapshot_get(&query.repo_id, &query.worktree_id))
+}
+
+async fn get_snapshot_explain(
+    State(state): State<DiagnosticsRouteState>,
+    Query(query): Query<WorkspaceScopeQuery>,
+) -> Response {
+    let service = lock_service(&state.service);
+    respond(service.snapshot_explain(&query.repo_id, &query.worktree_id))
+}
+
+async fn get_snapshot_delta(
+    State(state): State<DiagnosticsRouteState>,
+    Query(query): Query<WorkspaceScopeQuery>,
+) -> Response {
+    let service = lock_service(&state.service);
+    respond(service.snapshot_delta(&query.repo_id, &query.worktree_id))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProviderStatusQuery {
+    key_digest: String,
+}
+
+async fn get_provider_list(State(state): State<DiagnosticsRouteState>) -> Response {
+    json_ok(lock_service(&state.service).provider_list())
+}
+
+async fn get_provider_status(
+    State(state): State<DiagnosticsRouteState>,
+    Query(query): Query<ProviderStatusQuery>,
+) -> Response {
+    let service = lock_service(&state.service);
+    respond(service.provider_status(&query.key_digest))
+}
+
+async fn get_subscribe(State(state): State<DiagnosticsRouteState>) -> Response {
+    json_ok(lock_service(&state.service).subscribe())
+}
+
 /// Static support description served to offline consumers such as the CLI
 /// `membrane diagnostics capabilities` path. Contains no live state.
 pub fn static_capabilities() -> Value {
@@ -1389,10 +1607,16 @@ pub fn static_capabilities() -> Value {
             "POST /diagnostics/mutation/seal",
             "POST /diagnostics/mutation/registerObserved",
             "POST /diagnostics/snapshot/await",
+            "GET /diagnostics/snapshot/get",
+            "GET /diagnostics/snapshot/explain",
+            "GET /diagnostics/snapshot/delta",
             "POST /diagnostics/fence/evaluate",
             "POST /diagnostics/baseline/capture",
             "POST /diagnostics/baseline/update",
+            "GET /diagnostics/provider/list",
+            "GET /diagnostics/provider/status",
             "POST /diagnostics/provider/restart",
+            "GET /diagnostics/subscribe",
         ],
     })
 }

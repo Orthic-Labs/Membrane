@@ -1389,6 +1389,28 @@ fn is_model_bound(method: &Method, path: &str) -> bool {
     http_route_spec(method, path).is_some_and(|spec| spec.2 == HttpWorkClass::Model)
 }
 
+/// Host fence enforcement for CodeRight / Claude Code / Codex.
+/// Before tests / builds / releases, hosts must query the diagnostics fence.
+/// This helper is the server-side enforcement point: if the fence is dirty
+/// (no cleared decision for the current sealed epoch), the host must block
+/// the operation. The check is fail-closed: unknown workspaces return true
+/// (block). Hosts enforce; providers only report evidence (design §10).
+/// Integration: CodeRight dispatcher calls `diagnostics.status` or
+/// `fence_allows_build` before spawning `cargo test` / `npm test` /
+/// `build` and returns 409 with `fence_not_cleared` if blocked.
+/// Claude/Codex observed-hook mode calls the same check before
+/// `reconciliation_only` gates.
+pub fn host_fence_blocks_build(
+    diagnostics: Option<&crate::live_diagnostics_service::DiagnosticsService>,
+    repo_id: &str,
+    worktree_id: &str,
+) -> bool {
+    match diagnostics {
+        Some(service) => !service.is_fence_cleared(repo_id, worktree_id),
+        None => false,
+    }
+}
+
 fn valid_idempotency_key(key: &str) -> bool {
     (1..=128).contains(&key.len()) && key.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
 }

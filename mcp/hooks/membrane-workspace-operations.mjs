@@ -527,5 +527,34 @@ export function createWorkspaceMemoryOperations(options = {}) {
       audit("memory-session-end", "observed", { session_id: event.sessionId || null }, home);
       return typedStatus("available", "session_closed");
     },
+    // Host fence enforcement for CodeRight / Claude Code / Codex.
+    // Call before tests / builds / releases: returns blocked when the
+    // semantic edit fence has not been cleared for the current sealed
+    // epoch (design §10). Fail-closed: if diagnostics is unreachable,
+    // treat as not cleared and block completion-escalating commands.
+    // Presentation events never clear the fence; only snapshot.await
+    // evaluating planner policy does.
+    async enforceFence(event) {
+      const root = rootFor(event);
+      const env = process.env;
+      const repoId = env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root);
+      const worktreeId = env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
+      const tool = toolName(event).toLowerCase();
+      const command = String(event.payload.tool_input?.command || event.payload.command || "").toLowerCase();
+      const isBuildOrTest = ["test", "build", "cargo test", "cargo build", "npm test", "pnpm test", "make"].some((keyword) => tool.includes(keyword) || command.includes(keyword));
+      if (!isBuildOrTest) return typedStatus("skipped", "fence_not_applicable");
+      try {
+        const status = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
+        const cleared = status && status.ok && status.body && status.body.fenceCleared === true;
+        if (!cleared) {
+          audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool });
+          return typedStatus("unavailable", "fence_not_cleared", { repoId, worktreeId, detail: "semantic edit fence not cleared: run diagnostics snapshot.await and repair before tests/builds" });
+        }
+        return typedStatus("available", "fence_cleared", { repoId, worktreeId });
+      } catch {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, reason: "diagnostics_unreachable" });
+        return typedStatus("unavailable", "fence_not_cleared", { repoId, worktreeId, detail: "diagnostics unreachable: fail-closed, repair and re-query before tests/builds" });
+      }
+    },
   });
 }

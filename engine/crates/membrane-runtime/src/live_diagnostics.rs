@@ -15,7 +15,7 @@
 
 use membrane_protocol::diagnostics::{
     evaluate_gate, AggregateDeltaV1, AggregateIssueDelta, BlueprintFreshness,
-    ConvergenceClass, CostClass, CoverageLaneV1, DeltaClassification,
+    CapabilityVocabulary, ConvergenceClass, CostClass, CoverageLaneV1, DeltaClassification,
     DiagnosticEvidenceSnapshotV1, DiagnosticGateDecisionV1,
     DiagnosticIssueV1, GateOutcome, GatePolicyProfileV1, LaneState, ObservationV1,
     SourceClass, TypedOmission, WorkspaceEpochV1,
@@ -1085,6 +1085,8 @@ pub struct DiagnosticsSession {
     open_mutation: bool,
     cleared: Option<FenceClearance>,
     baseline: Option<Vec<DiagnosticIssueV1>>,
+    latest_snapshot: Option<DiagnosticEvidenceSnapshotV1>,
+    latest_decision: Option<DiagnosticGateDecisionV1>,
 }
 
 impl Default for DiagnosticsSession {
@@ -1100,7 +1102,17 @@ impl DiagnosticsSession {
             open_mutation: false,
             cleared: None,
             baseline: None,
+            latest_snapshot: None,
+            latest_decision: None,
         }
+    }
+
+    pub fn latest_snapshot(&self) -> Option<&DiagnosticEvidenceSnapshotV1> {
+        self.latest_snapshot.as_ref()
+    }
+
+    pub fn latest_decision(&self) -> Option<&DiagnosticGateDecisionV1> {
+        self.latest_decision.as_ref()
     }
 
     pub fn latest_sealed(&self) -> Option<&WorkspaceEpochV1> {
@@ -1234,7 +1246,25 @@ impl DiagnosticsSession {
                     coverage_lanes.push(output.lane);
                     observations.extend(output.observations);
                 }
-                Err(AcquisitionFailure::TimedOut { .. }) => {
+                Err(AcquisitionFailure::TimedOut { partial, .. }) => {
+                    if let Some(partial) = partial {
+                        coverage_lanes.push(partial.lane);
+                        observations.extend(partial.observations);
+                    } else if let Some(caps) = supervisor.registry_capabilities(key) {
+                        let vocabularies = capability_kind_to_vocabularies(&caps.capabilities);
+                        coverage_lanes.push(CoverageLaneV1 {
+                            provider_id: key.engine_id.clone(),
+                            scope: Vec::new(),
+                            capabilities_covered: vocabularies,
+                            convergence_class: caps.convergence_class,
+                            bound_workspace_epoch: sealed.epoch,
+                            state: LaneState::TimedOut,
+                            omissions: vec![TypedOmission {
+                                code: "provider_timed_out".to_string(),
+                                detail: format!("provider {} timed out", key.engine_id),
+                            }],
+                        });
+                    }
                     omissions.push(TypedOmission {
                         code: "provider_timed_out".to_string(),
                         detail: format!("provider {} timed out", key.engine_id),
@@ -1292,6 +1322,8 @@ impl DiagnosticsSession {
             snapshot.aggregate_delta = Some(AggregateDeltaV1 { issues: deltas });
         }
         let decision = evaluate_gate(&snapshot, expected_epoch, policy);
+        self.latest_snapshot = Some(snapshot.clone());
+        self.latest_decision = Some(decision.clone());
         if matches!(decision.outcome, GateOutcome::CleanExact) {
             self.cleared = Some(FenceClearance {
                 epoch_number: epoch_number(&sealed),
@@ -1357,6 +1389,27 @@ fn language_dialect_for(capability: &CapabilityVocabulary) -> &'static str {
     }
 }
 
+fn capability_kind_to_vocabularies(kinds: &BTreeSet<CapabilityKind>) -> Vec<membrane_protocol::diagnostics::CapabilityVocabulary> {
+    use membrane_protocol::diagnostics::CapabilityVocabulary;
+    let mut out = Vec::new();
+    for kind in kinds {
+        let vocab = match kind {
+            CapabilityKind::Parser => CapabilityVocabulary::Syntax,
+            CapabilityKind::RepositoryFinding => CapabilityVocabulary::RepositoryModuleResolution,
+            CapabilityKind::NativeLanguageService => CapabilityVocabulary::TypeSemantics,
+            CapabilityKind::StaticAnalyzer => CapabilityVocabulary::ConfiguredStaticPolicy,
+            CapabilityKind::CompilerCheck => CapabilityVocabulary::CompilerProjectSemantics,
+        };
+        if !out.contains(&vocab) {
+            out.push(vocab);
+        }
+    }
+    if out.is_empty() {
+        out.push(CapabilityVocabulary::Syntax);
+    }
+    out
+}
+
 fn build_coverage_obligations(
     sealed: &WorkspaceEpochV1,
     required_capabilities: &[membrane_protocol::diagnostics::CapabilityVocabulary],
@@ -1384,6 +1437,7 @@ fn build_coverage_obligations(
     let mut obligations = Vec::new();
     for capability in &effective_required {
         let mut satisfied = false;
+        let mut timed_out = false;
         for lane in coverage_lanes {
             let exact_convergence = matches!(
                 lane.convergence_class,
@@ -1394,14 +1448,23 @@ fn build_coverage_obligations(
             if lane.capabilities_covered.contains(capability)
                 && exact_convergence
                 && lane.bound_workspace_epoch == sealed.epoch
-                && lane.state == LaneState::Complete
             {
-                satisfied = true;
-                break;
+                match lane.state {
+                    LaneState::Complete => {
+                        satisfied = true;
+                        break;
+                    }
+                    LaneState::TimedOut => {
+                        timed_out = true;
+                    }
+                    _ => {}
+                }
             }
         }
         let state = if satisfied {
             ObligationState::SatisfiedExact
+        } else if timed_out {
+            ObligationState::TimedOut
         } else {
             ObligationState::Unsatisfied
         };
@@ -2341,36 +2404,19 @@ mod tests {
         let mut supervisor =
             DiagnosticsSupervisor::with_clock(LiveDiagnosticsConfig::default(), test_clock(&now));
         let key = test_key("clean");
-        // Lane covers Syntax so the default Syntax obligation can be satisfied
-        // and the fence can clear (empty-ensemble fix).
         supervisor.register(
             key.clone(),
             caps("clean", CostClass::Instant, &[CapabilityKind::Parser]),
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || {
-                    queued_fake(
-                        "clean",
-                        &log,
-                        &now,
-                        VecDeque::from([Ok(FakeProvider::lane_output(
-                            Vec::new(),
-                            "clean",
-                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
-                            1,
-                        ))]),
-                        0,
-                    )
-                })
+                Box::new(move || fake_provider("clean", &log, &now))
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let mut policy = GatePolicyProfileV1::default();
-        policy.required_capabilities =
-            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax];
+        let policy = GatePolicyProfileV1::default();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2406,28 +2452,13 @@ mod tests {
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || {
-                    queued_fake(
-                        "clean",
-                        &log,
-                        &now,
-                        VecDeque::from([Ok(FakeProvider::lane_output(
-                            Vec::new(),
-                            "clean",
-                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
-                            1,
-                        ))]),
-                        0,
-                    )
-                })
+                Box::new(move || fake_provider("clean", &log, &now))
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let mut policy = GatePolicyProfileV1::default();
-        policy.required_capabilities =
-            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax];
+        let policy = GatePolicyProfileV1::default();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
