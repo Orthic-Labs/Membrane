@@ -6,11 +6,11 @@ import { fileURLToPath } from "node:url";
 import { engineReleaseIdentity } from "./release-identity.mjs";
 import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
-const APP="membrane-hub",VERSION="0.1.11",NAMES=["cortex","membrane"];
+const APP="membrane-hub",VERSION="0.1.12",NAMES=["cortex","membrane"];
 const ROLE={cortex:"cli",membrane:"membrane"};
 const TARGET="aarch64-apple-darwin",HOST="darwin-arm64";
 const KEYS=["commit","dirty","fileCount","sourceTreePath","sourceTreeSha256","releaseGeneration"];
-const GENERATED=["apps/membrane-hub/dist","apps/membrane-hub/src-tauri/binaries","apps/membrane-hub/src-tauri/target","apps/membrane-hub/src-tauri/gen","apps/membrane-hub/Membrane Hub_0.1.11_aarch64.dmg","engine/target","apps/membrane-hub/node_modules","tools/.cache"];
+const GENERATED=["apps/membrane-hub/dist","apps/membrane-hub/src-tauri/binaries","apps/membrane-hub/src-tauri/target","apps/membrane-hub/src-tauri/gen","apps/membrane-hub/Membrane Hub_0.1.12_aarch64.dmg","engine/target","apps/membrane-hub/node_modules","tools/.cache"];
 export const SIDECAR_NAMES=[...NAMES],REQUIRED_IDENTITY_KEYS=[...KEYS];
 export const sha256OfFile=(path)=>createHash("sha256").update(readFileSync(path)).digest("hex");
 export const targetTriple=(platform)=>{if(platform!=="mac")throw Error("Mac release target required");return TARGET;};
