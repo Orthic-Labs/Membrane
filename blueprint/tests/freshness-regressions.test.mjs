@@ -143,6 +143,39 @@ test("snapshot reconcile durably acknowledges same-content event", async () => {
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("startup reconcile ignores unchanged document replay but applies real document edits", async () => {
+  const repo = makeRepo("blueprint-reconcile-doc-replay-");
+  try {
+    mkdirSync(join(repo, "docs"), { recursive: true });
+    const document = join(repo, "docs/UNCHANGED.md");
+    writeFileSync(document, "# Stable document\n\nThis content is unchanged.\n");
+    assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);
+    const snapshot = join(repo, ".agent/graph/watch.snapshot");
+    writeFileSync(snapshot, "fixture");
+    const db = openStore(dbPath(repo));
+    let event = { eventKind: "modify", path: "docs/UNCHANGED.md", observedMs: 1 };
+    try {
+      const unchanged = await reconcile(db, repo, {
+        snapshotPath: snapshot,
+        adapter: { eventsSince: async () => [event], writeSnapshot: async () => {} },
+      });
+      assert.equal(unchanged.queued, 0);
+      assert.equal(unchanged.applied, 0);
+      assert.deepEqual(readPendingDomains(db), []);
+
+      writeFileSync(document, "# Changed document\n\nThis content is real.\n");
+      event = { eventKind: "modify", path: "docs/UNCHANGED.md", observedMs: 2 };
+      const changed = await reconcile(db, repo, {
+        snapshotPath: snapshot,
+        adapter: { eventsSince: async () => [event], writeSnapshot: async () => {} },
+      });
+      assert.equal(changed.queued, 1);
+      assert.equal(changed.applied, 1);
+      assert.deepEqual(readPendingDomains(db), ["doc"]);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("journal rename removes old path, owners, state, and Merkle leaf", async () => {
   const repo = makeRepo("blueprint-rename-journal-");
   try {

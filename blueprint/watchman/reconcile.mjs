@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { diffLedgerAgainstTree } from "../src/graph/merkle-ledger.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 import { scanSourceMetadataPublic, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
@@ -30,6 +31,23 @@ function readConfiguredIgnoredPrefixes(root, outDir = ".agent") {
 
 function snapshotPath(root, outDir) { return join(resolve(root), outDir, "graph", "watch.snapshot"); }
 function canonicalRoot(value) { const root = resolve(value); try { return realpathSync(root); } catch { return root; } }
+
+function isDocumentPath(path) {
+  const normalized = String(path ?? "").replaceAll("\\", "/");
+  return normalized.endsWith(".md") || ["AGENTS.md", "CLAUDE.md", "README.md"].includes(normalized);
+}
+
+// A saved native-watch snapshot can replay an old create/update after a full
+// build has already published identical document content. Keep real edits
+// observable, but do not reopen doc freshness for unchanged startup replay.
+function isUnchangedDocumentEvent(db, root, event) {
+  if (!isDocumentPath(event?.path) || !["create", "modify"].includes(event?.eventKind)) return false;
+  const path = String(event.path).replaceAll("\\", "/");
+  const leaf = db.prepare("SELECT digest FROM generation_leaf WHERE path=? AND kind='file'").get(path);
+  if (!leaf) return false;
+  try { return stableRead(join(root, path)).contentDigest === leaf.digest; }
+  catch { return false; }
+}
 
 function metadataEvents(db, root, scanMetadata = scanSourceMetadataPublic, walkOptions = {}) {
   const recorded = new Map(db.prepare("SELECT path,size,mtime_ms,file_identity FROM file_state").all().map((row) => [row.path, row]));
@@ -93,7 +111,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       pending.push(...coalesceRenameEvents([
         ...fastEvents,
         ...metadataEvents(db, root, options.scanSourceMetadata ?? scanSourceMetadataPublic, { ignoredPrefixes }),
-      ]));
+      ]).filter((event) => !isUnchangedDocumentEvent(db, root, event)));
       diff = {
         changed: [...new Set(pending.filter((event) => event.eventKind === "modify").map((event) => event.path))].sort(),
         added: [...new Set(pending.filter((event) => event.eventKind === "create").map((event) => event.path))].sort(),
