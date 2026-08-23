@@ -2422,7 +2422,6 @@ name = "membrane-client"
 version = "0.1.0"
 dependencies = [
  "serde_json",
- "tokio-util",
 ]
 
 [[package]]
@@ -2528,18 +2527,9 @@ dependencies = [
 name = "membrane-testkit"
 version = "0.1.0"
 dependencies = [
- "cortex-core",
- "cortex-store",
- "membrane-client",
- "membrane-core",
- "membrane-federation",
- "membrane-protocol",
  "membrane-provider-sdk",
- "membrane-runtime",
  "serde",
  "serde_json",
- "tokio",
- "tokio-util",
 ]
 
 [[package]]
