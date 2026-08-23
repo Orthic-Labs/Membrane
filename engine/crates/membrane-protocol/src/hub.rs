@@ -76,4 +76,8 @@ pub struct HubSnapshotV1 {
     pub product_id: String,
     pub observed_at_unix_ms: u64,
     pub sections: BTreeMap<String, HubSectionV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub membrane_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subsystems: Option<BTreeMap<String, HubSectionV1>>,
 }

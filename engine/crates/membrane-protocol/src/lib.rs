@@ -37,6 +37,7 @@ pub mod operations;
 pub mod portable_pack;
 pub mod provider_readiness;
 pub mod release_channel;
+pub mod membrane_status;
 pub mod source_resolution;
 pub mod status;
 pub mod team_policy;
@@ -71,6 +72,10 @@ pub use heartbeat::{
 };
 pub use hub::{
     HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HUB_SCHEMA_VERSION,
+};
+pub use membrane_status::{
+    membrane_parent_state, membrane_parent_state_from_supervisor_str, MembraneParentState,
+    SUBSYSTEM_NAMES,
 };
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,

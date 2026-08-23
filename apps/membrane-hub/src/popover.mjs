@@ -1,5 +1,6 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
 export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
+export const SUBSYSTEM_ORDER = ['pull', 'push', 'cortex', 'blueprint', 'guide', 'adapt'];
 const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
 const state = section => typeof section === 'object' && section ? section.state : null;
 const sectionStatus = section => {
@@ -10,9 +11,23 @@ const sectionStatus = section => {
 const serviceReason = (snapshot, runtime, status) => {
   if (status === 'offline') return String(runtime?.lastReason ?? runtime?.reason ?? 'Resident service offline');
   if (!snapshot) return 'No snapshot available';
+  // Prefer payload membrane_state when present — frozen producer-path mapping
+  const payloadState = snapshot?.payload?.membrane_state ?? snapshot?.payload?.membraneState;
+  if (payloadState) {
+    const ps = String(payloadState).toLowerCase();
+    if (ps === 'degraded') return String(runtime?.lastReason ?? 'Resident health degraded');
+    if (ps === 'offline') return String(runtime?.lastReason ?? 'Resident service offline');
+  }
   return String(runtime?.lastReason ?? runtime?.reason ?? (status === 'running' ? 'Resident service healthy' : 'Resident service degraded'));
 };
 function serviceState(snapshot, runtime) {
+  // Frozen parent mapping lives in the Rust producer (health ok + snapshot validity + supervisor).
+  // The Hub snapshot carries the canonical parent state as `membrane_state`.
+  const payloadState = snapshot?.payload?.membrane_state ?? snapshot?.payload?.membraneState;
+  if (payloadState) {
+    const ps = String(payloadState).toLowerCase();
+    if (['running', 'degraded', 'offline'].includes(ps)) return ps;
+  }
   const service = String(runtime?.serviceState ?? runtime?.service_state ?? 'unknown').toLowerCase();
   if (service === 'degraded') return 'degraded';
   if (service !== 'running') return 'offline';
@@ -23,9 +38,14 @@ function serviceState(snapshot, runtime) {
 export function viewModel(snapshot, runtime) {
   const p = snapshot?.payload || {};
   const sectionMap = p.sections && typeof p.sections === 'object' ? p.sections : {};
+  const subsystemMap = p.subsystems && typeof p.subsystems === 'object' ? p.subsystems : {};
   const service = serviceState(snapshot, runtime);
   const resources = Object.fromEntries(SECTION_ORDER.map(key => {
     const section = sectionMap[key];
+    return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence') }];
+  }));
+  const subsystems = Object.fromEntries(SUBSYSTEM_ORDER.map(key => {
+    const section = subsystemMap[key];
     return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence') }];
   }));
   const observed = snapshot?.observed_at_unix_ms ?? p.observedAtUnixMs ?? null;
@@ -37,6 +57,7 @@ export function viewModel(snapshot, runtime) {
     service: { state: service, status, reason: serviceReason(snapshot, runtime, service) },
     reason: serviceReason(snapshot, runtime, service),
     resources,
+    subsystems,
     // Keep compact popover aliases, but each one now names one resource. No
     // child status can promote or demote Membrane's resident-service status.
     delivery: resources.deliveries.status,

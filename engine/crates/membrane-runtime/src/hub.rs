@@ -203,6 +203,47 @@ impl HubInputsV1 {
     }
 }
 
+/// Six semantic Membrane subsystems — distinct from the eight operational
+/// Hub resources. Each reports Available/Degraded/Unavailable/Not configured
+/// independently.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HubSubsystemInputsV1 {
+    pub pull: HubReadV1,
+    pub push: HubReadV1,
+    pub cortex: HubReadV1,
+    pub blueprint: HubReadV1,
+    pub guide: HubReadV1,
+    pub adapt: HubReadV1,
+}
+
+impl HubSubsystemInputsV1 {
+    pub fn unavailable(reason: &str) -> Self {
+        let unavailable = || HubReadV1::Unavailable {
+            reason: reason.into(),
+        };
+        Self {
+            pull: unavailable(),
+            push: unavailable(),
+            cortex: unavailable(),
+            blueprint: unavailable(),
+            guide: unavailable(),
+            adapt: unavailable(),
+        }
+    }
+
+    /// Map to the wire representation consumed by `HubSnapshotV1::subsystems`.
+    pub fn sections(&self) -> BTreeMap<String, HubSectionV1> {
+        BTreeMap::from([
+            ("pull".into(), self.pull.clone().section()),
+            ("push".into(), self.push.clone().section()),
+            ("cortex".into(), self.cortex.clone().section()),
+            ("blueprint".into(), self.blueprint.clone().section()),
+            ("guide".into(), self.guide.clone().section()),
+            ("adapt".into(), self.adapt.clone().section()),
+        ])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HubFacadeV1 {
     stream: Option<HubStreamV1>,
@@ -253,6 +294,16 @@ impl HubFacadeV1 {
     }
 
     pub fn snapshot(&self, observed_at_unix_ms: u64, inputs: HubInputsV1) -> HubSnapshotV1 {
+        self.snapshot_with_subsystems(observed_at_unix_ms, inputs, None, None)
+    }
+
+    pub fn snapshot_with_subsystems(
+        &self,
+        observed_at_unix_ms: u64,
+        inputs: HubInputsV1,
+        membrane_state: Option<String>,
+        subsystems: Option<BTreeMap<String, HubSectionV1>>,
+    ) -> HubSnapshotV1 {
         HubSnapshotV1 {
             schema_version: HUB_SCHEMA_VERSION,
             product_id: "membrane".into(),
@@ -267,6 +318,8 @@ impl HubFacadeV1 {
                 ("sentinel".into(), inputs.sentinel.section()),
                 ("alerts".into(), inputs.alerts.section()),
             ]),
+            membrane_state,
+            subsystems,
         }
     }
 }

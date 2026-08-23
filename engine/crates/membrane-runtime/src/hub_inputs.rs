@@ -13,27 +13,143 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-use crate::hub::{HubInputsV1, HubMetadataV1, HubReadV1};
+use crate::hub::{HubInputsV1, HubMetadataV1, HubReadV1, HubSubsystemInputsV1};
+use std::collections::BTreeMap;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const IO_TIMEOUT: Duration = Duration::from_millis(300);
 pub const DEFAULT_LOCAL_SERVICE_PORT: u16 = 47851;
+
+/// Live snapshot parts produced from the resident `/health` — inputs plus
+/// frozen parent state and six semantic subsystem surfaces.
+#[derive(Debug, Clone)]
+pub struct LiveSnapshotParts {
+    pub inputs: HubInputsV1,
+    pub membrane_state: String,
+    pub subsystems: BTreeMap<String, membrane_protocol::HubSectionV1>,
+}
 
 /// Best-effort live read of local Membrane resident's `/health` endpoint,
 /// mapped into `HubInputsV1`. Returns `None` on any connection, I/O, or
 /// parse failure so the caller can fall back to the honest "unavailable"
 /// facade rather than show a fabricated state.
 pub fn live_inputs_from_local_service() -> Option<HubInputsV1> {
+    live_snapshot_parts_from_local_service().map(|parts| parts.inputs)
+}
+
+/// Live read that also returns frozen parent state and subsystem map.
+/// Returns `None` only when `/health` is unreachable (Offline case); caller
+/// should fall back to `HubInputsV1::unavailable` and treat parent as Offline.
+pub fn live_snapshot_parts_from_local_service() -> Option<LiveSnapshotParts> {
     let port = local_service_port()?;
     let health = fetch_health_json(port)?;
     let workspace_root = configured_workspace_root();
     let delivery = read_delivery_health_json(&workspace_root);
     let blueprint = crate::freshness::read_blueprint_status(&workspace_root);
-    Some(inputs_from_health_with_blueprint(
-        &health,
-        delivery.as_ref(),
-        blueprint,
-    ))
+    Some(snapshot_parts_from_health(&health, delivery.as_ref(), blueprint))
+}
+
+/// Pure mapping for tests — same as `live_snapshot_parts_from_local_service`
+/// but with injected health/blueprint values.
+pub fn snapshot_parts_from_health(
+    health: &serde_json::Value,
+    delivery: Option<&serde_json::Value>,
+    blueprint: Result<serde_json::Value, String>,
+) -> LiveSnapshotParts {
+    let inputs = inputs_from_health_with_blueprint(health, delivery, blueprint.clone());
+    let health_ok = health.get("ok").and_then(serde_json::Value::as_bool);
+    // Live snapshot is available when we reached /health and parsed it.
+    let live_available = true;
+    let parent = membrane_protocol::membrane_parent_state(true, health_ok, live_available);
+    let subsystems = subsystem_inputs_from_health(health, blueprint, &inputs.memory, &inputs.sentinel)
+        .sections();
+    LiveSnapshotParts {
+        inputs,
+        membrane_state: parent.as_str().to_string(),
+        subsystems,
+    }
+}
+
+/// Snapshot parts for the offline fallback (health unreachable).
+pub fn offline_snapshot_parts() -> LiveSnapshotParts {
+    let inputs = HubInputsV1::unavailable("source_not_connected");
+    let subsystems = HubSubsystemInputsV1::unavailable("source_not_connected").sections();
+    LiveSnapshotParts {
+        inputs,
+        membrane_state: membrane_protocol::MembraneParentState::Offline
+            .as_str()
+            .to_string(),
+        subsystems,
+    }
+}
+
+/// Build the six semantic subsystem surfaces from actual typed evidence.
+///
+/// Ownership:
+/// - Pull — semantic evidence retrieval (pull/federation). No trustworthy health
+///   producer yet → Not configured (Un­available + not_instrumented).
+/// - Push — reversible reduction. No instrumentation → Not configured.
+/// - Cortex — durable knowledge (MemoryStore + sentinel). Source: memory
+///   (catalog/database health) + sentinel (memory_sentinel). Available when
+///   both are Available; Degraded when either is Degraded; otherwise Unavailable.
+/// - Blueprint — repository truth. Source: live public Blueprint IPC status
+///   (freshness.rs::read_blueprint_status) — reuse existing seam.
+/// - Guide — document navigation/index. No trustworthy Guide health producer
+///   yet → Not configured. Do NOT conflate with Cortex/sentinel.
+/// - Adapt — learning/proposals. No instrumentation → Not configured.
+fn subsystem_inputs_from_health(
+    _health: &serde_json::Value,
+    blueprint: Result<serde_json::Value, String>,
+    memory: &HubReadV1,
+    sentinel: &HubReadV1,
+) -> HubSubsystemInputsV1 {
+    let not_instrumented = HubReadV1::Unavailable {
+        reason: "not_instrumented".into(),
+    };
+    let blueprint_hub = blueprint_hub_read(blueprint);
+    let cortex = cortex_hub_read(memory, sentinel);
+    HubSubsystemInputsV1 {
+        pull: not_instrumented.clone(),
+        push: not_instrumented.clone(),
+        cortex,
+        blueprint: blueprint_hub,
+        guide: not_instrumented.clone(),
+        adapt: not_instrumented,
+    }
+}
+
+fn cortex_hub_read(memory: &HubReadV1, sentinel: &HubReadV1) -> HubReadV1 {
+    match (memory, sentinel) {
+        (HubReadV1::Available { .. }, HubReadV1::Available { .. }) => HubReadV1::Available {
+            items: vec![serde_json::json!({"owner": "cortex", "evidence": "health+sentinel"})],
+            metadata: HubMetadataV1 {
+                resolver: Some("hub_inputs::cortex_hub_read".into()),
+                source: Some("cortex".into()),
+                evidence: Some("GET /health + sentinel".into()),
+                observed_at_unix_ms: now_unix_ms(),
+                cache_age_ms: 0,
+            },
+        },
+        (HubReadV1::Degraded { .. }, _) | (_, HubReadV1::Degraded { .. }) => HubReadV1::Degraded {
+            reason: "cortex_degraded".into(),
+            items: vec![serde_json::json!({"owner": "cortex"})],
+            metadata: HubMetadataV1 {
+                resolver: Some("hub_inputs::cortex_hub_read".into()),
+                source: Some("cortex".into()),
+                evidence: Some("GET /health + sentinel".into()),
+                observed_at_unix_ms: now_unix_ms(),
+                cache_age_ms: 0,
+            },
+        },
+        _ => {
+            let reason = match (memory, sentinel) {
+                (HubReadV1::Unavailable { reason }, _) => reason.clone(),
+                (_, HubReadV1::Unavailable { reason }) => reason.clone(),
+                _ => "cortex_unavailable".into(),
+            };
+            HubReadV1::Unavailable { reason }
+        },
+    }
 }
 
 fn local_service_port() -> Option<u16> {
@@ -819,5 +935,132 @@ mod tests {
         ));
         assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
         assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));
+    }
+
+    // --- Producer-path contract tests for frozen parent + subsystem mapping ---
+
+    #[test]
+    fn parent_healthy_resident_plus_valid_snapshot_is_running() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
+        assert_eq!(parts.membrane_state, "running");
+        // Also prove via protocol helper directly
+        assert_eq!(
+            membrane_protocol::membrane_parent_state(true, Some(true), true),
+            membrane_protocol::MembraneParentState::Running
+        );
+    }
+
+    #[test]
+    fn parent_unhealthy_resident_plus_valid_snapshot_is_degraded() {
+        // Real producer path: ok=false with valid snapshot must be Degraded, not Running
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": false, "catalog": {"status": "error"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
+        assert_eq!(parts.membrane_state, "degraded");
+        assert_eq!(
+            membrane_protocol::membrane_parent_state(true, Some(false), true),
+            membrane_protocol::MembraneParentState::Degraded
+        );
+        // Even with all children healthy, parent degraded when health is false
+        let healthy_child_input = inputs_from_health(&health, None);
+        assert!(matches!(healthy_child_input.providers, HubReadV1::Available { .. }));
+    }
+
+    #[test]
+    fn parent_healthy_resident_plus_invalid_snapshot_is_degraded() {
+        assert_eq!(
+            membrane_protocol::membrane_parent_state(true, Some(true), false),
+            membrane_protocol::MembraneParentState::Degraded
+        );
+    }
+
+    #[test]
+    fn parent_unreachable_resident_is_offline() {
+        let offline = offline_snapshot_parts();
+        assert_eq!(offline.membrane_state, "offline");
+        assert_eq!(
+            membrane_protocol::membrane_parent_state(true, None, true),
+            membrane_protocol::MembraneParentState::Offline
+        );
+        assert_eq!(
+            membrane_protocol::membrane_parent_state(false, Some(true), true),
+            membrane_protocol::MembraneParentState::Offline
+        );
+    }
+
+    #[test]
+    fn every_child_unavailable_while_resident_healthy_parent_remains_running() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        // Force all child resources to unavailable (no DB, no delivery, blueprint missing)
+        let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
+        assert_eq!(parts.membrane_state, "running");
+        // Children are unavailable/degraded but parent is Running
+        assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
+        assert!(matches!(parts.inputs.repositories, HubReadV1::Unavailable { .. }));
+    }
+
+    #[test]
+    fn six_subsystem_states_exist_independently() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
+        assert_eq!(parts.subsystems.len(), 6);
+        for name in membrane_protocol::SUBSYSTEM_NAMES {
+            assert!(parts.subsystems.contains_key(name), "missing subsystem {name}");
+        }
+        // Operational resources are 8 and distinct from subsystems
+        assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
+        assert!(parts.subsystems.contains_key("blueprint"));
+        // Ensure subsystem keys are not confused with resource keys
+        assert!(!parts.subsystems.contains_key("deliveries"));
+        assert!(!parts.subsystems.contains_key("memory"));
+    }
+
+    #[test]
+    fn uninstrumented_subsystem_is_not_configured() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
+        for name in ["pull", "push", "guide", "adapt"] {
+            let section = &parts.subsystems[name];
+            assert_eq!(section.state, membrane_protocol::HubStateV1::Unavailable);
+            assert_eq!(section.reason, "not_instrumented");
+        }
+    }
+
+    #[test]
+    fn blueprint_unavailable_does_not_affect_parent() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = snapshot_parts_from_health(&health, None, Err("connect refused".into()));
+        assert_eq!(parts.membrane_state, "running");
+        assert_eq!(parts.subsystems["blueprint"].state, membrane_protocol::HubStateV1::Unavailable);
+        assert_eq!(parts.subsystems["blueprint"].reason, "blueprint_unavailable");
+        // Parent remains Running even though Blueprint subsystem is Unavailable
+    }
+
+    #[test]
+    fn operational_resources_remain_separate_from_subsystems() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        ).unwrap();
+        let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
+        // Operational sentinel should NOT be presented as Guide
+        let guide_section = &parts.subsystems["guide"];
+        assert_eq!(guide_section.reason, "not_instrumented");
+        // Cortex owns sentinel/memory, not Guide
+        let cortex_section = &parts.subsystems["cortex"];
+        // With missing DB, sentinel is unavailable, so cortex is unavailable with missing_input or not_instrumented?
+        // Accept either but ensure Guide is not sentinel
+        assert_ne!(guide_section.reason, cortex_section.reason);
     }
 }
