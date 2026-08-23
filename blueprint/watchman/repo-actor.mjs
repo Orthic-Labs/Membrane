@@ -19,6 +19,18 @@ function canonicalRoot(value) { const root = resolve(value); try { return realpa
 function dbPath(root, outDir) { return join(resolve(root), outDir, "graph", "graph.db"); }
 function stateValue(db, key, fallback = null) { return db.prepare("SELECT value FROM watch_state WHERE key=?").get(key)?.value ?? fallback; }
 function setState(db, key, value) { db.prepare("INSERT INTO watch_state(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, String(value)); }
+function isDocumentPath(path) {
+  const normalized = normalizePath(path);
+  return normalized.endsWith(".md") || ["AGENTS.md", "CLAUDE.md", "README.md"].includes(normalized);
+}
+function isUnchangedDocumentStartupEvent(db, root, event) {
+  if (!isDocumentPath(event?.path) || !["create", "modify"].includes(event?.eventKind)) return false;
+  const path = normalizePath(event.path);
+  const leaf = db.prepare("SELECT digest FROM generation_leaf WHERE path=? AND kind='file'").get(path);
+  if (!leaf) return false;
+  try { return stableRead(join(root, path)).contentDigest === leaf.digest; }
+  catch { return false; }
+}
 function sourceFilesFromStore(db) {
   return listFileMetadata(db).map((file) => ({
     path: file.path,
@@ -368,7 +380,8 @@ export class RepositoryActor extends EventEmitter {
       if (this.hadSnapshot) {
         const events = await this.track(run, this.adapter.eventsSince(this.root, this.snapshotPath, this.ignore));
         if (!this.active(run)) return;
-        if (events.length) { this.ingest(events, run); await this.flush(true, run); }
+        const startupEvents = events.filter((event) => !isUnchangedDocumentStartupEvent(this.openDbOnce(), this.root, event));
+        if (startupEvents.length) { this.ingest(startupEvents, run); await this.flush(true, run); }
       }
       if (!this.active(run)) return;
       const startupReconcile = this.track(run, this.reconcile(this.openDbOnce(), this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore, signal: run.controller.signal }));

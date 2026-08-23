@@ -40,6 +40,34 @@ test("watch worker persists source/apply clocks and applies one-file delta", asy
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("startup snapshot replay ignores unchanged document event", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-watchman-doc-replay-"));
+  let actor;
+  cpSync(FIXTURE, repo, { recursive: true });
+  try {
+    mkdirSync(join(repo, "docs"), { recursive: true });
+    writeFileSync(join(repo, "docs/stable.md"), "# Stable\n");
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const snapshotPath = join(repo, ".agent/graph/watch.snapshot");
+    writeFileSync(snapshotPath, "fixture");
+    actor = new RepositoryActor({
+      root: repo,
+      snapshotPath,
+      adapter: {
+        startWatch: async () => ({ unsubscribe: async () => {} }),
+        eventsSince: async () => [{ eventKind: "create", path: "docs/stable.md", observedMs: 1 }],
+        writeSnapshot: async () => {},
+      },
+    });
+    await actor.start();
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal").get().n, 0);
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM watch_state WHERE key='domains_pending'").get().n, 0);
+    } finally { closeStore(db); }
+  } finally { await actor?.stop(); rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("overflow is durable and does not claim reconciliation", async () => {
   const repo = mkdtempSync(join(tmpdir(), "blueprint-watchman-gap-"));
   cpSync(FIXTURE, repo, { recursive: true });
