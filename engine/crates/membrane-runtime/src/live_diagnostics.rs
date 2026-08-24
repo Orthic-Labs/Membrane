@@ -1557,9 +1557,12 @@ impl TouchedLanguages {
 
 /// Derive required capabilities from the touched scope (design §8). A JS/TS
 /// mutation requires repository module resolution plus import/export binding
-/// plus type semantics on top of syntax; a Rust mutation requires name/type/
-/// compiler-project semantics. Syntax is always required so an empty or
-/// unclassifiable scope can never degrade into no requirements.
+/// plus type semantics on top of syntax; a Rust mutation requires name/type
+/// semantics as ordinary D0/D1. CompilerProjectSemantics is an explicit
+/// V1 escalation, not an automatic default (it is kept in the capability
+/// vocabulary and required only when the planner/caller explicitly requests
+/// it). Syntax is always required so an empty or unclassifiable scope can
+/// never degrade into no requirements.
 pub fn derive_required_capabilities(
     changed_paths: &[String],
 ) -> Vec<membrane_protocol::diagnostics::CapabilityVocabulary> {
@@ -1583,11 +1586,7 @@ pub fn derive_required_capabilities(
         ]);
     }
     if rust {
-        caps.extend([
-            C::NameResolution,
-            C::TypeSemantics,
-            C::CompilerProjectSemantics,
-        ]);
+        caps.extend([C::NameResolution, C::TypeSemantics]);
     }
     let mut deduped = Vec::new();
     for cap in caps {
@@ -2859,12 +2858,14 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let rust = derive_required_capabilities(&["crates/x/src/lib.rs".to_string()]);
         assert_eq!(
             rust,
-            vec![
-                C::Syntax,
-                C::NameResolution,
-                C::TypeSemantics,
-                C::CompilerProjectSemantics
-            ]
+            vec![C::Syntax, C::NameResolution, C::TypeSemantics]
+        );
+        // CompilerProjectSemantics is V1 escalation only; it is not derived
+        // from ordinary Rust touched scope. It must be explicitly requested.
+        assert!(
+            !derive_required_capabilities(&["crates/x/src/lib.rs".to_string()])
+                .contains(&C::CompilerProjectSemantics),
+            "CompilerProjectSemantics must not be an automatic default"
         );
         let mixed = derive_required_capabilities(&[
             "src/app.tsx".to_string(),
@@ -2877,10 +2878,13 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             C::ImportExportBinding,
             C::TypeSemantics,
             C::NameResolution,
-            C::CompilerProjectSemantics,
         ] {
             assert!(mixed.contains(&expected), "{expected:?} missing from {mixed:?}");
         }
+        assert!(
+            !mixed.contains(&C::CompilerProjectSemantics),
+            "mixed scope must not auto-require CompilerProjectSemantics"
+        );
         // Non-source-only scope still demands syntax: no empty requirements.
         assert_eq!(derive_required_capabilities(&["docs/x.md".to_string()]), vec![C::Syntax]);
     }

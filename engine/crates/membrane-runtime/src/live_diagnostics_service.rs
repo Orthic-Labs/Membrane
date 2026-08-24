@@ -377,11 +377,14 @@ impl DiagnosticsService {
             }
             return Ok(status);
         }
-        // First open: bind one canonical absolute projectRoot, fail closed if
-        // it cannot be canonicalized. Do NOT fall back to an uncanonicalized path.
-        let requested = project_root.map(PathBuf::from).unwrap_or_else(|| {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        });
+        // First open: projectRoot is required; do not bind from resident
+        // current_dir(). Missing or uncanonicalizable => typed error.
+        let requested_str = project_root.ok_or_else(|| {
+            LiveDiagnosticsServiceError::ProjectRootInvalid(
+                "projectRoot is required for first workspace.open".to_string(),
+            )
+        })?;
+        let requested = PathBuf::from(requested_str);
         let canonical = std::fs::canonicalize(&requested).map_err(|e| {
             LiveDiagnosticsServiceError::ProjectRootInvalid(format!(
                 "cannot canonicalize projectRoot {}: {}",
@@ -761,7 +764,20 @@ impl DiagnosticsService {
                 "no blueprint findings client is configured".to_string(),
             );
         };
-        match client.fetch(project_root, timeout_ms) {
+        // Touched scope is the union of changed_paths and changed_file_hashes;
+        // Blueprint is queried only for that scope and scoping applies to
+        // coverage-affecting omissions as well.
+        let touched: Vec<String> = {
+            let mut set = std::collections::BTreeSet::new();
+            for p in &sealed.changed_paths {
+                set.insert(p.clone());
+            }
+            for h in &sealed.changed_file_hashes {
+                set.insert(h.path.clone());
+            }
+            set.into_iter().collect()
+        };
+        match client.fetch(project_root, timeout_ms, &touched) {
             Ok(result) => {
                 if !result.freshness_is_current() {
                     // Stale evidence is never silently recomputed as current:
@@ -782,14 +798,69 @@ impl DiagnosticsService {
                         }],
                     };
                 }
-                // Coverage-affecting omissions prevent Complete exact coverage
-                // for the affected scope (design §7). Treat any such omission as
-                // blocking exact D0 for the sealed scope.
-                let has_coverage_block = result.has_coverage_affecting_omissions();
+                // Fail closed when the epoch itself does not bind bytes for the
+                // touched scope: changed_paths present but changed_file_hashes
+                // missing or incomplete => exact identity unproven.
+                let mut epoch_missing_issues = Vec::new();
+                if !touched.is_empty() {
+                    let epoch_hash_set: std::collections::HashSet<String> = sealed
+                        .changed_file_hashes
+                        .iter()
+                        .map(|h| h.path.clone())
+                        .collect();
+                    for path in &touched {
+                        if !epoch_hash_set.contains(path) {
+                            epoch_missing_issues.push(membrane_protocol::diagnostics::TypedOmission {
+                                code: "missing_required_content_hash".to_string(),
+                                detail: format!(
+                                    "sealed epoch missing required hash for touched file {} (epoch {})",
+                                    path, sealed.epoch
+                                ),
+                            });
+                        }
+                    }
+                }
+                // Coverage-affecting omissions only block when relevant to the
+                // touched scope; unrelated repository omissions must not poison
+                // this mutation's D0 coverage.
+                let has_coverage_block = if touched.is_empty() {
+                    false
+                } else {
+                    result.omissions.iter().any(|o| {
+                        use crate::providers::blueprint_findings::is_coverage_affecting_typed_omission;
+                        if !is_coverage_affecting_typed_omission(o) {
+                            return false;
+                        }
+                        // If detail mentions a touched path, it's relevant.
+                        // Empty detail is treated as relevant (fail closed).
+                        // Otherwise, detail that mentions none of the touched
+                        // paths is considered unrelated and does not block.
+                        if o.detail.is_empty() {
+                            return true;
+                        }
+                        for tp in &touched {
+                            if o.detail.contains(tp) {
+                                return true;
+                            }
+                        }
+                        // Also check path-like content even when detail omits it:
+                        // some omissions are global (e.g. stale) — but stale
+                        // already handled above. For other global, be conservative
+                        // and treat as relevant only if touched non-empty? We
+                        // treat global (no path in detail) as not blocking
+                        // unless it was stale (already returned). So unrelated
+                        // outside-scanned omissions with unrelated path remain
+                        // irrelevant.
+                        false
+                    })
+                };
                 // Exact byte identity: compare retained per-file hashes against
-                // sealed epoch's changed_file_hashes for the touched scope.
-                let hash_issues = result.verify_hashes_against_epoch(sealed, None);
-                let has_hash_block = !hash_issues.is_empty();
+                // sealed epoch's changed_file_hashes for the touched scope only.
+                let hash_issues = result.verify_hashes_against_epoch(
+                    sealed,
+                    if touched.is_empty() { None } else { Some(&touched) },
+                );
+                let has_hash_block = !hash_issues.is_empty() || !epoch_missing_issues.is_empty();
                 let generation = result.generation_id.clone();
                 let observations = result
                     .findings
@@ -802,6 +873,7 @@ impl DiagnosticsService {
                     // obligation remains unsatisfied unless another qualified
                     // exact provider satisfies it.
                     let mut omissions = result.omissions;
+                    omissions.extend(epoch_missing_issues);
                     omissions.extend(hash_issues);
                     return BlueprintLaneInput {
                         generation: Some(generation),
@@ -2076,6 +2148,7 @@ mod tests {
     #[test]
     fn session_lifecycle_reconcile_and_fence_transitions() {
         let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
 
         // Unknown workspaces are typed errors before anything else.
@@ -2087,7 +2160,9 @@ mod tests {
             .snapshot_await(&snapshot_request(&[CapabilityVocabulary::Syntax]))
             .is_err());
 
-        service.workspace_open("repo-1", "wt-1", None).unwrap();
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
 
         // No sealed epoch yet: acquisition is a typed no_sealed_epoch.
         assert_eq!(
@@ -2428,6 +2503,7 @@ mod tests {
                 &mut self,
                 _repo_root: &std::path::Path,
                 _timeout_ms: u64,
+                _paths: &[String],
             ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
                 Err(BlueprintFindingsError::Unavailable(
                     "daemon endpoint missing".into(),
@@ -2436,9 +2512,12 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
         let mut service =
             service_at(&dir).with_blueprint_client(Box::new(FailingClient));
-        service.workspace_open("repo-1", "wt-1", None).unwrap();
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
         service.mutation_begin("repo-1", "wt-1").unwrap();
         service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
 
@@ -2464,8 +2543,11 @@ mod tests {
     #[test]
     fn fence_evaluate_is_pure_and_leaves_service_state_untouched() {
         let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
-        service.workspace_open("repo-1", "wt-1", None).unwrap();
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
         service.mutation_begin("repo-1", "wt-1").unwrap();
         service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
 
@@ -2502,9 +2584,21 @@ mod tests {
     }
 
     #[test]
-    fn rust_d1_alone_leaves_compiler_project_semantics_unsatisfied() {
-        // Touched scope with .rs file requires CompilerProjectSemantics;
-        // without a V1 verification lane it must remain Unsatisfied.
+    fn rust_d1_satisfies_normal_gate_but_explicit_v1_compiler_semantics_remains_unsatisfied() {
+        // Policy correction: ordinary Rust touched scope requires Syntax,
+        // NameResolution, TypeSemantics. CompilerProjectSemantics is V1
+        // escalation only and must be explicitly requested.
+        use crate::live_diagnostics::derive_required_capabilities;
+        let derived = derive_required_capabilities(&["src/main.rs".to_string()]);
+        assert!(
+            !derived.contains(&CapabilityVocabulary::CompilerProjectSemantics),
+            "ordinary Rust must not auto-require CompilerProjectSemantics; got {derived:?}"
+        );
+        assert!(derived.contains(&CapabilityVocabulary::NameResolution));
+        assert!(derived.contains(&CapabilityVocabulary::TypeSemantics));
+
+        // Explicitly requesting CompilerProjectSemantics stays unsatisfied
+        // because no V1 provider is wired in this task.
         let dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
         let repo_dir = tempfile::tempdir().unwrap();
@@ -2518,35 +2612,152 @@ mod tests {
             path: "src/main.rs".to_string(),
             hash: "sha256:abc".to_string(),
         }];
-        // Need canonical file to pass path escape check + hash check for provider? Create file.
         std::fs::create_dir_all(repo_dir.path().join("src")).unwrap();
         std::fs::write(repo_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
-        // Update epoch hash to match actual file hash to avoid hash_mismatch branch,
-        // but still no V1 provider is registered, so CompilerProjectSemantics stays unsatisfied.
         let bytes = std::fs::read(repo_dir.path().join("src/main.rs")).unwrap();
         let actual = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes)));
         epoch.changed_file_hashes[0].hash = actual.clone();
-        // Compute manifest digest matching helper used elsewhere is not critical for gate.
         service.mutation_seal("repo-1", "wt-1", epoch).unwrap();
         let decision = service
             .snapshot_await(&SnapshotAwaitRequest {
                 repo_id: "repo-1".to_string(),
                 worktree_id: "wt-1".to_string(),
                 policy_profile_name: DEFAULT_POLICY_PROFILE_NAME.to_string(),
-                required_capabilities: vec![],
+                required_capabilities: vec![CapabilityVocabulary::CompilerProjectSemantics],
                 max_cost: Some(CostClass::Interactive),
                 deadline_ms: Some(5_000),
             })
             .unwrap();
-        // Rust touched: derived required includes compiler_project_semantics, which has no exact lane.
         assert!(
             decision
                 .reason_codes
                 .iter()
                 .any(|c| c.contains("compiler_project_semantics")),
-            "expected compiler_project_semantics unsatisfied: {:?}",
+            "explicit V1 CompilerProjectSemantics should stay unsatisfied without a V1 provider: {:?}",
             decision.reason_codes
         );
         assert_ne!(decision.outcome, GateOutcome::CleanExact);
+    }
+
+    #[test]
+    fn blueprint_unrelated_omission_outside_touched_does_not_block_exact() {
+        use crate::providers::blueprint_findings::{
+            BlueprintFinding, BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
+        };
+        struct UnrelatedOmissionClient;
+        impl BlueprintFindingsClient for UnrelatedOmissionClient {
+            fn fetch(
+                &mut self,
+                _repo_root: &std::path::Path,
+                _timeout_ms: u64,
+                paths: &[String],
+            ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
+                // Assert paths scoping: service passes touched paths
+                assert!(paths.contains(&"src/a.ts".to_string()));
+                Ok(BlueprintFindingsResult {
+                    generation_id: "gen-1".to_string(),
+                    freshness: "current".to_string(),
+                    findings: vec![],
+                    omissions: vec![membrane_protocol::diagnostics::TypedOmission {
+                        code: "parse_failed".to_string(),
+                        detail: "src/b.ts parse error unrelated file".to_string(),
+                    }],
+                    per_file_hashes: {
+                        let mut m = std::collections::BTreeMap::new();
+                        m.insert("src/a.ts".to_string(), "sha256:aaa".to_string());
+                        m
+                    },
+                })
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo_dir.path().join("src")).unwrap();
+        std::fs::write(repo_dir.path().join("src/a.ts"), "export const x=1;").unwrap();
+        let bytes = std::fs::read(repo_dir.path().join("src/a.ts")).unwrap();
+        let hash = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes)));
+        let mut service = service_at(&dir).with_blueprint_client(Box::new(UnrelatedOmissionClient));
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        let mut epoch = test_epoch(1);
+        epoch.changed_paths = vec!["src/a.ts".to_string()];
+        epoch.changed_file_hashes = vec![ChangedFileHashV1 {
+            path: "src/a.ts".to_string(),
+            hash: hash.clone(),
+        }];
+        service.mutation_seal("repo-1", "wt-1", epoch).unwrap();
+        // Require syntax which Blueprint D0 can satisfy; unrelated parse_failed for b.ts must not poison a.ts
+        let decision = service
+            .snapshot_await(&SnapshotAwaitRequest {
+                repo_id: "repo-1".to_string(),
+                worktree_id: "wt-1".to_string(),
+                policy_profile_name: DEFAULT_POLICY_PROFILE_NAME.to_string(),
+                required_capabilities: vec![CapabilityVocabulary::Syntax],
+                max_cost: Some(CostClass::Instant),
+                deadline_ms: Some(5_000),
+            })
+            .unwrap();
+        // Should be clean_exact because omission is outside touched scope and hashes match
+        assert_eq!(decision.outcome, GateOutcome::CleanExact, "unrelated omission should not block touched exact D0: {decision:?}");
+    }
+
+    #[test]
+    fn epoch_missing_hash_blocks_even_when_blueprint_has_hash() {
+        use crate::providers::blueprint_findings::{
+            BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
+        };
+        struct HasHashClient;
+        impl BlueprintFindingsClient for HasHashClient {
+            fn fetch(
+                &mut self,
+                _repo_root: &std::path::Path,
+                _timeout_ms: u64,
+                _paths: &[String],
+            ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
+                let mut m = std::collections::BTreeMap::new();
+                m.insert("src/a.ts".to_string(), "sha256:aaa".to_string());
+                Ok(BlueprintFindingsResult {
+                    generation_id: "gen-1".to_string(),
+                    freshness: "current".to_string(),
+                    findings: vec![],
+                    omissions: vec![],
+                    per_file_hashes: m,
+                })
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(repo_dir.path().join("src")).unwrap();
+        std::fs::write(repo_dir.path().join("src/a.ts"), "export const x=1;").unwrap();
+        let mut service = service_at(&dir).with_blueprint_client(Box::new(HasHashClient));
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        let mut epoch = test_epoch(1);
+        // Epoch claims touched path but provides no hash => exact identity unproven
+        epoch.changed_paths = vec!["src/a.ts".to_string()];
+        epoch.changed_file_hashes = vec![];
+        service.mutation_seal("repo-1", "wt-1", epoch).unwrap();
+        let decision = service
+            .snapshot_await(&SnapshotAwaitRequest {
+                repo_id: "repo-1".to_string(),
+                worktree_id: "wt-1".to_string(),
+                policy_profile_name: DEFAULT_POLICY_PROFILE_NAME.to_string(),
+                required_capabilities: vec![CapabilityVocabulary::Syntax],
+                max_cost: Some(CostClass::Instant),
+                deadline_ms: Some(5_000),
+            })
+            .unwrap();
+        assert_ne!(decision.outcome, GateOutcome::CleanExact, "missing epoch hash must deny exact D0 even though Blueprint has hash");
+        assert!(
+            decision.omissions.iter().any(|o| o.code == "missing_required_content_hash")
+                || decision.reason_codes.iter().any(|c| c.contains("syntax")),
+            "should surface missing_required_content_hash or uncovered syntax: {decision:?}"
+        );
     }
 }

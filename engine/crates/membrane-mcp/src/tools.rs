@@ -54,7 +54,7 @@ pub(crate) fn definitions() -> Value {
                 "oneOf": [
                     {
                         "properties": { "operation": { "const": "open" } },
-                        "required": ["repoId", "worktreeId"],
+                        "required": ["repoId", "worktreeId", "projectRoot"],
                         "not": { "anyOf": [{ "required": ["manifestDigest"] }, { "required": ["hashes"] }] }
                     },
                     {

@@ -288,6 +288,7 @@ pub trait BlueprintFindingsClient: Send {
         &mut self,
         repo_root: &Path,
         timeout_ms: u64,
+        paths: &[String],
     ) -> Result<BlueprintFindingsResult, BlueprintFindingsError>;
 }
 
@@ -331,8 +332,9 @@ impl BlueprintFindingsClient for DaemonFindingsClient {
         &mut self,
         repo_root: &Path,
         timeout_ms: u64,
+        paths: &[String],
     ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
-        fetch_over_socket(&self.endpoint, repo_root, timeout_ms)
+        fetch_over_socket(&self.endpoint, repo_root, timeout_ms, paths)
     }
 }
 
@@ -340,6 +342,7 @@ fn fetch_over_socket(
     endpoint: &Path,
     repo_root: &Path,
     timeout_ms: u64,
+    paths: &[String],
 ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
     #[cfg(unix)]
     {
@@ -368,6 +371,10 @@ fn fetch_over_socket(
                 .map(|elapsed| elapsed.as_millis())
                 .unwrap_or(0)
         );
+        let mut input = serde_json::json!({ "repoRoot": repo_root.to_string_lossy() });
+        if !paths.is_empty() {
+            input["paths"] = serde_json::json!(paths);
+        }
         let request = serde_json::json!({
             "protocolVersion": PROTOCOL_VERSION,
             "requestId": request_id,
@@ -375,7 +382,7 @@ fn fetch_over_socket(
             "generation": null,
             "method": "findings.get",
             "deadlineMs": timeout_ms.min(30_000).max(10),
-            "input": { "repoRoot": repo_root.to_string_lossy() },
+            "input": input,
         });
         let mut line = request.to_string();
         line.push('\n');
@@ -405,7 +412,7 @@ fn fetch_over_socket(
     }
     #[cfg(not(unix))]
     {
-        let _ = (endpoint, repo_root, timeout_ms);
+        let _ = (endpoint, repo_root, timeout_ms, paths);
         Err(BlueprintFindingsError::Unavailable(
             "blueprint daemon IPC requires a unix-domain socket transport".into(),
         ))

@@ -205,8 +205,8 @@ enum DiagnosticsCommand {
         repo: String,
         #[arg(long)]
         worktree: String,
-        #[arg(long)]
-        project_root: Option<String>,
+        #[arg(long, required = true)]
+        project_root: String,
         #[arg(long)]
         port: Option<u16>,
     },
@@ -365,7 +365,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 diagnostics_loopback_port(port),
                 "POST",
                 "/diagnostics/workspace/open",
-                Some(diagnostics_workspace_body_with_root(&repo, &worktree, project_root.as_deref())),
+                Some(diagnostics_workspace_body_with_root(&repo, &worktree, Some(&project_root))),
             )
         }
         DiagnosticsCommand::WorkspaceClose { repo, worktree, port } => {
