@@ -1,6 +1,7 @@
 // Membrane-owned workspace memory behavior. This layer invokes Cortex's public
 // contracts; it contains no Arcane or research admission policy.
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -234,6 +235,74 @@ function fenceEnforcementEnabled(root, env = process.env) {
   return existsSync(join(root, ".agent", "diagnostics-enforce.json"));
 }
 
+const GIT_MANIFEST_TIMEOUT_MS = 1500;
+const GIT_MANIFEST_MAX_BUFFER = 2 * 1024 * 1024;
+
+function normalizeChangedPath(root, candidate) {
+  if (typeof candidate !== "string" || !candidate.trim()) return null;
+  const cleaned = candidate.trim().replaceAll("\\", "/").replace(/^\.\//, "");
+  try {
+    const rel = relative(root, resolve(root, candidate)).replaceAll("\\", "/");
+    if (rel && !rel.startsWith("..") && !rel.startsWith("/")) return rel;
+  } catch {}
+  return cleaned || null;
+}
+
+function changedPathsFromGit(root) {
+  const paths = new Set();
+  const commands = [
+    ["diff", "--name-only", "-z"],
+    ["diff", "--cached", "--name-only", "-z"],
+    ["ls-files", "--others", "--exclude-standard", "-z"],
+  ];
+  try {
+    for (const args of commands) {
+      const output = execFileSync("git", args, {
+        cwd: root,
+        encoding: "utf8",
+        timeout: GIT_MANIFEST_TIMEOUT_MS,
+        maxBuffer: GIT_MANIFEST_MAX_BUFFER,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      for (const candidate of output.split("\0")) {
+        const normalized = normalizeChangedPath(root, candidate);
+        if (normalized) paths.add(normalized);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return [...paths].sort((left, right) => left.localeCompare(right));
+}
+
+/** Build one deterministic current-byte manifest for both mutation observation
+ * & enforced-boundary reconciliation. Missing files remain represented in the
+ * digest even though no content hash can be sent to the resident. */
+function buildMutationManifest(root, changedPaths) {
+  const normalized = [...new Set((Array.isArray(changedPaths) ? changedPaths : [])
+    .map((candidate) => normalizeChangedPath(root, candidate))
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right));
+  const changedFileHashes = [];
+  const digest = createHash("sha256");
+  for (const relPath of normalized) {
+    let hash = "missing";
+    try {
+      const bytes = readFileSync(resolve(root, relPath));
+      hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      changedFileHashes.push({ path: relPath, hash });
+    } catch {}
+    digest.update(relPath);
+    digest.update("\0");
+    digest.update(hash);
+    digest.update("\0");
+  }
+  return {
+    changedPaths: normalized,
+    changedFileHashes,
+    sourceManifestDigest: `sha256:${digest.digest("hex")}`,
+  };
+}
+
 export function createWorkspaceMemoryOperations(options = {}) {
   const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable, diagnosticsPost = diagnosticsRequest } = options;
   // Cortex subprocess execution is never an installed-hook default. Tests may
@@ -285,6 +354,33 @@ export function createWorkspaceMemoryOperations(options = {}) {
       if (canonicalCurrent !== canonicalBound) {
         audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "project_root_mismatch" });
         return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: project root mismatch (expected ${canonicalBound}, got ${canonicalCurrent})` });
+      }
+      const currentPaths = changedPathsFromGit(canonicalCurrent);
+      if (currentPaths === null) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "worktree_manifest_unavailable" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "current worktree manifest unavailable: fail-closed before verification or completion" });
+      }
+      const currentManifest = buildMutationManifest(canonicalCurrent, currentPaths);
+      let reconciliation;
+      try {
+        reconciliation = await diagnosticsPost("/diagnostics/reconcile", {
+          method: "POST",
+          body: {
+            repoId,
+            worktreeId,
+            manifestDigest: currentManifest.sourceManifestDigest,
+            hashes: currentManifest.changedFileHashes,
+          },
+          timeoutMs: 1200,
+        });
+      } catch {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "reconciliation_unreachable" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "reconciliation unavailable: fail-closed before verification or completion" });
+      }
+      const classification = reconciliation?.body?.classification;
+      if (!reconciliation?.ok || classification !== "cleared") {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: classification || "reconciliation_failed" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: current worktree reconciliation is ${classification || "unavailable"}` });
       }
       // Fail-closed: any uncleared fence, missing epoch, or not-cleared state blocks.
       // The old `workspace_not_open => skipped` and `no sealed epoch => skipped`
@@ -444,45 +540,14 @@ export function createWorkspaceMemoryOperations(options = {}) {
           if (match) { pushCandidate(match[1].trim()); pushCandidate(match[2].trim()); }
         }
       }
-      const seen = new Set();
-      const changedPaths = [];
-      for (const candidate of rawCandidates) {
-        let rel;
-        try {
-          const absolute = resolve(root, candidate);
-          rel = relative(root, absolute).replaceAll("\\", "/");
-          if (rel.startsWith("..") || rel.startsWith("/")) rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
-        } catch {
-          rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
-        }
-        if (!rel) rel = candidate.replaceAll("\\", "/").replace(/^\.\//, "");
-        if (!rel || seen.has(rel)) continue;
-        seen.add(rel);
-        changedPaths.push(rel);
-      }
-      if (changedPaths.length === 0) return typedStatus("skipped", "diagnostics_not_applicable");
-      const changedFileHashes = [];
-      for (const relPath of changedPaths) {
-        const absolute = resolve(root, relPath);
-        let bytes;
-        try { bytes = readFileSync(absolute); } catch { continue; }
-        const hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-        changedFileHashes.push({ path: relPath, hash });
-      }
+      const candidates = rawCandidates.map((candidate) => normalizeChangedPath(root, candidate)).filter(Boolean);
+      if (candidates.length === 0) return typedStatus("skipped", "diagnostics_not_applicable");
       // Do not return before registering a newer observed epoch merely
       // because a resulting file is unreadable/deleted. A deletion can
       // produce an epoch with changedPaths but no hashes; it must still
       // invalidate old clearance and remain fail-closed (unknown/incomplete)
       // rather than preserving the older clean fence.
-      const manifestHash = createHash("sha256");
-      const sortedHashes = [...changedFileHashes].sort((left, right) => left.path.localeCompare(right.path));
-      for (const entry of sortedHashes) {
-        manifestHash.update(entry.path);
-        manifestHash.update("\0");
-        manifestHash.update(entry.hash);
-        manifestHash.update("\0");
-      }
-      const sourceManifestDigest = `sha256:${manifestHash.digest("hex")}`;
+      const { changedPaths, changedFileHashes, sourceManifestDigest } = buildMutationManifest(root, candidates);
       const digestOf = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
       const digestOfFiles = (paths) => {
         const hasher = createHash("sha256");

@@ -61,3 +61,21 @@ test("tool-wrapped forms are covered by keyword match", () => {
   assert.equal(isVerificationCommand("pnpm build", "Bash"), true);
   assert.equal(isVerificationCommand("npm run build", "Bash"), true);
 });
+
+test("compound commands classify each top-level segment independently", () => {
+  const cases = [
+    ["ls; pnpm test", true],
+    ["git status && rightkit cargo test", true],
+    ["rg foo || npm run build", true],
+    ["cat file | grep text", false],
+    ["cat file | cargo check", true],
+    ["printf 'pnpm test'", true],
+    ["grep 'pnpm test' src", false],
+  ];
+  for (const [command, expected] of cases) assert.equal(isVerificationCommand(command, "Bash"), expected, command);
+});
+
+test("unbalanced quoting fails closed when verification is present", () => {
+  assert.equal(isVerificationCommand("grep 'test", "Bash"), true);
+  assert.equal(isVerificationCommand("ls 'src", "Bash"), false);
+});

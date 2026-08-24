@@ -1897,7 +1897,7 @@ mod tests {
                 observations,
                 lane: CoverageLaneV1 {
                     provider_id: "test-provider".to_string(),
-                    scope: vec!["src/**".to_string()],
+                    scope: vec!["src/main.ts".to_string()],
                     capabilities_covered: vec![],
                     convergence_class: ConvergenceClass::PullExact,
                     bound_workspace_epoch: 0,
@@ -1917,7 +1917,7 @@ mod tests {
                 observations,
                 lane: CoverageLaneV1 {
                     provider_id: provider_id.to_string(),
-                    scope: vec!["src/**".to_string()],
+                    scope: vec!["src/main.ts".to_string()],
                     capabilities_covered: capabilities,
                     convergence_class: ConvergenceClass::PullExact,
                     bound_workspace_epoch: epoch,

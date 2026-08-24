@@ -12,7 +12,7 @@
 // unfenced: ls, cat, grep, rg, git status, git diff.
 
 const INSPECTION_PREFIX_RE =
-  /^\s*(ls|cat|grep|rg)\b|^\s*git\s+(status|diff)\b/i;
+  /^\s*(?:ls|cat|grep|rg)(?:\s|$)|^\s*git\s+(?:status|diff)(?:\s|$)/i;
 
 // Standalone build-system entrypoints that are themselves verification even
 // without an explicit verb token alongside them.
@@ -31,11 +31,64 @@ const VERIFICATION_WORD_RE =
 export function isVerificationCommand(rawCommand, toolName = "") {
   const command = String(rawCommand ?? "").trim();
   if (!command) return false;
-  // Inspection commands remain unfenced.
-  if (INSPECTION_PREFIX_RE.test(command)) return false;
   const lowered = command.toLowerCase();
   const toolLower = String(toolName ?? "").toLowerCase();
-  return VERIFICATION_WORD_RE.test(lowered) || VERIFICATION_WORD_RE.test(toolLower);
+  const segments = splitTopLevelSegments(command);
+  // A malformed shell fragment is unsafe to classify as inspection when it
+  // contains a verification token: fail closed.
+  if (segments.unbalanced && (VERIFICATION_WORD_RE.test(lowered) || VERIFICATION_WORD_RE.test(toolLower))) return true;
+  return segments.parts.some((part) => {
+    if (INSPECTION_PREFIX_RE.test(part)) return false;
+    return VERIFICATION_WORD_RE.test(part.toLowerCase());
+  }) || VERIFICATION_WORD_RE.test(toolLower);
+}
+
+/** Split only top-level shell separators; this deliberately is not a shell
+ * parser. Quotes & escaped separators remain inside one bounded segment. */
+function splitTopLevelSegments(command) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  let escaped = false;
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      current += character;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      current += character;
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === ";" || character === "\n" || character === "|") {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+      if ((character === "|" || character === "&") && command[index + 1] === character) index += 1;
+      else if (character === "&" && command[index + 1] === "&") index += 1;
+      continue;
+    }
+    if (character === "&" && command[index + 1] === "&") {
+      if (current.trim()) parts.push(current.trim());
+      current = "";
+      index += 1;
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return { parts, unbalanced: Boolean(quote || escaped) };
 }
 
 export const VERIFICATION_KEYWORDS = Object.freeze([

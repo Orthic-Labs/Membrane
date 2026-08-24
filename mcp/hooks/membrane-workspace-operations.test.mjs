@@ -183,6 +183,12 @@ test("PostToolUseFailure, TaskCompleted, and SessionEnd are covered with typed, 
 function fenceFixture() {
   const base = fixture();
   mkdirSync(join(base.root, ".agent"), { recursive: true });
+  const init = spawnSync("git", ["init", "-q", base.root], { encoding: "utf8" });
+  assert.equal(init.status, 0, init.stderr);
+  const add = spawnSync("git", ["-C", base.root, "add", "-A"], { encoding: "utf8" });
+  assert.equal(add.status, 0, add.stderr);
+  const commit = spawnSync("git", ["-C", base.root, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], { encoding: "utf8" });
+  assert.equal(commit.status, 0, commit.stderr);
   return base;
 }
 
@@ -245,7 +251,8 @@ test("enforced PreToolUse boundary denies tests/builds while the fence is unclea
       rootFor: () => root,
       diagnosticsPost: async (path) => ({
         ok: true,
-        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 3, projectRoot: root } : {},
+        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 3, projectRoot: root }
+          : path.includes("/diagnostics/reconcile") ? { classification: "cleared" } : {},
       }),
     });
     const allowed = await runHook(
@@ -301,12 +308,13 @@ test("Stop completion boundary blocks when fence not cleared (fail-closed)", asy
   assert.equal(blockedNoEpoch.hookSpecificOutput.permissionDecision, "deny");
 
   // Clean clearance allows completion.
-  const clearedOps = createWorkspaceMemoryOperations({
-    rootFor: () => root,
-    diagnosticsPost: async (path) => ({
-      ok: true,
-      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 7, projectRoot: root } : {},
-    }),
+    const clearedOps = createWorkspaceMemoryOperations({
+      rootFor: () => root,
+      diagnosticsPost: async (path) => ({
+        ok: true,
+        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 7, projectRoot: root }
+          : path.includes("/diagnostics/reconcile") ? { classification: "cleared" } : {},
+      }),
   });
   const allowed = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: clearedOps });
   assert.equal(allowed.decision, undefined);
@@ -346,12 +354,13 @@ test("fence verifies bound projectRoot matches current root (fail-closed on mism
   } finally { delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE; }
 
   // Matching canonical root + fenceCleared true still allows
-  const matchingOps = createWorkspaceMemoryOperations({
-    rootFor: () => newRoot,
-    diagnosticsPost: async (path) => ({
-      ok: true,
-      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 5, projectRoot: newRoot } : {},
-    }),
+    const matchingOps = createWorkspaceMemoryOperations({
+      rootFor: () => newRoot,
+      diagnosticsPost: async (path) => ({
+        ok: true,
+        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 5, projectRoot: newRoot }
+          : path.includes("/diagnostics/reconcile") ? { classification: "cleared" } : {},
+      }),
   });
   process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
   try {
@@ -359,6 +368,95 @@ test("fence verifies bound projectRoot matches current root (fail-closed on mism
     assert.equal(allowed.decision, undefined);
     assert.equal(allowed.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.state, "available");
   } finally { delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE; }
+});
+
+async function runEnforcedBoundary(root, diagnosticsPost) {
+  const prior = process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
+  try {
+    const operations = createWorkspaceMemoryOperations({ rootFor: () => root, diagnosticsPost });
+    return await runHook({ event: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root }, { operations });
+  } finally {
+    if (prior === undefined) delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+    else process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = prior;
+  }
+}
+
+test("enforced boundary reconciles an unchanged current manifest", async () => {
+  const { root } = fenceFixture();
+  const calls = [];
+  const result = await runEnforcedBoundary(root, async (path, options) => {
+    calls.push([path, options]);
+    if (path.includes("/workspace/status")) return { ok: true, body: { fenceCleared: true, projectRoot: root } };
+    if (path === "/diagnostics/reconcile") return { ok: true, body: { classification: "cleared" } };
+    return { ok: false, error: { code: "unexpected" } };
+  });
+  assert.equal(result.decision, undefined);
+  const reconcile = calls.find(([path]) => path === "/diagnostics/reconcile");
+  assert.ok(reconcile);
+  assert.deepEqual(reconcile[1].body.hashes, []);
+  assert.match(reconcile[1].body.manifestDigest, /^sha256:/);
+});
+
+test("unobserved modification, addition, & deletion block after clean clearance", async () => {
+  for (const change of ["modify", "add", "delete"]) {
+    const { root } = fenceFixture();
+    const target = join(root, "memory", "note.md");
+    if (change === "modify") writeFileSync(target, "changed\n", "utf8");
+    if (change === "add") writeFileSync(join(root, "new-file.txt"), "new\n", "utf8");
+    if (change === "delete") {
+      const { unlinkSync: remove } = await import("node:fs");
+      remove(target);
+    }
+    const result = await runEnforcedBoundary(root, async (path, options) => {
+      if (path.includes("/workspace/status")) return { ok: true, body: { fenceCleared: true, projectRoot: root } };
+      if (path === "/diagnostics/reconcile") {
+        assert.ok(options.body.manifestDigest.startsWith("sha256:"));
+        return { ok: true, body: { classification: "unknown_conflict" } };
+      }
+      return { ok: false, error: { code: "unexpected" } };
+    });
+    assert.equal(result.decision, "block", change);
+  }
+});
+
+test("manifest generation failure blocks before reconciliation", async () => {
+  const { root } = fixture();
+  const calls = [];
+  const result = await runEnforcedBoundary(root, async (path) => {
+    calls.push(path);
+    if (path.includes("/workspace/status")) return { ok: true, body: { fenceCleared: true, projectRoot: root } };
+    throw new Error("unexpected reconciliation");
+  });
+  assert.equal(result.decision, "block");
+  assert.equal(calls.filter((path) => path === "/diagnostics/reconcile").length, 0);
+});
+
+test("reconciliation endpoint failure blocks", async () => {
+  const { root } = fenceFixture();
+  const result = await runEnforcedBoundary(root, async (path) => {
+    if (path.includes("/workspace/status")) return { ok: true, body: { fenceCleared: true, projectRoot: root } };
+    throw new Error("resident down");
+  });
+  assert.equal(result.decision, "block");
+});
+
+test("disabled enforcement does not inspect Git or reconcile", async () => {
+  const { root } = fixture();
+  const calls = [];
+  const prior = process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  try {
+    const operations = createWorkspaceMemoryOperations({ rootFor: () => root, diagnosticsPost: async (path) => {
+      calls.push(path);
+      throw new Error("must not call diagnostics");
+    } });
+    const result = await runHook({ event: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root }, { operations });
+    assert.equal(result.decision, undefined);
+    assert.equal(calls.length, 0);
+  } finally {
+    if (prior !== undefined) process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = prior;
+  }
 });
 
 test("observeMutation binds the workspace to its canonical root before registering", async () => {

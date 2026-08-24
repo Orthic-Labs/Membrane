@@ -524,31 +524,40 @@ pub fn evaluate_gate(
 
     // 2. Exact blockers prove dirty regardless of any degraded lane
     //    (§5.3 step 2: dirty state proven for the bound bytes).
+    let mut observed_blocking_ids = HashSet::new();
     let blocking_observation_ids: Vec<&str> = snapshot
         .observations
         .iter()
         .filter(|observation| {
-            observation.severity_hint == SeverityHint::Blocking
-                || policy.blocking_codes.iter().any(|code| code == &observation.code)
+            (observation.severity_hint == SeverityHint::Blocking
+                || policy.blocking_codes.iter().any(|code| code == &observation.code))
+                && observed_blocking_ids.insert(observation.observation_id.as_str())
         })
         .map(|observation| observation.observation_id.as_str())
         .collect();
     if !blocking_observation_ids.is_empty() {
-        let mut seen = HashSet::new();
+        let mut emitted_issue_ids = HashSet::new();
+        let mut represented_observation_ids = HashSet::new();
         let mut blocking_issue_ids = Vec::new();
         for issue in &snapshot.issues {
-            if issue
+            let represented_for_issue: Vec<String> = issue
                 .observations
                 .iter()
-                .any(|observation| blocking_observation_ids.contains(&observation.observation_id.as_str()))
-                && seen.insert(issue.issue_id.as_str().to_string())
+                .filter(|observation| {
+                    blocking_observation_ids.contains(&observation.observation_id.as_str())
+                })
+                .map(|observation| observation.observation_id.clone())
+                .collect();
+            if !represented_for_issue.is_empty()
+                && emitted_issue_ids.insert(issue.issue_id.clone())
             {
                 blocking_issue_ids.push(issue.issue_id.clone());
+                represented_observation_ids.extend(represented_for_issue);
             }
         }
         // Observations not grouped into any issue still count; list them by id.
         for observation_id in blocking_observation_ids {
-            if seen.insert(observation_id.to_string()) {
+            if !represented_observation_ids.contains(observation_id) {
                 blocking_issue_ids.push(observation_id.to_string());
             }
         }
@@ -747,7 +756,7 @@ mod tests {
     ) -> CoverageLaneV1 {
         CoverageLaneV1 {
             provider_id: provider_id.to_string(),
-            scope: vec!["src/**".to_string()],
+            scope: vec!["src/main.ts".to_string()],
             capabilities_covered: capabilities.to_vec(),
             convergence_class,
             bound_workspace_epoch,

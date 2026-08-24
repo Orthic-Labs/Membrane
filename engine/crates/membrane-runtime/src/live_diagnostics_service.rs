@@ -560,7 +560,7 @@ impl DiagnosticsService {
             .get(&session_key(repo_id, worktree_id))
             .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
         for h in hashes {
-            if is_obvious_path_escape(&h.path, &entry.project_root) {
+            if path_escapes_bound_root(&h.path, &entry.project_root) {
                 return Err(LiveDiagnosticsServiceError::MutationBoundary(format!(
                     "path escapes bound projectRoot {}: {}",
                     entry.project_root.display(),
@@ -1375,6 +1375,7 @@ fn workspace_status_value(repo_id: &str, worktree_id: &str, entry: &SessionEntry
         "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
         "repoId": repo_id,
         "worktreeId": worktree_id,
+        "projectRoot": entry.project_root.to_string_lossy(),
         "open": true,
         "openMutation": entry.open_mutation,
         "latestSealedEpoch": entry.session.latest_sealed().map(|epoch| epoch.epoch),
@@ -1434,7 +1435,7 @@ fn validate_epoch_paths_within_root(
     for path in epoch.changed_paths.iter().chain(
         epoch.changed_file_hashes.iter().map(|h| &h.path),
     ) {
-        if is_obvious_path_escape(path, project_root) {
+        if path_escapes_bound_root(path, project_root) {
             return Err(LiveDiagnosticsServiceError::MutationBoundary(format!(
                 "path escapes bound projectRoot {}: {}",
                 project_root.display(),
@@ -1445,24 +1446,44 @@ fn validate_epoch_paths_within_root(
     Ok(())
 }
 
-fn is_obvious_path_escape(path: &str, _project_root: &Path) -> bool {
-    // Reject absolute paths (they cannot be repo-relative) and any
-    // segment containing `..` that would allow escaping the bound root.
-    if path.starts_with('/') || path.starts_with('\\') {
+fn path_escapes_bound_root(path: &str, project_root: &Path) -> bool {
+    // Epoch paths are repository-relative. Reject empty paths, absolute paths,
+    // Windows drive/UNC prefixes, and parent components before touching disk.
+    if path.is_empty()
+        || Path::new(path).is_absolute()
+        || path.starts_with('/')
+        || path.starts_with('\\')
+        || (path.len() >= 2 && path.as_bytes()[1] == b':')
+    {
         return true;
     }
-    // Windows absolute like C:\ or C:/
-    if path.len() >= 2 && path.chars().nth(1) == Some(':') {
+    if path.split(['/', '\\']).any(|segment| segment == "..") {
         return true;
     }
-    for segment in path.split(['/', '\\']) {
-        if segment == ".." {
-            return true;
+
+    let target = project_root.join(path);
+    let mut candidate = target.as_path();
+    loop {
+        match std::fs::symlink_metadata(candidate) {
+            Ok(_) => {
+                // Canonicalizing an existing entry resolves symlink files and
+                // directories. Failure is fail-closed: an inaccessible or
+                // broken entry cannot establish root confinement.
+                let canonical = match std::fs::canonicalize(candidate) {
+                    Ok(canonical) => canonical,
+                    Err(_) => return true,
+                };
+                return !canonical.starts_with(project_root);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                candidate = match candidate.parent() {
+                    Some(parent) if parent != candidate => parent,
+                    _ => return true,
+                };
+            }
+            Err(_) => return true,
         }
     }
-    // Also reject paths that after join would still escape: this cheap
-    // check covers the common cases without canonicalizing disk state.
-    false
 }
 
 fn classification_label(classification: ReconcileClassification) -> &'static str {
@@ -2480,6 +2501,42 @@ mod tests {
     }
 
     #[test]
+    fn root_confinement_accepts_in_root_and_rejects_invalid_paths() {
+        let repo_dir = tempfile::tempdir().unwrap();
+        let nested = repo_dir.path().join("src");
+        std::fs::create_dir(&nested).unwrap();
+        std::fs::write(nested.join("main.ts"), "export {}\n").unwrap();
+        let root = std::fs::canonicalize(repo_dir.path()).unwrap();
+
+        assert!(!path_escapes_bound_root("src/main.ts", &root));
+        assert!(!path_escapes_bound_root("src/new-file.ts", &root));
+        assert!(path_escapes_bound_root("", &root));
+        assert!(path_escapes_bound_root("../outside.ts", &root));
+        assert!(path_escapes_bound_root("/outside.ts", &root));
+        assert!(path_escapes_bound_root("C:\\outside.ts", &root));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_confinement_rejects_symlink_file_and_directory_escapes() {
+        use std::os::unix::fs::symlink;
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        let outside_dir = tempfile::tempdir().unwrap();
+        let outside_file = outside_dir.path().join("outside.rs");
+        std::fs::write(&outside_file, "outside\n").unwrap();
+        let linked_file = repo_dir.path().join("linked.rs");
+        symlink(&outside_file, &linked_file).unwrap();
+        let linked_dir = repo_dir.path().join("linked-dir");
+        symlink(outside_dir.path(), &linked_dir).unwrap();
+        let root = std::fs::canonicalize(repo_dir.path()).unwrap();
+
+        assert!(path_escapes_bound_root("linked.rs", &root));
+        assert!(path_escapes_bound_root("linked-dir/outside.rs", &root));
+        assert!(path_escapes_bound_root("linked-dir/new.rs", &root));
+    }
+
+    #[test]
     fn workspace_open_exposes_project_root_through_status() {
         let dir = tempfile::tempdir().unwrap();
         let repo_dir = tempfile::tempdir().unwrap();
@@ -2643,9 +2700,11 @@ mod tests {
     #[test]
     fn blueprint_unrelated_omission_outside_touched_does_not_block_exact() {
         use crate::providers::blueprint_findings::{
-            BlueprintFinding, BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
+            BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
         };
-        struct UnrelatedOmissionClient;
+        struct UnrelatedOmissionClient {
+            a_ts_hash: String,
+        }
         impl BlueprintFindingsClient for UnrelatedOmissionClient {
             fn fetch(
                 &mut self,
@@ -2665,7 +2724,7 @@ mod tests {
                     }],
                     per_file_hashes: {
                         let mut m = std::collections::BTreeMap::new();
-                        m.insert("src/a.ts".to_string(), "sha256:aaa".to_string());
+                        m.insert("src/a.ts".to_string(), self.a_ts_hash.clone());
                         m
                     },
                 })
@@ -2678,7 +2737,11 @@ mod tests {
         std::fs::write(repo_dir.path().join("src/a.ts"), "export const x=1;").unwrap();
         let bytes = std::fs::read(repo_dir.path().join("src/a.ts")).unwrap();
         let hash = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes)));
-        let mut service = service_at(&dir).with_blueprint_client(Box::new(UnrelatedOmissionClient));
+        let mut service = service_at(&dir).with_blueprint_client(Box::new(
+            UnrelatedOmissionClient {
+                a_ts_hash: hash.clone(),
+            },
+        ));
         service
             .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
             .unwrap();
