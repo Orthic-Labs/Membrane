@@ -16,10 +16,18 @@
 //! and the Hub-status repair own that surface.
 
 use crate::live_diagnostics::{
-    AbsoluteDeadline, CapabilityKind, DiagnosticsProvider, DiagnosticsSession,
-    DiagnosticsSupervisor, LiveDiagnosticsConfig, LiveDiagnosticsError, ProviderCapabilities,
-    ReconcileClassification, SideEffectClass, WorkspaceEngineKey, LIVE_DIAGNOSTICS_SCHEMA_VERSION,
+    derive_required_capabilities, AbsoluteDeadline, BlueprintLaneInput, CapabilityKind,
+    DiagnosticsProvider, DiagnosticsSession, DiagnosticsSupervisor, LiveDiagnosticsConfig,
+    LiveDiagnosticsError, ProviderCapabilities, ReconcileClassification, SideEffectClass,
+    WorkspaceEngineKey, LIVE_DIAGNOSTICS_SCHEMA_VERSION,
 };
+use crate::providers::blueprint_findings::{
+    BlueprintFindingsClient, BlueprintFindingsError, DaemonFindingsClient,
+};
+use crate::providers::identity::{
+    binary_digest, project_config_digest, sandbox_policy_digest, toolchain_digest,
+};
+use crate::providers::{rust_analyzer_provider, typescript_provider};
 use axum::extract::{DefaultBodyLimit, Query, Request, State};
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::middleware::Next;
@@ -125,6 +133,13 @@ fn session_key(repo_id: &str, worktree_id: &str) -> (String, String) {
     (repo_id.to_string(), worktree_id.to_string())
 }
 
+/// Manifest digest of a workspace epoch, if one is present.
+fn epoch_manifest_of(epoch: &Option<WorkspaceEpochV1>) -> Option<String> {
+    epoch
+        .as_ref()
+        .map(|epoch| epoch.source_manifest_digest.clone())
+}
+
 fn workspace_not_open(repo_id: &str, worktree_id: &str) -> LiveDiagnosticsServiceError {
     LiveDiagnosticsServiceError::WorkspaceNotOpen {
         repo_id: repo_id.to_string(),
@@ -188,18 +203,26 @@ fn now_unix_ms() -> u64 {
 // ---------------------------------------------------------------------------
 
 /// Per-workspace entry pairing the fence session with the service-tracked
-/// transactional-mutation flag (`DiagnosticsSession` exposes no accessor for
-/// it, and the service mediates every `begin`/`seal` pair).
+/// transactional-mutation flag and the exact addressed project root. The
+/// canonical root is bound at `workspace.open` (design §3
+/// `WorkspaceEngineKey`) so two distinct worktrees can never share one engine
+/// lane merely because they share a process current directory.
 struct SessionEntry {
     session: DiagnosticsSession,
     open_mutation: bool,
+    /// Canonical absolute root this session was opened against.
+    project_root: PathBuf,
+    /// Whether production providers have been registered for this root.
+    providers_registered: bool,
 }
 
 impl SessionEntry {
-    fn new() -> Self {
+    fn new(project_root: PathBuf) -> Self {
         Self {
             session: DiagnosticsSession::new(),
             open_mutation: false,
+            project_root,
+            providers_registered: false,
         }
     }
 }
@@ -236,12 +259,17 @@ impl NamedBaseline {
 
 /// Owns the §12 operational capability: sessions keyed by
 /// `(repo_id, worktree_id)`, one supervisor with default configuration, the
-/// seeded planner policy map, named baselines, and the audit sink.
+/// seeded planner policy map, named baselines, the Blueprint findings client,
+/// and the audit sink.
 pub struct DiagnosticsService {
     supervisor: DiagnosticsSupervisor,
     sessions: HashMap<(String, String), SessionEntry>,
     policies: HashMap<String, GatePolicyProfileV1>,
     baselines: HashMap<(String, String), HashMap<String, NamedBaseline>>,
+    /// The one production seam to Blueprint's public resident findings
+    /// service (design §7.1 item 6). `None` degrades every acquisition to a
+    /// typed `blueprint_unavailable` — never fabricated evidence.
+    blueprint_client: Option<Box<dyn BlueprintFindingsClient>>,
     audit: AuditSink,
 }
 
@@ -262,17 +290,29 @@ impl DiagnosticsService {
             sessions: HashMap::new(),
             policies: seeded_policies(),
             baselines: HashMap::new(),
+            blueprint_client: None,
             audit: AuditSink::under_data_root(&data_root),
         })
     }
 
+    /// Install the production Blueprint findings client (daemon IPC). Called
+    /// by `production_service`; tests inject fakes or leave `None`.
+    pub fn with_blueprint_client(
+        mut self,
+        client: Box<dyn BlueprintFindingsClient>,
+    ) -> Self {
+        self.blueprint_client = Some(client);
+        self
+    }
+
     /// Registration seam for qualified engine adapters, delegating to the
-    /// supervisor. Factories are consumed lazily on first acquisition.
+    /// supervisor. Factories may be invoked lazily on every acquisition and
+    /// restart, so they are `Fn` rather than `FnOnce`.
     pub fn register_provider(
         &mut self,
         key: WorkspaceEngineKey,
         capabilities: ProviderCapabilities,
-        factory: Box<dyn FnOnce() -> Box<dyn DiagnosticsProvider> + Send>,
+        factory: Box<dyn Fn() -> Box<dyn DiagnosticsProvider> + Send>,
     ) {
         self.supervisor.register(key, capabilities, factory);
     }
@@ -280,20 +320,38 @@ impl DiagnosticsService {
     // -- workspace lifecycle ------------------------------------------------
 
     /// Open (or idempotently reopen) the diagnostics workspace session for
-    /// one repo/worktree pair.
+    /// one repo/worktree pair, binding the session to an exact canonical
+    /// project root (design §3 `WorkspaceEngineKey`). An explicit
+    /// `project_root` is canonicalized and stored; when absent the current
+    /// directory is canonicalized and recorded as the bound root so identity
+    /// is always explicit rather than ambient.
     pub fn workspace_open(
         &mut self,
         repo_id: &str,
         worktree_id: &str,
+        project_root: Option<&str>,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
         let key = session_key(repo_id, worktree_id);
         let created = !self.sessions.contains_key(&key);
         if created {
-            self.sessions.insert(key, SessionEntry::new());
+            let requested = project_root.map(PathBuf::from).unwrap_or_else(|| {
+                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+            });
+            let canonical = std::fs::canonicalize(&requested).unwrap_or(requested);
+            self.sessions.insert(key, SessionEntry::new(canonical));
         }
         let mut status = self.workspace_status(repo_id, worktree_id)?;
         if let Some(object) = status.as_object_mut() {
             object.insert("created".to_string(), Value::Bool(created));
+            object.insert(
+                "projectRoot".to_string(),
+                Value::String(
+                    self.sessions
+                        .get(&session_key(repo_id, worktree_id))
+                        .map(|entry| entry.project_root.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                ),
+            );
         }
         Ok(status)
     }
@@ -457,9 +515,13 @@ impl DiagnosticsService {
 
     // -- snapshots, fence, baselines ----------------------------------------
 
-    /// Resolve the effective planner policy for one acquisition: the stored
-    /// profile supplies identity and blocking codes; the request supplies the
-    /// required capabilities. The digest is `sha256:` over the sorted-key
+    /// Resolve the effective planner policy for one acquisition. Precedence
+    /// (design §8): request-supplied capabilities first, then the stored
+    /// profile's requirements, then derivation from the touched scope —
+    /// never a blanket default capability. A JS/TS mutation therefore
+    /// demands repository module resolution, import/export binding, and type
+    /// semantics on top of syntax; a Rust mutation demands name/type/compiler
+    /// project semantics. The digest is `sha256:` over the sorted-key
     /// canonical JSON serialization of the effective profile with
     /// `policyDigest` left empty during hashing, so it is reproducible from
     /// the profile alone.
@@ -467,6 +529,7 @@ impl DiagnosticsService {
         &self,
         profile_name: &str,
         required_capabilities: &[CapabilityVocabulary],
+        touched_paths: &[String],
     ) -> Result<GatePolicyProfileV1, LiveDiagnosticsServiceError> {
         let stored = self
             .policies
@@ -475,14 +538,10 @@ impl DiagnosticsService {
                 profile_name: profile_name.to_string(),
             })?;
         let mut effective = stored.clone();
-        if required_capabilities.is_empty() {
-            if stored.required_capabilities.is_empty() {
-                effective.required_capabilities = vec![CapabilityVocabulary::TypeSemantics];
-            } else {
-                effective.required_capabilities = stored.required_capabilities.clone();
-            }
-        } else {
+        if !required_capabilities.is_empty() {
             effective.required_capabilities = required_capabilities.to_vec();
+        } else if stored.required_capabilities.is_empty() {
+            effective.required_capabilities = derive_required_capabilities(touched_paths);
         }
         effective.policy_digest = String::new();
         effective.policy_digest = effective.canonical_digest();
@@ -490,87 +549,178 @@ impl DiagnosticsService {
     }
 
     fn ensure_workspace_providers(&mut self, repo_id: &str, worktree_id: &str) {
-        let has_match = self
-            .supervisor
-            .registered_keys()
-            .iter()
-            .any(|key| key.repo_id == repo_id && key.worktree_id == worktree_id);
-        if has_match {
+        let Some(entry) = self.sessions.get(&session_key(repo_id, worktree_id)) else {
+            return;
+        };
+        if entry.providers_registered {
             return;
         }
-        self.register_production_providers_for(repo_id, worktree_id);
+        let root = entry.project_root.clone();
+        self.register_production_providers_for(repo_id, worktree_id, &root);
+        if let Some(entry) = self.sessions.get_mut(&session_key(repo_id, worktree_id)) {
+            entry.providers_registered = true;
+        }
     }
 
-    fn register_production_providers_for(&mut self, repo_id: &str, worktree_id: &str) {
-        use crate::providers::{rust_analyzer_provider, typescript_provider};
-        let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let canonical_root = project_root.to_string_lossy().to_string();
+    /// Register D1 providers bound to the session's exact canonical root with
+    /// real identity digests (design §3): binary/toolchain digests come from
+    /// the resolved engine binary's bytes and install directory, the config
+    /// digest from the project files the engine actually reads, and the
+    /// sandbox digest from the effective containment policy inputs. A binary
+    /// that cannot be resolved is simply not registered — acquisition then
+    /// reports its capability as unsatisfied instead of inventing identity.
+    fn register_production_providers_for(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        project_root: &Path,
+    ) {
+        let canonical_root = std::fs::canonicalize(project_root)
+            .unwrap_or_else(|_| project_root.to_path_buf())
+            .to_string_lossy()
+            .into_owned();
         let search_path = crate::providers::default_search_path();
+        let sandbox_digest = sandbox_policy_digest(&search_path);
 
-        let ts_root = project_root.clone();
-        let ts_search = search_path.clone();
-        let ts_key = WorkspaceEngineKey {
-            repo_id: repo_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            canonical_worktree_root: canonical_root.clone(),
-            project_root: ts_root.to_string_lossy().to_string(),
-            engine_id: typescript_provider::PROVIDER_ID.to_string(),
-            engine_version: typescript_provider::ADAPTER_VERSION.to_string(),
-            binary_digest: "sha256:prod-typescript".to_string(),
-            toolchain_digest: "sha256:prod-toolchain".to_string(),
-            project_config_digest: "sha256:prod-config".to_string(),
-            sandbox_policy_digest: "sha256:prod-sandbox".to_string(),
-        };
-        self.register_provider(
-            ts_key,
-            typescript_provider::qualified_capabilities(),
-            Box::new(move || {
-                Box::new(typescript_provider::TypeScriptProvider::with_search_path(
-                    ts_root.clone(),
-                    ts_search.clone(),
-                )) as Box<dyn DiagnosticsProvider>
-            }),
-        );
+        if let Some((_engine_name, ts_binary)) =
+            typescript_provider::resolve_engine(&search_path)
+        {
+            let identity = typescript_provider::identity_inputs(project_root, &ts_binary);
+            if let (
+                Some(binary),
+                Some(toolchain),
+                Some(config),
+            ) = (identity.binary, identity.toolchain, identity.config)
+            {
+                let key = WorkspaceEngineKey {
+                    repo_id: repo_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    canonical_worktree_root: canonical_root.clone(),
+                    project_root: project_root.to_string_lossy().to_string(),
+                    engine_id: typescript_provider::PROVIDER_ID.to_string(),
+                    engine_version: typescript_provider::ADAPTER_VERSION.to_string(),
+                    binary_digest: binary,
+                    toolchain_digest: toolchain,
+                    project_config_digest: config,
+                    sandbox_policy_digest: sandbox_digest.clone(),
+                };
+                let ts_root = project_root.to_path_buf();
+                let ts_search = search_path.clone();
+                self.register_provider(
+                    key,
+                    typescript_provider::qualified_capabilities(),
+                    Box::new(move || {
+                        Box::new(typescript_provider::TypeScriptProvider::with_search_path(
+                            ts_root.clone(),
+                            ts_search.clone(),
+                        )) as Box<dyn DiagnosticsProvider>
+                    }),
+                );
+            }
+        }
 
-        let ra_root = project_root.clone();
-        let ra_search = search_path.clone();
-        let ra_key = WorkspaceEngineKey {
-            repo_id: repo_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            canonical_worktree_root: canonical_root,
-            project_root: ra_root.to_string_lossy().to_string(),
-            engine_id: rust_analyzer_provider::PROVIDER_ID.to_string(),
-            engine_version: rust_analyzer_provider::ADAPTER_VERSION.to_string(),
-            binary_digest: "sha256:prod-rust-analyzer".to_string(),
-            toolchain_digest: "sha256:prod-toolchain".to_string(),
-            project_config_digest: "sha256:prod-config".to_string(),
-            sandbox_policy_digest: "sha256:prod-sandbox".to_string(),
-        };
-        self.register_provider(
-            ra_key,
-            rust_analyzer_provider::qualified_capabilities(),
-            Box::new(move || {
-                Box::new(rust_analyzer_provider::RustAnalyzerProvider::with_search_path(
-                    ra_root.clone(),
-                    ra_search.clone(),
-                )) as Box<dyn DiagnosticsProvider>
-            }),
-        );
+        if let Some(ra_binary) = rust_analyzer_provider::resolve_engine(&search_path) {
+            let config_files: Vec<&str> = vec!["Cargo.toml", "rust-toolchain.toml", "rust-toolchain"];
+            let binary = binary_digest(&ra_binary);
+            let toolchain = toolchain_digest(&ra_binary);
+            let config = project_config_digest(project_root, &config_files);
+            if let (Some(binary), Some(toolchain), Some(config)) = (binary, toolchain, config) {
+                let key = WorkspaceEngineKey {
+                    repo_id: repo_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    canonical_worktree_root: canonical_root,
+                    project_root: project_root.to_string_lossy().to_string(),
+                    engine_id: rust_analyzer_provider::PROVIDER_ID.to_string(),
+                    engine_version: rust_analyzer_provider::ADAPTER_VERSION.to_string(),
+                    binary_digest: binary,
+                    toolchain_digest: toolchain,
+                    project_config_digest: config,
+                    sandbox_policy_digest: sandbox_digest,
+                };
+                let ra_root = project_root.to_path_buf();
+                let ra_search = search_path.clone();
+                self.register_provider(
+                    key,
+                    rust_analyzer_provider::qualified_capabilities(),
+                    Box::new(move || {
+                        Box::new(rust_analyzer_provider::RustAnalyzerProvider::with_search_path(
+                            ra_root.clone(),
+                            ra_search.clone(),
+                        )) as Box<dyn DiagnosticsProvider>
+                    }),
+                );
+            }
+        }
     }
 
-    /// Production service constructor that registers D1 providers with default
-    /// project roots probing PATH. Used by `resident_diagnostics_routes` and
-    /// available to hosts that need an immediately runnable service.
+    /// Production service constructor: installs the real Blueprint findings
+    /// client (daemon IPC) and registers providers lazily per opened
+    /// workspace against each workspace's exact bound root.
     pub fn production_service() -> Result<Self, LiveDiagnosticsServiceError> {
-        let mut service = Self::new()?;
-        service.register_production_providers_for("default", "default");
-        Ok(service)
+        Ok(Self::new()?.with_blueprint_client(Box::new(
+            DaemonFindingsClient::from_environment(),
+        )))
+    }
+
+    /// Fetch Blueprint D0a/D0b evidence through the public resident findings
+    /// service (design §7.1 item 6). Any transport/protocol failure becomes a
+    /// typed unavailable lane input — this is the only Blueprint path, and it
+    /// never fabricates generation or freshness evidence.
+    fn blueprint_lane_input(
+        &mut self,
+        project_root: &Path,
+        timeout_ms: u64,
+    ) -> BlueprintLaneInput {
+        let Some(client) = &mut self.blueprint_client else {
+            return BlueprintLaneInput::unavailable(
+                "no blueprint findings client is configured".to_string(),
+            );
+        };
+        match client.fetch(project_root, timeout_ms) {
+            Ok(result) => {
+                if !result.freshness_is_current() {
+                    // Stale evidence is never silently recomputed as current:
+                    // typed omission, freshness Stale, no exact lane.
+                    return BlueprintLaneInput {
+                        generation: None,
+                        freshness:
+                            membrane_protocol::diagnostics::BlueprintFreshness::Stale,
+                        observations: Vec::new(),
+                        lane: None,
+                        delta: None,
+                        omissions: vec![membrane_protocol::diagnostics::TypedOmission {
+                            code: "stale_generation".to_string(),
+                            detail: format!(
+                                "blueprint working tree moved past sealed generation {}",
+                                result.generation_id
+                            ),
+                        }],
+                    };
+                }
+                let generation = result.generation_id.clone();
+                let observations = result
+                    .findings
+                    .iter()
+                    .map(|finding| finding.to_observation(&generation))
+                    .collect();
+                BlueprintLaneInput::current(generation, observations, 0, result.omissions)
+            }
+            Err(error @ BlueprintFindingsError::DeadlineExceeded) => {
+                BlueprintLaneInput::unavailable(format!(
+                    "blueprint findings service did not answer within {timeout_ms}ms: {error}"
+                ))
+            }
+            Err(error) => BlueprintLaneInput::unavailable(format!(
+                "blueprint findings service unavailable: {error}"
+            )),
+        }
     }
 
     /// Run every registered provider for the workspace within the request's
     /// cost ceiling and absolute deadline, assemble the exact-evidence
-    /// snapshot, evaluate planner policy, and clear the fence only on
-    /// `clean_exact`. Returns the gate decision.
+    /// snapshot seeded with real Blueprint D0 evidence, evaluate planner
+    /// policy, and clear the fence only on `clean_exact`. Returns the gate
+    /// decision.
     pub fn snapshot_await(
         &mut self,
         request: &SnapshotAwaitRequest,
@@ -580,8 +730,30 @@ impl DiagnosticsService {
             .deadline_ms
             .unwrap_or(self.supervisor.config().default_deadline_ms);
         let deadline = AbsoluteDeadline::after(self.supervisor.now_monotonic_ms(), deadline_ms);
-        let policy =
-            self.resolve_policy(&request.policy_profile_name, &request.required_capabilities)?;
+        // Short-lived borrow: pull the sealed epoch identity out of the
+        // session before touching other service fields.
+        let (sealed, project_root) = {
+            let entry = self
+                .sessions
+                .get_mut(&session_key(&request.repo_id, &request.worktree_id))
+                .ok_or_else(|| workspace_not_open(&request.repo_id, &request.worktree_id))?;
+            let sealed = entry
+                .session
+                .latest_sealed()
+                .cloned()
+                .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
+            (sealed, entry.project_root.clone())
+        };
+        // Planner policy resolution derives obligations from the touched
+        // scope when neither request nor profile supplies them (design §8).
+        let touched_paths = sealed.changed_file_hashes.iter().map(|h| h.path.clone())
+            .chain(sealed.changed_paths.iter().cloned())
+            .collect::<Vec<_>>();
+        let policy = self.resolve_policy(
+            &request.policy_profile_name,
+            &request.required_capabilities,
+            &touched_paths,
+        )?;
         let keys: Vec<WorkspaceEngineKey> = self
             .supervisor
             .registered_keys()
@@ -590,19 +762,24 @@ impl DiagnosticsService {
             .cloned()
             .collect();
         let max_cost = request.max_cost.unwrap_or_default();
+        // Real Blueprint D0a/D0b via the public resident findings service.
+        let mut blueprint =
+            self.blueprint_lane_input(&project_root, deadline_ms.max(1_000));
+        if let BlueprintLaneInput {
+            lane: Some(lane),
+            ..
+        } = &mut blueprint
+        {
+            lane.bound_workspace_epoch = sealed.epoch;
+        }
         let entry = self
             .sessions
             .get_mut(&session_key(&request.repo_id, &request.worktree_id))
             .ok_or_else(|| workspace_not_open(&request.repo_id, &request.worktree_id))?;
-        let sealed = entry
-            .session
-            .latest_sealed()
-            .cloned()
-            .ok_or(LiveDiagnosticsServiceError::NoSealedEpoch)?;
         let decision = entry.session.acquire_snapshot(
             &mut self.supervisor,
             &keys,
-            Vec::new(),
+            blueprint,
             &sealed,
             &policy,
             max_cost,
@@ -653,6 +830,52 @@ impl DiagnosticsService {
         name: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
         self.record_baseline(repo_id, worktree_id, name, "update")
+    }
+
+    /// Shared capture/update body: a named baseline records the currently
+    /// cleared decision reference plus the manifest digest and changed-file
+    /// hashes of the exact bytes that decision describes. An uncleared fence
+    /// is a typed `fence_not_cleared` error (design §12).
+    fn record_baseline(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        name: &str,
+        action: &'static str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get_mut(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        let Some(clearance) = entry.session.cleared_decision() else {
+            return Err(LiveDiagnosticsServiceError::FenceNotCleared {
+                repo_id: repo_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+            });
+        };
+        let latest = entry.session.latest_sealed().cloned();
+        let baseline = NamedBaseline {
+            name: name.to_string(),
+            decision_ref: clearance.snapshot_id.clone(),
+            policy_digest: clearance.policy_digest.clone(),
+            manifest_digest: epoch_manifest_of(&latest).unwrap_or_default(),
+            epoch_number: latest.as_ref().map(|epoch| epoch.epoch).unwrap_or(0),
+            captured_at_unix_ms: now_unix_ms(),
+        };
+        let payload = baseline.payload(repo_id, worktree_id, action);
+        self.baselines
+            .entry(session_key(repo_id, worktree_id))
+            .or_default()
+            .insert(name.to_string(), baseline);
+        self.audit.record("baseline", payload);
+        Ok(json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "repoId": repo_id,
+            "worktreeId": worktree_id,
+            "action": action,
+            "name": name,
+            "fenceCleared": true,
+        }))
     }
 
     // -- provider lifecycle ---------------------------------------------------
@@ -997,7 +1220,11 @@ fn seeded_policies() -> HashMap<String, GatePolicyProfileV1> {
             policy_version: "v1".to_string(),
             policy_digest: String::new(),
             blocking_codes: Vec::new(),
-            required_capabilities: vec![CapabilityVocabulary::Syntax],
+            // Intentionally empty: requirements derive per request from the
+            // touched scope (design §8). A blanket default capability would
+            // under-check — a D1 provider could clear the fence without the
+            // D0 repository obligations this system exists to enforce.
+            required_capabilities: Vec::new(),
         },
     );
     policies
@@ -1085,12 +1312,17 @@ fn cost_class_label(class: CostClass) -> &'static str {
 // Wire DTOs (camelCase, closed)
 // ---------------------------------------------------------------------------
 
-/// Identity of one addressed workspace session.
+/// Identity of one addressed workspace session. `projectRoot` binds the
+/// session to an exact canonical worktree/project root at open time (design
+/// §3); when omitted the resident's canonicalized current directory is
+/// recorded so identity is always explicit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceRequest {
     pub repo_id: String,
     pub worktree_id: String,
+    #[serde(default)]
+    pub project_root: Option<String>,
 }
 
 /// `mutation.seal` / `mutation.registerObserved` request carrying the full
@@ -1380,7 +1612,11 @@ async fn post_workspace_open(
         Err(response) => return response,
     };
     let mut service = lock_service(&state.service);
-    respond(service.workspace_open(&request.repo_id, &request.worktree_id))
+    respond(service.workspace_open(
+        &request.repo_id,
+        &request.worktree_id,
+        request.project_root.as_deref(),
+    ))
 }
 
 async fn post_workspace_close(
@@ -1701,7 +1937,7 @@ mod tests {
             .snapshot_await(&snapshot_request(&[CapabilityVocabulary::Syntax]))
             .is_err());
 
-        service.workspace_open("repo-1", "wt-1").unwrap();
+        service.workspace_open("repo-1", "wt-1", None).unwrap();
 
         // No sealed epoch yet: acquisition is a typed no_sealed_epoch.
         assert_eq!(
@@ -1862,42 +2098,139 @@ mod tests {
     fn policy_resolution_is_deterministic_and_capability_sensitive() {
         let dir = tempfile::tempdir().unwrap();
         let service = service_at(&dir);
+        let ts_scope = vec!["src/app.ts".to_string()];
 
-        let with_syntax =
-            service.resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax]);
-        let again =
-            service.resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax]);
+        let with_syntax = service.resolve_policy(
+            DEFAULT_POLICY_PROFILE_NAME,
+            &[CapabilityVocabulary::Syntax],
+            &[],
+        );
+        let again = service.resolve_policy(
+            DEFAULT_POLICY_PROFILE_NAME,
+            &[CapabilityVocabulary::Syntax],
+            &[],
+        );
         assert_eq!(with_syntax.unwrap().policy_digest, again.unwrap().policy_digest);
 
-        let without_requirements =
-            service.resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[]);
-        // Empty falls back to seeded default Syntax, so digests are equal;
-        // a different capability must diverge.
-        assert_eq!(
+        // Empty request + empty stored profile derives from the touched scope
+        // (design §8): a TS mutation requires the full D0+D1 obligation set,
+        // never a blanket single default.
+        let derived =
             service
-                .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax])
-                .unwrap()
-                .policy_digest,
-            without_requirements.unwrap().policy_digest
+                .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
+                .unwrap();
+        assert_eq!(
+            derived.required_capabilities,
+            vec![
+                CapabilityVocabulary::Syntax,
+                CapabilityVocabulary::RepositoryModuleResolution,
+                CapabilityVocabulary::ImportExportBinding,
+                CapabilityVocabulary::TypeSemantics,
+            ]
         );
+        let derived_again =
+            service
+                .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
+                .unwrap();
+        assert_eq!(derived.policy_digest, derived_again.policy_digest);
+
         let with_type = service
             .resolve_policy(
                 DEFAULT_POLICY_PROFILE_NAME,
                 &[CapabilityVocabulary::TypeSemantics],
+                &[],
             )
             .unwrap();
         let with_syntax_again = service
-            .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[CapabilityVocabulary::Syntax])
+            .resolve_policy(
+                DEFAULT_POLICY_PROFILE_NAME,
+                &[CapabilityVocabulary::Syntax],
+                &[],
+            )
             .unwrap();
         assert_ne!(with_type.policy_digest, with_syntax_again.policy_digest);
 
         assert_eq!(
             service
-                .resolve_policy("no-such-profile", &[])
+                .resolve_policy("no-such-profile", &[], &[])
                 .unwrap_err()
                 .code(),
             "policy_unknown"
         );
+    }
+
+    #[test]
+    fn workspace_open_binds_exact_project_root_per_worktree() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+
+        let status = service
+            .workspace_open(
+                "repo-1",
+                "wt-a",
+                Some(repo_dir.path().to_str().unwrap()),
+            )
+            .unwrap();
+        let bound_a = status["projectRoot"].as_str().unwrap().to_string();
+        assert!(!bound_a.is_empty());
+        // Canonicalized: the same root through a different spelling binds to
+        // the same canonical path.
+        let canonical = std::fs::canonicalize(repo_dir.path()).unwrap();
+        assert_eq!(
+            bound_a,
+            canonical.to_string_lossy(),
+            "workspace identity must bind the exact canonical root"
+        );
+
+        // A second worktree of the same repo binds its own root.
+        let other_dir = tempfile::tempdir().unwrap();
+        let status_b = service
+            .workspace_open(
+                "repo-1",
+                "wt-b",
+                Some(other_dir.path().to_str().unwrap()),
+            )
+            .unwrap();
+        let bound_b = status_b["projectRoot"].as_str().unwrap().to_string();
+        assert_ne!(bound_a, bound_b, "distinct worktrees must bind distinct roots");
+    }
+
+    #[test]
+    fn blueprint_unavailable_degrades_typed_never_fabricates() {
+        use crate::providers::blueprint_findings::{
+            BlueprintFindingsError, BlueprintFindingsResult,
+        };
+
+        struct FailingClient;
+        impl crate::providers::blueprint_findings::BlueprintFindingsClient for FailingClient {
+            fn fetch(
+                &mut self,
+                _repo_root: &std::path::Path,
+                _timeout_ms: u64,
+            ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
+                Err(BlueprintFindingsError::Unavailable(
+                    "daemon endpoint missing".into(),
+                ))
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut service =
+            service_at(&dir).with_blueprint_client(Box::new(FailingClient));
+        service.workspace_open("repo-1", "wt-1", None).unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
+
+        let decision = service.snapshot_await(&snapshot_request(&[])).unwrap();
+        let snapshot = service.snapshot_get("repo-1", "wt-1").unwrap();
+        assert_eq!(snapshot["blueprintGeneration"], Value::Null);
+        assert_eq!(snapshot["blueprintFreshness"], json!("unknown"));
+        assert_eq!(decision.outcome, GateOutcome::UnknownIncomplete);
+        assert!(decision
+            .omissions
+            .iter()
+            .any(|omission| omission.code == "blueprint_unavailable"));
     }
 
     #[test]
@@ -1912,7 +2245,7 @@ mod tests {
     fn fence_evaluate_is_pure_and_leaves_service_state_untouched() {
         let dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
-        service.workspace_open("repo-1", "wt-1").unwrap();
+        service.workspace_open("repo-1", "wt-1", None).unwrap();
         service.mutation_begin("repo-1", "wt-1").unwrap();
         service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
 

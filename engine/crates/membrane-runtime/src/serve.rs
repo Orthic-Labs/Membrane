@@ -5476,8 +5476,16 @@ mod tests {
             "body: {body_down}"
         );
         let snapshot_fields = payload_down.as_object().unwrap();
-        assert_eq!(snapshot_fields.len(), 4, "body: {body_down}");
-        for field in ["schemaVersion", "productId", "observedAtUnixMs", "sections"] {
+        assert_eq!(snapshot_fields.len(), 6, "body: {body_down}");
+        for field in [
+            "schemaVersion",
+            "productId",
+            "observedAtUnixMs",
+            "sections",
+            // Parent/subsystem status composition (Hub-status repair).
+            "membraneState",
+            "subsystems",
+        ] {
             assert!(snapshot_fields.contains_key(field), "body: {body_down}");
         }
 

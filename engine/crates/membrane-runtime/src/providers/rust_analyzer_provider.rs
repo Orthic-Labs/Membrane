@@ -31,9 +31,9 @@ use crate::live_diagnostics::{
     ProviderCapabilities, ProviderError, ProviderOutput, RequestId, SideEffectClass,
 };
 use crate::providers::child_process::{
-    default_search_path, drain_frames_until, kill_direct_child, lsp_frame_bytes,
-    probe_search_path, recv_with_deadline, recv_within, sanitized_child_env,
-    spawn_bounded_reader, spawn_sanitized, spawn_stderr_drainer, FrameOutcome, LspDecoder,
+    default_search_path, drain_frames_until, lsp_frame_bytes, probe_search_path,
+    recv_with_deadline, recv_within, sanitized_child_env, spawn_bounded_reader, spawn_sanitized,
+    spawn_stderr_drainer, FrameOutcome, LspDecoder, SanitizedProcess,
 };
 use membrane_protocol::diagnostics::{
     CapabilityVocabulary, ConvergenceClass, CoverageLaneV1, CostClass, LaneState, ObservationV1,
@@ -44,7 +44,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin};
+use std::process::ChildStdin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -76,17 +76,24 @@ pub fn qualified_capabilities() -> ProviderCapabilities {
     }
 }
 
+/// Resolve the `rust-analyzer` binary this adapter would launch, without
+/// starting it. `None` means no engine is installed and the provider must
+/// not be registered under invented identity (design §3).
+pub fn resolve_engine(search_path: &[PathBuf]) -> Option<PathBuf> {
+    probe_search_path("rust-analyzer", search_path)
+}
+
 // ---------------------------------------------------------------------------
 // Session plumbing
 // ---------------------------------------------------------------------------
 
 struct LspSession {
-    child: Child,
+    process: SanitizedProcess,
     stdin: Option<ChildStdin>,
     frames: Receiver<String>,
     overflow_dropped: Arc<AtomicUsize>,
-    reader_handle: JoinHandle<()>,
-    stderr_handle: JoinHandle<()>,
+    reader_handle: Option<JoinHandle<()>>,
+    stderr_handle: Option<JoinHandle<()>>,
 }
 
 impl LspSession {
@@ -107,9 +114,13 @@ impl LspSession {
 
     fn kill_and_join(&mut self) {
         let _ = self.stdin.take();
-        kill_direct_child(&mut self.child);
-        let _ = self.reader_handle.join();
-        let _ = self.stderr_handle.join();
+        self.process.kill_tree();
+        if let Some(handle) = self.reader_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = self.stderr_handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -119,18 +130,20 @@ fn start_session(
     search_path: &[PathBuf],
 ) -> Result<LspSession, ProviderError> {
     let env = sanitized_child_env(search_path);
-    let mut child = spawn_sanitized(binary, &[], project_root, &env).map_err(|error| {
+    let mut process = spawn_sanitized(binary, &[], project_root, &env).map_err(|error| {
         ProviderError::Unavailable(format!(
             "failed to spawn {}: {error}",
             binary.display()
         ))
     })?;
-    let stdin = child.stdin.take();
-    let stdout = child
+    let stdin = process.child.stdin.take();
+    let stdout = process
+        .child
         .stdout
         .take()
         .ok_or_else(|| ProviderError::Crashed("rust-analyzer stdout was not piped".into()))?;
-    let stderr = child
+    let stderr = process
+        .child
         .stderr
         .take()
         .ok_or_else(|| ProviderError::Crashed("rust-analyzer stderr was not piped".into()))?;
@@ -143,12 +156,12 @@ fn start_session(
     );
     let stderr_handle = spawn_stderr_drainer(stderr);
     Ok(LspSession {
-        child,
+        process,
         stdin,
         frames: pump.frames,
         overflow_dropped,
-        reader_handle: pump.handle,
-        stderr_handle,
+        reader_handle: Some(pump.handle),
+        stderr_handle: Some(stderr_handle),
     })
 }
 
@@ -843,7 +856,7 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
 
     /// Best-effort LSP shutdown request plus exit notification, then direct-
     /// child kill and reader joins.
-    fn shutdown(mut self) -> Result<(), ProviderError> {
+    fn shutdown(mut self: Box<Self>) -> Result<(), ProviderError> {
         if let Some(mut session) = self.session.take() {
             let request_id = self.next_id;
             self.next_id += 1;

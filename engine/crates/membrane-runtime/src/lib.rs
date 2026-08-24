@@ -90,6 +90,6 @@ pub use team_policy::{
     TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
 };
 pub use live_diagnostics_service::{
-    diagnostics_router, evaluate_fence, resident_diagnostics_routes, static_capabilities,
-    DiagnosticsService, FenceEvaluateRequest, LiveDiagnosticsServiceError, SnapshotAwaitRequest,
+    diagnostics_router, resident_diagnostics_routes, static_capabilities, DiagnosticsService,
+    FenceEvaluateRequest, LiveDiagnosticsServiceError, SnapshotAwaitRequest,
 };

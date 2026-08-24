@@ -21,11 +21,12 @@ use crate::live_diagnostics::{
     AbsoluteDeadline, CapabilityKind, ConvergenceProof, DiagnosticsProvider,
     ProviderCapabilities, ProviderError, ProviderOutput, RequestId, SideEffectClass,
 };
+use crate::providers::identity;
 use crate::providers::child_process::{
-    default_search_path, drain_frames_until, kill_direct_child, lsp_frame_bytes,
-    probe_search_path, recv_with_deadline, recv_within, sanitized_child_env,
-    spawn_bounded_reader, spawn_sanitized, spawn_stderr_drainer, tsserver_line_bytes,
-    FrameOutcome, LineFrameDecoder, LspDecoder,
+    default_search_path, drain_frames_until, lsp_frame_bytes, probe_search_path,
+    recv_with_deadline, recv_within, sanitized_child_env, spawn_bounded_reader, spawn_sanitized,
+    spawn_stderr_drainer, tsserver_line_bytes, FrameOutcome, LineFrameDecoder, LspDecoder,
+    SanitizedProcess,
 };
 use membrane_protocol::diagnostics::{
     CapabilityVocabulary, ConvergenceClass, CoverageLaneV1, CostClass, LaneState, ObservationV1,
@@ -36,7 +37,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin};
+use std::process::ChildStdin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -60,6 +61,44 @@ pub fn qualified_capabilities() -> ProviderCapabilities {
         side_effect_class: SideEffectClass::PureAnalysis,
         convergence_class: ConvergenceClass::PushVersionedExact,
         cost_class: CostClass::Interactive,
+    }
+}
+
+/// Resolve the engine binary this adapter would launch, without starting it.
+/// Deterministic: first candidate found on the injected search path wins.
+/// Used by the service layer to derive real `WorkspaceEngineKey` digests
+/// before registration; `None` means no engine is installed and the provider
+/// must not be registered under invented identity.
+pub fn resolve_engine(search_path: &[PathBuf]) -> Option<(&'static str, PathBuf)> {
+    for spec in CANDIDATE_SPECS {
+        if let Some(binary) = probe_search_path(spec.binary_name, search_path) {
+            return Some((spec.binary_name, binary));
+        }
+    }
+    None
+}
+
+/// Real identity inputs for one resolved TypeScript engine (design §3):
+/// binary digest from the engine's bytes, toolchain digest from its install
+/// directory, and config digest from the project files the engine reads.
+#[derive(Debug, Clone, Default)]
+pub struct ProviderIdentityInputs {
+    pub binary: Option<String>,
+    pub toolchain: Option<String>,
+    pub config: Option<String>,
+}
+
+/// Config files that define this adapter's project semantics.
+const TS_CONFIG_FILES: [&str; 3] = ["tsconfig.json", "jsconfig.json", "package.json"];
+
+pub fn identity_inputs(
+    project_root: &Path,
+    binary_path: &Path,
+) -> ProviderIdentityInputs {
+    ProviderIdentityInputs {
+        binary: identity::binary_digest(binary_path),
+        toolchain: identity::toolchain_digest(binary_path),
+        config: identity::project_config_digest(project_root, &TS_CONFIG_FILES),
     }
 }
 
@@ -158,12 +197,12 @@ fn uri_from_path(path: &Path) -> String {
 }
 
 struct TsSession {
-    child: Child,
+    process: SanitizedProcess,
     stdin: Option<ChildStdin>,
     frames: Receiver<String>,
     overflow_dropped: Arc<AtomicUsize>,
-    reader_handle: JoinHandle<()>,
-    stderr_handle: JoinHandle<()>,
+    reader_handle: Option<JoinHandle<()>>,
+    stderr_handle: Option<JoinHandle<()>>,
     protocol: EngineProtocol,
 }
 
@@ -198,9 +237,13 @@ impl TsSession {
 
     fn kill_and_join(&mut self) {
         let _ = self.stdin.take();
-        kill_direct_child(&mut self.child);
-        let _ = self.reader_handle.join();
-        let _ = self.stderr_handle.join();
+        self.process.kill_tree();
+        if let Some(handle) = self.reader_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(handle) = self.stderr_handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -212,11 +255,12 @@ fn start_session(
     protocol: EngineProtocol,
 ) -> Result<TsSession, ProviderError> {
     let env = sanitized_child_env(search_path);
-    let mut child = spawn_sanitized(binary, args, project_root, &env).map_err(|error| {
+    let mut process = spawn_sanitized(binary, args, project_root, &env).map_err(|error| {
         ProviderError::Unavailable(format!("failed to spawn {}: {error}", binary.display()))
     })?;
-    let stdin = child.stdin.take();
-    let stdout = child
+    let stdin = process.child.stdin.take();
+    let stdout = process
+        .child
         .stdout
         .take()
         .ok_or_else(|| {
@@ -228,7 +272,8 @@ fn start_session(
                 }
             ))
         })?;
-    let stderr = child
+    let stderr = process
+        .child
         .stderr
         .take()
         .ok_or_else(|| {
@@ -257,12 +302,12 @@ fn start_session(
     };
     let stderr_handle = spawn_stderr_drainer(stderr);
     Ok(TsSession {
-        child,
+        process,
         stdin,
         frames: pump.frames,
         overflow_dropped,
-        reader_handle: pump.handle,
-        stderr_handle,
+        reader_handle: Some(pump.handle),
+        stderr_handle: Some(stderr_handle),
         protocol,
     })
 }
@@ -321,7 +366,7 @@ struct TsserverSpan {
 enum ServerEvent {
     /// A `syntaxDiag`/`semanticDiag`/`suggestionDiag` event for one file.
     Diagnostics {
-        kind: &'static str,
+        kind: String,
         file: String,
         spans: Vec<TsserverSpan>,
     },
@@ -365,7 +410,7 @@ fn parse_server_message(line: &str) -> ServerEvent {
                 .map(|items| items.iter().filter_map(parse_span).collect::<Vec<_>>())
                 .unwrap_or_default();
             ServerEvent::Diagnostics {
-                kind,
+                kind: kind.to_string(),
                 file: file.to_string(),
                 spans,
             }
@@ -966,7 +1011,7 @@ impl DiagnosticsProvider for TypeScriptProvider {
                                         observations.push(observation_from_span(
                                             &self.declared_version,
                                             request_seq,
-                                            kind,
+                                            &kind,
                                             &target.relative,
                                             index,
                                             span,
@@ -1195,7 +1240,7 @@ impl DiagnosticsProvider for TypeScriptProvider {
 
     /// Best-effort shutdown: LSP `shutdown`+`exit` or tsserver `exit`, then
     /// process-group kill and reader joins.
-    fn shutdown(mut self) -> Result<(), ProviderError> {
+    fn shutdown(mut self: Box<Self>) -> Result<(), ProviderError> {
         if let Some(mut session) = self.session.take() {
             match session.protocol {
                 EngineProtocol::Lsp => {
@@ -1227,6 +1272,7 @@ impl DiagnosticsProvider for TypeScriptProvider {
         }
         Ok(())
     }
+}
 
 impl TypeScriptProvider {
     fn build_output(
@@ -1390,7 +1436,7 @@ mod tests {
                 assert_eq!(file, "/repo/src/main.ts");
                 assert_eq!(spans.len(), 2);
                 let observation =
-                    observation_from_span(ADAPTER_VERSION, 4, kind, "src/main.ts", 0, &spans[0]);
+                    observation_from_span(ADAPTER_VERSION, 4, &kind, "src/main.ts", 0, &spans[0]);
                 assert_eq!(observation.code, "TS2322");
                 assert_eq!(observation.severity_hint, SeverityHint::Blocking);
                 assert_eq!(observation.range.start_line, 3);
@@ -1398,7 +1444,7 @@ mod tests {
                 assert_eq!(observation.source_class, SourceClass::NativeLanguageService);
                 assert_eq!(observation.cost_class, CostClass::Interactive);
                 let advisory =
-                    observation_from_span(ADAPTER_VERSION, 4, kind, "src/main.ts", 1, &spans[1]);
+                    observation_from_span(ADAPTER_VERSION, 4, &kind, "src/main.ts", 1, &spans[1]);
                 assert_eq!(advisory.severity_hint, SeverityHint::Advisory);
                 assert_eq!(advisory.observation_id, format!("{PROVIDER_ID}:4:semanticDiag:src/main.ts:1"));
             }

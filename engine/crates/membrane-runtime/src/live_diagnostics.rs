@@ -519,6 +519,85 @@ pub struct ProviderOutput {
     pub lane: CoverageLaneV1,
 }
 
+/// Caller-assembled Blueprint D0a/D0b evidence for one acquisition (design
+/// §4, §7). The service layer builds this from Blueprint's public resident
+/// findings service — never synthetically inside acquisition. When Blueprint
+/// evidence is unavailable, [`BlueprintLaneInput::unavailable`] carries a
+/// typed omission and *no* generation: freshness becomes `Unknown`,
+/// blueprint-required obligations stay unsatisfied, and nothing fabricated
+/// can clear the fence.
+#[derive(Debug)]
+pub struct BlueprintLaneInput {
+    /// Sealed generation id exactly as Blueprint reported it, or `None`.
+    pub generation: Option<String>,
+    /// Freshness exactly as Blueprint reported it; `Unknown` when absent.
+    pub freshness: BlueprintFreshness,
+    /// D0a/D0b findings already mapped to normalized observations.
+    pub observations: Vec<ObservationV1>,
+    /// Exact D0 coverage lane (`snapshot_checker_exact`, complete) present
+    /// only when Blueprint answered current evidence bound to this epoch.
+    pub lane: Option<CoverageLaneV1>,
+    /// Blueprint-owned Tier-0 delta carried without recomputation (§8.1).
+    pub delta: Option<membrane_protocol::diagnostics::BlueprintDeltaV1>,
+    /// Typed omissions (service unreachable, stale overlay, detection gaps).
+    pub omissions: Vec<TypedOmission>,
+}
+
+impl Default for BlueprintLaneInput {
+    fn default() -> Self {
+        Self::unavailable("no blueprint evidence was supplied".to_string())
+    }
+}
+
+impl BlueprintLaneInput {
+    /// Typed unavailability: no fabricated generation, no exact lane, one
+    /// recorded omission explaining why Blueprint evidence is absent.
+    pub fn unavailable(detail: String) -> Self {
+        Self {
+            generation: None,
+            freshness: BlueprintFreshness::Unknown,
+            observations: Vec::new(),
+            lane: None,
+            delta: None,
+            omissions: vec![TypedOmission {
+                code: "blueprint_unavailable".to_string(),
+                detail,
+            }],
+        }
+    }
+
+    /// Real evidence: current findings plus an exact D0 lane bound to
+    /// `sealed_epoch` (design §7.1: only exact generation/hash binding may be
+    /// classified `snapshot_checker_exact`).
+    pub fn current(
+        generation: String,
+        observations: Vec<ObservationV1>,
+        sealed_epoch: u64,
+        omissions: Vec<TypedOmission>,
+    ) -> Self {
+        Self {
+            generation: Some(generation),
+            freshness: BlueprintFreshness::Current,
+            observations,
+            lane: Some(CoverageLaneV1 {
+                provider_id: "blueprint-d0".to_string(),
+                scope: Vec::new(),
+                capabilities_covered: vec![
+                    CapabilityVocabulary::Syntax,
+                    CapabilityVocabulary::RepositoryModuleResolution,
+                    CapabilityVocabulary::ImportExportBinding,
+                ],
+                convergence_class: ConvergenceClass::SnapshotCheckerExact,
+                bound_workspace_epoch: sealed_epoch,
+                state: LaneState::Complete,
+                omissions: Vec::new(),
+            }),
+            delta: None,
+            omissions,
+        }
+    }
+}
+
 /// Engine convergence claim returned by [`DiagnosticsProvider::prove_convergence`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConvergenceProof {
@@ -540,7 +619,9 @@ pub trait DiagnosticsProvider: Send {
     ) -> Result<ProviderOutput, ProviderError>;
     fn cancel(&mut self, request_id: &RequestId);
     fn prove_convergence(&mut self, epoch: &WorkspaceEpochV1) -> ConvergenceProof;
-    fn shutdown(self) -> Result<(), ProviderError>;
+    /// Consume the instance and terminate its process tree. Object-safe via
+    /// `Box<Self>` so the supervisor can shut instances down by value.
+    fn shutdown(self: Box<Self>) -> Result<(), ProviderError>;
 }
 
 /// Placeholder instance standing in for a provider whose initialization failed,
@@ -584,7 +665,7 @@ impl DiagnosticsProvider for FailedProvider {
         }
     }
 
-    fn shutdown(self) -> Result<(), ProviderError> {
+    fn shutdown(self: Box<Self>) -> Result<(), ProviderError> {
         Err(ProviderError::ShutdownFailed(self.message))
     }
 }
@@ -970,38 +1051,49 @@ impl DiagnosticsSupervisor {
         &mut self,
         key: &WorkspaceEngineKey,
     ) -> Result<&mut LiveInstance, ProviderError> {
-        if let Some(registered) = self.registry.get_mut(key) {
-            if matches!(registered.state, EntryState::Live(_)) {
-                return Ok(match registered.state {
-                    EntryState::Live(ref mut instance) => instance,
-                    EntryState::NotStarted => unreachable!("checked immediately above"),
-                });
-            }
-        } else {
+        let is_live = matches!(
+            self.registry.get(key),
+            Some(Registered {
+                state: EntryState::Live(_),
+                ..
+            })
+        );
+        if is_live {
+            let registered = self.registry.get_mut(key).expect("checked live above");
+            return Ok(match registered.state {
+                EntryState::Live(ref mut instance) => instance,
+                EntryState::NotStarted => unreachable!("checked immediately above"),
+            });
+        }
+        if !self.registry.contains_key(key) {
             return Err(unavailable_for(key));
         }
         let started_at_ms = (self.clock)();
         // Borrow capabilities and factory without consuming.
-        let caps_clone = {
-            let registered = self.registry.get(key).unwrap();
-            registered.capabilities.clone()
-        };
+        let caps_clone = self
+            .registry
+            .get(key)
+            .expect("registered above")
+            .capabilities
+            .clone();
         // Call factory via shared reference; factory stays in Registered.factory
         // for future restarts (lazy-eviction/shutdown_key).
-        let mut provider = {
-            let registered = self.registry.get(key).unwrap();
-            let Some(factory) = registered.factory.as_ref() else {
+        let mut provider = match self
+            .registry
+            .get(key)
+            .expect("registered above")
+            .factory
+            .as_ref()
+        {
+            Some(factory) => factory(),
+            None => {
                 return Err(ProviderError::InvalidRequest(
                     "provider factory already consumed".into(),
                 ));
-            };
-            factory()
+            }
         };
         let init_result = provider.initialize(&caps_clone);
-        let registered = match self.registry.get_mut(key) {
-            Some(registered) => registered,
-            None => return Err(unavailable_for(key)),
-        };
+        let registered = self.registry.get_mut(key).expect("registered above");
         match init_result {
             Ok(()) => {
                 let live = LiveInstance {
@@ -1195,17 +1287,19 @@ impl DiagnosticsSession {
 
     /// Run every candidate provider that fits `max_cost`, in deterministic
     /// cheapest-first order, assemble the exact-evidence snapshot seeded with
-    /// caller-supplied D0a/D0b observations, evaluate planner policy, and clear
-    /// the fence only on `clean_exact`.
+    /// caller-assembled Blueprint D0a/D0b evidence, evaluate planner policy,
+    /// and clear the fence only on `clean_exact`.
     ///
-    /// Individual provider failures become typed omissions on the snapshot;
-    /// they never silently narrow required coverage (design §5.3, §12).
-    #[allow(clippy::too_many_arguments)]
+    /// `blueprint` must come from Blueprint's public findings service or be
+    /// [`BlueprintLaneInput::unavailable`]; this method never synthesizes a
+    /// generation, freshness, or delta (design §4, §7). Individual provider
+    /// failures become typed omissions on the snapshot; they never silently
+    /// narrow required coverage (design §5.3, §12).
     pub fn acquire_snapshot(
         &mut self,
         supervisor: &mut DiagnosticsSupervisor,
         keys: &[WorkspaceEngineKey],
-        seed_observations: Vec<ObservationV1>,
+        blueprint: BlueprintLaneInput,
         expected_epoch: &WorkspaceEpochV1,
         policy: &GatePolicyProfileV1,
         max_cost: CostClass,
@@ -1226,9 +1320,12 @@ impl DiagnosticsSession {
             })
             .collect();
         selected.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
-        let mut observations = seed_observations;
-        let mut omissions: Vec<TypedOmission> = Vec::new();
+        let mut observations = blueprint.observations;
+        let mut omissions: Vec<TypedOmission> = blueprint.omissions;
         let mut coverage_lanes: Vec<CoverageLaneV1> = Vec::new();
+        if let Some(lane) = blueprint.lane {
+            coverage_lanes.push(lane);
+        }
         for key in keys {
             if !selected.iter().any(|(_, _, chosen)| *chosen == key) {
                 omissions.push(TypedOmission {
@@ -1290,19 +1387,13 @@ impl DiagnosticsSession {
         // and non-empty anchor, else single-observation issues.
         let issues = correlate_observations(&sealed.repo_id, observations.clone());
         // Wire coverage obligations from planner: one per required capability,
-        // with state derived from exact lanes. At least Syntax is required so
-        // empty-ensemble cannot be clean. Blueprint D0 generation/freshness
-        // and delta are host-supplied; when no blueprint integration is present
-        // we synthesize a current generation bound to the sealed epoch so
-        // snapshots are never blueprint-empty.
+        // with state derived from exact lanes and dialects derived from the
+        // touched scope (design §8). Blueprint generation/freshness/delta are
+        // carried verbatim from the caller's real findings-service response —
+        // absent evidence stays absent (`Unknown` + typed omission), it is
+        // never fabricated.
         let coverage_obligations =
             build_coverage_obligations(&sealed, &policy.required_capabilities, &coverage_lanes, max_cost);
-        let blueprint_generation = Some(format!("gen-{}", sealed.epoch));
-        let blueprint_freshness = BlueprintFreshness::Current;
-        let blueprint_delta = Some(membrane_protocol::diagnostics::BlueprintDeltaV1 {
-            baseline_generation: blueprint_generation.clone(),
-            findings_delta: Vec::new(),
-        });
         let mut snapshot = assemble_snapshot(
             &sealed,
             observations,
@@ -1312,9 +1403,9 @@ impl DiagnosticsSession {
             max_cost,
             deadline,
             coverage_obligations,
-            blueprint_generation,
-            blueprint_freshness,
-            blueprint_delta,
+            blueprint.generation,
+            blueprint.freshness,
+            blueprint.delta,
         );
         // Aggregate delta when baseline is present.
         if let Some(baseline) = &self.baseline {
@@ -1376,20 +1467,51 @@ fn wall_clock_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn language_dialect_for(capability: &CapabilityVocabulary) -> &'static str {
+/// Dialect for one capability obligation, derived from the touched scope
+/// (design §8: the planner derives obligations from language/dialect and
+/// touched scope — a static per-capability dialect table would lie about
+/// mixed-language mutations).
+fn language_dialect_for(
+    capability: &CapabilityVocabulary,
+    touched: &TouchedLanguages,
+) -> String {
     match capability {
-        CapabilityVocabulary::Syntax => "universal",
-        CapabilityVocabulary::RepositoryModuleResolution => "universal",
-        CapabilityVocabulary::ImportExportBinding => "typescript",
-        CapabilityVocabulary::NameResolution => "universal",
-        CapabilityVocabulary::TypeSemantics => "typescript",
-        CapabilityVocabulary::ConfiguredStaticPolicy => "universal",
-        CapabilityVocabulary::CompilerProjectSemantics => "rust",
-        CapabilityVocabulary::GeneratedSourceAwareness => "universal",
+        CapabilityVocabulary::Syntax => "universal".to_string(),
+        CapabilityVocabulary::RepositoryModuleResolution
+        | CapabilityVocabulary::ImportExportBinding => {
+            if touched.ts_js {
+                "typescript".to_string()
+            } else if touched.rust {
+                "rust".to_string()
+            } else {
+                "universal".to_string()
+            }
+        }
+        CapabilityVocabulary::NameResolution | CapabilityVocabulary::TypeSemantics
+        | CapabilityVocabulary::CompilerProjectSemantics => {
+            if touched.rust {
+                "rust".to_string()
+            } else if touched.ts_js {
+                "typescript".to_string()
+            } else {
+                "universal".to_string()
+            }
+        }
+        CapabilityVocabulary::ConfiguredStaticPolicy
+        | CapabilityVocabulary::GeneratedSourceAwareness => "universal".to_string(),
     }
 }
 
-fn capability_kind_to_vocabularies(kinds: &BTreeSet<CapabilityKind>) -> Vec<membrane_protocol::diagnostics::CapabilityVocabulary> {
+/// Languages present in one epoch's touched scope.
+#[derive(Clone, Copy, Debug, Default)]
+struct TouchedLanguages {
+    ts_js: bool,
+    rust: bool,
+}
+
+fn capability_kind_to_vocabularies(
+    kinds: &BTreeSet<CapabilityKind>,
+) -> Vec<membrane_protocol::diagnostics::CapabilityVocabulary> {
     use membrane_protocol::diagnostics::CapabilityVocabulary;
     let mut out = Vec::new();
     for kind in kinds {
@@ -1410,6 +1532,72 @@ fn capability_kind_to_vocabularies(kinds: &BTreeSet<CapabilityKind>) -> Vec<memb
     out
 }
 
+impl TouchedLanguages {
+    fn from_epoch(sealed: &WorkspaceEpochV1) -> Self {
+        let mut touched = Self::default();
+        let paths = sealed.changed_paths.iter().map(String::as_str).chain(
+            sealed
+                .changed_file_hashes
+                .iter()
+                .map(|entry| entry.path.as_str()),
+        );
+        for path in paths {
+            let extension = path.rsplit('.').next().unwrap_or("");
+            match extension {
+                "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs" => {
+                    touched.ts_js = true;
+                }
+                "rs" => touched.rust = true,
+                _ => {}
+            }
+        }
+        touched
+    }
+}
+
+/// Derive required capabilities from the touched scope (design §8). A JS/TS
+/// mutation requires repository module resolution plus import/export binding
+/// plus type semantics on top of syntax; a Rust mutation requires name/type/
+/// compiler-project semantics. Syntax is always required so an empty or
+/// unclassifiable scope can never degrade into no requirements.
+pub fn derive_required_capabilities(
+    changed_paths: &[String],
+) -> Vec<membrane_protocol::diagnostics::CapabilityVocabulary> {
+    use membrane_protocol::diagnostics::CapabilityVocabulary as C;
+    let mut caps = vec![C::Syntax];
+    let mut ts_js = false;
+    let mut rust = false;
+    for path in changed_paths {
+        let extension = path.rsplit('.').next().unwrap_or("");
+        match extension {
+            "ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs" => ts_js = true,
+            "rs" => rust = true,
+            _ => {}
+        }
+    }
+    if ts_js {
+        caps.extend([
+            C::RepositoryModuleResolution,
+            C::ImportExportBinding,
+            C::TypeSemantics,
+        ]);
+    }
+    if rust {
+        caps.extend([
+            C::NameResolution,
+            C::TypeSemantics,
+            C::CompilerProjectSemantics,
+        ]);
+    }
+    let mut deduped = Vec::new();
+    for cap in caps {
+        if !deduped.contains(&cap) {
+            deduped.push(cap);
+        }
+    }
+    deduped
+}
+
 fn build_coverage_obligations(
     sealed: &WorkspaceEpochV1,
     required_capabilities: &[membrane_protocol::diagnostics::CapabilityVocabulary],
@@ -1419,12 +1607,16 @@ fn build_coverage_obligations(
     use membrane_protocol::diagnostics::{
         CoverageObligationV1, ExactnessRequirement, ObligationState, RequiredScope,
     };
+    // Final safety net only: the planner (or scope derivation) normally
+    // supplies requirements. An empty requirement set still demands syntax so
+    // empty-ensemble evidence cannot read as clean.
     let effective_required: Vec<membrane_protocol::diagnostics::CapabilityVocabulary> =
         if required_capabilities.is_empty() {
             vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax]
         } else {
             required_capabilities.to_vec()
         };
+    let touched = TouchedLanguages::from_epoch(sealed);
     let scope_paths: Vec<String> = if sealed.changed_file_hashes.is_empty() {
         sealed.changed_paths.clone()
     } else {
@@ -1470,7 +1662,7 @@ fn build_coverage_obligations(
         };
         obligations.push(CoverageObligationV1 {
             capability: *capability,
-            language_dialect: language_dialect_for(capability).to_string(),
+            language_dialect: language_dialect_for(capability, &touched),
             project_identity: if sealed.project_config_digest.is_empty() {
                 sealed.repo_id.clone()
             } else {
@@ -1753,7 +1945,7 @@ mod tests {
             }
         }
 
-        fn shutdown(self) -> Result<(), ProviderError> {
+        fn shutdown(self: Box<Self>) -> Result<(), ProviderError> {
             self.record("shutdown");
             Ok(())
         }
@@ -1865,9 +2057,9 @@ mod tests {
                 Box::new(move || {
                     Box::new(FakeProvider {
                         id: "slow".into(),
-                        log: log,
-                        now: now,
-                        behavior: behavior,
+                        log: Arc::clone(&log),
+                        now: Arc::clone(&now),
+                        behavior: Arc::clone(&behavior),
                     })
                 })
             },
@@ -2068,12 +2260,13 @@ mod tests {
         session.seal_mutation(test_epoch(1)).unwrap();
 
         let policy = GatePolicyProfileV1::default();
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[parser_key, compiler_key],
-                Vec::new(),
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput::unavailable("test: no blueprint evidence".into()),
+                &sealed_epoch,
                 &policy,
                 CostClass::Interactive,
                 deadline_from(&now, 5_000),
@@ -2130,12 +2323,13 @@ mod tests {
         policy.required_capabilities =
             vec![membrane_protocol::diagnostics::CapabilityVocabulary::TypeSemantics];
 
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[key.clone()],
-                Vec::new(),
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput::unavailable("test: no blueprint evidence".into()),
+                &sealed_epoch,
                 &policy,
                 CostClass::Instant,
                 deadline_from(&now, 5_000),
@@ -2181,12 +2375,13 @@ mod tests {
 
         // expensive exceeds max_cost → typed omission code
         let policy = GatePolicyProfileV1::default();
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[cheap, expensive],
-                Vec::new(),
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput::unavailable("test: no blueprint evidence".into()),
+                &sealed_epoch,
                 &policy,
                 CostClass::Instant,
                 deadline_from(&now, 5_000),
@@ -2332,17 +2527,21 @@ mod tests {
         session.set_baseline(prev_issues.clone());
         assert!(session.baseline().is_some());
         let policy = GatePolicyProfileV1::default();
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[key.clone()],
-                vec![advisory_observation(
-                    "obs-10",
-                    "BP001",
-                    "src/a.ts",
-                    Some("symbol:Foo"),
-                )],
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput {
+                    observations: vec![advisory_observation(
+                        "obs-10",
+                        "BP001",
+                        "src/a.ts",
+                        Some("symbol:Foo"),
+                    )],
+                    ..Default::default()
+                },
+                &sealed_epoch,
                 &policy,
                 CostClass::Instant,
                 deadline_from(&now, 5_000),
@@ -2410,19 +2609,38 @@ mod tests {
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || fake_provider("clean", &log, &now))
+                // Exact syntax coverage over the sealed epoch: the minimal
+                // honest ensemble that may prove clean.
+                Box::new(move || {
+                    queued_fake(
+                        "clean",
+                        &log,
+                        &now,
+                        VecDeque::from([Ok(FakeProvider::lane_output(
+                            Vec::new(),
+                            "clean",
+                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
+                            1,
+                        ))]),
+                        0,
+                    )
+                })
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let policy = GatePolicyProfileV1::default();
+        let policy = GatePolicyProfileV1 {
+            required_capabilities: vec![CapabilityVocabulary::Syntax],
+            ..GatePolicyProfileV1::default()
+        };
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[key.clone()],
-                Vec::new(),
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput::unavailable("test: no blueprint evidence".into()),
+                &sealed_epoch,
                 &policy,
                 CostClass::Instant,
                 deadline_from(&now, 5_000),
@@ -2452,19 +2670,38 @@ mod tests {
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
-                Box::new(move || fake_provider("clean", &log, &now))
+                // Exact syntax coverage over the sealed epoch: the minimal
+                // honest ensemble that may prove clean.
+                Box::new(move || {
+                    queued_fake(
+                        "clean",
+                        &log,
+                        &now,
+                        VecDeque::from([Ok(FakeProvider::lane_output(
+                            Vec::new(),
+                            "clean",
+                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::Syntax],
+                            1,
+                        ))]),
+                        0,
+                    )
+                })
             },
         );
         let mut session = DiagnosticsSession::new();
         session.begin_mutation();
         session.seal_mutation(test_epoch(1)).unwrap();
-        let policy = GatePolicyProfileV1::default();
+        let policy = GatePolicyProfileV1 {
+            required_capabilities: vec![CapabilityVocabulary::Syntax],
+            ..GatePolicyProfileV1::default()
+        };
+let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
                 &[key.clone()],
-                Vec::new(),
-                session.latest_sealed().unwrap(),
+                BlueprintLaneInput::unavailable("test: no blueprint evidence".into()),
+                &sealed_epoch,
                 &policy,
                 CostClass::Instant,
                 deadline_from(&now, 5_000),
@@ -2473,10 +2710,13 @@ mod tests {
         assert_eq!(decision.outcome, GateOutcome::CleanExact);
 
         // Observed-hook mode registers newer bytes with weaker attribution.
+        // Sealing newer bytes invalidates the prior clearance, so current
+        // worktree bytes have NO cleared decision: reconciliation reports
+        // unknown_conflict (fail-closed), matching the service-level contract.
         session.register_observed(test_epoch(2)).unwrap();
         assert_eq!(
             session.reconcile("manifest-1", &[]),
-            ReconcileClassification::Superseded
+            ReconcileClassification::UnknownConflict
         );
         assert!(session.cleared_decision().is_none());
 
@@ -2501,5 +2741,147 @@ mod tests {
             Err(LiveDiagnosticsError::MutationBoundary(_))
         ));
         supervisor.shutdown_all().unwrap();
+    }
+
+    #[test]
+    fn blueprint_unavailability_is_typed_and_never_fabricated() {
+        // Design §4/§7: no Blueprint response => freshness Unknown, typed
+        // omission, no synthetic generation, and no exact D0 lane that could
+        // satisfy Blueprint-derived obligations.
+        let mut session = DiagnosticsSession::new();
+        session.begin_mutation();
+        session.seal_mutation(test_epoch(1)).unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let mut supervisor = DiagnosticsSupervisor::new(LiveDiagnosticsConfig::default()).unwrap();
+
+        let decision = session
+            .acquire_snapshot(
+                &mut supervisor,
+                &[],
+                BlueprintLaneInput::unavailable("daemon endpoint missing".into()),
+                &sealed_epoch,
+                &GatePolicyProfileV1 {
+                    required_capabilities: vec![
+                        CapabilityVocabulary::Syntax,
+                        CapabilityVocabulary::ImportExportBinding,
+                    ],
+                    ..GatePolicyProfileV1::default()
+                },
+                CostClass::Instant,
+                AbsoluteDeadline::after(0, 5_000),
+            )
+            .unwrap();
+
+        assert_eq!(decision.outcome, GateOutcome::UnknownIncomplete);
+        let snapshot = session.latest_snapshot().unwrap();
+        assert_eq!(
+            snapshot.blueprint_generation, None,
+            "no fabricated generation may appear in the snapshot"
+        );
+        assert_eq!(
+            snapshot.blueprint_freshness,
+            BlueprintFreshness::Unknown,
+            "absent evidence must stay Unknown, never Current"
+        );
+        assert!(snapshot.blueprint_delta.is_none());
+        assert!(snapshot
+            .omissions
+            .iter()
+            .any(|omission| omission.code == "blueprint_unavailable"));
+        assert!(!snapshot.coverage_lanes.iter().any(|lane| lane.provider_id == "blueprint-d0"));
+        assert!(decision.reason_codes.iter().any(|reason| reason.contains("import_export_binding")));
+        assert!(session.cleared_decision().is_none());
+    }
+
+    #[test]
+    fn blueprint_current_evidence_supplies_exact_d0_lane() {
+        let mut session = DiagnosticsSession::new();
+        session.begin_mutation();
+        session.seal_mutation(test_epoch(2)).unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let mut supervisor =
+            DiagnosticsSupervisor::with_clock(LiveDiagnosticsConfig::default(), test_clock(&Arc::new(Mutex::new(0))));
+
+        // Real D0 finding: BP001 blocking observation from the findings service.
+        let mut finding = blocking_observation();
+        finding.provider_id = "blueprint".to_string();
+        finding.source_class = SourceClass::RepositoryFinding;
+        let input = BlueprintLaneInput::current(
+            "gen-real-42".to_string(),
+            vec![finding],
+            sealed_epoch.epoch,
+            Vec::new(),
+        );
+
+        let decision = session
+            .acquire_snapshot(
+                &mut supervisor,
+                &[],
+                input,
+                &sealed_epoch,
+                &GatePolicyProfileV1 {
+                    required_capabilities: vec![CapabilityVocabulary::RepositoryModuleResolution],
+                    ..GatePolicyProfileV1::default()
+                },
+                CostClass::Instant,
+                AbsoluteDeadline::after(0, 5_000),
+            )
+            .unwrap();
+
+        // The exact blocker proves dirty; the lane itself was exact+complete.
+        assert_eq!(decision.outcome, GateOutcome::DirtyExact);
+        let snapshot = session.latest_snapshot().unwrap();
+        assert_eq!(snapshot.blueprint_generation.as_deref(), Some("gen-real-42"));
+        assert_eq!(snapshot.blueprint_freshness, BlueprintFreshness::Current);
+        let lane = snapshot
+            .coverage_lanes
+            .iter()
+            .find(|lane| lane.provider_id == "blueprint-d0")
+            .expect("current blueprint evidence carries an exact D0 lane");
+        assert_eq!(lane.convergence_class, ConvergenceClass::SnapshotCheckerExact);
+        assert_eq!(lane.state, LaneState::Complete);
+        assert_eq!(lane.bound_workspace_epoch, sealed_epoch.epoch);
+    }
+
+    #[test]
+    fn required_capabilities_derive_from_touched_scope() {
+        use membrane_protocol::diagnostics::CapabilityVocabulary as C;
+        let ts = derive_required_capabilities(&["src/app.ts".to_string()]);
+        assert_eq!(
+            ts,
+            vec![
+                C::Syntax,
+                C::RepositoryModuleResolution,
+                C::ImportExportBinding,
+                C::TypeSemantics
+            ]
+        );
+        let rust = derive_required_capabilities(&["crates/x/src/lib.rs".to_string()]);
+        assert_eq!(
+            rust,
+            vec![
+                C::Syntax,
+                C::NameResolution,
+                C::TypeSemantics,
+                C::CompilerProjectSemantics
+            ]
+        );
+        let mixed = derive_required_capabilities(&[
+            "src/app.tsx".to_string(),
+            "lib.rs".to_string(),
+            "README.md".to_string(),
+        ]);
+        for expected in [
+            C::Syntax,
+            C::RepositoryModuleResolution,
+            C::ImportExportBinding,
+            C::TypeSemantics,
+            C::NameResolution,
+            C::CompilerProjectSemantics,
+        ] {
+            assert!(mixed.contains(&expected), "{expected:?} missing from {mixed:?}");
+        }
+        // Non-source-only scope still demands syntax: no empty requirements.
+        assert_eq!(derive_required_capabilities(&["docs/x.md".to_string()]), vec![C::Syntax]);
     }
 }

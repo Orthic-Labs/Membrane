@@ -128,20 +128,63 @@ pub fn sanitized_child_env(search_path: &[PathBuf]) -> Vec<(String, String)> {
     env
 }
 
+/// One sanitized engine process plus its governed process tree (design §13:
+/// "process-tree termination on timeout/shutdown").
+///
+/// On Unix the child was spawned into its own session/process group via
+/// `setsid`, so [`SanitizedProcess::kill_tree`] terminates the whole group
+/// with `killpg`. On Windows the child is assigned to a Job Object with
+/// `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, so [`SanitizedProcess::kill_tree`]
+/// terminates every descendant and dropping the handle reaps any survivor.
+pub struct SanitizedProcess {
+    pub child: Child,
+    #[cfg(windows)]
+    job: Option<windows_job::WindowsJob>,
+}
+
+impl SanitizedProcess {
+    /// Terminate the entire process tree: TERM then KILL on Unix, Job Object
+    /// termination on Windows, always followed by the direct-child kill/wait
+    /// fallback so no path leaves an unwaited zombie.
+    pub fn kill_tree(&mut self) {
+        #[cfg(unix)]
+        {
+            let pid = self.child.id() as i32;
+            // SAFETY: killpg takes only a pid and a signal number. The group
+            // was created by setsid at spawn; failures mean the group already
+            // exited or we lack permission, and the direct kill below still runs.
+            unsafe {
+                extern "C" {
+                    fn killpg(pgrp: i32, sig: i32) -> i32;
+                }
+                const SIGTERM: i32 = 15;
+                const SIGKILL: i32 = 9;
+                let _ = killpg(pid, SIGTERM);
+                let _ = killpg(pid, SIGKILL);
+            }
+        }
+        #[cfg(windows)]
+        if let Some(job) = &self.job {
+            job.terminate();
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// Spawn `binary` with piped stdio under the given environment.
 ///
 /// The child sees exactly `env` — nothing else leaks from the parent process.
 /// On Unix the child is placed in a new session/process group via `setsid`
-/// (`pre_exec`) so that [`kill_direct_child`] can terminate the whole tree
-/// with `killpg`. This is best-effort: descendants that explicitly escape the
-/// group may survive, but configuration disables long-lived children (build
-/// scripts, flycheck, watch) so well-behaved engines hold none.
+/// (`pre_exec`). On Windows the child joins a dedicated Job Object with
+/// kill-on-close semantics so shutdown covers the full tree even when the
+/// engine spawned descendants of its own.
 pub fn spawn_sanitized(
     binary: &Path,
     args: &[String],
     working_dir: &Path,
     env: &[(String, String)],
-) -> std::io::Result<Child> {
+) -> std::io::Result<SanitizedProcess> {
     let mut command = Command::new(binary);
     command
         .args(args)
@@ -168,38 +211,186 @@ pub fn spawn_sanitized(
             });
         }
     }
-    command.spawn()
+    let mut child = command.spawn()?;
+    #[cfg(windows)]
+    let job = {
+        use std::os::windows::io::AsRawHandle as _;
+        let job = windows_job::WindowsJob::create();
+        // Best-effort assignment; on failure the direct-child kill below
+        // remains, matching the historical containment floor.
+        match &job {
+            Some(job) => {
+                job.assign(child.as_raw_handle());
+            }
+            None => {}
+        }
+        job
+    };
+    Ok(SanitizedProcess {
+        child,
+        #[cfg(windows)]
+        job,
+    })
 }
 
-/// Terminate a process tree via process-group kill on Unix, falling back to
-/// direct child kill.
+// ---------------------------------------------------------------------------
+// Windows Job Object containment (design §13 process-tree shutdown)
+// ---------------------------------------------------------------------------
+
+/// Governed process-tree handle for engine children on Windows.
 ///
-/// On Unix the child was spawned in its own process group (see
-/// [`spawn_sanitized`]), so `killpg(pgid, SIGTERM/SIGKILL)` terminates the
-/// group. On Windows or if the group kill fails, falls back to
-/// [`Child::kill`] which terminates only the direct child. This is best-effort:
-/// descendants that double-forked or changed groups may not be covered. Adapters
-/// mitigate by disabling build scripts, flycheck, watch and proc macros so
-/// well-behaved engines spawn no long-lived children.
-pub fn kill_direct_child(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        let pid = child.id() as i32;
-        unsafe {
-            extern "C" {
-                fn killpg(pgrp: i32, sig: i32) -> i32;
-            }
-            const SIGTERM: i32 = 15;
-            const SIGKILL: i32 = 9;
-            // Best-effort: TERM then KILL the whole group. Errors mean the
-            // group already exited or we lack permission; fall through to
-            // direct kill below.
-            let _ = killpg(pid, SIGTERM);
-            let _ = killpg(pid, SIGKILL);
+/// A Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` is created per
+/// child; the child (and every descendant that does not explicitly break
+/// away) is assigned to it. [`WindowsJob::terminate`] ends the whole tree;
+/// dropping the handle closes the last reference and the kernel then kills
+/// any remaining member, so no descendant can outlive supervisor teardown.
+///
+/// Declared via raw FFI to keep this crate std-only: no external Windows
+/// crate is pulled in, and none of these calls have Rust-specific safety
+/// preconditions beyond valid handles, which are only ever produced by
+/// [`WindowsJob::create`] or borrowed from a live child.
+#[cfg(windows)]
+mod windows_job {
+    use std::ffi::{c_void, CString};
+    use std::os::windows::io::RawHandle;
+
+    type Handle = *mut c_void;
+
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const JOBOBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: i32 = 9;
+    const NO_ERROR_EXIT_CODE: u32 = 0;
+    const INVALID_HANDLE_VALUE: Handle = std::ptr::null_mut();
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct BasicLimitInformation {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct ExtendedLimitInformation {
+        basic_limit_information: BasicLimitInformation,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    impl Default for ExtendedLimitInformation {
+        fn default() -> Self {
+            // SAFETY: all-zero bit pattern is valid for this POD struct; only
+            // LimitFlags is set explicitly afterwards.
+            let mut info: Self = unsafe { std::mem::zeroed() };
+            info.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            info
         }
     }
-    let _ = child.kill();
-    let _ = child.wait();
+
+    extern "system" {
+        fn CreateJobObjectW(job_attributes: *mut c_void, name: *const u16) -> Handle;
+        fn SetInformationJobObject(
+            job: Handle,
+            information_class: i32,
+            information: *mut c_void,
+            information_length: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(job: Handle, process: RawHandle) -> i32;
+        fn TerminateJobObject(job: Handle, exit_code: u32) -> i32;
+        fn CloseHandle(object: Handle) -> i32;
+    }
+
+    pub struct WindowsJob {
+        handle: Handle,
+    }
+
+    // The raw HANDLE is only used from whichever thread owns the value and
+    // every call here is an atomic kernel transition; sharing across threads
+    // is safe and destruction runs wherever the value drops.
+    unsafe impl Send for WindowsJob {}
+    unsafe impl Sync for WindowsJob {}
+
+    impl WindowsJob {
+        /// Create one kill-on-close job with extended limit information
+        /// applied. `None` means creation failed and the caller must fall
+        /// back to direct-child termination.
+        pub fn create() -> Option<Self> {
+            // SAFETY: no attributes and no name; we own the returned handle.
+            let handle = unsafe {
+                let name = CString::new("membrane-live-diagnostics-job").ok()?;
+                CreateJobObjectW(std::ptr::null_mut(), name.as_ptr() as *const u16)
+            };
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                return None;
+            }
+            let job = Self { handle };
+            let info = ExtendedLimitInformation::default();
+            // SAFETY: `info` is a valid POD of the exact expected layout and
+            // size for class JobObjectExtendedLimitInformation (9).
+            let applied = unsafe {
+                SetInformationJobObject(
+                    job.handle,
+                    JOBOBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                    &info as *const ExtendedLimitInformation as *mut c_void,
+                    std::mem::size_of::<ExtendedLimitInformation>() as u32,
+                )
+            };
+            if applied == 0 {
+                return None;
+            }
+            Some(job)
+        }
+
+        /// Place one live process into the job tree.
+        pub fn assign(&self, process: RawHandle) {
+            if process.is_null() {
+                return;
+            }
+            // SAFETY: both handles are valid kernel handles owned by this
+            // call; assignment has no aliasing preconditions.
+            unsafe {
+                AssignProcessToJobObject(self.handle, process);
+            }
+        }
+
+        /// Kill every process currently in the job.
+        pub fn terminate(&self) {
+            // SAFETY: self.handle is a valid job handle.
+            unsafe {
+                TerminateJobObject(self.handle, NO_ERROR_EXIT_CODE);
+            }
+        }
+    }
+
+    impl Drop for WindowsJob {
+        fn drop(&mut self) {
+            // SAFETY: dropping relinquishes our reference; kill-on-close
+            // semantics terminate any surviving members.
+            unsafe {
+                CloseHandle(self.handle);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -537,7 +728,7 @@ mod tests {
         let mut decoder = LspDecoder::new();
         decoder.push(b"Nope: 1\r\n\r\n{}");
         assert_eq!(decoder.pop_frame(), None);
-        decoder.push(lsp_frame_bytes(b"{}"));
+        decoder.push(&lsp_frame_bytes(b"{}"));
         assert_eq!(decoder.pop_frame(), None);
     }
 
