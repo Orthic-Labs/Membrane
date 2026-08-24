@@ -932,23 +932,25 @@ mod tests {
                 LaneState::Unavailable,
                 LaneState::TimedOut,
                 LaneState::Unsupported,
-                ObligationState::SatisfiedAdvisory,
-                DeltaClassification::UnknownBaseline,
-                BlueprintFreshness::Current,
-                WorkspaceEpochOrigin::ObservedHook,
             ])
             .unwrap(),
-            json!([
-                "complete",
-                "partial",
-                "unavailable",
-                "timed_out",
-                "unsupported",
-                "satisfied_advisory",
-                "unknown_baseline",
-                "current",
-                "observed_hook"
-            ])
+            json!(["complete", "partial", "unavailable", "timed_out", "unsupported"])
+        );
+        assert_eq!(
+            serde_json::to_value(ObligationState::SatisfiedAdvisory).unwrap(),
+            json!("satisfied_advisory")
+        );
+        assert_eq!(
+            serde_json::to_value(DeltaClassification::UnknownBaseline).unwrap(),
+            json!("unknown_baseline")
+        );
+        assert_eq!(
+            serde_json::to_value(BlueprintFreshness::Current).unwrap(),
+            json!("current")
+        );
+        assert_eq!(
+            serde_json::to_value(WorkspaceEpochOrigin::ObservedHook).unwrap(),
+            json!("observed_hook")
         );
     }
 

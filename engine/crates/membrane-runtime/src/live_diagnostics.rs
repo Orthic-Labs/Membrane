@@ -2831,6 +2831,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             vec![finding],
             sealed_epoch.epoch,
             Vec::new(),
+            Vec::new(),
         );
 
         let decision = session

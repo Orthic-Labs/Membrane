@@ -2089,6 +2089,7 @@ mod tests {
     use membrane_protocol::diagnostics::{
         GateOutcome, DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION, WORKSPACE_EPOCH_SCHEMA_VERSION,
     };
+    use sha2::Digest;
 
     fn service_at(dir: &tempfile::TempDir) -> DiagnosticsService {
         DiagnosticsService::with_data_root(dir.path().to_path_buf()).unwrap()
