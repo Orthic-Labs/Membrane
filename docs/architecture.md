@@ -11,7 +11,7 @@ lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOC
 
 | Component | Source of truth | Role |
 |---|---|---|
-| MCP server | `mcp/server.mjs` | ten tools over stdio; dual-era MCP discovery |
+| MCP server | `mcp/server.mjs` | 17 tools over stdio; dual-era MCP discovery |
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
 | Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |
@@ -20,7 +20,7 @@ lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOC
 
 ## Interfaces
 
-- `membrane_context` and the other nine MCP tools are the client contract;
+- `membrane_context` and the other 16 MCP tools are the client contract;
   provider internals never leak into adapters.
 - The federation gateway is the only route from tools to memory/recall providers.
 - The cross-provider budget (MBR-608) reconciles every receipt's selected

@@ -325,7 +325,7 @@ fn dispatch_diagnostics(args: &[String]) -> DispatchOutcome {
 }
 
 fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
-    use membrane_runtime::live_diagnostics_service::{evaluate_fence, static_capabilities};
+    use membrane_runtime::live_diagnostics_service::{static_capabilities, DiagnosticsService};
     match command {
         DiagnosticsCommand::Capabilities => {
             print_diagnostics_json(&static_capabilities())
@@ -342,7 +342,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 })
             });
             match request {
-                Ok(request) => print_diagnostics_json(&evaluate_fence(
+                Ok(request) => print_diagnostics_json(&DiagnosticsService::evaluate_fence(
                     &request.snapshot,
                     &request.expected_epoch,
                     &request.policy,

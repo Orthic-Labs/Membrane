@@ -11,12 +11,19 @@ narrative overview; this file carries the source-derived facts.
 
 ## Public surface
 
-- **MCP server** — ten tools over stdio:
+- **MCP server** — 17 tools over stdio:
 
 | `membrane_blueprint` |
 | `membrane_checkpoint_load` |
 | `membrane_checkpoint_save` |
 | `membrane_context` |
+| `membrane_diagnostic_baseline` |
+| `membrane_diagnostic_capabilities` |
+| `membrane_diagnostic_fence` |
+| `membrane_diagnostic_mutation` |
+| `membrane_diagnostic_provider` |
+| `membrane_diagnostic_snapshot` |
+| `membrane_diagnostic_workspace` |
 | `membrane_feedback` |
 | `membrane_knowledge_propose` |
 | `membrane_scratchpad` |

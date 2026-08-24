@@ -22,6 +22,66 @@ This document consolidates:
 Canonical Membrane and Blueprint doctrines remain authoritative where this design has not yet
 been adopted.
 
+
+## Coordination amendment — Hub status repair is upstream
+
+This architecture is being implemented in parallel with a separate bounded Hub-status repair.
+That repair is the canonical owner of Membrane parent-health presentation and subsystem-status
+composition. Live Diagnostics MUST consume the landed Hub status contract; it MUST NOT create a
+second overall-health model or independently redesign the Hub header.
+
+### Canonical operational status model
+
+The Hub status repair freezes these distinctions:
+
+```text
+Membrane parent service:
+  Running | Degraded | Offline
+
+Subsystem capability:
+  Available | Degraded | Unavailable | Not configured
+```
+
+The Membrane parent state is derived only from resident service health and snapshot availability.
+A child subsystem/provider failure remains local unless that dependency is explicitly declared a
+hard prerequisite for resident service operation.
+
+Therefore:
+
+- Blueprint `Unavailable` does not by itself make Membrane `Offline` or globally unavailable.
+- A stale provider may be `Degraded` without changing parent service health.
+- An uninstrumented or intentionally absent capability is `Not configured`, not `Degraded`.
+- Presentation code MUST NOT compute parent health from the worst child state.
+- Live Diagnostics provider/engine health is reported as capability/subsystem evidence and never
+  becomes an alternate parent-health authority.
+
+### Parallel-work ownership fence
+
+Until the Hub-status repair lands, the Live Diagnostics worktree MUST NOT modify or redesign the
+Hub-status composition/presentation surfaces owned by that repair, including at minimum:
+
+```text
+apps/membrane-hub/src/popover.mjs
+engine/crates/membrane-runtime/src/hub_inputs.rs
+docs/hub/overview.md
+```
+
+If the Hub-status repair also changes shared snapshot/status types or adjacent Hub composition
+files, those paths are reserved to that repair until merge. The Live Diagnostics executor must
+continue on disjoint files and emit a `SOURCE_DRIFT` / integration note rather than independently
+patching those shared files.
+
+After the Hub-status repair merges, Live Diagnostics must rebase and integrate against the landed
+typed status contract. It may add diagnostics-specific health inputs, but it may not reintroduce
+worst-child aggregation, hardcoded Blueprint placeholders, or a competing overall-state enum.
+
+### Exact-tree qualification rule
+
+A completion claim is valid only against an exact committed tree. Any test, build, qualification,
+or Oracle evidence used for sign-off MUST record the tested commit/tree identity and be reproducible
+from a clean checkout. Dirty-worktree-only composition, untracked test files, or uncommitted manifest
+wiring cannot satisfy acceptance.
+
 ---
 
 ## 0. Executive decision
@@ -650,8 +710,16 @@ authority.
 
 ### Phase 3 — Hub lifecycle
 
+Prerequisite: the separate Hub-status repair has landed and its typed parent/subsystem state model
+is authoritative.
+
 - add supervisor, workspace reuse, absolute deadlines, cache, eviction, health, sandbox, and
-  installed-runtime qualification.
+  installed-runtime qualification;
+- publish Live Diagnostics/provider health into the existing subsystem/capability status contract;
+- preserve parent-service health as resident-service/snapshot truth only;
+- never aggregate diagnostics/provider failure into parent Membrane failure;
+- represent absent/uninstrumented diagnostics capabilities as `Not configured`;
+- do not restore `worstPresentation()`-style worst-child aggregation or hardcoded Blueprint status.
 
 ### Phase 4 — Blueprint routing + enforced hosts
 
@@ -698,6 +766,15 @@ authority.
 16. Every host mode states its exactness and causal-attribution strength.
 17. Frozen benchmarks establish SLOs and show fewer late bulk repairs and unnecessary
     tests/builds with zero stale-clean incidents.
+18. Parent Membrane health is derived only from resident-service health and snapshot availability;
+    child subsystem/provider failure cannot be promoted into parent failure without an explicit
+    hard-prerequisite rule.
+19. Subsystem/capability presentation preserves `Available`, `Degraded`, `Unavailable`, and
+    `Not configured` as distinct states.
+20. Live Diagnostics consumes the landed Hub status contract and does not define a competing
+    overall-health aggregation path.
+21. Every acceptance/qualification result records the exact tested commit/tree and is reproducible
+    from a clean checkout with all required manifests, test registrations, and source files committed.
 
 ---
 
