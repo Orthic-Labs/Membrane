@@ -261,6 +261,31 @@ export function createWorkspaceMemoryOperations(options = {}) {
         return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: workspace not open or diagnostics unavailable` });
       }
       const body = status.body ?? {};
+      // Enforce projectRoot binding when fence enforcement is enabled:
+      // the fence may only be considered cleared when the status session's
+      // bound projectRoot exists and equals the canonical current hook root.
+      // Missing or different => BLOCK (fail-closed).
+      let canonicalCurrent;
+      try {
+        canonicalCurrent = realpathSync(resolve(root));
+      } catch {
+        canonicalCurrent = resolve(root);
+      }
+      const boundRoot = body.projectRoot;
+      if (typeof boundRoot !== "string" || !boundRoot) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "project_root_missing" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: bound project root missing` });
+      }
+      let canonicalBound;
+      try {
+        canonicalBound = realpathSync(boundRoot);
+      } catch {
+        canonicalBound = boundRoot;
+      }
+      if (canonicalCurrent !== canonicalBound) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "project_root_mismatch" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: project root mismatch (expected ${canonicalBound}, got ${canonicalCurrent})` });
+      }
       // Fail-closed: any uncleared fence, missing epoch, or not-cleared state blocks.
       // The old `workspace_not_open => skipped` and `no sealed epoch => skipped`
       // paths are wrong for an opted-in workspace: missing evidence is not permission.

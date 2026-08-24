@@ -1635,14 +1635,15 @@ fn build_coverage_obligations(
             required_capabilities.to_vec()
         };
     let touched = TouchedLanguages::from_epoch(sealed);
-    let scope_paths: Vec<String> = if sealed.changed_file_hashes.is_empty() {
-        sealed.changed_paths.clone()
-    } else {
-        sealed
-            .changed_file_hashes
-            .iter()
-            .map(|entry| entry.path.clone())
-            .collect()
+    let scope_paths: Vec<String> = {
+        let mut set = std::collections::BTreeSet::new();
+        for p in &sealed.changed_paths {
+            set.insert(p.clone());
+        }
+        for h in &sealed.changed_file_hashes {
+            set.insert(h.path.clone());
+        }
+        set.into_iter().collect()
     };
     let mut obligations = Vec::new();
     for capability in &effective_required {
@@ -2907,5 +2908,55 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         );
         // Non-source-only scope still demands syntax: no empty requirements.
         assert_eq!(derive_required_capabilities(&["docs/x.md".to_string()]), vec![C::Syntax]);
+    }
+
+    #[test]
+    fn required_scope_is_union_and_lane_must_cover_all_to_satisfy() {
+        use membrane_protocol::diagnostics::CapabilityVocabulary as C;
+        let mut epoch = WorkspaceEpochV1::default();
+        epoch.repo_id = "repo-1".into();
+        epoch.worktree_id = "wt-1".into();
+        epoch.epoch = 1;
+        epoch.source_manifest_digest = "manifest-1".into();
+        epoch.changed_paths = vec!["a.rs".to_string(), "b.rs".to_string()];
+        epoch.changed_file_hashes = vec![membrane_protocol::diagnostics::ChangedFileHashV1 {
+            path: "a.rs".to_string(),
+            hash: "sha256:aaa".to_string(),
+        }];
+        // Required scope must be union [a.rs, b.rs], not just [a.rs]
+        let required = vec![C::Syntax];
+        let lane_partial = CoverageLaneV1 {
+            provider_id: "test-provider".to_string(),
+            scope: vec!["a.rs".to_string()],
+            capabilities_covered: vec![C::Syntax],
+            convergence_class: ConvergenceClass::PullExact,
+            bound_workspace_epoch: 1,
+            state: LaneState::Complete,
+            omissions: Vec::new(),
+        };
+        let obligations_partial = build_coverage_obligations(&epoch, &required, &[lane_partial], CostClass::Instant);
+        assert_eq!(obligations_partial[0].required_scope.paths.len(), 2);
+        assert!(obligations_partial[0].required_scope.paths.contains(&"a.rs".to_string()));
+        assert!(obligations_partial[0].required_scope.paths.contains(&"b.rs".to_string()));
+        assert_eq!(
+            obligations_partial[0].state,
+            membrane_protocol::diagnostics::ObligationState::Unsatisfied,
+            "lane [a.rs] must not satisfy required [a.rs,b.rs]"
+        );
+
+        let lane_full = CoverageLaneV1 {
+            provider_id: "test-provider".to_string(),
+            scope: vec!["a.rs".to_string(), "b.rs".to_string()],
+            capabilities_covered: vec![C::Syntax],
+            convergence_class: ConvergenceClass::PullExact,
+            bound_workspace_epoch: 1,
+            state: LaneState::Complete,
+            omissions: Vec::new(),
+        };
+        let obligations_full = build_coverage_obligations(&epoch, &required, &[lane_full], CostClass::Instant);
+        assert_eq!(
+            obligations_full[0].state,
+            membrane_protocol::diagnostics::ObligationState::SatisfiedExact
+        );
     }
 }

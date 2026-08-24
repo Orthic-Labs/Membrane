@@ -599,16 +599,14 @@ pub fn evaluate_gate(
             .find(|o| &o.capability == capability)
             .map(|o| o.required_scope.paths.clone())
             .unwrap_or_else(|| {
-                if snapshot.workspace_epoch.changed_file_hashes.is_empty() {
-                    snapshot.workspace_epoch.changed_paths.clone()
-                } else {
-                    snapshot
-                        .workspace_epoch
-                        .changed_file_hashes
-                        .iter()
-                        .map(|h| h.path.clone())
-                        .collect()
+                let mut set = std::collections::BTreeSet::new();
+                for p in &snapshot.workspace_epoch.changed_paths {
+                    set.insert(p.clone());
                 }
+                for h in &snapshot.workspace_epoch.changed_file_hashes {
+                    set.insert(h.path.clone());
+                }
+                set.into_iter().collect()
             });
         for lane in &snapshot.coverage_lanes {
             let exact_convergence = matches!(

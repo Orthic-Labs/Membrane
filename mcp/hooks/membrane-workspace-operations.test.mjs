@@ -231,7 +231,7 @@ test("enforced PreToolUse boundary denies tests/builds while the fence is unclea
       rootFor: () => root,
       diagnosticsPost: async (path) => ({
         ok: true,
-        body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 3 } : {},
+        body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 3, projectRoot: root } : {},
       }),
     });
     const blockedUncleared = await runHook(
@@ -245,7 +245,7 @@ test("enforced PreToolUse boundary denies tests/builds while the fence is unclea
       rootFor: () => root,
       diagnosticsPost: async (path) => ({
         ok: true,
-        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 3 } : {},
+        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 3, projectRoot: root } : {},
       }),
     });
     const allowed = await runHook(
@@ -281,7 +281,7 @@ test("Stop completion boundary blocks when fence not cleared (fail-closed)", asy
     rootFor: () => root,
     diagnosticsPost: async (path) => ({
       ok: true,
-      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 7 } : {},
+      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 7, projectRoot: root } : {},
     }),
   });
   const blocked = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: blockedOps });
@@ -293,7 +293,7 @@ test("Stop completion boundary blocks when fence not cleared (fail-closed)", asy
     rootFor: () => root,
     diagnosticsPost: async (path) => ({
       ok: true,
-      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: null } : {},
+      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: null, projectRoot: root } : {},
     }),
   });
   const blockedNoEpoch = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: noEpochOps });
@@ -305,12 +305,60 @@ test("Stop completion boundary blocks when fence not cleared (fail-closed)", asy
     rootFor: () => root,
     diagnosticsPost: async (path) => ({
       ok: true,
-      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 7 } : {},
+      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 7, projectRoot: root } : {},
     }),
   });
   const allowed = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: clearedOps });
   assert.equal(allowed.decision, undefined);
   assert.equal(allowed.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-completion-fence").output.state, "available");
+});
+
+test("fence verifies bound projectRoot matches current root (fail-closed on mismatch/missing)", async () => {
+  const { root: oldRoot } = fenceFixture();
+  const { root: newRoot } = fenceFixture();
+  // Mismatched root must BLOCK even when fenceCleared true
+  const mismatchOps = createWorkspaceMemoryOperations({
+    rootFor: () => newRoot,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 5, projectRoot: oldRoot } : {},
+    }),
+  });
+  process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
+  try {
+    const blocked = await runHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: newRoot }, { operations: mismatchOps });
+    assert.equal(blocked.decision, "block");
+    assert.equal(blocked.hookSpecificOutput.permissionDecision, "deny");
+  } finally { delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE; }
+
+  // Missing projectRoot must BLOCK
+  const missingOps = createWorkspaceMemoryOperations({
+    rootFor: () => newRoot,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 5 } : {},
+    }),
+  });
+  process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
+  try {
+    const blockedMissing = await runHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: newRoot }, { operations: missingOps });
+    assert.equal(blockedMissing.decision, "block");
+  } finally { delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE; }
+
+  // Matching canonical root + fenceCleared true still allows
+  const matchingOps = createWorkspaceMemoryOperations({
+    rootFor: () => newRoot,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 5, projectRoot: newRoot } : {},
+    }),
+  });
+  process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
+  try {
+    const allowed = await runHook({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: newRoot }, { operations: matchingOps });
+    assert.equal(allowed.decision, undefined);
+    assert.equal(allowed.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.state, "available");
+  } finally { delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE; }
 });
 
 test("observeMutation binds the workspace to its canonical root before registering", async () => {
