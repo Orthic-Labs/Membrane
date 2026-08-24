@@ -99,6 +99,21 @@ def test_resolve_manifest_accepts_only_two_calibrated_admits():
     assert audit["decision_policy"] == "dual-consensus"
 
 
+def test_resolve_manifest_preserves_frozen_extraction_generator_prefix():
+    runner = _module()
+    record = _record("adapt-verification-focused-tests-0123456789")
+    manifest = _manifest([record])
+    manifest["generator"] = "adapt-frozen-open-transcripts-v2:digest:shard-1-of-1"
+
+    resolved, _audit = runner.resolve_manifest(
+        manifest,
+        {"models": {}, "eligible_models": [], "candidates": {}},
+    )
+
+    assert resolved["generator"].startswith("adapt-frozen-open-transcripts-v2:")
+    assert resolved["generator"].endswith(":adjudicated-calibrated-panel-v1")
+
+
 def test_calibrated_primary_accepts_admit_and_fails_closed_without_calibration():
     runner = _module()
 

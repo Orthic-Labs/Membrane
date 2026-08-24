@@ -10,6 +10,9 @@
     "if": {"properties": {"schema_version": {"const": "1.3.0"}}},
     "then": {"required": ["source_refs"]},
     "else": {"not": {"required": ["source_refs"]}}
+  }, {
+    "if": {"properties": {"generator": {"pattern": "^adapt-frozen-open-transcripts-v2:"}}, "required": ["generator"]},
+    "then": {"required": ["extraction_coverage"]}
   }],
   "dependencies": {
     "installation_id": ["canonical_pool_sha256"],
@@ -47,12 +50,35 @@
         "required": ["source_id", "tool", "host", "path", "mtime_ns", "source_sha256"],
         "properties": {
           "source_id": {"type": "string", "minLength": 1},
-          "tool": {"type": "string", "enum": ["claude-code", "codex"]},
-          "host": {"type": "string", "enum": ["claude_code", "codex"]},
+          "tool": {"type": "string", "enum": ["claude-code", "codex", "command-code", "cline", "opencode", "pi", "gemini", "grok-build", "roo-cline", "qwen", "cursor"]},
+          "host": {"type": "string", "enum": ["claude_code", "codex", "command_code", "cline", "opencode", "pi", "gemini", "grok_build", "roo_cline", "qwen", "cursor"]},
           "path": {"type": "string", "minLength": 1},
           "mtime_ns": {"type": "integer", "minimum": 0},
           "source_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
         }
+      }
+    },
+    "extraction_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "source_count", "corpus_source_count", "shard_index", "shard_count", "sources_with_mined_turns", "canonical_user_turns", "mined_user_turns", "policy_excluded_user_turns", "llm_batches", "committable_batches", "failed_batches", "batch_char_budget", "checkpointed_batches", "selection_contract", "context_contract"],
+      "properties": {
+        "complete": {"const": true},
+        "source_count": {"type": "integer", "minimum": 1},
+        "corpus_source_count": {"type": "integer", "minimum": 1},
+        "shard_index": {"type": "integer", "minimum": 0},
+        "shard_count": {"type": "integer", "minimum": 1},
+        "sources_with_mined_turns": {"type": "integer", "minimum": 0},
+        "canonical_user_turns": {"type": "integer", "minimum": 0},
+        "mined_user_turns": {"type": "integer", "minimum": 0},
+        "policy_excluded_user_turns": {"type": "integer", "minimum": 0},
+        "llm_batches": {"type": "integer", "minimum": 0},
+        "committable_batches": {"type": "integer", "minimum": 0},
+        "failed_batches": {"const": 0},
+        "batch_char_budget": {"type": "integer", "minimum": 1000},
+        "checkpointed_batches": {"type": "integer", "minimum": 0},
+        "selection_contract": {"const": "all-safe-external-user-turns-v1"},
+        "context_contract": {"const": "authoritative-source-with-prior-nonauthoritative-context-v1"}
       }
     },
     "created_at": { "type": "string" },

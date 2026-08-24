@@ -74,6 +74,8 @@ def _parse_rule_row(
     record_type: str,
 ) -> tuple[str, dict[str, Any]] | None:
     name = memory_id[len(scope) + 1 :] if memory_id.startswith(f"{scope}/") else memory_id
+    if record_type == "insight_report":
+        return None
     if not name.startswith("adapt-"):
         return None
     first_line = content.splitlines()[0] if content else ""

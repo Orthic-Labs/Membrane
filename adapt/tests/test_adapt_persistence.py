@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -48,7 +50,7 @@ def _record(
     )
 
 
-def test_batch_apply_is_one_authenticated_attributed_request(
+def test_small_batch_apply_is_one_authenticated_attributed_request(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     token = tmp_path / "api-token"
@@ -96,6 +98,45 @@ def test_batch_apply_is_one_authenticated_attributed_request(
     assert item["record_type"] == "standing_preference"
     assert item["client"] == "codex"
     assert INSTALLATION in item["session_id"]
+
+
+def test_large_batch_is_partitioned_into_replayable_bounded_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "api-token"
+    token.write_text("test-secret\n", encoding="utf-8")
+    bodies = []
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        bodies.append(body)
+        return _Response({
+            "batch_id": body["batch_id"],
+            "inserted": len(body["items"]),
+            "duplicates": 0,
+            "complete": True,
+            "receipts": [{
+                "item_id": item["item_id"],
+                "memory_id": f"{item['scope']}/{item['name']}",
+                "status": "inserted",
+            } for item in body["items"]],
+        })
+
+    monkeypatch.setattr(persistence.urllib.request, "urlopen", fake_urlopen)
+    records = [
+        _record(f"adapt-tooling-reviewed-{index:010d}")
+        for index in range(65)
+    ]
+    receipt = persistence.persist_manifest_batch(
+        records, manifest_batch_id="large-batch", installation_id=INSTALLATION,
+        token_file=token, base_url="http://127.0.0.1:8765",
+    )
+
+    assert len(bodies) == 2
+    assert all(len(body["items"]) <= 64 for body in bodies)
+    assert all(len(json.dumps(body).encode()) <= persistence.MAX_CORTEX_REQUEST_BYTES for body in bodies)
+    assert receipt["complete"] is True
+    assert len(receipt["receipts"]) == 65
 
 
 @pytest.mark.parametrize("tool", ["command-code", "cline", "gemini", "grok-build", "roo-cline"])
@@ -196,6 +237,26 @@ def test_batch_apply_refuses_incomplete_receipt(tmp_path: Path, monkeypatch) -> 
             manifest_batch_id="20260720T100000-abcdef",
             installation_id=INSTALLATION,
             token_file=token,
+            base_url="http://127.0.0.1:8765",
+        )
+
+
+def test_batch_apply_surfaces_bounded_http_error_detail(tmp_path: Path, monkeypatch) -> None:
+    token = tmp_path / "api-token"
+    token.write_text("secret", encoding="utf-8")
+
+    def rejected(_request, timeout):
+        assert timeout == 150.0
+        raise urllib.error.HTTPError(
+            "http://127.0.0.1/v1/memories:batch", 400, "bad request", {},
+            io.BytesIO(b'{"error":"invalid memory batch"}'),
+        )
+
+    monkeypatch.setattr(persistence.urllib.request, "urlopen", rejected)
+    with pytest.raises(persistence.AdaptPersistenceError, match="invalid memory batch"):
+        persistence.persist_manifest_batch(
+            [_record()], manifest_batch_id="batch-http-error",
+            installation_id=INSTALLATION, token_file=token,
             base_url="http://127.0.0.1:8765",
         )
 

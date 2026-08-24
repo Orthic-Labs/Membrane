@@ -144,6 +144,29 @@ def test_canonical_rule_pool_excludes_legacy_plain_adapt_row(tmp_path: Path) -> 
     assert cm.load_canonical_rules(path) == {}
 
 
+def test_canonical_rule_pool_excludes_adapt_insight_reports(tmp_path: Path) -> None:
+    path = _db(tmp_path / "insights-engine.db")
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "workspace/adapt-insight-ignored-tool-failure",
+            "workspace",
+            "**[adapt/insight]** ignored tool failure\nObserved heuristic cards.",
+            "[]",
+            "2026-08-24T00:00:00Z",
+            "2026-08-24T00:00:00Z",
+            "insight_report",
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    rules = cm.load_canonical_rules(path)
+
+    assert set(rules) == {"D--Claude/adapt-tooling-jsonl-1111111111"}
+
+
 def test_pool_digest_is_order_independent_and_changes_with_canonical_content() -> None:
     first = {
         "a": {"name": "a", "scope": "s", "category": "workflow", "rule": "one"},

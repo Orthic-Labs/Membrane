@@ -381,7 +381,7 @@ def test_batching_respects_char_budget():
 
 def test_default_extraction_budget_is_large_but_output_bounded():
     assert tl.BATCH_CHAR_BUDGET == 24_000
-    assert "at most 24" in tl.EXTRACT_SYSTEM
+    assert "at most 96" in tl.EXTRACT_SYSTEM
     assert "at most 24 changed actions" in tl.SYNTH_SYSTEM
 
 
@@ -512,6 +512,7 @@ def test_extract_adaptively_splits_max_token_window():
     assert out.outcome == "success"
     assert calls == [2, 1, 1]
     assert {item["session_id"] for item in out.actions} == {"s1", "s2"}
+    assert {item["prompt"] for item in out.actions} == {1, 2}
 
 
 def test_extract_adaptively_splits_malformed_multi_turn_window():
@@ -663,6 +664,41 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     assert out.outcome == outcomes.Outcome.SCANNER_BLOCKED
     assert out.actions == []
     assert "llm_call_failed" in audit.read_text(encoding="utf-8")
+
+
+def test_extract_can_isolate_and_account_secret_turn_without_dropping_clean_sibling(
+    tmp_path, monkeypatch
+):
+    _audit_file_path(tmp_path)
+    from adapt import adapt_sessions as _ts
+
+    monkeypatch.setattr(
+        _ts, "scan_batch_for_secrets",
+        lambda batch: all("SECRET" not in turn[2] for turn in batch),
+    )
+
+    def fake(_system, user):
+        items = json.loads(user)
+        return json.dumps([{
+            "category": "tooling", "observation": "Use JSONL.",
+            "evidence": "use JSONL", "prompt": items[0]["id"],
+            "record_type": "agent_preference", "durability": "cross_task_explicit",
+            "subject": "agent_behavior",
+        }])
+
+    out = tl.extract_observations(
+        [
+            ("claude-code", "workspace", "SECRET token"),
+            ("claude-code", "workspace", "always use JSONL"),
+        ],
+        llm=fake,
+        lane="minimax",
+        allow_secret_turn_exclusion=True,
+    )
+
+    assert out.outcome == outcomes.Outcome.SUCCESS
+    assert out.actions[0]["prompt"] == 2
+    assert out.usage["policyExcludedTurns"] == 1
 
 
 def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
@@ -1463,7 +1499,7 @@ def test_pref_record_session_file_sha256(tmp_path):
     """Session.file_sha256 is a stable 64-hex string of the transcript bytes."""
     from adapt import adapt_sessions as ts
     f = _write(tmp_path / "s.jsonl", [
-        {"type": "user", "userType": "external", "cwd": "D:\Claude",
+        {"type": "user", "userType": "external", "cwd": "D:\\Claude",
          "sessionId": "x", "message": {"content": "hello world always jsonl logs"}},
     ])
     sess = ts.parse_claude_session(f)

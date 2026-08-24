@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "src" / "adapt" / "adapt_llm.py"
@@ -80,3 +81,105 @@ def test_default_minimax_extract_and_synthesis_keep_transient_retries(monkeypatc
     assert module._default_llm("system", "user", "minimax") == "[]"
     assert module._default_synth_llm("system", "user", "minimax") == "[]"
     assert attempts == [3, 3]
+
+
+def test_opencode_lane_uses_ox_alpha_json_events(monkeypatch):
+    module = _module()
+    captured = {}
+    events = "\n".join([
+        json.dumps({"type": "text", "part": {"text": "[]"}}),
+        json.dumps({"type": "step_finish", "part": {
+            "reason": "stop", "tokens": {"input": 12, "output": 2},
+        }}),
+    ])
+
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/bin/opencode")
+
+    def capture_opencode_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout=events, stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", capture_opencode_run)
+    result = module._opencode_response("system", "user", attempts=1)
+
+    assert captured["argv"][0:2] == ["/bin/opencode", "run"]
+    assert "--pure" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--model") + 1] == (
+        "opencode-go/ox-alpha-free"
+    )
+    assert "shell" not in captured["kwargs"]
+    assert captured["kwargs"]["check"] is False
+    assert result == {
+        "text": "[]",
+        "model": "opencode-go/ox-alpha-free",
+        "stop_reason": "stop",
+        "stop_sequence": None,
+        "usage": {"input": 12, "output": 2},
+    }
+
+
+def test_opencode_lane_availability_requires_exact_catalog_entry(monkeypatch):
+    module = _module()
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/bin/opencode")
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout="opencode-go/ox-alpha-free\n", stderr=""
+        ),
+    )
+    assert module.lane_available("opencode") is True
+
+
+def test_pi_lane_uses_sessionless_tool_free_ox_alpha(monkeypatch):
+    module = _module()
+    captured = {}
+    events = "\n".join([
+        json.dumps({"type": "message_end", "message": {
+            "role": "assistant", "provider": "opencode-go", "model": "ox-alpha-free",
+            "stopReason": "stop", "usage": {"input": 12, "output": 2},
+            "content": [
+                {"type": "thinking", "thinking": "hidden"},
+                {"type": "text", "text": "[]"},
+            ],
+        }}),
+    ])
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/bin/pi")
+
+    def capture_pi_run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(returncode=0, stdout=events, stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", capture_pi_run)
+    result = module._pi_response("system", "user", attempts=1)
+
+    assert captured["argv"][0] == "/bin/pi"
+    assert "--no-session" in captured["argv"]
+    assert "--no-tools" in captured["argv"]
+    assert captured["argv"][captured["argv"].index("--provider") + 1] == "opencode-go"
+    assert captured["argv"][captured["argv"].index("--model") + 1] == "ox-alpha-free"
+    assert captured["kwargs"]["check"] is False
+    assert result == {
+        "text": "[]",
+        "model": "opencode-go/ox-alpha-free",
+        "stop_reason": "stop",
+        "stop_sequence": None,
+        "usage": {"input": 12, "output": 2},
+    }
+
+
+def test_parse_json_array_contains_python_replace_damage_to_one_value():
+    module = _module()
+    raw = (
+        '[{"category":"workflow","observation":"Keep status concise",'
+        '"durability":"cross_task_cross_explicit".replace("_cross_","_task_")},'
+        '{"category":"verification","observation":"Run tests"}]'
+    )
+
+    parsed = module.parse_json_array(raw, "extract")
+
+    assert len(parsed) == 2
+    assert parsed[0]["durability"] == "cross_task_cross_explicit"
+    assert parsed[1]["observation"] == "Run tests"

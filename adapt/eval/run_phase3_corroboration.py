@@ -20,6 +20,7 @@ WS = Path(
     os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
 ADAPT_DIR = Path(__file__).resolve().parent.parent  # adapt/ — this file lives in adapt/eval/
+ADAPT_SRC = ADAPT_DIR / "src"
 JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.
 Return only a JSON array with exactly one object per input item.
@@ -37,6 +38,14 @@ model routing, memory handling, or how the agent communicates its work. Direct u
 about the agent itself are valid; `pasted_or_meta` applies only to copied or model-authored text.
 By contrast, a temporary gate containing "until", a current stack declaration, a product/UI
 decision, or a request to perform the current task is not an agent preference.
+
+Treat commands tied to one named file, artifact, lane, branch, feature, deploy, or current output
+as task-specific unless evidence explicitly says the behavior applies across future tasks (for
+example "from now on") or support comes from independent sessions. A recurring verb such as
+"before each deploy" does not by itself turn a repo/task definition of done into global agent taste.
+When the user directly endorses a scope, memory, safety, or code-style rule, it remains user
+authority even if they mention that the rule also appeared in a prompt. Prefer REJECT over ADMIT
+when durability is merely plausible rather than explicit.
 
 Examples that qualify: "always use JSONL for structured logs", "never expire tokens that are still
 referenced", "from now on mark sessions learned only after every batch succeeds", and "I prefer
@@ -56,6 +65,8 @@ FLAGS = {
 }
 HARD_FLAGS = {"permission_expanding", "authority_conflict"}
 MODEL_SPECS = {
+    "pi-ox-alpha": ("pi", "opencode-go/ox-alpha-free"),
+    "opencode-ox-alpha": ("opencode", "opencode-go/ox-alpha-free"),
     "minimax-m3-direct": ("minimax", "MiniMax-M3"),
     "deepseek-v4-pro-nim": ("nim", "deepseek-ai/deepseek-v4-pro"),
     "kimi-k2.6-nim": ("nim", "moonshotai/kimi-k2.6"),
@@ -431,8 +442,26 @@ _PROVIDERS_LOCK = threading.Lock()
 
 def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
     provider_name, model = MODEL_SPECS[model_id]
+    if provider_name == "pi":
+        sys.path.insert(0, str(ADAPT_SRC))
+        from adapt import adapt_llm
+        if model != f"{adapt_llm.PI_PROVIDER}/{adapt_llm.PI_MODEL}":
+            raise ValueError("Pi model binding mismatch")
+        response = adapt_llm.call_lane_response(
+            system, user, lane="pi", max_tokens=max_tokens, attempts=3,
+        )
+        return response["text"]
+    if provider_name == "opencode":
+        sys.path.insert(0, str(ADAPT_SRC))
+        from adapt import adapt_llm
+        if model != adapt_llm.OPENCODE_MODEL:
+            raise ValueError("OpenCode model binding mismatch")
+        response = adapt_llm.call_lane_response(
+            system, user, lane="opencode", max_tokens=max_tokens, attempts=3,
+        )
+        return response["text"]
     if provider_name == "minimax":
-        sys.path.insert(0, str(ADAPT_DIR))
+        sys.path.insert(0, str(ADAPT_SRC))
         from adapt import adapt_llm
         response = adapt_llm.call_lane_response(
             system, user, lane="minimax", max_tokens=max_tokens,
@@ -530,7 +559,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     })
     _write_json_atomic(args.out / "preflight.json", preflight)
 
-    sys.path.insert(0, str(ADAPT_DIR))
+    sys.path.insert(0, str(ADAPT_SRC))
     from adapt import adapt_sessions
     panel = run_panel(
         cases=cases,

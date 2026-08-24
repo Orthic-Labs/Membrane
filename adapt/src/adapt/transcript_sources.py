@@ -10,7 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-SUPPORTED_HOSTS = frozenset({"claude_code", "codex"})
+GENERIC_HOSTS = frozenset({
+    "command_code", "cline", "opencode", "pi", "gemini", "grok_build",
+    "roo_cline", "qwen", "cursor",
+})
+SUPPORTED_HOSTS = frozenset({"claude_code", "codex", *GENERIC_HOSTS})
 _MAX_CWD_TRANSITIONS = 50
 _MAX_METADATA_ROWS = 50
 PROVENANCE_KINDS = frozenset({"external_user", "assistant", "developer", "internal_context",
@@ -273,6 +277,17 @@ def inspect_metadata(spec: SourceSpec, path: Path, *, max_cwd_transitions: int |
                 if not isinstance(obj, dict):
                     continue
                 payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+                if spec.host in GENERIC_HOSTS:
+                    session_id = session_id or _value_at(obj, "sessionId", "session_id")
+                    cwd = _value_at(obj, "cwd")
+                    if cwd and (not cwd_rows or cwd_rows[-1][1] != cwd) and len(cwd_rows) < cwd_limit:
+                        cwd_rows.append((row, cwd))
+                    thread = _value_at(obj, "threadSource", "thread_source") or thread
+                    if session_id:
+                        break
+                    if row >= row_limit:
+                        break
+                    continue
                 if spec.host == "claude_code":
                     session_id = session_id or _value_at(obj, "sessionId", "session_id")
                     cwd = _value_at(obj, "cwd")

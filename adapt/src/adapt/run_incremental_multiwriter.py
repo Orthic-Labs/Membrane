@@ -234,7 +234,7 @@ def run_incremental(
 ) -> dict[str, Any]:
     if limit is not None and (isinstance(limit, bool) or limit <= 0):
         raise RunnerError("limit must be a positive integer")
-    if lane not in {"local", "minimax"}:
+    if lane not in {"local", "minimax", "opencode", "pi"}:
         raise RunnerError("unsupported Adapt lane")
     if lane != "local" and not allow_external_lane:
         raise RunnerError("external Adapt lane requires explicit allowance")

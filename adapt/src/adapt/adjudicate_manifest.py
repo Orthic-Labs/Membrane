@@ -117,7 +117,8 @@ def resolve_manifest(manifest: dict, panel: dict) -> tuple[dict, dict]:
             "votes": decision.get("votes", {}) if decision else {},
         })
 
-    resolved["generator"] = "adapt-adjudicate-manifest/1"
+    original_generator = str(manifest.get("generator") or "adapt-manifest")
+    resolved["generator"] = f"{original_generator}:adjudicated-calibrated-panel-v1"
     counts = {
         "accepted": sum(item["status"] == "accepted" for item in decisions),
         "rejected": sum(item["status"] == "rejected" for item in decisions),
@@ -335,7 +336,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if path.exists() and not args.resume:
             parser.error(f"output exists; use --resume: {path}")
 
-    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(PACKAGE_DIR.parent))
     from adapt import adapt_sessions
     run = run_calibrated_panel(
         panel_module=panel, cases=cases, expected_controls=expected,

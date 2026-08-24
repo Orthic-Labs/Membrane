@@ -99,6 +99,27 @@ def test_parse_verdicts_requires_exact_ids_and_known_schema():
         ]), {"a"})
 
 
+def test_pi_ox_model_uses_pi_lane(monkeypatch):
+    runner = _module()
+    from adapt import adapt_llm
+
+    captured = {}
+
+    def capture_pi_lane_call(system, user, *, lane, max_tokens, attempts, **_kwargs):
+        captured.update(
+            system=system, user=user, lane=lane, max_tokens=max_tokens, attempts=attempts
+        )
+        return {"text": "[]"}
+
+    monkeypatch.setattr(adapt_llm, "call_lane_response", capture_pi_lane_call)
+
+    assert runner._call_model("pi-ox-alpha", "system", "user", 2048) == "[]"
+    assert captured == {
+        "system": "system", "user": "user", "lane": "pi",
+        "max_tokens": 2048, "attempts": 3,
+    }
+
+
 def test_parse_verdicts_accepts_exact_jsonl_objects():
     runner = _module()
     raw = "\n".join([

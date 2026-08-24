@@ -95,6 +95,23 @@ def test_pipeline_source_hash_delegates_streaming_helper(
     assert calls == [path]
 
 
+def test_scope_for_event_preserves_canonical_unix_root_case(tmp_path: Path) -> None:
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text("{}\n", encoding="utf-8")
+    stat = transcript.stat()
+    cwd = str(tmp_path)
+    source = transcript_sources.TranscriptSource(
+        spec=transcript_sources.SourceSpec("pi", "pi", "", (), True),
+        path=transcript, path_rel=transcript.name, size=stat.st_size,
+        mtime_ns=stat.st_mtime_ns, local_source_key="pi:test", session_id="s1",
+        metadata=transcript_sources.SourceMetadata("s1", ((1, cwd),), "root"),
+    )
+
+    scope = taste_v2_pipeline.scope_for_event(source, {"rowIndex": 1})
+
+    assert scope.startswith("Volumes-D-")
+
+
 def test_cli_manifest_validation_failure_abandons_journal_without_artifact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

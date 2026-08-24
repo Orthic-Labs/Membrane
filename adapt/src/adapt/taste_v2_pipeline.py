@@ -193,7 +193,10 @@ def scope_for_event(source: transcript_sources.TranscriptSource, event: dict[str
     if not root.exists() or not root.is_dir(): return fallback
     lowered = cwd.lower()
     if any(token in lowered for token in ("health", "medical", "patient")): return fallback
-    slug = "".join(char.lower() if char.isalnum() else "-" for char in cwd).strip("-")
+    # Cortex write-scope validation recognizes canonical Unix root tokens
+    # (Volumes/Users/home/...). Preserve path case instead of lowercasing the
+    # root into an invalid, silently-forked scope.
+    slug = "".join(char if char.isalnum() else "-" for char in cwd).strip("-")
     return slug or fallback
 
 def evidence_context(candidate: taste_v2.TasteCandidateV1) -> dict[str, Any]:

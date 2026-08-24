@@ -1,4 +1,4 @@
-"""Atomic, attributed persistence for multi-installation Adapt manifests."""
+"""Bounded, attributed persistence for multi-installation Adapt manifests."""
 
 from __future__ import annotations
 
@@ -30,7 +30,11 @@ from adapt import preference_record  # noqa: E402
 
 
 class AdaptPersistenceError(RuntimeError):
-    """Raised when a reviewed Adapt batch was not durably committed as one unit."""
+    """Raised when a reviewed Adapt batch was not durably committed completely."""
+
+
+MAX_CORTEX_BATCH_ITEMS = 64
+MAX_CORTEX_REQUEST_BYTES = 900 * 1024
 
 
 def _token_file() -> Path:
@@ -108,39 +112,51 @@ def _request_body(
     return {"batch_id": batch_id, "items": items}
 
 
-def persist_manifest_batch(
+def _body_bytes(body: dict) -> bytes:
+    return json.dumps(body, ensure_ascii=False).encode("utf-8")
+
+
+def _partition_records(
     records: Sequence[preference_record.PreferenceRecord],
-    *,
-    manifest_batch_id: str,
-    installation_id: str,
-    token_file: Path | None = None,
-    base_url: str | None = None,
-    timeout: float = 150.0,
+    *, manifest_batch_id: str, installation_id: str,
+) -> list[list[preference_record.PreferenceRecord]]:
+    chunks: list[list[preference_record.PreferenceRecord]] = []
+    current: list[preference_record.PreferenceRecord] = []
+    for record in records:
+        candidate = current + [record]
+        probe_id = f"{manifest_batch_id}:chunk:{len(chunks):04d}"
+        body = _request_body(
+            candidate, manifest_batch_id=probe_id, installation_id=installation_id,
+        )
+        if (
+            current
+            and (
+                len(candidate) > MAX_CORTEX_BATCH_ITEMS
+                or len(_body_bytes(body)) > MAX_CORTEX_REQUEST_BYTES
+            )
+        ):
+            chunks.append(current)
+            current = [record]
+            probe_id = f"{manifest_batch_id}:chunk:{len(chunks):04d}"
+            body = _request_body(
+                current, manifest_batch_id=probe_id, installation_id=installation_id,
+            )
+        if len(_body_bytes(body)) > MAX_CORTEX_REQUEST_BYTES:
+            raise AdaptPersistenceError(
+                f"Cortex content for {record.id} exceeds bounded request size"
+            )
+        current.append(record) if current != [record] else None
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _post_body(
+    body: dict, *, token: str, base_url: str, timeout: float,
 ) -> dict:
-    """Commit all accepted records with one inference batch and one DB transaction."""
-    if not records:
-        return {
-            "batch_id": f"adapt-empty-{manifest_batch_id}",
-            "inserted": 0,
-            "duplicates": 0,
-            "complete": True,
-            "receipts": [],
-        }
-    body = _request_body(
-        records,
-        manifest_batch_id=manifest_batch_id,
-        installation_id=installation_id,
-    )
-    path = Path(token_file) if token_file is not None else _token_file()
-    try:
-        token = path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise AdaptPersistenceError("Cortex API token is unavailable") from exc
-    if not token:
-        raise AdaptPersistenceError("Cortex API token is empty")
     request = urllib.request.Request(
-        f"{(base_url or _base_url()).rstrip('/')}/v1/memories:batch",
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        f"{base_url.rstrip('/')}/v1/memories:batch",
+        data=_body_bytes(body),
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
@@ -152,7 +168,14 @@ def persist_manifest_batch(
             status = response.status
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        raise AdaptPersistenceError(f"Cortex batch rejected with HTTP {exc.code}") from exc
+        try:
+            detail = exc.read().decode("utf-8", errors="replace")[:500].strip()
+        except OSError:
+            detail = ""
+        suffix = f": {detail}" if detail else ""
+        raise AdaptPersistenceError(
+            f"Cortex batch rejected with HTTP {exc.code}{suffix}"
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise AdaptPersistenceError("Cortex batch service is unavailable") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -182,3 +205,63 @@ def persist_manifest_batch(
     ):
         raise AdaptPersistenceError("Cortex batch receipt is incomplete or inconsistent")
     return payload
+
+
+def persist_manifest_batch(
+    records: Sequence[preference_record.PreferenceRecord],
+    *,
+    manifest_batch_id: str,
+    installation_id: str,
+    token_file: Path | None = None,
+    base_url: str | None = None,
+    timeout: float = 150.0,
+) -> dict:
+    """Commit accepted records through deterministic, replayable Cortex transactions."""
+    if not records:
+        return {
+            "batch_id": f"adapt-empty-{manifest_batch_id}",
+            "inserted": 0,
+            "duplicates": 0,
+            "complete": True,
+            "receipts": [],
+        }
+    path = Path(token_file) if token_file is not None else _token_file()
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise AdaptPersistenceError("Cortex API token is unavailable") from exc
+    if not token:
+        raise AdaptPersistenceError("Cortex API token is empty")
+    chunks = _partition_records(
+        records, manifest_batch_id=manifest_batch_id, installation_id=installation_id,
+    )
+    chunk_receipts = []
+    for index, chunk in enumerate(chunks):
+        chunk_manifest_id = (
+            manifest_batch_id if len(chunks) == 1
+            else f"{manifest_batch_id}:chunk:{index:04d}"
+        )
+        body = _request_body(
+            chunk, manifest_batch_id=chunk_manifest_id, installation_id=installation_id,
+        )
+        try:
+            chunk_receipts.append(_post_body(
+                body, token=token, base_url=base_url or _base_url(), timeout=timeout,
+            ))
+        except AdaptPersistenceError as exc:
+            raise AdaptPersistenceError(
+                f"Cortex chunk {index + 1}/{len(chunks)} failed; "
+                f"{index} completed chunk(s) remain replayable: {exc}"
+            ) from exc
+    return {
+        "batch_id": f"adapt-manifest-{hashlib.sha256(manifest_batch_id.encode()).hexdigest()[:32]}",
+        "inserted": sum(int(item.get("inserted", 0)) for item in chunk_receipts),
+        "duplicates": sum(int(item.get("duplicates", 0)) for item in chunk_receipts),
+        "complete": True,
+        "receipts": [row for item in chunk_receipts for row in item["receipts"]],
+        "chunks": [{
+            "batch_id": item["batch_id"],
+            "inserted": item.get("inserted", 0),
+            "duplicates": item.get("duplicates", 0),
+        } for item in chunk_receipts],
+    }

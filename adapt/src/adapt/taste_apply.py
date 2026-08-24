@@ -30,15 +30,49 @@ def _runtime_hook(name: str, default):
     # Do not invoke Adapt facade's lazy legacy imports while applying Taste v2.
     return host.__dict__.get(name, default) if host else default
 
+
+def _extraction_coverage_error(manifest_body: dict, session_count: int) -> str | None:
+    generator = str(manifest_body.get("generator") or "")
+    if not generator.startswith("adapt-frozen-open-transcripts-v2:"):
+        return None
+    coverage = manifest_body.get("extraction_coverage")
+    if not isinstance(coverage, dict):
+        return "frozen transcript extraction coverage is missing"
+    if coverage.get("complete") is not True:
+        return "frozen transcript extraction is incomplete"
+    if coverage.get("source_count") != session_count:
+        return "frozen transcript source coverage does not match journal"
+    corpus_source_count = coverage.get("corpus_source_count")
+    shard_index = coverage.get("shard_index")
+    shard_count = coverage.get("shard_count")
+    if not all(isinstance(value, int) and not isinstance(value, bool)
+               for value in (corpus_source_count, shard_index, shard_count)):
+        return "frozen transcript shard coverage is invalid"
+    if corpus_source_count < session_count or shard_count < 1 or not 0 <= shard_index < shard_count:
+        return "frozen transcript shard coverage is invalid"
+    canonical = coverage.get("canonical_user_turns")
+    mined = coverage.get("mined_user_turns")
+    excluded = coverage.get("policy_excluded_user_turns")
+    if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0
+               for value in (canonical, mined, excluded)):
+        return "frozen transcript turn coverage is invalid"
+    if mined + excluded != canonical:
+        return "frozen transcript turn coverage is incomplete"
+    if coverage.get("failed_batches") != 0:
+        return "frozen transcript extraction contains failed batches"
+    if coverage.get("committable_batches") != coverage.get("llm_batches"):
+        return "frozen transcript extraction batch coverage is incomplete"
+    return None
+
 def apply_from_manifest(manifest_path: Path) -> int:
-    """Apply a reviewed manifest. Zero LLM calls; atomic write across accepted records.
+    """Apply a reviewed manifest. Zero LLM calls; resumable bounded writes.
 
     Gate 1a contract:
       - manifest schema-valid + payload_sha256-matches content
       - batch_id must match a journal discovered entry with the same sessions
       - only ``accepted`` records are written
       - state advances only after the authenticated batch receipt is complete
-      - failed batches leave persistence atomic at Membrane's Cortex boundary
+      - each Cortex chunk is atomic and replayable; state advances after every chunk completes
     """
     try:
         m = manifest.apply_time_validate(manifest_path)
@@ -94,6 +128,10 @@ def apply_from_manifest(manifest_path: Path) -> int:
         return 2
     if m["source_session_ids"] != j_sessions:
         print("error: source_session_ids mismatch journal source_refs", file=sys.stderr)
+        return 2
+    coverage_error = _extraction_coverage_error(m, len(j_sessions))
+    if coverage_error:
+        print(f"error: {coverage_error}; refusing state advance", file=sys.stderr)
         return 2
 
     accepted = manifest.accepted_records(m)

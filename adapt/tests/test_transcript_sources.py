@@ -90,6 +90,24 @@ def test_metadata_incomplete_fails_closed_and_unsupported_stays_stat_only(tmp_pa
     assert not selected and quarantined[0].metadata.exclusion_reason == "unsupported-host"
 
 
+def test_generic_snapshot_metadata_is_supported(tmp_path: Path) -> None:
+    path = _write(tmp_path / "cline.jsonl", [{
+        "type": "adapt_event_v1", "host": "cline", "sessionId": "s1",
+        "cwd": "/repo", "threadSource": "root",
+        "event": {"kind": "user_message", "role": "user", "text": "always verify"},
+    }])
+    metadata = sources.inspect_metadata(_spec("cline"), path)
+    assert metadata.session_id == "s1"
+    assert metadata.cwd_by_row == ((1, "/repo"),)
+    descriptor = sources.TranscriptSource(
+        _spec("cline"), path, path.name, path.stat().st_size,
+        path.stat().st_mtime_ns, "cline:s1",
+    )
+    selected, quarantined = sources.select_sources([descriptor])
+    assert not quarantined
+    assert selected[0].session_id == "s1"
+
+
 def test_claude_cwd_transitions_are_bounded(tmp_path: Path) -> None:
     path = _write(tmp_path / "claude.jsonl", [
         {"sessionId": "s", "cwd": f"/repo/{index}"} for index in range(60)

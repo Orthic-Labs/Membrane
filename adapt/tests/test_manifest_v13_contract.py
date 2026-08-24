@@ -47,3 +47,33 @@ def test_only_manifest_v13_is_accepted(tmp_path: Path) -> None:
 
 def test_retired_manifest_alias_is_absent() -> None:
     assert not hasattr(manifest, "load_and_validate")
+
+
+def test_frozen_v2_manifest_requires_complete_extraction_coverage(tmp_path: Path) -> None:
+    body = _body("1.3.0")
+    body["generator"] = "adapt-frozen-open-transcripts-v2:" + "c" * 64
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(manifest.ManifestError):
+        manifest.validate_schema(path)
+
+    body["extraction_coverage"] = {
+        "complete": True,
+        "source_count": 1,
+        "corpus_source_count": 1,
+        "shard_index": 0,
+        "shard_count": 1,
+        "sources_with_mined_turns": 1,
+        "canonical_user_turns": 2,
+        "mined_user_turns": 2,
+        "policy_excluded_user_turns": 0,
+        "llm_batches": 1,
+        "committable_batches": 1,
+        "failed_batches": 0,
+        "batch_char_budget": 120000,
+        "checkpointed_batches": 1,
+        "selection_contract": "all-safe-external-user-turns-v1",
+        "context_contract": "authoritative-source-with-prior-nonauthoritative-context-v1",
+    }
+    path.write_text(json.dumps(body), encoding="utf-8")
+    assert manifest.validate_schema(path)["extraction_coverage"]["complete"] is True
