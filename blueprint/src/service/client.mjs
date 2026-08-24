@@ -3,7 +3,7 @@
 
 import { connect } from "node:net";
 import { randomUUID } from "node:crypto";
-import { PROTOCOL_VERSION, encodeRequest, encodeResponse, encodeCancel, decodeLine, validateDeadlineMs, validateProtocolVersion } from "./protocol.mjs";
+import { MAX_DEADLINE_MS, PROTOCOL_VERSION, encodeRequest, encodeResponse, encodeCancel, decodeLine, validateDeadlineMs, validateProtocolVersion } from "./protocol.mjs";
 import { daemonEndpoint } from "./paths.mjs";
 
 function typedSocketError(code, message) {
@@ -104,6 +104,24 @@ export class DaemonClient {
         reject(typedSocketError("socket_write_failed", String(error.message ?? error)));
       }
     });
+  }
+
+  // Findings lane (design §7.1 items 5–7). Detection scans the repository, so
+  // these default to the maximum non-build deadline instead of the 2s default.
+  findingsGet(input = {}, options = {}) {
+    return this.request({ method: "findings.get", input, deadlineMs: MAX_DEADLINE_MS, ...options });
+  }
+
+  findingsSarif(input = {}, options = {}) {
+    return this.request({ method: "findings.sarif", input, deadlineMs: MAX_DEADLINE_MS, ...options });
+  }
+
+  findingsBaselineCapture(input = {}, options = {}) {
+    return this.request({ method: "findings.baseline.capture", input, deadlineMs: MAX_DEADLINE_MS, ...options });
+  }
+
+  findingsBaselineList(input = {}, options = {}) {
+    return this.request({ method: "findings.baseline.list", input, deadlineMs: MAX_DEADLINE_MS, ...options });
   }
 
   cancel(targetRequestId) {

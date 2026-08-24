@@ -5,7 +5,10 @@ const fallback = ["membrane_context"];
 const names = new Set([
   "membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save",
   "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback",
+  "membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence",
+  "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider",
 ]);
+
 const groupNames = ["default", "memory", "blueprint", "diagnostic"];
 
 export function parseToolsetConfig(raw) {

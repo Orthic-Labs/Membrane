@@ -26,7 +26,9 @@ test("dispatches Cortex status before memory behavior in declared order", async 
   assert.deepEqual(result.results.map(({ id }) => id), [
     "membrane.cortex-status", "membrane.memory-rearm", "membrane.memory-recall",
     "membrane.memory-pre-compact", "membrane.memory-post-compact", "membrane.memory-bump",
-    "membrane.memory-conflict", "membrane.tool-observer", "membrane.memory-ingest", "membrane.memory-nag",
+    "membrane.diagnostics-fence", "membrane.memory-conflict", "membrane.tool-observer",
+    "membrane.memory-ingest", "membrane.diagnostics-observe",
+    "membrane.diagnostics-completion-fence", "membrane.memory-nag",
     "membrane.memory-failure", "membrane.memory-episode", "membrane.memory-session-end",
   ]);
   assert.equal(result.results[0].output.reason, "event_not_applicable");
@@ -46,4 +48,19 @@ test("HookHost returns a typed deadline failure", async () => {
   const result = await dispatchMembraneHookEvent({ event: "SessionStart" }, stalled, { timeoutMs: 5 });
   assert.equal(result.status, "error");
   assert.match(result.results[0].error, /timed out/);
+});
+
+import { isFenceRelevantCommand } from "./membrane-hook-runtime.mjs";
+
+test("fence matcher targets only test/build/completion commands", () => {
+  const bash = (command) => ({ event: "PreToolUse", payload: { tool_name: "Bash", tool_input: { command } } });
+  assert.equal(isFenceRelevantCommand(bash("pnpm test")), true);
+  assert.equal(isFenceRelevantCommand(bash("cargo build --release")), true);
+  assert.equal(isFenceRelevantCommand(bash("make check")), true);
+  // Non-verification shell work is never fenced.
+  assert.equal(isFenceRelevantCommand(bash("ls -la")), false);
+  assert.equal(isFenceRelevantCommand(bash("cat package.json")), false);
+  // Non-shell tools are never fenced.
+  const write = { event: "PreToolUse", payload: { tool_name: "Write", tool_input: {} } };
+  assert.equal(isFenceRelevantCommand(write), false);
 });

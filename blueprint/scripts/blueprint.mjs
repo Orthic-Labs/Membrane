@@ -219,6 +219,7 @@ usage:
   ${command} grant issue --task <id> --paths <glob...> [--ttl-minutes N]
   ${command} grant check --task <id> --path <path>
   ${command} delta <path...> [--out .agent]
+  ${command} findings [--out .agent] [--path PREFIX] [--limit N] [--json] [--sarif] [--baseline FILE] [--write-baseline FILE]
 `);
 }
 
@@ -3149,6 +3150,176 @@ function enrichDecompositionCandidates(facts, generation) {
   facts.decomposition = check.meta;
 }
 
+// Findings — deterministic, edit-time diagnostics that need no compiler, test
+// or build run. Phase 0 covers BP001/BP002/BP003 (see docs/design/BP001.md).
+// Omissions are summarised rather than listed one per unsupported file, but
+// the count is never hidden: a clean run must stay distinguishable from an
+// unexamined one.
+function findingsToolVersion() {
+  return optionalJson(new URL("../package.json", import.meta.url).pathname).value?.version ?? "0.0.0";
+}
+
+// §7.1 item 7 — CLI/SARIF are adapters over the resident findings service.
+// When the daemon is reachable, the command consumes generation/hash-bound
+// bundles through it; otherwise it falls back to direct detection and prints
+// a typed degradation notice (same pattern as runBuildThroughDaemon).
+function findingsDaemonUnavailable(reason) {
+  console.warn(`degraded_findings_direct: ${reason ?? "daemon_unreachable"} — resident daemon did not serve findings; running direct detection`);
+  return null;
+}
+
+async function runFindingsThroughDaemon(root, outDir, args) {
+  if (process.env.BLUEPRINT_LOCAL_FINDINGS === "1") return null;
+  // File-based baselines, baseline writing and scan limits are not expressed
+  // by the resident surface yet; those invocations stay on the direct path.
+  if (args.baseline || args["write-baseline"] || Number(args.limit ?? 0) > 0) return null;
+  const client = new DaemonClient();
+  try {
+    const paths = args.path ? [normalizePath(String(args.path))] : [];
+    if (args.sarif) {
+      const response = await client.findingsSarif({
+        repoRoot: root,
+        outDir,
+        paths,
+        toolVersion: findingsToolVersion(),
+      });
+      if (!response.ok) return findingsDaemonUnavailable(response?.error?.code);
+      console.log(JSON.stringify(response.result.sarif, null, 2));
+      return response.result.findingCount ? 2 : 0;
+    }
+    const started = Date.now();
+    const response = await client.findingsGet({ repoRoot: root, outDir, paths });
+    if (!response.ok) return findingsDaemonUnavailable(response?.error?.code);
+    const payload = response.result;
+    if (args.json) {
+      console.log(JSON.stringify({ ...payload, omissionSummary: summarizeOmissions(payload.omissions) }, null, 2));
+      return payload.findings.length ? 2 : 0;
+    }
+    const findings = payload.findings;
+    const errors = findings.filter((finding) => finding.severity === "error").length;
+    const coverage = payload.coverage ?? {};
+    const freshness = payload.freshness === "stale" ? " · stale generation" : "";
+    console.log(`findings ${findings.length} (${errors} error) · ${coverage.filesParsed ?? 0} parsed · ${coverage.surfacesClosed ?? 0} closed surfaces · ${Date.now() - started}ms${freshness}`);
+    for (const finding of findings.slice(0, Number(args.top ?? 10))) {
+      console.log(`  ${finding.severity.toUpperCase().padEnd(5)} ${finding.ruleId} ${finding.path}:${finding.startLine}`);
+      console.log(`        ${finding.message}`);
+    }
+    if (findings.length > Number(args.top ?? 10)) console.log(`  +${findings.length - Number(args.top ?? 10)} more — rerun with --json`);
+    const omissionSummary = summarizeOmissions(payload.omissions);
+    if (omissionSummary.length) {
+      console.log(`  omitted: ${omissionSummary.map((entry) => `${entry.reason}=${entry.count}`).join(" ")}`);
+    }
+    return findings.length ? 2 : 0;
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
+      return findingsDaemonUnavailable(error.code);
+    }
+    throw error;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+function summarizeOmissions(omissions) {
+  const byReason = new Map();
+  for (const entry of omissions) byReason.set(entry.reason, (byReason.get(entry.reason) ?? 0) + 1);
+  return [...byReason.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([reason, count]) => ({ reason, count }));
+}
+
+async function runFindingsCommand(root, outDir, args) {
+  // Resident-service adapter first (§7.1 item 7); direct detection is the
+  // typed-degradation fallback.
+  const daemonExitCode = await runFindingsThroughDaemon(root, outDir, args);
+  if (daemonExitCode !== null) return daemonExitCode;
+  const { detectFindings } = await import("../src/lib/findings/detect.mjs");
+  const { candidatePaths } = await import("../src/lib/findings/specifier.mjs");
+  const { SUPPORTED_SURFACE_EXTENSIONS } = await import("../src/graph/module-surface.mjs");
+  const supported = new Set(SUPPORTED_SURFACE_EXTENSIONS);
+  const config = loadConfig(root, outDir);
+  const started = Date.now();
+
+  // The whole repository path list is the resolution universe; only files the
+  // surface extractor understands are read, so a large repository does not pay
+  // to load assets it will never parse.
+  const paths = repoFiles(root, config, Number(args.limit ?? 0));
+  const files = paths.map((path) => {
+    const extension = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
+    if (!supported.has(extension)) return { path, text: "" };
+    try { return { path, text: readFileSync(join(root, path), "utf8") }; }
+    catch { return { path, text: "" }; }
+  });
+
+  const result = await detectFindings({
+    files,
+    generationId: optionalJson(join(root, outDir, "manifest.json")).value?.generationId
+      ?? optionalJson(join(root, ".agent/manifest.json")).value?.generationId ?? null,
+    // A specifier that resolves on disk but was excluded from the scan is a
+    // coverage gap, not a broken import.
+    existsOutsideScan: (fromPath, specifier) =>
+      candidatePaths(fromPath, specifier).some((candidate) => existsSync(join(root, candidate))),
+  });
+
+  const prefix = args.path ? normalizePath(String(args.path)) : null;
+  let findings = prefix ? result.findings.filter((finding) => finding.path.startsWith(prefix)) : result.findings;
+
+  let baselineState = null;
+  if (args.baseline) {
+    const { changedSlice } = await import("../src/lib/rules/baseline.mjs");
+    const baseline = optionalJson(resolve(root, String(args.baseline))).value;
+    if (!baseline) {
+      console.error(JSON.stringify({ schemaVersion: 1, error: { code: "baseline_missing", message: `no baseline at ${args.baseline}` } }, null, 2));
+      return 3;
+    }
+    const slice = changedSlice({ findings, baseline });
+    baselineState = { total: slice.total, newCount: slice.newCount };
+    findings = slice.findings;
+  }
+
+  if (args["write-baseline"]) {
+    writeJsonAtomic(resolve(root, String(args["write-baseline"])), {
+      schemaVersion: 1,
+      generationId: result.generationId,
+      findings: result.findings.map((finding) => ({ fingerprint: finding.fingerprint, ruleId: finding.ruleId, path: finding.path })),
+    });
+  }
+
+  const durationMs = Date.now() - started;
+  const omissionSummary = summarizeOmissions(result.omissions);
+
+  if (args.sarif) {
+    const { toSarif } = await import("../src/lib/sarif.mjs");
+    console.log(JSON.stringify(toSarif(findings, findingsToolVersion()), null, 2));
+    return findings.length ? 2 : 0;
+  }
+  if (args.json) {
+    console.log(JSON.stringify({
+      schemaVersion: 1,
+      generationId: result.generationId,
+      durationMs,
+      coverage: result.coverage,
+      baseline: baselineState,
+      omissions: omissionSummary,
+      findings,
+    }, null, 2));
+    return findings.length ? 2 : 0;
+  }
+
+  const label = baselineState ? `${findings.length} new` : String(findings.length);
+  const errors = findings.filter((finding) => finding.severity === "error").length;
+  console.log(`findings ${label} (${errors} error) · ${result.coverage.filesParsed} parsed · ${result.coverage.surfacesClosed} closed surfaces · ${durationMs}ms`);
+  for (const finding of findings.slice(0, Number(args.top ?? 10))) {
+    console.log(`  ${finding.severity.toUpperCase().padEnd(5)} ${finding.ruleId} ${finding.path}:${finding.startLine}`);
+    console.log(`        ${finding.message}`);
+  }
+  if (findings.length > Number(args.top ?? 10)) console.log(`  +${findings.length - Number(args.top ?? 10)} more — rerun with --json`);
+  if (omissionSummary.length) {
+    console.log(`  omitted: ${omissionSummary.map((entry) => `${entry.reason}=${entry.count}`).join(" ")}`);
+  }
+  return findings.length ? 2 : 0;
+}
+
 function runHygieneCommand(root, outDir, subcommand, args) {
   const result = subcommand === "refresh"
     ? refreshHygiene(root, outDir, args)
@@ -3247,7 +3418,7 @@ async function main() {
     usage();
     return 0;
   }
-  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "recall", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
+  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "recall", "delta", "findings", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
   if (!knownCommands.has(command)) {
     const args = parseArgs(argv);
     const task = String(args.task ?? args._.join(" ")).trim();
@@ -3272,6 +3443,9 @@ async function main() {
     return await runGraphCommand(root, outDir, subcommand, graphArgs);
   }
   if (command === "candidates") return await runGraphCommand(root, outDir, "candidates", args);
+  if (command === "findings") {
+    return await runFindingsCommand(root, outDir, args);
+  }
   if (command === "hygiene") {
     const [subcommand, ...hygieneRest] = rest;
     const hygieneArgs = parseArgs(hygieneRest);

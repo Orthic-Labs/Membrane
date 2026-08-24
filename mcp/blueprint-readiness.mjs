@@ -8,6 +8,18 @@ import { join, resolve } from "node:path";
 
 export const READINESS_STATES = Object.freeze(["current", "degraded", "stale", "unwatched"]);
 
+// Provider capability readiness — Blueprint findings + module-surface are
+// pure-analysis, instant-cost providers that converge via pull_exact (findings)
+// and snapshot_checker_exact (module-surface). They reuse the same four-state
+// readiness contract as the graph itself; a stale or missing generation is
+// reported as a typed omission rather than a false negative.
+export const PROVIDER_READINESS_CAPS = Object.freeze([
+  { capability: "findings.bp001", cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+  { capability: "findings.bp002", cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+  { capability: "findings.bp003", cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+  { capability: "module_surface.parse", cost: "instant", convergence: "snapshot_checker_exact", side_effect: "pure_analysis" },
+]);
+
 const MAX_RESPONSE_BYTES = 16 * 1024;
 
 function endpoint(env = process.env) {

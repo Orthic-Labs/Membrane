@@ -1,6 +1,7 @@
 // Membrane-owned workspace memory behavior. This layer invokes Cortex's public
 // contracts; it contains no Arcane or research admission policy.
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -9,6 +10,8 @@ import { get as httpGet } from "node:http";
 import { request as httpRequest } from "node:http";
 import { typedStatus } from "./membrane-hook-runtime.mjs";
 import { createContinuityClient } from "../host/continuity.mjs";
+import { diagnosticsRequest } from "../lib/diagnostics-client.mjs";
+import { isVerificationCommand } from "../lib/verification-command.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../host/context-adapter.cjs");
@@ -215,12 +218,184 @@ function ingestArgs(root, file, event) {
   return args;
 }
 
+function diagnosticsIdentity(event, root, env = process.env) {
+  return {
+    repoId: env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root),
+    worktreeId: env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16),
+  };
+}
+
+/** Fence enforcement is active for opted-in workspaces only: an explicit
+ * environment switch or a workspace marker file. Hosts that never adopted
+ * Membrane keep running tests/builds untouched; hosts that did are enforced
+ * fail-closed at every verification boundary (design §10/§11). */
+function fenceEnforcementEnabled(root, env = process.env) {
+  if (env.MEMBRANE_DIAGNOSTICS_ENFORCE === "1") return true;
+  if (env.MEMBRANE_DIAGNOSTICS_ENFORCE === "0") return false;
+  return existsSync(join(root, ".agent", "diagnostics-enforce.json"));
+}
+
+const GIT_MANIFEST_TIMEOUT_MS = 1500;
+const GIT_MANIFEST_MAX_BUFFER = 2 * 1024 * 1024;
+
+function normalizeChangedPath(root, candidate) {
+  if (typeof candidate !== "string" || !candidate.trim()) return null;
+  const cleaned = candidate.trim().replaceAll("\\", "/").replace(/^\.\//, "");
+  try {
+    const rel = relative(root, resolve(root, candidate)).replaceAll("\\", "/");
+    if (rel && !rel.startsWith("..") && !rel.startsWith("/")) return rel;
+  } catch {}
+  return cleaned || null;
+}
+
+function changedPathsFromGit(root) {
+  const paths = new Set();
+  const commands = [
+    ["diff", "--name-only", "-z"],
+    ["diff", "--cached", "--name-only", "-z"],
+    ["ls-files", "--others", "--exclude-standard", "-z"],
+  ];
+  try {
+    for (const args of commands) {
+      const output = execFileSync("git", args, {
+        cwd: root,
+        encoding: "utf8",
+        timeout: GIT_MANIFEST_TIMEOUT_MS,
+        maxBuffer: GIT_MANIFEST_MAX_BUFFER,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      for (const candidate of output.split("\0")) {
+        const normalized = normalizeChangedPath(root, candidate);
+        if (normalized) paths.add(normalized);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return [...paths].sort((left, right) => left.localeCompare(right));
+}
+
+/** Build one deterministic current-byte manifest for both mutation observation
+ * & enforced-boundary reconciliation. Missing files remain represented in the
+ * digest even though no content hash can be sent to the resident. */
+function buildMutationManifest(root, changedPaths) {
+  const normalized = [...new Set((Array.isArray(changedPaths) ? changedPaths : [])
+    .map((candidate) => normalizeChangedPath(root, candidate))
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right));
+  const changedFileHashes = [];
+  const digest = createHash("sha256");
+  for (const relPath of normalized) {
+    let hash = "missing";
+    try {
+      const bytes = readFileSync(resolve(root, relPath));
+      hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      changedFileHashes.push({ path: relPath, hash });
+    } catch {}
+    digest.update(relPath);
+    digest.update("\0");
+    digest.update(hash);
+    digest.update("\0");
+  }
+  return {
+    changedPaths: normalized,
+    changedFileHashes,
+    sourceManifestDigest: `sha256:${digest.digest("hex")}`,
+  };
+}
+
 export function createWorkspaceMemoryOperations(options = {}) {
-  const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = options;
+  const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable, diagnosticsPost = diagnosticsRequest } = options;
   // Cortex subprocess execution is never an installed-hook default. Tests may
   // inject a seam; production must provide the current continuity service.
   const runCortex = typeof options.runCortex === "function" ? options.runCortex : null;
   const continuity = createContinuityClient({ service: continuityService });
+
+  // Shared Semantic Edit Fence gate body (design §10): one implementation for
+  // both the PreToolUse test/build boundary and the Stop completion boundary.
+  // Fail-closed when enforcement is enabled: missing evidence is never permission.
+  const evaluateFenceGate = async (event, boundary) => {
+    const root = rootFor(event);
+    const env = process.env;
+    if (!fenceEnforcementEnabled(root, env)) return typedStatus("skipped", "fence_enforcement_not_enabled");
+    const { repoId, worktreeId } = diagnosticsIdentity(event, root, env);
+    const tool = toolName(event);
+    const command = String(event.payload.tool_input?.command || event.payload.command || "");
+    if (boundary === "test_build_boundary" && !isVerificationCommand(command, tool)) {
+      return typedStatus("skipped", "fence_not_applicable");
+    }
+    try {
+      const status = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
+      if (!status || !status.ok) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "workspace_not_open" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: workspace not open or diagnostics unavailable` });
+      }
+      const body = status.body ?? {};
+      // Enforce projectRoot binding when fence enforcement is enabled:
+      // the fence may only be considered cleared when the status session's
+      // bound projectRoot exists and equals the canonical current hook root.
+      // Missing or different => BLOCK (fail-closed).
+      let canonicalCurrent;
+      try {
+        canonicalCurrent = realpathSync(resolve(root));
+      } catch {
+        canonicalCurrent = resolve(root);
+      }
+      const boundRoot = body.projectRoot;
+      if (typeof boundRoot !== "string" || !boundRoot) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "project_root_missing" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: bound project root missing` });
+      }
+      let canonicalBound;
+      try {
+        canonicalBound = realpathSync(boundRoot);
+      } catch {
+        canonicalBound = boundRoot;
+      }
+      if (canonicalCurrent !== canonicalBound) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "project_root_mismatch" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: project root mismatch (expected ${canonicalBound}, got ${canonicalCurrent})` });
+      }
+      const currentPaths = changedPathsFromGit(canonicalCurrent);
+      if (currentPaths === null) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "worktree_manifest_unavailable" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "current worktree manifest unavailable: fail-closed before verification or completion" });
+      }
+      const currentManifest = buildMutationManifest(canonicalCurrent, currentPaths);
+      let reconciliation;
+      try {
+        reconciliation = await diagnosticsPost("/diagnostics/reconcile", {
+          method: "POST",
+          body: {
+            repoId,
+            worktreeId,
+            manifestDigest: currentManifest.sourceManifestDigest,
+            hashes: currentManifest.changedFileHashes,
+          },
+          timeoutMs: 1200,
+        });
+      } catch {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "reconciliation_unreachable" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "reconciliation unavailable: fail-closed before verification or completion" });
+      }
+      const classification = reconciliation?.body?.classification;
+      if (!reconciliation?.ok || classification !== "cleared") {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: classification || "reconciliation_failed" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: current worktree reconciliation is ${classification || "unavailable"}` });
+      }
+      // Fail-closed: any uncleared fence, missing epoch, or not-cleared state blocks.
+      // The old `workspace_not_open => skipped` and `no sealed epoch => skipped`
+      // paths are wrong for an opted-in workspace: missing evidence is not permission.
+      if (body.fenceCleared !== true) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: run diagnostics snapshot.await and repair before tests/builds/completion` });
+      }
+      return typedStatus("available", "fence_cleared", { repoId, worktreeId, boundary });
+    } catch {
+      audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "diagnostics_unreachable" });
+      return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "diagnostics unreachable: fail-closed, repair and re-query before tests/builds/completion" });
+    }
+  };
+
   return Object.freeze({
     async status(event) {
       const healthy = await probeStatus(rootFor(event));
@@ -329,6 +504,165 @@ export function createWorkspaceMemoryOperations(options = {}) {
       const posted = await postObservation(root, event, trace, context);
       return typedStatus(posted ? "available" : "unavailable", posted ? "tool_observed" : "tool_observe_failed");
     },
+    async observeMutation(event) {
+      const root = rootFor(event);
+      const env = process.env;
+      const { repoId, worktreeId } = diagnosticsIdentity(event, root, env);
+
+      const tool = toolName(event);
+      const input = event.payload.tool_input ?? {};
+      const rawCandidates = [];
+      const pushCandidate = (value) => {
+        if (typeof value === "string" && value.trim()) rawCandidates.push(value.trim());
+      };
+      pushCandidate(input.file_path);
+      pushCandidate(input.filePath);
+      pushCandidate(event.payload.file_path);
+      pushCandidate(event.payload.filePath);
+      if (Array.isArray(input.edits)) {
+        for (const edit of input.edits) {
+          if (edit && typeof edit === "object") {
+            pushCandidate(edit.file_path);
+            pushCandidate(edit.filePath);
+          }
+        }
+      }
+      const patchText = String(input.patch ?? input.content ?? "");
+      if (tool === "apply_patch" || patchText.includes("*** Begin Patch") || patchText.includes("diff --git") || patchText.includes("*** Update File") || patchText.includes("*** Add File") || patchText.includes("*** Delete File")) {
+        for (const line of patchText.split(/\r?\n/)) {
+          let match = line.match(/^\*\*\*\s*(?:Update|Add|Delete)\s+File:\s*(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^---\s+a\/(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^\+\+\+\s+b\/(.+)$/);
+          if (match) pushCandidate(match[1].trim());
+          match = line.match(/^diff\s+--git\s+a\/(.+)\s+b\/(.+)$/);
+          if (match) { pushCandidate(match[1].trim()); pushCandidate(match[2].trim()); }
+        }
+      }
+      const candidates = rawCandidates.map((candidate) => normalizeChangedPath(root, candidate)).filter(Boolean);
+      if (candidates.length === 0) return typedStatus("skipped", "diagnostics_not_applicable");
+      // Do not return before registering a newer observed epoch merely
+      // because a resulting file is unreadable/deleted. A deletion can
+      // produce an epoch with changedPaths but no hashes; it must still
+      // invalidate old clearance and remain fail-closed (unknown/incomplete)
+      // rather than preserving the older clean fence.
+      const { changedPaths, changedFileHashes, sourceManifestDigest } = buildMutationManifest(root, candidates);
+      const digestOf = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      const digestOfFiles = (paths) => {
+        const hasher = createHash("sha256");
+        let found = false;
+        for (const candidatePath of paths) {
+          try {
+            const bytes = readFileSync(join(root, candidatePath));
+            hasher.update(candidatePath);
+            hasher.update("\0");
+            hasher.update(bytes);
+            hasher.update("\0");
+            found = true;
+          } catch {}
+        }
+        if (!found) hasher.update("empty");
+        return `sha256:${hasher.digest("hex")}`;
+      };
+      const projectConfigDigest = digestOfFiles(["package.json", "pyproject.toml", "Cargo.toml", "pnpm-workspace.yaml", ".agent/config.json", "blueprint.json", "membrane.json"]);
+      const toolchainDigest = digestOf(Buffer.from(`${process.version}\0${process.platform}\0${process.arch}`, "utf8"));
+      const sandboxPolicyDigest = digestOfFiles(["tools/lib/memory/runtime.json", ".agent/sandbox.json", "sandbox.json"]);
+      let nextEpoch = 0;
+      let parentEpoch = undefined;
+      try {
+        const statusResult = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
+        if (statusResult.ok && statusResult.body && typeof statusResult.body === "object") {
+          const latest = statusResult.body.latestSealedEpoch;
+          if (Number.isInteger(latest) && latest >= 0) {
+            nextEpoch = latest + 1;
+            parentEpoch = latest;
+          } else if (latest === null || latest === undefined) {
+            const configured = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+            if (Number.isInteger(configured) && configured >= 0) {
+              nextEpoch = configured;
+              parentEpoch = configured > 0 ? configured - 1 : undefined;
+            } else {
+              nextEpoch = 0;
+            }
+          }
+        } else {
+          throw new Error("status_unavailable");
+        }
+      } catch {
+        const configured = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+        const counterPath = join(root, "tools", ".cache", "diagnostics", "observed-epoch.json");
+        let current = null;
+        try {
+          const raw = readFileSync(counterPath, "utf8");
+          const parsed = JSON.parse(raw);
+          if (Number.isInteger(parsed.epoch) && parsed.epoch >= 0) current = parsed.epoch;
+        } catch {}
+        if (Number.isInteger(current)) {
+          nextEpoch = current + 1;
+          parentEpoch = current;
+        } else if (Number.isInteger(configured) && configured >= 0) {
+          nextEpoch = configured + 1;
+          parentEpoch = configured;
+        } else {
+          nextEpoch = 0;
+        }
+        try {
+          mkdirSync(dirname(counterPath), { recursive: true });
+          writeFileSync(counterPath, `${JSON.stringify({ repoId, worktreeId, epoch: nextEpoch, parentEpoch: parentEpoch ?? null, updatedAt: new Date().toISOString() })}\n`, "utf8");
+        } catch {}
+      }
+      try {
+        const counterPath = join(root, "tools", ".cache", "diagnostics", "observed-epoch.json");
+        mkdirSync(dirname(counterPath), { recursive: true });
+        writeFileSync(counterPath, `${JSON.stringify({ repoId, worktreeId, epoch: nextEpoch, parentEpoch: parentEpoch ?? null, updatedAt: new Date().toISOString() })}\n`, "utf8");
+      } catch {}
+      const epoch = {
+        schemaVersion: "workspace-epoch.v1",
+        repoId,
+        worktreeId,
+        epoch: nextEpoch,
+        ...(parentEpoch !== undefined ? { parentEpoch } : {}),
+        sourceManifestDigest,
+        changedPaths,
+        changedFileHashes,
+        projectConfigDigest,
+        toolchainDigest,
+        sandboxPolicyDigest,
+        origin: "observed_hook",
+      };
+      let openResult;
+      try {
+        // Bind the session to the exact canonical root at first mutation
+        // (design §3 WorkspaceEngineKey). Idempotent: reopening is a no-op.
+        openResult = await diagnosticsPost("/diagnostics/workspace/open", {
+          method: "POST",
+          body: { repoId, worktreeId, projectRoot: resolve(root) },
+          timeoutMs: 1200,
+        });
+      } catch {
+        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });
+        return typedStatus("unavailable", "diagnostics_register_failed", { paths: changedPaths, hashes: changedFileHashes });
+      }
+      if (!openResult.ok) {
+        audit("diagnostics-registerObserved", "degraded", { code: openResult.error.code, paths: changedPaths.join(",") });
+        return typedStatus("unavailable", openResult.error.code, { paths: changedPaths, hashes: changedFileHashes });
+      }
+      let posted;
+      try {
+        posted = await diagnosticsPost("/diagnostics/mutation/registerObserved", { method: "POST", body: { repoId, worktreeId, epoch }, timeoutMs: 1200 });
+      } catch {
+        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });
+        return typedStatus("unavailable", "diagnostics_register_failed", { paths: changedPaths, hashes: changedFileHashes });
+      }
+      if (!posted.ok) {
+        audit("diagnostics-registerObserved", "degraded", { code: posted.error.code, paths: changedPaths.join(",") });
+        return typedStatus("unavailable", posted.error.code, { paths: changedPaths, hashes: changedFileHashes });
+      }
+      const primaryPath = changedPaths[0];
+      const primaryHash = changedFileHashes.find((entry) => entry.path === primaryPath)?.hash ?? changedFileHashes[0]?.hash;
+      return typedStatus("available", "mutation_observed", { path: primaryPath, hash: primaryHash, paths: changedPaths, hashes: changedFileHashes });
+    },
     async nag(event) {
       const root = rootFor(event);
       const additionalContext = stopAdvisory(event, root, home);
@@ -355,6 +689,21 @@ export function createWorkspaceMemoryOperations(options = {}) {
     async sessionEnd(event) {
       audit("memory-session-end", "observed", { session_id: event.sessionId || null }, home);
       return typedStatus("available", "session_closed");
+    },
+    // Host fence enforcement for CodeRight / Claude Code / Codex (design §10:
+    // "Hosts enforce; providers report evidence"). Runs at the PreToolUse
+    // test/build/release boundary in opted-in workspaces. Fail-closed: when
+    // enforcement is on but diagnostics cannot answer, the boundary blocks.
+    // Returns state "blocked" so the entrypoint can translate it into a real
+    // host deny decision — registration alone is not enforcement.
+    async enforceFence(event) {
+      return evaluateFenceGate(event, "test_build_boundary");
+    },
+
+    // Completion boundary (design §10): a Stop may not end the session with
+    // sealed-but-uncleared bytes. Same gating and fail-closed semantics.
+    async enforceCompletion(event) {
+      return evaluateFenceGate(event, "completion");
     },
   });
 }

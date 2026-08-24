@@ -1389,6 +1389,28 @@ fn is_model_bound(method: &Method, path: &str) -> bool {
     http_route_spec(method, path).is_some_and(|spec| spec.2 == HttpWorkClass::Model)
 }
 
+/// Host fence enforcement for CodeRight / Claude Code / Codex.
+/// Before tests / builds / releases, hosts must query the diagnostics fence.
+/// This helper is the server-side enforcement point: if the fence is dirty
+/// (no cleared decision for the current sealed epoch), the host must block
+/// the operation. The check is fail-closed: unknown workspaces return true
+/// (block). Hosts enforce; providers only report evidence (design §10).
+/// Integration: CodeRight dispatcher calls `diagnostics.status` or
+/// `fence_allows_build` before spawning `cargo test` / `npm test` /
+/// `build` and returns 409 with `fence_not_cleared` if blocked.
+/// Claude/Codex observed-hook mode calls the same check before
+/// `reconciliation_only` gates.
+pub fn host_fence_blocks_build(
+    diagnostics: Option<&crate::live_diagnostics_service::DiagnosticsService>,
+    repo_id: &str,
+    worktree_id: &str,
+) -> bool {
+    match diagnostics {
+        Some(service) => !service.is_fence_cleared(repo_id, worktree_id),
+        None => false,
+    }
+}
+
 fn valid_idempotency_key(key: &str) -> bool {
     (1..=128).contains(&key.len()) && key.bytes().all(|byte| (0x21..=0x7e).contains(&byte))
 }
@@ -2037,7 +2059,7 @@ fn build_router_inner(
         context_ingest_lease: context_ingest_lease.map(Arc::new),
         freshness: Arc::new(crate::freshness::FreshnessCoordinator::default()),
         catalog: catalog.map(Arc::new),
-        api_token: api_token.map(Arc::<str>::from),
+        api_token: api_token.clone().map(Arc::<str>::from),
         allowed_origins: Arc::from([
             format!("http://127.0.0.1:{port}"),
             format!("http://localhost:{port}"),
@@ -2066,15 +2088,25 @@ fn build_router_inner(
             Arc::clone(&state.workers),
             workload_ingress,
         ));
-    Router::new()
+    let app = Router::new()
         .route("/livez", get(livez))
         .route("/health", get(detailed_health))
         .with_state(state)
-        .merge(workload)
-        // The handshake gate applies to every route, including the liveness
-        // probes, so a garbage X-Membrane-Manifest header is rejected with
-        // 400 before the request reaches the handler.
-        .layer(axum::middleware::from_fn(handshake_ingress))
+        .merge(workload);
+    // Live Diagnostics operational surface (design §12). Explicit routes
+    // bypass the `dispatch` fallback where every other non-public route
+    // authenticates, so the merged router carries its own bearer gate fed
+    // from the same API token. Construction cannot fail under the default
+    // configuration; if it ever does, the surface stays absent and the
+    // fallback answers 404 instead of half-serving it.
+    let app = match crate::live_diagnostics_service::resident_diagnostics_routes(api_token) {
+        Some(diagnostics) => app.merge(diagnostics),
+        None => app,
+    };
+    // The handshake gate applies to every route, including the liveness
+    // probes, so a garbage X-Membrane-Manifest header is rejected with
+    // 400 before the request reaches the handler.
+    app.layer(axum::middleware::from_fn(handshake_ingress))
 }
 
 #[cfg(test)]
@@ -5453,6 +5485,7 @@ mod tests {
             "productId",
             "observedAtUnixMs",
             "sections",
+            // Parent/subsystem status composition (Hub-status repair).
             "membraneState",
             "subsystems",
         ] {
