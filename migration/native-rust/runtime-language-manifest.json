@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-24T22:36:30.533Z",
+ "generatedAt": "2026-08-24T23:23:04.209Z",
  "enforcementMode": "migration",
  "policyDigest": "fdbe7ff961c271671f829450e6df8509c2798f86b6b9352438778bbb27df4421",
  "totals": {
@@ -1467,7 +1467,7 @@
     "engine/crates/membrane-transcript/tests/host_conformance.rs",
     "engine/crates/membrane-transcript/tests/normalize.rs"
    ],
-   "content_digest": "cac8c70d18481e6afbc50de79804dce43efff89d3a4f92d75fd3f51f672401a0"
+   "content_digest": "35743a83852031b798b19ea08aa0b6835df84d5dd07131e28b098dd7061b6c41"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",

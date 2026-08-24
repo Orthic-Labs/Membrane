@@ -4,6 +4,7 @@
 **Date:** 2026-08-24
 **Repository:** `Orthic-Labs/Membrane`
 **Current repository baseline reviewed:** `8a215ac6fab11cc24bb821507057743b7898e09f`
+**Implementation status reviewed:** `main@601c234cd0b9781a29a99843f8aa6c228b3c2865` (2026-08-25)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
 **Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state.
@@ -68,6 +69,24 @@ second native owner beside either candidate.
 
 The previous migration was therefore **a successful federation port but an incomplete product-runtime migration**.
 
+### 0.1.1 Current implementation status
+
+Status below is bound to `main@601c234cd0b9781a29a99843f8aa6c228b3c2865`:
+
+| Package | Status | Integrated evidence / remaining gate |
+|---|---|---|
+| N0 | **DONE** | Canonical invocation graph, runtime-language manifest/policy, and legacy-ledger reconciliation are checked in; graph/manifest gates pass with no errors or warnings. |
+| N1 | **DONE** | Seven hashed language-neutral internal contracts, examples, policy, and recurring contract gates are checked in and pass. |
+| N2 | **PARTIAL** | Native `membrane-transcript` owner, raw host discovery/parsing, exact provenance, receipts, and conformance tests pass. Adapt uses the native seam. Exact exit remains open until executable Python `continuity/transcript` is deleted or reduced to independently useful release-excluded fixtures/dev tooling with a deletion/exclusion receipt. |
+| N3 | **DONE** | Native deterministic Adapt core, authority/admission, scope/lifecycle, semantic sealing, manifests, multiwriter behavior, Insights report-only controls, and fail-closed tests pass. |
+| N4 | **DONE** | Native proposal/model boundary and independent adjudication are receipt-bound; sealed 70-case/33-family benchmark and proposal gates pass. A committed scorecard/results artifact remains a separate N10 acceptance item. |
+| N5 | **DONE** | Native CLI, Cortex batch apply/recall receipts, Hub launcher/scheduling seam, and copied-candidate mine/review/adjudicate/apply/recall qualification pass with interpreter PATH unavailable and no checkout cwd. |
+| N6 | **OPEN** | MCP/server/renderer and installed host-fence cutover remain. |
+| N7 | **OPEN** | Legacy executable federation Python/shadow deletion remains. |
+| N8 | **OPEN** | Blueprint external-service packaging/runtime boundary remains. |
+| N9 | **OPEN** | CodeRight native embedding/storage integration remains. |
+| N10 | **BLOCKED** | Native-only seal waits for N2 deletion closure, N6-N9, a committed behavioral scorecard/results artifact, and remaining Section 17 gates. |
+
 ### 0.2 Why the previous migration missed Adapt and transcript normalization
 
 The 2026-08-22 specification stated the correct product-wide rule — removal of Python and Node from Membrane's production dependency graph — but the implementation plan narrowed the concrete deletion packets around federation. `MEM-029` and `MEM-030` targeted the Rust↔Python federation bridge, gateway, providers, and implementation tests. There was no equivalent native migration/deletion track for Adapt or the current transcript package.
@@ -89,7 +108,7 @@ The migration is complete only when **every** item below is true:
 - [ ] No shipped Membrane binary, shim, service, scheduler, host adapter, or installed configuration launches Python or Node to execute Membrane-owned logic.
 - [ ] No installed Membrane runtime/authority path imports or depends on executable `.py`, `.js`, `.mjs`, `.cjs`, or `.ts` Membrane-owned source; §1.5 bounded presentation assets are the only installed exception.
 - [ ] Federation production behavior is Rust and the executable Python federation implementation has been deleted.
-- [ ] Adapt production behavior is Rust; its CLI, mining, authority/admission, manifest, application, and scheduling paths require no Python.
+- [x] Adapt production behavior is Rust; its CLI, mining, authority/admission, manifest, application, and scheduling paths require no Python.
 - [ ] Transcript parsing/normalization required by Membrane is Rust and the production Python package is deleted.
 - [ ] The canonical MCP server and context renderer are Rust.
 - [ ] The complete registry-defined MCP tool set, currently 17 tools, has native executors before native advertisement; unsupported native tools remain unadvertised during migration.
@@ -708,6 +727,8 @@ The earlier federation work packages are historical evidence. The following work
 
 ### N0 — Refresh the complete executable/runtime ledger
 
+**Status: DONE — `main@601c234`.**
+
 **Goal:** make the product-wide language/runtime graph exhaustive.
 
 Canonical classification authority is `runtime-language-manifest.json`. Reachability authority is
@@ -756,6 +777,8 @@ integration/supersession disposition.
 
 ### N1 — Freeze language-neutral contracts and native-only policy
 
+**Status: DONE — `main@601c234`.**
+
 Freeze fixtures/contracts for:
 
 - federation request/provider/merge behavior;
@@ -785,6 +808,8 @@ asset/capability restrictions.
 
 ### N2 — Port transcript normalization to native Rust
 
+**Status: PARTIAL — native owner/cutover/conformance done; legacy Python deletion/exclusion exit gate remains open.**
+
 Implement Section 5. First audit the current `engine/crates/membrane-transcript/` worktree
 candidate. Adopt/integrate it when contract-correct; otherwise explicitly supersede it before
 writing replacement code.
@@ -795,6 +820,8 @@ import of Python `continuity` remains; Python package is deleted except release-
 language-neutral fixtures/dev tools.
 
 ### N3 — Port Adapt deterministic core
+
+**Status: DONE — `main@601c234`.**
 
 First audit the current `engine/crates/membrane-adapt/` worktree candidate. Adopt/integrate it
 when contract-correct; otherwise explicitly supersede it before writing replacement code.
@@ -821,11 +848,15 @@ retired/narrow records cannot enter always-on core.
 
 ### N4 — Port Adapt proposal/adjudication/model boundary
 
+**Status: DONE — `main@601c234`.**
+
 Implement native proposal source, adjudication, and semantic-validation orchestration. Preserve exact source rebinding and authority separation.
 
 **Exit gate:** held-out extraction/admission quality gate meets approved thresholds; no installed Adapt operation needs `python`, Pi CLI, OpenCode CLI, or other interpreter-backed Membrane worker.
 
 ### N5 — Native Adapt persistence, delivery receipts, CLI, and Hub scheduling
+
+**Status: DONE — `main@601c234`.**
 
 - native Cortex batch apply;
 - current-policy/lifecycle projection;
@@ -839,6 +870,8 @@ Implement native proposal source, adjudication, and semantic-validation orchestr
 **Exit gate:** exact installed candidate performs mine/review/apply/recall with Python absent and no development checkout.
 
 ### N6 — Cut MCP/server/renderer production path to Rust
+
+**Status: OPEN.**
 
 - make `membrane-mcp` canonical;
 - implement the complete registry-defined tool set, currently 17 tools, and advertise only tools
@@ -859,6 +892,8 @@ no unexecutable tool.
 
 ### N7 — Delete federation Python and shadow runtime
 
+**Status: OPEN.**
+
 After current Rust federation parity evidence is accepted:
 
 - delete gateway/providers;
@@ -870,6 +905,8 @@ After current Rust federation parity evidence is accepted:
 
 ### N8 — Close Blueprint packaging/runtime boundary
 
+**Status: OPEN.**
+
 Implement Section 8.3's settled external-service state B. Include the merged D0a/D0b findings
 surface, named-generation baseline/delta, exact content hashes, affected-closure evidence, and
 typed omissions. Membrane consumes these only through Blueprint's public service and never
@@ -880,6 +917,8 @@ Blueprint client passes available/unavailable, generation/hash mismatch, finding
 dirty-overlay conformance with honest degradation.
 
 ### N9 — Finish CodeRight native embedding/storage integration
+
+**Status: OPEN.**
 
 Preserve prior CodeRight plan:
 
@@ -898,6 +937,8 @@ Preserve prior CodeRight plan:
 Membrane/Python/Node helper process, no split memory universe, and no stale-byte fence clearance.
 
 ### N10 — Native-only release seal
+
+**Status: BLOCKED — waits for N2 deletion closure, N6-N9, a committed behavioral scorecard/results artifact, and remaining Section 17 gates.**
 
 Run the full Section 15–16 qualification profiles against one exact package candidate digest,
 including bounded Hub presentation and declared external-integration evidence.
@@ -1311,22 +1352,22 @@ migration/native-rust/native-only-seal.json
 
 ### 17.3 Transcript normalization
 
-- [ ] Canonical transcript normalization is Rust.
-- [ ] `TranscriptEventV1`, exact byte spans, provenance, parser receipts, and typed unavailability pass fixtures.
-- [ ] Adapt has no production dependency on Python `continuity`.
+- [x] Canonical transcript normalization is Rust.
+- [x] `TranscriptEventV1`, exact byte spans, provenance, parser receipts, and typed unavailability pass fixtures.
+- [x] Adapt has no production dependency on Python `continuity`.
 - [ ] Every N0-inventoried consumer uses native transcript contract and Python package is deleted from production.
 
 ### 17.4 Adapt
 
-- [ ] Native deterministic extraction/authority/admission/manifest/apply pipeline passes.
-- [ ] Native proposal/adjudication interface passes held-out quality/safety gates.
-- [ ] Installed Adapt needs no Python, Pi CLI, OpenCode CLI, or source checkout.
-- [ ] Manifest digest covers semantically active applicability/lifecycle fields.
-- [ ] Malformed declared scope cannot broaden eligibility.
-- [ ] Decision-making projections preserve lifecycle/scope/machine/current-policy controls.
-- [ ] Core compiler selects only active eligible standing preferences using canonical root semantics.
-- [ ] Insights remains report-only unless separately admitted through governed policy.
-- [ ] Live interaction-signal learning is claimed only if host delivery/outcome receipts actually ship.
+- [x] Native deterministic extraction/authority/admission/manifest/apply pipeline passes.
+- [x] Native proposal/adjudication interface passes held-out quality/safety gates.
+- [x] Installed Adapt needs no Python, Pi CLI, OpenCode CLI, or source checkout.
+- [x] Manifest digest covers semantically active applicability/lifecycle fields.
+- [x] Malformed declared scope cannot broaden eligibility.
+- [x] Decision-making projections preserve lifecycle/scope/machine/current-policy controls.
+- [x] Core compiler selects only active eligible standing preferences using canonical root semantics.
+- [x] Insights remains report-only unless separately admitted through governed policy.
+- [x] Live interaction-signal learning is claimed only if host delivery/outcome receipts actually ship.
 - [ ] Current committed behavioral scorecard exists before comparative “better” claims.
 
 ### 17.5 MCP / Push rendering
