@@ -400,15 +400,17 @@ export function createFindingsService({
   }
 
   async function bundleFor(root, effectiveOutDir, sealed, { signal } = {}) {
-    const manifestPart = sealed.manifestDigest ?? "";
-    const cacheKey = `${root}\u0000${sealed.generationId}\u0000${manifestPart}`;
-    const cached = bundleCache.get(cacheKey);
-    if (cached) return cached;
     throwIfAborted(signal);
+    // Cache keys are content-addressed: the source digest of the exact files
+    // contributing to the bundle is computed BEFORE any lookup, so a working
+    // tree that moved under a still-sealed generation can never be served a
+    // stale bundle (freshness honesty, canonical doctrine §10). The scan runs
+    // on every call; only detection work is cached.
     const config = repositoryConfig(root, effectiveOutDir);
     const files = await Promise.resolve(scanRepository(root, config));
     const sourceDigest = sourceDigestForFiles(files);
-    const contentKey = `${cacheKey}\u0000${sourceDigest}`;
+    const manifestPart = sealed.manifestDigest ?? "";
+    const contentKey = `${root}\u0000${sealed.generationId}\u0000${manifestPart}\u0000${sourceDigest}`;
     const contentCached = bundleCache.get(contentKey);
     if (contentCached) return contentCached;
     const bundle = await buildGenerationBoundBundle({
@@ -417,7 +419,6 @@ export function createFindingsService({
       generationName: latestBaselineNameForGeneration(root, sealed.generationId),
       manifestDigest: sealed.manifestDigest,
     });
-    bundleCache.set(cacheKey, bundle);
     bundleCache.set(contentKey, bundle);
     if (bundleCache.size > MAX_CACHED_BUNDLES) bundleCache.delete(bundleCache.keys().next().value);
     return bundle;

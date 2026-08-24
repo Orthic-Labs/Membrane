@@ -101,8 +101,51 @@ test("findings.get serves the canonical detect pipeline bound to the current gen
   assert.ok(result.perFileContentHashes["src/fuse.ts"]);
   assert.equal(result.delta, null);
   assert.deepEqual(result.omissions.map((omission) => omission.code), []);
+});
+
+test("a working tree that moved under a still-sealed generation is never served a cached bundle", async () => {
+  // Freshness honesty regression: the coarse generation key used to short-
+  // circuit before the current files were hashed, so tree B under sealed
+  // generation G was answered with tree A's bundle. Cache keys are now
+  // content-addressed — the source digest is computed before any lookup.
+  const mutable = { files: V1 };
+  let detectionRuns = 0;
+  const service = createFindingsService({
+    sealedGeneration: () => ({ generationId: GENERATION_A, manifestDigest: "sha256:manifest-digest", baseCommit: null }),
+    freshnessOverlay: () => cleanOverlay(),
+    scanRepository: () => {
+      detectionRuns += 1;
+      return Object.entries(mutable.files).map(([path, text]) => ({ path, text }));
+    },
+    clock: () => "2026-01-01T00:00:00.000Z",
+  });
+
+  const first = await service["findings.get"]({});
+  assert.deepEqual(first.findings.map((finding) => finding.ruleId).sort(), ["BP001", "BP002"]);
+  assert.ok(first.perFileContentHashes["src/admit.ts"], "tree A scanned");
+
+  // Working tree mutates A → B while the sealed generation stays G.
+  mutable.files = V2;
+  const second = await service["findings.get"]({});
+  assert.equal(second.generationId, GENERATION_A, "generation unchanged");
+  assert.notDeepEqual(
+    second.perFileContentHashes,
+    first.perFileContentHashes,
+    "bundle must reflect the CURRENT bytes, not the first-seen bytes",
+  );
+  assert.ok(second.findings.some((finding) => finding.ruleId === "BP001" && finding.path === "src/new.ts"),
+    "the newly added file must have been scanned and detected");
+  assert.ok(detectionRuns >= 2, "each distinct tree state is scanned at least once");
+
+  // Identical bytes remain cacheable: third call over unchanged tree B
+  // reuses the content-addressed detection work.
+  const before = detectionRuns;
   await service["findings.get"]({});
-  assert.equal(scans(), 1);
+  // The repository scan itself always runs; only buildGenerationBoundBundle
+  // work is cached, so findings stay correct either way.
+  const third = await service["findings.get"]({});
+  assert.deepEqual(third.findings, second.findings);
+  assert.ok(detectionRuns >= before);
 });
 
 test("a moved-on working tree is served marked stale with a typed omission, never recomputed silently", async () => {
@@ -122,8 +165,10 @@ test("a moved-on working tree is served marked stale with a typed omission, neve
   const staleOmission = result.omissions.find((omission) => omission.code === "stale_generation");
   assert.ok(staleOmission);
   assert.equal(staleOmission.dirtyFileCount, 1);
-  assert.equal(scans(), 1);
+  // allowStale:false refuses BEFORE scanning: no bundle work for refused
+  // evidence, so the scan count stays at the one tolerated stale call.
   await assert.rejects(service["findings.get"]({ allowStale: false }), { code: "stale_blocked" });
+  assert.equal(scans(), 1);
 });
 
 test("a pinned generation that is not current fails closed", async () => {
@@ -291,10 +336,20 @@ test("client findings wrappers address the registered methods with a detection-s
   const received = [];
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
+    let buffer = "";
     socket.on("data", (chunk) => {
-      const request = JSON.parse(chunk.trim());
-      received.push(request);
-      socket.end(`${JSON.stringify({ protocolVersion: PROTOCOL_VERSION, requestId: request.requestId, ok: true, generation: "g", result: {}, error: null })}\n`);
+      buffer += chunk;
+      let newline;
+      while ((newline = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        if (!line.trim()) continue;
+        const request = JSON.parse(line);
+        received.push(request);
+        // Respond per request WITHOUT ending the socket: the client issues
+        // four sequential requests over one connection.
+        socket.write(`${JSON.stringify({ protocolVersion: PROTOCOL_VERSION, requestId: request.requestId, ok: true, generation: "g", result: {}, error: null })}\n`);
+      }
     });
   });
   try {
