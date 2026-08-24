@@ -1,5 +1,23 @@
 import { dispatchHookEvent, normalizeHookEvent } from "@rightkit/hooks";
 
+// Commands that cross a verification boundary: tests, builds, releases, and
+// other completion-escalating work. The Semantic Edit Fence must be cleared
+// before any of these may run in an opted-in workspace (design §10, §11).
+const FENCE_COMMAND_PATTERN = /\b(test|tests|build|check|compile|release|publish|cargo|pnpm|npm|yarn|make|gradle|mvn|go)\b/i;
+
+/** Whether one PreToolUse event addresses a test/build/completion boundary. */
+export function isFenceRelevantCommand(event) {
+  const tool = String(event.payload.tool_name || event.payload.toolName || "").toLowerCase();
+  if (!["bash", "shell", "terminal", "command", "task"].includes(tool)) return false;
+  const command = String(
+    event.payload.tool_input?.command
+      ?? event.payload.tool_input?.cmd
+      ?? event.payload.command
+      ?? "",
+  );
+  return FENCE_COMMAND_PATTERN.test(command);
+}
+
 const HOOK_MODULES = Object.freeze([
   ["membrane.cortex-status", "SessionStart", "status"],
   ["membrane.memory-rearm", "SessionStart", "rearm", (event) => event.payload.source === "compact"],
@@ -7,10 +25,14 @@ const HOOK_MODULES = Object.freeze([
   ["membrane.memory-pre-compact", "PreCompact", "preCompact"],
   ["membrane.memory-post-compact", "PostCompact", "postCompact"],
   ["membrane.memory-bump", "PreToolUse", "bump", (event) => event.payload.tool_name === "Read"],
+  ["membrane.diagnostics-fence", "PreToolUse", "enforceFence", isFenceRelevantCommand],
   ["membrane.memory-conflict", "PreToolUse", "conflict", (event) => event.payload.tool_name === "Write"],
   ["membrane.tool-observer", "PostToolUse", "observe", (event) => event.payload.tool_name === "Bash"],
   ["membrane.memory-ingest", "PostToolUse", "ingest", (event) => ["Write", "Edit", "MultiEdit", "apply_patch"].includes(event.payload.tool_name)],
   ["membrane.diagnostics-observe", "PostToolUse", "observeMutation", (event) => ["Write", "Edit", "MultiEdit", "apply_patch"].includes(event.payload.tool_name)],
+  // Completion boundary: a Stop that would end the session on unclean bytes
+  // is blocked exactly like an escalating test/build command (design §10).
+  ["membrane.diagnostics-completion-fence", "Stop", "enforceCompletion"],
   ["membrane.memory-nag", "Stop", "nag"],
   ["membrane.memory-failure", "PostToolUseFailure", "postToolUseFailure"],
   ["membrane.memory-episode", "TaskCompleted", "taskCompleted"],

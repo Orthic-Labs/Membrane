@@ -86,11 +86,11 @@ test("handlers pass resident bodies and typed errors through verbatim", async ()
 test("workspace and mutation handlers dispatch to the REST contract paths", async () => {
   const calls = [];
   const request = async (pathname, options) => { calls.push({ pathname, options }); return { ok: true, status: 200, body: { ok: true } }; };
-  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "open", repoId: "repo-1", worktreeId: "wt 1" }, { request });
+  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "open", repoId: "repo-1", worktreeId: "wt-1" }, { request });
   assert.equal(calls.at(-1).pathname, "/diagnostics/workspace/open");
-  assert.deepEqual(calls.at(-1).options.body, { repoId: "repo-1", worktreeId: "wt 1" });
-  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "status", repoId: "repo-1", worktreeId: "wt 1" }, { request });
-  assert.equal(calls.at(-1).pathname, `/diagnostics/workspace/status?repoId=${encodeURIComponent("repo-1")}&worktreeId=${encodeURIComponent("wt 1")}`);
+  assert.deepEqual(calls.at(-1).options.body, { repoId: "repo-1", worktreeId: "wt-1" });
+  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "status", repoId: "repo-1", worktreeId: "wt-1" }, { request });
+  assert.equal(calls.at(-1).pathname, `/diagnostics/workspace/status?repoId=${encodeURIComponent("repo-1")}&worktreeId=${encodeURIComponent("wt-1")}`);
   await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "reconcile", repoId: "r", worktreeId: "w", manifestDigest: "sha256:m", hashes: [{ path: "a.ts", hash: "sha256:a" }] }, { request });
   assert.equal(calls.at(-1).pathname, "/diagnostics/reconcile");
   await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "seal", repoId: "repo-1", worktreeId: "wt-1", epoch: EPOCH }, { request });

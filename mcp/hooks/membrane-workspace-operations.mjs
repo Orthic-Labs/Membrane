@@ -216,12 +216,59 @@ function ingestArgs(root, file, event) {
   return args;
 }
 
+function diagnosticsIdentity(event, root, env = process.env) {
+  return {
+    repoId: env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root),
+    worktreeId: env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16),
+  };
+}
+
+/** Fence enforcement is active for opted-in workspaces only: an explicit
+ * environment switch or a workspace marker file. Hosts that never adopted
+ * Membrane keep running tests/builds untouched; hosts that did are enforced
+ * fail-closed at every verification boundary (design §10/§11). */
+function fenceEnforcementEnabled(root, env = process.env) {
+  if (env.MEMBRANE_DIAGNOSTICS_ENFORCE === "1") return true;
+  if (env.MEMBRANE_DIAGNOSTICS_ENFORCE === "0") return false;
+  return existsSync(join(root, ".agent", "diagnostics-enforce.json"));
+}
+
 export function createWorkspaceMemoryOperations(options = {}) {
   const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable, diagnosticsPost = diagnosticsRequest } = options;
   // Cortex subprocess execution is never an installed-hook default. Tests may
   // inject a seam; production must provide the current continuity service.
   const runCortex = typeof options.runCortex === "function" ? options.runCortex : null;
   const continuity = createContinuityClient({ service: continuityService });
+
+  // Shared Semantic Edit Fence gate body (design §10): one implementation for
+  // both the PreToolUse test/build boundary and the Stop completion boundary.
+  const evaluateFenceGate = async (event, boundary) => {
+    const root = rootFor(event);
+    const env = process.env;
+    if (!fenceEnforcementEnabled(root, env)) return typedStatus("skipped", "fence_enforcement_not_enabled");
+    const { repoId, worktreeId } = diagnosticsIdentity(event, root, env);
+    const tool = toolName(event).toLowerCase();
+    const command = String(event.payload.tool_input?.command || event.payload.command || "").toLowerCase();
+    const isBuildOrTest = ["test", "build", "cargo test", "cargo build", "npm test", "pnpm test", "make"].some((keyword) => tool.includes(keyword) || command.includes(keyword));
+    if (boundary === "test_build_boundary" && !isBuildOrTest) return typedStatus("skipped", "fence_not_applicable");
+    try {
+      const status = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
+      if (!status || !status.ok) return typedStatus("skipped", "workspace_not_open");
+      const body = status.body ?? {};
+      if (boundary === "completion" && body.latestSealedEpoch == null) {
+        return typedStatus("skipped", "fence_not_applicable");
+      }
+      if (body.fenceCleared !== true) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: run diagnostics snapshot.await and repair before tests/builds/completion` });
+      }
+      return typedStatus("available", "fence_cleared", { repoId, worktreeId, boundary });
+    } catch {
+      audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "diagnostics_unreachable" });
+      return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: "diagnostics unreachable: fail-closed, repair and re-query before tests/builds/completion" });
+    }
+  };
+
   return Object.freeze({
     async status(event) {
       const healthy = await probeStatus(rootFor(event));
@@ -333,8 +380,7 @@ export function createWorkspaceMemoryOperations(options = {}) {
     async observeMutation(event) {
       const root = rootFor(event);
       const env = process.env;
-      const repoId = env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root);
-      const worktreeId = env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
+      const { repoId, worktreeId } = diagnosticsIdentity(event, root, env);
 
       const tool = toolName(event);
       const input = event.payload.tool_input ?? {};
@@ -487,6 +533,13 @@ export function createWorkspaceMemoryOperations(options = {}) {
       };
       let posted;
       try {
+        // Bind the session to the exact canonical root at first mutation
+        // (design §3 WorkspaceEngineKey). Idempotent: reopening is a no-op.
+        await diagnosticsPost("/diagnostics/workspace/open", {
+          method: "POST",
+          body: { repoId, worktreeId, projectRoot: resolve(root) },
+          timeoutMs: 1200,
+        });
         posted = await diagnosticsPost("/diagnostics/mutation/registerObserved", { method: "POST", body: { repoId, worktreeId, epoch }, timeoutMs: 1200 });
       } catch {
         audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });
@@ -527,34 +580,20 @@ export function createWorkspaceMemoryOperations(options = {}) {
       audit("memory-session-end", "observed", { session_id: event.sessionId || null }, home);
       return typedStatus("available", "session_closed");
     },
-    // Host fence enforcement for CodeRight / Claude Code / Codex.
-    // Call before tests / builds / releases: returns blocked when the
-    // semantic edit fence has not been cleared for the current sealed
-    // epoch (design §10). Fail-closed: if diagnostics is unreachable,
-    // treat as not cleared and block completion-escalating commands.
-    // Presentation events never clear the fence; only snapshot.await
-    // evaluating planner policy does.
+    // Host fence enforcement for CodeRight / Claude Code / Codex (design §10:
+    // "Hosts enforce; providers report evidence"). Runs at the PreToolUse
+    // test/build/release boundary in opted-in workspaces. Fail-closed: when
+    // enforcement is on but diagnostics cannot answer, the boundary blocks.
+    // Returns state "blocked" so the entrypoint can translate it into a real
+    // host deny decision — registration alone is not enforcement.
     async enforceFence(event) {
-      const root = rootFor(event);
-      const env = process.env;
-      const repoId = env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root);
-      const worktreeId = env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
-      const tool = toolName(event).toLowerCase();
-      const command = String(event.payload.tool_input?.command || event.payload.command || "").toLowerCase();
-      const isBuildOrTest = ["test", "build", "cargo test", "cargo build", "npm test", "pnpm test", "make"].some((keyword) => tool.includes(keyword) || command.includes(keyword));
-      if (!isBuildOrTest) return typedStatus("skipped", "fence_not_applicable");
-      try {
-        const status = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
-        const cleared = status && status.ok && status.body && status.body.fenceCleared === true;
-        if (!cleared) {
-          audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool });
-          return typedStatus("unavailable", "fence_not_cleared", { repoId, worktreeId, detail: "semantic edit fence not cleared: run diagnostics snapshot.await and repair before tests/builds" });
-        }
-        return typedStatus("available", "fence_cleared", { repoId, worktreeId });
-      } catch {
-        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, reason: "diagnostics_unreachable" });
-        return typedStatus("unavailable", "fence_not_cleared", { repoId, worktreeId, detail: "diagnostics unreachable: fail-closed, repair and re-query before tests/builds" });
-      }
+      return evaluateFenceGate(event, "test_build_boundary");
+    },
+
+    // Completion boundary (design §10): a Stop may not end the session with
+    // sealed-but-uncleared bytes. Same gating and fail-closed semantics.
+    async enforceCompletion(event) {
+      return evaluateFenceGate(event, "completion");
     },
   });
 }

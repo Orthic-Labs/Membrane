@@ -11,6 +11,31 @@ function hostOutput(result) {
     .map(({ output }) => output?.detail?.additionalContext)
     .filter(Boolean)
     .join("\n\n");
+
+  // Semantic Edit Fence enforcement (design §10): a "blocked" status at the
+  // PreToolUse or Stop boundary becomes an actual host deny decision, so the
+  // host cannot run tests/builds/completion across unclean bytes. This is
+  // the enforcement half of "hosts enforce; providers report evidence".
+  const blocked = result.results.find(({ output }) => output?.state === "blocked");
+  if (blocked && (result.event === "PreToolUse" || result.event === "Stop")) {
+    const reason = String(
+      blocked.output?.detail?.detail
+        || blocked.output?.reason
+        || "semantic edit fence not cleared",
+    );
+    return Object.freeze({
+      decision: "block",
+      reason,
+      hookSpecificOutput: {
+        hookEventName: result.event,
+        permissionDecision: "deny",
+        permissionDecisionReason: reason,
+        additionalContext,
+      },
+      membraneHook: result,
+    });
+  }
+
   return Object.freeze({
     hookSpecificOutput: {
       hookEventName: result.event,

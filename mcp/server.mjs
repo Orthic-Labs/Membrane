@@ -612,7 +612,17 @@ function diagnosticIdentity(args) {
   for (const value of [args.repoId, args.worktreeId]) {
     if (typeof value !== "string" || !DIAGNOSTIC_ID.test(value)) throw new Error("invalid_diagnostic_identity");
   }
-  return { repoId: args.repoId, worktreeId: args.worktreeId };
+  // Optional exact project-root binding (design §3 WorkspaceEngineKey):
+  // opening with a canonical root pins the workspace's engine lanes to that
+  // worktree instead of the resident process current directory.
+  const identity = { repoId: args.repoId, worktreeId: args.worktreeId };
+  if (typeof args.projectRoot === "string" && args.projectRoot.trim()) {
+    if (args.projectRoot.length > 1024) throw new Error("invalid_diagnostic_identity");
+    identity.projectRoot = args.projectRoot.trim();
+  } else if (args.projectRoot !== undefined) {
+    throw new Error("invalid_diagnostic_identity");
+  }
+  return identity;
 }
 function validateWorkspaceEpoch(epoch, { repoId, worktreeId, origin } = {}) {
   bounded(epoch, MAX_REQUEST_BYTES, "workspace epoch");

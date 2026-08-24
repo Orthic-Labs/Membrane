@@ -179,3 +179,125 @@ test("PostToolUseFailure, TaskCompleted, and SessionEnd are covered with typed, 
   const sessionEndOut = sessionEnd.results.find(({ id }) => id === "membrane.memory-session-end").output;
   assert.equal(sessionEndOut.reason, "session_closed");
 });
+
+function fenceFixture() {
+  const base = fixture();
+  mkdirSync(join(base.root, ".agent"), { recursive: true });
+  return base;
+}
+
+test("fence enforcement is opt-in and skipped without env or marker", async () => {
+  const { root } = fenceFixture();
+  const ops = createWorkspaceMemoryOperations({ rootFor: () => root });
+  delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  try {
+    const result = await runHook({ event: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root }, { operations: ops });
+    assert.equal(result.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.state, "skipped");
+    assert.equal(result.decision, undefined, "un-enforced workspaces must never be denied");
+  } finally {
+    delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  }
+});
+
+test("enforced PreToolUse boundary denies tests/builds while the fence is uncleared", async () => {
+  const { root } = fenceFixture();
+  process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
+  try {
+    const unreachableOps = createWorkspaceMemoryOperations({
+      rootFor: () => root,
+      diagnosticsPost: async () => { throw new Error("resident down"); },
+    });
+    const blocked = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root },
+      { operations: unreachableOps },
+    );
+    assert.equal(blocked.decision, "block", "fail-closed: resident unreachable must deny the boundary");
+    assert.equal(blocked.hookSpecificOutput.permissionDecision, "deny");
+    assert.match(String(blocked.reason), /fence|diagnostics/);
+
+    // A cleared fence allows the same command through.
+    const clearedOps = createWorkspaceMemoryOperations({
+      rootFor: () => root,
+      diagnosticsPost: async (path) => ({
+        ok: true,
+        body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 3 } : {},
+      }),
+    });
+    const allowed = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "cargo build" }, cwd: root },
+      { operations: clearedOps },
+    );
+    assert.equal(allowed.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.state, "available");
+    assert.equal(allowed.decision, undefined);
+
+    // Non-verification commands never reach the fence gate: the module
+    // matcher skips them before the operation is invoked.
+    const untouched = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "ls -la" }, cwd: root },
+      { operations: unreachableOps },
+    );
+    assert.equal(untouched.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.reason, "event_not_applicable");
+    assert.equal(untouched.decision, undefined);
+  } finally {
+    delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
+  }
+});
+
+test("Stop completion boundary blocks sealed-but-uncleared sessions only", async () => {
+  const { root } = fenceFixture();
+  writeFileSync(join(root, ".agent", "diagnostics-enforce.json"), "{}\n", "utf8");
+  const blockedOps = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 7 } : {},
+    }),
+  });
+  const blocked = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: blockedOps });
+  assert.equal(blocked.decision, "block");
+  assert.equal(blocked.hookSpecificOutput.hookEventName, "Stop");
+
+  // No mutations this session: nothing to enforce at completion.
+  const cleanOps = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: null } : {},
+    }),
+  });
+  const skipped = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: cleanOps });
+  assert.equal(skipped.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-completion-fence").output.reason, "fence_not_applicable");
+  assert.equal(skipped.decision, undefined);
+});
+
+test("observeMutation binds the workspace to its canonical root before registering", async () => {
+  const { root } = fenceFixture();
+  const file = join(root, "src", "edited.ts");
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(file, "export {};\n", "utf8");
+  const calls = [];
+  const ops = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path, options) => {
+      calls.push([path, options?.body ?? null]);
+      if (path.includes("/workspace/open")) return { ok: true, body: {} };
+      if (path.includes("/registerObserved")) return { ok: true, body: { observedEpoch: 1 } };
+      return { ok: false, status: 404, error: { code: "unexpected", detail: path } };
+    },
+  });
+  const result = await dispatchMembraneHookEvent(
+    { event: "PostToolUse", session_id: "s", tool_name: "Edit", tool_input: { file_path: file } },
+    ops,
+  );
+  const observeOut = result.results.find(({ id }) => id === "membrane.diagnostics-observe").output;
+  assert.equal(observeOut.state, "available");
+  assert.equal(observeOut.reason, "mutation_observed");
+  const paths = calls.map(([p]) => p.split("?")[0]);
+  assert.deepEqual(paths, [
+    "/diagnostics/workspace/status",
+    "/diagnostics/workspace/open",
+    "/diagnostics/mutation/registerObserved",
+  ], `unexpected call sequence: ${paths.join(", ")}`);
+  assert.equal(calls[1][1].projectRoot, root, "open must bind the exact canonical project root");
+  assert.equal(calls[1][1].epoch, undefined, "open carries identity only");
+});
