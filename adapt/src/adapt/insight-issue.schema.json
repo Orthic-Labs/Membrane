@@ -1,0 +1,321 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/adapt/src/adapt/insight-issue.schema.json",
+  "title": "Adapt InsightIssueV1",
+  "description": "Longitudinal Insights issue clustering detected episodes (canonical authority: ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md sections 6.1-6.3, 6.6-6.8, 7.2-7.4). Insights records are reference/diagnostic by default: they cannot grant permission or establish user intent. Immutable semantic payload is sealed by payload_sha256; lifecycle state, recurrence counters, mitigation links, and recurrence-after-mitigation outcomes live in a mutable receipted state envelope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract", "issue_id", "payload_sha256", "payload", "state"],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "contract": {
+      "const": "InsightIssueV1"
+    },
+    "issue_id": {
+      "type": "string",
+      "pattern": "^ii_[a-f0-9]{64}$",
+      "description": "Deterministic identity derived from canonical semantics and declared scope, never processing order (section 7.4)."
+    },
+    "payload_sha256": {
+      "$ref": "#/definitions/payload_sha256"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Immutable semantic payload containing every field that changes meaning or applicability (section 7.3).",
+      "required": [
+        "record_kind",
+        "family",
+        "recurrence_signature",
+        "canonical_description",
+        "applicability",
+        "authority_class",
+        "influence_class",
+        "episode_refs",
+        "evidence_digests",
+        "confidence",
+        "evidence_quality",
+        "candidate_mechanisms",
+        "honesty_limit",
+        "admission_policy_version",
+        "redaction_contract_version"
+      ],
+      "properties": {
+        "record_kind": {
+          "const": "insight_issue"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detector/issue-family slug (sections 6.4-6.5), including required behavioral failure classes such as overengineering, architecture_churn, repeated_scope_expansion, verification_theatre, false_completion_claim, instruction_noncompliance, model_specific_gotcha, client_or_tool_specific_gotcha."
+        },
+        "recurrence_signature": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Deterministic recurrence grouping signature bound into issue identity and semantic seal."
+        },
+        "canonical_description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Scope/applicability dimensions bound into the seal (section 7.3).",
+          "required": [],
+          "properties": {
+            "agents": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "hosts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "models": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "clients": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "tools": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "repos": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "authority_class": {
+          "const": "reference",
+          "description": "Insight issues are reference-class records (section 7.2); they never hold user-preference authority."
+        },
+        "influence_class": {
+          "const": "diagnostic_reference",
+          "description": "Diagnostic/reference-only influence by default; an Insight cannot itself grant permission or establish user intent."
+        },
+        "episode_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["episode_id", "episode_payload_sha256"],
+            "properties": {
+              "episode_id": {
+                "type": "string",
+                "pattern": "^fc_[a-f0-9]{24}$",
+                "description": "FailureEpisodeV1 identifier; underlying episodes are preserved across all lifecycle transitions (section 6.3)."
+              },
+              "episode_payload_sha256": {
+                "$ref": "#/definitions/payload_sha256"
+              }
+            }
+          }
+        },
+        "evidence_digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/sha256_prefixed"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence_quality": {
+          "enum": [
+            "deterministic",
+            "high_precision_heuristic",
+            "heuristic",
+            "model_assisted"
+          ],
+          "description": "Honest quality class of the supporting evidence (section 6.6)."
+        },
+        "candidate_mechanisms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Candidate mechanism(s), always heuristic inferences; root cause must never be stated as proven unless evidence supports causal attribution (section 6.6)."
+        },
+        "honesty_limit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detector/method-appropriate honesty limit exposed on the issue (section 6.6)."
+        },
+        "admission_policy_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Version of the single durable Cortex admission policy this record crossed (section 7.1)."
+        },
+        "redaction_contract_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semantic_validator_receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt_[a-f0-9]{32}$",
+          "description": "Receipt id of held-out semantic validation bound into the seal (section 7.3)."
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mutable receipted state envelope: lifecycle, counters, timestamps, mitigation links, and outcomes change only through explicit transition/observation events with receipts.",
+      "required": [
+        "lifecycle",
+        "recurrence_count",
+        "first_seen",
+        "last_seen",
+        "updated_at",
+        "mitigation_links",
+        "recurrence_after_mitigation",
+        "receipts"
+      ],
+      "properties": {
+        "lifecycle": {
+          "enum": [
+            "observed",
+            "recurring",
+            "confirmed",
+            "mitigation_proposed",
+            "mitigated",
+            "reopened",
+            "obsolete",
+            "dismissed"
+          ],
+          "description": "Canonical issue lifecycle (section 6.3); transitions preserve the underlying episodes."
+        },
+        "recurrence_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "first_seen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "last_seen": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "mitigation_links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["proposal_id", "linked_at"],
+            "properties": {
+              "proposal_id": {
+                "type": "string",
+                "pattern": "^rem_[a-f0-9]{64}$",
+                "description": "Separate RemediationProposal object (section 6.7); the link carries no authority back onto the issue."
+              },
+              "linked_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        },
+        "recurrence_after_mitigation": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Mitigation outcome metrics against comparable post-mitigation exposure (section 6.8).",
+              "required": [
+                "baseline_recurrence_rate",
+                "post_exposure_comparable",
+                "recurrence_after",
+                "reopen_events",
+                "measured_at"
+              ],
+              "properties": {
+                "baseline_recurrence_rate": { "type": ["number", "null"], "minimum": 0 },
+                "mitigation_start_version": { "type": "string", "minLength": 1 },
+                "post_exposure_comparable": { "type": "boolean" },
+                "recurrence_after": { "type": ["number", "null"], "minimum": 0 },
+                "reopen_events": { "type": "integer", "minimum": 0 },
+                "false_positive_dismissal_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+                "measured_at": { "type": "string", "format": "date-time" }
+              }
+            }
+          ]
+        },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/state_receipt"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "lifecycle": { "enum": ["mitigated", "reopened"] } },
+            "required": ["lifecycle"]
+          },
+          "then": {
+            "properties": {
+              "mitigation_links": { "minItems": 1 },
+              "recurrence_after_mitigation": { "type": "object" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "lifecycle": { "enum": ["mitigation_proposed"] } },
+            "required": ["lifecycle"]
+          },
+          "then": {
+            "properties": {
+              "mitigation_links": { "minItems": 1 }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the canonical JSON serialization of the immutable payload."
+    },
+    "sha256_prefixed": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "state_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transition", "at", "actor", "prev_status", "new_status", "receipt_id"],
+      "properties": {
+        "transition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prev_status": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "new_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt_[a-f0-9]{32}$"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

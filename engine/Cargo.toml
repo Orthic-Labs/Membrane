@@ -15,6 +15,8 @@ members = [
     "crates/membrane-testkit",
     "crates/membrane-updater",
     "crates/membrane-client",
+    "crates/membrane-transcript",
+    "crates/membrane-adapt",
 ]
 
 [workspace.package]
@@ -31,6 +33,8 @@ serde_json  = "1"
 thiserror   = "2"
 tiktoken-rs = "0.12"
 hex         = "0.4"
+sha2        = "0.11"
+regex       = "1"
 async-trait = "0.1"
 tokio       = { version = "1", features = ["rt", "time", "macros"] }
 tokio-util  = "0.7"

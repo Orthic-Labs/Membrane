@@ -1,0 +1,18 @@
+{
+  "schema_version": "adapt.insight-issue.v1",
+  "issue_id": "iss_7d0e44b19cc2",
+  "family": "claimed-without-verification",
+  "canonical_description": "Assistant claims completion without running the focused verification commands the user asked for.",
+  "applicability": { "repo": "membrane", "tool": "pi" },
+  "episode_ids": ["ep_5c2b81d0aa4e7f13"],
+  "recurrence_count": 3,
+  "distinct_sessions": 2,
+  "first_seen": "2026-08-23T19:02:00Z",
+  "last_seen": "2026-08-24T01:14:09Z",
+  "confidence": 0.68,
+  "state": "confirmed",
+  "candidate_mechanisms": ["missing verification gate in completion path"],
+  "mitigation_links": [],
+  "recurrence_after_mitigation": 0,
+  "honesty_limit": "Insights detects only observable failure signals in transcripts. Episodes/issues are heuristic; 'likelyMechanism' and 'suggestedRemediations' are candidate inferences, not authoritative diagnoses."
+}

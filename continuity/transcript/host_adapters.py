@@ -1,4 +1,4 @@
-"""Host adapters for Claude Code + Codex JSONL transcripts.
+"""Host adapters for Claude Code, Codex, & frozen generic JSONL transcripts.
 
 Each adapter takes a single JSONL row and returns a list of normalized event
 dicts. The events share a common shape so downstream projections can ingest
@@ -90,6 +90,8 @@ def detect_host(path: Any) -> str:
             if not isinstance(obj, dict):
                 continue
             row_type = obj.get("type")
+            if row_type == "adapt_event_v1" and isinstance(obj.get("host"), str):
+                return obj["host"]
             if row_type in {"session_meta", "response_item", "event_msg"}:
                 return "codex"
             if row_type in {"user", "assistant", "queue-operation"}:
@@ -255,15 +257,44 @@ def _codex_events(obj: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
+# ---- Adapt frozen generic adapter ----
+
+GENERIC_HOSTS = frozenset({
+    "command_code", "cline", "opencode", "pi", "gemini", "grok_build",
+    "roo_cline", "qwen", "cursor",
+})
+
+
+def _generic_events(obj: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read one already-normalized event from a hash-bound frozen snapshot."""
+    if obj.get("type") != "adapt_event_v1" or obj.get("host") not in {
+        "claude_code", "codex", *GENERIC_HOSTS,
+    }:
+        return []
+    event = obj.get("event")
+    if not isinstance(event, dict):
+        return []
+    kind = event.get("kind")
+    if kind not in {
+        "user_message", "assistant_message", "tool_call", "tool_result",
+        "thinking", "meta",
+    }:
+        return []
+    return [dict(event)]
+
+
 # ---- Public dispatch ----
 
 _HOST_ADAPTERS = {
     "claude_code": _claude_events,
     "codex": _codex_events,
+    **{host: _generic_events for host in GENERIC_HOSTS},
 }
 
 
 def iter_events_for_host(host: str, obj: dict[str, Any]) -> list[dict[str, Any]]:
+    if obj.get("type") == "adapt_event_v1":
+        return _generic_events(obj)
     fn = _HOST_ADAPTERS.get(host)
     if fn is None:
         return []
@@ -275,4 +306,5 @@ __all__ = [
     "iter_events_for_host",
     "SECRET_PATTERNS",
     "BASE64_BLOB",
+    "GENERIC_HOSTS",
 ]

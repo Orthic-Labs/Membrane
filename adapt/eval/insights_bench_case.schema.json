@@ -1,0 +1,241 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/adapt/eval/insights_bench_case.schema.json",
+  "title": "Adapt Insights benchmark case",
+  "description": "One labelled, portable Insights benchmark case (canonical authority: ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md sections 6.6, 7.3, 11.2, and P0.5). The immutable semantic payload is sealed by payload_sha256; mutable review state changes only through explicit receipted transitions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bench_id", "case_id", "payload_sha256", "payload", "state"],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "bench_id": {
+      "type": "string",
+      "pattern": "^adapt-insights-bench-[a-f0-9]{12}$",
+      "description": "Stable identifier of the frozen benchmark corpus this case belongs to."
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^ibc_[a-f0-9]{64}$",
+      "description": "Deterministic case identity derived from canonical case semantics (section 7.4); never from processing order."
+    },
+    "payload_sha256": {
+      "$ref": "#/definitions/payload_sha256"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Immutable semantic payload: every field that changes the meaning or expected grading of the case.",
+      "required": [
+        "record_kind",
+        "family",
+        "label",
+        "case_class",
+        "transcript_excerpt",
+        "source_digests",
+        "expected",
+        "honesty_limit",
+        "admission_policy_version",
+        "redaction_contract_version"
+      ],
+      "properties": {
+        "record_kind": {
+          "const": "insights_bench_case"
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Detector/issue-family slug under test (sections 6.4-6.5). Detectors must be operationally defined."
+        },
+        "label": {
+          "enum": ["positive", "negative"],
+          "description": "Ground-truth label supporting per-detector precision and recall measurement (section 11.2)."
+        },
+        "case_class": {
+          "enum": [
+            "real_failure",
+            "negated",
+            "quoted_context_carried",
+            "tool_result_text",
+            "hypothetical_narration",
+            "cross_session_duplicate"
+          ],
+          "description": "Required coverage classes from P0.5: positive, negative, negated, quoted/context-carried, tool-carried, hypothetical, cross-session, and real failure cases."
+        },
+        "transcript_excerpt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["session_id", "events"],
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "events": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["event_id", "session_id", "kind", "role", "byte_start", "byte_end", "text"],
+                "properties": {
+                  "event_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "enum": ["user_message", "assistant_message", "tool_call", "tool_result"]
+                  },
+                  "role": {
+                    "enum": ["user", "assistant", "tool"]
+                  },
+                  "byte_start": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "byte_end": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Redacted excerpt under the declared redaction contract version."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "source_digests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/sha256_prefixed"
+          },
+          "description": "SHA-256 digests of the source transcript(s) the excerpt was drawn from."
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["detected", "family_match"],
+          "properties": {
+            "detected": {
+              "type": "boolean",
+              "description": "Whether the detector should fire on this case."
+            },
+            "family_match": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Family the detector must report when detected; reporting another family counts as a false positive (section 11.2)."
+            },
+            "min_severity": {
+              "enum": ["info", "low", "medium", "high", "critical"]
+            },
+            "confidence_ceiling": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Maximum acceptable detector confidence; supports severity/confidence calibration checks (section 11.2)."
+            }
+          }
+        },
+        "honesty_limit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Evidence-honesty statement carried with the case (section 6.6): what the label does and does not prove."
+        },
+        "admission_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "redaction_contract_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "label": { "const": "positive" } }, "required": ["label"] },
+          "then": { "properties": { "expected": { "properties": { "detected": { "const": true } } } } }
+        },
+        {
+          "if": { "properties": { "label": { "const": "negative" } }, "required": ["label"] },
+          "then": { "properties": { "expected": { "properties": { "detected": { "const": false } } } } }
+        }
+      ]
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mutable receipted state envelope; never contains meaning-bearing fields (section 7.3).",
+      "required": ["review_status", "updated_at", "receipts"],
+      "properties": {
+        "review_status": {
+          "enum": ["draft", "reviewed", "frozen", "retired"],
+          "description": "Only 'frozen' cases may enter a published benchmark corpus."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/state_receipt"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the canonical JSON serialization of the immutable payload."
+    },
+    "sha256_prefixed": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "state_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transition", "at", "actor", "prev_status", "new_status", "receipt_id"],
+      "properties": {
+        "transition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prev_status": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "new_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt_[a-f0-9]{32}$"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

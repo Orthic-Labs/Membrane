@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/internal/failure-episode-v1.schema.json",
+  "title": "FailureEpisodeV1 (internal domain contract)",
+  "description": "One detected occurrence of a failure mode; produced by native Adapt Insights detectors (engine/crates/membrane-adapt::insights). Labelled inference only. Internal contract, not a public Membrane protocol shape.",
+  "type": "object",
+  "required": [
+    "schema_version", "episode_id", "family", "severity", "confidence",
+    "sessions", "hosts", "agents", "signature", "user_expectation",
+    "observed_failure", "evidence", "user_disposition", "honesty_limit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adapt.failure-episode.v1" },
+    "episode_id": { "type": "string", "minLength": 1, "description": "Deterministic per evidence spans; identical evidence yields identical ids." },
+    "family": { "type": "string", "minLength": 1, "description": "Detector slug / canonical family name." },
+    "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "timestamp": { "type": "string" },
+    "sessions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "hosts": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "agents": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "signature": { "type": "string", "description": "Deterministic signature within the family used for recurrence grouping." },
+    "user_expectation": { "type": "string" },
+    "observed_failure": { "type": "string" },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "kind", "session_id", "host", "byte_start", "byte_end", "text"],
+        "properties": {
+          "event_id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string" },
+          "session_id": { "type": "string" },
+          "host": { "type": "string" },
+          "byte_start": { "type": "integer" },
+          "byte_end": { "type": "integer" },
+          "text": { "type": "string", "description": "Excerpt bounded at 240 chars plus ellipsis marker." }
+        }
+      }
+    },
+    "likely_mechanism": { "type": "string", "default": "", "description": "Labelled inference, never authoritative." },
+    "suggested_remediations": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "user_disposition": { "enum": ["logged", "forgiven", "repeated", "escalated", "postmortem_requested"] },
+    "honesty_limit": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must equal the canonical Insights honesty limit string; consumers verify verbatim."
+    }
+  }
+}

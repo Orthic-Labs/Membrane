@@ -1,0 +1,3 @@
+{"type":"adapt_event_v1","host":"pi","event":{"kind":"user_message","role":"user","timestamp":"2026-01-01T00:00:00Z","text":"never use npm install in this repo"}}
+{"type":"adapt_event_v1","host":"pi","event":{"kind":"tool_call","role":"assistant","timestamp":"2026-01-01T00:00:01Z","tool":"read","call_id":"rc_1","text":"src/lib.rs"}}
+{"type":"adapt_event_v1","host":"pi","event":{"kind":"tool_result","role":"user","timestamp":"2026-01-01T00:00:02Z","call_id":"rc_1","occurrence":0,"text":"pub fn f() {}"}}

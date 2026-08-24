@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/adapt/src/adapt/remediation-proposal.schema.json",
+  "title": "Adapt RemediationProposalV1",
+  "description": "Separate remediation object generated from an Insight issue (canonical authority: ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md sections 6.7, 7.2-7.3). The proposal is not the issue and carries no user-preference authority merely because it was generated from an Insight. Immutable semantic payload is sealed by payload_sha256; review status changes only through receipted transitions. A taste_candidate proposal requires separate qualifying user evidence.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract", "proposal_id", "payload_sha256", "payload", "state"],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "contract": {
+      "const": "RemediationProposalV1"
+    },
+    "proposal_id": {
+      "type": "string",
+      "pattern": "^rem_[a-f0-9]{64}$",
+      "description": "Deterministic identity derived from canonical semantics, never processing order (section 7.4); referenced by InsightIssueV1 state.mitigation_links."
+    },
+    "payload_sha256": {
+      "$ref": "#/definitions/payload_sha256"
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Immutable semantic payload containing every field that changes meaning or effect boundary (section 7.3).",
+      "required": [
+        "record_kind",
+        "proposal_kind",
+        "source_issue_ids",
+        "canonical_proposal_text",
+        "authority_class",
+        "effect_boundary",
+        "honesty_limit",
+        "admission_policy_version"
+      ],
+      "properties": {
+        "record_kind": {
+          "const": "remediation_proposal"
+        },
+        "proposal_kind": {
+          "enum": [
+            "guard_proposal",
+            "evaluator_proposal",
+            "routing_recommendation",
+            "review_warning",
+            "workflow_change_proposal",
+            "taste_candidate"
+          ],
+          "description": "Canonical remediation kinds (section 6.7). taste_candidate is permitted only when separate qualifying user evidence exists."
+        },
+        "source_issue_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^ii_[a-f0-9]{64}$"
+          },
+          "description": "Insight issues this proposal was generated from; provenance reference only, never an authority grant (section 6.7)."
+        },
+        "canonical_proposal_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_class": {
+          "const": "none",
+          "description": "A remediation object has no user-preference authority merely because it was generated from an Insight (section 6.7); its own explicit authority/effect boundary is declared separately (section 7.2)."
+        },
+        "effect_boundary": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Explicit authority and effect boundary of the proposed artifact (section 7.2), e.g. 'advisory_only', 'requires_human_review', 'runtime_guard_pending_approval'."
+        },
+        "user_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Required only for taste_candidate: separate qualifying user evidence independent of the Insight (section 6.7).",
+          "required": ["qualifying", "signals"],
+          "properties": {
+            "qualifying": {
+              "const": true
+            },
+            "signals": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["signal_class", "act", "evidence_digest", "captured_at"],
+                "properties": {
+                  "signal_class": {
+                    "enum": ["user_authoritative", "user_behavioral"],
+                    "description": "Evidence classes per section 4.1; diagnostic or context-only evidence never qualifies."
+                  },
+                  "act": {
+                    "enum": ["explicit_statement", "accept", "reject", "post_accept_edit", "named_choice"]
+                  },
+                  "evidence_digest": {
+                    "$ref": "#/definitions/sha256_prefixed"
+                  },
+                  "captured_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "honesty_limit": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Statement of what the proposal does and does not claim (section 6.6)."
+        },
+        "admission_policy_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Version of the single durable Cortex admission policy this record crossed (section 7.1)."
+        },
+        "redaction_contract_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semantic_validator_receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt_[a-f0-9]{32}$",
+          "description": "Receipt id of held-out semantic validation bound into the seal (section 7.3)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "proposal_kind": { "const": "taste_candidate" } },
+            "required": ["proposal_kind"]
+          },
+          "then": {
+            "required": ["user_evidence"]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "properties": { "proposal_kind": { "const": "taste_candidate" } },
+              "required": ["proposal_kind"]
+            }
+          },
+          "then": {
+            "not": { "required": ["user_evidence"] }
+          }
+        }
+      ]
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Mutable receipted state envelope; never contains meaning-bearing fields (section 7.3).",
+      "required": ["status", "updated_at", "receipts"],
+      "properties": {
+        "status": {
+          "enum": [
+            "proposed",
+            "under_review",
+            "accepted",
+            "rejected",
+            "applied",
+            "superseded",
+            "withdrawn"
+          ],
+          "description": "Review lifecycle of the proposal; acceptance/applied are explicit human-or-policy decisions recorded by receipts, never implied by generation."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "receipts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/state_receipt"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "enum": ["accepted", "applied"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "receipts": { "minItems": 1 }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 of the canonical JSON serialization of the immutable payload."
+    },
+    "sha256_prefixed": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "state_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transition", "at", "actor", "prev_status", "new_status", "receipt_id"],
+      "properties": {
+        "transition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prev_status": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "new_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt_[a-f0-9]{32}$"
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

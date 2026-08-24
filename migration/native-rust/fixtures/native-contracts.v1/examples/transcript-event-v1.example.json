@@ -1,0 +1,31 @@
+{
+  "eventId": "evt_3f9a2c7e51b04d8fa6c1de2b908471aa",
+  "rowIndex": 12,
+  "byteStart": 4820,
+  "byteEnd": 5317,
+  "blockIndex": 0,
+  "sequence": 23,
+  "kind": "user_message",
+  "role": "user",
+  "text": "always run the focused test suite before claiming a fix works",
+  "timestamp": "2026-08-24T01:14:09Z",
+  "classification": "explicit_directive",
+  "class": "explicit_directive",
+  "projection": "default",
+  "host": "pi",
+  "sessionId": "sess-2026-08-24-0114",
+  "transcriptId": "tr-9f31c2",
+  "parserDigest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "synthetic": false,
+  "meta": false,
+  "privateReasoningOmitted": false,
+  "redacted": false,
+  "flags": {
+    "synthetic": false,
+    "meta": false,
+    "privateReasoningOmitted": false,
+    "redacted": false,
+    "isError": false,
+    "isSidechain": false
+  }
+}

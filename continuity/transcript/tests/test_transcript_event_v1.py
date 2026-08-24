@@ -148,6 +148,43 @@ for i in range(1, 8):
 
 class TestTranscriptParser(unittest.TestCase):
 
+    def test_frozen_generic_host_preserves_full_event_shape(self):
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
+            path = Path(directory) / "cline.jsonl"
+            _write_transcript(path, [{
+                "type": "adapt_event_v1",
+                "host": "cline",
+                "sessionId": "cline-1",
+                "cwd": "/repo",
+                "event": {
+                    "kind": "tool_result",
+                    "role": "user",
+                    "tool": "read_file",
+                    "call_id": "call-1",
+                    "text": "ENOENT: missing",
+                    "timestamp": "2026-08-24T00:00:00Z",
+                    "is_error": True,
+                },
+            }])
+            events = parse_source_events(path)
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0]["host"], "cline")
+            self.assertEqual(events[0]["sessionId"], "cline-1")
+            self.assertEqual(events[0]["classification"], "unresolved_failure")
+
+    def test_frozen_generic_host_derives_stable_session_when_missing(self):
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
+            path = Path(directory) / "pi.jsonl"
+            _write_transcript(path, [{
+                "type": "adapt_event_v1",
+                "host": "pi",
+                "event": {"kind": "user_message", "role": "user", "text": "always test"},
+            }])
+            first = parse_source_events(path)
+            second = parse_source_events(path)
+            self.assertTrue(first[0]["sessionId"].startswith("derived:pi:"))
+            self.assertEqual(first[0]["sessionId"], second[0]["sessionId"])
+
     def test_missing_transcript_is_typed_unavailable(self):
         with self.assertRaises(TranscriptUnavailable) as raised:
             parse_source_events("/tmp/membrane-transcript-does-not-exist.jsonl")

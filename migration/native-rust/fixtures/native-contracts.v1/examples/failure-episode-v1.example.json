@@ -1,0 +1,29 @@
+{
+  "schema_version": "adapt.failure-episode.v1",
+  "episode_id": "ep_5c2b81d0aa4e7f13",
+  "family": "claimed-without-verification",
+  "severity": "medium",
+  "confidence": 0.72,
+  "timestamp": "2026-08-24T01:14:09Z",
+  "sessions": ["sess-2026-08-24-0114", "sess-2026-08-23-1902"],
+  "hosts": ["pi"],
+  "agents": [],
+  "signature": "fix-claimed: focused tests not run",
+  "user_expectation": "run the focused test suite before claiming a fix works",
+  "observed_failure": "assistant reported the fix as done without running any test command",
+  "evidence": [
+    {
+      "event_id": "evt_3f9a2c7e51b04d8fa6c1de2b908471aa",
+      "kind": "assistant_message",
+      "session_id": "sess-2026-08-24-0114",
+      "host": "pi",
+      "byte_start": 6102,
+      "byte_end": 6488,
+      "text": "Done — the parser now handles truncated rows…"
+    }
+  ],
+  "likely_mechanism": "completion pressure outran verification habit",
+  "suggested_remediations": ["require a test command receipt before done claims"],
+  "user_disposition": "logged",
+  "honesty_limit": "Insights detects only observable failure signals in transcripts. Episodes/issues are heuristic; 'likelyMechanism' and 'suggestedRemediations' are candidate inferences, not authoritative diagnoses."
+}

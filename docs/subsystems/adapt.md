@@ -1,58 +1,59 @@
-# Adapt — Learning Loop
+# Adapt — Governed Behavioral Learning
 
-**Status:** derived subsystem reference · non-normative  
-**Canonical name:** Adapt  
-**Parent system:** Membrane  
-**Implementation path:** `adapt/`
-**Authority:** Membrane's canonical doctrine governs context policy, authority, influence, and Cortex admission. This file summarizes Adapt's subsystem boundary.
+**Status:** derived subsystem reference · non-normative
+
+**Canonical authority:** `ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
+
+**Runtime migration:** `../../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`
+
+**Implementation paths:** `engine/crates/membrane-transcript/`, `engine/crates/membrane-adapt/`, native `membrane adapt` CLI & Hub scheduler seam
 
 ## Purpose
 
-Answer one question:
+Adapt has two first-class surfaces:
 
-> **What should we have learned?**
+- **Taste** learns user-backed preferences and behavioral constraints.
+- **Insights** learns evidence-backed agent/model/tool failures, gotchas, and waste.
 
-Adapt turns experience — transcripts, observable events, and outcome evidence — into governed proposals for durable knowledge.
-
-Experience becomes durable knowledge only through Cortex admission.
+Adapt is not memory. Cortex owns durable admission, lifecycle, storage, and retrieval.
 
 ## Owns
 
-- Transcript/event ingestion, canonicalization, provenance filtering, and origin quarantine.
-- Taste-style durable-preference mining into reviewable proposals/manifests.
-- Insights-style deterministic failure detection into evidence-backed failure/gotcha proposals.
-- Learning-run audit/rollback metadata needed to explain what was proposed and why.
+- transcript/event ingestion for behavioral learning;
+- evidence canonicalization, provenance, and origin filtering;
+- Taste candidate generation and applicability proposals;
+- Insights episode detection, issue formation, and recurrence measurement;
+- evidence binding, learning audit, rollback metadata, and delivery/effectiveness receipts.
 
 ## Does not own
 
-- any canonical truth store;
-- direct durable writes;
-- final authority decisions;
-- final context/attention policy;
+- durable truth or direct durable writes;
 - repository truth;
-- document indexing;
-- reduction.
+- generic memory creation or document indexing;
+- final context admission, budget, representation, or effect authorization.
 
-## Public seam
+## Admission boundaries
 
-- Reads only explicitly permitted transcript/event sources.
-- Emits proposals into Cortex admission.
-- Model-assisted extraction may propose; deterministic policy decides durable effects.
-- Adapt cannot upgrade influence/authority class.
+1. Adapt decides proposal eligibility.
+2. Cortex decides durable admission.
+3. Membrane planner decides context admission.
 
-Adapt lives in `adapt/` within Membrane. Physical co-location does not change semantic ownership.
+Passing one gate grants no authority at another.
 
 ## Invariants
 
-1. Mining/proposal generation never bypasses Cortex admission.
-2. User-origin evidence is required before a preference can gain user-authoritative status.
-3. Observable failure detection states its evidence limits.
-4. Apply/adoption operations are auditable and reversible where supported.
-5. Adapt is a Membrane subsystem with one implementation under `adapt/`.
+1. Taste authority requires qualifying authenticated user evidence.
+2. Silent acceptance alone never activates Taste.
+3. Insights cannot create Taste authority.
+4. Authored policy and explicit current instruction outrank learned preference.
+5. Authority class resolves before specificity.
+6. Malformed narrowing scope fails closed.
+7. Durable Adapt outputs cross typed Cortex admission.
+8. Production Adapt is native Rust; Python is release-excluded differential evidence only.
 
-## Definition of Done
+## Completion
 
-- [ ] Taste proposals remain evidence-backed and reviewable.
-- [ ] Insights/failure findings can become Cortex proposals through admission, never direct writes.
-- [ ] Learned gotchas/preferences surface only when Membrane policy deems them relevant and eligible.
-- [ ] Doctor/qualification covers the Adapt → Cortex proposal seam.
+- [x] Taste & Insights ship as separate, inspectable surfaces.
+- [x] Durable outputs remain evidence-backed, scoped, reversible & receipted.
+- [x] Insights detectors pass a portable labelled benchmark before automated effect.
+- [x] Native installed Adapt performs mine/review/apply/recall with Python/Node absent.

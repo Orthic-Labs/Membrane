@@ -1,16 +1,29 @@
 # Membrane native-runtime migration ledger
 
+**Canonical migration plan:** [`MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md)
+
+**Adapt semantic authority:** [`../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`](../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md)
+
 This directory freezes Membrane's executable federation boundary at baseline
 `322855c33e65dc936e3927570451c98e54fb0bd2` for MEM-000. It is migration input,
 not runtime configuration.
 
-## Scope
+## Ledger scope
 
 `executable-ledger.json` records shipped/runtime artifacts and every discovered
 production launch or loopback site. Python federation gateway/providers are
 `port` rows owned by MEM-014, MEM-017–026, or MEM-027, then deleted by MEM-030.
 The Python worker bridge is deleted by MEM-029. Existing Hub, MCP, Blueprint,
 Cortex, and Guide boundaries remain typed owner boundaries.
+
+Canonical plan expands runtime closure beyond this federation-baseline ledger to transcript normalization, Adapt, MCP/renderer, Blueprint packaging, CodeRight integration, and native-only release qualification.
+
+## Current cutover status
+
+- N0-N1: canonical invocation graph, runtime-language policy & frozen internal contracts land with recurring gates.
+- N2: `membrane-transcript` is native production owner; Python `continuity` is release-excluded differential evidence.
+- N3-N5: `membrane-adapt`, native `membrane adapt`, Cortex batch admission, recall metadata, delivery receipts & Hub-owned scheduling/launcher replacement land. Exact copied candidate completes mine/review/adjudicate/apply/recall with interpreter PATH unavailable & no checkout cwd.
+- N6-N9 remain separate migration lanes. N10 native-only seal remains withheld until each completes.
 
 Tests, benchmarks, evaluation runners, release helpers, and unrelated workspace
 tooling are development-only inputs. Their parity responsibilities are named

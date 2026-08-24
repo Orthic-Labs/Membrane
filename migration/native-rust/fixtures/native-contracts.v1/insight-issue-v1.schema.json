@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/internal/insight-issue-v1.schema.json",
+  "title": "InsightIssueV1 (internal domain contract)",
+  "description": "Longitudinal issue formed from recurring FailureEpisodeV1 occurrences (engine/crates/membrane-adapt::insights). Lifecycle transitions follow Adapt canon section 6.3. Internal contract, not a public Membrane protocol shape.",
+  "type": "object",
+  "required": [
+    "schema_version", "issue_id", "family", "canonical_description",
+    "applicability", "episode_ids", "recurrence_count", "distinct_sessions",
+    "confidence", "state", "candidate_mechanisms", "mitigation_links",
+    "recurrence_after_mitigation", "honesty_limit"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adapt.insight-issue.v1" },
+    "issue_id": { "type": "string", "minLength": 1 },
+    "family": { "type": "string", "minLength": 1 },
+    "canonical_description": { "type": "string", "minLength": 1 },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Applicability dimensions (model/client/repo/tool where known)."
+    },
+    "episode_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Underlying episodes are preserved across all lifecycle transitions." },
+    "recurrence_count": { "type": "integer", "minimum": 0 },
+    "distinct_sessions": { "type": "integer", "minimum": 0 },
+    "first_seen": { "type": "string" },
+    "last_seen": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "state": {
+      "enum": ["observed", "recurring", "confirmed", "mitigation_proposed", "mitigated", "reopened", "obsolete", "dismissed"],
+      "description": "Issue lifecycle; only canonical transitions are legal."
+    },
+    "candidate_mechanisms": { "type": "array", "items": { "type": "string" }, "description": "Labelled inference." },
+    "mitigation_links": { "type": "array", "items": { "type": "string" }, "description": "Linked remediation proposal ids (see remediation-proposal contract)." },
+    "recurrence_after_mitigation": { "type": "integer", "minimum": 0 },
+    "honesty_limit": { "type": "string", "minLength": 1 }
+  }
+}

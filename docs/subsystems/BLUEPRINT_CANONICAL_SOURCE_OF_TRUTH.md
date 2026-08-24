@@ -44,7 +44,7 @@ A capability marked IN is not complete because a stub, schema, flag, or unused m
 
 ### 0.2 Physical co-location does not change ownership
 
-Blueprint is one of the five named subsystems within the Membrane system. That product/system hierarchy does not make Blueprint an in-process module: Blueprint remains independently runnable and retains its own package, process, protocol, storage, watcher/service, testing, and qualification boundaries.
+Blueprint is one of the six named subsystems within the Membrane system. That product/system hierarchy does not make Blueprint an in-process module: Blueprint remains independently runnable and retains its own package, process, protocol, storage, watcher/service, testing, and qualification boundaries.
 
 Blueprint and Membrane share one repository so their seam can evolve atomically.
 
@@ -59,6 +59,8 @@ They retain separate:
 - semantic ownership.
 
 Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
+
+Final packaging uses Blueprint as a separately versioned external service. Membrane ships one typed native client, never opens Blueprint SQLite, and typed-degrades Blueprint-dependent requests when service is absent while unrelated Membrane functions continue.
 
 The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
 

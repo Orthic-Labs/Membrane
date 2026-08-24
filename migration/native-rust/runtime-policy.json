@@ -1,0 +1,732 @@
+{
+ "schemaVersion": 1,
+ "artifact": "membrane.runtime-policy",
+ "enforcementMode": "migration",
+ "modeSemantics": {
+  "migration": "Rust is the only allowed installed-production language alongside declarative data. Python/Node/shell may remain production-reachable ONLY through an explicit time-bounded exception below; every exception names an owner packet, an expiry date, and a cutover gate. Passing in migration mode therefore still reports honest migration gaps.",
+  "sealed": "Zero interpreter-backed production rows, every cutover flag complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
+ },
+ "allowedProductionLanguages": [
+  "rust",
+  "declarative"
+ ],
+ "interpreterRuntimes": [
+  "python",
+  "node",
+  "shell"
+ ],
+ "scan": {
+  "trackedOnly": true,
+  "executableExtensions": [
+   ".py",
+   ".mjs",
+   ".cjs",
+   ".js",
+   ".ts",
+   ".sh",
+   ".bash",
+   ".rs"
+  ],
+  "shebangFallback": true,
+  "notes": [
+   "Inventory scope is git-tracked files; node_modules/, target/, dist build output and the untracked Hub src-tauri/runtime payload are outside the manifest by construction.",
+   "Untracked generated payloads (apps/membrane-hub/src-tauri/runtime/**) are release-qualification concerns under spec section 16.4 and must be proven at package time, not here."
+  ]
+ },
+ "exceptions": [
+  {
+   "id": "mcp-node-server",
+   "paths": [
+    "mcp/",
+    "mcp.json",
+    "dist/npm/"
+   ],
+   "owner": "N6 MCP/renderer native cutover packet",
+   "expires": "2026-12-31",
+   "cutoverGate": "N6 exit gate: ten-tool host conformance passes with Node absent; generated host configs invoke native binaries",
+   "rationale": "mcp/server.mjs and renderer libs remain the generated-truth production MCP path until membrane-mcp is cut over."
+  },
+  {
+   "id": "federation-python-shadow",
+   "paths": [
+    "engine/federation/"
+   ],
+   "owner": "N7 federation deletion packet",
+   "expires": "2026-10-31",
+   "cutoverGate": "N7 exit gate: federation tests and installed artifact pass with no Python code present or selectable",
+   "rationale": "Python federation gateway/providers retained only as shadow/differential qualification after native cutover commit 5a9175b."
+  },
+  {
+   "id": "install-bootstrap-python",
+   "paths": [
+    "install/workspace/",
+    "dist/install/workspace/"
+   ],
+   "owner": "Install-surface rework packet (pre-N10)",
+   "expires": "2026-12-31",
+   "cutoverGate": "Exact installed artifact bootstraps with declarative/native shims only and passes qualification with python absent",
+   "rationale": "Workspace bootstrap shims are currently Python-rendered source shipped into the install projection."
+  },
+  {
+   "id": "mcp-registry-code-node",
+   "paths": [
+    "schemas/registry/code/"
+   ],
+   "owner": "N6 MCP/renderer native cutover packet",
+   "expires": "2026-12-31",
+   "cutoverGate": "N6 exit gate: membrane-mcp executes the complete registry-defined tool set natively; generated truth stops naming Node registry code.",
+   "rationale": "Production MCP server imports Node registry code until membrane-mcpcutover lands."
+  }
+ ],
+ "deletedSelectors": [],
+ "deletedSelectorsNote": "No legacy path is deleted at this HEAD; populate with exact paths/prefixes as N-packet deletion receipts land. The checker fails if any listed path reappears on disk.",
+ "cutoverFlags": [
+  {
+   "id": "adapt-native-cutover",
+   "complete": true,
+   "retiredAuthorityPaths": [
+    "adapt/adapt.py",
+    "adapt/src/adapt/"
+   ],
+   "generatedTruthGlobs": [
+    "docs/product-truth.md"
+   ],
+   "nativeOwner": "engine/crates/membrane-adapt"
+  },
+  {
+   "id": "transcript-native-cutover",
+   "complete": true,
+   "retiredAuthorityPaths": [
+    "continuity/transcript/"
+   ],
+   "generatedTruthGlobs": [
+    "docs/product-truth.md"
+   ],
+   "nativeOwner": "engine/crates/membrane-transcript"
+  },
+  {
+   "id": "mcp-server-native-cutover",
+   "complete": false,
+   "retiredAuthorityPaths": [
+    "mcp/server.mjs"
+   ],
+   "generatedTruthGlobs": [
+    "docs/product-truth.md",
+    "docs/architecture.md",
+    "mcp.json"
+   ],
+   "nativeOwner": "engine/crates/membrane-mcp"
+  },
+  {
+   "id": "renderer-native-cutover",
+   "complete": false,
+   "retiredAuthorityPaths": [
+    "mcp/context-renderer-lib.cjs",
+    "mcp/decision-points-lib.cjs"
+   ],
+   "generatedTruthGlobs": [
+    "docs/product-truth.md",
+    "docs/architecture.md"
+   ],
+   "nativeOwner": "engine/crates/membrane-core"
+  },
+  {
+   "id": "federation-python-deletion",
+   "complete": false,
+   "retiredAuthorityPaths": [
+    "engine/federation/gateway.py",
+    "engine/federation/providers/"
+   ],
+   "generatedTruthGlobs": [
+    "docs/product-truth.md"
+   ],
+   "nativeOwner": "engine/crates/membrane-federation"
+  }
+ ],
+ "classificationRules": [
+  {
+   "id": "adapt-entry",
+   "pattern": "^adapt/adapt\\.py$",
+   "groupBy": "single",
+   "runtime": "python",
+   "kind": "cli-entrypoint",
+   "product_surface": "Adapt",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "parity_fixture": "migration/native-rust/fixtures/native-contracts-manifest.v1.json",
+   "deletion_or_exclusion_proof": "N5 native installed-candidate qualification; excluded from installed artifacts after native membrane adapt cutover",
+   "notes": "Retired Python CLI retained only as release-excluded differential evidence; native membrane adapt is installed authority."
+  },
+  {
+   "id": "adapt-runtime",
+   "pattern": "^adapt/src/adapt/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "runtime-package",
+   "product_surface": "Adapt",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "parity_fixture": "migration/native-rust/fixtures/native-contracts-manifest.v1.json",
+   "deletion_or_exclusion_proof": "N5 native installed-candidate qualification; Python package excluded from installed artifacts",
+   "notes": "Retired Python runtime retained only as bounded differential oracle; Hub owns native scheduling and launcher replacement."
+  },
+  {
+   "id": "adapt-tests",
+   "pattern": "^adapt/tests/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "test-suite",
+   "product_surface": "Adapt",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "deletion_or_exclusion_proof": "delete after N3-N5 differential fixture transfer per spec sections 6 and 15.3",
+   "notes": "Remains the bounded differential oracle until the native deletion gate passes."
+  },
+  {
+   "id": "adapt-eval",
+   "pattern": "^adapt/eval/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "evaluation-tooling",
+   "product_surface": "Adapt",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "evaluation tooling is absent from native Membrane and Hub package manifests",
+   "notes": "Language-neutral benchmark fixtures and release-excluded evaluation scripts."
+  },
+  {
+   "id": "continuity-tests",
+   "pattern": "^continuity/transcript/tests/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "test-suite",
+   "product_surface": "Transcript",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "deletion_or_exclusion_proof": "delete after N2 differential transfer",
+   "notes": ""
+  },
+  {
+   "id": "continuity-runtime",
+   "pattern": "^continuity/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "runtime-package",
+   "product_surface": "Transcript",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "parity_fixture": "migration/native-rust/fixtures/native-contracts-manifest.v1.json",
+   "deletion_or_exclusion_proof": "N2 native transcript corpus passes; continuity Python is excluded from installed artifacts",
+   "notes": "Retired Python normalizer retained only as release-excluded differential oracle; membrane-transcript is canonical owner."
+  },
+  {
+   "id": "federation-tests",
+   "pattern": "^engine/federation/(providers/)?test_[^/]*\\.py$",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "test-suite",
+   "product_surface": "Pull",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "migration-oracle",
+   "exception": null,
+   "deletion_or_exclusion_proof": "delete at N7 after parity acceptance",
+   "notes": ""
+  },
+  {
+   "id": "federation-legacy",
+   "pattern": "^engine/federation/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "legacy-gateway-providers",
+   "product_surface": "Pull",
+   "production_reachable": true,
+   "packaged": false,
+   "target_disposition": "delete",
+   "exception": "federation-python-shadow",
+   "parity_fixture": "migration/native-rust/fixtures/",
+   "deletion_or_exclusion_proof": "deletion receipt required at N7",
+   "notes": "Shadow/qualification adapter selectable behind hidden legacy selectors; production route is already native membrane-federation."
+  },
+  {
+   "id": "mcp-tests",
+   "pattern": "^mcp/.*\\.test\\.mjs$",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "test-suite",
+   "product_surface": "MCP",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "test-only; excluded from package payload (verify at SBOM gate)",
+   "notes": ""
+  },
+  {
+   "id": "mcp-host-fixtures",
+   "pattern": "^mcp/host/fixtures/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "fixture",
+   "product_surface": "MCP",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "fixture-only; excluded from package payload",
+   "notes": ""
+  },
+  {
+   "id": "mcp-hooks",
+   "pattern": "^mcp/hooks/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "installed-hook-entrypoint",
+   "product_surface": "MCP",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "package.json bin membrane-workspace-hook launches mcp/hooks/membrane-hook-entrypoint.mjs."
+  },
+  {
+   "id": "mcp-host-adapters",
+   "pattern": "^mcp/host/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "host-adapter",
+   "product_surface": "MCP",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "Host checkpoint/context adapters; continuity.mjs disposition rides with N6 per spec section 5.1.1."
+  },
+  {
+   "id": "mcp-native-bootstrap",
+   "pattern": "^mcp/membrane-mcp-native\\.mjs$",
+   "groupBy": "single",
+   "runtime": "node",
+   "kind": "native-binary-bootstrap",
+   "product_surface": "MCP",
+   "production_reachable": false,
+   "packaged": "unknown",
+   "target_disposition": "dev-only",
+   "exception": "mcp-node-server",
+   "notes": "Dev-only stdio-MCP bootstrap that spawns engine/target/debug/membrane; invocation-graph.json shows no installed entrypoint reaches it. Never ship or advertise."
+  },
+  {
+   "id": "mcp-decision-points-lib",
+   "pattern": "^mcp/decision-points-lib\\.cjs$",
+   "runtime": "node",
+   "kind": "source-module",
+   "groupBy": "single",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": "N6 MCP/renderer native cutover packet",
+   "notes": "Reachability authority (invocation-graph.json) shows no production importer: only mcp/decision-points.mjs (itself test-only) requires it. Demoted from the mcp-server-core production rule during N0 reconciliation."
+  },
+  {
+   "id": "mcp-server-core",
+   "pattern": "^mcp/(server|context-renderer-lib|decision-points-lib)\\.(mjs|cjs)$",
+   "groupBy": "single",
+   "runtime": "node",
+   "kind": "production-mcp-renderer",
+   "product_surface": "MCP/Push",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "Generated truth names these authoritative today; membrane-mcp and membrane-core are the canonical targets."
+  },
+  {
+   "id": "mcp-rest",
+   "pattern": "^mcp/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "mcp-support-library",
+   "product_surface": "MCP",
+   "production_reachable": true,
+   "packaged": "unknown",
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "Conservative classification pending invocation-graph refresh; some modules may prove dev-only."
+  },
+  {
+   "id": "install-tests",
+   "pattern": "^install/tests/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "test-suite",
+   "product_surface": "install",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "package-context test; not shipped (README documents test roots)",
+   "notes": ""
+  },
+  {
+   "id": "install-workspace",
+   "pattern": "^install/workspace/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "workspace-bootstrap",
+   "product_surface": "install",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "install-bootstrap-python",
+   "notes": "Canonical source of the shipped workspace bootstrap projection (dist/install/workspace)."
+  },
+  {
+   "id": "scripts-dev",
+   "pattern": "^scripts/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "repo-tooling",
+   "product_surface": "CI/release/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "notes": "Includes shell CI scripts and generators; generate-install-workspace.mjs must emit only native runtime targets (spec section 7.4). Exclusion proof from release payloads pending."
+  },
+  {
+   "id": "membrane-testkit",
+   "pattern": "^engine/crates/membrane-testkit/",
+   "groupBy": "single",
+   "runtime": "rust",
+   "kind": "testkit-crate",
+   "product_surface": "dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "workspace dev/test helper; not a released binary",
+   "notes": ""
+  },
+  {
+   "id": "engine-cortex-bin-crate",
+   "pattern": "^engine/crates/cortex/",
+   "runtime": "rust",
+   "kind": "binary-crate",
+   "groupBy": "dir:3",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": "N0 reconciliation follow-up",
+   "notes": "Standalone debug binary crate; invocation-graph.json shows no [dependencies] consumer among production entrypoints. Owner must integrate or delete before N10."
+  },
+  {
+   "id": "engine-membrane-updater",
+   "pattern": "^engine/crates/membrane-updater/",
+   "runtime": "rust",
+   "kind": "library-crate",
+   "groupBy": "dir:3",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": "N0 reconciliation follow-up",
+   "notes": "No production Cargo path-dependency reaches this crate; Hub uses its own update_admission.rs. Integrate or delete before N10."
+  },
+  {
+   "id": "engine-membrane-client",
+   "pattern": "^engine/crates/membrane-client/",
+   "runtime": "rust",
+   "kind": "library-crate",
+   "groupBy": "dir:3",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "native-port",
+   "owner": "N9 CodeRight integration packet",
+   "notes": "Typed remote client library reserved for explicit service-mode selection (spec section 2.2); not yet wired into any installed entrypoint, hence not production-reachable today."
+  },
+  {
+   "id": "engine-crates",
+   "pattern": "^engine/crates/",
+   "groupBy": "dir:3",
+   "runtime": "rust",
+   "kind": "native-crate",
+   "product_surface": "all axes",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": null,
+   "notes": "Already-native authoritative implementations (one row per crate)."
+  },
+  {
+   "id": "engine-dev-rust",
+   "pattern": "^engine/(benches|spike|vector-bakeoff)/",
+   "groupBy": "all",
+   "runtime": "rust",
+   "kind": "benchmark-spike",
+   "product_surface": "dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "bench/bakeoff binaries excluded from release artifact set",
+   "notes": ""
+  },
+  {
+   "id": "engine-tests-rs",
+   "pattern": "^engine/tests/.*\\.rs$",
+   "groupBy": "all",
+   "runtime": "rust",
+   "kind": "integration-test",
+   "product_surface": "Cortex/runtime acceptance",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "cargo test target only",
+   "notes": ""
+  },
+  {
+   "id": "engine-tests-js",
+   "pattern": "^engine/tests/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "integration-test",
+   "product_surface": "dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "test-only",
+   "notes": ""
+  },
+  {
+   "id": "hub-native-src",
+   "pattern": "^apps/membrane-hub/src-tauri/src/",
+   "groupBy": "all",
+   "runtime": "rust",
+   "kind": "hub-native-crate",
+   "product_surface": "Hub",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": null,
+   "notes": "workspace.rs still validates a required python_executable config field; that contract defect is tracked in the N8/N10 lane, not here."
+  },
+  {
+   "id": "hub-scripts",
+   "pattern": "^apps/membrane-hub/scripts/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "build-release-tooling",
+   "product_surface": "Hub/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "build-time tooling; not part of signed app bundle runtime",
+   "notes": ""
+  },
+  {
+   "id": "hub-html",
+   "pattern": "^apps/membrane-hub/.*\\.html$",
+   "groupBy": "all",
+   "runtime": "declarative",
+   "kind": "ui-asset",
+   "product_surface": "Hub",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "declarative-data",
+   "exception": null,
+   "notes": ""
+  },
+  {
+   "id": "hub-rest",
+   "pattern": "^apps/membrane-hub/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "build-config",
+   "product_surface": "Hub/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "manifest/build config only; frontend bundle is compiled by Tauri toolchain",
+   "notes": ""
+  },
+  {
+   "id": "blueprint-nested",
+   "pattern": "^blueprint/",
+   "groupBy": "dir:2",
+   "runtime": "external",
+   "kind": "external-product-checkout",
+   "product_surface": "Blueprint",
+   "production_reachable": true,
+   "packaged": false,
+   "target_disposition": "external-typed-service",
+   "exception": null,
+   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
+   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs."
+  },
+  {
+   "id": "tests-root",
+   "pattern": "^tests/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "test-suite",
+   "product_surface": "MCP/admission/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "test-only; excluded from package payload",
+   "notes": ""
+  },
+  {
+   "id": "dist-npm",
+   "pattern": "^dist/npm/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "npm-launcher",
+   "product_surface": "install/MCP",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "Generated npm bootstrap projection; must exec the platform native binary, never interpreter-owned Membrane logic."
+  },
+  {
+   "id": "dist-install-workspace",
+   "pattern": "^dist/install/workspace/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "generated-install-projection",
+   "product_surface": "install",
+   "production_reachable": false,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "install-bootstrap-python",
+   "notes": "Tracked projection files (__init__.py, version_gate.py) are not imported by the shipped shim entry; membrane_shims.py itself is an untracked generated payload outside tracked inventory. Reachability authority flags this surface unresolved; owner must reconcile before N10."
+  },
+  {
+   "id": "dist-python-client-sdk",
+   "pattern": "^dist/packages/python/",
+   "groupBy": "all",
+   "runtime": "python",
+   "kind": "published-client-sdk",
+   "product_surface": "external-clients",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "delete",
+   "exception": null,
+   "owner": "release-engineering decision required",
+   "deletion_or_exclusion_proof": "pending decision: typed external client SDK vs deletion; must never enter installed Membrane runtime",
+   "notes": "Not Membrane-owned installed runtime behavior, but ships from this repository and needs an explicit boundary decision before any seal."
+  },
+  {
+   "id": "dist-rest",
+   "pattern": "^dist/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "release-verification-tooling",
+   "product_surface": "release/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "legal/verification tooling around the release, not inside it",
+   "notes": "Remaining tracked dist entries are contracts/schemas/manifests (declarative) verified by dist/packaging/legal/verify.mjs."
+  },
+  {
+   "id": "docs-examples",
+   "pattern": "^docs/examples/",
+   "groupBy": "all",
+   "runtime": "rust",
+   "kind": "doc-example",
+   "product_surface": "docs",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "documentation example code only",
+   "notes": ""
+  },
+  {
+   "id": "schemas-registry-code-runtime",
+   "pattern": "^schemas/registry/code/",
+   "runtime": "node",
+   "kind": "source-module",
+   "groupBy": "dir:3",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "owner": "N6 MCP/renderer native cutover packet",
+   "exception": "mcp-registry-code-node",
+   "parity_fixture": "planned:migration/native-rust/fixtures/mcp-conformance.v1.json",
+   "notes": "mcp/server.mjs imports executeCodeBatch from schemas/registry/code/mbr402-batch.mjs at production startup; reclassified from dev-only during N0 reachability reconciliation."
+  },
+  {
+   "id": "schemas-registry-code",
+   "pattern": "^schemas/",
+   "groupBy": "all",
+   "runtime": "node",
+   "kind": "schema-registry-reference",
+   "product_surface": "protocol",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "reference snippets beside schema JSON; not shipped executable",
+   "notes": ""
+  },
+  {
+   "id": "mcp-json-config",
+   "pattern": "^mcp\\.json$",
+   "groupBy": "single",
+   "runtime": "node",
+   "kind": "host-launch-config",
+   "product_surface": "MCP",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": "mcp-node-server",
+   "notes": "Launches node ${PLUGIN_ROOT}/mcp/server.mjs; must point at the native binary once the N6 flag completes."
+  },
+  {
+   "id": "root-declarative-manifests",
+   "pattern": "^(plugin|server|package)\\.json$",
+   "groupBy": "single",
+   "runtime": "declarative",
+   "kind": "package-manifest",
+   "product_surface": "packaging",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "declarative-data",
+   "exception": null,
+   "notes": "server.json describes the npm native-runtime bootstrap; package.json bin points at the Node hook entry classified under mcp-hooks."
+  },
+  {
+   "id": "root-benchmarks-skills",
+   "pattern": "^(benchmarks|skills)/",
+   "groupBy": "all",
+   "runtime": "declarative",
+   "kind": "data-doc",
+   "product_surface": "dev/docs",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "declarative-data",
+   "exception": null,
+   "notes": ""
+  }
+ ]
+}

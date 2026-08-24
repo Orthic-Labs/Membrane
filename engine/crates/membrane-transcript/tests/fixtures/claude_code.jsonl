@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2026-01-01T00:00:00Z","sessionId":"sess-claude-1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private plan"},{"type":"text","text":"I will fix the parser bug."},{"type":"tool_use","id":"toolu_1","name":"edit","input":{"file_path":"a.rs","new_string":"let x = 42;"}}]}}
+{"type":"user","timestamp":"2026-01-01T00:00:01Z","sessionId":"sess-claude-1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"patched ok"}]}}
+{"type":"user","timestamp":"2026-01-01T00:00:02Z","sessionId":"sess-claude-1","message":{"content":"please fix the login bug next"}}
+{"type":"queue-operation","timestamp":"2026-01-01T00:00:03Z","sessionId":"sess-claude-1","content":"queued summary"}

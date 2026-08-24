@@ -1,0 +1,1 @@
+{"version":1,"sessionId":"cline-1","messages":[{"role":"user","content":[{"type":"text","text":"Do not add filler."}],"ts":1},{"role":"assistant","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"Understood."}],"ts":2}]}

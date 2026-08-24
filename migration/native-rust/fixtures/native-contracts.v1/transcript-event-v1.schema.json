@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/internal/transcript-event-v1.schema.json",
+  "title": "TranscriptEventV1 (internal domain contract)",
+  "description": "One normalized transcript event emitted by the native transcript owner (engine/crates/membrane-transcript). Internal Adapt-domain contract; NOT one of Membrane's five public protocol shapes (ScopeGrantV1, ContextCandidateSetV1, ContextPacketV1, ContextReceiptV1, KnowledgeEmissionV1). Frozen by migration spec N1; field names mirror the retired Python normalizer exactly, including snake_case call_id.",
+  "type": "object",
+  "required": [
+    "eventId", "rowIndex", "byteStart", "byteEnd", "blockIndex", "sequence",
+    "kind", "text", "classification", "class", "projection",
+    "host", "sessionId", "transcriptId", "parserDigest", "flags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "type": "string", "pattern": "^evt_[0-9a-f]{32}$", "description": "evt_ + sha256(canonical seed)[:32]; deterministic under T-04." },
+    "rowIndex": { "type": "integer", "minimum": 1, "description": "1-indexed JSONL row number." },
+    "byteStart": { "type": "integer", "minimum": 0, "description": "Source byte span start; slicing [byteStart..byteEnd] reproduces the row exactly (T-01)." },
+    "byteEnd": { "type": "integer", "minimum": 0 },
+    "blockIndex": { "type": "integer", "minimum": 0, "description": "Index within its row; multi-block rows emit several events." },
+    "sequence": { "type": "integer", "minimum": 1, "description": "Global 1-based emission order over the whole transcript." },
+    "kind": { "enum": ["user_message", "assistant_message", "tool_call", "tool_result", "thinking", "meta"] },
+    "role": { "type": "string" },
+    "tool": { "type": "string" },
+    "call_id": { "type": "string" },
+    "occurrence": { "type": "integer", "minimum": 0, "description": "Per-call_id occurrence counter (0-based); later results never trample earlier ones." },
+    "toolCallEventId": { "type": "string", "description": "For tool_result: eventId of the matching tool_call when already seen." },
+    "text": { "type": "string", "description": "Redacted + compacted text (NUL-stripped, capped)." },
+    "timestamp": { "type": "string" },
+    "classification": { "type": "string", "minLength": 1, "description": "Class-priority admission class." },
+    "class": { "type": "string", "minLength": 1, "description": "Alias of classification (compat with the retired Python surface)." },
+    "projection": { "type": "string", "minLength": 1, "description": "'default' unless caller overrides." },
+    "host": { "type": "string", "minLength": 1 },
+    "sessionId": { "type": "string", "minLength": 1 },
+    "transcriptId": { "type": "string", "minLength": 1 },
+    "parserDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Parser version receipt; cached extraction invalidates on change (T-06)." },
+    "agentRole": { "type": "string" },
+    "threadSource": { "type": "string" },
+    "parentThreadId": { "type": "string" },
+    "cwd": { "type": "string" },
+    "repo": { "type": "string" },
+    "synthetic": { "type": "boolean", "default": false },
+    "meta": { "type": "boolean", "default": false },
+    "privateReasoningOmitted": { "type": "boolean", "default": false },
+    "redacted": { "type": "boolean", "default": false },
+    "flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "synthetic": { "type": "boolean", "default": false },
+        "meta": { "type": "boolean", "default": false },
+        "privateReasoningOmitted": { "type": "boolean", "default": false },
+        "redacted": { "type": "boolean", "default": false },
+        "isError": { "type": "boolean", "default": false },
+        "isSidechain": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

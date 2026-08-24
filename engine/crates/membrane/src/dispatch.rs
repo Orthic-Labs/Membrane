@@ -293,13 +293,13 @@ where
 {
     // `clap` insists on consuming argv; we rebuild a Vec so error messages stay clean.
     let collected: Vec<OsString> = args.into_iter().map(Into::into).collect();
-    // Pull, Push, and Diagnostics are first-class Membrane commands. They
+    // Pull, Push, Diagnostics, and Adapt are first-class Membrane commands. They
     // bypass the transport mode parser while retaining one runtime CLI
     // implementation; `diagnostics` is intercepted again inside the CLI
     // dispatcher so its subtree never reaches the runtime argv parser.
     if matches!(
         collected.get(1).and_then(|value| value.to_str()),
-        Some("pull" | "push" | "diagnostics")
+        Some("pull" | "push" | "diagnostics" | "adapt")
     ) {
         return Ok(ParsedInvocation {
             mode: MembraneMode::Cli,
@@ -671,6 +671,13 @@ mod tests {
             assert_eq!(inv.mode, MembraneMode::Cli);
             assert_eq!(inv.cli_tail, vec![axis, "status"]);
         }
+    }
+
+    #[test]
+    fn adapt_is_a_first_class_cli_tail() {
+        let inv = parse_mode(["membrane", "adapt", "doctor"].iter().copied()).unwrap();
+        assert_eq!(inv.mode, MembraneMode::Cli);
+        assert_eq!(inv.cli_tail, vec!["adapt", "doctor"]);
     }
 
     #[test]

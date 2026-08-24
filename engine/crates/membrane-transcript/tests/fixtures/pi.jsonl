@@ -1,0 +1,5 @@
+{"type":"session","id":"pi-1","timestamp":"2026-08-25T00:00:00Z","cwd":"/repo"}
+{"type":"model_change","provider":"opencode","modelId":"muse-spark-1.2-contributor-free"}
+{"type":"message","timestamp":"2026-08-25T00:00:01Z","message":{"role":"user","content":"Use direct language."}}
+{"type":"message","timestamp":"2026-08-25T00:00:02Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"private"},{"type":"text","text":"Understood."},{"type":"toolCall","id":"pi-call","name":"read","arguments":{"path":"x"}}]}}
+{"type":"message","timestamp":"2026-08-25T00:00:03Z","message":{"role":"toolResult","toolCallId":"pi-call","toolName":"read","content":[{"type":"text","text":"result"}],"isError":false}}

@@ -509,6 +509,92 @@ enum PushCmd {
 }
 
 #[derive(Subcommand)]
+enum AdaptCmd {
+    /// Normalize transcripts & mine deterministic Taste/Insights evidence.
+    Mine {
+        #[arg(required_unless_present = "discover_open")]
+        transcripts: Vec<PathBuf>,
+        /// Discover native stores under current home & ingest open sessions.
+        #[arg(long)]
+        discover_open: bool,
+        #[arg(long)]
+        host: Option<String>,
+        #[arg(long, default_value = "workspace")]
+        scope: String,
+        #[arg(long, default_value_t = 2)]
+        min_recurrence: u32,
+    },
+    /// Review mined Insight issues from a MineResponse JSON document.
+    Review {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long = "issue")]
+        issue_ids: Vec<String>,
+    },
+    /// Build an evidence-bound pending Taste manifest from native mine output.
+    ReviewTaste {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        installation_id: String,
+        #[arg(long)]
+        canonical_pool_sha256: String,
+        #[arg(long)]
+        created_at: String,
+    },
+    /// Bind complete independent semantic decisions to a pending Taste manifest.
+    AdjudicateTaste {
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        decisions: PathBuf,
+        #[arg(long)]
+        validated_at: String,
+    },
+    /// Validate & atomically admit accepted Taste records through Cortex.
+    Apply {
+        #[arg(long)]
+        manifest: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Verify sealed Insight issues & atomically request Cortex admission.
+    ApplyInsights {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        installation_id: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Recall active, applicable Taste records from Cortex.
+    Recall {
+        query: String,
+        #[arg(short, default_value_t = 6)]
+        k: usize,
+        #[arg(long, default_value = "global")]
+        scope: String,
+        #[arg(long = "dimension", value_name = "KEY=VALUE")]
+        dimensions: Vec<String>,
+    },
+    /// Aggregate mitigation outcomes from a ReportRequest JSON document.
+    Report {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Score detectors from a BenchmarkRequest JSON document.
+    Benchmark {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Validate issue/episode integrity from a DoctorRequest JSON document.
+    Doctor {
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Print immutable build/source identity as JSON.
     BuildInfo,
@@ -521,6 +607,11 @@ enum Cmd {
     Guide {
         #[command(subcommand)]
         command: GuideCmd,
+    },
+    /// Adapt governed behavioral learning: Taste preferences & Insights failures.
+    Adapt {
+        #[command(subcommand)]
+        command: AdaptCmd,
     },
     /// Machine-local checkpoint verbs; no checkpoint enters ordinary semantic recall.
     Checkpoint {
@@ -2689,9 +2780,434 @@ fn command_requires_db(command: &Cmd) -> bool {
         Cmd::BuildInfo
             | Cmd::Installation { .. }
             | Cmd::Guide { .. }
+            | Cmd::Adapt { .. }
             | Cmd::Pull { .. }
             | Cmd::Push { .. }
     )
+}
+
+fn read_adapt_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
+    let body = std::fs::read_to_string(path)
+        .map_err(|error| format!("read Adapt input {}: {error}", path.display()))?;
+    serde_json::from_str(&body)
+        .map_err(|error| format!("parse Adapt input {}: {error}", path.display()))
+}
+
+fn print_adapt_json<T: Serialize>(value: &T) -> Result<(), String> {
+    println!(
+        "{}",
+        serde_json::to_string(value).map_err(|error| error.to_string())?
+    );
+    Ok(())
+}
+
+fn adapt_scope_dimensions(
+    values: &[String],
+) -> Result<membrane_adapt::scope::ScopeDimensions, String> {
+    let mut raw = std::collections::BTreeMap::new();
+    for value in values {
+        let Some((key, item)) = value.split_once('=') else {
+            return Err(format!("invalid Adapt dimension `{value}`; expected KEY=VALUE"));
+        };
+        if raw.insert(key.to_string(), item.to_string()).is_some() {
+            return Err(format!("duplicate Adapt dimension `{key}`"));
+        }
+    }
+    membrane_adapt::scope::ScopeDimensions::normalize(&raw).map_err(|error| error.to_string())
+}
+
+fn run_adapt(
+    command: AdaptCmd,
+    db_arg: Option<String>,
+    deployed: Option<&DeployedRuntime>,
+) -> Result<(), String> {
+    use membrane_adapt::cli_api;
+
+    match command {
+        AdaptCmd::Mine {
+            transcripts,
+            discover_open,
+            host,
+            scope,
+            min_recurrence,
+        } => {
+            let mut events = Vec::new();
+            let mut taste_candidates = Vec::new();
+            let mut omissions = Vec::new();
+            let mut sources: Vec<(PathBuf, Option<String>)> = transcripts
+                .into_iter()
+                .map(|path| (path, host.clone()))
+                .collect();
+            if discover_open {
+                let home = std::env::var_os("HOME")
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "HOME is unavailable for Adapt discovery".to_string())?;
+                sources.extend(
+                    membrane_transcript::discover_open(&home)
+                        .into_iter()
+                        .filter(|source| host.as_deref().is_none_or(|selected| source.host == selected))
+                        .map(|source| (source.path, Some(source.host))),
+                );
+            }
+            sources.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+            sources.dedup();
+            if sources.is_empty() {
+                return Err("Adapt discovery found no transcript sources".into());
+            }
+            for (transcript, source_host) in sources {
+                let prefix = match membrane_transcript::parse_prefix_receipt(
+                    &transcript,
+                    source_host.as_deref(),
+                ) {
+                    Ok(prefix) => prefix,
+                    Err(error) => {
+                        omissions.push(serde_json::json!({
+                            "host": source_host,
+                            "path": transcript,
+                            "stage": "receipt",
+                            "reason": error.to_string(),
+                        }));
+                        continue;
+                    }
+                };
+                let normalized = match membrane_transcript::parse_source_events(
+                    &transcript,
+                    source_host.as_deref(),
+                ) {
+                    Ok(events) => events,
+                    Err(error) => {
+                        omissions.push(serde_json::json!({
+                            "host": source_host,
+                            "path": transcript,
+                            "stage": "normalize",
+                            "reason": error.to_string(),
+                        }));
+                        continue;
+                    }
+                };
+                taste_candidates.extend(membrane_adapt::taste::extract_candidates_with_source(
+                    &normalized,
+                    &scope,
+                    &prefix.receipt.prefix_digest,
+                ));
+                for event in &normalized {
+                    match membrane_adapt::insights::TranscriptEventV1::try_from(event) {
+                        Ok(event) => events.push(event),
+                        Err(reason) => omissions.push(serde_json::json!({
+                            "event_id": event.event_id,
+                            "reason": reason,
+                        })),
+                    }
+                }
+            }
+            let response = cli_api::handle_mine(&cli_api::MineRequest {
+                events,
+                min_recurrence,
+            });
+            print_adapt_json(&serde_json::json!({
+                "response": response,
+                "taste_candidates": taste_candidates,
+                "omissions": omissions,
+            }))
+        }
+        AdaptCmd::Review { input, issue_ids } => {
+            let value: serde_json::Value = read_adapt_json(&input)?;
+            let mined: cli_api::MineResponse = serde_json::from_value(
+                value.get("response").cloned().unwrap_or(value),
+            )
+            .map_err(|error| format!("parse Adapt mine response: {error}"))?;
+            print_adapt_json(&cli_api::handle_review(&cli_api::ReviewRequest {
+                issue_ids,
+                issues: mined.issues,
+            }))
+        }
+        AdaptCmd::ReviewTaste {
+            input,
+            installation_id,
+            canonical_pool_sha256,
+            created_at,
+        } => {
+            let value: serde_json::Value = read_adapt_json(&input)?;
+            let candidates: Vec<membrane_adapt::taste::TasteCandidateV1> =
+                serde_json::from_value(
+                    value.get("taste_candidates").cloned().unwrap_or(value),
+                )
+                .map_err(|error| format!("parse Adapt Taste candidates: {error}"))?;
+            let manifest = membrane_adapt::proposal::build_pending_manifest(
+                &candidates,
+                &installation_id,
+                &canonical_pool_sha256,
+                &created_at,
+            )
+            .map_err(|error| format!("build Taste review manifest: {error}"))?;
+            print_adapt_json(&manifest)
+        }
+        AdaptCmd::AdjudicateTaste {
+            manifest,
+            decisions,
+            validated_at,
+        } => {
+            let pending: membrane_adapt::manifest::PreferenceManifestV1 =
+                read_adapt_json(&manifest)?;
+            let adjudication: membrane_adapt::proposal::SemanticAdjudicationV1 =
+                read_adapt_json(&decisions)?;
+            let finalised = membrane_adapt::proposal::adjudicate_manifest(
+                &pending,
+                &adjudication,
+                &validated_at,
+            )
+            .map_err(|error| format!("adjudicate Taste manifest: {error}"))?;
+            print_adapt_json(&finalised)
+        }
+        AdaptCmd::Apply { manifest, dry_run } => {
+            let manifest: membrane_adapt::manifest::PreferenceManifestV1 =
+                read_adapt_json(&manifest)?;
+            let response = cli_api::handle_apply(&cli_api::ApplyRequest {
+                manifest: manifest.clone(),
+                dry_run,
+            });
+            if !response.valid || dry_run || response.accepted_record_ids.is_empty() {
+                return print_adapt_json(&serde_json::json!({"response": response}));
+            }
+            let db = resolve_db(
+                db_arg,
+                std::env::var("CORTEX_DB").ok(),
+                deployed.map(|runtime| runtime.db.as_path()),
+            )?;
+            let store = open(&db)?;
+            let accepted: std::collections::BTreeSet<&str> = response
+                .accepted_record_ids
+                .iter()
+                .map(String::as_str)
+                .collect();
+            let items = manifest
+                .records
+                .iter()
+                .filter(|record| accepted.contains(record.id.as_str()))
+                .map(|record| crate::store::MemoryBatchItem {
+                    item_id: record.id.clone(),
+                    name: record.id.clone(),
+                    content: serde_json::to_string(record).expect("ManifestRecord serializes"),
+                    scope: record.scope.clone(),
+                    tier: "Semantic".into(),
+                    artifact_family: "adapt".into(),
+                    producer: "adapt_native".into(),
+                    record_type: "taste_preference".into(),
+                    client: "membrane_adapt".into(),
+                    session_id: manifest.batch_id.clone(),
+                    turn_id: String::new(),
+                    trace_id: response.manifest_hash.clone(),
+                    source_ids: record.source_ids.clone(),
+                    lifecycle: crate::store::MemoryLifecycleInputV1 {
+                        authority: Some("A2".into()),
+                        influence_class: Some(if record.needs_review {
+                            "provisional".into()
+                        } else {
+                            "behavioral_directive".into()
+                        }),
+                        confidence: Some(record.confidence),
+                        confidence_basis: Some("adapt_semantic_validation".into()),
+                        ..Default::default()
+                    },
+                })
+                .collect();
+            let receipt = store
+                .try_put_batch(&crate::store::MemoryBatchRequest {
+                    batch_id: manifest.batch_id,
+                    items,
+                })
+                .map_err(|error| error.to_string())?;
+            print_adapt_json(&serde_json::json!({
+                "response": response,
+                "cortex_receipt": receipt,
+            }))
+        }
+        AdaptCmd::ApplyInsights {
+            input,
+            installation_id,
+            dry_run,
+        } => {
+            let issues: Vec<membrane_adapt::insights::sealed_issue::SealedInsightIssueV1> =
+                read_adapt_json(&input)?;
+            for issue in &issues {
+                issue
+                    .verify()
+                    .map_err(|error| format!("sealed Insight {} invalid: {error:?}", issue.issue_id))?;
+            }
+            let mut ids: Vec<String> = issues.iter().map(|issue| issue.issue_id.clone()).collect();
+            ids.sort();
+            ids.dedup();
+            if ids.len() != issues.len() {
+                return Err("duplicate sealed Insight issue id".into());
+            }
+            let batch_material = serde_json::to_value(&ids).expect("issue ids serialize");
+            let batch_id = format!(
+                "adapt-insights-{}",
+                membrane_adapt::canonical::sha256_canonical(&batch_material)
+            );
+            let envelopes: Vec<_> = issues
+                .iter()
+                .map(|issue| issue.cortex_admission_envelope(&installation_id))
+                .collect();
+            if dry_run || issues.is_empty() {
+                return print_adapt_json(&serde_json::json!({
+                    "valid": true,
+                    "dry_run": dry_run,
+                    "batch_id": batch_id,
+                    "admission_requests": envelopes,
+                }));
+            }
+            let db = resolve_db(
+                db_arg,
+                std::env::var("CORTEX_DB").ok(),
+                deployed.map(|runtime| runtime.db.as_path()),
+            )?;
+            let store = open(&db)?;
+            let items = issues
+                .iter()
+                .map(|issue| crate::store::MemoryBatchItem {
+                    item_id: issue.issue_id.clone(),
+                    name: issue.payload.family.clone(),
+                    content: serde_json::to_string(issue).expect("sealed Insight serializes"),
+                    scope: issue
+                        .payload
+                        .applicability
+                        .get("repos")
+                        .and_then(|values| values.first())
+                        .cloned()
+                        .unwrap_or_else(|| "global".into()),
+                    tier: "Semantic".into(),
+                    artifact_family: "adapt".into(),
+                    producer: "adapt_native".into(),
+                    record_type: "insight_issue".into(),
+                    client: "membrane_adapt".into(),
+                    session_id: batch_id.clone(),
+                    turn_id: String::new(),
+                    trace_id: issue.payload_sha256.clone(),
+                    source_ids: issue
+                        .payload
+                        .episode_refs
+                        .iter()
+                        .map(|reference| reference.episode_id.clone())
+                        .collect(),
+                    lifecycle: crate::store::MemoryLifecycleInputV1 {
+                        authority: Some("reference".into()),
+                        influence_class: Some("reference_only".into()),
+                        confidence: Some(issue.payload.confidence),
+                        confidence_basis: Some(issue.payload.evidence_quality.as_str().into()),
+                        ..Default::default()
+                    },
+                })
+                .collect();
+            let receipt = store
+                .try_put_batch(&crate::store::MemoryBatchRequest {
+                    batch_id: batch_id.clone(),
+                    items,
+                })
+                .map_err(|error| error.to_string())?;
+            let admitted: Vec<_> = envelopes
+                .into_iter()
+                .map(|mut envelope| {
+                    envelope.cortex_verdict =
+                        Some(membrane_adapt::gates::CortexVerdict::Admitted);
+                    envelope
+                })
+                .collect();
+            print_adapt_json(&serde_json::json!({
+                "valid": true,
+                "batch_id": batch_id,
+                "admission_requests": admitted,
+                "cortex_receipt": receipt,
+            }))
+        }
+        AdaptCmd::Recall {
+            query,
+            k,
+            scope,
+            dimensions,
+        } => {
+            let context = adapt_scope_dimensions(&dimensions)?;
+            let db = resolve_db(
+                db_arg,
+                std::env::var("CORTEX_DB").ok(),
+                deployed.map(|runtime| runtime.db.as_path()),
+            )?;
+            let store = open(&db)?;
+            let chain = crate::scope_chain(&normalize_scope(&scope), &store.scopes());
+            let candidates = store.recall_scored(&query, k.saturating_mul(8).max(k), &chain);
+            let conn = store.db().lock();
+            let mut rows = Vec::new();
+            for (entry, score) in candidates {
+                let metadata = conn.query_row(
+                    "SELECT artifact_family,record_type,lifecycle_state FROM memories WHERE id=?1",
+                    [&entry.id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+                );
+                let Ok((family, kind, state)) = metadata else {
+                    continue;
+                };
+                if family != "adapt" || kind != "taste_preference" || state != "active" {
+                    continue;
+                }
+                let mut record: membrane_adapt::manifest::ManifestRecord =
+                    match serde_json::from_str(&entry.content) {
+                        Ok(record) => record,
+                        Err(_) => continue,
+                    };
+                // Cortex owns lifecycle truth; return its current projection,
+                // never stale candidate state embedded in admission evidence.
+                record.lifecycle_state = state;
+                let record_dimensions =
+                    membrane_adapt::scope::ScopeDimensions::normalize(&record.scope_dimensions.0)
+                        .map_err(|error| format!("stored Adapt scope invalid for {}: {error}", record.id))?;
+                if record_dimensions.matches(&context) {
+                    rows.push(serde_json::json!({"score": score, "record": record}));
+                }
+                if rows.len() >= k {
+                    break;
+                }
+            }
+            print_adapt_json(&serde_json::json!({"records": rows}))
+        }
+        AdaptCmd::Report { input } => {
+            let request: cli_api::ReportRequest = read_adapt_json(&input)?;
+            print_adapt_json(&cli_api::handle_report(&request))
+        }
+        AdaptCmd::Benchmark { input } => {
+            let body = std::fs::read_to_string(&input)
+                .map_err(|error| format!("read Adapt benchmark {}: {error}", input.display()))?;
+            let request = match serde_json::from_str::<cli_api::BenchmarkRequest>(&body) {
+                Ok(request) => request,
+                Err(_) => {
+                    let mut corpus = Vec::new();
+                    for (index, line) in body.lines().enumerate() {
+                        if line.trim().is_empty() {
+                            continue;
+                        }
+                        let value: serde_json::Value = serde_json::from_str(line).map_err(|error| {
+                            format!("parse portable benchmark line {}: {error}", index + 1)
+                        })?;
+                        corpus.push(
+                            membrane_adapt::benchmark::portable_case_from_value(&value)
+                                .map_err(|error| format!("portable benchmark line {}: {error}", index + 1))?,
+                        );
+                    }
+                    cli_api::BenchmarkRequest { corpus }
+                }
+            };
+            print_adapt_json(&cli_api::handle_benchmark(&request))
+        }
+        AdaptCmd::Doctor { input } => {
+            let request = match input {
+                Some(input) => read_adapt_json(&input)?,
+                None => cli_api::DoctorRequest {
+                    issues: Vec::new(),
+                    episodes: Vec::new(),
+                },
+            };
+            print_adapt_json(&cli_api::handle_doctor(&request))
+        }
+    }
 }
 
 fn run_pull(command: PullCmd) -> Result<(), String> {
@@ -3164,6 +3680,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
         };
     }
+    if matches!(cli.cmd, Cmd::Adapt { .. }) {
+        return match cli.cmd {
+            Cmd::Adapt { command } => run_adapt(command, cli.db, deployed.as_ref()),
+            _ => unreachable!(),
+        };
+    }
     if matches!(cli.cmd, Cmd::Pull { .. } | Cmd::Push { .. }) {
         return match cli.cmd {
             Cmd::Pull { command } => run_pull(command),
@@ -3181,7 +3703,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Guide { .. } => {
+        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Guide { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {

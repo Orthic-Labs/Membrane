@@ -28,8 +28,9 @@ export const RUNTIME_SPECS = [
   { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "../../schemas/compression-receipt.v1.schema.json" },
   { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "../../schemas/memory-lifecycle.v1.schema.json" },
   { id: "guide-contract", component: "guide", axis: "guide", delivery: "resource", path: "../../schemas/operations/membrane-source-read.v1.schema.json" },
-  // Hub has no Adapt launcher: Membrane sidecar owns that invocation seam.
-  { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "membrane-sidecar" },
+  // N5 cutover: Hub owns the native Adapt launch seam - scheduled cycles and
+  // installed launcher execs bundled binary's `membrane adapt` CLI.
+  { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "hub-native" },
   { id: "runtime-schemas", component: "membrane-schemas", delivery: "resource", path: "../../schemas", tree: true, extensions: [".json", ".yaml", ".yml"] },
   { id: "host-adapters", component: "host-adapters", delivery: "resource", path: "../../mcp/host", tree: true, extensions: [".cjs", ".mjs", ".json"], invocation: "host-bound" },
   { id: "install-workspace", component: "install-workspace", delivery: "resource", path: "../../dist/install/workspace", tree: true, extensions: [".py"] },
@@ -252,7 +253,7 @@ export async function verifyUnpackedArtifact({ runtimeDir = runtime, sidecarDir,
   if (JSON.stringify(inventory.composition) !== JSON.stringify(composition)) throw new Error("runtime composition invalid");
   if (inventory.axes?.length !== axes.length || inventory.axes.some(({ axis, entries }) => !axes.includes(axis) || !Number.isInteger(entries) || entries < 1)) throw new Error("six-axis unpacked runtime invalid");
   if (!inventory.entries.some((entry) => entry.component === "blueprint-runtime" && entry.delivery === "preStagedResource")) throw new Error("packaged Blueprint runtime missing");
-  if (!inventory.entries.some((entry) => entry.component === "adapt-contract" && entry.invocation === "membrane-sidecar")) throw new Error("Adapt invocation seam invalid");
+  if (!inventory.entries.some((entry) => entry.component === "adapt-contract" && entry.invocation === "hub-native")) throw new Error("Adapt invocation seam invalid");
   if (!sidecarDir) throw new Error("unpacked sidecar directory required");
   verifySidecars(sidecarDir, inventory);
   const activeProbes = Object.keys(probes).length ? probes : nativeUnpackedProbes();

@@ -4,7 +4,7 @@
 **Repository:** `Orthic-Labs/Membrane`  
 **Date:** 2026-08-19  
 **Supersedes:** `MEMBRANE-IMPLEMENTATION-GUIDE-FINAL.md`, earlier Membrane implementation/absorption guides, and the previous `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`  
-**Companion authority:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` for repository truth/evidence semantics.
+**Companion authorities:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` for repository truth/evidence semantics; `ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md` for Taste/Insights semantics; `../../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` for runtime/process cutover, packaging, deletion, Blueprint/CodeRight seams, and native-only qualification.
 
 **Canonical subsystems:**
 - **Membrane** — the parent context system and context control plane.
@@ -12,7 +12,7 @@
 - **Blueprint** — repository truth/evidence subsystem.
 - **Cortex** — durable-knowledge subsystem.
 - **Guide** — document navigation and section-index subsystem, formerly named Spine.
-- **Adapt** — learning/proposal subsystem.
+- **Adapt** — governed behavioral-learning subsystem: Taste learns user-backed preferences; Insights learns evidence-backed failures and gotchas.
 - **Push** — reversible reduction subsystem.
 
 **System hierarchy:** Pull, Push, Cortex, Blueprint, Guide, and Adapt are the six named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
@@ -43,10 +43,10 @@ The final system should make one idea mechanically true:
 Blueprint determines repository evidence and repository truth.  
 Cortex preserves durable knowledge.
 Guide indexes and resolves document sections without owning document truth or durable knowledge.  
-Adapt turns experience into governed knowledge proposals; it never bypasses Cortex admission.
+Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-Hub is the sole resident service authority and owns OS/process lifecycle.
+Hub is the sole resident lifecycle authority for Membrane runtime. Blueprint remains an independently versioned external service with its own daemon lifecycle.
 Legion / OmniRouter / hosts own agent execution and orchestration.  
 Membrane owns context policy and is the parent system for the six named subsystems.
 
@@ -89,10 +89,11 @@ retain separate ownership, tests, metrics, and improvement paths:
 | **Cortex** | Admit, retain, lifecycle, and retrieve governed durable memory. | Durable-memory only; no resident service, port, or process authority. |
 | **Blueprint** | Own repository truth, evidence generations, and drift/change observation. | Blueprint-owned schemas/services; no duplicate parser or graph. |
 | **Guide** | Navigate indexed document sections with hash-bound references. | Navigation/index projections only; no document truth or durable memory. |
-| **Adapt** | Mine experience into governed knowledge proposals. | Proposals enter Cortex admission; no direct durable writes. |
+| **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
 
 Membrane Hub is not a seventh axis. It is the sole resident service, process,
-installation, update, and release authority that hosts these axes.
+installation, update, and release authority for Membrane runtime. Blueprint is
+an independently versioned external service reached through one typed native client.
 
 The current supported target is macOS. Other targets are not current supported
 targets until separately qualified and added to canonical capability truth.
@@ -247,6 +248,8 @@ Breaking an invariant requires an explicit architecture decision, migration/comp
    - `KnowledgeEmissionV1`
 
    Product renaming alone is not a sufficient reason to mutate V1 field names or serialized reason tokens. Frozen legacy names are recorded in the rename ledger and retain their historical meaning until an independently justified protocol version replaces them.
+
+   `TranscriptEventV1`, `UserActEvidenceV1`, `FailureEpisodeV1`, and `InsightIssueV1` are versioned internal subsystem/domain contracts, not additions to these five public Membrane V1 shapes. They remain outside `membrane-protocol` public client/MCP surfaces unless a real external consumer triggers an explicit protocol-version decision.
 
 3. **Use a richer internal IR instead of casually expanding the public protocol.**
 
@@ -1472,8 +1475,9 @@ Hub owns:
 - installer/updater lifecycle;
 - process restart/backoff.
 
-Hub is the only resident service authority. It owns resident service identity,
-ports, leases, readiness, drain, and shutdown. Cortex may expose durable-memory
+Hub is the only resident service authority for Membrane runtime. It owns Membrane
+service identity, ports, leases, readiness, drain, and shutdown. Blueprint owns
+its separately versioned daemon lifecycle. Cortex may expose durable-memory
 library and CLI operations to Hub, but it does not claim a resident service,
 service identity, port, lease, or process lifecycle.
 
@@ -1875,6 +1879,8 @@ Experiments such as local cross-encoders, HyDE, generic query expansion, MMR as 
 
 Verify paths against current `main` before tickets.
 
+This map describes current implementation ownership. Python/Node production paths below are legacy migration inputs, not final targets; the native migration companion owns replacement and deletion.
+
 | Area | Current / target ownership |
 |---|---|
 | `engine/crates/membrane-protocol/src/types.rs` | public V1 protocol source of truth; version only deliberately |
@@ -1899,6 +1905,8 @@ Verify paths against current `main` before tickets.
 | `docs/architecture.md` | generated only |
 | `docs/product.md` | generated only |
 | `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md` | canonical Membrane architecture/implementation authority |
+| `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md` | canonical Adapt product semantics, Taste/Insights authority, lifecycle, evaluation, and feature dependencies |
+| `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` | runtime/process cutover, packaging/deletion, Blueprint/CodeRight seams, sequence, and native-only qualification |
 | `tests/context-quality/` | frozen semantic/authority/safety fixtures |
 | qualification/evidence paths | installed-artifact proof |
 
@@ -2248,6 +2256,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Guide, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable memory only. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why. Membrane Hub is the sole resident service authority.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Guide, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Guide navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. Hub is sole resident lifecycle authority for Membrane runtime; Blueprint remains an independently versioned external service.**
 
 That is the canonical shape.

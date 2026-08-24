@@ -2418,6 +2418,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-adapt"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "membrane-transcript",
+ "regex",
+ "ring",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "membrane-client"
 version = "0.1.0"
 dependencies = [
@@ -2499,11 +2513,13 @@ dependencies = [
  "cortex-store",
  "getrandom 0.4.3",
  "hex",
+ "membrane-adapt",
  "membrane-core",
  "membrane-federation",
  "membrane-mcp",
  "membrane-protocol",
  "membrane-provider-sdk",
+ "membrane-transcript",
  "ort",
  "rusqlite",
  "serde",
@@ -2530,6 +2546,19 @@ dependencies = [
  "membrane-provider-sdk",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "membrane-transcript"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

@@ -29,6 +29,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 // gated on it without further plumbing changes.
 #[cfg(test)]
 mod hub_contract_tests;
+mod adapt_launch;
 mod hub_telemetry;
 mod supervisor;
 mod update_admission;
@@ -250,6 +251,24 @@ fn membrane_service_supervisor(
 
 fn stop_membrane_service(service: &ServiceState) {
     service.stop();
+}
+
+/// N5 installed launch cutover: the user-level `~/bin/adapt` launcher is
+/// Hub-owned and always execs this Hub's bundled native binary's `membrane
+/// adapt` CLI. The retired Python shim (a source-checkout PYTHONPATH wrapper)
+/// is replaced idempotently on every successful Hub start; the launcher is
+/// never pointed at an env-overridden or development-tree binary.
+fn install_native_adapt_seam(telemetry: &hub_telemetry::HubTelemetry, program: &Path) {
+    let outcome = adapt_launch::host_home()
+        .and_then(|home| adapt_launch::install_native_adapt_launcher(&home, program));
+    match outcome {
+        Ok(path) => telemetry.event(
+            "adapt_launcher_installed",
+            "available",
+            Some(&path.to_string_lossy()),
+        ),
+        Err(error) => telemetry.event("adapt_launcher_installed", "unavailable", Some(&error)),
+    }
 }
 
 /// Menu-bar state. Every state shows the same Membrane hex-brain mark and
@@ -769,6 +788,34 @@ fn main() {
             }
             app.manage(supervisor.clone());
             let handle = app.handle().clone();
+            // N5 cutover: replace the installed Python Adapt launcher with the
+            // native one and bind the production Adapt cycle schedule to the
+            // resident lifecycle. Statuses land as typed telemetry events.
+            let adapt_program = bundled_binary("membrane");
+            install_native_adapt_seam(&telemetry, &adapt_program);
+            {
+                let adapt_supervisor = supervisor.clone();
+                let adapt_telemetry = telemetry.clone();
+                std::thread::spawn(move || {
+                    let launcher = adapt_launch::AdaptLauncher::new(adapt_program);
+                    let schedule_path = adapt_launch::default_schedule_path()
+                        .unwrap_or_else(|_| PathBuf::from("adapt-schedule-unavailable"));
+                    let mut scheduler = adapt_launch::AdaptScheduler::new(
+                        adapt_launch::ADAPT_CYCLE_INTERVAL,
+                        schedule_path,
+                    );
+                    loop {
+                        if let Some(status) = scheduler.tick(
+                            adapt_launch::unix_now_ms(),
+                            adapt_supervisor.supervise() == supervisor::ServiceStatus::Running,
+                            &launcher,
+                        ) {
+                            adapt_telemetry.event("adapt_cycle", status.state, status.reason.as_deref());
+                        }
+                        std::thread::sleep(POLL_INTERVAL);
+                    }
+                });
+            }
             let gate = app.state::<Arc<StartupGate>>().inner().clone();
             let program = std::env::var_os("MEMBRANE_COMMAND")
                 .map(PathBuf::from)

@@ -1,12 +1,14 @@
 <img src=".github/adapt-banner.svg" alt="Adapt — Corrections that stick across sessions." width="100%">
 
-**AI assistants repeat the same mistakes because useful corrections disappear when the session ends. Adapt mines local Codex and Claude transcripts for repeated, durable guidance and promotes it — through hard safety gates — into a small, scoped, reversible preference layer that future agents actually recall.**
+**Adapt is Membrane's governed behavioral-learning subsystem. Taste learns user-backed preferences; Insights learns evidence-backed agent/model/tool failures, gotchas, and waste. Cortex owns durable admission, lifecycle, storage, and retrieval.**
 
 <sub>Package & CLI id: <code>adapt</code>.</sub>
 
 ![license](https://img.shields.io/badge/license-source--available-df6428?style=flat-square&labelColor=111318)
 ![writes](https://img.shields.io/badge/writes-opt--in%2C%20manifest--gated-df6428?style=flat-square&labelColor=111318)
-![python](https://img.shields.io/badge/python-CLI%20%2B%20library-df6428?style=flat-square&labelColor=111318)
+![runtime](https://img.shields.io/badge/runtime-native%20Rust-df6428?style=flat-square&labelColor=111318)
+
+Canonical semantics: [`../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`](../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md). Runtime cutover: [`../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md).
 
 It does not retrain the model, and it does not save private chain-of-thought. It learns things like *"always run focused tests before reporting a broad build complete"* — and refuses to learn things like *"the service is down today."*
 
@@ -14,8 +16,8 @@ It does not retrain the model, and it does not save private chain-of-thought. It
 
 ```mermaid
 flowchart LR
-    T[local Codex + Claude<br/>transcripts] --> E[parse · canonicalize ·<br/>provenance filter]
-    E --> S[deterministic extraction +<br/>LLM recall proposals]
+    T[Claude · Codex · Cline · CommandCode<br/>OpenCode · Qwen · Pi · other snapshots] --> E[native parse · canonicalize ·<br/>provenance filter]
+    E --> S[deterministic extraction +<br/>optional model proposals]
     S --> A[authority checks<br/>origin quarantine]
     A --> M[immutable review manifest<br/>accepted / rejected / pending]
     M --> G[conformance gate] --> W[transactional<br/>Cortex apply]
@@ -42,9 +44,9 @@ Record types stop every lesson from becoming a global command:
 | Record type | Reach |
 |---|---|
 | `standing_preference` | Broad and durable — the only type eligible for the bounded always-on core |
-| `locked_decision` | Binding, but only inside its declared scope |
+| `locked_decision` | Taste only when it carries behavioral choice authority inside declared scope |
 | `operational_playbook` | Recalled when the task and scope match (the default) |
-| `episodic_fact` | Supporting context, never a standing instruction |
+| `episodic_fact` | Non-Taste Cortex proposal/context; never a preference |
 | `unclassified` | Legacy/review state |
 
 Only root-scoped standing preferences compile into the always-on core; everything else stays recall-gated — so the preference layer never grows into another giant prompt.
@@ -59,23 +61,25 @@ Run journals checkpoint every stage; safe resume reuses cached stages only while
 
 | Surface | Role | Status |
 |---|---|---|
-| **Taste** | durable preferences → Cortex | ships |
-| **Doctor** | multiwriter conformance receipts (`issue` / `validate`) | ships; Blueprint/Forge checks not yet |
-| **Insights** | failure/waste mining + token spend | report-only; writes nothing |
+| **Taste** | reviewed preferences → Cortex | native mine/review/adjudicate/apply/recall ships |
+| **Insights** | failure/waste episodes, issues, remediation proposals & outcomes | native detection, benchmark, reference-only Cortex admission & reporting ship |
+| **Adaptive evaluation** | delivery/effectiveness, counterfactuals, retirement suggestions & privacy-bounded aggregates | native library surface ships |
 
 ## Using it
 
 ```sh
-python3 adapt.py --smoke                            # dry-run the whole pipeline
-python3 adapt.py --incremental --manifest pending.json
-python3 adapt.py --apply-from-manifest resolved.json
-python3 adapt.py --compile-core path/to/core.json
-python3 adapt.py --insights session-one.jsonl session-two.jsonl
-python3 adapt.py --insights session.jsonl --spend       # token-spend table only
-python3 adapt.py --token-spend session.jsonl            # spend + waste findings
-
-python3 adapt.py doctor issue --out receipt.json
-python3 adapt.py doctor validate --receipt receipt.json
+membrane adapt mine --host pi transcript.jsonl > mined.json
+membrane adapt review --input mined.json
+membrane adapt review-taste --input mined.json \
+  --installation-id "$INSTALLATION_ID" \
+  --canonical-pool-sha256 "$POOL_DIGEST" \
+  --created-at "$TIMESTAMP" > pending.json
+membrane adapt adjudicate-taste --manifest pending.json \
+  --decisions decisions.json --validated-at "$TIMESTAMP" > accepted.json
+membrane adapt apply --manifest accepted.json
+membrane adapt recall "focused tests" --scope workspace
+membrane adapt benchmark --input adapt/eval/insights_bench/v1/cases.jsonl
+membrane adapt doctor
 ```
 
 ### Token spend
@@ -98,18 +102,20 @@ hard-coded price is a fabricated number. The same block appears in the
 `--insights` JSON report under `tokenSpend`, per session and aggregate, and
 never affects the failure score.
 
-Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM proposal lanes are `local` (default) or `minimax`; every proposal is rebound to an exact canonical external-user event, then passes deterministic admission. `--deterministic-only` disables LLM recall explicitly. Tests: `python3 -m pytest -q`.
+Writes remain explicit. Mining/review/adjudication are non-mutating; apply verifies complete independent decisions, immutable semantic seals, exact transcript bindings & Cortex admission receipts. Installed Adapt invokes no Python, Node, Pi CLI, OpenCode CLI, or model worker. Legacy Python tests remain release-excluded differential oracles only.
 
 ## Repository layout
 
 | Path | Contents |
 |---|---|
-| `src/adapt/` | runtime package, policies & manifest schema |
-| `tests/` | unit, contract & regression tests |
+| `../engine/crates/membrane-transcript/` | canonical native transcript owner & host adapters |
+| `../engine/crates/membrane-adapt/` | canonical native Taste/Insights owner |
+| `src/adapt/` | retired Python differential oracle, excluded from installed artifacts |
+| `tests/` | legacy differential tests |
 | `eval/` | offline evaluation and delivery-parity tooling |
 | `docs/` | architecture, operations & historical plans |
 
-`adapt.py` is the intentionally small source-checkout entrypoint; implementation stays under `src/adapt/`.
+`membrane adapt` is installed authority. `adapt.py` remains source-checkout migration evidence only.
 
 ## Recent
 
@@ -119,7 +125,7 @@ Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM pro
 
 ## Current limits
 
-Adapt requires shared workspace memory/session modules and installed Cortex; `workspace_runtime.py` is its single import boundary. Model-assisted extraction needs a configured lane. Lexical contradiction detection catches direct polarity conflicts, not every semantic conflict. Doctor does not yet cover Blueprint or Forge.
+Model-assisted semantic discovery still produces proposals only; independent adjudication remains mandatory before apply. Lexical contradiction checks cover direct polarity conflicts, while semantic conflicts require adjudication. Host UI signals remain capability-specific & unavailable signals are reported explicitly.
 
 ---
 

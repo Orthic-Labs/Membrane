@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .host_adapters import detect_host, iter_events_for_host
+from .host_adapters import GENERIC_HOSTS, detect_host, iter_events_for_host
 
 # Re-export the host adapters' secret/secret-like constants.
 from .host_adapters import BASE64_BLOB, SECRET_PATTERNS  # noqa: F401
@@ -321,7 +321,13 @@ def _read_prefix_receipt(
                     session_id = str(sid)
                     break
         else:
-            sid = obj.get("sessionId") or obj.get("session_id")
+            event = obj.get("event") if isinstance(obj.get("event"), dict) else {}
+            sid = (
+                obj.get("sessionId")
+                or obj.get("session_id")
+                or event.get("sessionId")
+                or event.get("session_id")
+            )
             if sid:
                 session_id = str(sid)
                 break
@@ -333,12 +339,15 @@ def _read_prefix_receipt(
         total = byte_end
     if total < 1:
         raise ValueError("transcript contains no complete JSONL row")
+    prefix_digest = digest.hexdigest()
+    if not session_id:
+        session_id = f"derived:{host}:{prefix_digest}"
     return {
         "host": host,
         "sessionId": session_id,
         "transcriptId": transcript_id,
         "prefixLength": total,
-        "prefixDigest": "sha256:" + digest.hexdigest(),
+        "prefixDigest": "sha256:" + prefix_digest,
         "parserDigest": PARSER_DIGEST,
         "parserVersion": PARSER_VERSION,
     }
@@ -391,7 +400,7 @@ def _parse_transcript(
     # translation runs.
     if host is None:
         host = detect_host(path)
-    if host not in {"claude_code", "codex"}:
+    if host not in {"claude_code", "codex", *GENERIC_HOSTS}:
         raise ValueError(f"unsupported host: {host}")
 
     transcript_id = path.stem
@@ -485,6 +494,11 @@ def _parse_transcript(
                 "sessionId": session_id,
                 "transcriptId": transcript_id,
                 "parserDigest": parser_digest,
+                "agentRole": event.get("agentRole"),
+                "threadSource": event.get("threadSource"),
+                "parentThreadId": event.get("parentThreadId"),
+                "cwd": event.get("cwd"),
+                "repo": event.get("repo"),
                 # Top-level flags (plan 5.1 contract: every event carries
                 # boolean flags synthetic/meta/privateReasoningOmitted/
                 # redacted directly on the event, not in a nested dict).

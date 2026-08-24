@@ -1,0 +1,20 @@
+{
+  "schema_version": "adapt.user-act-evidence.v1",
+  "evidence_id": "ev_01J9ZK7Q2M",
+  "installation_id": "0d3f6a1e-8b2c-4c47-9a51-2f0f5d9e77aa",
+  "host": "pi",
+  "session_id": "sess-2026-08-24-0114",
+  "event_ids": ["evt_3f9a2c7e51b04d8fa6c1de2b908471aa"],
+  "act_kind": "explicit_preference",
+  "user_source_span": {
+    "event_id": "evt_3f9a2c7e51b04d8fa6c1de2b908471aa",
+    "session_id": "sess-2026-08-24-0114",
+    "byte_start": 4820,
+    "byte_end": 5317,
+    "bytes_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "scope_context": { "repo": "membrane", "language": "rust" },
+  "timestamp": "2026-08-24T01:14:09Z",
+  "signal_strength": 1.0,
+  "provenance_receipt": "3333333333333333333333333333333333333333333333333333333333333333"
+}

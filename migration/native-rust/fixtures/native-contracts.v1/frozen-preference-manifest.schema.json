@@ -1,0 +1,312 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/adapt/preference-manifest.schema.json",
+  "title": "Adapt preference manifest: adjudicated adaptation candidates",
+  "description": "Output of `adapt --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
+  "type": "object",
+  "required": ["schema_version", "batch_id", "source_session_ids", "created_at", "records"],
+  "additionalProperties": false,
+  "allOf": [{
+    "if": {"properties": {"schema_version": {"const": "1.3.0"}}},
+    "then": {"required": ["source_refs"]},
+    "else": {"not": {"required": ["source_refs"]}}
+  }, {
+    "if": {"properties": {"generator": {"pattern": "^adapt-frozen-open-transcripts-v2:"}}, "required": ["generator"]},
+    "then": {"required": ["extraction_coverage"]}
+  }],
+  "dependencies": {
+    "installation_id": ["canonical_pool_sha256"],
+    "canonical_pool_sha256": ["installation_id"]
+  },
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.3.0"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match the journal's most recent pending batch_id; mismatches refuse apply."
+    },
+    "installation_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "Stable schema-v2 UUID of the installation that mined this batch."
+    },
+    "canonical_pool_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Digest of the canonical Cortex Adapt pool used during synthesis."
+    },
+    "source_session_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Session IDs bound to this batch; state advances only over this set after successful writes."
+    },
+    "source_refs": {
+      "type": "array", "minItems": 1,
+      "items": {"type": "object", "additionalProperties": false,
+        "required": ["source_id", "tool", "host", "path", "mtime_ns", "source_sha256"],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1},
+          "tool": {"type": "string", "enum": ["claude-code", "codex", "command-code", "cline", "opencode", "pi", "gemini", "grok-build", "roo-cline", "qwen", "cursor"]},
+          "host": {"type": "string", "enum": ["claude_code", "codex", "command_code", "cline", "opencode", "pi", "gemini", "grok_build", "roo_cline", "qwen", "cursor"]},
+          "path": {"type": "string", "minLength": 1},
+          "mtime_ns": {"type": "integer", "minimum": 0},
+          "source_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "extraction_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "source_count", "corpus_source_count", "shard_index", "shard_count", "sources_with_mined_turns", "canonical_user_turns", "mined_user_turns", "policy_excluded_user_turns", "llm_batches", "committable_batches", "failed_batches", "batch_char_budget", "checkpointed_batches", "selection_contract", "context_contract"],
+      "properties": {
+        "complete": {"const": true},
+        "source_count": {"type": "integer", "minimum": 1},
+        "corpus_source_count": {"type": "integer", "minimum": 1},
+        "shard_index": {"type": "integer", "minimum": 0},
+        "shard_count": {"type": "integer", "minimum": 1},
+        "sources_with_mined_turns": {"type": "integer", "minimum": 0},
+        "canonical_user_turns": {"type": "integer", "minimum": 0},
+        "mined_user_turns": {"type": "integer", "minimum": 0},
+        "policy_excluded_user_turns": {"type": "integer", "minimum": 0},
+        "llm_batches": {"type": "integer", "minimum": 0},
+        "committable_batches": {"type": "integer", "minimum": 0},
+        "failed_batches": {"const": 0},
+        "batch_char_budget": {"type": "integer", "minimum": 1000},
+        "checkpointed_batches": {"type": "integer", "minimum": 0},
+        "selection_contract": {"const": "all-safe-external-user-turns-v1"},
+        "context_contract": {"const": "authoritative-source-with-prior-nonauthoritative-context-v1"}
+      }
+    },
+    "created_at": { "type": "string" },
+    "generator": { "type": "string" },
+    "semantic_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "complete", "independent", "validator_run_id", "validator", "validated_at", "canonical_pool_sha256", "record_results", "receipt_sha256"],
+      "properties": {
+        "contract": {"const": "direct-evidence-global-pool-v1"},
+        "complete": {"const": true},
+        "independent": {"const": true},
+        "validator_run_id": {"type": "string", "minLength": 1},
+        "validator": {"type": "string", "minLength": 1},
+        "validated_at": {"type": "string", "minLength": 1},
+        "canonical_pool_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "record_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "payload_sha256", "status", "verdict", "reason"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "payload_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "status": {"enum": ["accepted", "rejected"]},
+              "verdict": {"enum": ["valid", "invalid"]},
+              "reason": {"type": "string"}
+            }
+          }
+        },
+        "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "authority_manifest": {
+      "type": "object",
+      "required": ["schema_version", "sources", "directives", "forbidden_scopes", "manifest_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0.0" },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "scope", "rank", "bytes", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 },
+              "rank": { "type": "integer" },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        },
+        "directives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "scope", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 },
+              "status": { "type": "string", "enum": ["current", "superseded"] }
+            }
+          }
+        },
+        "forbidden_scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "records": {
+      "type": "array",
+      "minItems": 0,
+      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing Cortex rows.",
+      "items": {
+        "type": "object",
+        "required": ["id", "rule", "category", "scope", "status", "payload_sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^adapt-[a-z-]+-[a-z0-9-]+-[a-f0-9]{10}$",
+            "description": "Stable primary ID from preference_record.derive_id."
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Mutable on review (admit/reject only); the payload_sha256 detects edits."
+          },
+          "category": {
+            "type": "string",
+            "description": "Controlled taxonomy; reject if not in admission.ALLOWED_CATEGORIES."
+          },
+          "scope": { "type": "string" },
+          "record_type": {
+            "type": "string",
+            "enum": ["standing_preference", "locked_decision", "operational_playbook", "episodic_fact", "unclassified"]
+          },
+          "authority_effect": {
+            "type": "string",
+            "enum": ["neutral", "restrictive", "permission_expanding"]
+          },
+          "authority_manifest_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Binds this immutable candidate payload to the embedded authority manifest used at admission."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "accepted", "rejected"],
+            "description": "Adjudication decision. 'pending' is the emit-time default; apply_time_validate (apply-time) refuses pending."
+          },
+          "payload_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 over the immutable candidate payload, including record type, authority effect, and authority-manifest binding when present. Detects any content edit."
+          },
+          "human_note": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "needs_review": { "type": "boolean" },
+          "evidence_count": { "type": "integer", "minimum": 0 },
+          "created_at": { "type": "string", "minLength": 1 },
+          "updated_at": { "type": "string", "minLength": 1 },
+          "evidence_excerpt": {
+            "type": "string",
+            "description": "Bounded evidence fragment (not the full prompt); redaction already applied at extract."
+          },
+          "source_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "retrieval_aliases": {
+            "type": "array",
+            "maxItems": 3,
+            "items": { "type": "string", "minLength": 1, "maxLength": 320 },
+            "description": "Bounded, scanner-clean source-language cues embedded for retrieval only."
+          },
+          "source_file_hashes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["session_id", "sha256"],
+              "additionalProperties": false,
+              "properties": {
+                "session_id": { "type": "string" },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "SHA-256 of the source session's transcript bytes at emission time."
+                }
+              }
+            },
+            "description": "Per-session transcript hashes; reviewers can pinpoint which transcript the rule was mined from."
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["evidence_id", "source_session_id"],
+              "additionalProperties": false,
+              "properties": {
+                "evidence_id": {
+                  "type": "string",
+                  "pattern": "^ev-[a-f0-9]{8}$",
+                  "description": "Stable ID for a specific evidence excerpt; derived from sha256(scope + NUL + excerpt)[:8]."
+                },
+                "source_session_id": { "type": "string" },
+                "excerpt": { "type": "string" }
+              }
+            },
+            "description": "Stable evidence IDs so reviewers can cross-reference specific excerpts without ambiguity."
+          },
+          "evidenceContexts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["sourceEventId", "sourceSessionId", "sourceTranscriptId", "sourceParserDigest", "sourceRowIndex", "sourceSequence", "sourceByteStart", "sourceByteEnd", "sourceKind", "sourceRole", "sourceClassification", "sourceFlags", "evidenceId", "evidenceText", "contextEvents"],
+              "additionalProperties": false,
+              "properties": {
+                "sourceEventId": {"type": "string"}, "sourceSessionId": {"type": "string"}, "sourceTranscriptId": {"type": "string"}, "sourceParserDigest": {"type": "string"},
+                "sourceRowIndex": {"type": "integer"}, "sourceSequence": {"type": "integer"}, "sourceByteStart": {"type": "integer"}, "sourceByteEnd": {"type": "integer"},
+                "sourceKind": {"const": "user_message"}, "sourceRole": {"const": "user"}, "sourceClassification": {"type": "string", "minLength": 1},
+                "sourceFlags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}},
+                "evidenceId": {"type": "string", "minLength": 1}, "evidenceText": {"type": "string", "minLength": 1},
+                "contextEvents": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource", "provenance", "sourceRows", "authorityEligible"], "properties": {"eventId": {"type": "string"}, "kind": {"type": "string"}, "role": {"type": ["string", "null"]}, "classification": {"type": "string"}, "flags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "text": {"type": "string"}, "truncated": {"type": "boolean"}, "isSource": {"type": "boolean"}, "provenance": {"enum": ["external_user", "assistant", "developer", "internal_context", "tool_result", "subagent"]}, "sourceRows": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "rowIndex", "byteStart", "byteEnd", "projection"], "properties": {"eventId": {"type": "string"}, "rowIndex": {"type": "integer", "minimum": 0}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "projection": {"type": "string"}}}}, "authorityEligible": {"type": "boolean"}}}}
+              }
+            }
+          },
+          "operation": {
+            "type": "string",
+            "enum": ["add", "update", "deprecate"],
+            "description": "Synthesis operation that produced this candidate. Excluded from payload_sha256."
+          },
+          "machine": {
+            "type": "string",
+            "description": "Optional installation attribution. Excluded from payload_sha256."
+          },
+          "machine_only": {
+            "type": "boolean",
+            "description": "When true, the rule applies only on machine. Excluded from payload_sha256."
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "enum": ["candidate", "active", "disputed", "deprecated", "superseded", "retired"],
+            "description": "Rule lifecycle axis. Excluded from payload_sha256."
+          },
+          "last_verified_at": {
+            "type": "string",
+            "description": "Optional reverification timestamp. Excluded from payload_sha256."
+          },
+          "verification_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional reverification count. Excluded from payload_sha256."
+          },
+          "scope_dimensions": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Structured narrowing facets. Excluded from payload_sha256."
+          }
+        }
+      }
+    }
+  }
+}

@@ -29,7 +29,7 @@ function specs() {
     { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "pull.txt" },
     { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "push.txt" },
     { id: "guide-contract", component: "guide", axis: "guide", delivery: "resource", path: "guide.txt" },
-    { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "membrane-sidecar" },
+    { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "hub-native" },
     { id: "install-workspace", component: "install-workspace", delivery: "resource", path: "dist/install/workspace", tree: true, extensions: [".py"] },
     { id: "install-workspace-manifest", component: "install-workspace-manifest", delivery: "resource", path: "dist/install/workspace-manifest.json", stageRoot: "resources/install-workspace" },
   ];
@@ -61,6 +61,16 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   assert.match(main, /"quit" => \{[\s\S]*stop_membrane_service\(&service\);[\s\S]*app\.exit\(0\)/);
   assert.doesNotMatch(main, /startup\.json/);
   assert.doesNotMatch(`${supervisor}\n${main}`, /cortex-service/);
+  // N5 cutover: Hub owns native Adapt scheduling + the installed launcher.
+  assert.match(main, /mod adapt_launch;/);
+  assert.match(main, /install_native_adapt_seam/);
+  assert.match(main, /AdaptScheduler::new\(/);
+  const adaptLaunch = readFileSync(new URL("../src-tauri/src/adapt_launch.rs", import.meta.url), "utf8");
+  assert.match(adaptLaunch, /adapt\.cli\.v1/);
+  assert.match(adaptLaunch, /\["adapt", verb\.as_str\(\)\]/);
+  assert.match(adaptLaunch, /adapt\.schedule\.v1/);
+  assert.doesNotMatch(adaptLaunch, /python3|PYTHONPATH/);
+  assert.doesNotMatch(adaptLaunch, /run_incremental_multiwriter/);
   const probes = readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8");
   assert.match(probes, /serviceId: "membrane-local-v1"/);
   assert.match(probes, /MEMBRANE_PORT/);

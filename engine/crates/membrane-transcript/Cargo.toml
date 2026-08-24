@@ -1,0 +1,15 @@
+[package]
+name = "membrane-transcript"
+version = "0.1.0"
+edition = "2021"
+license-file.workspace = true
+description = "Deterministic TranscriptEventV1 normalizer for Membrane continuity with native host discovery, raw adapters, stable identities, exact source binding, provenance, & typed errors."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+rusqlite = { version = "0.40.2", features = ["bundled"] }
