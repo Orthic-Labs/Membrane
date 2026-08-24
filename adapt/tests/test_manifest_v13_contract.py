@@ -77,3 +77,60 @@ def test_frozen_v2_manifest_requires_complete_extraction_coverage(tmp_path: Path
     }
     path.write_text(json.dumps(body), encoding="utf-8")
     assert manifest.validate_schema(path)["extraction_coverage"]["complete"] is True
+
+
+def _semantic_body() -> dict:
+    record = {
+        "id": "adapt-workflow-focused-tests-0123456789",
+        "rule": "Always run focused tests before reporting completion.",
+        "category": "workflow",
+        "scope": "workspace",
+        "status": "accepted",
+        "payload_sha256": "a" * 64,
+        "verification_count": 1,
+        "last_verified_at": "2026-08-24T00:00:00Z",
+    }
+    body = {
+        "canonical_pool_sha256": "b" * 64,
+        "records": [record],
+    }
+    receipt = {
+        "contract": manifest.SEMANTIC_VALIDATION_CONTRACT,
+        "complete": True,
+        "independent": True,
+        "validator_run_id": "fresh-validator-1",
+        "validator": "held-out-model",
+        "validated_at": "2026-08-24T00:00:00Z",
+        "canonical_pool_sha256": "b" * 64,
+        "record_results": [{
+            "id": record["id"],
+            "payload_sha256": record["payload_sha256"],
+            "status": "accepted",
+            "verdict": "valid",
+            "reason": "direct evidence supports exact rule",
+        }],
+    }
+    receipt["receipt_sha256"] = manifest.semantic_validation_receipt_sha256(receipt)
+    body["semantic_validation"] = receipt
+    return body
+
+
+def test_semantic_validation_requires_exact_hashed_coverage() -> None:
+    body = _semantic_body()
+    assert manifest.semantic_validation_errors(body) == []
+
+    body["semantic_validation"]["record_results"][0]["payload_sha256"] = "c" * 64
+    assert any("payload mismatch" in error for error in manifest.semantic_validation_errors(body))
+    assert any("receipt hash mismatch" in error for error in manifest.semantic_validation_errors(body))
+
+
+def test_semantic_validation_rejects_unverified_accepted_record() -> None:
+    body = _semantic_body()
+    body["records"][0]["verification_count"] = 0
+    assert any("verification stamp" in error for error in manifest.semantic_validation_errors(body))
+
+
+def test_semantic_validation_is_required_for_nonempty_manifest() -> None:
+    body = _semantic_body()
+    body.pop("semantic_validation")
+    assert manifest.semantic_validation_errors(body) == ["semantic validation receipt is missing"]

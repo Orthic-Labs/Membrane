@@ -251,6 +251,32 @@ def test_verification_claim_without_tool_evidence_clean_when_paired():
     assert cards == []
 
 
+@pytest.mark.parametrize("text", [
+    "The work is built but not live-verified.",
+    "Tests are not passing yet.",
+    "This remains unverified.",
+    "No validation is done.",
+])
+def test_verification_claim_without_tool_evidence_ignores_negated_claims(text):
+    events = [
+        _ev(kind="user_message", text="status?", sequence=1),
+        _ev(kind="assistant_message", text=text, sequence=2),
+    ]
+    assert insights.detect_verification_claim_without_tool_evidence(events) == []
+
+
+def test_positive_claim_after_contrast_is_still_detected():
+    events = [
+        _ev(kind="user_message", text="status?", sequence=1),
+        _ev(
+            kind="assistant_message",
+            text="I did not run the old suite, but the focused regression is passing.",
+            sequence=2,
+        ),
+    ]
+    assert len(insights.detect_verification_claim_without_tool_evidence(events)) == 1
+
+
 # ---------------------------------------------------------------------------
 # 5. ignored_tool_failure
 # ---------------------------------------------------------------------------

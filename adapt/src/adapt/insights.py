@@ -180,14 +180,35 @@ def _compute_card_id(card: "FailureCardV1") -> str:
 
 _RE_VERIFICATION = re.compile(
     r"(?im)\b(?:verified|validated|fixed|fully\s+fixed|tested|confirmed|"
-    r"all\s+set|done|passing|green|works?)\b"
+    r"all\s+set|done|passing|green|works)\b"
 )
+_RE_NEGATED_VERIFICATION_PREFIX = re.compile(
+    r"(?im)\b(?:not|never|no|without|cannot|can't|couldn't|isn't|aren't|"
+    r"wasn't|weren't|hasn't|haven't|hadn't|unverified|unvalidated|untested)\b"
+)
+_RE_CLAUSE_BOUNDARY = re.compile(r"[.!?;\n]|\b(?:but|however|although|yet)\b", re.I)
 _RE_CORRECTION = re.compile(
     r"(?im)\b(?:failed|broken|wrong|missing|not\s+fixed|still\s+fails?|"
     r"actually\s+(?:it|that|this)|no,?\s*that'?s?\s+wrong|"
     r"you\s+(?:missed|broke|skipped)|"
     r"that'?s?\s+not\s+(?:what|right))\b"
 )
+
+
+def _positive_verification_matches(text: str) -> list[re.Match[str]]:
+    """Return completion/verification phrases that are not negated locally."""
+    matches: list[re.Match[str]] = []
+    for match in _RE_VERIFICATION.finditer(text):
+        prefix = text[max(0, match.start() - 80):match.start()]
+        local_clause = _RE_CLAUSE_BOUNDARY.split(prefix)[-1]
+        if _RE_NEGATED_VERIFICATION_PREFIX.search(local_clause):
+            continue
+        matches.append(match)
+    return matches
+
+
+def _has_positive_verification_claim(text: str) -> bool:
+    return bool(_positive_verification_matches(text))
 _RE_FRUSTRATION = re.compile(
     r"(?im)\b(?:frustrat\w*|annoying|annoyed|come\s+on|why\s+(?:is|did|"
     r"aren't|doesn't|don't)|ugh|argh|sigh|tired\s+of|wtf|again\??|"
@@ -425,7 +446,7 @@ def detect_claimed_verified_then_corrected(
         if ev.get("kind") != "assistant_message":
             continue
         text = str(ev.get("text") or "")
-        if not (_RE_VERIFICATION.search(text) and _RE_CORRECTION.search(text)):
+        if not (_has_positive_verification_claim(text) and _RE_CORRECTION.search(text)):
             continue
         # Both verbs in the same message is a strong signal. Within
         # confidence, we look at the next few user messages too — if the
@@ -612,7 +633,7 @@ def detect_verification_claim_without_tool_evidence(
         if ev.get("kind") != "assistant_message":
             continue
         text = str(ev.get("text") or "")
-        if not _RE_VERIFICATION.search(text):
+        if not _has_positive_verification_claim(text):
             continue
         # Walk back over the last few events; if any of them were a
         # tool_call paired with a result, the claim has a receipt.
@@ -675,7 +696,7 @@ def detect_ignored_tool_failure(events: list[dict[str, Any]]) -> list[FailureCar
                 corrective_tool_call_seen = True
             if (
                 nxt.get("kind") == "assistant_message"
-                and _RE_VERIFICATION.search(str(nxt.get("text") or ""))
+                and _has_positive_verification_claim(str(nxt.get("text") or ""))
                 and not corrective_tool_call_seen
             ):
                 ignored = True
@@ -727,7 +748,7 @@ def detect_degraded_provider_treated_as_success(
                 continue
             ntext = str(nxt.get("text") or "")
             if (
-                _RE_VERIFICATION.search(ntext)
+                _has_positive_verification_claim(ntext)
                 and not _RE_DEGRADED.search(ntext)
             ):
                 cards.append(
@@ -1156,7 +1177,7 @@ def detect_cross_agent_repeats(events: list[dict[str, Any]]) -> list[FailureCard
         if ev.get("kind") != "assistant_message":
             continue
         text = str(ev.get("text") or "")
-        for m in _RE_VERIFICATION.finditer(text):
+        for m in _positive_verification_matches(text):
             key = m.group(0).casefold()
             seen[key] += 1
             related[key].append(ev)
@@ -1381,7 +1402,7 @@ _PENALTY_BASES = {"info": 2, "low": 5, "medium": 12, "high": 25, "critical": 40}
 
 def _terminal_verification(events: list[dict[str, Any]]) -> bool:
     for index, event in enumerate(events):
-        if event.get("kind") != "assistant_message" or not _RE_VERIFICATION.search(str(event.get("text") or "")):
+        if event.get("kind") != "assistant_message" or not _has_positive_verification_claim(str(event.get("text") or "")):
             continue
         session_id = event.get("sessionId")
         receipt = any(

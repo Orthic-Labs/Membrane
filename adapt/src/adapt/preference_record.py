@@ -667,6 +667,10 @@ def to_cortex_content(record: PreferenceRecord) -> str:
         "**Evidence contexts:** " + json.dumps(list(record.evidence_contexts), sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
         if record.evidence_contexts else ""
     )
+    verification_line = (
+        f"**Verification:** count={record.verification_count}, "
+        f"last_verified_at={record.last_verified_at or 'never'}\n"
+    )
     return (
         f"**[adapt/{record.category}]** — {record.rule} "
         f"Confidence: {record.confidence:.2f} "
@@ -674,6 +678,8 @@ def to_cortex_content(record: PreferenceRecord) -> str:
         f"{str(record.needs_review).lower()}, updated {today})\n"
         f"**Why:** preference record; id={record.id}, evidence_count={record.evidence_count}\n"
         f"**Record:** type={record.record_type}, authority_effect={record.authority_effect}\n"
+        f"**Lifecycle:** state={record.lifecycle_state}\n"
+        f"{verification_line}"
         f"{aliases}"
         f"{machine_line}"
         f"{contexts_line}"

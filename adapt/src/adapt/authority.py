@@ -46,6 +46,16 @@ _PERMISSION_PATTERNS = (
     re.compile(r"\b(?:edit|modify|deploy)\b.+\bproduction\b.+\b(?:directly|ssh)\b"),
     re.compile(r"\b(?:may|can)\b.+\bwithout (?:approval|permission|review)\b"),
 )
+# Approval-bypass rules often start with a restrictive modal ("never require
+# approval", "do not stop to ask").  Classify these explicit overrides before
+# the broad restrictive surface-form check, while leaving safety rules such as
+# "never deploy without approval" restrictive.
+_PERMISSION_OVERRIDE_PATTERNS = (
+    re.compile(r"^(?:never|do not|don't)\b.{0,50}\b(?:require|request|ask for|stop to ask for)\b.{0,30}\b(?:approval|permission|review)\b"),
+    re.compile(r"\b(?:no need|required not)\b.{0,30}\b(?:approval|permission|review)\b"),
+    re.compile(r"\b(?:all|any)\b.{0,30}\b(?:work|action|change|task)s?\b.{0,20}\bpre[- ]?approved\b"),
+    re.compile(r"\b(?:user )?intent\b.{0,30}\b(?:overrides?|bypasses?)\b.{0,20}\b(?:approval|permission|review|gate)\b"),
+)
 # Insecure *coding taste* — a distinct class from permission expansion. A rule can leave every
 # approval gate intact and still teach the agent to write unsafe code. Mined preferences are the
 # wrong place for these regardless of how often a transcript appears to endorse them.
@@ -179,6 +189,8 @@ def classify_authority_effect(text: str) -> str:
     # restrictive by surface form ("never ...") while being exactly the rule we must refuse.
     if any(pattern.search(normalized) for pattern in _INSECURE_PATTERNS):
         return "security_weakening"
+    if any(pattern.search(normalized) for pattern in _PERMISSION_OVERRIDE_PATTERNS):
+        return "permission_expanding"
     if _RESTRICTIVE_RE.search(normalized):
         return "restrictive"
     if any(pattern.search(normalized) for pattern in _PERMISSION_PATTERNS):

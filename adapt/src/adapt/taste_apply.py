@@ -70,7 +70,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     Gate 1a contract:
       - manifest schema-valid + payload_sha256-matches content
       - batch_id must match a journal discovered entry with the same sessions
-      - only ``accepted`` records are written
+      - only independently semantically validated ``accepted`` records are written
       - state advances only after the authenticated batch receipt is complete
       - each Cortex chunk is atomic and replayable; state advances after every chunk completes
     """
@@ -193,6 +193,10 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 prepared,
                 manifest_batch_id=batch_id,
                 installation_id=installation_id,
+                semantic_validation=m["semantic_validation"],
+                record_payload_sha256s={
+                    rec["id"]: rec["payload_sha256"] for rec in accepted
+                },
             )
             if batch_receipt.get("complete") is not True:
                 raise adapt_persistence.AdaptPersistenceError("Cortex batch receipt is incomplete")

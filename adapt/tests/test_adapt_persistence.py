@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import urllib.error
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from adapt import adapt_persistence as persistence
+from adapt import manifest
 from adapt import preference_record
 
 
@@ -34,10 +36,24 @@ def _record(
     record_id: str = "adapt-tooling-reviewed-1111111111",
     scope: str = "D--Claude",
 ):
+    evidence_text = "Always preserve the reviewed preference identity during apply."
+    evidence_context = {
+        "sourceEventId": "event-user-1",
+        "evidenceText": evidence_text,
+        "contextEvents": [{
+            "eventId": "event-user-1",
+            "kind": "user_message",
+            "role": "user",
+            "provenance": "external_user",
+            "authorityEligible": True,
+            "isSource": True,
+            "text": evidence_text,
+        }],
+    }
     return preference_record.from_manifest_candidate(
         {
             "id": record_id,
-            "rule": "Always preserve the reviewed preference identity during apply.",
+            "rule": evidence_text,
             "category": "tooling",
             "scope": scope,
             "record_type": "standing_preference",
@@ -45,9 +61,40 @@ def _record(
             "confidence": 0.8,
             "evidence_count": 2,
             "source_ids": [SOURCE],
+            "verification_count": 1,
+            "last_verified_at": "2026-08-24T00:00:00Z",
+            "evidenceContexts": [evidence_context],
         },
         now="2026-07-20T10:00:00Z",
     )
+
+
+def _semantic_binding(records) -> dict:
+    payloads = {
+        record.id: hashlib.sha256(record.id.encode("utf-8")).hexdigest()
+        for record in records
+    }
+    receipt = {
+        "contract": manifest.SEMANTIC_VALIDATION_CONTRACT,
+        "complete": True,
+        "independent": True,
+        "validator_run_id": "test-held-out-validator",
+        "validator": "test-model",
+        "validated_at": "2026-08-24T00:00:00Z",
+        "canonical_pool_sha256": "b" * 64,
+        "record_results": [{
+            "id": record.id,
+            "payload_sha256": payloads[record.id],
+            "status": "accepted",
+            "verdict": "valid",
+            "reason": "fixture direct evidence supports exact rule",
+        } for record in records],
+    }
+    receipt["receipt_sha256"] = manifest.semantic_validation_receipt_sha256(receipt)
+    return {
+        "semantic_validation": receipt,
+        "record_payload_sha256s": payloads,
+    }
 
 
 def test_small_batch_apply_is_one_authenticated_attributed_request(
@@ -79,12 +126,14 @@ def test_small_batch_apply_is_one_authenticated_attributed_request(
         )
 
     monkeypatch.setattr(persistence.urllib.request, "urlopen", fake_urlopen)
+    records = [_record()]
     receipt = persistence.persist_manifest_batch(
-        [_record()],
+        records,
         manifest_batch_id="20260720T100000-abcdef",
         installation_id=INSTALLATION,
         token_file=token,
         base_url="http://127.0.0.1:8765",
+        **_semantic_binding(records),
     )
 
     assert receipt["complete"] is True
@@ -97,6 +146,8 @@ def test_small_batch_apply_is_one_authenticated_attributed_request(
     assert item["producer"] == "adapt"
     assert item["record_type"] == "standing_preference"
     assert item["client"] == "codex"
+    assert item["confidence"] == 0.8
+    assert "semantic verification count=1" in item["confidenceBasis"]
     assert INSTALLATION in item["session_id"]
 
 
@@ -130,6 +181,7 @@ def test_large_batch_is_partitioned_into_replayable_bounded_requests(
     receipt = persistence.persist_manifest_batch(
         records, manifest_batch_id="large-batch", installation_id=INSTALLATION,
         token_file=token, base_url="http://127.0.0.1:8765",
+        **_semantic_binding(records),
     )
 
     assert len(bodies) == 2
@@ -177,6 +229,7 @@ def test_batch_request_is_stable_for_identical_manifest(monkeypatch, tmp_path: P
         "installation_id": INSTALLATION,
         "token_file": token,
         "base_url": "http://127.0.0.1:8765",
+        **_semantic_binding([_record()]),
     }
     persistence.persist_manifest_batch([_record()], **kwargs)
     persistence.persist_manifest_batch([_record()], **kwargs)
@@ -203,12 +256,14 @@ def test_batch_receipt_compares_service_normalized_drive_scope(monkeypatch, tmp_
         })
 
     monkeypatch.setattr(persistence.urllib.request, "urlopen", fake_urlopen)
+    records = [_record(scope="d-claude-coderight")]
     receipt = persistence.persist_manifest_batch(
-        [_record(scope="d-claude-coderight")],
+        records,
         manifest_batch_id="20260720T100000-normalized",
         installation_id=INSTALLATION,
         token_file=token,
         base_url="http://127.0.0.1:8765",
+        **_semantic_binding(records),
     )
 
     assert receipt["complete"] is True
@@ -232,12 +287,14 @@ def test_batch_apply_refuses_incomplete_receipt(tmp_path: Path, monkeypatch) -> 
     )
 
     with pytest.raises(persistence.AdaptPersistenceError, match="receipt"):
+        records = [_record()]
         persistence.persist_manifest_batch(
-            [_record()],
+            records,
             manifest_batch_id="20260720T100000-abcdef",
             installation_id=INSTALLATION,
             token_file=token,
             base_url="http://127.0.0.1:8765",
+            **_semantic_binding(records),
         )
 
 
@@ -254,10 +311,12 @@ def test_batch_apply_surfaces_bounded_http_error_detail(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(persistence.urllib.request, "urlopen", rejected)
     with pytest.raises(persistence.AdaptPersistenceError, match="invalid memory batch"):
+        records = [_record()]
         persistence.persist_manifest_batch(
-            [_record()], manifest_batch_id="batch-http-error",
+            records, manifest_batch_id="batch-http-error",
             installation_id=INSTALLATION, token_file=token,
             base_url="http://127.0.0.1:8765",
+            **_semantic_binding(records),
         )
 
 
@@ -266,3 +325,55 @@ def test_reviewed_manifest_id_is_not_rederived() -> None:
     record = _record(reviewed_id)
 
     assert record.id == reviewed_id
+
+
+def test_persistence_refuses_unverified_record() -> None:
+    record = preference_record.from_manifest_candidate(
+        {
+            "id": "adapt-tooling-unverified-2222222222",
+            "rule": "Always retain semantic verification before persistence.",
+            "category": "tooling",
+            "scope": "D--Claude",
+            "record_type": "standing_preference",
+            "authority_effect": "neutral",
+            "confidence": 0.8,
+            "evidence_count": 1,
+            "source_ids": [SOURCE],
+        },
+        now="2026-08-24T00:00:00Z",
+    )
+    with pytest.raises(persistence.AdaptPersistenceError, match="unverified"):
+        persistence.persist_manifest_batch(
+            [record], manifest_batch_id="unverified", installation_id=INSTALLATION
+        )
+
+
+def test_persistence_refuses_missing_or_mismatched_semantic_binding() -> None:
+    record = _record()
+    with pytest.raises(persistence.AdaptPersistenceError, match="receipt is required"):
+        persistence.persist_manifest_batch(
+            [record], manifest_batch_id="missing-binding", installation_id=INSTALLATION
+        )
+
+    binding = _semantic_binding([record])
+    binding["record_payload_sha256s"][record.id] = "c" * 64
+    with pytest.raises(persistence.AdaptPersistenceError, match="exact held-out"):
+        persistence.persist_manifest_batch(
+            [record], manifest_batch_id="mismatch-binding", installation_id=INSTALLATION,
+            **binding,
+        )
+
+
+def test_persistence_refuses_receipt_bound_record_without_direct_user_evidence() -> None:
+    record = preference_record.from_manifest_candidate(
+        {
+            **_record().to_dict(),
+            "evidenceContexts": [],
+        },
+        now="2026-08-24T00:00:00Z",
+    )
+    with pytest.raises(persistence.AdaptPersistenceError, match="direct user evidence"):
+        persistence.persist_manifest_batch(
+            [record], manifest_batch_id="missing-evidence", installation_id=INSTALLATION,
+            **_semantic_binding([record]),
+        )

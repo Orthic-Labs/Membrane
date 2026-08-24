@@ -195,7 +195,8 @@ def persist_learning(
     base_url: str,
     installation_id: str,
 ) -> dict:
-    """Persist only an explicitly approved event-learning proposal."""
+    """Retired event persistence; direct transcripts use held-out manifest apply."""
+    raise AdaptLearningError("held-out-semantic-validation-required: use direct transcripts")
     if not learning.approved:
         raise AdaptLearningError("proposal-not-approved")
     receipt = adapt_persistence.persist_manifest_batch(

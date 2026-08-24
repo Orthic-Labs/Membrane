@@ -83,6 +83,36 @@
     },
     "created_at": { "type": "string" },
     "generator": { "type": "string" },
+    "semantic_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "complete", "independent", "validator_run_id", "validator", "validated_at", "canonical_pool_sha256", "record_results", "receipt_sha256"],
+      "properties": {
+        "contract": {"const": "direct-evidence-global-pool-v1"},
+        "complete": {"const": true},
+        "independent": {"const": true},
+        "validator_run_id": {"type": "string", "minLength": 1},
+        "validator": {"type": "string", "minLength": 1},
+        "validated_at": {"type": "string", "minLength": 1},
+        "canonical_pool_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "record_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "payload_sha256", "status", "verdict", "reason"],
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "payload_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "status": {"enum": ["accepted", "rejected"]},
+              "verdict": {"enum": ["valid", "invalid"]},
+              "reason": {"type": "string"}
+            }
+          }
+        },
+        "receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
     "authority_manifest": {
       "type": "object",
       "required": ["schema_version", "sources", "directives", "forbidden_scopes", "manifest_sha256"],
@@ -239,7 +269,7 @@
                 "sourceKind": {"const": "user_message"}, "sourceRole": {"const": "user"}, "sourceClassification": {"type": "string", "minLength": 1},
                 "sourceFlags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}},
                 "evidenceId": {"type": "string", "minLength": 1}, "evidenceText": {"type": "string", "minLength": 1},
-                "contextEvents": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource"], "properties": {"eventId": {"type": "string"}, "kind": {"type": "string"}, "role": {"type": ["string", "null"]}, "classification": {"type": "string"}, "flags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "text": {"type": "string"}, "truncated": {"type": "boolean"}, "isSource": {"type": "boolean"}, "provenance": {"enum": ["external_user", "assistant", "developer", "internal_context", "tool_result", "subagent"]}, "sourceRows": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "rowIndex", "byteStart", "byteEnd", "projection"], "properties": {"eventId": {"type": "string"}, "rowIndex": {"type": "integer", "minimum": 0}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "projection": {"type": "string"}}}}, "authorityEligible": {"type": "boolean"}}}}
+                "contextEvents": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource", "provenance", "sourceRows", "authorityEligible"], "properties": {"eventId": {"type": "string"}, "kind": {"type": "string"}, "role": {"type": ["string", "null"]}, "classification": {"type": "string"}, "flags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "text": {"type": "string"}, "truncated": {"type": "boolean"}, "isSource": {"type": "boolean"}, "provenance": {"enum": ["external_user", "assistant", "developer", "internal_context", "tool_result", "subagent"]}, "sourceRows": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "rowIndex", "byteStart", "byteEnd", "projection"], "properties": {"eventId": {"type": "string"}, "rowIndex": {"type": "integer", "minimum": 0}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "projection": {"type": "string"}}}}, "authorityEligible": {"type": "boolean"}}}}
               }
             }
           },

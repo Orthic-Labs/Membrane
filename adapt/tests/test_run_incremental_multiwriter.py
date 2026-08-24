@@ -74,6 +74,9 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
         elif Path(argv[1]).name == "adjudicate_manifest.py":
             path = Path(argv[argv.index("--out") + 1])
             path.write_text(json.dumps(_manifest([_record("accepted")])), encoding="utf-8")
+        elif Path(argv[1]).name == "semantic_validate_manifest.py":
+            path = Path(argv[argv.index("--out") + 1])
+            path.write_text(json.dumps(_manifest([_record("accepted")])), encoding="utf-8")
         return Result()
 
     summary = runner.run_incremental(
@@ -90,7 +93,7 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
         client_inventory_provider=_client_inventory,
     )
 
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert calls[0][1].endswith("adapt.py")
     assert calls[0][2:4] == ["--incremental", "--manifest"]
     assert "--limit" in calls[0]
@@ -100,13 +103,16 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
     assert calls[0][calls[0].index("--lane") + 1] == "minimax"
     assert "--allow-external-lane" in calls[0]
     assert calls[1][1].endswith("adjudicate_manifest.py")
-    assert calls[2][1].endswith("adapt.py")
-    assert calls[2][2] == "--apply-from-manifest"
-    assert "--apply" not in calls[2]
+    assert calls[2][1].endswith("semantic_validate_manifest.py")
+    assert calls[2][calls[2].index("--lane") + 1] == "minimax"
+    assert calls[3][1].endswith("adapt.py")
+    assert calls[3][2] == "--apply-from-manifest"
+    assert "--apply" not in calls[3]
     assert validations == [tmp_path / "receipt.json", tmp_path / "receipt.json"]
     assert summary["outcome"] == "applied"
     assert summary["candidate_counts"] == {"accepted": 1, "pending": 0, "rejected": 0, "total": 1}
     assert summary["adjudication_provider_calls"] is True
+    assert summary["semantic_provider_calls"] is True
     by_client = {row["client"]: row for row in summary["client_accounting"]}
     assert by_client["codex"]["processed"] == 1
     assert by_client["codex"]["accepted"] == 1
@@ -127,6 +133,10 @@ def test_zero_or_all_rejected_skips_adjudication_provider_and_still_applies(tmp_
             Path(argv[argv.index("--manifest") + 1]).write_text(
                 json.dumps(_manifest(records)), encoding="utf-8"
             )
+        if Path(argv[1]).name == "semantic_validate_manifest.py":
+            Path(argv[argv.index("--out") + 1]).write_text(
+                json.dumps(_manifest(records)), encoding="utf-8"
+            )
         return Result()
 
     summary = runner.run_incremental(
@@ -137,10 +147,11 @@ def test_zero_or_all_rejected_skips_adjudication_provider_and_still_applies(tmp_
         receipt_validator=lambda _path: None,
     )
 
-    assert len(calls) == 2
+    assert len(calls) == (2 if not records else 3)
     assert not any(Path(call[1]).name == "adjudicate_manifest.py" for call in calls)
     assert calls[-1][2] == "--apply-from-manifest"
     assert summary["adjudication_provider_calls"] is False
+    assert summary["semantic_provider_calls"] is False
     assert summary["outcome"] == "applied"
 
 

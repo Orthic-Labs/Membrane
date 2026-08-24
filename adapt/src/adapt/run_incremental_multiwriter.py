@@ -272,11 +272,15 @@ def run_incremental(
     workdir = create_workdir(work_root)
     pending_path = workdir / "pending.json"
     resolved_path = workdir / "resolved.json"
+    verified_path = workdir / "verified.json"
     audit_path = workdir / "adjudication-audit.json"
     calls_dir = workdir / "calls"
+    semantic_audit_path = workdir / "semantic-audit.json"
+    semantic_calls_dir = workdir / "semantic-calls"
     phase_receipts: list[dict[str, Any]] = []
     adapt_path = PRODUCT_ROOT / "adapt.py"
     adjudicate_path = ADAPT_DIR / "adjudicate_manifest.py"
+    semantic_validate_path = ADAPT_DIR / "semantic_validate_manifest.py"
 
     def record_failure(
         failed_phase: str,
@@ -394,6 +398,46 @@ def run_incremental(
     if counts["pending"]:
         raise RunnerError("resolved Adapt manifest still contains pending candidates")
 
+    semantic_provider_calls = counts["accepted"] > 0
+    if counts["total"]:
+        semantic_argv = [
+            sys.executable,
+            str(semantic_validate_path),
+            "--manifest",
+            str(resolved_path),
+            "--out",
+            str(verified_path),
+            "--audit",
+            str(semantic_audit_path),
+            "--calls-dir",
+            str(semantic_calls_dir),
+            "--lane",
+            lane,
+        ]
+        if resume:
+            semantic_argv.append("--resume")
+        try:
+            _invoke(
+                "semantic validation",
+                semantic_argv,
+                command_runner=command_runner,
+                phase_receipts=phase_receipts,
+            )
+        except RunnerError:
+            record_failure(
+                "semantic_validation",
+                manifest=resolved,
+                counts=counts,
+                provider_calls=provider_calls,
+            )
+            raise
+    else:
+        shutil.copyfile(resolved_path, verified_path)
+    verified = _load_manifest(verified_path)
+    counts = _candidate_counts(verified)
+    if counts["pending"]:
+        raise RunnerError("semantically verified Adapt manifest contains pending candidates")
+
     # Re-check every receipt binding after model work and immediately before mutation.
     try:
         pre_apply_validator(receipt)
@@ -412,7 +456,7 @@ def run_incremental(
                 sys.executable,
                 str(adapt_path),
                 "--apply-from-manifest",
-                str(resolved_path),
+                str(verified_path),
             ],
             command_runner=command_runner,
             phase_receipts=phase_receipts,
@@ -420,7 +464,7 @@ def run_incremental(
     except RunnerError:
         record_failure(
             "manifest_apply",
-            manifest=resolved,
+            manifest=verified,
             counts=counts,
             provider_calls=provider_calls,
             persistence_outcome="failed",
@@ -432,8 +476,9 @@ def run_incremental(
         "outcome": "applied",
         "candidate_counts": counts,
         "adjudication_provider_calls": provider_calls,
+        "semantic_provider_calls": semantic_provider_calls,
         "client_accounting": _client_accounting(
-            discovery, resolved, source_clients, persistence_outcome="success"
+            discovery, verified, source_clients, persistence_outcome="success"
         ),
         "phase_receipts": phase_receipts,
     }
@@ -453,7 +498,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--restart-stale", action="store_true")
-    parser.add_argument("--lane", choices=("local", "minimax"), default="local")
+    parser.add_argument("--lane", choices=("local", "minimax", "opencode", "pi"), default="local")
     parser.add_argument("--allow-external-lane", action="store_true")
     args = parser.parse_args(argv)
     try:

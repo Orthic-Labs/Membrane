@@ -32,6 +32,11 @@ _RECORD_LINE = re.compile(
     r"^\*\*Record:\*\* type=(?P<record_type>[a-z_]+), "
     r"authority_effect=(?P<authority_effect>[a-z_]+)$"
 )
+_LIFECYCLE_LINE = re.compile(r"^\*\*Lifecycle:\*\* state=(?P<state>[a-z_]+)$")
+_VERIFICATION_LINE = re.compile(
+    r"^\*\*Verification:\*\* count=(?P<count>\d+), last_verified_at=(?P<stamp>.+)$"
+)
+_EVIDENCE_CONTEXTS_PREFIX = "**Evidence contexts:** "
 
 
 def _uuid4(value: object) -> str:
@@ -72,6 +77,7 @@ def _parse_rule_row(
     created_at: str,
     updated_at: str,
     record_type: str,
+    lifecycle_state: str,
 ) -> tuple[str, dict[str, Any]] | None:
     name = memory_id[len(scope) + 1 :] if memory_id.startswith(f"{scope}/") else memory_id
     if record_type == "insight_report":
@@ -93,6 +99,9 @@ def _parse_rule_row(
     retrieval_aliases: list[str] = []
     authority_effect = "neutral"
     envelope_record_type = record_type
+    evidence_contexts: list[dict[str, Any]] = []
+    verification_count = 0
+    last_verified_at = ""
     for line in content.splitlines()[1:]:
         if line.startswith("**Trigger phrases:** "):
             retrieval_aliases = [
@@ -104,6 +113,28 @@ def _parse_rule_row(
         if record_match is not None:
             envelope_record_type = record_match.group("record_type")
             authority_effect = record_match.group("authority_effect")
+        lifecycle_match = _LIFECYCLE_LINE.fullmatch(line)
+        if lifecycle_match is not None:
+            lifecycle_state = lifecycle_match.group("state")
+        verification_match = _VERIFICATION_LINE.fullmatch(line)
+        if verification_match is not None:
+            verification_count = int(verification_match.group("count"))
+            stamp = verification_match.group("stamp").strip()
+            last_verified_at = "" if stamp == "never" else stamp
+        if line.startswith(_EVIDENCE_CONTEXTS_PREFIX):
+            try:
+                parsed_contexts = json.loads(line.removeprefix(_EVIDENCE_CONTEXTS_PREFIX))
+            except json.JSONDecodeError as exc:
+                raise CrossMachineAdaptError(
+                    f"canonical Adapt row has invalid evidence contexts: {name}"
+                ) from exc
+            if not isinstance(parsed_contexts, list) or not all(
+                isinstance(value, dict) for value in parsed_contexts
+            ):
+                raise CrossMachineAdaptError(
+                    f"canonical Adapt row has invalid evidence contexts: {name}"
+                )
+            evidence_contexts = parsed_contexts
     return name, {
         "name": name,
         "id": name,
@@ -119,6 +150,10 @@ def _parse_rule_row(
         "record_type": envelope_record_type,
         "authority_effect": authority_effect,
         "retrieval_aliases": retrieval_aliases,
+        "evidenceContexts": evidence_contexts,
+        "lifecycle_state": lifecycle_state,
+        "verification_count": verification_count,
+        "last_verified_at": last_verified_at,
     }
 
 
@@ -136,8 +171,13 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
             if "record_type" in columns
             else "'operational_playbook' AS record_type"
         )
+        lifecycle_state = (
+            "lifecycle_state"
+            if "lifecycle_state" in columns
+            else "'active' AS lifecycle_state"
+        )
         rows = conn.execute(
-            f"SELECT id, scope_id, content, source_ids, created_at, updated_at, {record_type} "
+            f"SELECT id, scope_id, content, source_ids, created_at, updated_at, {record_type}, {lifecycle_state} "
             "FROM memories WHERE id LIKE '%/adapt-%' OR id LIKE 'adapt-%' ORDER BY id"
         ).fetchall()
     except sqlite3.Error as exc:
@@ -188,6 +228,9 @@ def canonical_pool_sha256(rules: dict[str, dict[str, Any]]) -> str:
             "authority_effect": rule.get("authority_effect", "neutral"),
             "retrieval_aliases": list(rule.get("retrieval_aliases") or []),
             "source_ids": sorted(rule.get("source_ids") or []),
+            "lifecycle_state": rule.get("lifecycle_state", "active"),
+            "verification_count": int(rule.get("verification_count", 0)),
+            "last_verified_at": rule.get("last_verified_at", ""),
         })
     rows.sort(key=lambda row: (row["id"], row["scope"]))
     canonical = json.dumps(

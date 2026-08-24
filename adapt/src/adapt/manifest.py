@@ -131,6 +131,67 @@ def payload_sha256(record: dict) -> str:
     ).hexdigest()
 
 
+SEMANTIC_VALIDATION_CONTRACT = "direct-evidence-global-pool-v1"
+
+
+def semantic_validation_receipt_sha256(receipt: dict) -> str:
+    """Hash semantic receipt independently from surrounding manifest."""
+    payload = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def semantic_validation_errors(raw: dict) -> list[str]:
+    """Validate exact, held-out semantic coverage for every decided record."""
+    records = raw.get("records") or []
+    if not records:
+        return []
+    receipt = raw.get("semantic_validation")
+    if not isinstance(receipt, dict):
+        return ["semantic validation receipt is missing"]
+    errors: list[str] = []
+    if receipt.get("contract") != SEMANTIC_VALIDATION_CONTRACT:
+        errors.append("semantic validation contract is unsupported")
+    if receipt.get("complete") is not True or receipt.get("independent") is not True:
+        errors.append("semantic validation must be complete and independent")
+    if receipt.get("canonical_pool_sha256") != raw.get("canonical_pool_sha256"):
+        errors.append("semantic validation canonical pool does not match manifest")
+    if receipt.get("receipt_sha256") != semantic_validation_receipt_sha256(receipt):
+        errors.append("semantic validation receipt hash mismatch")
+
+    results = receipt.get("record_results") or []
+    by_id: dict[str, dict] = {}
+    duplicate_ids: set[str] = set()
+    for result in results:
+        record_id = str(result.get("id") or "")
+        if record_id in by_id:
+            duplicate_ids.add(record_id)
+        by_id[record_id] = result
+    record_ids = {str(record.get("id") or "") for record in records}
+    if duplicate_ids or set(by_id) != record_ids:
+        errors.append("semantic validation coverage does not exactly match manifest records")
+    for record in records:
+        record_id = record["id"]
+        result = by_id.get(record_id)
+        if not result:
+            continue
+        if result.get("payload_sha256") != record.get("payload_sha256"):
+            errors.append(f"semantic validation payload mismatch: {record_id}")
+        if result.get("status") != record.get("status"):
+            errors.append(f"semantic validation status mismatch: {record_id}")
+        if record.get("status") == "accepted":
+            if result.get("verdict") != "valid":
+                errors.append(f"accepted record lacks valid semantic verdict: {record_id}")
+            if int(record.get("verification_count") or 0) < 1 or not str(
+                record.get("last_verified_at") or ""
+            ).strip():
+                errors.append(f"accepted record lacks verification stamp: {record_id}")
+        elif result.get("verdict") != "invalid":
+            errors.append(f"rejected record lacks invalid semantic verdict: {record_id}")
+    return errors
+
+
 # ----- Validation -----
 
 class ManifestError(ValueError):
@@ -202,6 +263,16 @@ def validate_schema(path: Path) -> dict:
                 if len(source_events) != 1:
                     raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} evidence context must contain exactly one source event")
                 source = source_events[0]
+                if (
+                    source.get("provenance") != "external_user"
+                    or source.get("kind") != "user_message"
+                    or source.get("role") != "user"
+                    or source.get("authorityEligible") is not True
+                ):
+                    raise ManifestError(
+                        f"manifest record {rec.get('id', '<unknown>')} evidence source "
+                        "must be an authority-eligible external user message"
+                    )
                 expected = {
                     "eventId": context["sourceEventId"], "kind": context["sourceKind"],
                     "role": context["sourceRole"], "classification": context["sourceClassification"],
@@ -258,6 +329,9 @@ def apply_time_validate(path: Path) -> dict:
             "manifest contains status='pending'; resolve every record "
             "to accepted/rejected before applying"
         )
+    semantic_errors = semantic_validation_errors(raw)
+    if semantic_errors:
+        raise ManifestError("; ".join(semantic_errors))
     return raw
 
 

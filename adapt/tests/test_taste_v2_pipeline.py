@@ -172,6 +172,13 @@ def test_real_extracted_candidate_schema_round_trip(tmp_path: Path) -> None:
     path.write_text(json.dumps(malformed), encoding="utf-8")
     with pytest.raises(manifest.ManifestError, match="source mismatch: text"):
         manifest.validate_schema(path)
+    malformed = copy.deepcopy(body)
+    source = next(event for event in malformed["records"][0]["evidenceContexts"][0]["contextEvents"] if event["isSource"])
+    source["provenance"] = "assistant"
+    source["authorityEligible"] = False
+    path.write_text(json.dumps(malformed), encoding="utf-8")
+    with pytest.raises(manifest.ManifestError, match="authority-eligible external user"):
+        manifest.validate_schema(path)
 
 def test_cli_manifest_writer_quarantines_unsupported_via_select_sources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

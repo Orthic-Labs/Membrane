@@ -112,6 +112,8 @@ def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Pa
     assert rule["record_type"] == "standing_preference"
     assert rule["authority_effect"] == "neutral"
     assert rule["retrieval_aliases"] == []
+    assert rule["lifecycle_state"] == "active"
+    assert rule["verification_count"] == 0
 
 
 def test_canonical_rule_pool_supports_live_schema_without_record_type(tmp_path: Path) -> None:
@@ -175,10 +177,12 @@ def test_pool_digest_is_order_independent_and_changes_with_canonical_content() -
     reordered = {"b": first["b"], "a": first["a"]}
     changed = {**first, "b": {**first["b"], "rule": "changed"}}
     changed_confidence = {**first, "b": {**first["b"], "confidence": 0.9}}
+    changed_lifecycle = {**first, "b": {**first["b"], "lifecycle_state": "superseded"}}
 
     assert cm.canonical_pool_sha256(first) == cm.canonical_pool_sha256(reordered)
     assert cm.canonical_pool_sha256(first) != cm.canonical_pool_sha256(changed)
     assert cm.canonical_pool_sha256(first) != cm.canonical_pool_sha256(changed_confidence)
+    assert cm.canonical_pool_sha256(first) != cm.canonical_pool_sha256(changed_lifecycle)
 
 
 def test_multiwriter_apply_refuses_wrong_installation_or_stale_pool() -> None:
