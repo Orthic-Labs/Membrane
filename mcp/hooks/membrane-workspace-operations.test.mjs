@@ -344,3 +344,73 @@ test("observeMutation binds the workspace to its canonical root before registeri
   assert.equal(calls[1][1].projectRoot, root, "open must bind the exact canonical project root");
   assert.equal(calls[1][1].epoch, undefined, "open carries identity only");
 });
+
+test("observeMutation handles Delete File and invalidates old clearance even when hashes missing", async () => {
+  const { root } = fenceFixture();
+  // Simulate an existing cleared epoch 5
+  const toDelete = join(root, "src", "obsolete.ts");
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(toDelete, "export const x=1;\n", "utf8");
+  // Delete the file before observation to simulate unreadable/deleted
+  const { unlinkSync: rm } = await import("node:fs");
+  rm(toDelete);
+  const calls = [];
+  let registeredEpoch = null;
+  const ops = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path, options) => {
+      calls.push([path, options?.body ?? null]);
+      if (path.includes("/workspace/status")) return { ok: true, body: { latestSealedEpoch: 5 } };
+      if (path.includes("/workspace/open")) return { ok: true, body: {} };
+      if (path.includes("/registerObserved")) {
+        registeredEpoch = options.body.epoch;
+        return { ok: true, body: { observedEpoch: registeredEpoch.epoch } };
+      }
+      return { ok: false, status: 404, error: { code: "unexpected", detail: path } };
+    },
+  });
+  const result = await dispatchMembraneHookEvent(
+    { event: "PostToolUse", session_id: "s", tool_name: "apply_patch", tool_input: { patch: "*** Begin Patch\n*** Delete File: src/obsolete.ts\n*** End Patch" } },
+    ops,
+  );
+  const out = result.results.find(({ id }) => id === "membrane.diagnostics-observe").output;
+  // Deletion must still register a newer epoch (6) even though file now unreadable and hashes empty;
+  // it must not be skipped and must not preserve old clean state.
+  assert.equal(out.state, "available");
+  assert.equal(out.reason, "mutation_observed");
+  assert.ok(registeredEpoch, "registerObserved must be called");
+  assert.equal(registeredEpoch.epoch, 6);
+  assert.equal(registeredEpoch.parentEpoch, 5);
+  assert.deepEqual(registeredEpoch.changedPaths, ["src/obsolete.ts"]);
+  // hashes will be empty (file deleted) but epoch still carries changedPaths, so old clearance cannot be inherited
+  assert.equal(registeredEpoch.changedFileHashes.length, 0);
+  const paths = calls.map(([p]) => p.split("?")[0]);
+  assert.ok(paths.includes("/diagnostics/mutation/registerObserved"));
+});
+
+test("observeMutation stops when workspace.open is non-OK and does not call registerObserved", async () => {
+  const { root } = fenceFixture();
+  const file = join(root, "src", "conflict.ts");
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(file, "export {};\n", "utf8");
+  const calls = [];
+  const ops = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path, options) => {
+      calls.push([path, options?.body ?? null]);
+      if (path.includes("/workspace/status")) return { ok: true, body: { latestSealedEpoch: 3 } };
+      if (path.includes("/workspace/open")) return { ok: false, status: 409, error: { code: "workspace_project_root_conflict", detail: "conflict" } };
+      if (path.includes("/registerObserved")) return { ok: true, body: {} };
+      return { ok: false, status: 404, error: { code: "unexpected", detail: path } };
+    },
+  });
+  const result = await dispatchMembraneHookEvent(
+    { event: "PostToolUse", session_id: "s", tool_name: "Edit", tool_input: { file_path: file } },
+    ops,
+  );
+  const out = result.results.find(({ id }) => id === "membrane.diagnostics-observe").output;
+  assert.equal(out.state, "unavailable");
+  assert.equal(out.reason, "workspace_project_root_conflict");
+  const paths = calls.map(([p]) => p.split("?")[0]);
+  assert.deepEqual(paths, ["/diagnostics/workspace/status", "/diagnostics/workspace/open"], "registerObserved must not be called when open is non-OK");
+});

@@ -568,11 +568,13 @@ impl BlueprintLaneInput {
 
     /// Real evidence: current findings plus an exact D0 lane bound to
     /// `sealed_epoch` (design §7.1: only exact generation/hash binding may be
-    /// classified `snapshot_checker_exact`).
+    /// classified `snapshot_checker_exact`). Scope is the touched paths the
+    /// lane actually checked.
     pub fn current(
         generation: String,
         observations: Vec<ObservationV1>,
         sealed_epoch: u64,
+        scope: Vec<String>,
         omissions: Vec<TypedOmission>,
     ) -> Self {
         Self {
@@ -581,7 +583,7 @@ impl BlueprintLaneInput {
             observations,
             lane: Some(CoverageLaneV1 {
                 provider_id: "blueprint-d0".to_string(),
-                scope: Vec::new(),
+                scope,
                 capabilities_covered: vec![
                     CapabilityVocabulary::Syntax,
                     CapabilityVocabulary::RepositoryModuleResolution,
@@ -596,6 +598,23 @@ impl BlueprintLaneInput {
             omissions,
         }
     }
+
+    /// Whether a lane's scope covers every path in the required scope.
+    pub(crate) fn lane_scope_covers_required(lane_scope: &[String], required: &[String]) -> bool {
+        if required.is_empty() {
+            return true;
+        }
+        if lane_scope.is_empty() {
+            return false;
+        }
+        let set: std::collections::HashSet<&str> =
+            lane_scope.iter().map(|s| s.as_str()).collect();
+        required.iter().all(|p| set.contains(p.as_str()))
+    }
+}
+
+pub(crate) fn lane_scope_covers_required(lane_scope: &[String], required: &[String]) -> bool {
+    BlueprintLaneInput::lane_scope_covers_required(lane_scope, required)
 }
 
 /// Engine convergence claim returned by [`DiagnosticsProvider::prove_convergence`].
@@ -1639,6 +1658,7 @@ fn build_coverage_obligations(
             if lane.capabilities_covered.contains(capability)
                 && exact_convergence
                 && lane.bound_workspace_epoch == sealed.epoch
+                && lane_scope_covers_required(&lane.scope, &scope_paths)
             {
                 match lane.state {
                     LaneState::Complete => {

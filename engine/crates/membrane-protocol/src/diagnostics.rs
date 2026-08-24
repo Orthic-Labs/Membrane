@@ -455,6 +455,17 @@ pub struct DiagnosticGateDecisionV1 {
 ///    unsupported. Advisory convergence and quiet windows never clear the fence.
 /// 4. Otherwise the applicable `unknown_*` outcome with stable snake_case
 ///    reason codes.
+fn lane_scope_covers_required(lane_scope: &[String], required: &[String]) -> bool {
+    if required.is_empty() {
+        return true;
+    }
+    if lane_scope.is_empty() {
+        return false;
+    }
+    let set: std::collections::HashSet<&str> = lane_scope.iter().map(|s| s.as_str()).collect();
+    required.iter().all(|p| set.contains(p.as_str()))
+}
+
 pub fn evaluate_gate(
     snapshot: &DiagnosticEvidenceSnapshotV1,
     expected_epoch: &WorkspaceEpochV1,
@@ -582,6 +593,23 @@ pub fn evaluate_gate(
         let mut timed_out = false;
         let mut unavailable = false;
         let mut candidate_count = 0usize;
+        let required_scope: Vec<String> = snapshot
+            .coverage_obligations
+            .iter()
+            .find(|o| &o.capability == capability)
+            .map(|o| o.required_scope.paths.clone())
+            .unwrap_or_else(|| {
+                if snapshot.workspace_epoch.changed_file_hashes.is_empty() {
+                    snapshot.workspace_epoch.changed_paths.clone()
+                } else {
+                    snapshot
+                        .workspace_epoch
+                        .changed_file_hashes
+                        .iter()
+                        .map(|h| h.path.clone())
+                        .collect()
+                }
+            });
         for lane in &snapshot.coverage_lanes {
             let exact_convergence = matches!(
                 lane.convergence_class,
@@ -592,6 +620,7 @@ pub fn evaluate_gate(
             if !lane.capabilities_covered.contains(capability)
                 || !exact_convergence
                 || lane.bound_workspace_epoch != bound_epoch
+                || !lane_scope_covers_required(&lane.scope, &required_scope)
             {
                 continue;
             }
@@ -1237,5 +1266,66 @@ mod tests {
             decision.reason_codes,
             vec!["obligation_unsatisfied:type_semantics"]
         );
+    }
+
+    #[test]
+    fn exact_lane_scope_must_cover_required_scope() {
+        let mut with_partial_scope = snapshot_at(epoch(5));
+        with_partial_scope.coverage_obligations = vec![CoverageObligationV1 {
+            capability: CapabilityVocabulary::TypeSemantics,
+            state: ObligationState::SatisfiedExact,
+            required_scope: RequiredScope {
+                paths: vec!["a.rs".to_string(), "b.rs".to_string()],
+            },
+            ..Default::default()
+        }];
+        with_partial_scope.coverage_lanes = vec![CoverageLaneV1 {
+            provider_id: "typescript".to_string(),
+            scope: vec!["a.rs".to_string()],
+            capabilities_covered: vec![CapabilityVocabulary::TypeSemantics],
+            convergence_class: ConvergenceClass::PullExact,
+            bound_workspace_epoch: 5,
+            state: LaneState::Complete,
+            omissions: Vec::new(),
+        }];
+        let decision_partial = evaluate_gate(
+            &with_partial_scope,
+            &epoch(5),
+            &policy(&[CapabilityVocabulary::TypeSemantics]),
+        );
+        assert_ne!(
+            decision_partial.outcome,
+            GateOutcome::CleanExact,
+            "lane scope [a.rs] must not satisfy required [a.rs,b.rs]"
+        );
+        assert!(decision_partial
+            .reason_codes
+            .iter()
+            .any(|c| c.contains("type_semantics")));
+
+        let mut with_full_scope = snapshot_at(epoch(5));
+        with_full_scope.coverage_obligations = vec![CoverageObligationV1 {
+            capability: CapabilityVocabulary::TypeSemantics,
+            state: ObligationState::SatisfiedExact,
+            required_scope: RequiredScope {
+                paths: vec!["a.rs".to_string(), "b.rs".to_string()],
+            },
+            ..Default::default()
+        }];
+        with_full_scope.coverage_lanes = vec![CoverageLaneV1 {
+            provider_id: "typescript".to_string(),
+            scope: vec!["a.rs".to_string(), "b.rs".to_string()],
+            capabilities_covered: vec![CapabilityVocabulary::TypeSemantics],
+            convergence_class: ConvergenceClass::PullExact,
+            bound_workspace_epoch: 5,
+            state: LaneState::Complete,
+            omissions: Vec::new(),
+        }];
+        let decision_full = evaluate_gate(
+            &with_full_scope,
+            &epoch(5),
+            &policy(&[CapabilityVocabulary::TypeSemantics]),
+        );
+        assert_eq!(decision_full.outcome, GateOutcome::CleanExact);
     }
 }

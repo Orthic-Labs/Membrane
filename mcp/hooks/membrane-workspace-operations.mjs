@@ -407,9 +407,9 @@ export function createWorkspaceMemoryOperations(options = {}) {
         }
       }
       const patchText = String(input.patch ?? input.content ?? "");
-      if (tool === "apply_patch" || patchText.includes("*** Begin Patch") || patchText.includes("diff --git") || patchText.includes("*** Update File") || patchText.includes("*** Add File")) {
+      if (tool === "apply_patch" || patchText.includes("*** Begin Patch") || patchText.includes("diff --git") || patchText.includes("*** Update File") || patchText.includes("*** Add File") || patchText.includes("*** Delete File")) {
         for (const line of patchText.split(/\r?\n/)) {
-          let match = line.match(/^\*\*\*\s*(?:Update|Add)\s+File:\s*(.+)$/);
+          let match = line.match(/^\*\*\*\s*(?:Update|Add|Delete)\s+File:\s*(.+)$/);
           if (match) pushCandidate(match[1].trim());
           match = line.match(/^---\s+a\/(.+)$/);
           if (match) pushCandidate(match[1].trim());
@@ -444,7 +444,11 @@ export function createWorkspaceMemoryOperations(options = {}) {
         const hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
         changedFileHashes.push({ path: relPath, hash });
       }
-      if (changedFileHashes.length === 0) return typedStatus("skipped", "diagnostics_target_unreadable");
+      // Do not return before registering a newer observed epoch merely
+      // because a resulting file is unreadable/deleted. A deletion can
+      // produce an epoch with changedPaths but no hashes; it must still
+      // invalidate old clearance and remain fail-closed (unknown/incomplete)
+      // rather than preserving the older clean fence.
       const manifestHash = createHash("sha256");
       const sortedHashes = [...changedFileHashes].sort((left, right) => left.path.localeCompare(right.path));
       for (const entry of sortedHashes) {
@@ -537,15 +541,25 @@ export function createWorkspaceMemoryOperations(options = {}) {
         sandboxPolicyDigest,
         origin: "observed_hook",
       };
-      let posted;
+      let openResult;
       try {
         // Bind the session to the exact canonical root at first mutation
         // (design §3 WorkspaceEngineKey). Idempotent: reopening is a no-op.
-        await diagnosticsPost("/diagnostics/workspace/open", {
+        openResult = await diagnosticsPost("/diagnostics/workspace/open", {
           method: "POST",
           body: { repoId, worktreeId, projectRoot: resolve(root) },
           timeoutMs: 1200,
         });
+      } catch {
+        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });
+        return typedStatus("unavailable", "diagnostics_register_failed", { paths: changedPaths, hashes: changedFileHashes });
+      }
+      if (!openResult.ok) {
+        audit("diagnostics-registerObserved", "degraded", { code: openResult.error.code, paths: changedPaths.join(",") });
+        return typedStatus("unavailable", openResult.error.code, { paths: changedPaths, hashes: changedFileHashes });
+      }
+      let posted;
+      try {
         posted = await diagnosticsPost("/diagnostics/mutation/registerObserved", { method: "POST", body: { repoId, worktreeId, epoch }, timeoutMs: 1200 });
       } catch {
         audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", paths: changedPaths.join(",") });

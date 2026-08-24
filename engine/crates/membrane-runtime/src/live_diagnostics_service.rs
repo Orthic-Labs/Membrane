@@ -884,7 +884,7 @@ impl DiagnosticsService {
                         omissions,
                     };
                 }
-                BlueprintLaneInput::current(generation, observations, 0, result.omissions)
+                BlueprintLaneInput::current(generation, observations, sealed.epoch, touched.clone(), result.omissions)
             }
             Err(error @ BlueprintFindingsError::DeadlineExceeded) => {
                 BlueprintLaneInput::unavailable(format!(
