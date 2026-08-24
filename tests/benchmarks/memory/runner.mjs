@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { BENCHMARKS, COMPONENT } from './contracts.mjs';
-import { verifyMemoryBenchmark } from '../../scripts/qualification/verify-memory-benchmark.mjs';
+import { verifyMemoryBenchmark } from '../../../scripts/qualification/verify-memory-benchmark.mjs';
 
 // This module never downloads a dataset and never invokes the Cortex engine
 // itself. It only wires: (1) local dataset presence, (2) a caller-supplied
