@@ -206,6 +206,8 @@ enum DiagnosticsCommand {
         #[arg(long)]
         worktree: String,
         #[arg(long)]
+        project_root: Option<String>,
+        #[arg(long)]
         port: Option<u16>,
     },
     /// Service-bound: close the diagnostics workspace session.
@@ -358,12 +360,12 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 None,
             )
         }
-        DiagnosticsCommand::WorkspaceOpen { repo, worktree, port } => {
+        DiagnosticsCommand::WorkspaceOpen { repo, worktree, project_root, port } => {
             run_diagnostics_service_call(
                 diagnostics_loopback_port(port),
                 "POST",
                 "/diagnostics/workspace/open",
-                Some(diagnostics_workspace_body(&repo, &worktree)),
+                Some(diagnostics_workspace_body_with_root(&repo, &worktree, project_root.as_deref())),
             )
         }
         DiagnosticsCommand::WorkspaceClose { repo, worktree, port } => {
@@ -534,6 +536,14 @@ fn diagnostics_api_token() -> Result<Option<String>, String> {
 
 fn diagnostics_workspace_body(repo: &str, worktree: &str) -> String {
     serde_json::json!({ "repoId": repo, "worktreeId": worktree }).to_string()
+}
+
+fn diagnostics_workspace_body_with_root(repo: &str, worktree: &str, project_root: Option<&str>) -> String {
+    let mut body = serde_json::json!({ "repoId": repo, "worktreeId": worktree });
+    if let Some(root) = project_root {
+        body["projectRoot"] = serde_json::Value::String(root.to_string());
+    }
+    body.to_string()
 }
 
 fn diagnostics_named_body(repo: &str, worktree: &str, name: &str) -> String {

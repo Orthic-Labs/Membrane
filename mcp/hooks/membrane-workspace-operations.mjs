@@ -10,6 +10,7 @@ import { request as httpRequest } from "node:http";
 import { typedStatus } from "./membrane-hook-runtime.mjs";
 import { createContinuityClient } from "../host/continuity.mjs";
 import { diagnosticsRequest } from "../lib/diagnostics-client.mjs";
+import { isVerificationCommand } from "../lib/verification-command.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../host/context-adapter.cjs");
@@ -242,22 +243,27 @@ export function createWorkspaceMemoryOperations(options = {}) {
 
   // Shared Semantic Edit Fence gate body (design §10): one implementation for
   // both the PreToolUse test/build boundary and the Stop completion boundary.
+  // Fail-closed when enforcement is enabled: missing evidence is never permission.
   const evaluateFenceGate = async (event, boundary) => {
     const root = rootFor(event);
     const env = process.env;
     if (!fenceEnforcementEnabled(root, env)) return typedStatus("skipped", "fence_enforcement_not_enabled");
     const { repoId, worktreeId } = diagnosticsIdentity(event, root, env);
-    const tool = toolName(event).toLowerCase();
-    const command = String(event.payload.tool_input?.command || event.payload.command || "").toLowerCase();
-    const isBuildOrTest = ["test", "build", "cargo test", "cargo build", "npm test", "pnpm test", "make"].some((keyword) => tool.includes(keyword) || command.includes(keyword));
-    if (boundary === "test_build_boundary" && !isBuildOrTest) return typedStatus("skipped", "fence_not_applicable");
+    const tool = toolName(event);
+    const command = String(event.payload.tool_input?.command || event.payload.command || "");
+    if (boundary === "test_build_boundary" && !isVerificationCommand(command, tool)) {
+      return typedStatus("skipped", "fence_not_applicable");
+    }
     try {
       const status = await diagnosticsPost(`/diagnostics/workspace/status?repoId=${encodeURIComponent(repoId)}&worktreeId=${encodeURIComponent(worktreeId)}`, { method: "GET", timeoutMs: 800 });
-      if (!status || !status.ok) return typedStatus("skipped", "workspace_not_open");
-      const body = status.body ?? {};
-      if (boundary === "completion" && body.latestSealedEpoch == null) {
-        return typedStatus("skipped", "fence_not_applicable");
+      if (!status || !status.ok) {
+        audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary, reason: "workspace_not_open" });
+        return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: workspace not open or diagnostics unavailable` });
       }
+      const body = status.body ?? {};
+      // Fail-closed: any uncleared fence, missing epoch, or not-cleared state blocks.
+      // The old `workspace_not_open => skipped` and `no sealed epoch => skipped`
+      // paths are wrong for an opted-in workspace: missing evidence is not permission.
       if (body.fenceCleared !== true) {
         audit("diagnostics-fence", "blocked", { repoId, worktreeId, tool, boundary });
         return typedStatus("blocked", "fence_not_cleared", { repoId, worktreeId, boundary, detail: `semantic edit fence not cleared at ${boundary}: run diagnostics snapshot.await and repair before tests/builds/completion` });

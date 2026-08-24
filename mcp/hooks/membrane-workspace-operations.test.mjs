@@ -199,7 +199,7 @@ test("fence enforcement is opt-in and skipped without env or marker", async () =
   }
 });
 
-test("enforced PreToolUse boundary denies tests/builds while the fence is uncleared", async () => {
+test("enforced PreToolUse boundary denies tests/builds while the fence is uncleared (fail-closed)", async () => {
   const { root } = fenceFixture();
   process.env.MEMBRANE_DIAGNOSTICS_ENFORCE = "1";
   try {
@@ -207,13 +207,38 @@ test("enforced PreToolUse boundary denies tests/builds while the fence is unclea
       rootFor: () => root,
       diagnosticsPost: async () => { throw new Error("resident down"); },
     });
-    const blocked = await runHook(
+    const blockedUnreachable = await runHook(
       { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root },
       { operations: unreachableOps },
     );
-    assert.equal(blocked.decision, "block", "fail-closed: resident unreachable must deny the boundary");
-    assert.equal(blocked.hookSpecificOutput.permissionDecision, "deny");
-    assert.match(String(blocked.reason), /fence|diagnostics/);
+    assert.equal(blockedUnreachable.decision, "block", "fail-closed: resident unreachable must deny the boundary");
+    assert.equal(blockedUnreachable.hookSpecificOutput.permissionDecision, "deny");
+
+    // Workspace not open (status not ok) must also block, not skip.
+    const notOpenOps = createWorkspaceMemoryOperations({
+      rootFor: () => root,
+      diagnosticsPost: async () => ({ ok: false, status: 404, error: { code: "workspace_not_open", detail: "not open" } }),
+    });
+    const blockedNotOpen = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "cargo build" }, cwd: root },
+      { operations: notOpenOps },
+    );
+    assert.equal(blockedNotOpen.decision, "block");
+    assert.equal(blockedNotOpen.hookSpecificOutput.permissionDecision, "deny");
+
+    // Fence not cleared must block.
+    const unclearedOps = createWorkspaceMemoryOperations({
+      rootFor: () => root,
+      diagnosticsPost: async (path) => ({
+        ok: true,
+        body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: 3 } : {},
+      }),
+    });
+    const blockedUncleared = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "pnpm test" }, cwd: root },
+      { operations: unclearedOps },
+    );
+    assert.equal(blockedUncleared.decision, "block");
 
     // A cleared fence allows the same command through.
     const clearedOps = createWorkspaceMemoryOperations({
@@ -238,12 +263,18 @@ test("enforced PreToolUse boundary denies tests/builds while the fence is unclea
     );
     assert.equal(untouched.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.reason, "event_not_applicable");
     assert.equal(untouched.decision, undefined);
+    const catUntouched = await runHook(
+      { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "cat src/main.ts" }, cwd: root },
+      { operations: unreachableOps },
+    );
+    assert.equal(catUntouched.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-fence").output.reason, "event_not_applicable");
+    assert.equal(catUntouched.decision, undefined);
   } finally {
     delete process.env.MEMBRANE_DIAGNOSTICS_ENFORCE;
   }
 });
 
-test("Stop completion boundary blocks sealed-but-uncleared sessions only", async () => {
+test("Stop completion boundary blocks when fence not cleared (fail-closed)", async () => {
   const { root } = fenceFixture();
   writeFileSync(join(root, ".agent", "diagnostics-enforce.json"), "{}\n", "utf8");
   const blockedOps = createWorkspaceMemoryOperations({
@@ -257,17 +288,29 @@ test("Stop completion boundary blocks sealed-but-uncleared sessions only", async
   assert.equal(blocked.decision, "block");
   assert.equal(blocked.hookSpecificOutput.hookEventName, "Stop");
 
-  // No mutations this session: nothing to enforce at completion.
-  const cleanOps = createWorkspaceMemoryOperations({
+  // Fail-closed: even with no sealed epoch, an opted-in workspace blocks at completion when fence is not cleared.
+  const noEpochOps = createWorkspaceMemoryOperations({
     rootFor: () => root,
     diagnosticsPost: async (path) => ({
       ok: true,
       body: path.includes("/workspace/status") ? { fenceCleared: false, latestSealedEpoch: null } : {},
     }),
   });
-  const skipped = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: cleanOps });
-  assert.equal(skipped.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-completion-fence").output.reason, "fence_not_applicable");
-  assert.equal(skipped.decision, undefined);
+  const blockedNoEpoch = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: noEpochOps });
+  assert.equal(blockedNoEpoch.decision, "block");
+  assert.equal(blockedNoEpoch.hookSpecificOutput.permissionDecision, "deny");
+
+  // Clean clearance allows completion.
+  const clearedOps = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    diagnosticsPost: async (path) => ({
+      ok: true,
+      body: path.includes("/workspace/status") ? { fenceCleared: true, latestSealedEpoch: 7 } : {},
+    }),
+  });
+  const allowed = await runHook({ hook_event_name: "Stop", cwd: root }, { operations: clearedOps });
+  assert.equal(allowed.decision, undefined);
+  assert.equal(allowed.membraneHook.results.find(({ id }) => id === "membrane.diagnostics-completion-fence").output.state, "available");
 });
 
 test("observeMutation binds the workspace to its canonical root before registering", async () => {

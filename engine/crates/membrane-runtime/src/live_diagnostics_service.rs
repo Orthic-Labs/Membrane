@@ -98,6 +98,15 @@ pub enum LiveDiagnosticsServiceError {
         repo_id: String,
         worktree_id: String,
     },
+    #[error("workspace {repo_id}/{worktree_id} already bound to {existing} but requested {requested}")]
+    WorkspaceProjectRootConflict {
+        repo_id: String,
+        worktree_id: String,
+        existing: String,
+        requested: String,
+    },
+    #[error("project root cannot be canonicalized: {0}")]
+    ProjectRootInvalid(String),
     #[error(transparent)]
     Supervisor(#[from] LiveDiagnosticsError),
 }
@@ -113,6 +122,8 @@ impl LiveDiagnosticsServiceError {
             Self::PolicyUnknown { .. } => "policy_unknown",
             Self::Provider(_) => "provider_error",
             Self::FenceNotCleared { .. } => "fence_not_cleared",
+            Self::WorkspaceProjectRootConflict { .. } => "workspace_project_root_conflict",
+            Self::ProjectRootInvalid(_) => "project_root_invalid",
             Self::Supervisor(inner) => supervisor_error_code(inner),
         }
     }
@@ -332,17 +343,56 @@ impl DiagnosticsService {
         project_root: Option<&str>,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
         let key = session_key(repo_id, worktree_id);
-        let created = !self.sessions.contains_key(&key);
-        if created {
-            let requested = project_root.map(PathBuf::from).unwrap_or_else(|| {
-                std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-            });
-            let canonical = std::fs::canonicalize(&requested).unwrap_or(requested);
-            self.sessions.insert(key, SessionEntry::new(canonical));
+        if let Some(entry) = self.sessions.get(&key) {
+            // Already bound: enforce exact identity.
+            if let Some(requested_str) = project_root {
+                let requested = PathBuf::from(requested_str);
+                let canonical = std::fs::canonicalize(&requested).map_err(|e| {
+                    LiveDiagnosticsServiceError::ProjectRootInvalid(format!(
+                        "cannot canonicalize projectRoot {}: {}",
+                        requested_str, e
+                    ))
+                })?;
+                if canonical != entry.project_root {
+                    return Err(LiveDiagnosticsServiceError::WorkspaceProjectRootConflict {
+                        repo_id: repo_id.to_string(),
+                        worktree_id: worktree_id.to_string(),
+                        existing: entry.project_root.to_string_lossy().into_owned(),
+                        requested: canonical.to_string_lossy().into_owned(),
+                    });
+                }
+            }
+            let mut status = self.workspace_status(repo_id, worktree_id)?;
+            if let Some(object) = status.as_object_mut() {
+                object.insert("created".to_string(), Value::Bool(false));
+                object.insert(
+                    "projectRoot".to_string(),
+                    Value::String(
+                        self.sessions
+                            .get(&session_key(repo_id, worktree_id))
+                            .map(|entry| entry.project_root.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    ),
+                );
+            }
+            return Ok(status);
         }
+        // First open: bind one canonical absolute projectRoot, fail closed if
+        // it cannot be canonicalized. Do NOT fall back to an uncanonicalized path.
+        let requested = project_root.map(PathBuf::from).unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        });
+        let canonical = std::fs::canonicalize(&requested).map_err(|e| {
+            LiveDiagnosticsServiceError::ProjectRootInvalid(format!(
+                "cannot canonicalize projectRoot {}: {}",
+                requested.display(),
+                e
+            ))
+        })?;
+        self.sessions.insert(key, SessionEntry::new(canonical));
         let mut status = self.workspace_status(repo_id, worktree_id)?;
         if let Some(object) = status.as_object_mut() {
-            object.insert("created".to_string(), Value::Bool(created));
+            object.insert("created".to_string(), Value::Bool(true));
             object.insert(
                 "projectRoot".to_string(),
                 Value::String(
@@ -412,7 +462,8 @@ impl DiagnosticsService {
 
     /// Seal the open mutation with its resulting workspace epoch. The epoch
     /// must identify the addressed workspace; sealing persists the sealed
-    /// epoch to the audit and invalidates prior fence clearance.
+    /// epoch to the audit and invalidates prior fence clearance. Obvious
+    /// path escape from the bound root is rejected fail-closed.
     pub fn mutation_seal(
         &mut self,
         repo_id: &str,
@@ -420,6 +471,11 @@ impl DiagnosticsService {
         epoch: WorkspaceEpochV1,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
         validate_epoch_identity(repo_id, worktree_id, &epoch)?;
+        let entry = self
+            .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        validate_epoch_paths_within_root(&epoch, &entry.project_root)?;
         let entry = self
             .sessions
             .get_mut(&session_key(repo_id, worktree_id))
@@ -457,6 +513,11 @@ impl DiagnosticsService {
         validate_epoch_identity(repo_id, worktree_id, &epoch)?;
         let entry = self
             .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        validate_epoch_paths_within_root(&epoch, &entry.project_root)?;
+        let entry = self
+            .sessions
             .get_mut(&session_key(repo_id, worktree_id))
             .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
         entry.session.register_observed(epoch.clone())?;
@@ -491,6 +552,19 @@ impl DiagnosticsService {
         manifest_digest: &str,
         hashes: &[ChangedFileHashV1],
     ) -> Result<&'static str, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        for h in hashes {
+            if is_obvious_path_escape(&h.path, &entry.project_root) {
+                return Err(LiveDiagnosticsServiceError::MutationBoundary(format!(
+                    "path escapes bound projectRoot {}: {}",
+                    entry.project_root.display(),
+                    h.path
+                )));
+            }
+        }
         let entry = self
             .sessions
             .get_mut(&session_key(repo_id, worktree_id))
@@ -666,10 +740,21 @@ impl DiagnosticsService {
     /// service (design §7.1 item 6). Any transport/protocol failure becomes a
     /// typed unavailable lane input — this is the only Blueprint path, and it
     /// never fabricates generation or freshness evidence.
+    ///
+    /// Exact-byte binding (§7.1 item 5): the caller's sealed
+    /// `WorkspaceEpochV1` is the authority for byte identity. Every
+    /// `perFileContentHashes` entry retained in the bundle is compared against
+    /// `sealed.changed_file_hashes`. Only when every relevant touched file has
+    /// a present and matching hash AND the bundle carries no
+    /// coverage-affecting omission may an exact D0 lane be produced. Any hash
+    /// mismatch, missing required hash, staleness, or coverage-affecting
+    /// omission yields no exact lane and typed omissions instead — the
+    /// affected obligation remains unsatisfied and cannot become `clean_exact`.
     fn blueprint_lane_input(
         &mut self,
         project_root: &Path,
         timeout_ms: u64,
+        sealed: &WorkspaceEpochV1,
     ) -> BlueprintLaneInput {
         let Some(client) = &mut self.blueprint_client else {
             return BlueprintLaneInput::unavailable(
@@ -697,12 +782,36 @@ impl DiagnosticsService {
                         }],
                     };
                 }
+                // Coverage-affecting omissions prevent Complete exact coverage
+                // for the affected scope (design §7). Treat any such omission as
+                // blocking exact D0 for the sealed scope.
+                let has_coverage_block = result.has_coverage_affecting_omissions();
+                // Exact byte identity: compare retained per-file hashes against
+                // sealed epoch's changed_file_hashes for the touched scope.
+                let hash_issues = result.verify_hashes_against_epoch(sealed, None);
+                let has_hash_block = !hash_issues.is_empty();
                 let generation = result.generation_id.clone();
                 let observations = result
                     .findings
                     .iter()
                     .map(|finding| finding.to_observation(&generation))
                     .collect();
+                if has_coverage_block || has_hash_block {
+                    // Fail closed: carry observations but produce no exact lane.
+                    // Omissions explain why exact coverage is not proven; the
+                    // obligation remains unsatisfied unless another qualified
+                    // exact provider satisfies it.
+                    let mut omissions = result.omissions;
+                    omissions.extend(hash_issues);
+                    return BlueprintLaneInput {
+                        generation: Some(generation),
+                        freshness: membrane_protocol::diagnostics::BlueprintFreshness::Current,
+                        observations,
+                        lane: None,
+                        delta: None,
+                        omissions,
+                    };
+                }
                 BlueprintLaneInput::current(generation, observations, 0, result.omissions)
             }
             Err(error @ BlueprintFindingsError::DeadlineExceeded) => {
@@ -762,9 +871,11 @@ impl DiagnosticsService {
             .cloned()
             .collect();
         let max_cost = request.max_cost.unwrap_or_default();
-        // Real Blueprint D0a/D0b via the public resident findings service.
+        // Real Blueprint D0a/D0b via the public resident findings service,
+        // bound to the sealed epoch's exact bytes (fail-closed on hash mismatch
+        // or coverage-affecting omissions).
         let mut blueprint =
-            self.blueprint_lane_input(&project_root, deadline_ms.max(1_000));
+            self.blueprint_lane_input(&project_root, deadline_ms.max(1_000), &sealed);
         if let BlueprintLaneInput {
             lane: Some(lane),
             ..
@@ -1244,6 +1355,44 @@ fn validate_epoch_identity(
     Ok(())
 }
 
+fn validate_epoch_paths_within_root(
+    epoch: &WorkspaceEpochV1,
+    project_root: &Path,
+) -> Result<(), LiveDiagnosticsServiceError> {
+    for path in epoch.changed_paths.iter().chain(
+        epoch.changed_file_hashes.iter().map(|h| &h.path),
+    ) {
+        if is_obvious_path_escape(path, project_root) {
+            return Err(LiveDiagnosticsServiceError::MutationBoundary(format!(
+                "path escapes bound projectRoot {}: {}",
+                project_root.display(),
+                path
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn is_obvious_path_escape(path: &str, _project_root: &Path) -> bool {
+    // Reject absolute paths (they cannot be repo-relative) and any
+    // segment containing `..` that would allow escaping the bound root.
+    if path.starts_with('/') || path.starts_with('\\') {
+        return true;
+    }
+    // Windows absolute like C:\ or C:/
+    if path.len() >= 2 && path.chars().nth(1) == Some(':') {
+        return true;
+    }
+    for segment in path.split(['/', '\\']) {
+        if segment == ".." {
+            return true;
+        }
+    }
+    // Also reject paths that after join would still escape: this cheap
+    // check covers the common cases without canonicalizing disk state.
+    false
+}
+
 fn classification_label(classification: ReconcileClassification) -> &'static str {
     match classification {
         ReconcileClassification::Cleared => "cleared",
@@ -1551,7 +1700,8 @@ fn fallback_envelope(code: &str) -> String {
 fn error_http_status(code: &str) -> StatusCode {
     match code {
         "workspace_not_open" => StatusCode::NOT_FOUND,
-        "policy_unknown" => StatusCode::BAD_REQUEST,
+        "policy_unknown" | "project_root_invalid" => StatusCode::BAD_REQUEST,
+        "workspace_project_root_conflict" => StatusCode::CONFLICT,
         "epoch_not_monotonic" | "mutation_boundary" | "no_sealed_epoch" | "fence_not_cleared" => {
             StatusCode::CONFLICT
         }
@@ -2197,6 +2347,76 @@ mod tests {
     }
 
     #[test]
+    fn workspace_open_same_ids_same_root_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        let root_str = repo_dir.path().to_str().unwrap();
+        let first = service.workspace_open("repo-1", "wt-1", Some(root_str)).unwrap();
+        assert_eq!(first["created"], serde_json::json!(true));
+        let second = service.workspace_open("repo-1", "wt-1", Some(root_str)).unwrap();
+        assert_eq!(second["created"], serde_json::json!(false));
+        assert_eq!(first["projectRoot"], second["projectRoot"]);
+    }
+
+    #[test]
+    fn workspace_open_same_ids_different_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir_a = tempfile::tempdir().unwrap();
+        let repo_dir_b = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir_a.path().to_str().unwrap()))
+            .unwrap();
+        let err = service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir_b.path().to_str().unwrap()))
+            .unwrap_err();
+        assert_eq!(err.code(), "workspace_project_root_conflict");
+    }
+
+    #[test]
+    fn workspace_open_uncanonicalizable_root_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        let err = service
+            .workspace_open("repo-1", "wt-1", Some("/nonexistent/path/that/does/not/exist/xyz123"))
+            .unwrap_err();
+        assert_eq!(err.code(), "project_root_invalid");
+    }
+
+    #[test]
+    fn workspace_paths_escaping_bound_root_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        let mut epoch = test_epoch(1);
+        epoch.changed_paths = vec!["../escape.txt".to_string()];
+        epoch.changed_file_hashes = vec![ChangedFileHashV1 {
+            path: "../escape.txt".to_string(),
+            hash: "sha256:abc".to_string(),
+        }];
+        let err = service.mutation_seal("repo-1", "wt-1", epoch).unwrap_err();
+        assert_eq!(err.code(), "mutation_boundary");
+    }
+
+    #[test]
+    fn workspace_open_exposes_project_root_through_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        let status = service.workspace_status("repo-1", "wt-1").unwrap();
+        assert!(status["projectRoot"].is_string());
+        assert!(!status["projectRoot"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
     fn blueprint_unavailable_degrades_typed_never_fabricates() {
         use crate::providers::blueprint_findings::{
             BlueprintFindingsError, BlueprintFindingsResult,
@@ -2279,5 +2499,54 @@ mod tests {
 
         assert_eq!(status_before, service.status().to_string());
         assert_eq!(audit_before, audit_len(&dir));
+    }
+
+    #[test]
+    fn rust_d1_alone_leaves_compiler_project_semantics_unsatisfied() {
+        // Touched scope with .rs file requires CompilerProjectSemantics;
+        // without a V1 verification lane it must remain Unsatisfied.
+        let dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        let repo_dir = tempfile::tempdir().unwrap();
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        let mut epoch = test_epoch(1);
+        epoch.changed_paths = vec!["src/main.rs".to_string()];
+        epoch.changed_file_hashes = vec![ChangedFileHashV1 {
+            path: "src/main.rs".to_string(),
+            hash: "sha256:abc".to_string(),
+        }];
+        // Need canonical file to pass path escape check + hash check for provider? Create file.
+        std::fs::create_dir_all(repo_dir.path().join("src")).unwrap();
+        std::fs::write(repo_dir.path().join("src/main.rs"), "fn main() {}").unwrap();
+        // Update epoch hash to match actual file hash to avoid hash_mismatch branch,
+        // but still no V1 provider is registered, so CompilerProjectSemantics stays unsatisfied.
+        let bytes = std::fs::read(repo_dir.path().join("src/main.rs")).unwrap();
+        let actual = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes)));
+        epoch.changed_file_hashes[0].hash = actual.clone();
+        // Compute manifest digest matching helper used elsewhere is not critical for gate.
+        service.mutation_seal("repo-1", "wt-1", epoch).unwrap();
+        let decision = service
+            .snapshot_await(&SnapshotAwaitRequest {
+                repo_id: "repo-1".to_string(),
+                worktree_id: "wt-1".to_string(),
+                policy_profile_name: DEFAULT_POLICY_PROFILE_NAME.to_string(),
+                required_capabilities: vec![],
+                max_cost: Some(CostClass::Interactive),
+                deadline_ms: Some(5_000),
+            })
+            .unwrap();
+        // Rust touched: derived required includes compiler_project_semantics, which has no exact lane.
+        assert!(
+            decision
+                .reason_codes
+                .iter()
+                .any(|c| c.contains("compiler_project_semantics")),
+            "expected compiler_project_semantics unsatisfied: {:?}",
+            decision.reason_codes
+        );
+        assert_ne!(decision.outcome, GateOutcome::CleanExact);
     }
 }

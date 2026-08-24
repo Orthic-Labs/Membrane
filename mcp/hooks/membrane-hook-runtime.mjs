@@ -1,11 +1,11 @@
 import { dispatchHookEvent, normalizeHookEvent } from "@rightkit/hooks";
+import { isVerificationCommand } from "../lib/verification-command.mjs";
 
-// Commands that cross a verification boundary: tests, builds, releases, and
-// other completion-escalating work. The Semantic Edit Fence must be cleared
-// before any of these may run in an opted-in workspace (design §10, §11).
-const FENCE_COMMAND_PATTERN = /\b(test|tests|build|check|compile|release|publish|cargo|pnpm|npm|yarn|make|gradle|mvn|go)\b/i;
-
-/** Whether one PreToolUse event addresses a test/build/completion boundary. */
+/** Whether one PreToolUse event addresses a test/build/completion boundary.
+ *
+ * Delegates to the single verification-command classifier so hook runtime
+ * and workspace operations never diverge (design §10, §11).
+ */
 export function isFenceRelevantCommand(event) {
   const tool = String(event.payload.tool_name || event.payload.toolName || "").toLowerCase();
   if (!["bash", "shell", "terminal", "command", "task"].includes(tool)) return false;
@@ -15,7 +15,7 @@ export function isFenceRelevantCommand(event) {
       ?? event.payload.command
       ?? "",
   );
-  return FENCE_COMMAND_PATTERN.test(command);
+  return isVerificationCommand(command, "");
 }
 
 const HOOK_MODULES = Object.freeze([

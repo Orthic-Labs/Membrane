@@ -38,7 +38,7 @@ pub(crate) fn definitions() -> Value {
     json!([
         {
             "name": "membrane_diagnostic_workspace",
-            "description": "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance.",
+            "description": "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance. open binds one canonical absolute projectRoot (design §3 WorkspaceEngineKey); same repo/worktree + different root is a typed conflict, uncanonicalizable root is rejected.",
             "inputSchema": {
                 "type": "object",
                 "required": ["operation"],
@@ -47,17 +47,18 @@ pub(crate) fn definitions() -> Value {
                     "operation": { "type": "string", "enum": ["open", "close", "status", "reconcile"] },
                     "repoId": diagnostic_id(),
                     "worktreeId": diagnostic_id(),
+                    "projectRoot": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "Canonical absolute worktree/project root to bind at open (design §3). Same repo/worktree + different canonical root is a typed conflict; uncanonicalizable root is rejected." },
                     "manifestDigest": { "type": "string", "minLength": 1, "maxLength": 256 },
                     "hashes": { "type": "array", "minItems": 0, "maxItems": 4096, "items": hash_entry_schema() }
                 },
                 "oneOf": [
                     {
-                        "properties": { "operation": { "enum": ["open", "close"] } },
+                        "properties": { "operation": { "const": "open" } },
                         "required": ["repoId", "worktreeId"],
                         "not": { "anyOf": [{ "required": ["manifestDigest"] }, { "required": ["hashes"] }] }
                     },
                     {
-                        "properties": { "operation": { "enum": ["status"] } },
+                        "properties": { "operation": { "enum": ["close", "status"] } },
                         "required": ["repoId", "worktreeId"],
                         "not": { "anyOf": [{ "required": ["manifestDigest"] }, { "required": ["hashes"] }] }
                     },
