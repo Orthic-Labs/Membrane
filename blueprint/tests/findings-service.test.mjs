@@ -269,6 +269,42 @@ test("computeBaselineDelta pairs a specifier rewrite as changed, not add+resolve
   assert.equal(delta.changed[0].fingerprint, "fp-new");
 });
 
+test("computeBaselineDelta keeps a newly affected finding in an untouched dependent file (affected-closure property)", async () => {
+  // Regression: an overlay implementation that filtered added/resolved to
+  // directly-dirty paths only would drop this finding, because b.ts itself
+  // was never edited — only a.ts, the module it depends on, was. The
+  // production delta is a pure fingerprint diff over the full current
+  // finding set, so a new BP001 finding surfacing in an untouched dependent
+  // must remain in the delta.
+  const stateDir = temporaryStateDir();
+  try {
+    const beforeFiles = {
+      "src/a.ts": "export const shared = 1;\n",
+      "src/b.ts": "import { shared } from \"./a.js\";\nexport const x = shared;\n",
+    };
+    // Only a.ts's export changes; b.ts is byte-identical in both trees.
+    const afterFiles = {
+      "src/a.ts": "export const renamed = 1;\n",
+      "src/b.ts": beforeFiles["src/b.ts"],
+    };
+    assert.equal(afterFiles["src/b.ts"], beforeFiles["src/b.ts"], "src/b.ts must be untouched between trees");
+
+    const before = stubService({ files: beforeFiles, stateDir });
+    const baselineResult = await before.service["findings.get"]({});
+    assert.deepEqual(baselineResult.findings.map((finding) => finding.ruleId), [], "no findings before the export is renamed");
+    await before.service["findings.baseline.capture"]({ name: "pre-rename" });
+
+    const after = stubService({ files: afterFiles, stateDir });
+    const result = await after.service["findings.get"]({ baselineGeneration: "pre-rename" });
+
+    const newInDependent = result.delta.added.find((entry) => entry.path === "src/b.ts" && entry.ruleId === "BP001");
+    assert.ok(newInDependent, "the affected-closure finding in the untouched dependent must appear in delta.added");
+    assert.equal(newInDependent.name, "shared");
+  } finally {
+    rmSync(stateDir, { recursive: true, force: true });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // SARIF as rendering, never independent truth (§7.1 item 7)
 // ---------------------------------------------------------------------------
