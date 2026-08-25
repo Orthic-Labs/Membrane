@@ -1,5 +1,5 @@
 use membrane_runtime::{
-    guide::{doc_spine, GuideDb},
+    ledger::{doc_spine, LedgerDb},
     MemDb,
 };
 
@@ -11,10 +11,10 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         "---\nclass: runbook\ninfluence: procedure\n---\n# Runbook\n",
     )
     .unwrap();
-    let guide = GuideDb::open_in_memory();
+    let ledger = LedgerDb::open_in_memory();
     let cortex = MemDb::open_in_memory();
 
-    let first = doc_spine::sync(&guide, temp.path()).unwrap();
+    let first = doc_spine::sync(&ledger, temp.path()).unwrap();
     let first_row: (
         String,
         String,
@@ -25,13 +25,13 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         String,
         String,
         i64,
-    ) = guide
+    ) = ledger
         .lock()
         .query_row(
             "SELECT a.doc_id, a.content_hash, a.parser_version, a.lifecycle_state, \
                     a.document_class, a.influence_class, p.kind, p.source_revision, \
                     p.index_generation \
-             FROM guide_doc_artifacts a JOIN guide_doc_projections p ON p.parent_doc_id = a.doc_id \
+             FROM ledger_doc_artifacts a JOIN ledger_doc_projections p ON p.parent_doc_id = a.doc_id \
              WHERE a.path='runbook.md'",
             [],
             |r| {
@@ -50,7 +50,7 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         )
         .unwrap();
 
-    let second = doc_spine::sync(&guide, temp.path()).unwrap();
+    let second = doc_spine::sync(&ledger, temp.path()).unwrap();
     let second_row: (
         String,
         String,
@@ -61,13 +61,13 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         String,
         String,
         i64,
-    ) = guide
+    ) = ledger
         .lock()
         .query_row(
             "SELECT a.doc_id, a.content_hash, a.parser_version, a.lifecycle_state, \
                     a.document_class, a.influence_class, p.kind, p.source_revision, \
                     p.index_generation \
-             FROM guide_doc_artifacts a JOIN guide_doc_projections p ON p.parent_doc_id = a.doc_id \
+             FROM ledger_doc_artifacts a JOIN ledger_doc_projections p ON p.parent_doc_id = a.doc_id \
              WHERE a.path='runbook.md'",
             [],
             |r| {

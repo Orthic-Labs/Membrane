@@ -1,7 +1,7 @@
 //! Machine-local Markdown projections for lexical & structural retrieval.
 
 use super::outline::build_outline;
-use super::GuideDb;
+use super::LedgerDb;
 use rusqlite::Transaction;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -71,7 +71,7 @@ impl ProjectionKind {
 /// This table is deliberately outside mirrored memory tables: projections are derived from each
 /// machine's checkout & are rebuilt by document reconciliation.
 pub fn replace_doc_projections(
-    db: &GuideDb,
+    db: &LedgerDb,
     input: &DocumentProjectionStoreInputV1,
 ) -> rusqlite::Result<()> {
     let mut conn = db.lock();
@@ -85,12 +85,12 @@ pub(crate) fn replace_doc_projections_tx(
     input: &DocumentProjectionStoreInputV1,
 ) -> rusqlite::Result<()> {
     tx.execute(
-        "DELETE FROM guide_doc_projections WHERE parent_doc_id=?1",
+        "DELETE FROM ledger_doc_projections WHERE parent_doc_id=?1",
         [&input.parent_doc_id],
     )?;
     {
         let mut insert = tx.prepare(
-            "INSERT INTO guide_doc_projections (
+            "INSERT INTO ledger_doc_projections (
                 parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
                 source_content_hash, source_revision, index_generation
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",

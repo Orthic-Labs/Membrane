@@ -75,7 +75,7 @@ fn checkpoint_source_refs_use_hash_bound_doc_read_statuses() {
     std::fs::write(temp.path().join("guide.md"), "# Guide\nbody").unwrap();
     let source = "doc://repo/worktree/guide.md";
     let outline =
-        membrane_runtime::guide::outline::build_outline(source, "# Guide\nbody", "comrak-0.54.0");
+        membrane_runtime::ledger::outline::build_outline(source, "# Guide\nbody", "comrak-0.54.0");
     let mut value = checkpoint();
     value.source_refs = vec![CheckpointSourceRefV1 {
         source_ref: source.into(),

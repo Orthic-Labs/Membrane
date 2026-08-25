@@ -11,14 +11,14 @@ fn checkpoint_cli_round_trip_preserves_lineage_resolves_docs_and_stays_session_o
     let document = temp.path().join("runbook.md");
     let markdown = "# P4 Runbook\n\nResume exact CLI lineage proof.\n";
     fs::write(&document, markdown).unwrap();
-    // Guide owns document resolution; Cortex consumes only its source-bound
+    // Ledger owns document resolution; Cortex consumes only its source-bound
     // result while this test exercises Cortex's durable checkpoint boundary.
     let source_ref = "doc://repo/worktree/runbook.md";
     let outline =
-        membrane_runtime::guide::outline::build_outline(source_ref, markdown, "comrak-0.54.0");
+        membrane_runtime::ledger::outline::build_outline(source_ref, markdown, "comrak-0.54.0");
     let content_hash = outline.content_hash;
     let anchor_id = outline.sections[0].anchor_id.clone();
-    let read = membrane_runtime::guide::outline::read_section(
+    let read = membrane_runtime::ledger::outline::read_section(
         source_ref,
         markdown,
         &anchor_id,

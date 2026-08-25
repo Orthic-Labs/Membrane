@@ -1,5 +1,5 @@
 //! Membrane runtime — one implementation surface for Pull, Push, Cortex,
-//! Blueprint, Guide, and Adapt. Cortex durable storage remains isolated from
+//! Blueprint, Ledger, and Adapt. Cortex durable storage remains isolated from
 //! Pull acquisition and Push reduction.
 
 pub mod agent_adapter_producer;
@@ -16,11 +16,11 @@ pub mod doctor;
 pub mod feedback;
 pub mod fleet;
 pub mod freshness;
-pub mod guide;
 pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
 pub mod installation_manifest;
+pub mod ledger;
 pub mod live_diagnostics;
 pub mod live_diagnostics_service;
 pub mod providers;

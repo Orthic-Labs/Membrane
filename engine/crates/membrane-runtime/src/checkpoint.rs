@@ -66,7 +66,7 @@ fn resolve_source_ref(
     reference: &CheckpointSourceRefV1,
     workspace_root: &std::path::Path,
 ) -> String {
-    let Ok(source_ref) = crate::guide::identifier::WorktreeDocRef::parse(&reference.source_ref)
+    let Ok(source_ref) = crate::ledger::identifier::WorktreeDocRef::parse(&reference.source_ref)
     else {
         return "deny".into();
     };
@@ -77,7 +77,7 @@ fn resolve_source_ref(
     let path = workspace_root.join(relative);
     match read_workspace_text(&root, &path) {
         Some(markdown) => {
-            if crate::guide::outline::read_section(
+            if crate::ledger::outline::read_section(
                 &reference.source_ref,
                 &markdown,
                 &reference.anchor_id,
@@ -135,7 +135,7 @@ fn workspace_contains_hash(root: &std::path::Path, expected_hash: &str) -> bool 
             let Some(markdown) = read_workspace_text(root, &entry.path()) else {
                 continue;
             };
-            if crate::guide::outline::build_outline(
+            if crate::ledger::outline::build_outline(
                 "doc://repo/worktree/relocated",
                 &markdown,
                 "comrak-0.54.0",

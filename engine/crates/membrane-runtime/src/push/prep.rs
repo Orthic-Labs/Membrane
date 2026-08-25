@@ -5,7 +5,7 @@
 //! manifest whose entry shape is branch-specific.
 
 use crate::{
-    guide::outline,
+    ledger::outline,
     push::{compress, compression_provider, skel},
 };
 use serde::Serialize;

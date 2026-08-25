@@ -1,4 +1,4 @@
-//! Shadow-only replay metrics for Guide candidates.
+//! Shadow-only replay metrics for Ledger candidates.
 //!
 //! These primitives deliberately make no admission decision. A clean replay remains shadow-only;
 //! any regression first narrows the next replay to runbooks and decisions, then falls back to
@@ -83,7 +83,7 @@ pub fn evaluate_frozen_shadow_replay(
     });
     let report = evaluate_shadow_replay(&cases);
     FrozenShadowReplayReceiptV1 {
-        schema_version: "guide.doc_shadow_receipt.v1".into(),
+        schema_version: "ledger.doc_shadow_receipt.v1".into(),
         cases,
         report,
     }
@@ -208,7 +208,7 @@ impl ShadowReplayReportV1 {
 ///
 /// Correctness is presence in ranked results; mean rank is one-based and assigns an absent
 /// expected document the stable penalty `results.len() + 1`. Safety leakage examines only the
-/// document-augmented ranking, since baseline candidates are out of scope for Guide rollout.
+/// document-augmented ranking, since baseline candidates are out of scope for Ledger rollout.
 pub fn evaluate_shadow_replay(cases: &[ShadowReplayCaseV1]) -> ShadowReplayReportV1 {
     let baseline = quality(cases, |case| &case.baseline);
     let with_docs = quality(cases, |case| &case.with_docs);

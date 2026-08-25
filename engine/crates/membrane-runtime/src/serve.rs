@@ -363,7 +363,7 @@ fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u1
     let Some(anchor) = value.get("anchor").and_then(Value::as_str) else {
         return (400, json!({"error":"anchor required"}).to_string());
     };
-    let digest = match crate::guide::identifier::AnchorRef::parse(anchor) {
+    let digest = match crate::ledger::identifier::AnchorRef::parse(anchor) {
         Ok(reference) => reference.digest(),
         Err(_) => return (400, json!({"error":"invalid anchor"}).to_string()),
     };
