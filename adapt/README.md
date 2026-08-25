@@ -1,6 +1,6 @@
 <img src=".github/adapt-banner.svg" alt="Adapt — Corrections that stick across sessions." width="100%">
 
-**Adapt is Membrane's governed behavioral-learning subsystem. Taste learns user-backed preferences; Insights learns evidence-backed agent/model/tool failures, gotchas, and waste. Cortex owns durable admission, lifecycle, storage, and retrieval.**
+**Adapt is Membrane's governed behavioral-learning subsystem. Taste learns user-backed preferences; Insights learns evidence-backed agent/model/tool failures, gotchas, and waste. Cortex owns durable admission, lifecycle, storage, retrieval, and delivery.**
 
 <sub>Package & CLI id: <code>adapt</code>.</sub>
 

@@ -10,12 +10,14 @@
 
 ## Purpose
 
+Adapt is Membrane's governed behavioral-learning subsystem.
+
 Adapt has two first-class surfaces:
 
 - **Taste** learns user-backed preferences and behavioral constraints.
 - **Insights** learns evidence-backed agent/model/tool failures, gotchas, and waste.
 
-Adapt is not memory. Cortex owns durable admission, lifecycle, storage, and retrieval.
+Adapt is not memory. Cortex owns durable admission, lifecycle, storage, retrieval, and delivery.
 
 ## Owns
 

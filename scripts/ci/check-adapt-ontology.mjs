@@ -4,8 +4,9 @@
 // Fails when current-product docs describe Adapt, Taste, or Insights as memory,
 // per docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md §§14 (P0.2)
 // and 15 (terminology firewall). Allowed: Cortex/agent/host memory wording and
-// text after the §15.5 historical-terminology marker. Excluded entirely:
-// research files, historical plans, and the canonical spec itself (it
+// text after the §15.5 historical-terminology marker in explicitly historical
+// files only. Excluded entirely: research files, historical plans/archive,
+// design records, and the canonical spec itself (it
 // legitimately enumerates the forbidden phrases).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -46,17 +47,44 @@ const ALLOWED_SUBSTRINGS = [
 /** §15.5 marker: everything after this line in a file is historical evidence. */
 const HISTORICAL_MARKER = /Historical terminology:.*predates the canonical Adapt ontology/i;
 
+export const HISTORICAL_PATH_PREFIXES = [
+  "adapt/docs/plans/",
+  "docs/archive/",
+  "docs/design/",
+  "docs/plans/",
+  "docs/research/",
+];
+
+export const PRIMARY_OVERVIEWS = ["adapt/README.md", "docs/subsystems/adapt.md"];
+
+const REQUIRED_OVERVIEW_IDEAS = [
+  {
+    label: "Adapt governed behavioral learning",
+    pattern: /Adapt(?:\s+is)?\s+(?:Membrane(?:'s|’s)\s+)?governed behavioral[- ]learning subsystem/i,
+  },
+  { label: "Taste user-backed preferences", pattern: /Taste[\s\S]{0,120}user-backed preferences/i },
+  {
+    label: "Insights evidence-backed failures/gotchas",
+    pattern: /Insights[\s\S]{0,160}evidence-backed[\s\S]{0,100}(?:failures?|gotchas?)/i,
+  },
+  {
+    label: "Cortex durable ownership",
+    pattern: /Cortex[\s\S]{0,160}durable admission[\s\S]{0,100}lifecycle[\s\S]{0,100}storage[\s\S]{0,100}retrieval[\s\S]{0,100}delivery/i,
+  },
+];
+
 /**
  * Path exclusions: research provenance, marked-historical plans, and the
  * canonical spec. `relPath` uses POSIX separators.
  */
 export function isExcludedPath(relPath) {
   const p = relPath.replaceAll("\\", "/");
-  return (
-    p === CANONICAL_SPEC ||
-    p.startsWith("docs/research/") ||
-    p.startsWith("adapt/docs/plans/")
-  );
+  return p === CANONICAL_SPEC || HISTORICAL_PATH_PREFIXES.some((prefix) => p.startsWith(prefix));
+}
+
+export function isHistoricalPath(relPath) {
+  const p = relPath.replaceAll("\\", "/");
+  return p === CANONICAL_SPEC || HISTORICAL_PATH_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
 /**
@@ -70,6 +98,10 @@ export function evaluateOntology(text, { path }) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (HISTORICAL_MARKER.test(line)) {
+      if (!isHistoricalPath(path)) {
+        failures.push({ path, line: i + 1, phrase: "historical marker outside historical path" });
+        continue;
+      }
       historical = true;
       continue;
     }
@@ -86,12 +118,13 @@ export function evaluateOntology(text, { path }) {
   return failures;
 }
 
-function mdFilesIn(dirRel) {
-  const abs = join(REPO_ROOT, dirRel);
-  if (!existsSync(abs)) return [];
-  return readdirSync(abs, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".md"))
-    .map((e) => `${dirRel}/${e.name}`);
+export function evaluatePrimaryOverview(text, { path }) {
+  if (!PRIMARY_OVERVIEWS.includes(path.replaceAll("\\", "/"))) return [];
+  return REQUIRED_OVERVIEW_IDEAS.filter(({ pattern }) => !pattern.test(text)).map(({ label }) => ({
+    path,
+    line: 1,
+    phrase: `missing canonical idea: ${label}`,
+  }));
 }
 
 function mdFilesUnder(dirRel) {
@@ -106,18 +139,15 @@ function mdFilesUnder(dirRel) {
   return out;
 }
 
-/** Current-product doc targets (packet §3.A). Read-only inventory; missing paths are skipped. */
+/** Current-product Markdown inventory. Historical/provenance trees are excluded explicitly. */
 export function scanTargets() {
-  return [
+  return [...new Set([
     "README.md",
-    ...mdFilesIn("docs"),
-    ...mdFilesIn("docs/subsystems"),
-    ...mdFilesUnder("docs/hub"),
-    ...mdFilesIn("docs/membrane"),
+    ...mdFilesUnder("docs"),
     "adapt/README.md",
-    ...mdFilesIn("adapt/docs"), // top level only; adapt/docs/plans is excluded by isExcludedPath anyway
+    ...mdFilesUnder("adapt/docs"),
     "migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md",
-  ].filter((p) => !isExcludedPath(p));
+  ].filter((p) => !isExcludedPath(p)))].sort();
 }
 
 /** Scan all current-product targets on disk. Returns the combined failure list. */
@@ -126,7 +156,9 @@ export function scanRepository(root = REPO_ROOT) {
   for (const rel of scanTargets()) {
     const abs = join(root, rel);
     if (!existsSync(abs)) continue;
-    failures.push(...evaluateOntology(readFileSync(abs, "utf8"), { path: rel }));
+    const text = readFileSync(abs, "utf8");
+    failures.push(...evaluateOntology(text, { path: rel }));
+    failures.push(...evaluatePrimaryOverview(text, { path: rel }));
   }
   return failures;
 }
