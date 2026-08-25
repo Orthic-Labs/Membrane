@@ -40,7 +40,7 @@ becomes a second planner.
 - the decision that a piece of evidence deserves attention — Membrane planner;
 - durable knowledge — Cortex;
 - repository truth — Blueprint;
-- document indexing — Guide.
+- document indexing — Ledger.
 
 ## Interception points
 

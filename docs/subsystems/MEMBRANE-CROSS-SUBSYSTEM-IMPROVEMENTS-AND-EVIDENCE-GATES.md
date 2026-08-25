@@ -745,3 +745,24 @@ These motivate hypotheses and workflow patterns. Membrane's own frozen evaluatio
 # 17. Final system statement
 
 > **Membrane has six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Each owns a distinct evidence problem. A mechanism is not complete because code exists; it is complete only when the production path executes it and qualified evidence shows it satisfies the baseline. CodeRight supplies real execution outcomes, Adapt learns behavioral patterns, Cortex governs durable knowledge, Ledger navigates registered documents, Blueprint owns repository truth, Pull decides attention, and Push faithfully reduces what Pull selected.**
+
+
+---
+
+# Appendix A — Runtime lifecycle test matrix (required)
+
+This matrix is a hard gate for the Hub/Blueprint lifecycle. Every row is an
+installed-artifact test, not a unit test.
+
+| Scenario | Required result |
+|---|---|
+| Hub off, agent invokes Membrane | typed `membrane_unavailable { hub_inactive }`; zero Membrane processes spawned |
+| Hub on | Membrane runtime present in the Hub PID/process, nowhere else |
+| Hub quits | Membrane disappears with Hub; no orphan, no restart |
+| Agent launches stdio MCP | only a stateless adapter process exists; it launches nothing |
+| Hub off, explicit Blueprint query | bounded one-shot operation runs, reports generation + freshness, exits |
+| Hub off, normal Membrane context request | typed unavailable; **no** Blueprint one-shot fallback is invoked |
+| Hub on, one-shot Blueprint writer attempted | routes through the owner or fails `resident_owner_active`; never a second writer |
+| Crashed Hub | stale lease metadata cannot permanently lock the Blueprint store; OS lock semantics release it |
+| Blueprint graph queried after source changed | freshness reports `changed_since_generation`, not silent success |
+| OS login with Hub disabled | no Membrane and no Blueprint resident processes exist |

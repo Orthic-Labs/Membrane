@@ -34,7 +34,7 @@ Cortex preserves governed long-lived knowledge: decisions, preferences, gotchas,
 
 - final context/attention policy — Membrane planner;
 - repository facts, code graph, source identity, re-anchoring — Blueprint;
-- document/section navigation index — Guide;
+- document/section navigation index — Ledger;
 - compression/reduction mechanics — Push;
 - transcript/event learning — Adapt;
 - OS/process lifecycle — Hub/integration layer.
@@ -79,7 +79,7 @@ store:
 6. Derived summaries never self-promote to truth.
 7. Repeated selection never makes a memory immortal.
 8. Erasure must remove payload from every Cortex-owned projection/cache/artifact path.
-9. Guide index tables and Push artifact state do not live in the Cortex durable store.
+9. Ledger index tables and Push artifact state do not live in the Cortex durable store.
 10. Repository truth never enters Cortex; Blueprint owns it.
 
 ## Definition of Done

@@ -50,7 +50,7 @@ The audit establishes this current state:
 | Live Diagnostics host enforcement | Installed Node hook entrypoint, command classifier, current-worktree manifest, reconciliation client, and completion/test/build fence | Port Membrane-owned enforcement helpers to native Rust; installed host configuration invokes a native adapter; retain JS only as release-excluded differential coverage |
 | MCP server | Generated architecture names `mcp/server.mjs` as source of truth for 17 tools, including seven diagnostic tools; native `membrane-mcp` advertises none because native execution is not implemented | Cut the complete registry-defined production MCP surface to `membrane-mcp` Rust; advertise a tool only when its native executor exists |
 | Context renderer/budget implementation | Generated architecture still names `mcp/context-renderer-lib.cjs` as source of truth, with a Rust mirror | Make Rust authoritative; demote/delete production CJS path |
-| Blueprint | External daemon/source subtree now owns generation/hash-bound D0 findings and remains one of six product axes | Keep as a separately versioned external service; Membrane uses one typed native client, never imports Blueprint internals, and never bootstraps Node |
+| Blueprint | Owns generation/hash-bound D0 findings and remains one of six product axes | Hub-hosted, not independently resident: watcher runs only under Hub, Hub-off access is a bounded one-shot operation; Membrane uses one typed native client, never imports Blueprint internals, and never bootstraps Node |
 | Python/JS benchmark, migration, and repository-maintenance scripts | Mixed | May remain dev-only with machine-verifiable exclusion from release/runtime |
 | Root CI | Node-oriented; does not itself prove interpreter-free installed operation | Add independent native-only installed-artifact gate |
 
@@ -179,9 +179,14 @@ Examples include a compiler, linter, scanner, VCS executable where a Rust librar
 
 ### 1.4 Self-contained
 
-For standalone Membrane, self-contained means **one native runtime and one signed product distribution**, not necessarily a single OS process. Hub may supervise an intentional Rust child for crash/lifecycle isolation.
+Self-contained means **one native runtime inside the active Hub process and one
+signed product distribution**. There is no standalone Membrane runtime and Hub
+MUST NOT supervise a Membrane child process for isolation or any other reason;
+when Hub is inactive there is no Membrane runtime at all.
 
-For CodeRight-embedded Membrane, core behavior MUST be in-process. CodeRight MUST NOT traverse MCP, loopback HTTP, or a child process to reach functionality already linked into the process.
+CodeRight binds to Membrane through an active Hub. There is no embedded
+CodeRight Membrane backend and no local fallback store; when Hub is inactive,
+Membrane-requiring CodeRight operations return typed unavailability.
 
 ### 1.5 Bounded installed presentation
 
@@ -232,7 +237,7 @@ Any Hub script that owns business/runtime semantics, performs an effect, or requ
                  Membrane Hub
         standalone lifecycle / install / update
 
-Host surfaces:
+Host surfaces (all stateless Hub clients; none may launch or auto-start anything):
   native `membrane` CLI
   native `membrane-mcp` stdio adapter
   native Hub integration
@@ -248,7 +253,7 @@ Exact crate names may vary, but ownership MUST be equivalent to the following:
 | Native owner | Responsibility |
 |---|---|
 | `membrane-protocol` | Stable requests, responses, receipts, persistence/wire contracts, version negotiation, canonical serialization |
-| `membrane-runtime` | Standalone/embedded composition, CLI/API modes, lifecycle boundaries, dependency injection |
+| `membrane-runtime` | In-Hub composition, CLI/API modes, lifecycle boundaries, dependency injection; never a standalone resident runtime |
 | `membrane-core` | Shared planning/rendering/budget/reconciliation logic that must have one authoritative implementation |
 | `membrane-provider-sdk` | Typed provider/source interfaces and testkit |
 | `membrane-federation` | Request validation, deadline, scope/freshness binding, fan-out, generation coherence, merge, warnings/omissions |
@@ -293,7 +298,7 @@ The current product truth enumerates six axes. This section makes their runtime 
 | **Pull** | Rust federation, admission, planner-facing evidence | No Python/Node provider worker; external sources only through typed interfaces |
 | **Push** | Rust reduction/reconstruction/budget logic | Canonical renderer/reconciliation in Rust; CJS mirror cannot remain authoritative |
 | **Cortex** | Existing Rust engine/store | No competing Python memory writer; remote use only through typed client when selected |
-| **Blueprint** | Typed Rust client/interface; native implementation or separately versioned external service | Membrane artifact cannot bootstrap/require Node for Membrane-owned runtime; absence degrades explicitly |
+| **Blueprint** | Typed Rust client/interface; Hub-hosted native implementation | Independently usable, not independently resident; watcher only under Hub; Hub-off access is bounded one-shot; absence degrades explicitly |
 | **Guide** | Rust record/index/navigation implementation | No interpreter-backed runtime dependency |
 | **Adapt** | Rust learning subsystem over native transcript + Cortex interfaces | Python package/CLI/shims/scheduler are migration scaffolding only |
 
@@ -621,7 +626,7 @@ Hub is sole resident lifecycle authority for Membrane runtime. Blueprint owns it
 
 Allowed:
 
-1. Hub -> supervised Rust Membrane child where deliberate isolation is retained;
+1. Hub -> an explicitly requested, bounded one-shot Blueprint operation that publishes transactionally and exits;
 2. Membrane -> separately owned external service over a typed protocol;
 3. a governed Rust effect executor -> approved external target/project tools.
 
@@ -1682,3 +1687,24 @@ shims, schedulers, generated host configs, and hidden fallbacks are part of that
 The native migration is complete only when the exact installed artifact proves that topology without Python or Node available, and the legacy executable paths have been deleted or proven dev-only.
 
 That is the canonical completion definition.
+
+
+---
+
+## Appendix — Hub-owned runtime lifecycle (supersedes conflicting text above)
+
+The Membrane runtime executes only inside the active Hub process. MCP and CLI
+surfaces are stateless Hub clients; they never launch, auto-start, or register a
+Membrane or Blueprint process.
+
+```text
+Agent -> membrane stdio adapter
+            -> Hub probe
+            -> Hub unavailable
+            -> typed membrane_unavailable { reason: hub_inactive, retryable: true }
+```
+
+The adapter then exits, or remains a thin unavailable transport per host
+protocol. It never launches anything. Blueprint's watcher exists only under Hub;
+Hub-off Blueprint access is an explicit bounded one-shot operation, never a
+Membrane fallback.

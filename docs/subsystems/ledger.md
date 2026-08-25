@@ -1,7 +1,7 @@
-# Guide — Document Navigation Index
+# Ledger — Document Navigation Index
 
 **Status:** derived subsystem reference · non-normative  
-**Canonical name:** Guide  
+**Canonical name:** Ledger  
 **Historical name:** Spine / Markdown Doc Spine / RMS D1–D4  
 **Parent system:** Membrane  
 **Current implementation namespace:** `membrane-runtime::guide::{db, outline, identifier, doc_projection, doc_spine, doc_shadow, doc_candidate_provider}`.
@@ -12,9 +12,9 @@ Answer one question:
 
 > **Where in the documents is the relevant material?**
 
-Guide is a rebuildable navigation/index subsystem over document sources. The current implementation is Markdown-oriented. The name change to Guide does not by itself expand supported formats.
+Ledger is a rebuildable navigation/index subsystem over document sources. The current implementation is Markdown-oriented. The name change to Ledger does not by itself expand supported formats.
 
-Guide does not own the canonical document bytes. It indexes them into stable, resolvable section references so the planner can retrieve the exact relevant region instead of reading entire files.
+Ledger does not own the canonical document bytes. It indexes them into stable, resolvable section references so the planner can retrieve the exact relevant region instead of reading entire files.
 
 ## Owns
 
@@ -26,7 +26,7 @@ Guide does not own the canonical document bytes. It indexes them into stable, re
 - `recall`-style document navigation returning:
   `doc_id + source_ref + anchor_id + expected_hash + score`.
 - Its own rebuildable index store/projection.
-- `GuideDb` at `cache_root()/guide-index.sqlite3`; this SQLite file is disposable and
+- `LedgerDb` at `cache_root()/guide-index.sqlite3`; this SQLite file is disposable and
   never opens Cortex's durable-memory database.
 
 ## Does not own
@@ -39,32 +39,37 @@ Guide does not own the canonical document bytes. It indexes them into stable, re
 
 ## Public seam
 
-Guide produces typed document candidates for the Membrane planner.
+Ledger produces typed document candidates for the Membrane planner.
 
-A Guide result is a pointer plus integrity metadata. The planner may admit the source content directly or use resolver-backed delivery to fetch the referenced section under the active grant.
+A Ledger result is a pointer plus integrity metadata. The planner may admit the source content directly or use resolver-backed delivery to fetch the referenced section under the active grant.
 
-Guide never upgrades source authority merely because a section was indexed.
+Ledger never upgrades source authority merely because a section was indexed.
 
 CLI surface: `membrane guide sync`, `membrane guide recall`, `membrane guide outline`,
 and `membrane guide read`. There is no top-level document command or generic recall
-fallback into Guide.
+fallback into Ledger.
 
 ## Invariants
 
 1. A hit is a resolvable reference, not proof that its content was admitted.
 2. Hash mismatch returns `stale`; stale content is never silently served as current.
 3. Artifact rows and per-document projections update in one SQLite transaction so readers do not observe mixed revisions.
-4. Trust/influence/sensitivity metadata constrains eligibility; Guide does not assign authority.
-5. Guide's index is rebuildable from source documents and does not share Cortex's authored durable store.
-6. Guide does not decide whether a document claim is true against code.
-7. New documentation & code use `Guide`; `Spine` is historical terminology only.
+4. Trust/influence/sensitivity metadata constrains eligibility; Ledger does not assign authority.
+5. Ledger's index is rebuildable from source documents and does not share Cortex's authored durable store.
+6. Ledger does not decide whether a document claim is true against code.
+7. New documentation & code use `Ledger`; `Spine` is historical terminology only.
 
 ## Definition of Done
 
 - [x] `docs/subsystems/spine.md` is retired in favor of this file.
-- [x] Guide has a separately owned rebuildable index store/projection.
-- [ ] Guide candidates can participate in the Membrane planner rather than remaining permanently shadow-only.
+- [x] Ledger has a separately owned rebuildable index store/projection.
+- [ ] Ledger candidates can participate in the Membrane planner rather than remaining permanently shadow-only.
 - [ ] A recalled section round-trips through source resolution with hash verification.
 - [ ] Sync is incremental, bounded, and reports typed outcomes.
 - [ ] Workspace/document roots outside repository code can be indexed only when the active grant permits them.
-- [x] Guide implementation & tests live under a discoverable `guide` namespace without compatibility wrappers.
+- [x] Ledger implementation & tests live under a discoverable `ledger` namespace without compatibility wrappers.
+
+
+## Naming
+
+Ledger was named Guide (and Spine before that). Guide is retired as a current-product name. Source paths, CLI surfaces, database files, and table names still use `guide` until the rename cutover lands; that is implementation drift, not a competing name. Canonical detail lives in `LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`.

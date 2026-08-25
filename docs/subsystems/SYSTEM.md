@@ -7,7 +7,7 @@
 
 ## 1. System rule
 
-> **Membrane is the parent context system. Pull, Push, Cortex, Blueprint, Guide, and Adapt are its six named subsystems.**
+> **Membrane is the parent context system. Pull, Push, Cortex, Blueprint, Ledger, and Adapt are its six named subsystems.**
 
 Planner, provider adapters, host adapters, MCP, supervisor/updater, and Hub integration are Membrane core/modules/surfaces. They are not peer semantic subsystems.
 
@@ -20,7 +20,7 @@ A subsystem may retain its own process, package, protocol, or store. Being under
 | **Pull** | What current evidence is sufficient for this task? | bounded acquisition, eligibility, fusion, attention admission, packet publication, receipts | durable knowledge, repository truth, reduction mechanics |
 | **Blueprint** | What is true in this repository? | repository observation, evidence graph, generations, source identity, RecallCircuit, truth/drift/change intelligence, own SQLite/service/watcher | final context policy, durable knowledge, host enforcement |
 | **Cortex** | What do we durably know? | governed durable knowledge, admission-before-write, conflict/supersession, temporal/lifecycle semantics, memory retrieval, own SQLite | repository truth, document index, final attention policy, reduction |
-| **Guide** | Where in the documents is the relevant material? | document/section index, stable anchors, hash-bound references, document navigation, rebuildable index store | source-document authority, document truth, durable knowledge, final admission |
+| **Ledger** | Where in the documents is the relevant material? | document/section index, stable anchors, hash-bound references, document navigation, rebuildable index store | source-document authority, document truth, durable knowledge, final admission |
 | **Adapt** | What should we have learned? | transcript/event mining, Taste/Insights-style learning, evidence-backed proposals | any canonical truth store, direct durable writes, final context policy |
 | **Push** | How can flowing context be reduced faithfully? | reversible transform mechanics, content-addressed artifacts, protected-span verification, token/byte accounting, host telemetry | ranking, final admission, durable knowledge, Cortex storage |
 
@@ -33,7 +33,7 @@ task + ScopeGrant + state + deadline + attention budget
     ↓
 evidence requirements
     ↓
-bounded acquisition from Blueprint / Cortex / Guide / providers
+bounded acquisition from Blueprint / Cortex / Ledger / providers
     ↓
 hard eligibility + authority + freshness
     ↓
@@ -56,7 +56,7 @@ Adapt consumes experience and emits proposals into Cortex admission; it does not
 |---|---|---|
 | `.agent/graph/graph.db` | Blueprint | derived repository evidence; rebuildable |
 | `cortex-engine.db` | Cortex | authored durable knowledge; irreplaceable |
-| Guide index store | Guide | derived document/section projection; rebuildable |
+| Ledger index store | Ledger | derived document/section projection; rebuildable |
 | content-addressed raw reduction artifacts | Push | recoverability substrate; reproducible by re-capture where source remains available |
 
 No subsystem opens another subsystem's store as an implementation shortcut.
@@ -68,7 +68,7 @@ hosts / MCP / Hub integration
             ↓
       Membrane core planner
        ↙      ↓       ↘
-Pull planner  Blueprint  Cortex  Guide
+Pull planner  Blueprint  Cortex  Ledger
                     ↘      ↓
                     Push executes selected representation
 
@@ -80,8 +80,8 @@ Rules:
 - `engine/**` and `mcp/**` do not import `blueprint/src/**`.
 - Membrane consumes Blueprint through Blueprint-owned public schemas/service/client surfaces.
 - Blueprint does not open Cortex storage.
-- Guide indexes source documents but does not become their authority.
-- Cortex does not absorb Guide's document-index semantics.
+- Ledger indexes source documents but does not become their authority.
+- Cortex does not absorb Ledger's document-index semantics.
 - Push executes reduction; it does not become a second ranking/admission owner.
 - Adapt writes proposals only through Cortex admission.
 
@@ -89,7 +89,7 @@ Rules:
 
 - Blueprint may be independently packaged, runnable, and published while remaining a Membrane subsystem.
 - Cortex is a Membrane-owned durable subsystem.
-- Guide may remain implemented inside Membrane runtime code while still having distinct semantic ownership.
+- Ledger may remain implemented inside Membrane runtime code while still having distinct semantic ownership.
 - Adapt lives at `adapt/` within Membrane while retaining its semantic boundary.
 - Push may remain implemented within Membrane runtime modules; a separate crate is not required merely to justify subsystem status.
 
