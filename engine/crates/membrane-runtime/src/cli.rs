@@ -361,6 +361,15 @@ enum LedgerCmd {
         #[arg(short, default_value_t = 6)]
         k: usize,
     },
+    /// Report the persisted retrieval lane (`legacy_scan`, `shadow`, or `ledger_fts`).
+    Status,
+    /// Select a retrieval lane. `ledger_fts` requires a qualification receipt JSON file.
+    Activate {
+        #[arg(value_parser = ["legacy_scan", "shadow", "ledger_fts"])]
+        mode: String,
+        #[arg(long, required_if_eq("mode", "ledger_fts"))]
+        receipt: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3678,6 +3687,34 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(())
             }
+            LedgerCmd::Status => {
+                let ledger = crate::ledger::LedgerDb::open_default()?;
+                let mode = crate::ledger::index::recall_mode(&ledger)?;
+                println!("{}", serde_json::json!({"mode": mode.storage_name()}));
+                Ok(())
+            }
+            LedgerCmd::Activate { mode, receipt } => {
+                let ledger = crate::ledger::LedgerDb::open_default()?;
+                let mode = match mode.as_str() {
+                    "legacy_scan" => crate::ledger::index::LedgerRecallMode::LegacyScan,
+                    "shadow" => crate::ledger::index::LedgerRecallMode::Shadow,
+                    "ledger_fts" => crate::ledger::index::LedgerRecallMode::LedgerFts,
+                    _ => unreachable!("clap restricts Ledger activation modes"),
+                };
+                let receipt = receipt
+                    .as_ref()
+                    .map(|path| {
+                        let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+                        serde_json::from_slice::<crate::ledger::index::LedgerQualificationReceiptV1>(
+                            &bytes,
+                        )
+                        .map_err(|error| error.to_string())
+                    })
+                    .transpose()?;
+                crate::ledger::index::activate(&ledger, mode, receipt.as_ref())?;
+                println!("{}", serde_json::json!({"mode": mode.storage_name()}));
+                Ok(())
+            }
         };
     }
     if matches!(cli.cmd, Cmd::Adapt { .. }) {
@@ -4696,6 +4733,39 @@ mod tests {
                 command: super::LedgerCmd::Outline { json: true, .. }
             }
         ));
+    }
+
+    #[test]
+    fn ledger_activation_cli_requires_receipt_for_fts_only() {
+        assert!(super::Cli::try_parse_from([
+            "membrane",
+            "ledger",
+            "activate",
+            "ledger_fts"
+        ])
+        .is_err());
+        let parsed = super::Cli::try_parse_from([
+            "membrane",
+            "ledger",
+            "activate",
+            "ledger_fts",
+            "--receipt",
+            "qualification.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Ledger {
+                command: super::LedgerCmd::Activate { .. }
+            }
+        ));
+        assert!(super::Cli::try_parse_from([
+            "membrane",
+            "ledger",
+            "activate",
+            "legacy_scan"
+        ])
+        .is_ok());
     }
 
     #[test]

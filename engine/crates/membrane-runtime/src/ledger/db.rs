@@ -47,6 +47,61 @@ CREATE TABLE IF NOT EXISTS ledger_doc_projections (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_doc_projections_parent_generation
   ON ledger_doc_projections(parent_doc_id, index_generation);
+CREATE TABLE IF NOT EXISTS ledger_nodes (
+    doc_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    anchor_id TEXT NOT NULL,
+    parent_id TEXT,
+    ordinal INTEGER NOT NULL,
+    node_kind TEXT NOT NULL,
+    heading_path TEXT NOT NULL,
+    heading TEXT NOT NULL,
+    source_start_byte INTEGER NOT NULL,
+    source_end_byte INTEGER NOT NULL,
+    span_hash TEXT NOT NULL,
+    searchable_text TEXT NOT NULL,
+    parser_version TEXT NOT NULL,
+    projection_schema_version TEXT NOT NULL,
+    fts_schema_version TEXT NOT NULL,
+    tokenizer_id TEXT NOT NULL,
+    query_normalizer_version TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    ledger_generation INTEGER NOT NULL,
+    PRIMARY KEY(doc_id, node_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_nodes_generation
+  ON ledger_nodes(doc_id, ledger_generation);
+CREATE TABLE IF NOT EXISTS ledger_index_publications (
+    doc_id TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL,
+    node_count INTEGER NOT NULL,
+    parser_version TEXT NOT NULL,
+    projection_schema_version TEXT NOT NULL,
+    fts_schema_version TEXT NOT NULL,
+    tokenizer_id TEXT NOT NULL,
+    query_normalizer_version TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    ledger_generation INTEGER NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS ledger_node_fts USING fts5(
+    doc_id UNINDEXED,
+    node_id UNINDEXED,
+    path,
+    title,
+    heading,
+    body,
+    identifier_aliases,
+    tokenize='unicode61 remove_diacritics 2'
+);
+CREATE TABLE IF NOT EXISTS ledger_activation (
+    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+    mode TEXT NOT NULL CHECK(mode IN ('legacy_scan','shadow','ledger_fts')),
+    qualification_receipt_sha256 TEXT,
+    corpus_version TEXT,
+    activated_at_ms INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO ledger_activation(singleton, mode, activated_at_ms)
+VALUES (1, 'legacy_scan', 0);
 "#;
 
 /// File name of the pre-rename Guide index, kept only so an existing install
@@ -179,7 +234,11 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(names, ["ledger_doc_artifacts", "ledger_doc_projections"]);
+        assert!(names.iter().any(|name| name == "ledger_doc_artifacts"));
+        assert!(names.iter().any(|name| name == "ledger_doc_projections"));
+        assert!(names.iter().any(|name| name == "ledger_nodes"));
+        assert!(names.iter().any(|name| name == "ledger_node_fts"));
+        assert!(names.iter().any(|name| name == "ledger_activation"));
         assert!(!names.iter().any(|name| name == "memories"));
         assert!(!names.iter().any(|name| name == "doc_artifacts"));
     }
@@ -238,7 +297,10 @@ mod tests {
             .unwrap()
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert_eq!(names, ["ledger_doc_artifacts", "ledger_doc_projections"]);
+        assert!(names.iter().any(|name| name == "ledger_doc_artifacts"));
+        assert!(names.iter().any(|name| name == "ledger_doc_projections"));
+        assert!(names.iter().any(|name| name == "ledger_nodes"));
+        assert!(names.iter().any(|name| name == "ledger_node_fts"));
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM ledger_doc_artifacts", [], |row| {
                 row.get(0)

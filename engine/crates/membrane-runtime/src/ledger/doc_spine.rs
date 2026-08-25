@@ -5,6 +5,10 @@ use crate::{
         replace_doc_projections_tx, DocumentProjectionStoreInputV1, DocumentProjectionV1,
         ProjectionKind, ProjectionProvenanceV1,
     },
+    ledger::index::{
+        advance_unchanged_generation_tx, document_index_is_current_tx,
+        replace_document_index_tx, IndexDocumentInput,
+    },
     ledger::LedgerDb,
 };
 use sha2::{Digest, Sha256};
@@ -181,16 +185,11 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 fn query_terms(query: &str) -> Vec<String> {
-    query
-        .to_ascii_lowercase()
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|term| !term.is_empty())
-        .map(str::to_owned)
-        .collect()
+    super::index::query_terms(query)
 }
 
 fn lexical_score(content: &str, terms: &[String]) -> usize {
-    let content = content.to_ascii_lowercase();
+    let content = super::index::normalize_query(content);
     terms
         .iter()
         .map(|term| content.match_indices(term).count())
@@ -202,6 +201,37 @@ fn lexical_score(content: &str, terms: &[String]) -> usize {
 /// Source is reopened & hash-checked before emitting a hit, so stale projections cannot yield a
 /// pointer whose expected hash targets changed document content.
 pub fn recall(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
+    match super::index::recall_mode(db)? {
+        super::index::LedgerRecallMode::LedgerFts => recall_fts(db, query, k),
+        super::index::LedgerRecallMode::Shadow => Ok(recall_shadow(db, query, k)?.legacy_hits),
+        super::index::LedgerRecallMode::LegacyScan => recall_legacy(db, query, k),
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq)]
+pub struct LedgerShadowRecallV1 {
+    pub normalized_query: String,
+    pub legacy_hits: Vec<DocRecallHitV1>,
+    pub fts_hits: Vec<DocRecallHitV1>,
+}
+
+/// Execute both lanes for qualification/debugging while leaving caller-visible production
+/// behavior on the legacy result. This remains available before FTS activation is trusted.
+pub fn recall_shadow(
+    db: &LedgerDb,
+    query: &str,
+    k: usize,
+) -> Result<LedgerShadowRecallV1, String> {
+    let legacy_hits = recall_legacy(db, query, k)?;
+    let fts_hits = recall_fts(db, query, k)?;
+    Ok(LedgerShadowRecallV1 {
+        normalized_query: super::index::normalize_query(query),
+        legacy_hits,
+        fts_hits,
+    })
+}
+
+fn recall_legacy(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
     if k == 0 {
         return Ok(Vec::new());
     }
@@ -281,10 +311,14 @@ pub fn recall(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1
         };
         hits.push(DocRecallHitV1 {
             doc_id,
+            node_id: None,
             source_ref,
             anchor_id: section.anchor_id.clone(),
             expected_hash,
             score: score as f32,
+            ledger_generation: None,
+            lane: "legacy_scan".to_owned(),
+            normalized_query: super::index::normalize_query(query),
         });
     }
     hits.sort_by(|left, right| {
@@ -294,6 +328,41 @@ pub fn recall(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1
             .then_with(|| left.doc_id.cmp(&right.doc_id))
     });
     hits.truncate(k);
+    Ok(hits)
+}
+
+fn recall_fts(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
+    let (normalized_query, rows) = super::index::recall_fts(db, query, k)?;
+    let mut hits = Vec::new();
+    for row in rows {
+        if Path::new(&row.path)
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            continue;
+        }
+        let source_path = Path::new(&row.repository_root).join(&row.path);
+        let Ok(bytes) = std::fs::read(source_path) else {
+            continue;
+        };
+        if digest(&bytes) != row.expected_hash {
+            continue;
+        }
+        hits.push(DocRecallHitV1 {
+            doc_id: row.doc_id,
+            node_id: Some(row.node_id),
+            source_ref: format!("doc://repo/worktree/{}", row.path.trim_start_matches('/')),
+            anchor_id: row.anchor_id,
+            expected_hash: row.expected_hash,
+            score: row.score,
+            ledger_generation: Some(row.generation),
+            lane: "ledger_fts".to_owned(),
+            normalized_query: normalized_query.clone(),
+        });
+        if hits.len() == k {
+            break;
+        }
+    }
     Ok(hits)
 }
 
@@ -339,10 +408,16 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
 #[derive(Clone, Debug, serde::Serialize, PartialEq)]
 pub struct DocRecallHitV1 {
     pub doc_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<String>,
     pub source_ref: String,
     pub anchor_id: String,
     pub expected_hash: String,
     pub score: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ledger_generation: Option<i64>,
+    pub lane: String,
+    pub normalized_query: String,
 }
 
 #[derive(Debug)]
@@ -486,7 +561,44 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     walk(&root, &mut files, &mut excluded_health).map_err(|e| e.to_string())?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let generation: i64 = tx
+        .query_row(
+            "SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    // A sync publishes one database-wide generation. Previously verified rows from other roots
+    // advance in the same transaction; recall still hash-checks their live source before emit.
+    tx.execute(
+        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_doc_projections SET index_generation=?1
+         WHERE parent_doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_nodes SET ledger_generation=?1
+         WHERE doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_index_publications SET ledger_generation=?1
+         WHERE doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
     let projections_available: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",
@@ -544,11 +656,15 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                         |row| row.get(0),
                     )
                     .map_err(|e| e.to_string())?;
+            let has_current_index =
+                document_index_is_current_tx(&tx, id, DOC_PARSER_VERSION, &hash)
+                    .map_err(|error| error.to_string())?;
             if old_hash == &hash
                 && parser_version == DOC_PARSER_VERSION
                 && superseded_by.is_none()
                 && !supersedes
                 && has_projection
+                && has_current_index
             {
                 tx.execute(
                     "UPDATE ledger_doc_artifacts \
@@ -564,6 +680,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                     rusqlite::params![revision, generation, id, hash],
                 )
                 .map_err(|e| e.to_string())?;
+                advance_unchanged_generation_tx(&tx, id, &revision, generation)
+                    .map_err(|e| e.to_string())?;
                 registered += 1;
                 skipped += 1;
                 continue;
@@ -591,10 +709,25 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         let lifecycle = frontmatter.status.as_deref().unwrap_or("active");
         let keywords_json =
             serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
+        let title = frontmatter.title.clone().unwrap_or_default();
         tx.execute("INSERT INTO ledger_doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, title, summary, keywords_json, superseded_by, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
           VALUES (?1,?2,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,'catalogued',?12,?13,?14,?15,?16)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state=excluded.lifecycle_state, title=excluded.title, summary=excluded.summary, keywords_json=excluded.keywords_json, superseded_by=NULL, trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
-          rusqlite::params![id, root_s, revision, relative, hash, DOC_PARSER_VERSION, class, lifecycle, frontmatter.title.clone().unwrap_or_default(), frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+          rusqlite::params![id, root_s, revision, relative, hash, DOC_PARSER_VERSION, class, lifecycle, title, frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+        replace_document_index_tx(
+            &tx,
+            &IndexDocumentInput {
+                doc_id: &id,
+                path: &relative,
+                title: &title,
+                markdown: &markdown,
+                content_hash: &hash,
+                source_revision: &revision,
+                generation,
+                parser_version: DOC_PARSER_VERSION,
+            },
+        )
+        .map_err(|e| e.to_string())?;
         if let Some(target) = &frontmatter.supersedes {
             supersessions.push((id.clone(), relative.clone(), target.clone()));
         }
