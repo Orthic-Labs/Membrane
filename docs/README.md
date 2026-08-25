@@ -33,7 +33,7 @@ Regenerate with the current productization tooling under `scripts/tools/producti
 - [protocol.md](protocol.md) — landed MCP/tool contract and behavior.
 - [product-truth.md](product-truth.md) — raw derived facts backing the generated docs.
 
-Generated/runtime docs use final greenfield identities: Blueprint for repository truth, Cortex for durable knowledge, Guide for document navigation, Adapt for learning, & Push for reduction.
+Generated/runtime docs use final greenfield identities: Blueprint for repository truth, Cortex for durable knowledge, Ledger for document navigation, Adapt for learning, & Push for reduction.
 
 ## Get started
 

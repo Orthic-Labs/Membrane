@@ -1,4 +1,4 @@
-//! Guide candidate observation at the planner boundary.
+//! Ledger candidate observation at the planner boundary.
 //!
 //! This module deliberately runs beside, never inside, planner admission. Document candidates
 //! stay shadow-only until replay evidence authorizes a separate live-admission change.
@@ -10,7 +10,7 @@ use super::doc_shadow::{
     DocCandidateProviderPolicyV1, DocCandidateShadowSelectionV1, DocTaskClassV1,
 };
 
-pub const DOC_CANDIDATE_PROVIDER_NAME: &str = "guide";
+pub const DOC_CANDIDATE_PROVIDER_NAME: &str = "ledger";
 
 /// Opt-in flag: document candidates are shadow-only unless explicitly enabled.
 /// Default OFF — no behavior change for existing installs until `MEMBRANE_DOC_PROVIDER_ENABLED=1`.
@@ -52,7 +52,7 @@ pub trait DocCandidateProvider {
     ) -> DocCandidateShadowSelectionV1;
 }
 
-/// Registered Guide candidates use exact-freshness and task-class primitives.
+/// Registered Ledger candidates use exact-freshness and task-class primitives.
 pub struct RegisteredDocCandidateProvider;
 
 impl DocCandidateProvider for RegisteredDocCandidateProvider {

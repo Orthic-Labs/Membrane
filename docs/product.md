@@ -49,7 +49,7 @@ narrative overview; this file carries the source-derived facts.
 | **Push** | Performs faithful, reversible reduction of information already in flight. |
 | **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
 | **Blueprint** | Owns repository truth, evidence generations, and drift/change observation. |
-| **Guide** | Navigates indexed document sections with hash-bound references. |
+| **Ledger** | Navigates indexed document sections with hash-bound references. |
 | **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |
 
 Current supported target is **macOS**. Cortex is **durable-memory-only**; **Membrane Hub** is the sole resident service authority.

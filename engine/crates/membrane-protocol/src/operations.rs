@@ -36,7 +36,7 @@ pub enum SubsystemAxis {
     Push,
     Cortex,
     Blueprint,
-    Guide,
+    Ledger,
     Adapt,
 }
 
@@ -47,7 +47,7 @@ impl SubsystemAxis {
             Self::Push => "push",
             Self::Cortex => "cortex",
             Self::Blueprint => "blueprint",
-            Self::Guide => "guide",
+            Self::Ledger => "ledger",
             Self::Adapt => "adapt",
         }
     }
@@ -58,7 +58,7 @@ impl SubsystemAxis {
 pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
     match name {
         "membrane_context" => Some(SubsystemAxis::Pull),
-        "membrane_source_read" => Some(SubsystemAxis::Guide),
+        "membrane_source_read" => Some(SubsystemAxis::Ledger),
         "membrane_blueprint" => Some(SubsystemAxis::Blueprint),
         "membrane_knowledge_propose"
         | "membrane_checkpoint_save"

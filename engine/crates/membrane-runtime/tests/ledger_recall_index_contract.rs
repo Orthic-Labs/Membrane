@@ -1,4 +1,4 @@
-use membrane_runtime::guide::{doc_spine, GuideDb};
+use membrane_runtime::ledger::{doc_spine, LedgerDb};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -20,7 +20,7 @@ fn insert_projection(
 ) {
     let hash = digest(markdown);
     tx.execute(
-        "INSERT INTO guide_doc_artifacts
+        "INSERT INTO ledger_doc_artifacts
          (doc_id, repository_root, repository_id, revision, path, content_hash,
           parser_version, document_class, lifecycle_state, title, summary, keywords_json,
           superseded_by, trust_label, influence_class, sensitivity, generated,
@@ -31,7 +31,7 @@ fn insert_projection(
     )
     .unwrap();
     tx.execute(
-        "INSERT INTO guide_doc_projections
+        "INSERT INTO ledger_doc_projections
          (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
           source_content_hash, source_revision, index_generation)
          VALUES (?1, 'lexical', ?2, 0, 'document', NULL, ?3, 'rev-1', 1)",
@@ -74,13 +74,13 @@ fn background_content(index: usize) -> String {
     format!("# Background {index}\n{body}\nrecord {index:05} remains deterministic\n")
 }
 
-fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, GuideDb) {
+fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, LedgerDb) {
     let root = tempfile::tempdir().unwrap();
     let root_text = root.path().to_string_lossy().into_owned();
     let db = if on_disk {
-        GuideDb::open(root.path().join("guide-index.sqlite3")).unwrap()
+        LedgerDb::open(root.path().join("ledger-index.sqlite3")).unwrap()
     } else {
-        GuideDb::open_in_memory()
+        LedgerDb::open_in_memory()
     };
     {
         let mut conn = db.lock();
@@ -163,7 +163,7 @@ fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, G
             );
         }
         tx.execute(
-            "UPDATE guide_doc_projections SET source_content_hash='stale' WHERE parent_doc_id='doc-retired'",
+            "UPDATE ledger_doc_projections SET source_content_hash='stale' WHERE parent_doc_id='doc-retired'",
             [],
         )
         .unwrap();
@@ -187,11 +187,11 @@ fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, G
     (root, db)
 }
 
-fn seed(corpus_size: usize) -> (tempfile::TempDir, GuideDb) {
+fn seed(corpus_size: usize) -> (tempfile::TempDir, LedgerDb) {
     seed_with_storage(corpus_size, false)
 }
 
-fn ids(db: &GuideDb, query: &str, k: usize) -> Vec<String> {
+fn ids(db: &LedgerDb, query: &str, k: usize) -> Vec<String> {
     doc_spine::recall(db, query, k)
         .unwrap()
         .into_iter()
@@ -199,28 +199,28 @@ fn ids(db: &GuideDb, query: &str, k: usize) -> Vec<String> {
         .collect()
 }
 
-fn create_fts_index(db: &GuideDb) {
+fn create_fts_index(db: &LedgerDb) {
     db.lock()
         .execute_batch(
-            "CREATE VIRTUAL TABLE guide_doc_projection_fts
+            "CREATE VIRTUAL TABLE ledger_doc_projection_fts
                  USING fts5(content, content='', tokenize='trigram');
-             CREATE TRIGGER guide_doc_projection_fts_insert
-                 AFTER INSERT ON guide_doc_projections WHEN new.kind='lexical' BEGIN
-                   INSERT INTO guide_doc_projection_fts(rowid, content) VALUES (new.rowid, new.content);
+             CREATE TRIGGER ledger_doc_projection_fts_insert
+                 AFTER INSERT ON ledger_doc_projections WHEN new.kind='lexical' BEGIN
+                   INSERT INTO ledger_doc_projection_fts(rowid, content) VALUES (new.rowid, new.content);
                  END;
-             CREATE TRIGGER guide_doc_projection_fts_delete
-                 AFTER DELETE ON guide_doc_projections WHEN old.kind='lexical' BEGIN
-                   INSERT INTO guide_doc_projection_fts(guide_doc_projection_fts, rowid, content)
+             CREATE TRIGGER ledger_doc_projection_fts_delete
+                 AFTER DELETE ON ledger_doc_projections WHEN old.kind='lexical' BEGIN
+                   INSERT INTO ledger_doc_projection_fts(ledger_doc_projection_fts, rowid, content)
                      VALUES ('delete', old.rowid, old.content);
                  END;
-             INSERT INTO guide_doc_projection_fts(rowid, content)
-                 SELECT rowid, content FROM guide_doc_projections WHERE kind='lexical';
-             INSERT INTO guide_doc_projection_fts(guide_doc_projection_fts) VALUES('optimize');",
+             INSERT INTO ledger_doc_projection_fts(rowid, content)
+                 SELECT rowid, content FROM ledger_doc_projections WHERE kind='lexical';
+             INSERT INTO ledger_doc_projection_fts(ledger_doc_projection_fts) VALUES('optimize');",
         )
         .unwrap();
 }
 
-fn corpus_results(db: &GuideDb) -> Vec<Vec<String>> {
+fn corpus_results(db: &LedgerDb) -> Vec<Vec<String>> {
     [
         "quest",
         "REQUESTED",
@@ -235,13 +235,13 @@ fn corpus_results(db: &GuideDb) -> Vec<Vec<String>> {
     .collect()
 }
 
-fn checkpoint(db: &GuideDb) {
+fn checkpoint(db: &LedgerDb) {
     db.lock()
         .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
         .unwrap();
 }
 
-fn db_bytes(db: &GuideDb) -> u64 {
+fn db_bytes(db: &LedgerDb) -> u64 {
     let conn = db.lock();
     let pages: i64 = conn
         .query_row("PRAGMA page_count", [], |row| row.get(0))
@@ -252,12 +252,12 @@ fn db_bytes(db: &GuideDb) -> u64 {
     (pages * page_size) as u64
 }
 
-fn lexical_bytes(db: &GuideDb) -> u64 {
+fn lexical_bytes(db: &LedgerDb) -> u64 {
     let bytes: i64 = db
         .lock()
         .query_row(
             "SELECT COALESCE(SUM(length(CAST(content AS BLOB))), 0)
-             FROM guide_doc_projections WHERE kind='lexical'",
+             FROM ledger_doc_projections WHERE kind='lexical'",
             [],
             |row| row.get(0),
         )
@@ -265,12 +265,12 @@ fn lexical_bytes(db: &GuideDb) -> u64 {
     bytes as u64
 }
 
-fn fts_bytes(db: &GuideDb) -> u64 {
+fn fts_bytes(db: &LedgerDb) -> u64 {
     let bytes: i64 = db
         .lock()
         .query_row(
             "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat
-             WHERE name GLOB 'guide_doc_projection_fts*'",
+             WHERE name GLOB 'ledger_doc_projection_fts*'",
             [],
             |row| row.get(0),
         )
@@ -284,18 +284,18 @@ fn wal_bytes(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
-fn replace_benchmark_projection(db: &GuideDb) {
+fn replace_benchmark_projection(db: &LedgerDb) {
     let markdown = "# Benchmark\nbenchmarkneedle\n";
     let hash = digest(markdown);
     let mut conn = db.lock();
     let tx = conn.transaction().unwrap();
     tx.execute(
-        "DELETE FROM guide_doc_projections WHERE parent_doc_id='doc-benchmark'",
+        "DELETE FROM ledger_doc_projections WHERE parent_doc_id='doc-benchmark'",
         [],
     )
     .unwrap();
     tx.execute(
-        "INSERT INTO guide_doc_projections
+        "INSERT INTO ledger_doc_projections
          (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
           source_content_hash, source_revision, index_generation)
          VALUES ('doc-benchmark', 'lexical', ?1, 0, 'document', NULL, ?2, 'rev-1', 1)",
@@ -380,7 +380,7 @@ fn measure_warm_lexical_recall_over_twelve_thousand_projections() {
     const MIN_P95_SPEEDUP: f64 = 3.0;
 
     let (root, db) = seed_with_storage(12_000, true);
-    let db_path = root.path().join("guide-index.sqlite3");
+    let db_path = root.path().join("ledger-index.sqlite3");
     let query = "benchmarkneedle";
     let fallback_started = Instant::now();
     assert_eq!(ids(&db, query, 1), ["doc-benchmark"]);
@@ -446,7 +446,7 @@ fn measure_warm_lexical_recall_over_twelve_thousand_projections() {
             "query": query,
             "samples_per_lane": indexed_micros.len(),
             "ordered_result_parity": true,
-            "unavailable_fts_fallback": "guide_doc_projection_fts absent -> deterministic full scan",
+            "unavailable_fts_fallback": "ledger_doc_projection_fts absent -> deterministic full scan",
             "fallback_cold_us": fallback_cold_us,
             "fallback_p50_us": fallback_micros[fallback_micros.len() / 2],
             "fallback_p95_us": fallback_p95_us,

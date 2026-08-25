@@ -8,11 +8,11 @@
 //! sidecar consumes:
 //!
 //! - `membraneState` present and typed (Running/Degraded/Offline);
-//! - exactly Pull/Push/Cortex/Blueprint/Guide/Adapt subsystems;
+//! - exactly Pull/Push/Cortex/Blueprint/Ledger/Adapt subsystems;
 //! - Blueprint status obtained through the existing IPC seam (a live stub
 //!   daemon yields Available; an absent endpoint stays locally Unavailable
 //!   without touching the parent);
-//! - Guide distinct from Cortex/sentinel evidence.
+//! - Ledger distinct from Cortex/sentinel evidence.
 //!
 //! It also regenerates/validates the golden fixtures consumed by the Hub JS
 //! chain test (apps/membrane-hub/tests/hub-chain.mjs) so both languages are
@@ -182,7 +182,7 @@ fn subsystem<'a>(
         "push" => &subsystems.push,
         "cortex" => &subsystems.cortex,
         "blueprint" => &subsystems.blueprint,
-        "guide" => &subsystems.guide,
+        "ledger" => &subsystems.ledger,
         "adapt" => &subsystems.adapt,
         _ => panic!("unknown subsystem {name}"),
     }
@@ -206,8 +206,8 @@ fn assert_canonical_shape(snapshot: &membrane_protocol::HubSnapshotV1, expected_
     names.sort_unstable();
     assert_eq!(
         names,
-        ["adapt", "blueprint", "cortex", "guide", "pull", "push"],
-        "exactly Pull/Push/Cortex/Blueprint/Guide/Adapt must be present"
+        ["adapt", "blueprint", "cortex", "ledger", "pull", "push"],
+        "exactly Pull/Push/Cortex/Blueprint/Ledger/Adapt must be present"
     );
 
     // The eight operational resources stay separate from subsystems.
@@ -236,14 +236,14 @@ fn cli_composition_healthy_resident_is_running_with_absent_blueprint_ipc() {
 
     // Not-configured is a first-class typed state, not degraded/unavailable.
     let subsystems = subsystems_of(&snapshot);
-    for name in ["pull", "push", "guide", "adapt"] {
+    for name in ["pull", "push", "ledger", "adapt"] {
         let section = subsystem(subsystems, name);
         assert_eq!(section.state, membrane_protocol::SubsystemStateV1::NotConfigured);
         assert_eq!(section.reason, "not_instrumented");
     }
 
-    // Guide is distinct from Cortex/sentinel evidence.
-    assert_ne!(subsystems_of(&snapshot).guide.reason, subsystems_of(&snapshot).cortex.reason);
+    // Ledger is distinct from Cortex/sentinel evidence.
+    assert_ne!(subsystems_of(&snapshot).ledger.reason, subsystems_of(&snapshot).cortex.reason);
 
     // Child failure never promotes into parent state.
     assert_eq!(
@@ -343,7 +343,7 @@ fn js_chain_fixtures_match_producer_serialization() {
             &mut subsystems.push,
             &mut subsystems.cortex,
             &mut subsystems.blueprint,
-            &mut subsystems.guide,
+            &mut subsystems.ledger,
             &mut subsystems.adapt,
         ] {
             field.observed_at_unix_ms = Some(42);

@@ -1,21 +1,21 @@
 //! MBR: producer for the Hub's sources/repositories section.
 //!
 //! `sources_explorer::project_sources_explorer` (src/sources_explorer.rs) is
-//! a real, structurally complete projector. Guide can provide a disposable
+//! a real, structurally complete projector. Ledger can provide a disposable
 //! local projection for it, but repository truth remains Blueprint-owned.
 
 use serde_json::{json, Value};
 
-use crate::guide::GuideDb;
+use crate::ledger::LedgerDb;
 use crate::hub_readonly_db::now_unix_ms;
 
 const MAX_PATHS: usize = 64;
 
 /// Assemble the `sources_explorer` payload from the most-recently-updated
-/// repository present in Guide's `guide_doc_artifacts`. Returns `None` when the database is
+/// repository present in Ledger's `ledger_doc_artifacts`. Returns `None` when the database is
 /// unreachable or no documents are indexed.
 pub fn build_sources_payload() -> Option<Value> {
-    let db = GuideDb::open_default().ok()?;
+    let db = LedgerDb::open_default().ok()?;
     let conn = db.lock();
     build_sources_payload_from(&conn)
 }
@@ -30,7 +30,7 @@ pub(crate) fn build_sources_payload_from(conn: &rusqlite::Connection) -> Option<
     ) = conn
         .query_row(
             "SELECT repository_root, repository_id, revision, MAX(index_generation), MAX(updated_at_ms)
-             FROM guide_doc_artifacts
+             FROM ledger_doc_artifacts
              GROUP BY repository_root
              ORDER BY MAX(updated_at_ms) DESC
              LIMIT 1",
@@ -42,7 +42,7 @@ pub(crate) fn build_sources_payload_from(conn: &rusqlite::Connection) -> Option<
     let mut path_stmt = conn
         .prepare(
             "SELECT path, document_class, trust_label, lifecycle_state
-             FROM guide_doc_artifacts
+             FROM ledger_doc_artifacts
              WHERE repository_root = ?1
              ORDER BY updated_at_ms DESC
              LIMIT ?2",
@@ -67,7 +67,7 @@ pub(crate) fn build_sources_payload_from(conn: &rusqlite::Connection) -> Option<
     let recent: Option<(String, String, String, i64, String, String)> = conn
         .query_row(
             "SELECT doc_id, title, summary, updated_at_ms, path, parser_version
-             FROM guide_doc_artifacts
+             FROM ledger_doc_artifacts
              WHERE repository_root = ?1
              ORDER BY updated_at_ms DESC
              LIMIT 1",
@@ -119,12 +119,12 @@ pub(crate) fn build_sources_payload_from(conn: &rusqlite::Connection) -> Option<
         },
         "readiness": {
             "state": "ready",
-            "reason": "guide_doc_artifacts row observed",
+            "reason": "ledger_doc_artifacts row observed",
             "authoritative": false,
             "observedAtUnixMs": now_ms,
         },
         "parser": {
-            "name": "guide.doc_spine",
+            "name": "ledger.doc_spine",
             "version": parser_version,
             "languages": [],
             "state": "observed",
@@ -145,7 +145,7 @@ mod tests {
 
     fn seed(conn: &Connection) {
         conn.execute_batch(
-            "CREATE TABLE guide_doc_artifacts (
+            "CREATE TABLE ledger_doc_artifacts (
                 doc_id TEXT NOT NULL, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
                 revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
                 parser_version TEXT NOT NULL, document_class TEXT NOT NULL,
@@ -177,7 +177,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         seed(&conn);
         conn.execute(
-            "INSERT INTO guide_doc_artifacts (doc_id, repository_root, repository_id, revision, path,
+            "INSERT INTO ledger_doc_artifacts (doc_id, repository_root, repository_id, revision, path,
                 content_hash, parser_version, document_class, lifecycle_state, trust_label,
                 influence_class, sensitivity, index_generation, updated_at_ms, title, summary)
              VALUES ('d1','/repo','repo-id','rev1','README.md','h1','v1','doc','active','trusted',

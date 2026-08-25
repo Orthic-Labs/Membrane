@@ -41,7 +41,7 @@ Do not hand-edit; regenerate instead. `--check` fails if this file is stale.
 | **Push** | `push` | Performs faithful, reversible reduction of information already in flight. |
 | **Cortex** | `cortex` | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
 | **Blueprint** | `blueprint` | Owns repository truth, evidence generations, and drift/change observation. |
-| **Guide** | `guide` | Navigates indexed document sections with hash-bound references. |
+| **Ledger** | `ledger` | Navigates indexed document sections with hash-bound references. |
 | **Adapt** | `adapt` | Mines experience into governed proposals and never writes durable truth directly. |
 
 Current supported target: **macOS**. Cortex scope: **durable-memory-only**. Resident service authority: **hub** (Membrane Hub).

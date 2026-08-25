@@ -2,11 +2,12 @@ use cortex_core::absorbed::SessionEvent;
 use cortex_core::transcript::{
     build_transcript_chunks, retrieve_transcript_chunks, TranscriptChunkConfig,
 };
-use membrane_runtime::guide::ledger::{
-    build_session_ledger, index_session_ledger, LedgerDecisionV1, LedgerEventV1,
-    LedgerSourceCursor, LedgerTaskV1, SessionLedgerInputV1,
+use membrane_runtime::ledger::session_projection::{
+    build_session_projection, index_session_projection, SessionDocumentProjectionInputV1,
+    SessionProjectionDecisionV1, SessionProjectionEventV1, SessionProjectionSourceCursor,
+    SessionProjectionTaskV1,
 };
-use membrane_runtime::guide::GuideDb;
+use membrane_runtime::ledger::LedgerDb;
 use serde_json::json;
 
 fn event(session_id: &str, seq: u64, event_id: &str, content: &str) -> SessionEvent {
@@ -44,47 +45,47 @@ fn transcript_boundaries_and_retrieval_are_deterministic() {
 }
 
 #[test]
-fn ledger_keeps_cursor_links_and_explicit_omissions() {
-    let input = SessionLedgerInputV1 {
+fn session_projection_keeps_cursor_links_and_explicit_omissions() {
+    let input = SessionDocumentProjectionInputV1 {
         session_id: "s1".to_owned(),
         title: Some("Handoff".to_owned()),
-        source_cursor: LedgerSourceCursor {
+        source_cursor: SessionProjectionSourceCursor {
             session_id: "s1".to_owned(),
             last_seq: 3,
         },
         source_content_hash: "sha256:source".to_owned(),
-        events: vec![LedgerEventV1 {
+        events: vec![SessionProjectionEventV1 {
             event_id: "e1".to_owned(),
             seq: 1,
             event_type: "message".to_owned(),
             content: "started".to_owned(),
             occurred_at_ms: 1,
         }],
-        tasks: vec![LedgerTaskV1 {
+        tasks: vec![SessionProjectionTaskV1 {
             task_id: "t1".to_owned(),
             title: "Continue".to_owned(),
             status: "open".to_owned(),
             link: None,
         }],
         artifacts: Vec::new(),
-        decisions: vec![LedgerDecisionV1 {
+        decisions: vec![SessionProjectionDecisionV1 {
             decision_id: "d1".to_owned(),
             title: "Keep raw events".to_owned(),
-            content: "Ledger is derived".to_owned(),
+            content: "Session projection is derived".to_owned(),
             link: None,
         }],
     };
-    let document = build_session_ledger(&input).unwrap();
+    let document = build_session_projection(&input).unwrap();
     assert!(document.markdown.contains("Continue"));
     assert!(document.omissions.iter().any(|value| value.contains("missing event sequence 2..4")));
     assert_eq!(document.links.len(), 2);
     assert!(!document.invalidated_by(&input.source_cursor, "sha256:source"));
     assert!(document.invalidated_by(
-        &LedgerSourceCursor {
+        &SessionProjectionSourceCursor {
             session_id: "s1".to_owned(),
             last_seq: 4,
         },
         "sha256:source"
     ));
-    index_session_ledger(&GuideDb::open_in_memory(), &document, "rev-1", 1).unwrap();
+    index_session_projection(&LedgerDb::open_in_memory(), &document, "rev-1", 1).unwrap();
 }

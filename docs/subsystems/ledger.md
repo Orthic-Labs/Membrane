@@ -4,7 +4,7 @@
 **Canonical name:** Ledger  
 **Historical name:** Spine / Markdown Doc Spine / RMS D1–D4  
 **Parent system:** Membrane  
-**Current implementation namespace:** `membrane-runtime::guide::{db, outline, identifier, doc_projection, doc_spine, doc_shadow, doc_candidate_provider}`.
+**Current implementation namespace:** `membrane-runtime::ledger::{db, outline, identifier, doc_projection, doc_spine, doc_shadow, doc_candidate_provider}`.
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Ledger does not own the canonical document bytes. It indexes them into stable, r
 - `recall`-style document navigation returning:
   `doc_id + source_ref + anchor_id + expected_hash + score`.
 - Its own rebuildable index store/projection.
-- `LedgerDb` at `cache_root()/guide-index.sqlite3`; this SQLite file is disposable and
+- `LedgerDb` at `cache_root()/ledger-index.sqlite3`; this SQLite file is disposable and
   never opens Cortex's durable-memory database.
 
 ## Does not own
@@ -45,8 +45,8 @@ A Ledger result is a pointer plus integrity metadata. The planner may admit the 
 
 Ledger never upgrades source authority merely because a section was indexed.
 
-CLI surface: `membrane guide sync`, `membrane guide recall`, `membrane guide outline`,
-and `membrane guide read`. There is no top-level document command or generic recall
+CLI surface: `membrane ledger sync`, `membrane ledger recall`, `membrane ledger outline`,
+and `membrane ledger read`. There is no top-level document command or generic recall
 fallback into Ledger.
 
 ## Invariants
@@ -67,11 +67,12 @@ fallback into Ledger.
 - [ ] A recalled section round-trips through source resolution with hash verification.
 - [ ] Sync is incremental, bounded, and reports typed outcomes.
 - [ ] Workspace/document roots outside repository code can be indexed only when the active grant permits them.
-- [ ] Ledger implementation & tests live under a discoverable `ledger`
-      namespace without compatibility wrappers; the pushed rename lane remains
-      unverified until its scoped build/tests and upgrade behavior pass.
+- [x] Ledger implementation & tests live under a discoverable `ledger`
+      namespace without current-product compatibility wrappers.
+- [ ] The rename cutover has fresh scoped Rust build/test evidence; the prior
+      pre-Hub/protocol compile is not current-head proof.
 
 
 ## Naming
 
-Ledger was named Guide (and Spine before that). Guide is retired as a current-product name. Source paths, CLI surfaces, database files, and table names still use `guide` until the rename cutover lands; that is implementation drift, not a competing name. Canonical detail lives in `LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`.
+Ledger was named Guide (and Spine before that). Guide is retired as a current-product name. The old `guide-index.sqlite3` file and `guide_doc_*` tables are recognized only at the explicit one-release upgrade boundary, where the disposable index is retired and rebuilt under Ledger naming. Canonical detail lives in `LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`.

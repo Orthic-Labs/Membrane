@@ -19,8 +19,8 @@ fn checkpoint_with_source(source_ref: &str, expected_content_hash: &str) -> Chec
         source_refs: vec![CheckpointSourceRefV1 {
             source_ref: source_ref.into(),
             expected_content_hash: expected_content_hash.into(),
-            anchor_id: "sec:guide:1".into(),
-            label: "guide".into(),
+            anchor_id: "sec:ledger:1".into(),
+            label: "ledger".into(),
         }],
     }
 }
@@ -57,29 +57,29 @@ fn terminal_error(output: Output) -> String {
 #[test]
 fn worktree_document_identifier_compatibility_corpus() {
     let root = tempfile::tempdir().unwrap();
-    let content = "# Guide\nbody";
+    let content = "# Ledger\nbody";
     std::fs::create_dir_all(root.path().join("docs")).unwrap();
-    std::fs::write(root.path().join("docs/guide.md"), content).unwrap();
+    std::fs::write(root.path().join("docs/ledger.md"), content).unwrap();
     std::fs::write(root.path().join("docs/guía.md"), content).unwrap();
-    let expected_hash = membrane_runtime::guide::outline::build_outline(
-        "doc://repo/worktree/docs/guide.md",
+    let expected_hash = membrane_runtime::ledger::outline::build_outline(
+        "doc://repo/worktree/docs/ledger.md",
         content,
         "comrak-0.54.0",
     )
     .content_hash;
 
     for source_ref in [
-        "doc://repo/worktree/docs/guide.md",
+        "doc://repo/worktree/docs/ledger.md",
         "doc://repo/worktree/docs/guía.md",
     ] {
         assert_eq!(source_status(root.path(), source_ref, &expected_hash), "ok");
     }
     for source_ref in [
-        "docs/guide.md",
-        "Doc://repo/worktree/docs/guide.md",
-        "doc://other/worktree/docs/guide.md",
-        "doc://repo/other/docs/guide.md",
-        "doc://repo/worktree/../guide.md",
+        "docs/ledger.md",
+        "Doc://repo/worktree/docs/ledger.md",
+        "doc://other/worktree/docs/ledger.md",
+        "doc://repo/other/docs/ledger.md",
+        "doc://repo/worktree/../ledger.md",
     ] {
         assert_eq!(
             source_status(root.path(), source_ref, &expected_hash),
@@ -131,7 +131,7 @@ fn anchor_identifier_compatibility_corpus() {
 
 #[test]
 fn worktree_document_rejections_are_typed_before_io() {
-    use membrane_runtime::guide::identifier::{WorktreeDocRef, WorktreeDocRefError};
+    use membrane_runtime::ledger::identifier::{WorktreeDocRef, WorktreeDocRefError};
 
     for (source_ref, expected) in [
         ("doc://repo/worktree/", WorktreeDocRefError::EmptyPath),
@@ -193,7 +193,7 @@ fn cli_anchor_rejection_precedes_anchor_store_access() {
 
 #[test]
 fn anchor_rejections_are_typed_before_io() {
-    use membrane_runtime::guide::identifier::{AnchorRef, AnchorRefError};
+    use membrane_runtime::ledger::identifier::{AnchorRef, AnchorRefError};
 
     assert_eq!(
         AnchorRef::parse(&format!("mr://anchor/{}", "A".repeat(64))).unwrap_err(),

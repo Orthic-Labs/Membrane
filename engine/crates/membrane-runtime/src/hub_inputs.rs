@@ -123,7 +123,7 @@ pub fn offline_snapshot_parts() -> LiveSnapshotParts {
 ///   both are Available; Degraded when either is Degraded; otherwise Unavailable.
 /// - Blueprint — repository truth. Source: live public Blueprint IPC status
 ///   (freshness.rs::read_blueprint_status) — reuse existing seam.
-/// - Guide — document navigation/index. No trustworthy Guide health producer
+/// - Ledger — document navigation/index. No trustworthy Ledger health producer
 ///   yet → Not configured. Do NOT conflate with Cortex/sentinel.
 /// - Adapt — learning/proposals. No instrumentation → Not configured.
 fn subsystem_inputs_from_health(
@@ -142,7 +142,7 @@ fn subsystem_inputs_from_health(
         push: not_instrumented.clone(),
         cortex,
         blueprint: blueprint_hub,
-        guide: not_instrumented.clone(),
+        ledger: not_instrumented.clone(),
         adapt: not_instrumented,
     }
 }
@@ -1045,7 +1045,7 @@ mod tests {
         let encoded = serde_json::to_value(&parts.subsystems).unwrap();
         let mut keys: Vec<&str> = encoded.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["adapt", "blueprint", "cortex", "guide", "pull", "push"]);
+        assert_eq!(keys, ["adapt", "blueprint", "cortex", "ledger", "pull", "push"]);
         for name in membrane_protocol::SUBSYSTEM_NAMES {
             assert!(encoded.get(name).is_some_and(|value| value.is_object()), "missing subsystem {name}");
         }
@@ -1060,7 +1060,7 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        for name in ["pull", "push", "guide", "adapt"] {
+        for name in ["pull", "push", "ledger", "adapt"] {
             let section = subsystem_section(&parts.subsystems, name);
             assert_eq!(section.state, membrane_protocol::SubsystemStateV1::NotConfigured);
             assert_eq!(section.reason, "not_instrumented");
@@ -1088,13 +1088,13 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
-        // Operational sentinel should NOT be presented as Guide
-        assert_eq!(parts.subsystems.guide.state, membrane_protocol::SubsystemStateV1::NotConfigured);
-        assert_eq!(parts.subsystems.guide.reason, "not_instrumented");
-        // Cortex owns sentinel/memory, not Guide
+        // Operational sentinel should NOT be presented as Ledger
+        assert_eq!(parts.subsystems.ledger.state, membrane_protocol::SubsystemStateV1::NotConfigured);
+        assert_eq!(parts.subsystems.ledger.reason, "not_instrumented");
+        // Cortex owns sentinel/memory, not Ledger
         assert_ne!(
-            parts.subsystems.guide.reason, parts.subsystems.cortex.reason,
-            "Guide must stay distinct from Cortex/sentinel"
+            parts.subsystems.ledger.reason, parts.subsystems.cortex.reason,
+            "Ledger must stay distinct from Cortex/sentinel"
         );
     }
 
@@ -1107,7 +1107,7 @@ mod tests {
             "push" => &subsystems.push,
             "cortex" => &subsystems.cortex,
             "blueprint" => &subsystems.blueprint,
-            "guide" => &subsystems.guide,
+            "ledger" => &subsystems.ledger,
             "adapt" => &subsystems.adapt,
             _ => panic!("unknown subsystem {name}"),
         }

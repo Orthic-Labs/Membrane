@@ -310,7 +310,7 @@ fn resolve_service_port(
 #[command(
     name = "membrane",
     version,
-    about = "Membrane — Pull, Push, Cortex, Blueprint, Guide, and Adapt runtime"
+    about = "Membrane — Pull, Push, Cortex, Blueprint, Ledger, and Adapt runtime"
 )]
 struct Cli {
     #[arg(long, global = true)]
@@ -329,7 +329,7 @@ enum InstallationCmd {
 }
 
 #[derive(Subcommand)]
-enum GuideCmd {
+enum LedgerCmd {
     /// Parse one Markdown document into its stable DocOutlineV1 contract.
     Outline {
         #[arg(long)]
@@ -350,12 +350,12 @@ enum GuideCmd {
         #[arg(long)]
         continuation_cursor: Option<String>,
     },
-    /// Reconcile Markdown registrations into Guide's rebuildable index.
+    /// Reconcile Markdown registrations into Ledger's rebuildable index.
     Sync {
         #[arg(long)]
         repo: PathBuf,
     },
-    /// Recall hash-bound document pointers from Guide's local index.
+    /// Recall hash-bound document pointers from Ledger's local index.
     Recall {
         query: String,
         #[arg(short, default_value_t = 6)]
@@ -603,10 +603,10 @@ enum Cmd {
         #[command(subcommand)]
         command: InstallationCmd,
     },
-    /// Guide document-navigation contracts. These commands do not open Cortex's memory DB.
-    Guide {
+    /// Ledger document-navigation contracts. These commands do not open Cortex's memory DB.
+    Ledger {
         #[command(subcommand)]
-        command: GuideCmd,
+        command: LedgerCmd,
     },
     /// Adapt governed behavioral learning: Taste preferences & Insights failures.
     Adapt {
@@ -1517,23 +1517,23 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
 fn resolve_doc_read_path(
     root: &Path,
     relative: &str,
-) -> Result<PathBuf, crate::guide::outline::DocReadError> {
+) -> Result<PathBuf, crate::ledger::outline::DocReadError> {
     let relative = Path::new(relative);
     if relative
         .components()
         .any(|component| !matches!(component, std::path::Component::Normal(_)))
     {
-        return Err(crate::guide::outline::DocReadError::Deny);
+        return Err(crate::ledger::outline::DocReadError::Deny);
     }
     let root = root
         .canonicalize()
-        .map_err(|_| crate::guide::outline::DocReadError::Deny)?;
+        .map_err(|_| crate::ledger::outline::DocReadError::Deny)?;
     let path = root.join(relative);
     let path = path
         .canonicalize()
-        .map_err(|_| crate::guide::outline::DocReadError::SourceMissing)?;
+        .map_err(|_| crate::ledger::outline::DocReadError::SourceMissing)?;
     if !path.starts_with(&root) {
-        return Err(crate::guide::outline::DocReadError::Deny);
+        return Err(crate::ledger::outline::DocReadError::Deny);
     }
     Ok(path)
 }
@@ -2779,7 +2779,7 @@ fn command_requires_db(command: &Cmd) -> bool {
         command,
         Cmd::BuildInfo
             | Cmd::Installation { .. }
-            | Cmd::Guide { .. }
+            | Cmd::Ledger { .. }
             | Cmd::Adapt { .. }
             | Cmd::Pull { .. }
             | Cmd::Push { .. }
@@ -3452,7 +3452,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             std::process::exit(result.exit_code);
         }
         PushCmd::Restore { anchor, spill_dir } => {
-            let digest = crate::guide::identifier::AnchorRef::parse(&anchor)
+            let digest = crate::ledger::identifier::AnchorRef::parse(&anchor)
                 .map_err(|error| format!("invalid anchor: {error}"))?
                 .digest();
             let root = spill_dir
@@ -3582,9 +3582,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if let Cmd::SkillRead { name, root } = &cli.cmd {
         return run_skill_read(name.clone(), root.clone());
     }
-    if let Cmd::Guide { command } = &cli.cmd {
+    if let Cmd::Ledger { command } = &cli.cmd {
         return match command {
-            GuideCmd::Outline { repo, path, json } => {
+            LedgerCmd::Outline { repo, path, json } => {
                 let markdown = std::fs::read_to_string(path)
                     .map_err(|error| format!("read document {}: {error}", path.display()))?;
                 let relative = path
@@ -3595,7 +3595,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 let source_ref =
                     format!("doc://repo/worktree/{}", relative.trim_start_matches('/'));
                 let outline =
-                    crate::guide::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+                    crate::ledger::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
                 if !json {
                     return Err("doc outline requires --json".to_owned());
                 }
@@ -3605,18 +3605,18 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 );
                 Ok(())
             }
-            GuideCmd::Read {
+            LedgerCmd::Read {
                 source_ref,
                 anchor,
                 expected_hash,
                 continuation_cursor,
             } => {
-                let relative = match crate::guide::identifier::WorktreeDocRef::parse(source_ref) {
+                let relative = match crate::ledger::identifier::WorktreeDocRef::parse(source_ref) {
                     Ok(reference) => reference.relative_path(),
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":crate::guide::outline::DocReadError::Deny.as_str()})
+                            serde_json::json!({"error":crate::ledger::outline::DocReadError::Deny.as_str()})
                         );
                         return Ok(());
                     }
@@ -3637,12 +3637,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":crate::guide::outline::DocReadError::SourceMissing.as_str()})
+                            serde_json::json!({"error":crate::ledger::outline::DocReadError::SourceMissing.as_str()})
                         );
                         return Ok(());
                     }
                 };
-                match crate::guide::outline::read_section_with_cursor(
+                match crate::ledger::outline::read_section_with_cursor(
                     source_ref,
                     &markdown,
                     anchor,
@@ -3658,18 +3658,18 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(())
             }
-            GuideCmd::Sync { repo } => {
-                let guide = crate::guide::GuideDb::open_default()?;
-                let report = crate::guide::doc_spine::sync(&guide, repo)?;
+            LedgerCmd::Sync { repo } => {
+                let ledger = crate::ledger::LedgerDb::open_default()?;
+                let report = crate::ledger::doc_spine::sync(&ledger, repo)?;
                 println!(
                     "{}",
                     serde_json::to_string(&report).map_err(|error| error.to_string())?
                 );
                 Ok(())
             }
-            GuideCmd::Recall { query, k } => {
-                let guide = crate::guide::GuideDb::open_default()?;
-                let hits = crate::guide::doc_spine::recall(&guide, query, *k)?;
+            LedgerCmd::Recall { query, k } => {
+                let ledger = crate::ledger::LedgerDb::open_default()?;
+                let hits = crate::ledger::doc_spine::recall(&ledger, query, *k)?;
                 for hit in hits {
                     println!(
                         "{}",
@@ -3703,7 +3703,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Guide { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {
@@ -4685,15 +4685,15 @@ mod tests {
     }
 
     #[test]
-    fn guide_outline_cli_requires_explicit_json() {
+    fn ledger_outline_cli_requires_explicit_json() {
         let parsed = super::Cli::try_parse_from([
-            "membrane", "guide", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
+            "membrane", "ledger", "outline", "--repo", "C:/repo", "--path", "ledger.md", "--json",
         ])
-        .expect("guide outline arguments parse");
+        .expect("ledger outline arguments parse");
         assert!(matches!(
             parsed.cmd,
-            super::Cmd::Guide {
-                command: super::GuideCmd::Outline { json: true, .. }
+            super::Cmd::Ledger {
+                command: super::LedgerCmd::Outline { json: true, .. }
             }
         ));
     }
@@ -6440,21 +6440,21 @@ mod tests {
     #[test]
     fn doc_read_path_resolution_confines_relative_paths() {
         let root = tempfile::tempdir().unwrap();
-        let file = root.path().join("docs").join("guide.md");
+        let file = root.path().join("docs").join("ledger.md");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(&file, "# Guide\n").unwrap();
+        std::fs::write(&file, "# Ledger\n").unwrap();
 
         assert_eq!(
-            super::resolve_doc_read_path(root.path(), "docs/guide.md").unwrap(),
+            super::resolve_doc_read_path(root.path(), "docs/ledger.md").unwrap(),
             file.canonicalize().unwrap()
         );
         assert_eq!(
-            super::resolve_doc_read_path(root.path(), "../guide.md").unwrap_err(),
-            crate::guide::outline::DocReadError::Deny
+            super::resolve_doc_read_path(root.path(), "../ledger.md").unwrap_err(),
+            crate::ledger::outline::DocReadError::Deny
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "docs/missing.md").unwrap_err(),
-            crate::guide::outline::DocReadError::SourceMissing
+            crate::ledger::outline::DocReadError::SourceMissing
         );
     }
 }
@@ -6491,7 +6491,7 @@ pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
         .and_then(|result| result)
 }
 
-/// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Guide,
+/// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Ledger,
 /// Blueprint, Adapt, & orchestration stay addressable through Membrane.
 pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
     "checkpoint",
@@ -6551,7 +6551,7 @@ pub fn run_cortex_durable_cli_from(argv: &[&str]) -> Result<(), String> {
     };
     if !CORTEX_DURABLE_COMMANDS.contains(&command) {
         return Err(format!(
-            "unsupported command `{command}`; use membrane for Pull, Push, Guide, Blueprint, Adapt, & service orchestration"
+            "unsupported command `{command}`; use membrane for Pull, Push, Ledger, Blueprint, Adapt, & service orchestration"
         ));
     }
     run_cli_from(argv)

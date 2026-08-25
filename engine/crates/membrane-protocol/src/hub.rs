@@ -82,7 +82,7 @@ pub enum SubsystemStateV1 {
     NotConfigured,
 }
 
-/// One semantic subsystem surface (Pull/Push/Cortex/Blueprint/Guide/Adapt).
+/// One semantic subsystem surface (Pull/Push/Cortex/Blueprint/Ledger/Adapt).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HubSubsystemV1 {
@@ -117,7 +117,7 @@ pub struct HubSubsystemsV1 {
     pub push: HubSubsystemV1,
     pub cortex: HubSubsystemV1,
     pub blueprint: HubSubsystemV1,
-    pub guide: HubSubsystemV1,
+    pub ledger: HubSubsystemV1,
     pub adapt: HubSubsystemV1,
 }
 

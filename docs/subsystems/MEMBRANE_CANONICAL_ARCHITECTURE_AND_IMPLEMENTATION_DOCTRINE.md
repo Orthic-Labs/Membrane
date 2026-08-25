@@ -1918,7 +1918,7 @@ This map describes current implementation ownership. Python/Node production path
 | `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
 | `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
-| `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` (currently `src/guide/`, pending the rename cutover) | Ledger implementation; document navigation/index only, not document truth or durable knowledge |
+| `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Ledger implementation; document navigation/index only, not document truth or durable knowledge |
 | `mcp/server.mjs` | thin MCP surface |
 | `mcp/context-renderer-lib.cjs` | deterministic execution of planner-selected representation/layout; no hidden ranking |
 | `mcp/working-context.mjs` | bounded active working context; schema changes mirrored with Rust |

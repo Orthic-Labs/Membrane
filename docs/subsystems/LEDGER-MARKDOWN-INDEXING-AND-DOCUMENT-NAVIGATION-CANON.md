@@ -475,11 +475,11 @@ For a query token such as:
 
 ```text
 doc_spine
-GuideDb
+LedgerDb
 membrane-runtime
-guide_doc_fts5
+ledger_doc_fts5
 foo.bar.baz
-src/guide/doc_spine.rs
+src/ledger/doc_spine.rs
 HTTPServerV2
 ```
 
@@ -487,7 +487,7 @@ generate a deterministic query representation that preserves the original term a
 
 ```text
 doc_spine -> doc_spine, doc, spine
-GuideDb -> GuideDb, guide, db
+LedgerDb -> LedgerDb, ledger, db
 membrane-runtime -> membrane-runtime, membrane, runtime
 foo.bar.baz -> foo.bar.baz, foo, bar, baz
 ```

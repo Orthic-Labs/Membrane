@@ -1,28 +1,29 @@
-//! Guide's generated per-session ledger document.
+//! Ledger's generated per-session document projection.
 //!
-//! A ledger is a hash-bound document projection, not durable memory. It links human-readable
-//! tasks, artifacts, and decisions while retaining source cursor and derivation metadata.
+//! A session document projection is a hash-bound document projection, not durable memory. It
+//! links human-readable tasks, artifacts, and decisions while retaining source cursor and
+//! derivation metadata.
 
 use super::doc_projection::{
     replace_doc_projections, DocumentProjectionStoreInputV1, DocumentProjectionV1,
     ProjectionKind, ProjectionProvenanceV1,
 };
-use super::GuideDb;
+use super::LedgerDb;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const SESSION_LEDGER_SCHEMA_VERSION: u32 = 1;
+pub const SESSION_DOCUMENT_PROJECTION_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerSourceCursor {
+pub struct SessionProjectionSourceCursor {
     pub session_id: String,
     pub last_seq: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerEventV1 {
+pub struct SessionProjectionEventV1 {
     pub event_id: String,
     pub seq: u64,
     pub event_type: String,
@@ -32,7 +33,7 @@ pub struct LedgerEventV1 {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerTaskV1 {
+pub struct SessionProjectionTaskV1 {
     pub task_id: String,
     pub title: String,
     pub status: String,
@@ -41,7 +42,7 @@ pub struct LedgerTaskV1 {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerArtifactV1 {
+pub struct SessionProjectionArtifactV1 {
     pub artifact_id: String,
     pub handle: String,
     pub media_type: String,
@@ -50,7 +51,7 @@ pub struct LedgerArtifactV1 {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerDecisionV1 {
+pub struct SessionProjectionDecisionV1 {
     pub decision_id: String,
     pub title: String,
     pub content: String,
@@ -59,23 +60,23 @@ pub struct LedgerDecisionV1 {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SessionLedgerInputV1 {
+pub struct SessionDocumentProjectionInputV1 {
     pub session_id: String,
     pub title: Option<String>,
-    pub source_cursor: LedgerSourceCursor,
+    pub source_cursor: SessionProjectionSourceCursor,
     pub source_content_hash: String,
-    pub events: Vec<LedgerEventV1>,
+    pub events: Vec<SessionProjectionEventV1>,
     #[serde(default)]
-    pub tasks: Vec<LedgerTaskV1>,
+    pub tasks: Vec<SessionProjectionTaskV1>,
     #[serde(default)]
-    pub artifacts: Vec<LedgerArtifactV1>,
+    pub artifacts: Vec<SessionProjectionArtifactV1>,
     #[serde(default)]
-    pub decisions: Vec<LedgerDecisionV1>,
+    pub decisions: Vec<SessionProjectionDecisionV1>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LedgerLinkV1 {
+pub struct SessionProjectionLinkV1 {
     pub kind: String,
     pub id: String,
     pub target: String,
@@ -83,50 +84,50 @@ pub struct LedgerLinkV1 {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SessionLedgerDocumentV1 {
+pub struct SessionDocumentProjectionV1 {
     pub schema_version: u32,
     pub document_id: String,
     pub session_id: String,
     pub title: String,
     pub markdown: String,
-    pub source_cursor: LedgerSourceCursor,
+    pub source_cursor: SessionProjectionSourceCursor,
     pub source_content_hash: String,
     pub derivation: String,
     pub invalidation_parent: String,
     pub content_hash: String,
-    pub links: Vec<LedgerLinkV1>,
+    pub links: Vec<SessionProjectionLinkV1>,
     pub omissions: Vec<String>,
     pub generated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum LedgerError {
-    #[error("ledger session identity is empty or mismatched")]
+pub enum SessionProjectionError {
+    #[error("session projection identity is empty or mismatched")]
     SessionMismatch,
-    #[error("ledger source cursor is invalid")]
+    #[error("session projection source cursor is invalid")]
     InvalidCursor,
-    #[error("ledger source content hash is empty")]
+    #[error("session projection source content hash is empty")]
     MissingSourceHash,
-    #[error("guide ledger projection: {0}")]
+    #[error("ledger session projection: {0}")]
     Projection(String),
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct SessionLedgerBuilder;
+pub struct SessionDocumentProjectionBuilder;
 
-impl SessionLedgerBuilder {
+impl SessionDocumentProjectionBuilder {
     pub fn build(
         &self,
-        input: &SessionLedgerInputV1,
-    ) -> Result<SessionLedgerDocumentV1, LedgerError> {
+        input: &SessionDocumentProjectionInputV1,
+    ) -> Result<SessionDocumentProjectionV1, SessionProjectionError> {
         if input.session_id.trim().is_empty()
             || input.source_cursor.session_id != input.session_id
             || input.source_content_hash.trim().is_empty()
         {
             return Err(if input.source_content_hash.trim().is_empty() {
-                LedgerError::MissingSourceHash
+                SessionProjectionError::MissingSourceHash
             } else {
-                LedgerError::SessionMismatch
+                SessionProjectionError::SessionMismatch
             });
         }
         let mut events = input.events.clone();
@@ -225,9 +226,9 @@ impl SessionLedgerBuilder {
         }
         let links = links(input);
         let content_hash = sha256(&markdown);
-        Ok(SessionLedgerDocumentV1 {
-            schema_version: SESSION_LEDGER_SCHEMA_VERSION,
-            document_id: format!("session-ledger:{}", input.session_id),
+        Ok(SessionDocumentProjectionV1 {
+            schema_version: SESSION_DOCUMENT_PROJECTION_SCHEMA_VERSION,
+            document_id: format!("session-projection:{}", input.session_id),
             session_id: input.session_id.clone(),
             title,
             markdown,
@@ -246,27 +247,27 @@ impl SessionLedgerBuilder {
     }
 }
 
-pub fn build_session_ledger(
-    input: &SessionLedgerInputV1,
-) -> Result<SessionLedgerDocumentV1, LedgerError> {
-    SessionLedgerBuilder::default().build(input)
+pub fn build_session_projection(
+    input: &SessionDocumentProjectionInputV1,
+) -> Result<SessionDocumentProjectionV1, SessionProjectionError> {
+    SessionDocumentProjectionBuilder::default().build(input)
 }
 
-impl SessionLedgerDocumentV1 {
-    pub fn invalidated_by(&self, cursor: &LedgerSourceCursor, source_hash: &str) -> bool {
+impl SessionDocumentProjectionV1 {
+    pub fn invalidated_by(&self, cursor: &SessionProjectionSourceCursor, source_hash: &str) -> bool {
         self.session_id != cursor.session_id
             || cursor.last_seq > self.source_cursor.last_seq
             || source_hash != self.source_content_hash
     }
 }
 
-/// Store generated Markdown through Guide's existing hash-bound projection mechanism.
-pub fn index_session_ledger(
-    db: &GuideDb,
-    document: &SessionLedgerDocumentV1,
+/// Store generated Markdown through Ledger's existing hash-bound projection mechanism.
+pub fn index_session_projection(
+    db: &LedgerDb,
+    document: &SessionDocumentProjectionV1,
     source_revision: &str,
     index_generation: i64,
-) -> Result<(), LedgerError> {
+) -> Result<(), SessionProjectionError> {
     let input = DocumentProjectionStoreInputV1 {
         parent_doc_id: document.document_id.clone(),
         source_content_hash: document.source_content_hash.clone(),
@@ -282,20 +283,20 @@ pub fn index_session_ledger(
             },
         }],
     };
-    replace_doc_projections(db, &input).map_err(|error| LedgerError::Projection(error.to_string()))
+    replace_doc_projections(db, &input).map_err(|error| SessionProjectionError::Projection(error.to_string()))
 }
 
-fn links(input: &SessionLedgerInputV1) -> Vec<LedgerLinkV1> {
+fn links(input: &SessionDocumentProjectionInputV1) -> Vec<SessionProjectionLinkV1> {
     let mut links = Vec::new();
     for task in &input.tasks {
-        links.push(LedgerLinkV1 {
+        links.push(SessionProjectionLinkV1 {
             kind: "task".to_owned(),
             id: task.task_id.clone(),
             target: task.link.clone().unwrap_or_else(|| format!("task://{}", task.task_id)),
         });
     }
     for artifact in &input.artifacts {
-        links.push(LedgerLinkV1 {
+        links.push(SessionProjectionLinkV1 {
             kind: "artifact".to_owned(),
             id: artifact.artifact_id.clone(),
             target: artifact
@@ -305,7 +306,7 @@ fn links(input: &SessionLedgerInputV1) -> Vec<LedgerLinkV1> {
         });
     }
     for decision in &input.decisions {
-        links.push(LedgerLinkV1 {
+        links.push(SessionProjectionLinkV1 {
             kind: "decision".to_owned(),
             id: decision.decision_id.clone(),
             target: decision

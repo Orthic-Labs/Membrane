@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/session-ledger-document.v1.schema.json",
-  "title": "Guide session ledger document",
+  "title": "Ledger session ledger document",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "documentId", "sessionId", "title", "markdown", "sourceCursor", "sourceContentHash", "derivation", "invalidationParent", "contentHash", "links", "omissions", "generated"],

@@ -1,11 +1,11 @@
-//! Guide document registration. Artifacts are source references, never memories.
+//! Ledger document registration. Artifacts are source references, never memories.
 
 use crate::{
-    guide::doc_projection::{
+    ledger::doc_projection::{
         replace_doc_projections_tx, DocumentProjectionStoreInputV1, DocumentProjectionV1,
         ProjectionKind, ProjectionProvenanceV1,
     },
-    guide::GuideDb,
+    ledger::LedgerDb,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -197,11 +197,11 @@ fn lexical_score(content: &str, terms: &[String]) -> usize {
         .sum()
 }
 
-/// Recall active Guide artifacts as source pointers, never memory entries.
+/// Recall active Ledger artifacts as source pointers, never memory entries.
 ///
 /// Source is reopened & hash-checked before emitting a hit, so stale projections cannot yield a
 /// pointer whose expected hash targets changed document content.
-pub fn recall(db: &GuideDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
+pub fn recall(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
     if k == 0 {
         return Ok(Vec::new());
     }
@@ -214,8 +214,8 @@ pub fn recall(db: &GuideDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>
         let mut statement = conn
             .prepare(
                 "SELECT artifact.doc_id, artifact.repository_root, artifact.path, artifact.content_hash, projection.content
-                 FROM guide_doc_artifacts artifact
-                 JOIN guide_doc_projections projection ON projection.parent_doc_id=artifact.doc_id
+                 FROM ledger_doc_artifacts artifact
+                 JOIN ledger_doc_projections projection ON projection.parent_doc_id=artifact.doc_id
                  WHERE artifact.lifecycle_state='active'
                    AND artifact.sensitivity='normal'
                    AND projection.kind='lexical'
@@ -334,7 +334,7 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
     )
 }
 
-/// Read-only Guide recall result. Document text stays in source; callers receive only a
+/// Read-only Ledger recall result. Document text stays in source; callers receive only a
 /// hash-bound pointer consumable by `membrane cli doc read`.
 #[derive(Clone, Debug, serde::Serialize, PartialEq)]
 pub struct DocRecallHitV1 {
@@ -470,7 +470,7 @@ fn walk(
 }
 
 #[inline(never)]
-pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
+pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
     let root_s = root.to_string_lossy().replace('\\', "/");
     let revision = std::process::Command::new("git")
@@ -486,10 +486,10 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
     walk(&root, &mut files, &mut excluded_health).map_err(|e| e.to_string())?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM guide_doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
     let projections_available: bool = tx
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='guide_doc_projections')",
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",
             [],
             |row| row.get(0),
         )
@@ -514,10 +514,10 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
         let hash = digest(&bytes);
         let existing = match tx.query_row(
             "SELECT doc_id, content_hash, parser_version, superseded_by, \
-                        EXISTS(SELECT 1 FROM guide_doc_artifacts child \
-                               WHERE child.repository_root=guide_doc_artifacts.repository_root \
-                                 AND child.superseded_by=guide_doc_artifacts.doc_id) \
-                 FROM guide_doc_artifacts \
+                        EXISTS(SELECT 1 FROM ledger_doc_artifacts child \
+                               WHERE child.repository_root=ledger_doc_artifacts.repository_root \
+                                 AND child.superseded_by=ledger_doc_artifacts.doc_id) \
+                 FROM ledger_doc_artifacts \
                  WHERE repository_root=?1 AND path=?2",
             rusqlite::params![root_s, relative],
             |row| {
@@ -538,7 +538,7 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
             let has_projection = projections_available
                 && tx
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM guide_doc_projections \
+                        "SELECT EXISTS(SELECT 1 FROM ledger_doc_projections \
                          WHERE parent_doc_id=?1 AND source_content_hash=?2)",
                         rusqlite::params![id, old_hash],
                         |row| row.get(0),
@@ -551,14 +551,14 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
                 && has_projection
             {
                 tx.execute(
-                    "UPDATE guide_doc_artifacts \
+                    "UPDATE ledger_doc_artifacts \
                      SET revision=?1, index_generation=?2, updated_at_ms=?3 \
                      WHERE repository_root=?4 AND path=?5",
                     rusqlite::params![revision, generation, now, root_s, relative],
                 )
                 .map_err(|e| e.to_string())?;
                 tx.execute(
-                    "UPDATE guide_doc_projections \
+                    "UPDATE ledger_doc_projections \
                      SET source_revision=?1, index_generation=?2 \
                      WHERE parent_doc_id=?3 AND source_content_hash=?4",
                     rusqlite::params![revision, generation, id, hash],
@@ -577,13 +577,13 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
         let frontmatter = parse_frontmatter(&markdown)?;
         let (class, influence, sensitivity, generated) = classify(&relative);
         let default_id = format!(
-            "guide.doc:{}:{}",
+            "ledger.doc:{}:{}",
             digest(root_s.as_bytes())[..16].to_string(),
             digest(relative.as_bytes())[..16].to_string()
         );
         let id: String = tx
             .query_row(
-                "SELECT doc_id FROM guide_doc_artifacts WHERE repository_root=?1 AND content_hash=?2 AND lifecycle_state='active' AND path<>?3 ORDER BY updated_at_ms DESC LIMIT 1",
+                "SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root=?1 AND content_hash=?2 AND lifecycle_state='active' AND path<>?3 ORDER BY updated_at_ms DESC LIMIT 1",
                 rusqlite::params![root_s, hash, relative],
                 |row| row.get(0),
             )
@@ -591,7 +591,7 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
         let lifecycle = frontmatter.status.as_deref().unwrap_or("active");
         let keywords_json =
             serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
-        tx.execute("INSERT INTO guide_doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, title, summary, keywords_json, superseded_by, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
+        tx.execute("INSERT INTO ledger_doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, title, summary, keywords_json, superseded_by, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
           VALUES (?1,?2,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,'catalogued',?12,?13,?14,?15,?16)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state=excluded.lifecycle_state, title=excluded.title, summary=excluded.summary, keywords_json=excluded.keywords_json, superseded_by=NULL, trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
           rusqlite::params![id, root_s, revision, relative, hash, DOC_PARSER_VERSION, class, lifecycle, frontmatter.title.clone().unwrap_or_default(), frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
@@ -621,7 +621,7 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
             return Err("frontmatter supersedes self".to_owned());
         }
         let target_id: String = tx.query_row(
-            "SELECT doc_id FROM guide_doc_artifacts WHERE repository_root=?1 AND path=?2 AND lifecycle_state NOT IN ('tombstoned')",
+            "SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root=?1 AND path=?2 AND lifecycle_state NOT IN ('tombstoned')",
             rusqlite::params![root_s, target_path], |row| row.get(0),
         ).map_err(|_| format!("frontmatter supersedes target missing: {target_path}"))?;
         edges.insert(new_id.clone(), target_id);
@@ -637,9 +637,9 @@ pub fn sync(db: &GuideDb, root: &Path) -> Result<DocSyncReport, String> {
         }
     }
     for (new_id, _, target_path) in &supersessions {
-        tx.execute("UPDATE guide_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
+        tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
     }
-    let tombstoned = tx.execute("UPDATE guide_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
     for input in &projection_inputs {
         replace_doc_projections_tx(&tx, input).map_err(|e| e.to_string())?;
     }

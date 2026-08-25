@@ -17,7 +17,7 @@
       "push",
       "cortex",
       "blueprint",
-      "guide",
+      "ledger",
       "adapt"
     ],
     "axisDefinitions": [
@@ -42,8 +42,8 @@
         "description": "Owns repository truth, evidence generations, and drift/change observation."
       },
       {
-        "id": "guide",
-        "label": "Guide",
+        "id": "ledger",
+        "label": "Ledger",
         "description": "Navigates indexed document sections with hash-bound references."
       },
       {

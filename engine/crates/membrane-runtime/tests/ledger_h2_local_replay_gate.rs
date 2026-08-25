@@ -6,15 +6,15 @@
 
 use std::fs;
 
-use membrane_runtime::guide::doc_projection::{
+use membrane_runtime::ledger::doc_projection::{
     project_markdown, replace_doc_projections, DocumentProjectionStoreInputV1,
     H2ReplayGateReceiptV1, ProjectionConfig, TokenCounter,
 };
-use membrane_runtime::guide::doc_shadow::{
+use membrane_runtime::ledger::doc_shadow::{
     evaluate_shadow_replay, DocumentClass, ReplayCandidateV1, ShadowReplayCaseV1,
     ShadowReplayDisposition,
 };
-use membrane_runtime::guide::GuideDb;
+use membrane_runtime::ledger::LedgerDb;
 use tempfile::tempdir;
 
 struct Words;
@@ -26,7 +26,7 @@ impl TokenCounter for Words {
 }
 
 fn store_input(
-    projections: Vec<membrane_runtime::guide::doc_projection::DocumentProjectionV1>,
+    projections: Vec<membrane_runtime::ledger::doc_projection::DocumentProjectionV1>,
 ) -> DocumentProjectionStoreInputV1 {
     DocumentProjectionStoreInputV1 {
         parent_doc_id: "doc:local-gate".into(),
@@ -47,10 +47,10 @@ fn candidate(section_id: &str) -> ReplayCandidateV1 {
     }
 }
 
-fn projection_rows(db: &GuideDb) -> Vec<(String, String)> {
+fn projection_rows(db: &LedgerDb) -> Vec<(String, String)> {
     let conn = db.lock();
     let rows = conn
-        .prepare("SELECT kind, anchor_id FROM guide_doc_projections ORDER BY kind, anchor_id")
+        .prepare("SELECT kind, anchor_id FROM ledger_doc_projections ORDER BY kind, anchor_id")
         .expect("prepare projection read")
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .expect("query projection rows")
@@ -73,7 +73,7 @@ fn h2_local_clone_replay_logs_numeric_loss_and_keeps_h2_disabled() {
     let source_path = temp.path().join("source.db");
     let clone_path = temp.path().join("h2-replay-clone.db");
 
-    let source = GuideDb::open(&source_path).expect("open source DB");
+    let source = LedgerDb::open(&source_path).expect("open source DB");
     replace_doc_projections(
         &source,
         &store_input(project_markdown(
@@ -91,8 +91,8 @@ fn h2_local_clone_replay_logs_numeric_loss_and_keeps_h2_disabled() {
     drop(source);
     fs::copy(&source_path, &clone_path).expect("clone local DB");
 
-    let baseline = GuideDb::open(&source_path).expect("reopen source DB");
-    let h2_clone = GuideDb::open(&clone_path).expect("open H2 clone DB");
+    let baseline = LedgerDb::open(&source_path).expect("reopen source DB");
+    let h2_clone = LedgerDb::open(&clone_path).expect("open H2 clone DB");
     replace_doc_projections(
         &h2_clone,
         &store_input(project_markdown(
