@@ -66,7 +66,8 @@ pub fn activate(
     if mode == LedgerRecallMode::LedgerFts {
         let receipt = receipt.ok_or_else(|| "ledger_fts_requires_qualification".to_owned())?;
         let valid_hash = receipt.receipt_sha256.len() == 64
-            && receipt.receipt_sha256.bytes().all(|byte| byte.is_ascii_hexdigit());
+            && receipt.receipt_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            && receipt.receipt_sha256 == qualification_receipt_sha256(receipt);
         if !valid_hash
             || receipt.corpus_version.trim().is_empty()
             || !receipt.exact_resolution_passed
@@ -91,6 +92,20 @@ pub fn activate(
         )
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+/// Canonical content address for the activation-relevant receipt fields. The digest deliberately
+/// excludes `receipt_sha256` itself and uses explicit field separators rather than serializer
+/// output, so verification remains stable across JSON formatting and map ordering.
+pub fn qualification_receipt_sha256(receipt: &LedgerQualificationReceiptV1) -> String {
+    let payload = format!(
+        "ledger.qualification.v1\0{}\0{}\0{}\0{}",
+        receipt.corpus_version,
+        receipt.exact_resolution_passed,
+        receipt.stale_refusal_passed,
+        receipt.production_fts_path_passed,
+    );
+    hex::encode(Sha256::digest(payload.as_bytes()))
 }
 
 #[derive(Clone, Debug)]

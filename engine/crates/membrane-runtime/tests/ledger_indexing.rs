@@ -1,21 +1,23 @@
 use membrane_runtime::ledger::{
     doc_spine,
     index::{
-        activate, normalize_query, query_terms, recall_mode, LedgerQualificationReceiptV1,
-        LedgerRecallMode, FTS_SCHEMA_VERSION, PROJECTION_SCHEMA_VERSION, QUERY_NORMALIZER_VERSION,
-        TOKENIZER_ID,
+        activate, normalize_query, qualification_receipt_sha256, query_terms, recall_mode,
+        LedgerQualificationReceiptV1, LedgerRecallMode, FTS_SCHEMA_VERSION,
+        PROJECTION_SCHEMA_VERSION, QUERY_NORMALIZER_VERSION, TOKENIZER_ID,
     },
     LedgerDb,
 };
 
 fn passing_receipt() -> LedgerQualificationReceiptV1 {
-    LedgerQualificationReceiptV1 {
-        receipt_sha256: "a".repeat(64),
+    let mut receipt = LedgerQualificationReceiptV1 {
+        receipt_sha256: String::new(),
         corpus_version: "ledger-index-mechanics-v1".to_owned(),
         exact_resolution_passed: true,
         stale_refusal_passed: true,
         production_fts_path_passed: true,
-    }
+    };
+    receipt.receipt_sha256 = qualification_receipt_sha256(&receipt);
+    receipt
 }
 
 #[test]
@@ -124,6 +126,12 @@ fn fts_activation_is_fail_closed_and_supports_rollback() {
     bad.stale_refusal_passed = false;
     assert_eq!(
         activate(&db, LedgerRecallMode::LedgerFts, Some(&bad)).unwrap_err(),
+        "ledger_fts_qualification_failed"
+    );
+    let mut tampered = passing_receipt();
+    tampered.corpus_version.push_str("-tampered");
+    assert_eq!(
+        activate(&db, LedgerRecallMode::LedgerFts, Some(&tampered)).unwrap_err(),
         "ledger_fts_qualification_failed"
     );
     activate(&db, LedgerRecallMode::LedgerFts, Some(&passing_receipt())).unwrap();
