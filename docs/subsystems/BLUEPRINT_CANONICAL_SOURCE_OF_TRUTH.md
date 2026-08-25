@@ -1397,9 +1397,25 @@ When Hub is inactive, an explicit user/agent request MAY run a **bounded one-sho
 Blueprint operation** — query, refresh, reindex, re-anchor, or a Blueprint-owned
 record update — which publishes transactionally, reports what it did, and exits.
 A one-shot operation MUST NOT daemonize, start a watcher, start Hub, register a
-service, detach a worker, or linger. It is an explicit Blueprint product surface,
-never a silent Membrane fallback: Membrane never routes a context request to a
-one-shot Blueprint process.
+service, detach a worker, or linger. ### Hosting-mode transparency
+
+The prohibition on silent fallback binds **Membrane**, not Blueprint's own
+clients. Precisely:
+
+- **Membrane context requests never fall back.** With Hub inactive, a Membrane
+  context request returns typed unavailability. Membrane MUST NOT route it to a
+  one-shot Blueprint process.
+- **Direct Blueprint consumers use one stable client that routes for them.** A
+  consumer calling Blueprint directly — an injection-only host adapter, for
+  example — addresses one client that selects the active-Hub path or a bounded
+  one-shot automatically. Such consumers MUST NOT be required to detect hosting
+  mode, and the selected mode MUST NOT change results, ordering, digests, or
+  generation semantics; it may only change latency and the reported freshness
+  state.
+
+These are not in tension: the first governs whether Membrane invents a Blueprint
+call the caller did not ask for; the second governs how an explicit Blueprint
+call reaches a correctly hosted Blueprint.
 
 The Hub-hosted query role owns:
 
@@ -1509,11 +1525,41 @@ build
 
 `recall` is a first-class protocol method.
 
-Consumers that address this surface by selector vocabulary — files, symbols,
-references, dependencies, dependents, neighbors, path, impact, flows — are
-addressing the same methods at a different granularity. That mapping MUST be
-recorded once and kept in sync; two unreconciled vocabularies for one surface
-drift silently.
+### Selector mapping (normative)
+
+Consumers addressing this surface by selector vocabulary are naming the same
+methods at a different granularity. This mapping is canonical and MUST stay in
+sync with the method list above:
+
+| Selector | Method | Constraint |
+|---|---|---|
+| `files` | `search` | filtered to files / path prefix |
+| `symbols` | `search` | filtered to symbols |
+| `references` | `expand` | reference-edge filter |
+| `dependencies` | `expand` | direction `out` |
+| `dependents` | `expand` | direction `in` |
+| `neighbors` | `expand` | direction `both` |
+| `impact` | `impact` | — |
+| `path` | `path` | bounded traversal |
+| `flows` | `architecture` | flow view |
+| `resolve` | `resolve` | canonical anchor/node hydration |
+| `status` | `status` | availability plus generation pin |
+| `build` | `build` | transactional refresh/publish |
+
+Three surface obligations follow, and MUST be satisfied before the Hub-residency
+cutover:
+
+1. **`path` MUST be exposed as a protocol method.** It exists internally as
+   `boundedPath`; an internal-only capability does not satisfy a consumer
+   contract.
+2. **`flows` requires explicit `architecture` flow-view semantics** — defined
+   shape, ordering, and bounds, not an unspecified projection.
+3. **Complete inventory projection MUST remain available.** Audit consumers
+   require whole files/symbols/dependencies/digests, not sampled or truncated
+   `search`/`architecture` output. Either preserve the `audit-projection`
+   capability or define an exact paginated method plus input mapping with
+   deterministic ordering and a stable page cursor. Silent truncation of an
+   audit projection is a contract break.
 
 Blueprint-owned wire schemas are canonical under `blueprint/schemas/**` after the monorepo migration. SDK/type bindings and any consumer-side generated bindings are projections of those schemas, not independent contract authorities.
 
