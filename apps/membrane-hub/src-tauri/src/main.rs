@@ -4,9 +4,8 @@ use membrane_protocol::{
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -74,7 +73,7 @@ fn service_status_name(status: supervisor::ServiceStatus) -> &'static str {
 /// `memory_sentinel_view`/`memory_sentinel_producer` (engine/crates/membrane-runtime).
 /// It masks a *transient* condition — the Hub's local snapshot poll still
 /// reporting "source not connected" during the few seconds after the
-/// sidecar process starts — so the window flashes "connecting" instead of a
+/// in-process runtime starts — so the window flashes "connecting" instead of a
 /// misleading "offline" state (see `source_not_connected_snapshot` and the
 /// `startup_sentinel_masked` error literal below). The engine's memory
 /// sentinel is an unrelated, content-free read model of memory
@@ -183,42 +182,57 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
     })
 }
 
-fn fetch_snapshot(program: &Path, timeout: Duration) -> Result<CachedSnapshot, String> {
-    let mut child = Command::new(program)
-        .args(["cli", "hub-snapshot"])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()
+fn fetch_snapshot(timeout: Duration) -> Result<CachedSnapshot, String> {
+    let port = std::env::var("MEMBRANE_PORT")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .unwrap_or(47851);
+    let address = format!("127.0.0.1:{port}")
+        .parse()
+        .map_err(|_| "hub_snapshot_address_invalid")?;
+    let mut stream = std::net::TcpStream::connect_timeout(&address, timeout)
         .map_err(|_| "hub_service_unavailable")?;
-    let stdout = child.stdout.take().ok_or("hub_snapshot_pipe_missing")?;
-    let reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout
-            .take(MAX_SNAPSHOT_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map(|_| bytes)
-    });
-    let started = std::time::Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|_| "hub_snapshot_wait_failed")? {
-            break status;
-        }
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("hub_snapshot_timeout".into());
-        }
-        thread::sleep(Duration::from_millis(20));
-    };
-    let bytes = reader
-        .join()
-        .map_err(|_| "hub_snapshot_reader_failed")?
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|_| "hub_snapshot_timeout")?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(|_| "hub_snapshot_timeout")?;
+    let root = std::env::var_os("WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .ok_or("workspace_root_unavailable")?;
+    let token = fs::read_to_string(root.join("tools/.cache/memory/api-token"))
+        .map_err(|_| "hub_snapshot_token_unavailable")?;
+    let token = token.trim();
+    if token.is_empty() || token.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err("hub_snapshot_token_invalid".into());
+    }
+    let request = format!(
+        "GET /hub/snapshot HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|_| "hub_snapshot_write_failed")?;
+    let mut raw = Vec::new();
+    stream
+        .take(MAX_SNAPSHOT_BYTES + 4096)
+        .read_to_end(&mut raw)
         .map_err(|_| "hub_snapshot_read_failed")?;
-    if !status.success() {
+    let split = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+        .or_else(|| {
+            raw.windows(2)
+                .position(|window| window == b"\n\n")
+                .map(|index| index + 2)
+        })
+        .ok_or("hub_snapshot_response_invalid")?;
+    let headers = String::from_utf8_lossy(&raw[..split]);
+    if !headers.starts_with("HTTP/1.1 200") {
         return Err("hub_service_unavailable".into());
     }
-    parse_snapshot(&bytes)
+    parse_snapshot(&raw[split..])
 }
 
 fn bundled_binary(name: &str) -> PathBuf {
@@ -232,21 +246,11 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn membrane_service_supervisor(
-    resident_log_path: PathBuf,
-) -> Result<supervisor::Supervisor, String> {
-    let program = bundled_binary("membrane");
-    if !program.is_file() {
-        return Err("membrane_hub_resident_missing".into());
-    }
+fn membrane_runtime_supervisor() -> Result<supervisor::Supervisor, String> {
     let root = workspace::resolve()
         .map_err(|_| "workspace_root_unavailable")?
         .root;
-    Ok(supervisor::Supervisor::new(
-        program,
-        root,
-        resident_log_path,
-    ))
+    Ok(supervisor::Supervisor::new(root))
 }
 
 fn stop_membrane_service(service: &ServiceState) {
@@ -455,7 +459,6 @@ fn startup_step(
 }
 fn initial_poll(
     path: &Path,
-    program: &Path,
     gate: &StartupGate,
 ) -> (Result<CachedSnapshot, String>, bool) {
     let deadline = std::time::Instant::now() + STARTUP_GRACE;
@@ -473,7 +476,7 @@ fn initial_poll(
             gate.finish();
             return (output, false);
         }
-        let result = fetch_snapshot(program, POLL_TIMEOUT.min(remaining));
+        let result = fetch_snapshot(POLL_TIMEOUT.min(remaining));
         let live_snapshot_available = result.is_ok();
         let expired = deadline
             .saturating_duration_since(std::time::Instant::now())
@@ -778,8 +781,7 @@ fn main() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
             let supervisor = Arc::new(
-                membrane_service_supervisor(cache.with_file_name("resident.log"))
-                    .map_err(std::io::Error::other)?,
+                membrane_runtime_supervisor().map_err(std::io::Error::other)?,
             );
             let started = supervisor.start().map_err(std::io::Error::other)?;
             telemetry.service(service_status_name(started), None);
@@ -817,9 +819,6 @@ fn main() {
                 });
             }
             let gate = app.state::<Arc<StartupGate>>().inner().clone();
-            let program = std::env::var_os("MEMBRANE_COMMAND")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
                 let observed_service_status = supervisor.supervise();
                 let service_status =
@@ -842,9 +841,9 @@ fn main() {
                         observed_service_status
                     };
                 let (current, live_snapshot_available) = if gate.active() {
-                    initial_poll(&cache, &program, &gate)
+                    initial_poll(&cache, &gate)
                 } else {
-                    let fetched = fetch_snapshot(&program, POLL_TIMEOUT);
+                    let fetched = fetch_snapshot(POLL_TIMEOUT);
                     let live = fetched.is_ok();
                     (poll_snapshot(&cache, fetched, &gate), live)
                 };

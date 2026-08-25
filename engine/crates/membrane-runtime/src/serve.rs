@@ -4884,26 +4884,6 @@ fn stdio_dispatch_request(request: &str) -> Result<String, String> {
     serde_json::to_string(&response).map_err(|error| error.to_string())
 }
 
-/// MBR-102: bind the existing resident HTTP service to a loopback port. The
-/// port range is validated by the membrane binary (>=1024) so this entrypoint
-/// only does the bind. The runtime identity and claim are sourced from the
-/// supervisor child process; in standalone invocations they are reconstructed
-/// from the current executable location.
-pub fn run_loopback_api(port: u16) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|error| format!("resolve binary: {error}"))?;
-    let runtime = crate::service::runtime_from_exe(&exe)?;
-    let (identity, claim) = crate::service::prepare_runtime_identity(&runtime)?;
-    // Honor the explicit port when it is in range; otherwise fall back to the
-    // runtime-supplied port so the resident service binds where its lease says.
-    let bind_port = if port >= 1024 { port } else { runtime.port };
-    run(
-        runtime.db.to_string_lossy().as_ref(),
-        bind_port,
-        &identity,
-        &claim,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

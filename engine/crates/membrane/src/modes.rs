@@ -3,10 +3,7 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-use crate::dispatch::{
-    consume_lifecycle_channel, monitor_lifecycle_channel, InstallInvocation, LifecycleCommand,
-    LifecycleEndpoint, MembraneMode, ParsedInvocation, UninstallInvocation,
-};
+use crate::dispatch::{InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation};
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
@@ -22,12 +19,9 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         // mirror of install and shares its ownership contract.
         MembraneMode::Cli => membrane_runtime::Plane::Application,
         MembraneMode::StdioMcp => membrane_runtime::Plane::Application,
-        MembraneMode::LoopbackApi => membrane_runtime::Plane::Application,
         MembraneMode::Install => membrane_runtime::Plane::Application,
         MembraneMode::Uninstall => membrane_runtime::Plane::Application,
         MembraneMode::MigrateLegacy => membrane_runtime::Plane::Application,
-        // Resident child is the Control plane.
-        MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
     }
 }
 
@@ -58,8 +52,6 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
     match invocation.mode {
         MembraneMode::Cli => dispatch_cli(&invocation.cli_tail),
         MembraneMode::StdioMcp => dispatch_stdio_mcp(),
-        MembraneMode::LoopbackApi => dispatch_loopback_api(invocation.port),
-        MembraneMode::SupervisorChild => dispatch_supervisor_child(),
         MembraneMode::Install => match invocation.install.as_ref() {
             Some(invocation) => dispatch_install(invocation),
             // The parser refuses to construct a `ParsedInvocation` whose
@@ -110,14 +102,18 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     }
     if matches!(tail, [operation] if operation == "hub-capabilities" || operation == "hub-snapshot")
     {
-        // The Hub's Tauri sidecar fetches its snapshot through exactly this
-        // path ("membrane cli hub-snapshot"), so it MUST emit the canonical
-        // snapshot: the same composition as the resident's /hub/snapshot
-        // route, with the typed frozen membraneState and all six subsystems.
+        // Stateless host clients may fetch the canonical Hub snapshot through
+        // this path. The command never starts a runtime; Hub absence is the
+        // typed `membrane_unavailable { hub_inactive }` response below.
         if tail[0] == "hub-snapshot" {
-            return match serde_json::to_string(
-                &membrane_runtime::hub_inputs::compose_live_hub_snapshot(),
-            ) {
+            let Some(parts) = membrane_runtime::hub_inputs::live_snapshot_parts_from_local_service()
+            else {
+                return hub_inactive();
+            };
+            return match serde_json::to_string(&membrane_runtime::hub_inputs::compose_hub_snapshot(
+                parts,
+                now_unix_ms(),
+            )) {
                 Ok(json) => {
                     println!("{json}");
                     DispatchOutcome::Ok
@@ -130,10 +126,9 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         // MBR: read live state from local Membrane resident's /health endpoint
         // instead of hardcoding "Offline" regardless of whether the service is
         // up. Falls back to the honest unavailable facade on any failure.
-        let inputs =
-            membrane_runtime::hub_inputs::live_inputs_from_local_service().unwrap_or_else(|| {
-                membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected")
-            });
+        let Some(inputs) = membrane_runtime::hub_inputs::live_inputs_from_local_service() else {
+            return hub_inactive();
+        };
         return match dispatch_hub("hub.capabilities", inputs)
             .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
         {
@@ -151,6 +146,19 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     match membrane_runtime::cli::run_cli_from(&refs) {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => classify_runtime_error(error),
+    }
+}
+
+fn hub_inactive() -> DispatchOutcome {
+    let unavailable = membrane_protocol::MembraneUnavailableV1::hub_inactive();
+    match serde_json::to_string(&unavailable) {
+        Ok(json) => {
+            println!("{json}");
+            DispatchOutcome::UserError("hub inactive".into())
+        }
+        Err(error) => DispatchOutcome::InternalError(format!(
+            "serialize membrane_unavailable: {error}"
+        )),
     }
 }
 
@@ -648,17 +656,6 @@ fn percent_encode_component(value: &str) -> String {
     encoded
 }
 
-fn print_typed_degradation(detail: &str) -> DispatchOutcome {
-    let payload = serde_json::json!({
-        "error": {
-            "code": "resident_unavailable",
-            "detail": detail,
-        }
-    });
-    println!("{payload}");
-    DispatchOutcome::Ok
-}
-
 /// One blocking loopback call to the resident diagnostics surface. `Ok(None)`
 /// means nothing is listening on the port (typed degradation upstream); every
 /// response body is printed verbatim so server-side typed omission envelopes
@@ -670,9 +667,7 @@ fn run_diagnostics_service_call(
     body: Option<String>,
 ) -> DispatchOutcome {
     match diagnostics_http_request(port, method, path_and_query, body.as_deref()) {
-        Ok(None) => print_typed_degradation(&format!(
-            "no membrane resident is listening on 127.0.0.1:{port}; start one with `membrane loopback-api`"
-        )),
+        Ok(None) => hub_inactive(),
         Ok(Some((status, response_body))) => {
             println!("{response_body}");
             if status == 200 {
@@ -797,80 +792,6 @@ fn dispatch_stdio_mcp() -> DispatchOutcome {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => DispatchOutcome::InternalError(error.to_string()),
     }
-}
-
-fn dispatch_loopback_api(port: u16) -> DispatchOutcome {
-    match membrane_runtime::serve::run_loopback_api(port) {
-        Ok(()) => DispatchOutcome::Ok,
-        Err(error) => classify_runtime_error(error),
-    }
-}
-
-fn dispatch_supervisor_child() -> DispatchOutcome {
-    let lifecycle = match consume_lifecycle_channel() {
-        Ok(channel) => channel,
-        Err(error) => return DispatchOutcome::UserError(error),
-    };
-    let Some(channel) = lifecycle else {
-        return match membrane_runtime::service::run_service_from() {
-            Ok(()) => DispatchOutcome::Ok,
-            Err(error) => classify_runtime_error(error),
-        };
-    };
-    let control = match membrane_runtime::service::LifecycleControl::from_lifecycle_capability(
-        channel.capability(),
-    ) {
-        Ok(control) => control,
-        Err(error) => return DispatchOutcome::UserError(error),
-    };
-    let ready_channel = channel.clone();
-    let ready_control = control.clone();
-    std::thread::spawn(move || match ready_control.wait_until_ready() {
-        Ok(port) => {
-            if let Err(error) = ready_channel.ready(LifecycleEndpoint {
-                host: "127.0.0.1".to_string(),
-                port,
-            }) {
-                ready_control.fail(error);
-            }
-        }
-        Err(error) => {
-            if !ready_control.shutdown_requested() {
-                ready_control.fail(error);
-            }
-        }
-    });
-    let _monitor = monitor_lifecycle_channel(channel.clone(), control.clone());
-    let service = membrane_runtime::service::run_service_with_lifecycle(control.clone());
-    if let Err(error) = service {
-        let _ = channel.failed();
-        return classify_runtime_error(error);
-    }
-    if let Some(error) = control.failure() {
-        let _ = channel.failed();
-        return DispatchOutcome::InternalError(error);
-    }
-    let command = match control.command().as_deref() {
-        Some("drain") => LifecycleCommand::Drain,
-        Some("stop") => LifecycleCommand::Stop,
-        Some("update_handoff") => LifecycleCommand::UpdateHandoff,
-        Some("ownership_loss") => LifecycleCommand::OwnershipLoss,
-        Some("parent_eof") => LifecycleCommand::ParentEof,
-        Some(_) => {
-            let _ = channel.failed();
-            return DispatchOutcome::InternalError("lifecycle command state invalid".into());
-        }
-        None => {
-            let _ = channel.failed();
-            return DispatchOutcome::InternalError(
-                "lifecycle resident stopped without a drain command".into(),
-            );
-        }
-    };
-    if let Err(error) = channel.acknowledge_drained(command) {
-        return DispatchOutcome::InternalError(error);
-    }
-    DispatchOutcome::Ok
 }
 
 /// MBR-203: install handler. Loads the plan (or builds a default), runs
@@ -1158,18 +1079,6 @@ mod tests {
         assert_eq!(
             plane_of(&MembraneMode::StdioMcp),
             membrane_runtime::Plane::Application
-        );
-        assert_eq!(
-            plane_of(&MembraneMode::LoopbackApi),
-            membrane_runtime::Plane::Application
-        );
-    }
-
-    #[test]
-    fn plane_of_maps_supervisor_child_to_control() {
-        assert_eq!(
-            plane_of(&MembraneMode::SupervisorChild),
-            membrane_runtime::Plane::Control
         );
     }
 

@@ -1,8 +1,8 @@
 // Membrane Hub packages one closed runtime. Blueprint is pre-staged by its
 // release builder; native capabilities remain Tauri sidecars, never sources.
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createServer } from "node:net";
@@ -131,83 +131,27 @@ function freePort() {
     server.listen(0, "127.0.0.1", () => { const port = server.address().port; server.close((error) => error ? rejectPort(error) : resolvePort(port)); });
   });
 }
-async function waitForHealth(port, deadline = Date.now() + 8_000) {
-  let last = "not_started";
-  while (Date.now() < deadline) {
-    try { const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(800) }); const payload = await response.json(); if (response.ok && payload && typeof payload === "object") return payload; last = `http_${response.status}`; }
-    catch (error) { last = String(error.message ?? error); }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
-  }
-  throw new Error(`membrane supervisor health unavailable: ${last}`);
-}
-function digestText(value) { return `sha256:${createHash("sha256").update(value).digest("hex")}`; }
-function lifecycleFrame(frame, expected) {
-  if (!frame || typeof frame !== "object" || Object.keys(frame).some((key) => !["kind", "state", "command", "fence", "endpoint", "capability"].includes(key))) throw new Error("membrane supervisor lifecycle frame invalid");
-  if (frame.kind !== expected.kind || frame.state !== expected.state || frame.fence !== expected.fence || (expected.capability !== undefined && frame.capability !== expected.capability)) throw new Error("membrane supervisor lifecycle frame mismatch");
-  return frame;
-}
-function awaitLifecycle(child, lease) {
-  return new Promise((resolveLifecycle, rejectLifecycle) => {
-    let buffer = "", phase = "starting";
-    const timer = setTimeout(() => rejectLifecycle(new Error("membrane supervisor lifecycle timeout")), 8_000);
-    const fail = (error) => { clearTimeout(timer); rejectLifecycle(error); };
-    child.once("error", fail);
-    child.stdout.on("data", (chunk) => {
-      buffer += chunk;
-      for (;;) {
-        const newline = buffer.indexOf("\n"); if (newline < 0) return;
-        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
-        try {
-          const frame = JSON.parse(line);
-          if (phase === "starting") {
-            lifecycleFrame(frame, { kind: "register", state: "starting", fence: lease.fence });
-            if (frame.command !== undefined || frame.endpoint !== undefined || frame.capability !== undefined) throw new Error("membrane supervisor starting frame invalid");
-            phase = "ready";
-          } else {
-            lifecycleFrame(frame, { kind: "register", state: "ready", fence: lease.fence, capability: lease.capability });
-            if (frame.command !== undefined || frame.endpoint?.host !== "127.0.0.1" || !Number.isInteger(frame.endpoint?.port) || frame.endpoint.port < 1024) throw new Error("membrane supervisor ready frame invalid");
-            clearTimeout(timer); resolveLifecycle(frame.endpoint); return;
-          }
-        } catch (error) { fail(error); return; }
-      }
+function expectHubInactive(sidecarDir) {
+  return new Promise(async (resolveProbe, rejectProbe) => {
+    const port = await freePort();
+    const membrane = join(sidecarDir, "membrane");
+    const child = spawn(membrane, ["cli", "hub-snapshot"], { env: { ...process.env, MEMBRANE_PORT: String(port) }, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.once("error", rejectProbe);
+    child.once("close", (status) => {
+      try {
+        if (status === 0) throw new Error("Hub-inactive client unexpectedly succeeded");
+        const payload = JSON.parse(stdout);
+        if (payload.kind !== "membrane_unavailable" || payload.reason !== "hub_inactive" || payload.retryable !== true) throw new Error("Hub-inactive response invalid");
+        if (!stderr.includes("hub inactive")) throw new Error("Hub-inactive exit reason missing");
+        resolveProbe(true);
+      } catch (error) { rejectProbe(error); }
     });
-    child.once("close", () => fail(new Error("membrane supervisor lifecycle eof")));
   });
 }
-async function startMembraneSupervisor(sidecarDir) {
-  const service = join(sidecarDir, "membrane");
-  if (!existsSync(service)) throw new Error("unpacked membrane supervisor missing");
-  const root = mkdtempSync(join(tmpdir(), "membrane-hub-supervisor-probe-"));
-  const bin = join(root, "tools", "bin"); mkdirSync(bin, { recursive: true });
-  const executable = join(bin, "membrane"); copyFileSync(service, executable);
-  const port = await freePort(); const config = join(root, "tools", "lib", "memory", "runtime.json"); mkdirSync(dirname(config), { recursive: true }); mkdirSync(join(root, "tools", ".cache", "memory"), { recursive: true });
-  writeFileSync(config, `${JSON.stringify({ schemaVersion: 1, serviceId: "membrane-local-v1", host: "127.0.0.1", port })}\n`);
-  const declaredDataRoot = realpathSync(root);
-  const { stdout } = await run(executable, ["cli", "build-info"]);
-  const releaseGeneration = JSON.parse(stdout).release_generation;
-  if (!/^sha256:[0-9a-f]{64}$/.test(releaseGeneration ?? "")) throw new Error("membrane supervisor release invalid");
-  const lease = { fence: 1, instanceId: `sha256:${randomBytes(32).toString("hex")}`, capability: randomBytes(32).toString("hex"), releaseGeneration, declaredDataRoot, artifactDigest: `sha256:${digest(executable)}` };
-  const hello = { kind: "hello", lifecycleVersion: 1, fence: lease.fence, installationId: digestText(declaredDataRoot), productId: "membrane", ...lease };
-  delete hello.declaredDataRoot; hello.declaredDataRoot = lease.declaredDataRoot;
-  delete hello.artifactDigest; hello.artifactDigest = lease.artifactDigest;
-  delete hello.releaseGeneration; hello.releaseGeneration = lease.releaseGeneration;
-  delete hello.capability; hello.capability = lease.capability;
-  const child = spawn(executable, ["supervisor-child"], { env: { ...process.env, MEMBRANE_LIFECYCLE_STDIO: "1", WORKSPACE_ROOT: declaredDataRoot }, stdio: ["pipe", "pipe", "pipe"] });
-  let stderr = ""; child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-16_384); });
-  const stop = async () => {
-    if (!child.killed) {
-      child.stdin.write(`${JSON.stringify({ kind: "command", command: "drain", fence: lease.fence, capability: lease.capability })}\n`);
-      child.stdin.end();
-      await Promise.race([new Promise((resolveStop) => child.once("close", resolveStop)), new Promise((resolveStop) => setTimeout(resolveStop, 5_000))]);
-      if (!child.killed && child.exitCode === null) child.kill();
-    }
-    rmSync(root, { recursive: true, force: true });
-  };
-  try { const endpoint = await awaitLifecycle(child, lease); if (endpoint.port !== port) throw new Error("membrane supervisor endpoint mismatch"); const health = await waitForHealth(port); return { port, health, stop }; }
-  catch (error) { await stop(); throw new Error(`${error.message}${stderr ? `: ${stderr}` : ""}`); }
-}
 function nativeUnpackedProbes() {
-  let service;
   return {
     async bootstrapImport({ runtimeDir }) {
       const init = join(runtimeDir, "resources", "install-workspace", "__init__.py");
@@ -216,19 +160,19 @@ function nativeUnpackedProbes() {
       args.push("import importlib.util,pathlib,sys; p=pathlib.Path(sys.argv[1]); s=importlib.util.spec_from_file_location('membrane_install_workspace',p,submodule_search_locations=[str(p.parent)]); m=importlib.util.module_from_spec(s); sys.modules[s.name]=m; s.loader.exec_module(m)", init);
       await run(command, args); return true;
     },
-    async membraneSupervisorHealth({ sidecarDir }) { service = await startMembraneSupervisor(sidecarDir); return Boolean(service.health); },
+    async hubRuntimeInProcess() {
+      const supervisor = readFileSync(join(hub, "src-tauri", "src", "supervisor.rs"), "utf8");
+      const retiredChildMode = ["supervisor", "child"].join("-");
+      if (!supervisor.includes("run_hub_runtime") || supervisor.includes("std::process::Command") || supervisor.includes(retiredChildMode)) throw new Error("Hub runtime topology invalid");
+      return true;
+    },
     async blueprintRecall({ runtimeDir }) {
       const root = mkdtempSync(join(tmpdir(), "membrane-hub-blueprint-probe-")); writeFileSync(join(root, "probe.mjs"), "export const membraneHubProbe = true;\n");
       const launcher = join(runtimeDir, "blueprint", "bin", "blueprint");
       try { await run(launcher, ["build", "--root", root, "--out", ".agent"], { cwd: root, env: { BLUEPRINT_NO_UPDATE_CHECK: "1" }, timeout: 30_000 }); await run(launcher, ["recall", "--root", root, "--out", ".agent", "--query", "membrane hub probe"], { cwd: root, env: { BLUEPRINT_NO_UPDATE_CHECK: "1" }, timeout: 15_000 }); return true; }
       finally { rmSync(root, { recursive: true, force: true }); }
     },
-    async hubSnapshot({ sidecarDir }) {
-      if (!service) throw new Error("membrane supervisor probe state missing");
-      const membrane = join(sidecarDir, "membrane"); const { stdout } = await run(membrane, ["cli", "hub-snapshot"], { env: { MEMBRANE_PORT: String(service.port) } });
-      const payload = JSON.parse(stdout); if (payload.schemaVersion !== 1) throw new Error("hub snapshot schema invalid"); return true;
-    },
-    async cleanup() { await service?.stop(); service = undefined; },
+    async hubInactive({ sidecarDir }) { return expectHubInactive(sidecarDir); },
   };
 }
 
@@ -258,7 +202,7 @@ export async function verifyUnpackedArtifact({ runtimeDir = runtime, sidecarDir,
   verifySidecars(sidecarDir, inventory);
   const activeProbes = Object.keys(probes).length ? probes : nativeUnpackedProbes();
   try {
-    for (const name of ["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"]) {
+    for (const name of ["bootstrapImport", "hubRuntimeInProcess", "blueprintRecall", "hubInactive"]) {
       if (typeof activeProbes[name] !== "function") throw new Error(`unpacked executable probe required: ${name}`);
       if (!(await activeProbes[name]({ runtimeDir, sidecarDir, inventory }))) throw new Error(`unpacked executable probe failed: ${name}`);
     }

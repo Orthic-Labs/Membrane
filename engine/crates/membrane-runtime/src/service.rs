@@ -6,7 +6,7 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock, RwLock};
 
 const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -146,16 +146,40 @@ impl LifecycleControl {
     }
 }
 
-static LIFECYCLE_CONTROL: OnceLock<LifecycleControl> = OnceLock::new();
+static LIFECYCLE_CONTROL: OnceLock<RwLock<LifecycleControl>> = OnceLock::new();
+static HUB_RUNTIME_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub fn install_lifecycle_control(control: LifecycleControl) -> Result<(), String> {
-    LIFECYCLE_CONTROL
-        .set(control)
-        .map_err(|_| "lifecycle control already bound".to_string())
+    let slot = LIFECYCLE_CONTROL.get_or_init(|| RwLock::new(LifecycleControl::default()));
+    *slot
+        .write()
+        .map_err(|_| "lifecycle control unavailable".to_string())? = control;
+    Ok(())
 }
 
-pub fn lifecycle_control() -> &'static LifecycleControl {
-    LIFECYCLE_CONTROL.get_or_init(LifecycleControl::default)
+pub fn lifecycle_control() -> LifecycleControl {
+    LIFECYCLE_CONTROL
+        .get_or_init(|| RwLock::new(LifecycleControl::default()))
+        .read()
+        .map(|control| control.clone())
+        .unwrap_or_default()
+}
+
+struct HubRuntimeClaim;
+
+impl HubRuntimeClaim {
+    fn acquire() -> Result<Self, String> {
+        HUB_RUNTIME_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map(|_| Self)
+            .map_err(|_| "membrane_hub_runtime_already_active".to_string())
+    }
+}
+
+impl Drop for HubRuntimeClaim {
+    fn drop(&mut self) {
+        HUB_RUNTIME_ACTIVE.store(false, Ordering::Release);
+    }
 }
 
 #[derive(Deserialize)]
@@ -323,28 +347,57 @@ pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
     runtime_from_exe_at_workspace(exe, workspace.as_deref(), lifecycle_control().hub_bound())
 }
 
-/// Headless supervisor-child entrypoint. Inherited stdio mode binds an authenticated lifecycle
-/// capability before startup; explicit headless mode remains available for local diagnostics.
-pub fn run_service_from() -> Result<(), String> {
-    run_service_with_lifecycle(LifecycleControl::default())
-}
-
-/// Starts a lifecycle-managed resident with its snapshot capability held only
-/// in memory. The lifecycle dispatcher validates the inherited channel before
-/// constructing this control object.
-pub fn run_service_with_lifecycle(lifecycle: LifecycleControl) -> Result<(), String> {
-    install_lifecycle_control(lifecycle)?;
-    run_service()
-}
-
-pub fn run_service() -> Result<(), String> {
-    if std::env::args().nth(1).as_deref() == Some("build-info") {
-        println!("{}", build_info());
-        return Ok(());
+fn runtime_from_workspace_root(workspace_root: &Path) -> Result<Runtime, String> {
+    let root = std::fs::canonicalize(workspace_root)
+        .map_err(|error| format!("canonicalize Hub workspace root: {error}"))?;
+    let tools = root.join("tools");
+    let bin = tools.join("bin");
+    let config_path = tools.join("lib/memory/runtime.json");
+    let config: RuntimeConfig = serde_json::from_slice(
+        &std::fs::read(&config_path)
+            .map_err(|error| format!("read {}: {error}", config_path.display()))?,
+    )
+    .map_err(|error| format!("parse {}: {error}", config_path.display()))?;
+    if config.schema_version != 1
+        || config.service_id != "membrane-local-v1"
+        || config.host != "127.0.0.1"
+        || config.port < 1024
+    {
+        return Err(format!(
+            "invalid runtime identity in {}",
+            config_path.display()
+        ));
     }
-    let runtime = runtime_from_exe(
-        &std::env::current_exe().map_err(|error| format!("resolve service binary: {error}"))?,
-    )?;
+    let ort_name = if cfg!(windows) {
+        "onnxruntime.dll"
+    } else if cfg!(target_os = "macos") {
+        "libonnxruntime.dylib"
+    } else {
+        "libonnxruntime.so"
+    };
+    Ok(Runtime {
+        db: tools.join(".cache/memory/cortex-engine.db"),
+        token: tools.join(".cache/memory/api-token"),
+        ort: bin.join(ort_name),
+        hf_home: tools.join(".cache/fastembed"),
+        port: config.port,
+    })
+}
+
+/// Run the sole resident Membrane runtime inside the active Hub process.
+/// The process-wide claim rejects a second runtime before it can bind storage
+/// or a port, preserving one active Hub/runtime authority.
+pub fn run_hub_runtime(
+    workspace_root: &Path,
+    lifecycle: LifecycleControl,
+) -> Result<(), String> {
+    let _claim = HubRuntimeClaim::acquire()?;
+    install_lifecycle_control(lifecycle)?;
+    let runtime = runtime_from_workspace_root(workspace_root)?;
+    run_runtime(runtime)
+}
+
+fn run_runtime(runtime: Runtime) -> Result<(), String> {
     std::env::set_var("CORTEX_DB", &runtime.db);
     std::env::set_var("MEMBRANE_PORT", runtime.port.to_string());
     std::env::set_var("MEMBRANE_API_TOKEN_FILE", &runtime.token);
@@ -419,6 +472,14 @@ mod tests {
     }
 
     #[test]
+    fn hub_runtime_claim_allows_exactly_one_active_owner() {
+        let first = HubRuntimeClaim::acquire().unwrap();
+        assert!(HubRuntimeClaim::acquire().is_err());
+        drop(first);
+        assert!(HubRuntimeClaim::acquire().is_ok());
+    }
+
+    #[test]
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
@@ -449,6 +510,24 @@ mod tests {
         assert_eq!(
             runtime.token,
             temp.path().join("tools/.cache/memory/api-token")
+        );
+    }
+
+    #[test]
+    fn hub_runtime_resolves_directly_from_its_workspace() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join("tools/lib/memory");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(
+            config_dir.join("runtime.json"),
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
+        )
+        .unwrap();
+        let runtime = runtime_from_workspace_root(temp.path()).unwrap();
+        assert_eq!(runtime.port, 47851);
+        assert_eq!(
+            runtime.db,
+            temp.path().join("tools/.cache/memory/cortex-engine.db")
         );
     }
 

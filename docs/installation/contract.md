@@ -13,7 +13,7 @@ the resident service runs on every loopback request.
 
 A Membrane installation is one machine-bound runtime with one database, one
 identity file, one set of components, and one workspace. Every IPC peer
-(loopback HTTP, stdio MCP, supervisor-child) needs to know it is talking to
+(loopback HTTP and stateless CLI/MCP transports) needs to know it is talking to
 **that** installation and not a sibling — including the case where a
 restarted resident picks up the same identity file but advances the active
 startup generation. The manifest makes the binding explicit, machine-checked,

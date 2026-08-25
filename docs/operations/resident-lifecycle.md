@@ -1,14 +1,15 @@
 # Membrane resident lifecycle
 
-Membrane Hub is sole resident owner. It launches `membrane supervisor-child` with inherited
-stdio, sets `MEMBRANE_LIFECYCLE_STDIO=1`, & retains stdin/stdout for lifecycle frames.
+Membrane Hub is the sole resident owner. It links `membrane-runtime` and runs the
+runtime on a Hub-owned in-process thread. It never launches or adopts a Membrane
+child process.
 
-Hub sends one closed `ResidentHelloV1` frame. It binds product identity, canonical workspace root,
-installation digest, cryptographic instance ID, release generation, executable digest, capability,
-& monotonic fence. Resident validates every binding before startup, emits `starting`, then emits
-`ready` with exact fence & loopback endpoint. Commands require exact fence & capability. EOF is
-typed `ParentEof` & drains admission.
+The Hub resolves the canonical workspace, claims the one-active-runtime guard,
+starts the loopback service, and waits for typed readiness before reporting
+Running. Hub shutdown closes admission, drains the in-process runtime, and joins
+its thread. A second runtime claim is rejected before storage or port binding.
 
-No lease file, lease argv, supervisor PID marker, environment fallback, or second supervisor binary
-exists. Headless `membrane supervisor-child` remains available without inherited stdio for local
-diagnostics; Hub launches authenticated stdio mode only.
+No standalone runtime command, child lifecycle pipe, lease file, supervisor PID
+marker, or second supervisor binary exists. Stateless clients never auto-start
+Hub; Hub absence returns typed `membrane_unavailable` with reason `hub_inactive`
+and `retryable: true`.

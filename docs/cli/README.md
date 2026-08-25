@@ -13,8 +13,6 @@ membrane <mode> [flags]
 |---|---|---|
 | `cli` | One-shot CLI subcommands (doctor, smoke, ingest, query, ...). | Forwards the tail to the runtime CLI. |
 | `stdio-mcp` | JSON-RPC over stdio for MCP clients. | Line-delimited JSON, blocking until EOF. |
-| `loopback-api` | HTTP service bound to `127.0.0.1`. | Port range validated >=1024; runtime identity from the supervisor child. |
-| `supervisor-child` | Resident child owned by Membrane Hub. | Hub-authenticated inherited stdio lifecycle frames; no lease file or argv. |
 
 ## Exit codes
 
@@ -31,10 +29,10 @@ membrane <mode> [flags]
 1. The binary itself parses argv with `clap`. Unknown modes are rejected before any runtime call.
 2. For `cli`, the runtime CLI parses the tail with the same `clap` schema the legacy `cortex`
    binary used, so existing scripts keep working.
-3. For `stdio-mcp` and `loopback-api`, the runtime owns its own transport framing. The binary
-   is a thin dispatcher; it never buffers, splits, or reorders bytes.
-4. For `supervisor-child`, Hub's inherited hello is validated against canonical root, executable
-   digest, release generation, capability, & exact fence before startup.
+3. `stdio-mcp` is a stateless transport into the active Hub. It never hosts or
+   auto-starts a Membrane runtime.
+4. Hub-only runtime lifecycle is not exposed as a CLI mode. Hub absence is an
+   explicit typed, retryable `hub_inactive` result.
 
 ## What it does not do
 
@@ -43,7 +41,7 @@ membrane <mode> [flags]
   Wave 3 release gate passes.
 - It does not configure GitHub Actions or any CI runner. Every test in this crate runs through
   the user's local `rightkit cargo test`.
-- It does not depend on `npm`, `npx`, `node`, or any other runtime. One binary, four modes.
+- It does not depend on `npm`, `npx`, `node`, or any other runtime.
 
 ## Verifying locally
 
