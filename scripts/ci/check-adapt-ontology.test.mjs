@@ -4,6 +4,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   CANONICAL_SPEC,
   evaluateOntology,
@@ -60,6 +63,19 @@ test("allowed wording on a line does not hide a forbidden Adapt phrase", () => {
   assert.equal(failures[0].phrase, "Taste memory");
 });
 
+test("allowed Cortex wording after a forbidden generic phrase does not hide it", () => {
+  const failures = evaluateOntology(
+    "Adapt owns admitted memory; Cortex durable memory is separate.",
+    { path: "docs/x.md" },
+  );
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].phrase, "admitted memory/memories");
+  assert.deepEqual(
+    evaluateOntology("In Cortex, records become admitted memory.", { path: "docs/x.md" }),
+    [],
+  );
+});
+
 test("historical terminology marker suppresses only explicitly historical paths", () => {
   const text = [
     "clean line",
@@ -87,16 +103,27 @@ test("text before the historical marker still fails", () => {
 test("path exclusions: canonical spec, research, historical plans", () => {
   assert.equal(isExcludedPath(CANONICAL_SPEC), true);
   assert.equal(isExcludedPath("docs/research/competitors/adapt-analysis.md"), true);
-  assert.equal(isExcludedPath("adapt/docs/plans/2026-08-24-adapt-alignment-implementation.md"), true);
-  assert.equal(isExcludedPath("docs/plans/old.md"), true);
-  assert.equal(isExcludedPath("docs/design/old.md"), true);
-  assert.equal(isExcludedPath("docs/archive/old.md"), true);
+  assert.equal(isExcludedPath("adapt/docs/plans/2026-08-24-adapt-alignment-implementation.md"), false);
+  assert.equal(isExcludedPath("docs/plans/old.md"), false);
+  assert.equal(isExcludedPath("docs/design/old.md"), false);
+  assert.equal(isExcludedPath("docs/archive/old.md"), false);
   assert.equal(isExcludedPath("README.md"), false);
   assert.equal(isExcludedPath("adapt/README.md"), false);
   // Windows-style separators are normalized.
   assert.equal(isExcludedPath("docs\\research\\x.md"), true);
   assert.equal(isHistoricalPath("docs/plans/x.md"), true);
   assert.equal(isHistoricalPath("docs/subsystems/adapt.md"), false);
+});
+
+test("scan targets inventories the supplied root", () => {
+  const root = mkdtempSync(join(tmpdir(), "adapt-ontology-"));
+  try {
+    mkdirSync(join(root, "docs", "nested"), { recursive: true });
+    writeFileSync(join(root, "docs", "nested", "only-in-fixture.md"), "clean\n");
+    assert.ok(scanTargets(root).includes("docs/nested/only-in-fixture.md"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("primary overviews must state all four canonical ideas", () => {
@@ -119,6 +146,7 @@ test("real repository scan is clean", () => {
   assert.ok(targets.includes("docs/subsystems/adapt.md"));
   assert.ok(!targets.some((p) => p === CANONICAL_SPEC));
   assert.ok(!targets.some((p) => p.startsWith("docs/research/")));
+  assert.ok(targets.some((p) => p.startsWith("docs/plans/")));
   assert.deepEqual(targets, [...targets].sort());
   assert.equal(new Set(targets).size, targets.length);
   for (const path of [

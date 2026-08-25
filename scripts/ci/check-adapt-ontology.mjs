@@ -5,9 +5,10 @@
 // per docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md §§14 (P0.2)
 // and 15 (terminology firewall). Allowed: Cortex/agent/host memory wording and
 // text after the §15.5 historical-terminology marker in explicitly historical
-// files only. Excluded entirely: research files, historical plans/archive,
-// design records, and the canonical spec itself (it
-// legitimately enumerates the forbidden phrases).
+// files only. Plans, design records, and archives are scanned and must carry
+// that marker before old terminology. Excluded entirely: research provenance
+// and the canonical spec itself (it legitimately enumerates the forbidden
+// phrases).
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -32,18 +33,6 @@ const FORBIDDEN_PATTERNS = [
 ];
 
 /** Line-level allowlist (§15.3): legitimate non-Adapt uses of "memory". */
-const ALLOWED_SUBSTRINGS = [
-  "cortex durable memory",
-  "durable-memory",
-  "agent memory",
-  "host memory",
-  "memory file",
-  "memory bank",
-  "memory_sentinel",
-  "memory_id",
-  "competitor memory",
-];
-
 /** §15.5 marker: everything after this line in a file is historical evidence. */
 const HISTORICAL_MARKER = /Historical terminology:.*predates the canonical Adapt ontology/i;
 
@@ -54,6 +43,8 @@ export const HISTORICAL_PATH_PREFIXES = [
   "docs/plans/",
   "docs/research/",
 ];
+
+export const EXCLUDED_PATH_PREFIXES = ["docs/research/"];
 
 export const PRIMARY_OVERVIEWS = ["adapt/README.md", "docs/subsystems/adapt.md"];
 
@@ -74,12 +65,12 @@ const REQUIRED_OVERVIEW_IDEAS = [
 ];
 
 /**
- * Path exclusions: research provenance, marked-historical plans, and the
- * canonical spec. `relPath` uses POSIX separators.
+ * Path exclusions: research provenance and the canonical spec. Historical
+ * product documents remain in the scan. `relPath` uses POSIX separators.
  */
 export function isExcludedPath(relPath) {
   const p = relPath.replaceAll("\\", "/");
-  return p === CANONICAL_SPEC || HISTORICAL_PATH_PREFIXES.some((prefix) => p.startsWith(prefix));
+  return p === CANONICAL_SPEC || EXCLUDED_PATH_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
 export function isHistoricalPath(relPath) {
@@ -110,8 +101,11 @@ export function evaluateOntology(text, { path }) {
       const match = pattern.exec(line);
       if (!match) continue;
       const genericMemoryPhrase = label === "admitted memory/memories" || label === "learned memory/memories";
-      const lowered = line.toLowerCase();
-      if (genericMemoryPhrase && ALLOWED_SUBSTRINGS.some((allowed) => lowered.includes(allowed))) continue;
+      // Generic phrases are legitimate when their grammatical lead-in names
+      // Cortex/agent/host memory. Text later on the same line must not hide an
+      // earlier forbidden Adapt claim.
+      const leadIn = line.slice(Math.max(0, match.index - 96), match.index);
+      if (genericMemoryPhrase && /\b(?:Cortex|agent|host)\b/i.test(leadIn)) continue;
       failures.push({ path, line: i + 1, phrase: label });
     }
   }
@@ -127,25 +121,25 @@ export function evaluatePrimaryOverview(text, { path }) {
   }));
 }
 
-function mdFilesUnder(dirRel) {
-  const abs = join(REPO_ROOT, dirRel);
+function mdFilesUnder(root, dirRel) {
+  const abs = join(root, dirRel);
   const out = [];
   if (!existsSync(abs)) return out;
   for (const entry of readdirSync(abs, { withFileTypes: true })) {
     const child = `${dirRel}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...mdFilesUnder(child));
+    if (entry.isDirectory()) out.push(...mdFilesUnder(root, child));
     else if (entry.isFile() && entry.name.endsWith(".md")) out.push(child);
   }
   return out;
 }
 
-/** Current-product Markdown inventory. Historical/provenance trees are excluded explicitly. */
-export function scanTargets() {
+/** Product Markdown inventory. Research provenance is excluded explicitly. */
+export function scanTargets(root = REPO_ROOT) {
   return [...new Set([
     "README.md",
-    ...mdFilesUnder("docs"),
+    ...mdFilesUnder(root, "docs"),
     "adapt/README.md",
-    ...mdFilesUnder("adapt/docs"),
+    ...mdFilesUnder(root, "adapt/docs"),
     "migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md",
   ].filter((p) => !isExcludedPath(p)))].sort();
 }
@@ -153,7 +147,7 @@ export function scanTargets() {
 /** Scan all current-product targets on disk. Returns the combined failure list. */
 export function scanRepository(root = REPO_ROOT) {
   const failures = [];
-  for (const rel of scanTargets()) {
+  for (const rel of scanTargets(root)) {
     const abs = join(root, rel);
     if (!existsSync(abs)) continue;
     const text = readFileSync(abs, "utf8");
