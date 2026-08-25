@@ -11,11 +11,11 @@
 - **Pull** — semantic evidence retrieval, admission, fusion, and publication subsystem.
 - **Blueprint** — repository truth/evidence subsystem.
 - **Cortex** — durable-knowledge subsystem.
-- **Guide** — document navigation and section-index subsystem, formerly named Spine.
+- **Ledger** — document registry, navigation, and section-index subsystem. Formerly named Guide (and Spine before that); Guide is retired as a current-product name.
 - **Adapt** — governed behavioral-learning subsystem: Taste learns user-backed preferences; Insights learns evidence-backed failures and gotchas.
 - **Push** — reversible reduction subsystem.
 
-**System hierarchy:** Pull, Push, Cortex, Blueprint, Guide, and Adapt are the six named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
+**System hierarchy:** Pull, Push, Cortex, Blueprint, Ledger, and Adapt are the six named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
 
 ---
 
@@ -42,11 +42,21 @@ The final system should make one idea mechanically true:
 
 Blueprint determines repository evidence and repository truth.  
 Cortex preserves durable knowledge.
-Guide indexes and resolves document sections without owning document truth or durable knowledge.  
+Ledger registers, indexes, and resolves document sections without owning document truth or durable knowledge.  
 Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-Hub is the sole resident lifecycle authority for Membrane runtime. Blueprint remains an independently versioned external service with its own daemon lifecycle.
+Hub is the sole resident lifecycle authority, and the Membrane runtime executes
+**inside the active Hub process**. There is no standalone Membrane runtime and no
+Hub-supervised Membrane child process. When Hub is inactive there is no Membrane
+runtime and no Membrane context; requests return typed
+`membrane_unavailable { reason: hub_inactive, retryable: true }`.
+
+Blueprint is **independently usable but not independently resident**. Its
+continuous watcher/freshness role runs only under Hub. With Hub inactive, the
+persisted Blueprint graph remains explicitly queryable through bounded one-shot
+Blueprint operations that never daemonize, never start Hub, and never register an
+OS service.
 Legion / OmniRouter / hosts own agent execution and orchestration.  
 Membrane owns context policy and is the parent system for the six named subsystems.
 
@@ -60,7 +70,7 @@ Blueprint is a named Membrane subsystem at the product/system level, while remai
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 
-Blueprint has its own service/watcher and SQLite evidence store. Cortex has its own durable-knowledge SQLite store, but Cortex has no resident service authority. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
+Blueprint owns its watcher and SQLite evidence store; that watcher is resident only under Hub. Cortex has its own durable-knowledge SQLite store, but Cortex has no resident service authority. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
 
 `engine/**` and `mcp/**` do not import `blueprint/src/**`. Membrane consumes Blueprint through Blueprint-owned schemas/service methods exactly as an external consumer would.
 
@@ -88,7 +98,7 @@ retain separate ownership, tests, metrics, and improvement paths:
 | **Push** | Reduce information already in flight. | Faithful, reversible reduction only; never a second planner. |
 | **Cortex** | Admit, retain, lifecycle, and retrieve governed durable memory. | Durable-memory only; no resident service, port, or process authority. |
 | **Blueprint** | Own repository truth, evidence generations, and drift/change observation. | Blueprint-owned schemas/services; no duplicate parser or graph. |
-| **Guide** | Navigate indexed document sections with hash-bound references. | Navigation/index projections only; no document truth or durable memory. |
+| **Ledger** | Register and navigate indexed document sections with hash-bound references. | Registry/navigation/index projections only; no document truth or durable memory. |
 | **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
 
 Membrane Hub is not a seventh axis. It is the sole resident service, process,
@@ -218,7 +228,7 @@ The architecture must reject scope growth that does not improve the core objecti
 | Repository stable identity / source spans / generations | Blueprint | Consume and policy-evaluate |
 | Code-anchor relocate / re-anchor / moved/ambiguous/missing | Blueprint | Call Blueprint resolution; do not reimplement |
 | Code/document truth comparison | Blueprint | Consume contradictions and coverage state |
-| Document navigation / section indexing | Guide | Consume typed document candidates and hash-bound section references; Guide does not decide document truth or durable memory |
+| Document registry / navigation / section indexing | Ledger | Consume typed document candidates and hash-bound section references; Ledger does not decide document truth or durable memory |
 | Experience-to-knowledge proposals | Adapt | Accept proposals only through governed Cortex admission; no direct durable write |
 | Faithful reduction mechanics | Push | Execute planner-selected reversible representations; never become a second admission/ranking owner |
 | Current Git/worktree facts | Git/live provider | Consume current evidence |
@@ -1475,7 +1485,7 @@ Hub owns:
 - installer/updater lifecycle;
 - process restart/backoff.
 
-Hub is the only resident service authority for Membrane runtime. It owns Membrane
+Hub is the only resident service authority and the only process in which the Membrane runtime executes. It owns Membrane
 service identity, ports, leases, readiness, drain, and shutdown. Blueprint owns
 its separately versioned daemon lifecycle. Cortex may expose durable-memory
 library and CLI operations to Hub, but it does not claim a resident service,
@@ -1897,7 +1907,7 @@ This map describes current implementation ownership. Python/Node production path
 | `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
 | `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
-| `engine/crates/membrane-runtime/src/guide/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Guide implementation; document navigation/index only, not document truth or durable knowledge |
+| `engine/crates/membrane-runtime/src/ledger/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` (currently `src/guide/`, pending the rename cutover) | Ledger implementation; document navigation/index only, not document truth or durable knowledge |
 | `mcp/server.mjs` | thin MCP surface |
 | `mcp/context-renderer-lib.cjs` | deterministic execution of planner-selected representation/layout; no hidden ranking |
 | `mcp/working-context.mjs` | bounded active working context; schema changes mirrored with Rust |
@@ -2078,7 +2088,7 @@ It is done when the product purpose is mechanically true.
 ## 23.1 Product identity
 
 - [ ] Membrane is demonstrably a context control plane/compiler, not a memory platform or orchestrator.
-- [ ] Pull, Push, Cortex, Blueprint, Guide, and Adapt subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
+- [ ] Pull, Push, Cortex, Blueprint, Ledger, and Adapt subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
 - [ ] Physical co-location in the monorepo does not permit direct `engine/**`/`mcp/**` imports from `blueprint/src/**`.
 - [ ] One active implementation authority exists.
 - [ ] Current product docs regenerate from landed source.
@@ -2256,6 +2266,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Guide, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Guide navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. Hub is sole resident lifecycle authority for Membrane runtime; Blueprint remains an independently versioned external service.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. Hub is sole resident lifecycle authority and hosts the Membrane runtime in its own process; Blueprint is independently usable but not independently resident.**
 
 That is the canonical shape.
