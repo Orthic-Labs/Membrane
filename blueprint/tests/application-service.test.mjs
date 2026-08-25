@@ -77,6 +77,10 @@ test("search returns generation-pinned results on a fresh graph", async () => {
     assert.ok(Array.isArray(result.results));
     assert.ok(result.freshnessReceipt);
     assert.equal(result.freshnessReceipt.barrierResult, "caught_up");
+    assert.equal(result.freshnessReceipt.schema, "BlueprintFreshnessReceiptV1");
+    assert.ok(["fresh", "changed_since_generation", "unknown", "unavailable"].includes(result.freshnessReceipt.freshness));
+    assert.ok(Object.hasOwn(result.freshnessReceipt.generation, "indexed_revision"));
+    assert.ok(Object.hasOwn(result.freshnessReceipt.current, "vcs_revision"));
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

@@ -229,3 +229,13 @@ export async function withStoreLease(dbPath, options, fn) {
     handle.release();
   }
 }
+
+/** Synchronous counterpart for publication paths that cannot yield mid-write. */
+export function withStoreLeaseSync(dbPath, options, fn) {
+  const handle = acquireStoreLease(dbPath, options);
+  try {
+    return fn(handle);
+  } finally {
+    handle.release();
+  }
+}

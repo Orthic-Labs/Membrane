@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { syncToCurrentSourceAtPath } from "../../graph/barrier.mjs";
+import { observeCurrentSourceAtPath, syncToCurrentSourceAtPath } from "../../graph/barrier.mjs";
 import {
   closeStore,
   listClaimSlice,
@@ -20,6 +20,7 @@ import {
   repositoryIdentity,
 } from "../../graph/static-provider.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/recall-circuit.mjs";
+import { assertGenerationCoherence, buildFreshnessReceipt } from "../../graph/freshness-receipt.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { serviceStatus } from "../../service/status.mjs";
 import { fail } from "./errors.mjs";
@@ -36,7 +37,11 @@ export function createBlueprintApplicationService({
   outDir = ".agent",
   rootRegistry = null,
   allowEmbeddedRoot = true,
+  freshnessOwnership = "one_shot",
 } = {}) {
+  if (!["one_shot", "resident"].includes(freshnessOwnership)) {
+    throw new TypeError("freshnessOwnership must be one_shot or resident");
+  }
   const resolveRoot = (input = {}) => {
     if (rootRegistry) return rootRegistry.resolve(input);
     if (!allowEmbeddedRoot) fail("root_not_enrolled", "No enrolled Blueprint repository matches this request.");
@@ -50,15 +55,14 @@ export function createBlueprintApplicationService({
     if (!existsSync(dbPath)) fail("graph_missing", `Graph store is missing for ${root}.`);
     let receipt;
     try {
-      receipt = await syncToCurrentSourceAtPath(root, { outDir, timeoutMs: Number(input.timeoutMs ?? 2000), signal });
+      receipt = freshnessOwnership === "resident"
+        ? observeCurrentSourceAtPath(root, { outDir })
+        : await syncToCurrentSourceAtPath(root, { outDir, timeoutMs: Number(input.timeoutMs ?? 2000), signal });
     } catch (error) {
       if (error?.code === "request_cancelled") fail("request_cancelled", "request cancelled");
       throw error;
     }
     throwIfAborted(signal);
-    if (receipt.barrierResult !== "caught_up" && !input.allowStale) {
-      fail("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt });
-    }
     const db = openStoreReadOnly(dbPath);
     try {
       const meta = readIndexedMeta(db);
@@ -70,18 +74,40 @@ export function createBlueprintApplicationService({
           manifestDigest: meta.manifest.manifestDigest ?? null,
         });
       }
-      if (input.generation && input.generation !== meta.manifest.generationId) {
-        fail("generation_mismatch", "Requested generation is not current.", {
-          expected: input.generation,
-          observed: meta.manifest.generationId,
+      try {
+        assertGenerationCoherence({
+          pinnedGenerationId: input.generation,
+          servedGenerationId: meta.manifest.generationId,
         });
+      } catch (error) {
+        if (error?.code === "generation_mismatch") {
+          fail(error.code, error.message, error.details);
+        }
+        throw error;
+      }
+      // Preserve the existing barrier fields for compatibility while making
+      // BlueprintFreshnessReceiptV1 the production receipt. Freshness and
+      // generation coherence remain independent axes.
+      const canonicalFreshness = buildFreshnessReceipt(db, root);
+      const freshnessReceipt = Object.freeze({
+        ...receipt,
+        ...canonicalFreshness,
+        // A resident reader never repairs. Direct source observation is the
+        // final freshness gate even if watcher clocks have not yet advanced.
+        ...(freshnessOwnership === "resident" && canonicalFreshness.freshness !== "fresh"
+          ? { barrierResult: "timeout" }
+          : {}),
+        barrier: receipt,
+      });
+      if (freshnessReceipt.barrierResult !== "caught_up" && !input.allowStale) {
+        fail("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt: freshnessReceipt });
       }
       let closed = false;
       return Object.freeze({
         root,
         db,
         meta,
-        receipt,
+        receipt: freshnessReceipt,
         close() {
           if (closed) return;
           closed = true;
