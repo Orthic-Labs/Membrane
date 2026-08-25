@@ -9,6 +9,7 @@ pub mod doc_projection;
 pub mod doc_shadow;
 pub mod doc_spine;
 pub mod identifier;
+pub mod index;
 pub mod outline;
 pub mod session_projection;
 
