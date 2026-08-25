@@ -4,7 +4,8 @@ import { diffLedgerAgainstTree } from "../src/graph/merkle-ledger.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 import { scanSourceMetadataPublic, scanSourcesPublic } from "../src/graph/static-provider.mjs";
 import { stableRead } from "../src/graph/stable-read.mjs";
-import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { assertSafeMutableStorePath, closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
 
@@ -75,7 +76,16 @@ function coalesceRenameEvents(events) {
 
 export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
   const root = canonicalRoot(typeof dbOrRoot === "string" ? dbOrRoot : rootOrOptions);
-  const db = typeof dbOrRoot === "string" ? openStore(join(root, options.outDir ?? ".agent", "graph", "graph.db"), { mutablePathPolicy: "refuse" }) : dbOrRoot;
+  const ownedDbPath = typeof dbOrRoot === "string" ? join(root, options.outDir ?? ".agent", "graph", "graph.db") : null;
+  if (ownedDbPath) assertSafeMutableStorePath(ownedDbPath);
+  const lease = ownedDbPath ? acquireStoreLease(ownedDbPath, { ownerKind: "one_shot" }) : null;
+  let db;
+  try {
+    db = ownedDbPath ? openStore(ownedDbPath, { mutablePathPolicy: "refuse" }) : dbOrRoot;
+  } catch (error) {
+    lease?.release();
+    throw error;
+  }
   const outDir = options.outDir ?? ".agent";
   const close = typeof dbOrRoot === "string";
   try {
@@ -158,5 +168,8 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       throw error;
     }
     return { ok: true, changed: diff.changed, added: diff.added, removed: diff.removed, queued: unique.size, applied, eventGap: 0 };
-  } finally { if (close) closeStore(db); }
+  } finally {
+    if (close) closeStore(db);
+    lease?.release();
+  }
 }

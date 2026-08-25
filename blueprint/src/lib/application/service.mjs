@@ -20,6 +20,7 @@ import {
   repositoryIdentity,
 } from "../../graph/static-provider.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/recall-circuit.mjs";
+import { assertGenerationCoherence, buildFreshnessReceipt } from "../../graph/freshness-receipt.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { serviceStatus } from "../../service/status.mjs";
 import { fail } from "./errors.mjs";
@@ -70,18 +71,24 @@ export function createBlueprintApplicationService({
           manifestDigest: meta.manifest.manifestDigest ?? null,
         });
       }
-      if (input.generation && input.generation !== meta.manifest.generationId) {
-        fail("generation_mismatch", "Requested generation is not current.", {
-          expected: input.generation,
-          observed: meta.manifest.generationId,
-        });
-      }
+      assertGenerationCoherence({
+        pinnedGenerationId: input.generation,
+        servedGenerationId: meta.manifest.generationId,
+      });
+      // Preserve the existing barrier fields for compatibility while making
+      // BlueprintFreshnessReceiptV1 the production receipt. Freshness and
+      // generation coherence remain independent axes.
+      const freshnessReceipt = Object.freeze({
+        ...receipt,
+        ...buildFreshnessReceipt(db, root),
+        barrier: receipt,
+      });
       let closed = false;
       return Object.freeze({
         root,
         db,
         meta,
-        receipt,
+        receipt: freshnessReceipt,
         close() {
           if (closed) return;
           closed = true;

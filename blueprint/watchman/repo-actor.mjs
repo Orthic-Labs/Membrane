@@ -6,7 +6,8 @@ import { parseFileFacts } from "../src/graph/static-provider.mjs";
 import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
 import { extractDoc, isDoc, loadConfig } from "../scripts/blueprint.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
-import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { assertSafeMutableStorePath, collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 
@@ -267,6 +268,10 @@ export class RepositoryActor extends EventEmitter {
     // flush, and gap, multiplying open/close churn against the same file
     // that `blueprint build` and the status poller also touch concurrently.
     this.db = null;
+    // Hub owns this lease for exactly the actor's writable lifetime. The DB is
+    // never opened before the OS lock is won, and the lock is released only
+    // after the final writable handle closes.
+    this.storeLease = null;
     // Coalesces gap-repair reconciles: a real overflow burst can re-fire the
     // gap callback repeatedly (that IS the overflow reported in production).
     // Without this guard, each firing would open its own concurrent reconcile
@@ -298,7 +303,20 @@ export class RepositoryActor extends EventEmitter {
   openDbOnce() {
     // CX-F165: the watcher is the canonical mutable-state owner, so it refuses
     // typed rather than silently landing a WAL store on synced/shared storage.
-    if (!this.db) this.db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
+    if (!this.db) {
+      assertSafeMutableStorePath(this.dbPath);
+      this.storeLease = acquireStoreLease(this.dbPath, {
+        ownerKind: "hub",
+        ...(this.ownerId ? { ownerInstanceId: this.ownerId } : {}),
+      });
+      try {
+        this.db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
+      } catch (error) {
+        this.storeLease.release();
+        this.storeLease = null;
+        throw error;
+      }
+    }
     return this.db;
   }
 
@@ -549,17 +567,28 @@ export class RepositoryActor extends EventEmitter {
         this.db.prepare("DELETE FROM watch_state WHERE key='watcher_pid'").run();
         this.db.prepare("DELETE FROM watch_state WHERE key='watcher_owner'").run();
       } catch { /* best-effort on a store that may already be gone */ }
-      closeStore(this.db);
-      this.db = null;
+      try {
+        closeStore(this.db);
+      } finally {
+        this.db = null;
+        this.storeLease?.release();
+        this.storeLease = null;
+      }
     } else if (existsSync(this.dbPath)) {
       // Never started (no held handle) but the store already exists — a
       // one-off writable open is unavoidable here, matched by an immediate
       // close; there is no long-lived handle to reuse.
-      const db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
+      assertSafeMutableStorePath(this.dbPath);
+      const lease = acquireStoreLease(this.dbPath, { ownerKind: "one_shot" });
+      let db;
       try {
+        db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
         db.prepare("DELETE FROM watch_state WHERE key='watcher_pid'").run();
         db.prepare("DELETE FROM watch_state WHERE key='watcher_owner'").run();
-      } finally { closeStore(db); }
+      } finally {
+        if (db) closeStore(db);
+        lease.release();
+      }
     }
     if (stopError && stopError.code !== "request_cancelled") throw stopError;
   }
