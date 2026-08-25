@@ -66,7 +66,7 @@ The product objective is:
 
 ### 0.1 Physical co-location does not imply semantic ownership
 
-Blueprint is a named Membrane subsystem at the product/system level, while remaining independently runnable and separately bounded at package, process, protocol, storage, testing, and responsibility layers.
+Blueprint is a named Membrane subsystem at the product/system level, while remaining independently usable and separately bounded at package, protocol, storage, testing, and responsibility layers. Independently usable is not independently resident: its watcher runs only under Hub, and Hub-off access is a bounded one-shot operation.
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 

@@ -13,7 +13,7 @@ Derived navigation/reference docs live under [subsystems/](subsystems/):
 
 - [SYSTEM.md](subsystems/SYSTEM.md) — Membrane parent-system map.
 - [cortex.md](subsystems/cortex.md) — durable-knowledge reference.
-- [guide.md](subsystems/guide.md) — document-navigation/index reference.
+- [ledger.md](subsystems/ledger.md) — document registry/navigation/index reference (formerly guide.md).
 - [adapt.md](subsystems/adapt.md) — learning/proposal reference.
 - [push.md](subsystems/push.md) — reversible-reduction reference.
 
