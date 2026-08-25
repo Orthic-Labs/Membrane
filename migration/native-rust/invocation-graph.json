@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "b0d42659344f1a6cb87fc3e0b9621b915e769fb9",
- "generatedAt": "2026-08-25T18:40:32.847Z",
+ "baselineCommit": "c671ccbb93a84c861f1b44689541ce5f88ddff75",
+ "generatedAt": "2026-08-25T19:02:53.177Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -33693,13 +33693,13 @@
    "id": "e1825",
    "from": "apps/membrane-hub/src-tauri/src/supervisor.rs",
    "to": "engine/crates/membrane-runtime/src/serve.rs",
-   "operation": "supervisor-child lifecycle stdio",
-   "boundary": "process",
+   "operation": "Hub-owned runtime library call",
+   "boundary": "in-process",
    "origin": "curated",
    "evidence": [
     {
      "path": "apps/membrane-hub/src-tauri/src/supervisor.rs",
-     "symbol": "Supervisor::spawn"
+     "symbol": "run_hub_runtime"
     }
    ]
   },

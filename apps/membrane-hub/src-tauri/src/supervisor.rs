@@ -15,7 +15,10 @@ use std::{
 
 const CRASH_WINDOW: Duration = Duration::from_secs(60);
 const CRASH_LOOP_THRESHOLD: usize = 3;
-const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(not(test))]
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(7);
+#[cfg(test)]
+const DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceStatus {
@@ -28,6 +31,13 @@ struct ManagedRuntime {
     control: LifecycleControl,
     thread: JoinHandle<Result<(), String>>,
     started_at: Instant,
+    drain_kind: Option<DrainKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DrainKind {
+    StartupFailed,
+    OperatorStop,
 }
 
 #[derive(Default)]
@@ -61,12 +71,22 @@ impl Supervisor {
         if state
             .runtime
             .as_ref()
-            .is_some_and(|runtime| !runtime.thread.is_finished())
+            .is_some_and(|runtime| !runtime.thread.is_finished() && runtime.drain_kind.is_none())
         {
             return Ok(ServiceStatus::Running);
         }
+        if state
+            .runtime
+            .as_ref()
+            .is_some_and(|runtime| !runtime.thread.is_finished())
+        {
+            return Ok(ServiceStatus::Unavailable);
+        }
         if state.runtime.is_some() {
             Self::collect_finished(&mut state);
+            if state.crash_loop {
+                return Ok(ServiceStatus::CrashLoop);
+            }
         }
 
         let control = LifecycleControl::default();
@@ -83,10 +103,11 @@ impl Supervisor {
                 result
             })
             .map_err(|_| "membrane_hub_runtime_thread_unavailable")?;
-        let managed = ManagedRuntime {
+        let mut managed = ManagedRuntime {
             control,
             thread,
             started_at: Instant::now(),
+            drain_kind: None,
         };
         let ready = managed.control.wait_until_ready();
         match ready {
@@ -98,11 +119,14 @@ impl Supervisor {
             Err(error) => {
                 let started_at = managed.started_at;
                 managed.control.request_drain(Some("startup_failed"));
-                if managed.thread.is_finished() {
+                managed.drain_kind = Some(DrainKind::StartupFailed);
+                if Self::wait_until_finished(&managed.thread) {
                     let _ = managed.thread.join();
+                    Self::record_exit(&mut state, started_at);
+                } else {
+                    state.runtime = Some(managed);
                 }
                 state.last_error = Some(error.clone());
-                Self::record_exit(&mut state, started_at);
                 Err(error)
             }
         }
@@ -119,8 +143,11 @@ impl Supervisor {
         let Some(runtime) = state.runtime.as_ref() else {
             return ServiceStatus::Unavailable;
         };
-        if !runtime.thread.is_finished() {
+        if !runtime.thread.is_finished() && runtime.drain_kind.is_none() {
             return ServiceStatus::Running;
+        }
+        if !runtime.thread.is_finished() {
+            return ServiceStatus::Unavailable;
         }
         Self::collect_finished(&mut state)
     }
@@ -131,18 +158,19 @@ impl Supervisor {
             .lock()
             .ok()
             .and_then(|mut state| state.runtime.take());
-        let Some(runtime) = runtime else {
+        let Some(mut runtime) = runtime else {
             return;
         };
         runtime.control.request_drain(Some("stop"));
-        let deadline = Instant::now() + DRAIN_TIMEOUT;
-        while !runtime.thread.is_finished() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(25));
-        }
-        if runtime.thread.is_finished() {
+        runtime.drain_kind = Some(DrainKind::OperatorStop);
+        if Self::wait_until_finished(&runtime.thread) {
             let _ = runtime.thread.join();
         } else {
             runtime.control.fail("membrane_hub_runtime_drain_timeout");
+            if let Ok(mut state) = self.state.lock() {
+                state.last_error = Some("membrane_hub_runtime_drain_timeout".into());
+                state.runtime = Some(runtime);
+            }
         }
     }
 
@@ -164,12 +192,24 @@ impl Supervisor {
             return ServiceStatus::Unavailable;
         };
         let started_at = runtime.started_at;
+        let drain_kind = runtime.drain_kind;
         match runtime.thread.join() {
             Ok(Ok(())) => state.last_error = Some("membrane_hub_runtime_stopped".into()),
             Ok(Err(error)) => state.last_error = Some(error),
             Err(_) => state.last_error = Some("membrane_hub_runtime_panicked".into()),
         }
+        if drain_kind == Some(DrainKind::OperatorStop) {
+            return ServiceStatus::Unavailable;
+        }
         Self::record_exit(state, started_at)
+    }
+
+    fn wait_until_finished(thread: &JoinHandle<Result<(), String>>) -> bool {
+        let deadline = Instant::now() + DRAIN_TIMEOUT;
+        while !thread.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        thread.is_finished()
     }
 
     fn record_exit(state: &mut State, started_at: Instant) -> ServiceStatus {
@@ -220,5 +260,54 @@ mod tests {
             Supervisor::record_exit(&mut state, Instant::now()),
             ServiceStatus::CrashLoop
         );
+    }
+
+    #[test]
+    fn timed_out_stop_retains_draining_thread_until_it_can_be_joined() {
+        let supervisor = Supervisor::new(PathBuf::from("missing"));
+        let control = LifecycleControl::default();
+        let thread_control = control.clone();
+        let thread = std::thread::spawn(move || {
+            while !thread_control.shutdown_requested() {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            Ok(())
+        });
+        supervisor.state.lock().unwrap().runtime = Some(ManagedRuntime {
+            control,
+            thread,
+            started_at: Instant::now(),
+            drain_kind: None,
+        });
+
+        supervisor.stop();
+        assert_eq!(supervisor.supervise(), ServiceStatus::Unavailable);
+        assert!(supervisor.state.lock().unwrap().runtime.is_some());
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(supervisor.supervise(), ServiceStatus::Unavailable);
+        assert!(supervisor.state.lock().unwrap().runtime.is_none());
+    }
+
+    #[test]
+    fn retained_startup_failures_still_enter_crash_loop_after_join() {
+        let mut state = State::default();
+        for expected in [
+            ServiceStatus::Unavailable,
+            ServiceStatus::Unavailable,
+            ServiceStatus::CrashLoop,
+        ] {
+            state.runtime = Some(ManagedRuntime {
+                control: LifecycleControl::default(),
+                thread: std::thread::spawn(|| Err("startup failed".into())),
+                started_at: Instant::now(),
+                drain_kind: Some(DrainKind::StartupFailed),
+            });
+            while !state.runtime.as_ref().unwrap().thread.is_finished() {
+                std::thread::yield_now();
+            }
+            assert_eq!(Supervisor::collect_finished(&mut state), expected);
+        }
+        assert!(state.crash_loop);
     }
 }

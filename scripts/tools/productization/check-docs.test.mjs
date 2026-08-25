@@ -65,8 +65,8 @@ test("README link evaluator fails on a deliberately broken link", () => {
   assert.match(failures[0], /broken README link: docs\/no-such-file\.md/);
 });
 
-test("live source still reports ten tools and macOS as sole tier-1 target", () => {
-  assert.equal(truth.toolCount, 10);
+test("live source reports the current registry and macOS as sole tier-1 target", () => {
+  assert.equal(truth.toolCount, 17);
   assert.deepEqual(platforms.tier1, ["macOS"]);
   assert.deepEqual(platforms.bestEffort, []);
 });

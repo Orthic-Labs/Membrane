@@ -32,6 +32,7 @@ use axum::Router;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tower_http::timeout::TimeoutLayer;
@@ -70,6 +71,58 @@ const SNAPSHOT_MAX_ITEM_STRING_BYTES: usize = 512;
 const SNAPSHOT_MAX_TOTAL_BYTES: usize = 65_536;
 #[cfg(test)]
 const TEST_GATE_WAIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+struct PromptTelemetryWorker {
+    running: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl PromptTelemetryWorker {
+    fn stop(mut self) -> Result<(), String> {
+        self.running.store(false, Ordering::Release);
+        self.thread
+            .take()
+            .expect("prompt telemetry worker handle present")
+            .join()
+            .map_err(|_| "cortex prompt telemetry drain panicked".to_string())
+    }
+}
+
+impl Drop for PromptTelemetryWorker {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Release);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+#[cfg(test)]
+mod prompt_telemetry_worker_tests {
+    use super::*;
+
+    #[test]
+    fn drop_stops_and_joins_worker_on_early_return() {
+        let running = Arc::new(AtomicBool::new(true));
+        let thread_running = running.clone();
+        let exited = Arc::new(AtomicBool::new(false));
+        let thread_exited = exited.clone();
+        let thread = std::thread::spawn(move || {
+            while thread_running.load(Ordering::Acquire) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            thread_exited.store(true, Ordering::Release);
+        });
+        let worker = PromptTelemetryWorker {
+            running,
+            thread: Some(thread),
+        };
+
+        drop(worker);
+
+        assert!(exited.load(Ordering::Acquire));
+    }
+}
 
 fn str_list(v: &serde_json::Value, key: &str) -> Vec<String> {
     v.get(key)
@@ -2795,7 +2848,10 @@ fn route_with_context_ingest_lease(
         // producer, one parent truth, typed membraneState + six subsystems.
         return match serde_json::to_value(crate::hub_inputs::compose_live_hub_snapshot()) {
             Ok(value) => (200, value.to_string()),
-            Err(error) => (500, serde_json::json!({"error": error.to_string()}).to_string()),
+            Err(error) => (
+                500,
+                serde_json::json!({"error": error.to_string()}).to_string(),
+            ),
         };
     }
     if method == "POST" && path == "/delivery/trace" {
@@ -4727,11 +4783,13 @@ pub fn run(
     let prompt_telemetry_lease = context_ingest_lease.clone();
     let prompt_telemetry_ingress =
         crate::context_telemetry::default_prompt_telemetry_ingress(db_path);
-    std::thread::Builder::new()
+    let prompt_telemetry_running = Arc::new(AtomicBool::new(true));
+    let prompt_telemetry_thread_running = prompt_telemetry_running.clone();
+    let prompt_telemetry_thread = std::thread::Builder::new()
         .name("cortex-prompt-telemetry".to_string())
         .spawn(move || {
             let mut failed = false;
-            loop {
+            while prompt_telemetry_thread_running.load(Ordering::Acquire) {
                 match crate::context_telemetry::drain_prompt_telemetry_ingress(
                     &prompt_telemetry_db,
                     &prompt_telemetry_lease,
@@ -4754,6 +4812,10 @@ pub fn run(
             }
         })
         .map_err(|error| format!("start prompt telemetry drain: {error}"))?;
+    let prompt_telemetry_worker = PromptTelemetryWorker {
+        running: prompt_telemetry_running,
+        thread: Some(prompt_telemetry_thread),
+    };
     let catalog = ContextCatalog::open(&catalog_path)
         .map_err(|e| format!("open catalog {}: {e}", catalog_path.display()))?;
     let runtime_receipt_path = runtime_receipt
@@ -4815,7 +4877,12 @@ pub fn run(
             }
         });
 
-    server_result
+    let prompt_telemetry_result = prompt_telemetry_worker.stop();
+    match (server_result, prompt_telemetry_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
+    }
 }
 
 // ============================================================================
@@ -5493,8 +5560,7 @@ mod tests {
         // unavailable; parent state is resident-local, never child-derived.
         assert_eq!(payload_up["membraneState"], "running", "body: {body_up}");
         assert_eq!(
-            payload_up["subsystems"]["blueprint"]["state"],
-            "unavailable",
+            payload_up["subsystems"]["blueprint"]["state"], "unavailable",
             "body: {body_up}"
         );
     }

@@ -2,12 +2,14 @@
 //! lifecycle/control plane (resident, install, lifecycle, restart), and persistent data
 //! plane (SQLite, snapshots, receipts).
 //!
-//! Each plane lives in its own failure domain. The Data plane never owns a network port. The
+//! The planes are typed responsibility boundaries, not separate resident process identities.
+//! Hub hosts resident Application, Control, and Data work in-process; bounded stateless clients
+//! may also execute Application-plane adapters. The Data plane never owns a network port. The
 //! Control plane never opens SQLite. The Application plane never writes to disk except via the
 //! Control or Data plane. This module is the typed contract every other plane consumer reads;
 //! adding a fourth plane is a breaking change.
 
-/// The three process planes the membrane executable is partitioned into.
+/// The three responsibility planes composed by Membrane.
 ///
 /// Order matters: callers iterate `PLANE_BOUNDARIES` in declaration order and expect
 /// Application, Control, Data in that order. The mode → plane mapping in
@@ -43,9 +45,9 @@ impl Plane {
 pub struct PlaneBoundary {
     /// Lower-case plane name. Matches `Plane::as_str()` for the matching variant.
     pub name: &'static str,
-    /// Whether this plane owns its own process (true) or runs as a tokio task under a single
-    /// resident (false). The Data plane is `false` today — it shares the resident
-    /// process — and the Application and Control planes are `true`.
+    /// Whether this plane owns a separate resident process. This is false for all three planes:
+    /// the active Hub owns the sole resident process. Bounded stateless clients do not establish
+    /// plane residency.
     pub owns_process: bool,
     /// Source paths owned by this plane. The runtime enforces that only this plane may write
     /// to files under these paths.
@@ -65,7 +67,7 @@ pub struct PlaneBoundary {
 pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
     PlaneBoundary {
         name: "application",
-        owns_process: true,
+        owns_process: false,
         owns_files: &[
             "engine/crates/membrane-runtime/src/cli.rs",
             "engine/crates/membrane-runtime/src/serve.rs",
@@ -77,10 +79,10 @@ pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
     },
     PlaneBoundary {
         name: "control",
-        owns_process: true,
+        owns_process: false,
         owns_files: &[
-            "engine/crates/membrane/src/modes.rs",
-            "engine/crates/membrane/src/dispatch.rs",
+            "apps/membrane-hub/src-tauri/src/supervisor.rs",
+            "engine/crates/membrane-runtime/src/service.rs",
             "engine/crates/membrane-protocol/src/lease.rs",
         ],
         reads_from: &[Plane::Data],
@@ -107,14 +109,21 @@ pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
 /// Returns `None` for paths that don't belong to any of the three planes (for example,
 /// unrelated workspace files or generated artifacts outside the engine).
 pub fn plane_for_path(path: &std::path::Path) -> Option<Plane> {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    if normalized.ends_with("apps/membrane-hub/src-tauri/src/supervisor.rs")
+        || normalized.ends_with("engine/crates/membrane-runtime/src/service.rs")
+        || normalized.ends_with("engine/crates/membrane-protocol/src/lease.rs")
+    {
+        return Some(Plane::Control);
+    }
     for component in path.components() {
         let name = component.as_os_str().to_str();
         if let Some(segment) = name {
             match segment {
                 // Application plane: anything inside the runtime crate or the stdio MCP crate.
-                "membrane-runtime" | "membrane-mcp" => return Some(Plane::Application),
-                // Control plane: resident lifecycle implementation.
-                "membrane" => return Some(Plane::Control),
+                "membrane-runtime" | "membrane-mcp" | "membrane" => {
+                    return Some(Plane::Application)
+                }
                 // Data plane: anything inside the cortex-store crate.
                 "cortex-store" => return Some(Plane::Data),
                 _ => {}
@@ -137,8 +146,40 @@ mod tests {
 
     #[test]
     fn plane_for_path_classifies_control_resident_files() {
-        let path = Path::new("/x/membrane/src/modes.rs");
-        assert_eq!(plane_for_path(path), Some(Plane::Control));
+        for path in [
+            Path::new("/x/apps/membrane-hub/src-tauri/src/supervisor.rs"),
+            Path::new("/x/engine/crates/membrane-runtime/src/service.rs"),
+            Path::new("/x/engine/crates/membrane-protocol/src/lease.rs"),
+        ] {
+            assert_eq!(plane_for_path(path), Some(Plane::Control));
+        }
+    }
+
+    #[test]
+    fn all_planes_are_hosted_by_the_one_hub_process() {
+        assert!(PLANE_BOUNDARIES.iter().all(|plane| !plane.owns_process));
+    }
+
+    #[test]
+    fn golden_fixture_matches_hub_owned_process_topology() {
+        let golden: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../schemas/registry/plane-boundaries.v1.golden.json"
+        ))
+        .unwrap();
+        let planes = golden["planes"].as_array().unwrap();
+        assert!(planes
+            .iter()
+            .all(|plane| plane["ownsProcess"] == serde_json::Value::Bool(false)));
+        assert_eq!(
+            golden["modeMapping"],
+            serde_json::json!({
+                "Cli": "application",
+                "StdioMcp": "application",
+                "Install": "application",
+                "Uninstall": "application",
+                "MigrateLegacy": "application"
+            })
+        );
     }
 
     #[test]

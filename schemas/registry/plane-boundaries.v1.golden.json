@@ -5,7 +5,7 @@
   "planes": [
     {
       "name": "application",
-      "ownsProcess": true,
+      "ownsProcess": false,
       "ownsFiles": [
         "engine/crates/membrane-runtime/src/cli.rs",
         "engine/crates/membrane-runtime/src/serve.rs",
@@ -17,10 +17,10 @@
     },
     {
       "name": "control",
-      "ownsProcess": true,
+      "ownsProcess": false,
       "ownsFiles": [
-        "engine/crates/membrane/src/modes.rs",
-        "engine/crates/membrane/src/dispatch.rs",
+        "apps/membrane-hub/src-tauri/src/supervisor.rs",
+        "engine/crates/membrane-runtime/src/service.rs",
         "engine/crates/membrane-protocol/src/lease.rs"
       ],
       "readsFrom": ["data"],
@@ -43,7 +43,8 @@
   "modeMapping": {
     "Cli": "application",
     "StdioMcp": "application",
-    "LoopbackApi": "application",
-    "SupervisorChild": "control"
+    "Install": "application",
+    "Uninstall": "application",
+    "MigrateLegacy": "application"
   }
 }

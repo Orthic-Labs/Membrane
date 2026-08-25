@@ -154,9 +154,9 @@ export function curatedEdges() {
     {
       from: "apps/membrane-hub/src-tauri/src/supervisor.rs",
       to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "supervisor-child lifecycle stdio",
-      boundary: "process",
-      evidence: { path: "apps/membrane-hub/src-tauri/src/supervisor.rs", symbol: "Supervisor::spawn" },
+      operation: "Hub-owned runtime library call",
+      boundary: "in-process",
+      evidence: { path: "apps/membrane-hub/src-tauri/src/supervisor.rs", symbol: "run_hub_runtime" },
     },
     {
       from: "engine/crates/membrane-runtime/src/pull/federation.rs",

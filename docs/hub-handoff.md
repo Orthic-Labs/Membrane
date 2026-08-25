@@ -9,6 +9,8 @@ handoff, or retired Hub installer is part of current operation.
 ## Resident startup
 
 - **Hub-managed:** Membrane Hub starts and drains its linked runtime in-process.
+- **No child compatibility path:** there is no `supervisor-child` process or
+  adoption fallback; shutdown retains and joins the Hub-owned runtime thread.
 - **Hub inactive:** no runtime exists; stateless clients return typed,
   retryable `membrane_unavailable { reason: hub_inactive }`.
 - **No implicit OS registration:** service startup is explicit or Hub-managed;

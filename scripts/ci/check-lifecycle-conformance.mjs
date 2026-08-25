@@ -9,6 +9,6 @@ for (const token of prohibited) {
   if (source.includes(token)) throw new Error(`OS lifecycle registration must not return: ${token}`);
 }
 const hubHandoff = readFileSync(join(root, "docs", "hub-handoff.md"), "utf8");
-if (!hubHandoff.includes("supervisor-child") || !hubHandoff.includes("Hub")) {
-  throw new Error("lifecycle contract must retain explicit supervisor-child and Hub ownership");
+if (!hubHandoff.includes("no `supervisor-child`") || !hubHandoff.includes("Hub process")) {
+  throw new Error("lifecycle contract must retain explicit in-process Hub ownership and retired-child denial");
 }
