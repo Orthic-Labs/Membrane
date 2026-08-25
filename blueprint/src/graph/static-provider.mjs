@@ -227,7 +227,7 @@ export function buildGraphGeneration(repoRoot, options = {}) {
   const root = canonicalRoot(repoRoot);
   const outDir = options.outDir ? resolve(root, options.outDir) : null;
   const sink = timingSink(options);
-  const source = measureStage(sink, "source_scan", () => scanSources(root, options.fileLimit || 0, options));
+  const source = measureStage(sink, "source_scan", () => scanSources(root, options.fileLimit || 0, withOutputDirExcludedFromScan(root, options.outDir, options)));
   // B2 incremental: reuse per-file symbol extraction for byte-identical files.
   // Resolution (imports/calls/config) still runs globally over the union, so a
   // rename in a changed file correctly drops a stale edge from an unchanged one.
@@ -396,7 +396,8 @@ export function graphStatus(repoRoot, outDir, options = {}) {
   // a stale comparison.
   const manifestFileLimit = Number(manifest.fileLimit ?? 0);
   const rescanLimit = options.fileLimit ?? manifestFileLimit ?? 0;
-  const sources = scanSources(root, rescanLimit, options);
+  // Same run-owned output exclusion the build used — see withOutputDirExcludedFromScan.
+  const sources = scanSources(root, rescanLimit, withOutputDirExcludedFromScan(root, outDir, options));
   const scanned = sources.files.length > 0;
   const scanTruncated = Boolean(sources.traversalTruncated);
   const currentHash = scanned && !scanTruncated ? sourceHash(sources.files) : manifest.repo?.sourceHash;
@@ -1522,6 +1523,25 @@ function configuredIgnoredPrefixes(root, options = {}) {
   } catch {
     return [];
   }
+}
+
+// Run-owned output isolation: an explicit --out directory is the caller's
+// OUTPUT, never its own input. Without excluding it from the source scan,
+// every artifact a build writes (map.json, queue.json, graph/graph.db)
+// perturbs the source hash between the build-time scan and status/projection
+// re-walks — so `blueprint build --out <run-dir>` reported its own graph
+// stale the instant it finished and `graph audit-projection` failed typed
+// graph_stale. The same exclusion applies at rescan time so freshness
+// compares exactly the file universe the build hashed. Outputs outside the
+// repo root are naturally invisible to the walk and need no prefix.
+function withOutputDirExcludedFromScan(root, outDir, options = {}) {
+  if (!outDir) return options;
+  const relativeOut = normalizePath(relative(root, resolve(root, outDir)));
+  if (!relativeOut || relativeOut === ".." || relativeOut.startsWith("../")) return options;
+  const configured = Array.isArray(options.ignoredPrefixes)
+    ? normalizeIgnoredPrefixes(options.ignoredPrefixes)
+    : configuredIgnoredPrefixes(root, options);
+  return { ...options, ignoredPrefixes: [...configured, `${relativeOut}/`] };
 }
 
 // Iterative directory walker. D:/Claude contains over a million directories,

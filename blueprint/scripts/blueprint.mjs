@@ -2258,21 +2258,54 @@ async function runGraphCommand(root, outDir, subcommand, args) {
   // semantics. Current dirty paths are overlaid so a signed audit denominator
   // covers exact working-tree state, including files changed after generation.
   if (subcommand === "audit-projection") {
+    // Two admission paths, both typed on failure:
+    //   default — the store must be FRESH against a re-walked source tree.
+    //   pinned  — --expected-generation projects THAT EXACT generation from
+    //             its own run-owned output store without re-deriving global
+    //             tree freshness; concurrent drift elsewhere in a shared
+    //             checkout cannot invalidate a graph the caller just built.
+    const dbPath = join(resolve(root, outDir), "graph", "graph.db");
+    if (!existsSync(dbPath)) throw graphReadError("graph_missing", "Graph store is missing; run blueprint build");
+    const expectedGeneration = String(args["expected-generation"] ?? "").trim();
     const status = graphStatus(root, outDir);
-    if (status.state !== "fresh") {
+    // Pinned admission skips the freshness GATE (concurrent drift elsewhere
+    // must not invalidate the caller's own build) while still using the same
+    // rescan for the packet's capability/overlay fields.
+    if (!expectedGeneration && status.state !== "fresh") {
+      const code = status.state === "missing" ? "graph_missing"
+        : status.state === "corrupt" ? "graph_corrupt"
+        : "graph_stale";
       throw graphReadError(
-        status.state === "missing" ? "graph_missing" : "graph_stale",
-        status.state === "missing"
-          ? "Graph store is missing; run blueprint build"
+        code,
+        code === "graph_missing" ? "Graph store is missing; run blueprint build"
+          : code === "graph_corrupt" ? `Graph store is unreadable${status.storeError ? `: ${status.storeError}` : ""}`
           : "Graph store is stale; run blueprint build",
       );
     }
-    const dbPath = join(root, outDir, "graph", "graph.db");
-    const db = openStoreReadOnly(dbPath);
+    let db;
     try {
-      const envelope = readManifestEnvelope(db);
+      db = openStoreReadOnly(dbPath);
+    } catch (error) {
+      // Transport-typed: hostile/truncated bytes fail closed with a typed
+      // code instead of an unhandled sqlite driver throw.
+      throw graphReadError("graph_corrupt", `Graph store is unreadable: ${String(error?.message ?? error)}`);
+    }
+    try {
+      let envelope;
+      try {
+        envelope = readManifestEnvelope(db);
+      } catch (error) {
+        throw graphReadError("graph_corrupt", `Graph store envelope is unreadable: ${String(error?.message ?? error)}`);
+      }
       if (!envelope?.generationId) {
         throw graphReadError("graph_missing", "Graph store holds no generation; run blueprint build");
+      }
+      if (expectedGeneration && (envelope.complete !== true || envelope.generationId !== expectedGeneration)) {
+        throw graphReadError(
+          "graph_generation_changed",
+          "Projected generation does not match the pinned generation from the caller's own build",
+          { expectedGeneration, observedGeneration: envelope.generationId },
+        );
       }
       const ownPaths = new Set(["docs/product.md", "docs/architecture.md"]);
       const outPrefix = `${normalizePath(outDir)}/`;
@@ -2312,6 +2345,7 @@ async function runGraphCommand(root, outDir, subcommand, args) {
         status: "ready",
         state: "ready",
         generationId: envelope.generationId,
+        ...(expectedGeneration ? { pinnedGeneration: expectedGeneration } : {}),
         manifestDigest: envelope.manifestDigest ?? null,
         sourceObservation: gitSourceObservation(root),
         files: sortedFiles,
