@@ -29,4 +29,10 @@ jobs:
         with:
           version: 11.18.0
       - run: rustup toolchain install stable --profile minimal
+      - name: DO NOT MERGE — Ledger rename scoped Cargo check
+        working-directory: engine
+        run: cargo check --locked -p membrane-runtime -p cortex -p membrane-protocol -p membrane
+      - name: DO NOT MERGE — Ledger rename scoped Cargo tests
+        working-directory: engine
+        run: cargo test --locked -p membrane-runtime -p cortex -p membrane-protocol -p membrane
       - run: bash ./scripts/ci/run-ci.sh
