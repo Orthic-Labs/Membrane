@@ -7,7 +7,7 @@
 **Implementation status reviewed:** `main@601c234cd0b9781a29a99843f8aa6c228b3c2865` (2026-08-25)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
-**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state.
+**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, `docs/plans/2026-08-22-full-rust-federation-port-architecture.md` for federation execution and closure, the runtime/process/cutover portions of `docs/design/membrane-live-diagnostics-final-architecture.md` and `docs/plans/membrane-live-diagnostics-final-architecture-revised.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
 **Companion semantic authority:** `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
 
 
@@ -314,6 +314,11 @@ Commit `5a9175b...` made the production `/federate` route native and same-proces
 - **native production federation cutover is complete;**
 - **native-only federation cleanup is not complete** while executable `engine/federation/*.py`, Python provider modules, worker/shadow selection, or Python-specific packaging/tests remain reachable.
 
+`MEM-ADR-RUST-FEDERATION-001` remains accepted and is **partially realized**: commit `5a9175b...`
+landed the production native route, while N7 owns hard-cut deletion, configuration migration, and
+qualification closure. Its original plan is historical execution detail, not a competing active
+plan.
+
 ### 4.2 Required request-boundary behavior
 
 Rust MUST preserve/version deliberately:
@@ -350,6 +355,12 @@ Required properties:
 - deterministic warnings/omissions;
 - no hidden dynamic import or interpreter fallback;
 - typed source interfaces for cross-product lanes.
+
+Audit and Architect/decision lanes MUST preserve the owner-produced projection contract and typed
+`provider_capability_missing` outcome frozen in
+`migration/native-rust/federation-contract-inventory.json` and
+`migration/native-rust/fixtures/provider-cases.v1.json`; Membrane MUST NOT synthesize a second
+owner projection.
 
 ### 4.4 Merge behavior
 
@@ -401,6 +412,18 @@ After current native parity/qualification is accepted:
 - remove hidden `legacy`/`shadow` selectors from production builds.
 
 A separate developer-only comparison tool may consume archived fixtures; it MUST NOT make the old implementation selectable by the installed product.
+
+Workspace configuration cutover is part of N7, not optional cleanup:
+
+- installed configuration MUST use schema v3 with `schemaVersion: 3` and canonical
+  `workspaceRoot` only;
+- installer/updater migration MUST atomically retain the canonical root, remove
+  `pythonExecutable`, emit a receipt, and be idempotent under replay;
+- an unmigrated or invalid legacy configuration reaching runtime MUST fail with typed
+  `workspace_config_migration_required`, never silently fall back to a source checkout or
+  interpreter;
+- installed upgrade and rollback qualification MUST cover v2-to-v3 migration and repeated
+  migration.
 
 ---
 
@@ -556,6 +579,10 @@ Native host integration MUST preserve:
   failure, stale/superseded evidence, unknown outcomes, or uncleared fence state;
 - enforcement-disabled non-interference;
 - transactional CodeRight integration and honest observed/reconciliation-only host modes.
+- every diagnostic observation and its exact schema/identity while grouping only observations
+  confidently correlated to the same issue; uncertain correlations remain separate;
+- a hard `maxCost` ceiling: providers MUST NOT run above it, and required coverage that cannot fit
+  becomes typed unknown/invalid rather than an implicit cost escalation.
 
 Installed host configuration MUST invoke a native executable or linked API. JavaScript hook files
 may remain only as release-excluded conformance fixtures/oracles after native cutover.
@@ -882,13 +909,16 @@ Implement native proposal source, adjudication, and semantic-validation orchestr
   Rust while preserving planner-decides/host-enforces separation;
 - replace Node hook entrypoints with native executable/API bindings; retain JS only as
   release-excluded fixtures/oracles;
+- prove observation-correlation conformance, including one issue with multiple preserved
+  observations and uncertain matches remaining separate;
+- prove `maxCost` conformance, including required coverage that cannot fit the ceiling;
 - ensure generated host configs invoke native binary;
 - retain JS tests only as dev-only differential coverage where useful.
 
 **Exit gate:** complete registry-defined host conformance, currently 17 tools, passes with Node
 absent; transactional/observed/reconciliation-only fence conformance passes; generated architecture
 and installed host configs name native Rust sources as authoritative; native discovery advertises
-no unexecutable tool.
+no unexecutable tool; observation correlation and hard `maxCost` behavior pass contract fixtures.
 
 ### N7 — Delete federation Python and shadow runtime
 
@@ -899,9 +929,14 @@ After current Rust federation parity evidence is accepted:
 - delete gateway/providers;
 - delete Python worker bridge/shadow selector;
 - delete Python-specific runtime config/packaging;
+- atomically migrate installed workspace configuration from v2 to v3, remove
+  `pythonExecutable`, and return typed `workspace_config_migration_required` for invalid or
+  unmigrated legacy input;
 - preserve data fixtures only.
 
-**Exit gate:** federation tests and installed artifact pass with no Python code present/selectable.
+**Exit gate:** federation tests and installed artifact pass with no Python code present/selectable;
+installed upgrade/rollback tests prove receipt-bound idempotent v2-to-v3 migration, and no shipped
+configuration contains a legacy interpreter key.
 
 ### N8 — Close Blueprint packaging/runtime boundary
 
@@ -1083,7 +1118,12 @@ Rollback is between signed product artifacts. A native release does not contain 
 
 #### Federation corpus
 
-Include all nine providers, scope/freshness/generation states, timeout/cancel/panic/malformed cases, candidate conflicts, path/symlink/case behavior, and deterministic merge permutations.
+Include all nine providers, scope/freshness/generation states, timeout/cancel/panic/malformed cases,
+candidate conflicts, path/symlink/case behavior, and deterministic merge permutations. Include
+valid v2-to-v3 workspace configuration migration, repeated/idempotent migration, invalid or
+unmigrated legacy input returning `workspace_config_migration_required`, distinct resident and
+federation-capability health, and Hub shutdown/crash/restart/upgrade leaving no orphan worker or
+process.
 
 #### Transcript corpus
 
@@ -1128,6 +1168,9 @@ negotiation, host capability modes, budget lane classification, resolver-backed 
 deterministic alert ordering. Include Live Diagnostics workspace identity, mutation sealing,
 current-byte reconciliation, source-manifest framing, exact coverage, gate precedence, baseline
 deltas, provider lifecycle, and transactional/observed/reconciliation-only host modes.
+Include BP001 plus TS2305 as one issue with two preserved observations, uncertain matches remaining
+separate, and `maxCost` ceilings that produce typed unknown/invalid coverage without provider
+escalation.
 
 ### 15.2 Property tests
 
@@ -1206,6 +1249,13 @@ Record hardware/OS/corpus and versioned thresholds. Measure:
 - package size changes.
 
 The Rust port should remove interpreter/serialization overhead but performance claims require measured evidence.
+
+Before N7 hard cut and legacy deletion, freeze a committed same-machine federation baseline at
+`migration/native-rust/federation-benchmark-baseline.json`. It MUST bind workload and artifact
+identity and record warm/cold latency, resident memory, candidate counts, omission counts, and
+receipt counts. Replay the same workload on the same machine against the native candidate and apply
+an explicitly approved non-regression threshold. N7 cannot exit without this baseline and result;
+this specification does not invent the numeric threshold.
 
 ---
 
@@ -1348,6 +1398,13 @@ migration/native-rust/native-only-seal.json
 - [ ] Production federation is native and same-process.
 - [ ] All nine provider semantics pass native conformance.
 - [ ] Scope/deadline/cancellation/generation/trust/merge invariants pass.
+- [ ] Hub snapshots distinguish resident health from federation capability health; provider
+  degradation cannot make parent Membrane offline unless it is an explicit hard prerequisite.
+- [ ] Hub launch/restart/crash/upgrade/shutdown leaves no orphan federation worker or process.
+- [ ] Installed workspace configuration is schema v3, upgrade/rollback migration is atomic,
+  receipt-bound and idempotent, and no `pythonExecutable` key remains.
+- [ ] Frozen same-machine federation baseline and native replay satisfy the approved
+  non-regression gate.
 - [ ] Python federation gateway/providers/worker/shadow selector are deleted from production.
 
 ### 17.3 Transcript normalization
@@ -1389,6 +1446,10 @@ migration/native-rust/native-only-seal.json
 - [ ] Installed host enforcement requires no Node and disabled enforcement remains non-interfering.
 - [ ] External engines are identity-bound, bounded, cancellable, and typed-unavailable without auto-install.
 - [ ] Diagnostics/provider degradation cannot determine parent Membrane health; `Not configured` remains distinct.
+- [ ] Correlation preserves every observation and deduplicates only issue presentation; uncertain
+  observations remain separate.
+- [ ] `maxCost` is never exceeded; unmet required coverage is typed unknown/invalid rather than
+  silently escalated.
 
 ### 17.7 Blueprint
 
