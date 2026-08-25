@@ -29,10 +29,41 @@ jobs:
         with:
           version: 11.18.0
       - run: rustup toolchain install stable --profile minimal
+      - name: DO NOT MERGE — Ledger executable truth and frozen v1 guard
+        run: |
+          node --test scripts/ci/check-invocation-graph.test.mjs
+          node scripts/ci/check-invocation-graph.mjs
+          test "$(git ls-tree -r HEAD -- engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1 | git hash-object --stdin)" = "fadab59324a34bc4edf5cef24fa405cc18bda702"
       - name: DO NOT MERGE — Ledger rename scoped Cargo check
         working-directory: engine
         run: cargo check --locked -p membrane-runtime -p cortex -p membrane-protocol -p membrane
-      - name: DO NOT MERGE — Ledger rename scoped Cargo tests
+      - name: DO NOT MERGE — protocol tests
         working-directory: engine
-        run: cargo test --locked -p membrane-runtime -p cortex -p membrane-protocol -p membrane
+        run: cargo test --locked -p membrane-protocol
+      - name: DO NOT MERGE — legacy Guide database retirement
+        working-directory: engine
+        run: cargo test --locked -p membrane-runtime --lib ledger::db::
+      - name: DO NOT MERGE — Ledger runtime integration tests
+        working-directory: engine
+        run: >-
+          cargo test --locked -p membrane-runtime
+          --test hub_snapshot_cli_contract
+          --test ledger_h2_local_replay_gate
+          --test ledger_outline
+          --test ledger_projection
+          --test ledger_recall_index_contract
+          --test ledger_shadow
+          --test ledger_spine
+          --test ledger_spine_equivalence
+          --test ledger_spine_shadow_replay_corpus
+          --test session_projection
+      - name: DO NOT MERGE — touched Cortex contracts
+        working-directory: engine
+        run: >-
+          cargo test --locked -p cortex
+          --test checkpoint_cli_lineage
+          --test checkpoints
+      - name: DO NOT MERGE — touched CLI identifier contracts
+        working-directory: engine
+        run: cargo test --locked -p membrane --test identifier_contracts
       - run: bash ./scripts/ci/run-ci.sh

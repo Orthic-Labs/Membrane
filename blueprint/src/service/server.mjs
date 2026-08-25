@@ -108,7 +108,11 @@ function releaseUnixLock(lock) {
 export function createDaemonServer({ service = null, findingsService = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
   const registry = rootRegistry ?? (service || registryEntries.length === 0 ? null : new RootRegistry(registryEntries));
   const queueRegistry = rootRegistry ?? (registryEntries.length > 0 ? new RootRegistry(registryEntries) : null);
-  const appService = service ?? createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const appService = service ?? createBlueprintApplicationService({
+    rootRegistry: registry,
+    allowEmbeddedRoot: false,
+    freshnessOwnership: "resident",
+  });
   const findingsMethods = findingsService ?? createFindingsService();
   const builds = buildSingleflight ?? createBuildSingleflight();
   const socketPath = endpoint ?? daemonEndpoint();

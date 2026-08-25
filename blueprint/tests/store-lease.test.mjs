@@ -22,6 +22,8 @@ import {
   isStoreLeaseHeld,
   readStoreLeaseMetadata,
   STORE_LEASE_SCHEMA,
+  withStoreLease,
+  withStoreLeaseSync,
 } from "../src/graph/store-lease.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -235,5 +237,25 @@ test("isStoreLeaseHeld is a non-destructive probe: it never leaves a lock behind
     const again = acquireStoreLease(dbPath, {});
     assert.ok(again.lease);
     again.release();
+  });
+});
+
+test("bounded lease helpers release after success and typed failure", async () => {
+  await withTempDb(async (dbPath) => {
+    const value = withStoreLeaseSync(dbPath, { ownerKind: "one_shot" }, () => {
+      assert.equal(isStoreLeaseHeld(dbPath), true);
+      return 42;
+    });
+    assert.equal(value, 42);
+    assert.equal(isStoreLeaseHeld(dbPath), false);
+
+    await assert.rejects(
+      withStoreLease(dbPath, { ownerKind: "one_shot" }, async () => {
+        assert.equal(isStoreLeaseHeld(dbPath), true);
+        throw Object.assign(new Error("publication failed"), { code: "publication_failed" });
+      }),
+      (error) => error.code === "publication_failed",
+    );
+    assert.equal(isStoreLeaseHeld(dbPath), false);
   });
 });

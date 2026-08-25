@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "benchmark": "adapt_insights_detector_portable_conformance",
+  "measured_at_utc": "2026-08-25T17:33:17Z",
+  "source_revision": "fdb900dfa47439bde4a2982d57b61adb222bdeba",
+  "remote_tree_equivalent_revision": "7ebad9393166bc3bac12c95d0a0a1492bd9cbb07",
+  "source_tree": "a05c21c00ef77925f60b788505114400a8f2ddce",
+  "corpus_sha256": "ed58f58e96eed35fc282b1c6d846f0869acf94085ba3c04afa5efcd672c2decf",
+  "toolchain": {
+    "cargo": "1.98.0 (797e8a9bc 2026-08-05)",
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "command": "cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --test insights_detector_benchmark -- --nocapture",
+  "result": {
+    "tests_passed": 5,
+    "tests_failed": 0
+  },
+  "corpus": {
+    "cases": 50,
+    "true_positive_cases": 33,
+    "adversarial_negative_cases": 11,
+    "known_gap_cases": 6,
+    "detector_families": 33
+  },
+  "canonical_ground_truth_scoring": {
+    "micro": {
+      "tp": 40,
+      "fp": 7,
+      "fn": 1,
+      "precision": 0.851063829787234,
+      "recall": 0.975609756097561,
+      "f1": 0.9090909090909091
+    },
+    "macro": {
+      "precision": 0.9660238751147842,
+      "recall": 0.9848484848484849,
+      "f1": 0.9729055258467023
+    },
+    "perfect_families": 31,
+    "families": {
+      "visible_frustration": { "tp": 2, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "user_swearing": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "repeated_ask": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "claimed_verified_then_corrected": { "tp": 1, "fp": 2, "fn": 1, "precision": 0.3333333333333333, "recall": 0.5 },
+      "ignored_tool_failure": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "degraded_provider_treated_as_success": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "false_not_found": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "unproductive_broad_searching": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "wrong_repo_or_subsystem": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "stale_terminology_surfacing": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "silent_scope_narrowing": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "omitted_requirement": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "unaccepted_plan_change": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "tests_that_cannot_fail": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "guard_firings": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "user_asks_why_missed_or_postmortem": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "overengineering": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "architecture_churn": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "repeated_redesign": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "planning_instead_of_executing": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "scope_expansion_without_request": { "tp": 2, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "repeated_scope_expansion": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "false_completion_claim": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "instruction_noncompliance": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "model_specific_gotcha": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "client_or_tool_specific_gotcha": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "cross_agent_repeats": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "repeated_user_correction_same_theme": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "forge_opened_never_closed": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "verification_theatre": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "unnecessary_abstraction": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "unnecessary_dependency": { "tp": 1, "fp": 0, "fn": 0, "precision": 1.0, "recall": 1.0 },
+      "verification_claim_without_tool_evidence": { "tp": 6, "fp": 5, "fn": 0, "precision": 0.5454545454545454, "recall": 1.0 }
+    }
+  },
+  "documented_gap_reality": {
+    "exact_case_firing_sets_reproduced": 6,
+    "known_gap_cases": 6,
+    "canonical_disagreements": {
+      "false_positives": 7,
+      "false_negatives": 1
+    },
+    "note": "documented_actual_fire is measured drift reality, not ground truth; precision/recall are therefore reported only against should_fire",
+    "cases": {
+      "quoted_assistant_verification_claim_gap": ["verification_claim_without_tool_evidence"],
+      "quoted_assistant_claimed_then_corrected_gap": ["claimed_verified_then_corrected", "verification_claim_without_tool_evidence"],
+      "tool_carried_relayed_by_assistant_gap": ["verification_claim_without_tool_evidence"],
+      "hypothetical_assistant_verification_claim_gap": ["verification_claim_without_tool_evidence"],
+      "hypothetical_assistant_claimed_then_corrected_gap": ["claimed_verified_then_corrected", "verification_claim_without_tool_evidence"],
+      "apostrophe_contraction_falsely_suppresses_correction": ["verification_claim_without_tool_evidence"]
+    }
+  }
+}

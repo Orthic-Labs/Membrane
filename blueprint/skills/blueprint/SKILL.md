@@ -505,7 +505,7 @@ Per-repo `.agent/config.json` (written on first run) controls `budgets` (e.g. ra
   hand every material gap to `architect` for the mandatory external prior-art decision matrix before
   anyone makes an optimality claim.
 - Never reduce Membrane to the subsystem currently under inspection. Verify parent-system boundaries
-  across Blueprint, Cortex, Guide, Adapt, and Push before describing Membrane's purpose or coverage.
+  across Blueprint, Cortex, Ledger, Adapt, and Push before describing Membrane's purpose or coverage.
 - A user-requested Blueprint run never pauses for phase permission. Phase 1 is an internal checkpoint;
   continue through Phase 2–4 and the full doctor gate automatically unless the user explicitly scoped
   the request to a Phase-1-only map/brief.
