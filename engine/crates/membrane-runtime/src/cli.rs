@@ -601,6 +601,11 @@ enum AdaptCmd {
         #[arg(long)]
         input: Option<PathBuf>,
     },
+    /// Analyze supplied trusted-host billing observations; does not discover provider bills.
+    ContextCost {
+        #[arg(long)]
+        input: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2816,7 +2821,9 @@ fn adapt_scope_dimensions(
     let mut raw = std::collections::BTreeMap::new();
     for value in values {
         let Some((key, item)) = value.split_once('=') else {
-            return Err(format!("invalid Adapt dimension `{value}`; expected KEY=VALUE"));
+            return Err(format!(
+                "invalid Adapt dimension `{value}`; expected KEY=VALUE"
+            ));
         };
         if raw.insert(key.to_string(), item.to_string()).is_some() {
             return Err(format!("duplicate Adapt dimension `{key}`"));
@@ -2854,7 +2861,10 @@ fn run_adapt(
                 sources.extend(
                     membrane_transcript::discover_open(&home)
                         .into_iter()
-                        .filter(|source| host.as_deref().is_none_or(|selected| source.host == selected))
+                        .filter(|source| {
+                            host.as_deref()
+                                .is_none_or(|selected| source.host == selected)
+                        })
                         .map(|source| (source.path, Some(source.host))),
                 );
             }
@@ -2921,10 +2931,9 @@ fn run_adapt(
         }
         AdaptCmd::Review { input, issue_ids } => {
             let value: serde_json::Value = read_adapt_json(&input)?;
-            let mined: cli_api::MineResponse = serde_json::from_value(
-                value.get("response").cloned().unwrap_or(value),
-            )
-            .map_err(|error| format!("parse Adapt mine response: {error}"))?;
+            let mined: cli_api::MineResponse =
+                serde_json::from_value(value.get("response").cloned().unwrap_or(value))
+                    .map_err(|error| format!("parse Adapt mine response: {error}"))?;
             print_adapt_json(&cli_api::handle_review(&cli_api::ReviewRequest {
                 issue_ids,
                 issues: mined.issues,
@@ -2938,10 +2947,8 @@ fn run_adapt(
         } => {
             let value: serde_json::Value = read_adapt_json(&input)?;
             let candidates: Vec<membrane_adapt::taste::TasteCandidateV1> =
-                serde_json::from_value(
-                    value.get("taste_candidates").cloned().unwrap_or(value),
-                )
-                .map_err(|error| format!("parse Adapt Taste candidates: {error}"))?;
+                serde_json::from_value(value.get("taste_candidates").cloned().unwrap_or(value))
+                    .map_err(|error| format!("parse Adapt Taste candidates: {error}"))?;
             let manifest = membrane_adapt::proposal::build_pending_manifest(
                 &candidates,
                 &installation_id,
@@ -3039,9 +3046,9 @@ fn run_adapt(
             let issues: Vec<membrane_adapt::insights::sealed_issue::SealedInsightIssueV1> =
                 read_adapt_json(&input)?;
             for issue in &issues {
-                issue
-                    .verify()
-                    .map_err(|error| format!("sealed Insight {} invalid: {error:?}", issue.issue_id))?;
+                issue.verify().map_err(|error| {
+                    format!("sealed Insight {} invalid: {error:?}", issue.issue_id)
+                })?;
             }
             let mut ids: Vec<String> = issues.iter().map(|issue| issue.issue_id.clone()).collect();
             ids.sort();
@@ -3117,8 +3124,7 @@ fn run_adapt(
             let admitted: Vec<_> = envelopes
                 .into_iter()
                 .map(|mut envelope| {
-                    envelope.cortex_verdict =
-                        Some(membrane_adapt::gates::CortexVerdict::Admitted);
+                    envelope.cortex_verdict = Some(membrane_adapt::gates::CortexVerdict::Admitted);
                     envelope
                 })
                 .collect();
@@ -3150,7 +3156,13 @@ fn run_adapt(
                 let metadata = conn.query_row(
                     "SELECT artifact_family,record_type,lifecycle_state FROM memories WHERE id=?1",
                     [&entry.id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
                 );
                 let Ok((family, kind, state)) = metadata else {
                     continue;
@@ -3168,7 +3180,9 @@ fn run_adapt(
                 record.lifecycle_state = state;
                 let record_dimensions =
                     membrane_adapt::scope::ScopeDimensions::normalize(&record.scope_dimensions.0)
-                        .map_err(|error| format!("stored Adapt scope invalid for {}: {error}", record.id))?;
+                        .map_err(|error| {
+                        format!("stored Adapt scope invalid for {}: {error}", record.id)
+                    })?;
                 if record_dimensions.matches(&context) {
                     rows.push(serde_json::json!({"score": score, "record": record}));
                 }
@@ -3193,12 +3207,14 @@ fn run_adapt(
                         if line.trim().is_empty() {
                             continue;
                         }
-                        let value: serde_json::Value = serde_json::from_str(line).map_err(|error| {
-                            format!("parse portable benchmark line {}: {error}", index + 1)
-                        })?;
+                        let value: serde_json::Value =
+                            serde_json::from_str(line).map_err(|error| {
+                                format!("parse portable benchmark line {}: {error}", index + 1)
+                            })?;
                         corpus.push(
-                            membrane_adapt::benchmark::portable_case_from_value(&value)
-                                .map_err(|error| format!("portable benchmark line {}: {error}", index + 1))?,
+                            membrane_adapt::benchmark::portable_case_from_value(&value).map_err(
+                                |error| format!("portable benchmark line {}: {error}", index + 1),
+                            )?,
                         );
                     }
                     cli_api::BenchmarkRequest { corpus }
@@ -3215,6 +3231,12 @@ fn run_adapt(
                 },
             };
             print_adapt_json(&cli_api::handle_doctor(&request))
+        }
+        AdaptCmd::ContextCost { input } => {
+            let request: cli_api::ContextCostRequest = read_adapt_json(&input)?;
+            let response = cli_api::handle_context_cost(&request)
+                .map_err(|error| format!("analyze Adapt context cost: {error}"))?;
+            print_adapt_json(&response)
         }
     }
 }
@@ -3705,10 +3727,10 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     .as_ref()
                     .map(|path| {
                         let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
-                        serde_json::from_slice::<crate::ledger::index::LedgerQualificationReceiptV1>(
-                            &bytes,
-                        )
-                        .map_err(|error| error.to_string())
+                        serde_json::from_slice::<
+                                crate::ledger::index::LedgerQualificationReceiptV1,
+                            >(&bytes)
+                            .map_err(|error| error.to_string())
                     })
                     .transpose()?;
                 crate::ledger::index::activate(&ledger, mode, receipt.as_ref())?;
@@ -4724,7 +4746,14 @@ mod tests {
     #[test]
     fn ledger_outline_cli_requires_explicit_json() {
         let parsed = super::Cli::try_parse_from([
-            "membrane", "ledger", "outline", "--repo", "C:/repo", "--path", "ledger.md", "--json",
+            "membrane",
+            "ledger",
+            "outline",
+            "--repo",
+            "C:/repo",
+            "--path",
+            "ledger.md",
+            "--json",
         ])
         .expect("ledger outline arguments parse");
         assert!(matches!(
@@ -4737,13 +4766,9 @@ mod tests {
 
     #[test]
     fn ledger_activation_cli_requires_receipt_for_fts_only() {
-        assert!(super::Cli::try_parse_from([
-            "membrane",
-            "ledger",
-            "activate",
-            "ledger_fts"
-        ])
-        .is_err());
+        assert!(
+            super::Cli::try_parse_from(["membrane", "ledger", "activate", "ledger_fts"]).is_err()
+        );
         let parsed = super::Cli::try_parse_from([
             "membrane",
             "ledger",
@@ -4759,13 +4784,9 @@ mod tests {
                 command: super::LedgerCmd::Activate { .. }
             }
         ));
-        assert!(super::Cli::try_parse_from([
-            "membrane",
-            "ledger",
-            "activate",
-            "legacy_scan"
-        ])
-        .is_ok());
+        assert!(
+            super::Cli::try_parse_from(["membrane", "ledger", "activate", "legacy_scan"]).is_ok()
+        );
     }
 
     #[test]
@@ -5025,6 +5046,32 @@ mod tests {
         assert_eq!(explained["record_type"], "preference");
         assert!(explained.get("content").is_none());
         assert!(!explained.to_string().contains("private duplicate"));
+    }
+
+    #[test]
+    fn adapt_context_cost_requires_an_explicit_observation_document() {
+        assert!(super::Cli::try_parse_from(["membrane", "adapt", "context-cost"]).is_err());
+        let help = match super::Cli::try_parse_from(["membrane", "adapt", "context-cost", "--help"])
+        {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("--help must return clap's display-help outcome"),
+        };
+        assert!(help.contains("supplied trusted-host billing observations"));
+        assert!(help.contains("does not discover provider bills"));
+        let parsed = super::Cli::try_parse_from([
+            "membrane",
+            "adapt",
+            "context-cost",
+            "--input",
+            "trusted-host-observations.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Adapt {
+                command: super::AdaptCmd::ContextCost { ref input }
+            } if input == Path::new("trusted-host-observations.json")
+        ));
     }
 
     #[test]

@@ -8,13 +8,32 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::benchmark::{run_benchmark, BenchmarkReportV1, LabelledCase};
-use crate::insights::{recurrence::{form_issues, mine_issues}, InsightIssueV1};
+use crate::context_cost::{
+    analyze_persistent_context, ContextCostAnalysisRequestV1, ContextCostError,
+    PersistentContextAnalysisV1,
+};
 use crate::insights::detectors::repeated_ask_signature;
+use crate::insights::{
+    recurrence::{form_issues, mine_issues},
+    InsightIssueV1,
+};
 use crate::insights::{FailureEpisodeV1, TranscriptEventV1};
 use crate::manifest::PreferenceManifestV1;
 use crate::outcomes::{OutcomeEntryV1, OutcomeLedger};
 
 pub const CLI_API_VERSION: &str = "adapt.cli.v1";
+
+/// `context-cost`: reconcile provider-billed usage against explicitly observed
+/// persistent sources. The request is already a typed host/CodeRight
+/// observation; this handler performs no transcript scraping or filesystem I/O.
+pub type ContextCostRequest = ContextCostAnalysisRequestV1;
+pub type ContextCostResponse = PersistentContextAnalysisV1;
+
+pub fn handle_context_cost(
+    request: &ContextCostRequest,
+) -> Result<ContextCostResponse, ContextCostError> {
+    analyze_persistent_context(request)
+}
 
 /// `mine`: run detectors over supplied events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -156,7 +175,10 @@ pub fn handle_review(req: &ReviewRequest) -> ReviewResponse {
             honesty_limit: i.honesty_limit.clone(),
         })
         .collect();
-    ReviewResponse { api_version: CLI_API_VERSION.into(), items }
+    ReviewResponse {
+        api_version: CLI_API_VERSION.into(),
+        items,
+    }
 }
 
 pub fn handle_apply(req: &ApplyRequest) -> ApplyResponse {
@@ -197,7 +219,10 @@ pub fn handle_report(req: &ReportRequest) -> ReportResponse {
         );
     }
     let ids: Vec<String> = if req.issue_ids.is_empty() {
-        req.ledger_entries.iter().map(|e| e.issue_id.clone()).collect()
+        req.ledger_entries
+            .iter()
+            .map(|e| e.issue_id.clone())
+            .collect()
     } else {
         req.issue_ids.clone()
     };
@@ -212,11 +237,18 @@ pub fn handle_report(req: &ReportRequest) -> ReportResponse {
             }
         }
     }
-    ReportResponse { api_version: CLI_API_VERSION.into(), effectiveness, reopen_recommended: reopen }
+    ReportResponse {
+        api_version: CLI_API_VERSION.into(),
+        effectiveness,
+        reopen_recommended: reopen,
+    }
 }
 
 pub fn handle_benchmark(req: &BenchmarkRequest) -> BenchmarkResponse {
-    BenchmarkResponse { api_version: CLI_API_VERSION.into(), report: run_benchmark(&req.corpus) }
+    BenchmarkResponse {
+        api_version: CLI_API_VERSION.into(),
+        report: run_benchmark(&req.corpus),
+    }
 }
 
 pub fn handle_doctor(req: &DoctorRequest) -> DoctorResponse {
@@ -235,13 +267,19 @@ pub fn handle_doctor(req: &DoctorRequest) -> DoctorResponse {
         if issue.recurrence_count < 2 {
             findings.push(DoctorFinding {
                 code: "under_recruited_issue".into(),
-                detail: format!("issue {} has recurrence {}", issue.issue_id, issue.recurrence_count),
+                detail: format!(
+                    "issue {} has recurrence {}",
+                    issue.issue_id, issue.recurrence_count
+                ),
             });
         }
         if issue.honesty_limit != crate::insights::HONESTY_LIMIT {
             findings.push(DoctorFinding {
                 code: "honesty_limit_drift".into(),
-                detail: format!("issue {} carries a non-canonical honesty limit", issue.issue_id),
+                detail: format!(
+                    "issue {} carries a non-canonical honesty limit",
+                    issue.issue_id
+                ),
             });
         }
     }
@@ -258,7 +296,10 @@ pub fn signature_for(text: &str) -> String {
 }
 
 /// Convenience wrapper mirroring Python's mine_issues entry point.
-pub fn mine_issues_from_events(events: &[TranscriptEventV1], min_recurrence: u32) -> Vec<InsightIssueV1> {
+pub fn mine_issues_from_events(
+    events: &[TranscriptEventV1],
+    min_recurrence: u32,
+) -> Vec<InsightIssueV1> {
     mine_issues(events, min_recurrence)
 }
 
@@ -288,14 +329,25 @@ mod tests {
     fn mine_roundtrip_is_deterministic() {
         let req = MineRequest {
             events: vec![
-                ev("a", "s1", "please run the full test suite before claiming done"),
-                ev("b", "s2", "Please run the FULL test suite before claiming done."),
+                ev(
+                    "a",
+                    "s1",
+                    "please run the full test suite before claiming done",
+                ),
+                ev(
+                    "b",
+                    "s2",
+                    "Please run the FULL test suite before claiming done.",
+                ),
             ],
             min_recurrence: 2,
         };
         let r1 = handle_mine(&req);
         let r2 = handle_mine(&req);
-        assert_eq!(serde_json::to_string(&r1).unwrap(), serde_json::to_string(&r2).unwrap());
+        assert_eq!(
+            serde_json::to_string(&r1).unwrap(),
+            serde_json::to_string(&r2).unwrap()
+        );
         assert_eq!(r1.api_version, "adapt.cli.v1");
         assert!(r1.episodes.iter().any(|e| e.family == "repeated_ask"));
     }
@@ -304,12 +356,23 @@ mod tests {
     fn review_reports_state_and_honesty() {
         let mined = handle_mine(&MineRequest {
             events: vec![
-                ev("a", "s1", "please run the full test suite before claiming done"),
-                ev("b", "s2", "Please run the FULL test suite before claiming done."),
+                ev(
+                    "a",
+                    "s1",
+                    "please run the full test suite before claiming done",
+                ),
+                ev(
+                    "b",
+                    "s2",
+                    "Please run the FULL test suite before claiming done.",
+                ),
             ],
             min_recurrence: 2,
         });
-        let resp = handle_review(&ReviewRequest { issue_ids: vec![], issues: mined.issues });
+        let resp = handle_review(&ReviewRequest {
+            issue_ids: vec![],
+            issues: mined.issues,
+        });
         assert_eq!(resp.items.len(), 1);
         assert_eq!(resp.items[0].state, "observed");
         assert!(!resp.items[0].honesty_limit.is_empty());
@@ -336,9 +399,18 @@ mod tests {
             recurrence_after_mitigation: 0,
             honesty_limit: "custom".into(),
         };
-        let resp = handle_doctor(&DoctorRequest { issues: vec![bad_issue], episodes: vec![] });
+        let resp = handle_doctor(&DoctorRequest {
+            issues: vec![bad_issue],
+            episodes: vec![],
+        });
         assert!(!resp.healthy);
-        assert!(resp.findings.iter().any(|f| f.code == "dangling_episode_ref"));
-        assert!(resp.findings.iter().any(|f| f.code == "honesty_limit_drift"));
+        assert!(resp
+            .findings
+            .iter()
+            .any(|f| f.code == "dangling_episode_ref"));
+        assert!(resp
+            .findings
+            .iter()
+            .any(|f| f.code == "honesty_limit_drift"));
     }
 }
