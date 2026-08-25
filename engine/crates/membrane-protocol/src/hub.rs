@@ -5,6 +5,34 @@ use std::collections::BTreeMap;
 
 pub const HUB_SCHEMA_VERSION: u32 = 1;
 
+/// Closed reason taxonomy for an unavailable Membrane capability binding.
+/// Hub inactivity is deliberately distinct from a degraded subsystem: when
+/// no Hub is active there is no Membrane runtime to service the request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MembraneUnavailableReasonV1 {
+    HubInactive,
+}
+
+/// Canonical Hub-off response shared by stateless clients and host adapters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MembraneUnavailableV1 {
+    pub kind: String,
+    pub reason: MembraneUnavailableReasonV1,
+    pub retryable: bool,
+}
+
+impl MembraneUnavailableV1 {
+    pub fn hub_inactive() -> Self {
+        Self {
+            kind: "membrane_unavailable".into(),
+            reason: MembraneUnavailableReasonV1::HubInactive,
+            retryable: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HubStateV1 {
@@ -135,4 +163,29 @@ pub struct HubSnapshotV1 {
     pub membrane_state: Option<MembraneParentState>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subsystems: Option<HubSubsystemsV1>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hub_inactive_is_closed_typed_and_retryable() {
+        let unavailable = MembraneUnavailableV1::hub_inactive();
+        assert_eq!(
+            serde_json::to_value(&unavailable).unwrap(),
+            serde_json::json!({
+                "kind": "membrane_unavailable",
+                "reason": "hub_inactive",
+                "retryable": true
+            })
+        );
+        assert!(serde_json::from_value::<MembraneUnavailableV1>(serde_json::json!({
+            "kind": "membrane_unavailable",
+            "reason": "hub_inactive",
+            "retryable": true,
+            "unexpected": true
+        }))
+        .is_err());
+    }
 }
