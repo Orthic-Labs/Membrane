@@ -1,7 +1,7 @@
 # Adapt Insights detector benchmark (honest, unrigged)
 
-Status: corpus and scoring harness complete; measured scorecard pending an
-execution of the native Rust detector path.
+Status: corpus and scoring harness complete; native scorecard measured on
+2026-08-25 and recorded in `scorecard.v1.json`.
 
 This benchmark gives all 33 native Insights detector families emitted by
 `membrane_adapt::insights::detectors::run_all_detectors` a portable,
@@ -80,6 +80,34 @@ runtime behavior still equals `documented_actual_fire`.
 Do not derive a claimed measured score from the JSON labels alone. A result is
 measured only when this harness executes `run_all_detectors` from the tested
 revision.
+
+## Measured result
+
+The native harness passed 5/5 tests with Rust/Cargo 1.98.0. All 44 non-gap
+cases matched canonical truth exactly, and all six known-gap firing sets
+reproduced exactly as documented.
+
+Scored against canonical `should_fire` labels:
+
+| Aggregate | Precision | Recall | F1 |
+|---|---:|---:|---:|
+| Micro (`TP=40`, `FP=7`, `FN=1`) | 0.8511 | 0.9756 | 0.9091 |
+| Macro across 33 families | 0.9660 | 0.9848 | 0.9729 |
+
+31 of 33 families measured 1.00 precision and 1.00 recall. The two imperfect
+families are:
+
+| Family | TP | FP | FN | Precision | Recall |
+|---|---:|---:|---:|---:|---:|
+| `claimed_verified_then_corrected` | 1 | 2 | 1 | 0.3333 | 0.5000 |
+| `verification_claim_without_tool_evidence` | 6 | 5 | 0 | 0.5455 | 1.0000 |
+
+`scorecard.v1.json` contains the full 33-family table, aggregate values,
+toolchain and revision binding, and each measured known-gap firing set.
+Precision/recall are not computed against `documented_actual_fire`: that field
+is observed drift reality rather than correctness truth. Against canonical
+truth, the six known gaps account for seven false positives and one false
+negative.
 
 ## Relationship to the sealed corpus
 
