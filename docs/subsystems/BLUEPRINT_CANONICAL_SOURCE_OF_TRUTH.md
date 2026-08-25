@@ -1474,9 +1474,26 @@ freshness: fresh | changed_since_generation | unknown | unavailable
 A successful query is never by itself evidence that the graph describes the
 current worktree.
 
-## 17.3 Required daemon methods
+**Freshness is not generation coherence.** These are separate axes and MUST NOT
+be collapsed:
 
-The service protocol includes at minimum:
+- `changed_since_generation` reports honest staleness — the index is internally
+  coherent, the worktree has moved on. It is a truthful successful result, not a
+  failure.
+- A **generation mismatch** is incoherence between what a consumer pinned and
+  what it is being served. It fails closed, always, at every freshness state.
+
+A consumer pinning a generation must still hard-fail on mismatch even when
+freshness reports `fresh`; a consumer receiving `changed_since_generation` must
+not treat it as a mismatch.
+
+## 17.3 Required protocol methods
+
+These methods are required of the Blueprint query surface regardless of how it is
+hosted — under Hub, or in a bounded one-shot operation. Removing the resident
+daemon as the primary path did not reduce this surface.
+
+The protocol includes at minimum:
 
 ```text
 status
@@ -1491,6 +1508,12 @@ build
 ```
 
 `recall` is a first-class protocol method.
+
+Consumers that address this surface by selector vocabulary — files, symbols,
+references, dependencies, dependents, neighbors, path, impact, flows — are
+addressing the same methods at a different granularity. That mapping MUST be
+recorded once and kept in sync; two unreconciled vocabularies for one surface
+drift silently.
 
 Blueprint-owned wire schemas are canonical under `blueprint/schemas/**` after the monorepo migration. SDK/type bindings and any consumer-side generated bindings are projections of those schemas, not independent contract authorities.
 
