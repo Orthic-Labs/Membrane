@@ -288,6 +288,38 @@ function encodeCursor(node, edge) {
   return Buffer.from(JSON.stringify({ node, edge })).toString("base64url");
 }
 
+const PATH_CURSOR_POLICY = "directed_outgoing_shortest_path_v1";
+
+function pathCursorBinding(options, budget) {
+  return {
+    kind: "path",
+    generationId: options.freshness?.generationId ?? null,
+    from: String(options.from ?? ""),
+    to: String(options.to ?? ""),
+    maxDepth: Math.max(1, Number(options.maxDepth ?? 5)),
+    budget,
+    policy: PATH_CURSOR_POLICY,
+  };
+}
+
+function decodePathCursor(cursor, binding) {
+  if (!cursor) return { node: 0, edge: 0 };
+  try {
+    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+    const validPosition = Number.isSafeInteger(value.node) && value.node >= 0
+      && Number.isSafeInteger(value.edge) && value.edge >= 0;
+    const validBinding = Object.entries(binding).every(([key, expected]) => value[key] === expected);
+    if (!validPosition || !validBinding) throw new Error("cursor binding mismatch");
+    return { node: value.node, edge: value.edge };
+  } catch {
+    throw Object.assign(new Error("Path cursor is malformed or does not match this traversal."), { code: "cursor_invalid" });
+  }
+}
+
+function encodePathCursor(binding, position) {
+  return Buffer.from(JSON.stringify({ ...binding, node: position.node, edge: position.edge })).toString("base64url");
+}
+
 function tierRank(edge) {
   return ({ EXACT_RESOLUTION: 0, SAME_FILE_LEXICAL: 1, CROSS_FILE_HEURISTIC: 2, UNRESOLVED: 3 })[edge.confidenceTier] ?? 4;
 }
@@ -421,6 +453,12 @@ export function boundedImpact(db, options = {}) {
 export function boundedPath(db, options = {}) {
   const raw = indexedPath(db, options);
   const meta = indexedMeta(db);
+  const budget = safeBudget(options.budget ?? 2000);
+  const binding = pathCursorBinding(options, budget);
+  const position = decodePathCursor(options.cursor, binding);
+  if (position.node > raw.path.length || position.edge > raw.edges.length) {
+    throw Object.assign(new Error("Path cursor position is outside this traversal."), { code: "cursor_invalid" });
+  }
   const payload = boundedPayload({
     provider: providerId(meta.provider),
     freshness: options.freshness,
@@ -429,11 +467,15 @@ export function boundedPath(db, options = {}) {
     edges: raw.edges,
     depths: new Map(raw.path.map((node, index) => [node.id, index])),
     root: options.from,
-    budget: options.budget,
-    cursor: options.cursor,
+    budget,
+    cursor: encodeCursor(position.node, position.edge),
   });
+  const continuationCursor = payload.continuationCursor
+    ? encodePathCursor(binding, decodeCursor(payload.continuationCursor))
+    : null;
   return {
     ...payload,
+    continuationCursor,
     path: payload.nodes,
     nodes: undefined,
     from: options.from ?? "",
@@ -508,4 +550,4 @@ export function encodeTabular(payload) {
   return `${lines.join("\n")}\n`;
 }
 
-export const _internals = { decodeCursor, encodeCursor, nodeReference, edgeReference, rowTokens };
+export const _internals = { decodeCursor, encodeCursor, decodePathCursor, encodePathCursor, nodeReference, edgeReference, rowTokens };

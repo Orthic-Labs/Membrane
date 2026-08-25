@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createXXHash128 } from "hash-wasm";
 import { spawnSync } from "node:child_process";
 import { performance } from "node:perf_hooks";
@@ -1100,6 +1100,10 @@ function stripInlineCode(text) {
   return String(text ?? "").replace(/`[^`]*`/g, "");
 }
 
+function compareCanonicalText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export function graphFlowInventory(generation, options = {}) {
   const complete = Boolean(options.complete);
   const maxFlows = Number(options.maxFlows ?? (complete ? 5000 : 200));
@@ -1107,7 +1111,7 @@ export function graphFlowInventory(generation, options = {}) {
   const incoming = new Set(generation.edges.map((edge) => edge.target));
   const entryPoints = generation.nodes
     .filter((node) => node.kind === "symbol" && outgoing.has(node.id) && !incoming.has(node.id))
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => compareCanonicalText(left.id, right.id));
   // NOTE: the spec's third flow status, "unsupported", is intentionally NOT emitted
   // here. It is only honest once we can DETECT a flow crossing into untraceable
   // territory — an HTTP route, a Tauri IPC boundary, or an unparsed-language hop —
@@ -1116,29 +1120,29 @@ export function graphFlowInventory(generation, options = {}) {
   // terminal, so a flow is either complete or a genuine dangling "broken". Emitting
   // an "unsupported" bucket that can never populate would be a false spec claim.
   const flows = [];
-  let truncated = false;
+  const collectionLimit = maxFlows + 1;
   for (const entry of entryPoints) {
-    const terminalPaths = terminalPathsFrom(generation, entry.id, maxFlows - flows.length);
+    if (flows.length >= collectionLimit) break;
+    const terminalPaths = terminalPathsFrom(generation, entry.id, collectionLimit - flows.length);
     if (!terminalPaths.length) {
-      flows.push({ entry, status: "broken", path: [entry], missingHop: "no terminal reachable", evidence: entry.evidence });
+      flows.push({ id: flowId([entry]), entry, status: "broken", path: [entry], missingHop: "no terminal reachable", evidence: entry.evidence });
       continue;
     }
     for (const path of terminalPaths) {
       flows.push({
-        id: `flow:${entry.id}->${path.at(-1).id}`,
+        id: flowId(path),
         entry,
         terminal: path.at(-1),
         status: "complete",
         path,
         evidence: path.flatMap((node) => node.evidence ?? []),
       });
-      if (flows.length >= maxFlows) {
-        truncated = true;
-        break;
-      }
+      if (flows.length >= collectionLimit) break;
     }
-    if (truncated) break;
   }
+  flows.sort((left, right) => compareCanonicalText(flowCanonicalKey(left.path), flowCanonicalKey(right.path)) || compareCanonicalText(left.id, right.id));
+  const truncated = flows.length > maxFlows;
+  const selectedFlows = flows.slice(0, maxFlows);
   return {
     schemaVersion: 1,
     provider: generation.provider.id,
@@ -1146,28 +1150,41 @@ export function graphFlowInventory(generation, options = {}) {
     mode: complete ? "complete" : "bounded",
     maxFlows,
     entryPoints: entryPoints.length,
-    flows,
+    flows: selectedFlows,
     truncated,
     truncationReason: truncated ? `flow inventory hit maxFlows=${maxFlows}` : null,
   };
 }
 
+function flowCanonicalKey(path) {
+  return path.map((node) => node.id).join("\0");
+}
+
+function flowId(path) {
+  return `flow:sha256:${createHash("sha256").update(flowCanonicalKey(path)).digest("hex")}`;
+}
+
 function terminalPathsFrom(generation, entryId, limit = 200) {
   const paths = [];
-  const queue = [[entryId]];
-  while (queue.length && paths.length < limit) {
-    const ids = queue.shift();
+  const pathKeys = new Set();
+  const stack = [[entryId]];
+  while (stack.length && paths.length < limit) {
+    const ids = stack.pop();
     const current = ids.at(-1);
     const outgoing = generation.edges
-      .filter((edge) => edge.source === current)
-      .sort((left, right) => String(left.target ?? "").localeCompare(String(right.target ?? "")) || left.id.localeCompare(right.id));
+      .filter((edge) => edge.source === current && edge.target)
+      .sort((left, right) => compareCanonicalText(String(left.target ?? ""), String(right.target ?? "")) || compareCanonicalText(left.id, right.id));
     if (!outgoing.length && ids.length > 1) {
-      paths.push(ids.map((id) => generation.nodes.find((node) => node.id === id)).filter(Boolean));
+      const key = ids.join("\0");
+      if (!pathKeys.has(key)) {
+        pathKeys.add(key);
+        paths.push(ids.map((id) => generation.nodes.find((node) => node.id === id)).filter(Boolean));
+      }
       continue;
     }
-    for (const edge of outgoing) {
+    for (const edge of outgoing.toReversed()) {
       if (ids.includes(edge.target) || ids.length > 12) continue;
-      queue.push([...ids, edge.target]);
+      stack.push([...ids, edge.target]);
     }
   }
   return paths;

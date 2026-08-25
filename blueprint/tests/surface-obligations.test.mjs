@@ -7,7 +7,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
-import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { buildGraphGeneration, graphFlowInventory } from "../src/graph/static-provider.mjs";
 import { closeStore, listEdgeCore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { METHODS } from "../src/service/protocol.mjs";
 
@@ -26,6 +26,20 @@ function connectedPair(repo) {
     const edge = listEdgeCore(db).find((item) => item.target);
     assert.ok(edge, "fixture must have one resolved edge");
     return { from: edge.source, to: edge.target };
+  } finally {
+    closeStore(db);
+  }
+}
+
+function connectedChain(repo) {
+  const db = openStoreReadOnly(join(repo, ".agent", "graph", "graph.db"));
+  try {
+    const edges = listEdgeCore(db).filter((item) => item.target);
+    for (const first of edges) {
+      const second = edges.find((item) => item.source === first.target && item.target && item.target !== first.source);
+      if (second) return { from: first.source, middle: first.target, to: second.target };
+    }
+    assert.fail("fixture must have a two-edge directed path");
   } finally {
     closeStore(db);
   }
@@ -53,6 +67,61 @@ test("path is a public protocol method and uses bounded application traversal", 
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("path cursors fail closed and bind generation, endpoints, and traversal bounds", async () => {
+  const repo = builtRepo();
+  try {
+    const service = createBlueprintApplicationService();
+    const chain = connectedChain(repo);
+    const input = { repoRoot: repo, from: chain.from, to: chain.to, maxDepth: 2, budget: 128 };
+    const first = await service.path(input);
+    assert.equal(first.truncated, true);
+    assert.ok(first.continuationCursor);
+    const second = await service.path({ ...input, cursor: first.continuationCursor });
+    assert.equal(second.found, true);
+
+    await assert.rejects(service.path({ ...input, cursor: "not-a-cursor" }), (error) => error.code === "cursor_invalid");
+    const decoded = JSON.parse(Buffer.from(first.continuationCursor, "base64url").toString("utf8"));
+    const cursorWith = (changes) => Buffer.from(JSON.stringify({ ...decoded, ...changes })).toString("base64url");
+    await assert.rejects(
+      service.path({ ...input, cursor: cursorWith({ generationId: "wrong-generation" }) }),
+      (error) => error.code === "cursor_invalid",
+    );
+    await assert.rejects(
+      service.path({ ...input, to: chain.middle, cursor: first.continuationCursor }),
+      (error) => error.code === "cursor_invalid",
+    );
+    await assert.rejects(
+      service.path({ ...input, maxDepth: 3, cursor: first.continuationCursor }),
+      (error) => error.code === "cursor_invalid",
+    );
+    await assert.rejects(
+      service.path({ ...input, cursor: cursorWith({ node: 100000 }) }),
+      (error) => error.code === "cursor_invalid",
+    );
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("flow pages use canonical full-path order and unique full-path digest ids", () => {
+  const node = (id) => ({ id, kind: "symbol", evidence: [{ path: `${id}.mjs`, startLine: 1, endLine: 1 }] });
+  const nodes = ["a", "b", "c", "d", "x"].map(node);
+  const edge = (source, target) => ({ id: `edge:${source}->${target}`, kind: "CALLS", source, target });
+  const generation = {
+    provider: { id: "test" },
+    manifest: { generationId: "generation:test", generatedAt: "test" },
+    nodes,
+    edges: [edge("a", "c"), edge("c", "d"), edge("a", "b"), { ...edge("a", "b"), id: "edge:a=>b:parallel" }, edge("b", "x"), edge("x", "d")],
+  };
+  const result = graphFlowInventory(generation, { maxFlows: 10 });
+  assert.deepEqual(result.flows.map((flow) => flow.path.map((item) => item.id)), [
+    ["a", "b", "x", "d"],
+    ["a", "c", "d"],
+  ]);
+  assert.equal(new Set(result.flows.map((flow) => flow.id)).size, 2);
+  for (const flow of result.flows) assert.match(flow.id, /^flow:sha256:[a-f0-9]{64}$/);
 });
 
 test("architecture flows have deterministic bounded pages and generation-bound cursors", async () => {
