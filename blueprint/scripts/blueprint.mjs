@@ -57,7 +57,7 @@ import {
 } from "../src/graph/static-provider.mjs";
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../src/graph/ignored-prefixes.mjs";
 import { leafDigestForFile } from "../src/graph/merkle-ledger.mjs";
-import { gitBaseCommit, gitSourceObservation } from "../src/graph/git-source-observation.mjs";
+import { gitSourceObservation } from "../src/graph/git-source-observation.mjs";
 import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { generateDocs, generatedDocsGenerationId } from "../src/lib/generated-docs.mjs";
