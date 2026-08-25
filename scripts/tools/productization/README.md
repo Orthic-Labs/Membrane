@@ -128,7 +128,7 @@ assert.equal(stableStringify(matrix), sameAgain);  // byte-stable
 ## Product-boundary truth
 
 `docs/membrane/capability-matrix.v1.json` is the canonical capability input for
-the six axes (`pull`, `push`, `cortex`, `blueprint`, `guide`, `adapt`), current
+the six axes (`pull`, `push`, `cortex`, `blueprint`, `ledger`, `adapt`), current
 supported target (`macOS`), Cortex scope (`durable-memory-only`), and resident
 service authority (`hub`). `generate-product-truth.mjs` validates these
 declarations and renders them into `schemas/registry/product-truth.json`,

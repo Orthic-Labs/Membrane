@@ -14,7 +14,7 @@
     "push",
     "cortex",
     "blueprint",
-    "guide",
+    "ledger",
     "adapt"
   ],
   "axisDefinitions": [
@@ -40,8 +40,8 @@
     },
     {
       "description": "Navigates indexed document sections with hash-bound references.",
-      "id": "guide",
-      "label": "Guide"
+      "id": "ledger",
+      "label": "Ledger"
     },
     {
       "description": "Mines experience into governed proposals and never writes durable truth directly.",

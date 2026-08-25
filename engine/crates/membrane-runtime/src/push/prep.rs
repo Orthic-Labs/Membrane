@@ -433,8 +433,8 @@ mod tests {
     fn large_markdown_routes_to_outline_before_compression() {
         let temp = tempfile::tempdir().unwrap();
         let out_dir = temp.path().join("prepared");
-        let markdown = temp.path().join("guide.md");
-        let mut source = "# Guide\n\n".to_owned();
+        let markdown = temp.path().join("ledger.md");
+        let mut source = "# Ledger\n\n".to_owned();
         while estimate_tokens(&source) < outline_token_threshold() as u64 {
             source.push_str("detail ");
         }
@@ -454,12 +454,12 @@ mod tests {
         let under_budget = temp.path().join("under-budget.md");
         let over_budget = temp.path().join("over-budget.md");
 
-        let short_source = "# Guide\n\n".to_owned() + &"detail ".repeat(200);
+        let short_source = "# Ledger\n\n".to_owned() + &"detail ".repeat(200);
         assert!(short_source.len() > 50);
         assert!(estimate_tokens(&short_source) < outline_token_threshold() as u64);
         std::fs::write(&under_budget, short_source).unwrap();
 
-        let mut large_source = "# Guide\n\n".to_owned();
+        let mut large_source = "# Ledger\n\n".to_owned();
         while estimate_tokens(&large_source) < outline_token_threshold() as u64 {
             large_source.push_str("detail ");
         }

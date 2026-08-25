@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "axis": "ledger",
+  "status": "fixture-entrypoint-defined",
+  "entrypoint": "membrane-runtime::ledger",
+  "metrics": ["anchor_resolution", "hash_staleness", "incremental_sync", "recall_determinism", "projection_rebuild"]
+}

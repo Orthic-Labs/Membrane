@@ -35,7 +35,7 @@ const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
 const MANIFEST = join(REPO_ROOT, "docs", "design", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
-const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "guide", "adapt"];
+const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
 
 // Number words the README prose may use for the tool count claim.
 const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };

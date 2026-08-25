@@ -14,7 +14,7 @@
 | **Pull** | Retrieves only what is relevant to the current task, from every source that might hold it |
 | **Cortex / Persist** | Keeps governed durable decisions, preferences, and lessons useful across sessions and machines |
 | **Blueprint** | Owns repository truth, evidence generations, and drift/change observation |
-| **Guide** | Navigates indexed document sections with hash-bound references |
+| **Ledger** | Navigates indexed document sections with hash-bound references |
 | **Adapt** | Mines experience into governed proposals; never writes durable truth directly |
 
 All six share one context economy while retaining separate ownership, tests,
@@ -60,7 +60,7 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 - **Push** — faithful reduction for command output, file reads, source/provider payloads, and delegated evidence.
 - **Cortex / Persist** — the durable-memory engine: a durable library and CLI projection owned by Membrane, backed by SQLite with a quantized vector store and hybrid retriever. Membrane Hub owns the single resident service.
 - **Blueprint** — repository truth and evidence graph.
-- **Guide** — hash-bound document navigation.
+- **Ledger** — hash-bound document navigation.
 - **Adapt** — governed experience-to-knowledge proposals.
 - **MCP server** — seventeen tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`, `membrane_diagnostic_workspace`, `membrane_diagnostic_mutation`, `membrane_diagnostic_snapshot`, `membrane_diagnostic_fence`, `membrane_diagnostic_capabilities`, `membrane_diagnostic_baseline`, `membrane_diagnostic_provider`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to providers in parallel.
