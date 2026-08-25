@@ -42,7 +42,8 @@ jobs:
         run: cargo test --locked -p membrane-protocol
       - name: DO NOT MERGE — legacy Guide database retirement
         working-directory: engine
-        run: cargo test --locked -p membrane-runtime --lib ledger::db::
+        run: >-
+          cargo test --locked -p membrane-runtime --lib ledger::db::
       - name: DO NOT MERGE — Ledger runtime integration tests
         working-directory: engine
         run: >-
