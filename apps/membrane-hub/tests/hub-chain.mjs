@@ -22,12 +22,12 @@ test('cli hub-snapshot fixture (healthy resident) renders Running parent with lo
   assert.equal(vm.subsystems.blueprint.status, 'Unavailable');
   assert.equal(vm.subsystems.blueprint.state, 'unavailable');
   // Typed Not configured arrives natively — no reason-string reconstruction.
-  for (const name of ['pull', 'push', 'guide', 'adapt']) {
+  for (const name of ['pull', 'push', 'ledger', 'adapt']) {
     assert.equal(vm.subsystems[name].status, 'Not configured', `${name} must be Not configured`);
     assert.equal(vm.subsystems[name].state, 'not_configured');
   }
-  // Cortex owns memory+sentinel; Guide stays distinct.
-  assert.notEqual(vm.subsystems.guide.status, vm.subsystems.cortex.status);
+  // Cortex owns memory+sentinel; Ledger stays distinct.
+  assert.notEqual(vm.subsystems.ledger.status, vm.subsystems.cortex.status);
   // Eight operational resources remain separate surfaces.
   for (const resource of ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts']) {
     assert.ok(vm.resources[resource], `resource ${resource} present`);

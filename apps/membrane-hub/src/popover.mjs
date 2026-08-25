@@ -1,6 +1,6 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
 export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
-export const SUBSYSTEM_ORDER = ['pull', 'push', 'cortex', 'blueprint', 'guide', 'adapt'];
+export const SUBSYSTEM_ORDER = ['pull', 'push', 'cortex', 'blueprint', 'ledger', 'adapt'];
 const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
 const state = section => typeof section === 'object' && section ? section.state : null;
 const sectionStatus = section => {

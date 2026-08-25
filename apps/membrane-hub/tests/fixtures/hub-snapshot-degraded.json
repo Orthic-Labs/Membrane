@@ -95,7 +95,7 @@
       "reason": "blueprint_unavailable",
       "observedAtUnixMs": 42
     },
-    "guide": {
+    "ledger": {
       "state": "not_configured",
       "reason": "not_instrumented",
       "observedAtUnixMs": 42

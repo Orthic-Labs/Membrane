@@ -29,7 +29,7 @@ impl MembraneParentState {
 /// The six semantic Membrane subsystems — distinct from the eight operational
 /// Hub resources (`deliveries`, `providers`, `repositories`, `adapters`,
 /// `devices`, `memory`, `sentinel`, `alerts`).
-pub const SUBSYSTEM_NAMES: [&str; 6] = ["pull", "push", "cortex", "blueprint", "guide", "adapt"];
+pub const SUBSYSTEM_NAMES: [&str; 6] = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
 
 /// Frozen production mapping for parent state.
 ///

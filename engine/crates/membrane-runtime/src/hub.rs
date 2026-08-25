@@ -266,7 +266,7 @@ pub struct HubSubsystemInputsV1 {
     pub push: HubReadV1,
     pub cortex: HubReadV1,
     pub blueprint: HubReadV1,
-    pub guide: HubReadV1,
+    pub ledger: HubReadV1,
     pub adapt: HubReadV1,
 }
 
@@ -280,7 +280,7 @@ impl HubSubsystemInputsV1 {
             push: unavailable(),
             cortex: unavailable(),
             blueprint: unavailable(),
-            guide: unavailable(),
+            ledger: unavailable(),
             adapt: unavailable(),
         }
     }
@@ -294,7 +294,7 @@ impl HubSubsystemInputsV1 {
             push: self.push.clone().subsystem(),
             cortex: self.cortex.clone().subsystem(),
             blueprint: self.blueprint.clone().subsystem(),
-            guide: self.guide.clone().subsystem(),
+            ledger: self.ledger.clone().subsystem(),
             adapt: self.adapt.clone().subsystem(),
         }
     }

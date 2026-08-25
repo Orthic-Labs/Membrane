@@ -10,8 +10,8 @@ import { fileURLToPath } from "node:url";
 
 const hub = fileURLToPath(new URL("../", import.meta.url));
 const runtime = join(hub, "src-tauri", "runtime");
-const axes = ["pull", "push", "cortex", "blueprint", "guide", "adapt"];
-const composition = ["membrane", "cortex", "blueprint", "guide", "pull", "push", "adapt"];
+const axes = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
+const composition = ["membrane", "cortex", "blueprint", "ledger", "pull", "push", "adapt"];
 const retired = /(?:^|[\\/])(crypt(?:-service)?|orthic(?:[_-]manifest)?|product-addons?)(?:[\\/]|$)/i;
 const ignored = /(?:^|[\\/])(?:\.git|node_modules|__pycache__|tests?|\.pytest_cache)(?:[\\/]|$)/;
 const digest = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -27,7 +27,7 @@ export const RUNTIME_SPECS = [
   { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "../../schemas/operations/membrane-context.v1.schema.json" },
   { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "../../schemas/compression-receipt.v1.schema.json" },
   { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "../../schemas/memory-lifecycle.v1.schema.json" },
-  { id: "guide-contract", component: "guide", axis: "guide", delivery: "resource", path: "../../schemas/operations/membrane-source-read.v1.schema.json" },
+  { id: "ledger-contract", component: "ledger", axis: "ledger", delivery: "resource", path: "../../schemas/operations/membrane-source-read.v1.schema.json" },
   // N5 cutover: Hub owns the native Adapt launch seam - scheduled cycles and
   // installed launcher execs bundled binary's `membrane adapt` CLI.
   { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "hub-native" },

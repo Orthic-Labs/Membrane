@@ -9,7 +9,7 @@ import { RUNTIME_SPECS, runtimeInventory, verifyStagedInventory, verifyUnpackedA
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "membrane-hub-runtime-"));
   const make = (file, text = file) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, text); };
-  for (const name of ["pull", "push", "cortex", "guide", "adapt", "install"]) make(join(root, `${name}.txt`));
+  for (const name of ["pull", "push", "cortex", "ledger", "adapt", "install"]) make(join(root, `${name}.txt`));
   const workspaceFile = join(root, "dist", "install", "workspace", "__init__.py"); make(workspaceFile, "PACKAGE_SCHEMA = 'membrane-install-workspace-v1'\n");
   const files = [{ path: "__init__.py", sha256: createHash("sha256").update(readFileSync(workspaceFile)).digest("hex"), bytes: readFileSync(workspaceFile).byteLength }];
   const runtime = { python: ">=3.11", dependencies: [] };
@@ -28,7 +28,7 @@ function specs() {
     { id: "blueprint-runtime", component: "blueprint", axis: "blueprint", delivery: "preStagedResource", path: "src-tauri/runtime/blueprint", tree: true },
     { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "pull.txt" },
     { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "push.txt" },
-    { id: "guide-contract", component: "guide", axis: "guide", delivery: "resource", path: "guide.txt" },
+    { id: "ledger-contract", component: "ledger", axis: "ledger", delivery: "resource", path: "ledger.txt" },
     { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "hub-native" },
     { id: "install-workspace", component: "install-workspace", delivery: "resource", path: "dist/install/workspace", tree: true, extensions: [".py"] },
     { id: "install-workspace-manifest", component: "install-workspace-manifest", delivery: "resource", path: "dist/install/workspace-manifest.json", stageRoot: "resources/install-workspace" },
@@ -37,7 +37,7 @@ function specs() {
 
 test("runtime closure records generated Blueprint, compiled sidecars & six axes", () => {
   const ids = new Set(RUNTIME_SPECS.map((spec) => spec.id));
-  for (const id of ["membrane-command", "cortex-cli", "blueprint-runtime", "pull-contract", "push-contract", "guide-contract", "adapt-contract", "runtime-schemas", "host-adapters", "install-workspace", "install-workspace-manifest", "hub-icons"]) assert.ok(ids.has(id), id);
+  for (const id of ["membrane-command", "cortex-cli", "blueprint-runtime", "pull-contract", "push-contract", "ledger-contract", "adapt-contract", "runtime-schemas", "host-adapters", "install-workspace", "install-workspace-manifest", "hub-icons"]) assert.ok(ids.has(id), id);
   assert.equal(RUNTIME_SPECS.find((spec) => spec.id === "blueprint-runtime").delivery, "preStagedResource");
   for (const forbidden of ["cortex-store/src", "membrane-runtime/src/pull", "membrane-runtime/src/push", "../../blueprint/src", "../../adapt/src/adapt"]) assert.ok(!RUNTIME_SPECS.some((spec) => spec.path.includes(forbidden)), forbidden);
   const tauri = readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8");
