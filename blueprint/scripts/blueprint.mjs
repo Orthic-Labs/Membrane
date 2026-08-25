@@ -3599,7 +3599,7 @@ if (isDirectInvocation()) {
     process.on("uncaughtException", e => { console.error("STACK:", e.stack); process.exit(1); });
     process.exitCode = await main();
   } catch (error) {
-    if (error?.code?.startsWith("graph_")) {
+    if (typeof error?.code === "string") {
       console.error(JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message, ...error.details } }));
     } else {
       console.error(`blueprint: ${error.message}`);

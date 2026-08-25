@@ -74,10 +74,17 @@ export function createBlueprintApplicationService({
           manifestDigest: meta.manifest.manifestDigest ?? null,
         });
       }
-      assertGenerationCoherence({
-        pinnedGenerationId: input.generation,
-        servedGenerationId: meta.manifest.generationId,
-      });
+      try {
+        assertGenerationCoherence({
+          pinnedGenerationId: input.generation,
+          servedGenerationId: meta.manifest.generationId,
+        });
+      } catch (error) {
+        if (error?.code === "generation_mismatch") {
+          fail(error.code, error.message, error.details);
+        }
+        throw error;
+      }
       // Preserve the existing barrier fields for compatibility while making
       // BlueprintFreshnessReceiptV1 the production receipt. Freshness and
       // generation coherence remain independent axes.
