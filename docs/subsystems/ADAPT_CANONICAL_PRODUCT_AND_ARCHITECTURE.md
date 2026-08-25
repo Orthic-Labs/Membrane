@@ -1,18 +1,39 @@
 # Adapt Canonical Product and Architecture Specification
 
-**Status:** Canonical product and architecture source of truth
-**Date:** 2026-08-24
-**Repository:** `Orthic-Labs/Membrane`
-**Supersedes:** `adapt/docs/plans/2026-08-24-adapt-alignment-implementation.md` as active Adapt authority; that plan remains historical implementation provenance
-**Companion runtime plan:** `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`
-**Current implementation baseline:** `main@7c05b49b6f9ea202116f6829e4f74949a4529592`
-**Research input reconciled:** Claude `c0a1b463a6a792ea5a8c931d4791715a0e3ef497` (`docs/research/competitors/adapt-analysis.md`) plus the verified external analysis retained in the repository
-**Runtime architecture:** governed by the Membrane native-Rust migration specification; Adapt is not exempt from Membrane's native-only runtime rule
-**Audience:** Adapt, Cortex, transcript, Membrane runtime, Hub, CodeRight integration, evaluation, documentation, and release-engineering implementers
+**Status:** Canonical product and architecture source of truth  
+**Date:** 2026-08-25  
+**Repository:** `Orthic-Labs/Membrane`  
+**Supersedes:** prior Adapt canonical/product drafts and implementation plans where they conflict with this document  
+**Companion Membrane doctrine:** `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`  
+**Companion runtime plan:** `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`  
+**Companion Ledger plan:** `LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`  
+**Companion CodeRight integration plan:** `CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md`  
+**Implementation status:** descriptive status MUST be re-derived from the current `main` immediately before execution; normative semantics in this document are not commit-bound  
+**Research basis:** current Membrane/Adapt code; Command Code Taste; CHIRON/HORKOS; Braintrust Topics/Loop; Langfuse evaluation/annotation workflows; Arize Phoenix datasets/evaluators/experiments; agent-failure research  
+**Runtime architecture:** governed by the Membrane native-Rust migration specification; Adapt is not exempt from Membrane's native-only runtime rule  
+**Audience:** Adapt, Cortex, Ledger, transcript/event infrastructure, Membrane runtime, Hub, CodeRight integration, evaluation, documentation, and release-engineering implementers
 
-This document defines **what Adapt is**, **what it owns**, **what it must never become**, contracts for **Taste** and **Insights**, authority and persistence boundaries between Adapt and Cortex, language-neutral migration requirements, current implementation delta, and acceptance gates for future work.
+This document defines **what Adapt is**, **what it owns**, **what it must never become**, the contracts for **Taste** and **Insights**, the authority and persistence boundary with Cortex, the evidence relationship with CodeRight and other hosts, and the quality gates required before behavioral learning is allowed to influence future execution.
 
-It is deliberately different from `docs/research/competitors/adapt-analysis.md`. The research document explains why certain choices were made and how Adapt compares with external systems. **This document is normative product truth.** If research, historical plans, README copy, comments, generated documentation, or implementation details conflict with this document, they must be corrected or the conflict must be raised as an explicit architecture change.
+Research and competitor material is evidence, not authority. Implementation-status sections are descriptive snapshots and MUST be refreshed from current code before work begins. If code, README copy, generated docs, historical plans, or research conflict with the normative sections, correct the conflicting projection or raise an explicit architecture amendment.
+
+## Runtime lifecycle binding (normative)
+
+These decisions are canonical and take precedence over any wording later in this
+document that implies a different runtime topology:
+
+- Membrane runtime exists **only inside the active Hub process**. There is no
+  standalone Membrane runtime and no Hub-supervised Membrane child process.
+- There is **no embedded CodeRight Membrane backend**. CodeRight binds to
+  Membrane through Hub, or it has no binding.
+- MCP and CLI surfaces are **stateless Hub clients/transports**. They never
+  launch, auto-start, or register a Membrane process.
+- **Hub off → no Membrane context.** Requests return typed
+  `membrane_unavailable { reason: hub_inactive, retryable: true }`.
+- **Ledger** is the canonical subsystem name; it replaces Guide.
+- Blueprint is **independently usable but not independently resident**.
+  Continuous watcher/freshness runs only under Hub; with Hub off, Blueprint
+  access is an explicit bounded one-shot operation that never daemonizes.
 
 ---
 
@@ -20,20 +41,22 @@ It is deliberately different from `docs/research/competitors/adapt-analysis.md`.
 
 This document is the **Adapt semantic/product authority**. It answers: what Adapt is, what Taste and Insights mean, what Adapt owns, what evidence may authorize them, and what invariants an implementation must preserve.
 
-It does **not** replace the Membrane-wide native migration specification. The documents divide authority as follows:
+It does **not** replace Membrane-wide ownership or runtime doctrine. Authority divides as follows:
 
-1. **`docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`** — cross-subsystem ownership and six-axis architecture.
-2. **This Adapt canonical specification** — Adapt product semantics, Taste/Insights contracts, authority, governance, evaluation, and feature dependencies.
-3. **`migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`** — repository-wide runtime/process cutover, packaging, deletion, Blueprint/CodeRight seams, sequencing, and native-only release closure.
-4. `docs/subsystems/adapt.md` and `adapt/README.md` — concise projections of this document; they MUST NOT invent competing semantics.
-5. `docs/research/competitors/adapt-analysis.md` — research provenance and external comparison only; non-normative.
-6. Historical plans/specs — evidence of prior decisions only after they are marked superseded where they conflict with current canon.
+1. **Membrane canonical doctrine** — cross-subsystem ownership, planner authority, the six axes, and cross-cutting implementation invariants.
+2. **This Adapt canonical specification** — Adapt product semantics, Taste/Insights contracts, evidence classes, authority, governance, evaluation, and feature dependencies.
+3. **Native-Rust migration specification** — runtime/process cutover, packaging, deletion, Blueprint/CodeRight seams, and native-only release closure.
+4. **Ledger canonical implementation plan** — the renamed Ledger subsystem's Markdown/document registry, indexing, retrieval, resolution, virtual-document, and rollout contracts.
+5. **CodeRight↔Membrane integration plan** — CodeRight execution observations, traces/evals, Membrane capability binding, and the closed learning/evaluation loop.
+6. `docs/subsystems/adapt.md` and `adapt/README.md` — concise projections only; they MUST NOT invent competing semantics.
+7. Research/competitor documents — non-normative provenance and comparison only.
+8. Historical plans/specs — evidence of prior decisions only where explicitly retained.
 
-For a cross-cutting conflict, the narrowest relevant canonical owner controls its semantic domain. For example, the Membrane migration spec controls the rule that production Adapt must become native Rust; this document controls what the Rust port must mean by Taste and Insights.
+For a cross-cutting conflict, the narrowest relevant canonical owner controls its semantic domain.
 
-**CodeRight is an Adapt consumer/integration host, not the owner of Adapt semantics.** CodeRight may supply transcript/user-act evidence and consume applicable Taste/Insight delivery, but it does not redefine Taste authority, Insight semantics, or Cortex admission.
+**CodeRight is an execution host and first-class Adapt evidence producer/consumer, not the owner of Adapt semantics.** CodeRight may emit typed transcript events, user-act evidence, execution observations, and evaluation outcomes; consume admitted Taste/Insight outputs; and execute approved guards/evaluators. It does not redefine Taste authority, Insight semantics, or Cortex admission.
 
----
+**Ledger is the canonical name of the Membrane document-navigation/index subsystem.** Historical `Guide`/`Spine` terminology is retired except in migration notes and compatibility tests.
 
 # 0. Executive decision
 
@@ -234,122 +257,241 @@ Adapt is not:
 
 # 3. Ownership and system architecture
 
-## 3.1 Transcript substrate
+## 3.1 Transcript and event substrate
 
 Transcript normalization is infrastructure used by Adapt, not the identity of Adapt itself.
 
-The canonical native transcript layer must produce a language-neutral event contract equivalent to `TranscriptEventV1` with:
+The native transcript/event substrate MUST preserve a language-neutral `TranscriptEventV1`-equivalent contract with:
 
 - stable event/session identity;
 - host/source identity;
 - role/origin classification;
-- byte/source spans;
+- byte/source spans where source bytes exist;
 - event ordering;
-- tool invocation/result relationships;
+- tool invocation/result linkage;
 - timestamps where available;
-- provider/model/client metadata where available;
+- provider/model/client/agent-role metadata where available;
 - parser receipts and source digests;
 - typed unavailable/partial failures;
+- explicit omission of private chain-of-thought;
 - no silent conversion of missing input into empty-success.
 
-The current Python `continuity.transcript` package is migration input. The final implementation belongs in native Rust and should be reusable by Adapt and other Membrane consumers.
+External hosts such as Claude Code, Codex, Cline, Command Code, OpenCode, Qwen, Pi, Gemini, Grok, Roo, and Cursor may require transcript adapters.
 
-Source hosts own raw transcripts until an explicit durable-admission decision. Native transcript code owns normalization, stable event identity, provenance, and typed parse failures. Guide may project navigation over admitted material, but it does not own transcript truth.
+CodeRight SHOULD NOT round-trip through a textual transcript when it already owns the structured runtime event. Its native host adapter should project the same canonical semantic facts directly.
 
-## 3.2 Adapt shared control plane
+Raw host transcripts remain source-host material until an explicit durable-admission decision. Native transcript/event code owns normalization, provenance, stable event identity, and typed parse failures.
+
+Ledger may index an admitted or generated human-readable session document, but a Ledger projection is not transcript truth and MUST NOT replace the exact structured evidence used by Adapt.
+
+## 3.2 Adapt shared behavioral-learning owner
 
 Adapt owns:
 
-- transcript/event ingestion for behavioral learning;
-- canonicalization of learning evidence;
-- origin/provenance filtering;
+- behavioral-learning ingestion from typed evidence;
+- evidence canonicalization and provenance filtering;
 - Taste candidate generation;
-- Insights detection and issue formation;
-- scope/applicability proposals;
+- Insights episode detection and issue formation;
+- emergent failure-pattern discovery proposals;
+- applicability/scope proposals;
 - contradiction/supersession proposals;
-- evidence binding;
+- exact evidence binding;
+- remediation/guard/evaluator proposals;
 - learning audit and rollback metadata;
-- delivery receipts and effectiveness telemetry for Adapt-derived interventions.
+- delivery receipts and effectiveness semantics for Adapt-derived interventions;
+- recurrence and mitigation-outcome interpretation.
 
 Adapt does **not** own:
 
-- canonical durable database authority;
+- the canonical durable database;
+- raw high-volume CodeRight trace storage;
+- generic experiment/dataset execution;
 - direct ungoverned durable writes;
 - repository truth;
 - organization/current-instruction policy authority;
 - final context budget policy for all Membrane content;
-- generic document indexing;
+- Ledger document indexing;
 - generic memory creation;
-- application effect authorization.
+- application effect authorization;
+- CodeRight routing/execution authority.
 
 ## 3.3 Native runtime destination
 
-The final Membrane-owned implementation MUST be native Rust.
+The Membrane-owned production implementation MUST be native Rust.
 
-A practical initial destination is one `membrane-adapt` crate with internal modules rather than premature crate proliferation:
+The canonical owners are:
 
 ```text
-engine/crates/membrane-adapt/
-  src/
-    lib.rs
-    evidence.rs
-    taste/
-    insights/
-    authority.rs
-    scope.rs
-    conflict.rs
-    lifecycle.rs
-    admission.rs
-    delivery.rs
-    receipts.rs
-    model_boundary.rs
+membrane-transcript
+    canonical transcript/event normalization
+    provenance
+    source binding
+    authenticated user-act adaptation
+
+membrane-adapt
+    Taste
+    Insights
+    evidence interpretation
+    authority
+    scope
+    issue formation
+    remediation/evaluator proposals
+    delivery/effectiveness semantics
 ```
 
-The transcript contract should live in a reusable native owner such as `membrane-transcript` or an equivalent module with an independently testable public contract.
-
-The exact crate names are not normative. The ownership boundaries are.
+No production Adapt operation may require Python, Node, Pi CLI, OpenCode CLI, or another interpreter-backed Membrane worker after native cutover. Release-excluded differential/evaluation tooling may remain where explicitly classified.
 
 ## 3.4 Model/proposal boundary
 
-LLMs may assist with:
+Models may assist with:
 
-- extracting a possible preference from user evidence;
-- rewriting a preference candidate into compact canonical wording;
+- extracting a possible preference from qualifying user evidence;
+- compact canonical wording;
 - proposing semantic duplicate/conflict groups;
-- clustering semantically related failure episodes;
-- proposing candidate remediation text.
+- proposing clusters of semantically related failure episodes;
+- discovering candidate failure patterns not covered by known detector families;
+- proposing remediation or evaluator text.
 
-LLMs MUST NOT decide authority by assertion.
+Models MUST NOT decide authority by assertion.
 
-All model-generated outputs are proposals. Deterministic code must bind them back to admissible evidence and enforce origin, scope, policy, and write contracts.
+All model-generated outputs are proposals. Deterministic code must bind them to admissible evidence and enforce provenance, scope, policy, lifecycle, and effect boundaries.
 
 No model output can manufacture:
 
 - a user source span;
+- an authenticated user act;
 - a user preference;
 - a permission grant;
 - a verification receipt;
 - a tool result;
+- an evaluator result;
 - a policy exception;
-- a stronger scope than supported evidence.
+- a stronger scope than the evidence supports.
 
 ## 3.5 Three distinct admission decisions
 
 Do not collapse these gates:
 
-1. **Adapt proposal eligibility** decides whether evidence may form a Taste candidate or Insight episode/issue.
-2. **Cortex durable admission** decides whether a typed record may enter durable knowledge, with lifecycle, conflict, supersession, and integrity semantics.
-3. **Membrane context admission** decides whether an eligible retrieved record belongs in a context packet under authority, freshness, sufficiency, budget, and representation policy.
+1. **Adapt proposal eligibility** — may this evidence form a Taste candidate, Insight episode, candidate issue, or candidate remediation?
+2. **Cortex durable admission** — may the typed record enter governed durable knowledge with lifecycle/conflict/supersession/integrity semantics?
+3. **Membrane context admission** — should a retrieved eligible record enter this task's context packet under scope, authority, freshness, sufficiency, budget, and representation policy?
 
-Passing one gate grants no authority at either later gate.
+Passing one grants nothing at the next.
 
 ## 3.6 Internal contract namespace
 
-`TranscriptEventV1`, `UserActEvidenceV1`, `FailureEpisodeV1`, and `InsightIssueV1` are versioned internal domain contracts. Their `V1` suffix versions each subsystem schema; it does not add them to Membrane's five public V1 protocol shapes.
+`TranscriptEventV1`, `UserActEvidenceV1`, `ExecutionObservationV1`, `EvaluationOutcomeV1`, `FailureEpisodeV1`, `InsightIssueV1`, and Adapt proposal/effectiveness records are versioned internal/domain contracts. Their suffixes version their own schemas; they do not silently expand Membrane's five public V1 context protocol shapes.
 
-N1 migration fixtures must register each internal contract's canonical schema, version, and digest. Moving one onto `membrane-protocol`, MCP, or a public client surface requires a real external consumer plus an explicit public-protocol decision.
+A contract that must cross the CodeRight repository boundary MUST have an explicit CodeRight↔Membrane integration owner, schema/version/digest, compatibility policy, and fixture set. It need not become a generic MCP/public-client shape merely because CodeRight consumes it.
 
----
+## 3.7 CodeRight structured execution observations
+
+Adapt MUST be able to learn from structured harness facts that are stronger than transcript inference.
+
+A canonical `ExecutionObservationV1`-equivalent record should support, when available:
+
+```text
+observation_id
+session_id
+task_id?
+agent_id?
+agent_role?
+timestamp
+model
+provider
+client
+route_policy?
+observation_kind
+subject_id?
+tool/call identity?
+outcome?
+exit/status code?
+duration?
+usage?
+scope/repository?
+artifact/evidence refs[]
+provenance_receipt
+```
+
+Representative observation kinds include:
+
+- model call start/end;
+- route selection;
+- tool call/result/failure;
+- verification command/result;
+- approval requested/granted/denied;
+- edit/write and artifact digest;
+- retry/cancel/timeout;
+- task/goal transition;
+- plan/replan event;
+- subagent spawn/handoff;
+- completion claim;
+- retrieval/context receipt;
+- Push reduction/restore;
+- evaluator result;
+- user steer/correction linkage.
+
+CodeRight records **what happened**. Adapt decides whether the pattern has Taste or Insights meaning.
+
+CodeRight MUST NOT pre-label an observation as a user preference merely because the event looks preference-like. It may run an already-approved Adapt detector/evaluator, but the detector identity and result must remain explicit.
+
+## 3.8 Evaluation outcomes and the CodeRight seam
+
+CodeRight owns generic harness evaluation machinery: traces, datasets, experiment execution, deterministic/code evaluators, LLM judges, score aggregation, model/prompt/routing comparisons, latency/cost measurements, and deployment/harness experiments.
+
+Adapt owns behavioral interpretation of those outcomes.
+
+A canonical `EvaluationOutcomeV1`-equivalent record should bind:
+
+- evaluator identity and version;
+- dataset/case identity and digest;
+- experiment/run identity;
+- trace/session/task identity;
+- score/value/verdict;
+- evaluator execution receipt;
+- model/client/route surface;
+- compared baseline where applicable;
+- timestamp;
+- provenance.
+
+An Adapt Insight may propose a new evaluator. CodeRight executes it. The result flows back to Adapt to measure recurrence or mitigation effectiveness.
+
+## 3.9 Closed behavioral-learning loop
+
+```text
+CodeRight / external host execution
+        |
+        +--> TranscriptEventV1
+        +--> UserActEvidenceV1
+        +--> ExecutionObservationV1
+        +--> EvaluationOutcomeV1
+                    |
+                    v
+                  Adapt
+          +---------+---------+
+          |                   |
+        Taste              Insights
+          |                   |
+          +---------+---------+
+                    |
+             governed proposals
+                    |
+                    v
+                  Cortex
+       durable admission/lifecycle/retrieval
+                    |
+           Membrane Pull/context delivery
+                    |
+                    v
+                CodeRight
+      routing / context / guards / evals
+                    |
+              measured outcome
+                    |
+                    +----------> Adapt
+```
+
+Ledger participates by providing document navigation and source-bound document evidence. It is not the generic telemetry store and its generated session documents are not a substitute for CodeRight's structured event stream.
 
 # 4. Evidence and provenance model
 
@@ -419,8 +561,6 @@ The historical design's signal ladder remains useful as a **weighting default**,
 | repository/doc text | **0 personal Taste authority** |
 
 Strength affects confidence and review policy. It does not permit a lower-authority source to masquerade as a higher-authority source.
-
-Silent acceptance alone MUST NOT activate Taste. It may increase support for a separately authorized candidate. Post-accept edits count only when a host emits authenticated human-act evidence binding before/after content, actor, session, and provenance.
 
 ## 4.3 UserActEvidenceV1 target contract
 
@@ -539,19 +679,19 @@ Unknown or malformed narrowing dimensions MUST reject/quarantine the candidate. 
 
 ## 5.5 Precedence
 
-A safe fixed precedence is:
+A safe starting precedence is:
 
 1. current explicit user instruction;
 2. safety / organization policy;
 3. explicit repository policy and committed agent instructions;
 4. explicit scoped user preference;
-5. explicit global user preference;
-6. inferred scoped user preference;
+5. inferred scoped user preference;
+6. explicit global user preference;
 7. inferred global user preference;
 8. trusted imported preference;
 9. provisional candidate.
 
-A lower tier cannot repeal a higher tier. Authority/evidence class resolves before specificity, so inferred scoped evidence cannot override explicit global evidence. Specificity resolves only within one authority tier. When two applicable items conflict at the same tier and specificity, surface conflict or apply a deterministic explicit rule; retrieval order never decides.
+A lower tier cannot repeal a higher tier. When two applicable items conflict at the same tier, the system must surface conflict or apply a deterministic explicit rule; it must not let retrieval order decide.
 
 ## 5.6 Counterfactual representation
 
@@ -668,32 +808,64 @@ Recommended lifecycle:
 
 State transitions must preserve the underlying episodes. A model upgrade, client change, tool fix, or repository migration may obsolete an Insight without deleting its history.
 
-## 6.4 Current detector families
+## 6.4 Current detector-family contract
 
-At `main@7c05b49`, the Python implementation contains nineteen deterministic detector families, including verification failures, repeated asks, visible frustration, ignored tool failure, false-not-found, broad searching, wrong repo/subsystem, stale terminology, silent scope narrowing, omitted requirements, unaccepted plan changes, tests that cannot fail, cross-agent repeats, unfinished Forge work, guard firings, postmortem asks, and swearing/frustration signals.
+The native Insights implementation now contains the original deterministic families plus the high-cost behavioral classes that were previously roadmap items, including:
 
-Those detectors are implementation evidence, not the permanent limits of Insights.
+- verification failure and false-completion classes;
+- repeated asks/corrections;
+- frustration/swearing signals;
+- ignored tool failure;
+- degraded-provider-as-success;
+- false-not-found;
+- unproductive broad searching;
+- wrong repository/subsystem;
+- stale terminology;
+- silent scope narrowing;
+- omitted requirements;
+- unaccepted plan change;
+- tests that cannot fail;
+- cross-agent repeats;
+- guard firings;
+- overengineering;
+- architecture churn;
+- repeated redesign;
+- planning instead of executing;
+- unnecessary abstraction/dependency;
+- scope expansion;
+- verification theatre;
+- instruction noncompliance;
+- model/client/tool-specific gotchas.
 
-## 6.5 Required additional failure classes
+The family list is not permanent product ontology. New families require an operational definition, evidence contract, hard negatives, benchmark coverage, and lifecycle/applicability rules.
 
-The canonical product must add first-class coverage for common high-cost behavioral failures that are currently underrepresented:
+## 6.5 Known-family detection and emergent discovery are separate lanes
 
-- `overengineering`
-- `architecture_churn`
-- `repeated_redesign`
-- `planning_instead_of_executing`
-- `unnecessary_abstraction`
-- `unnecessary_dependency`
-- `scope_expansion_without_request`
-- `repeated_scope_expansion`
-- `verification_theatre`
-- `false_completion_claim`
-- `instruction_noncompliance`
-- `repeated_user_correction_same_theme`
-- `model_specific_gotcha`
-- `client_or_tool_specific_gotcha`
+Adapt Insights MUST support two complementary lanes:
 
-Detectors must be operationally defined. Labels without measurable criteria are not enough.
+### Known-family lane
+
+Deterministic or otherwise qualified detectors operate against known failure families and emit evidence-bound `FailureEpisodeV1` records.
+
+This lane is optimized for precision and reproducibility.
+
+### Emergent-discovery lane
+
+Adapt may analyze uncategorized/low-confidence trajectories or issue summaries to discover recurring patterns that do not map cleanly to a current family.
+
+Braintrust Topics is the relevant product reference: it converts traces into facet summaries and clusters recurring patterns so failures can emerge without a pre-existing category. Adapt should absorb the **discovery pattern**, not Braintrust's authority model.
+
+An emergent cluster MUST remain a `CandidatePattern`-equivalent proposal until:
+
+1. source episodes are exact and inspectable;
+2. the pattern is stable enough to describe operationally;
+3. a human/reviewer or deterministic validation accepts the family boundary;
+4. positive and adversarial negative cases are created;
+5. a dev split is used for detector/evaluator tuning;
+6. a frozen held-out set meets the promotion gate;
+7. activation records the detector/evaluator version and rollback path.
+
+A clustering model may suggest membership. It may not create durable issue authority merely by producing a cluster.
 
 ## 6.6 Evidence honesty
 
@@ -856,97 +1028,114 @@ The system should create two linked proposals with different semantic types and 
 
 # 9. Runtime relationship
 
-Adapt runtime migration, packaging, process policy, deletion gates, Blueprint/CodeRight seams, and native-only release sequencing are owned exclusively by `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`.
+Adapt runtime migration, packaging, process policy, deletion gates, Blueprint/CodeRight seams, and native-only release sequencing are owned exclusively by the Membrane native-Rust migration specification.
 
-This document contributes Adapt semantics and language-neutral acceptance fixtures to that migration. Current Python implementation remains migration input and a temporary differential oracle only; it is not target architecture.
+This document contributes Adapt semantics, internal/domain contracts, host-integration requirements, and acceptance evidence.
 
----
+The native Adapt and transcript owners exist and are the target authority. Legacy Python Adapt remains only where explicitly classified as release-excluded differential/oracle tooling and MUST NOT be used as evidence that a native defect still exists unless the same defect is shown on the production Rust path.
 
-# 10. Current implementation truth at `main@7c05b49`
+The historical Python `D--Claude` root-scope literal is therefore tracked as a **legacy-oracle/parity/deletion concern**, not automatically as a native production defect. Native root/global selection must be judged from the current Rust delivery/core implementation.
 
-This section is descriptive, not normative. It exists so implementation agents know which canonical contracts already have landed evidence.
+Runtime completion is never inferred from coexistence. Installed execution and process-tree qualification decide the native-only result.
 
-## 10.1 Taste strengths already landed
+# 10. Current implementation truth — refresh-required snapshot
 
-- canonical external-user origin can establish preference authority;
-- assistant/developer/tool/subagent/context provenance is quarantined;
-- direct evidence/source binding exists;
-- immutable/reviewed manifest pipeline exists;
-- payload digests and source-session digests exist;
-- permission-expansion/security weakening refusal exists;
-- held-out semantic validation runs after adjudication and before apply;
-- semantic receipt binding exists in persistence;
-- lifecycle/scoping record structures exist;
-- root-only bounded core concept exists;
-- secret redaction plus gitleaks scanning exists;
-- multi-source frozen transcript snapshots exist beyond the narrow direct path.
+This section is **descriptive, not normative**. Before implementation begins, an agent MUST re-derive it from current `main` and update the status table in the same change if the facts have moved. Do not freeze the entire product canon to a moving commit header.
 
-## 10.2 Taste implementation gaps
+## 10.1 Native platform already demonstrated
 
-- production learning does not yet consume a complete accept/reject/post-accept-edit signal stream;
-- final semantic/applicability sealing is incomplete;
-- semantic duplicate-group membership is model-decided;
-- scope dimensions are narrower than the canonical target;
-- malformed scope normalization can widen applicability if not made fail closed;
-- core compilation has a literal workspace/root assumption (`D--Claude`) that is nonportable;
-- local `rules.json` projection may omit lifecycle/scope semantics and must not be treated as a canonical mirror;
-- signed evidence-preserving export/import is absent;
-- user-facing inspect/edit/narrow/delete/distribution UX is incomplete.
+Current repository evidence demonstrates these mechanisms exist in the native target:
 
-## 10.3 Multi-source status
+- `membrane-transcript` native owner with multi-host discovery/parsing;
+- `membrane-adapt` native owner;
+- Taste/Insights semantic separation;
+- three distinct admission types/boundaries;
+- immutable semantic/applicability sealing plus receipted mutable state;
+- authenticated user-act evidence contract;
+- structured scope selection;
+- native Taste delivery/effectiveness receipts;
+- signed Taste export/import;
+- `FailureEpisodeV1`/`InsightIssueV1`-style native issue formation;
+- expanded high-cost behavioral detector families;
+- remediation proposal types with effect separation;
+- precision gating before actionable remediation;
+- mitigation/recurrence tracking;
+- adaptive A/B/effectiveness/retirement measurement structures;
+- persistent-context cost accounting with measured/inferred/unattributed separation;
+- root CI capable of running the locked Rust workspace.
 
-One native Rust owner now discovers & parses raw Claude Code, Codex,
-CommandCode, Cline, OpenCode, Qwen, Pi, Gemini, Grok Build, Roo/Cline, & Cursor
-stores. `membrane adapt mine --discover-open` records typed per-source omissions;
-readable zero-event input cannot report empty success. Frozen snapshots remain
-accepted migration inputs, not production parser dependencies.
+Presence does not equal production qualification. Each mechanism still inherits the Membrane production-path/evidence gate.
 
-| Host | Native discovery | Raw parser | Source identity/provenance fixture | Notes |
-|---|---:|---:|---:|---|
-| Claude Code | yes | yes | yes | JSONL |
-| Codex | yes | yes | yes | JSONL |
-| CommandCode | yes | yes | yes | JSONL; checkpoint files excluded |
-| Cline | yes | yes | yes | JSON document |
-| OpenCode | yes | yes | yes | SQLite; open sessions only |
-| Qwen | yes | yes | yes | standalone Qwen/Qwen Code JSONL roots |
-| Pi | yes | yes | yes | JSONL |
-| Gemini | yes | yes | yes | JSON or JSONL |
-| Grok Build | yes | yes | yes | JSONL |
-| Roo/Cline | yes | yes | yes | Cursor/Code roots on Mac & Windows |
-| Cursor | yes | yes | yes | SQLite; open root composers only |
+## 10.2 Taste remaining product gaps
 
-User-act authority remains evidence-contract constrained; parser coverage alone
-does not upgrade assistant, tool, synthetic, or inferred text into user acts.
+The important remaining Taste work is no longer "port the Python pipeline."
 
-## 10.4 Insights strengths already landed
+Pending work is:
+
+- prove host-specific accept/reject/post-accept-edit/named-choice signals on real CodeRight and other supported hosts;
+- complete end-user inspect/edit/narrow/delete/review UX;
+- accumulate real effectiveness evidence showing fewer repeated corrections without correctness/security regression;
+- validate bounded always-on core selection on the native path;
+- keep legacy Python-only assumptions such as `D--Claude` outside production and delete or bound them as oracle evidence;
+- qualify signed import/export and organization packaging against real origin/precedence scenarios;
+- ensure the CodeRight structured-observation seam cannot launder runtime events into Taste authority.
+
+## 10.3 Multi-source transcript/event status
+
+The native transcript owner supports direct discovery/parsing across the supported external-host set. Before implementation, regenerate the host capability matrix from the native source and tests rather than copying a stale table.
+
+Parser coverage alone does not establish user-act authority. UI acts remain authoritative only through authenticated host events that satisfy `UserActEvidenceV1`.
+
+For CodeRight, structured direct emission is preferred to file scraping.
+
+## 10.4 Insights already landed
+
+Current native evidence includes:
 
 - deterministic episode detectors;
-- exact event/span evidence;
-- deterministic card identities;
-- explicit honesty-limit copy;
-- verification-negation handling for one known false-positive class;
-- provider-reported token totals and conservative inferred attribution;
-- separate reference-only Cortex persistence module.
+- high-cost behavioral families such as overengineering, architecture churn, scope expansion, verification theatre, false completion, and instruction noncompliance;
+- exact evidence linkage;
+- longitudinal issue/recurrence semantics;
+- remediation proposals;
+- recurrence-after-mitigation logic;
+- a sealed portable synthetic conformance corpus;
+- a Rust benchmark gate over that corpus;
+- model/client surface measurement structures.
 
-## 10.5 Insights implementation gaps
+## 10.5 Insights remaining quality gaps
 
-- no portable labelled benchmark with per-detector precision/recall;
-- real-transcript tests are machine-local/skipped on clean environments;
-- no first-class `InsightIssueV1` longitudinal issue object;
-- semantic recurrence/clustering remains weak;
-- major behavioral families such as over-engineering and architecture churn are not first-class;
-- no complete issue → guard/evaluator/remediation → recurrence-measurement loop;
-- primary CLI/report story and persistence story are inconsistent;
-- always-on context cost is measured as unexplained prefix/overhead but not resolved to specific persistent sources;
-- quote/context-carried verification language remains a false-positive class to benchmark.
+The most important remaining gaps are:
 
-## 10.6 CI/runtime gap
+1. **Real held-out validation.** The synthetic portable corpus is a contract/conformance suite, not empirical proof of detector precision across messy real sessions.
+2. **Emergent failure discovery.** Known-family detectors do not discover failure modes nobody predeclared.
+3. **Confirmed issue → regression/evaluator loop.** The proposal types exist; the complete reviewed dataset/evaluator/CodeRight execution/recurrence loop must be operationalized.
+4. **Human review queue.** Operators need a first-class confirm/dismiss/split/merge/remediation workflow.
+5. **Structured harness evidence.** CodeRight should supply direct execution observations so Insights does not infer mechanical facts from prose when the harness already knows them.
+6. **Production effectiveness.** Recurrence reduction must be demonstrated on comparable exposure after mitigation.
+7. **Retrieval/context learning.** Pull/Ledger/Push outcome signals should become Insights evidence for recurring retrieval and context failures without granting Adapt authority over those subsystems.
 
-Root repository CI does not currently establish native Adapt correctness or native-only runtime closure.
+## 10.6 Synthetic vs real evidence
 
-The end state must run Adapt contract/evaluation tests from the Rust workspace and include an installed-artifact test with Python/Node absent for Membrane-owned Adapt behavior.
+The portable synthetic benchmark remains mandatory because it is deterministic, portable, adversarial, and reproducible.
 
----
+It is **not** sufficient for claims such as "detector precision is 95% in production."
+
+Production-quality claims require a separately governed real-world corpus with:
+
+- consent/redaction policy;
+- host/model/client/task segmentation;
+- frozen labelled examples;
+- positives and hard negatives;
+- no training/tuning leakage into the final held-out split;
+- reviewer agreement or adjudication;
+- confidence intervals;
+- reproducible detector/evaluator version binding.
+
+## 10.7 Canon drift is a defect
+
+If the implementation-status section says a native feature is absent when current code contains it, or claims a feature is shipped when the production path cannot reach it, the document is defective.
+
+Implementation agents MUST fix status drift before using §10 as work-dispatch authority.
 
 # 11. Evaluation and quality gates
 
@@ -972,21 +1161,48 @@ Existing Adapt quality work has used high precision as the primary goal (for exa
 
 ## 11.2 Insights evaluation
 
-Per-detector benchmarking is P0 for Insights automation.
+Insights has two distinct evaluation layers.
 
-Every detector or issue-family promotion should measure:
+### A. Portable conformance corpus
+
+The checked-in synthetic corpus proves:
+
+- detector contract behavior;
+- explicit positive and negative cases;
+- negation handling;
+- quoted/context-carried text handling;
+- tool-result/hypothetical traps;
+- deterministic portability;
+- schema/seal integrity.
+
+It MUST remain fast and deterministic.
+
+### B. Real held-out corpus
+
+Before production precision claims or broad automated remediation, evaluate against sanitized/consented real trajectories.
+
+Methodology:
+
+1. define the target population and minimum detectable effect;
+2. build a labelled pool across hosts/models/clients/task classes;
+3. split into **train/authoring**, **dev/tuning**, and **held-out test**;
+4. tune regexes, thresholds, clustering/evaluator prompts, and weights only on dev;
+5. freeze implementation and thresholds;
+6. touch held-out test only for the promotion decision;
+7. report paired bootstrap confidence intervals or another predeclared interval method;
+8. preserve family-level confusion matrices and dismissal rates.
+
+A small corpus may be adequate for contract regressions but not for fine-grained rank/precision claims. Sample size must be justified by the effect the gate is expected to detect.
+
+Every promoted detector/discovery/evaluator family should measure where applicable:
 
 - precision;
-- recall where a labelled corpus makes recall knowable;
-- false positives from negation;
-- quoted/context-carried text;
-- tool-result text;
-- assistant narration of hypothetical failures;
-- cross-session duplicate detection;
+- recall;
+- false positives from negation/quotation/tool-carried text;
+- cross-session recurrence correctness;
 - severity calibration;
-- user-dismissal rate.
-
-Detector precision is a blocker for automatic remediation **inside the Insights lane**. It is not a global blocker for independent Taste, documentation, Rust migration, integrity, or CI work.
+- user/reviewer dismissal rate;
+- model/client/task drift.
 
 ## 11.3 Outcome metrics
 
@@ -1092,7 +1308,7 @@ The canonical method is:
 
 Initial findings:
 
-- `apparently_unused_always_on_context`
+- `unused_always_on_context`
 - `oversized_instruction_file`
 - `mcp_tool_definitions_dominate`
 - `always_on_prefix_dominates`
@@ -1100,119 +1316,241 @@ Initial findings:
 
 This feature belongs to Insights. It does not make Adapt a memory system merely because memory/index files may be one possible source of persistent prompt cost.
 
-`apparently` is load-bearing: absence of lexical overlap or recall events cannot prove a persistent source had no behavioral influence.
-
 ---
 
 # 14. Ranked implementation plan
 
-## P0 — product boundary and runtime closure
+The native migration sequence is not repeated here. This is the **remaining Adapt product roadmap**.
 
-### P0.1 Commit this canonical ontology
+## P0 — truth, evidence, and CodeRight seam
 
-- make this document the Adapt normative source;
-- update canonical Membrane doctrine to point to it;
-- update `docs/subsystems/adapt.md`;
-- regenerate product/architecture docs from corrected source templates;
-- update Adapt README and agent rules.
+### P0.1 Reconcile canon with current implementation
 
-### P0.2 Add an ontology regression gate
+- re-derive §10 from current `main`;
+- remove dead/missing research-plan references;
+- update current-product terminology from historical Guide to **Ledger**;
+- ensure README/agent rules/generated truth project the same semantics;
+- keep implementation baseline metadata separate from normative product semantics.
 
-Fail CI when current-product docs describe:
+### P0.2 Enforce the Membrane production-path evidence invariant
 
-- Adapt as a memory system/substrate/control plane;
-- Taste as memory;
-- Insights as memory;
-- generic "learned memories" when the object is a Taste preference or Insight;
-- Cortex as if it were identical to Adapt.
+Adapt inherits the cross-cutting doctrine:
 
-The checker should allow legitimate phrases such as `Cortex durable memory`, `agent memory`, and historical research quotations in explicitly marked historical/research locations.
+> A capability is not landed merely because code exists. Completion requires proof that the production path executes it and frozen evidence that it meets or improves the acceptance baseline.
 
-### P0.3 Bind Adapt delivery to native migration
+For Adapt this means:
 
-Implement Adapt runtime cutover only through the companion migration plan. Freeze this document's contracts as language-neutral fixtures before porting and preserve Python only as a bounded differential oracle until its deletion gate passes.
+- native CLI/runtime path reaches the mechanism;
+- test/trace/receipt proves reachability;
+- representative benchmark/outcome evidence exists;
+- rollback/deactivation is defined where behavior changes;
+- a parallel legacy path cannot silently remain selectable after cutover.
 
-### P0.4 Complete semantic/applicability sealing
+### P0.3 Build the real held-out Insights corpus
 
-Implement immutable semantic payload + receipted mutable lifecycle transitions.
+Keep the portable synthetic corpus as conformance.
 
-### P0.5 Build a portable labelled Insights benchmark
+Add a governed real-world corpus with:
 
-Include positive, negative, negated, quoted, tool-carried, hypothetical, cross-session, and real failure cases.
+- explicit corpus charter;
+- redaction/consent rules;
+- host/model/client/task stratification;
+- train/dev/test separation;
+- paired evaluation where possible;
+- confidence intervals;
+- exact detector/evaluator versioning;
+- no final-test tuning.
 
-### P0.6 Resolve the Insights admission boundary
+Automatic remediation remains blocked for families that do not meet the real-corpus gate unless the effect is independently deterministic and verified at execution time.
 
-All durable Insight issues/references must cross the same explicit Cortex admission architecture, with reference-only influence by default.
+### P0.4 Add the CodeRight typed evidence seam
 
-### P0.7 Put Adapt in root/native CI
+CodeRight should emit:
 
-During migration: run Python-vs-Rust contract/differential tests.
+- transcript/event facts;
+- authenticated user acts;
+- execution observations;
+- evaluation outcomes;
+- Membrane context/retrieval receipts.
 
-Final state: Rust tests are authoritative; installed artifact runs with Python/Node absent for Membrane-owned Adapt behavior.
+Adapt consumes these through typed native APIs/contracts, not by reparsing CodeRight prose.
 
-## P1 — richer Taste
+Mechanical facts known to the harness SHOULD NOT be re-inferred from text.
 
-### P1.1 Add user-act signal capture
+### P0.5 Validate native bounded-core/root semantics
 
-Implement host-specific accept/reject/post-accept-edit/named-choice adapters with explicit capability reporting.
+- prove current native global/root standing-preference selection;
+- ensure malformed or unknown narrowing metadata cannot broaden scope;
+- confirm inactive/disputed/retired records never enter the core;
+- classify legacy Python `D--Claude` behavior as oracle/deletion evidence only unless reproduced in native code;
+- add production-path coverage for the native core.
 
-### P1.2 Add counterfactual preferences
+## P1 — operationalize richer learning
 
-Preserve rejected/preferred alternatives where evidence supports them.
+### P1.1 Braintrust-style emergent failure discovery
 
-### P1.3 Risk-tier review UX
+Add a proposal-only discovery lane over uncategorized/low-confidence trajectories:
 
-Example policy:
+```text
+events/observations
+    -> bounded summaries/features
+    -> semantic clustering
+    -> CandidatePattern
+    -> reviewer validation
+    -> detector/evaluator authoring
+    -> dev tuning
+    -> held-out promotion
+```
 
-- explicit high-confidence user preference with safe bounded scope → low-friction admission;
-- inferred edit pattern → review or provisional;
-- broad global inference → review required;
-- safety/security/permission-adjacent candidate → fail closed / explicit review.
+Do not let a model-created cluster become a durable issue or guard without this promotion path.
 
-### P1.4 Delivery receipts and effectiveness telemetry
+### P1.2 Insights review queue
 
-Measure selection, adherence, correction, override, and retirement.
+Borrow the useful human-workflow idea from Langfuse annotation queues without adopting its generic score model as Adapt ontology.
 
-### P1.5 Signed export/import
+The review surface should support:
 
-Export semantic record + evidence digests + provenance + scope + authority + lifecycle history. Imports remain lower precedence than local explicit preference unless explicitly promoted.
+- confirm/dismiss episode;
+- confirm/dismiss issue;
+- split/merge with receipts;
+- inspect exact evidence;
+- review candidate mechanism;
+- approve/reject remediation;
+- approve/reject regression case;
+- mark obsolete;
+- review recurrence after mitigation.
 
-## P1 — operationalize Insights
+### P1.3 Confirmed Insight → regression case
 
-### P1.6 Add `InsightIssueV1`
+A confirmed issue may generate a privacy-safe `RegressionCaseProposal`.
 
-Cluster episodes into longitudinal issues while preserving episode evidence.
+Promotion should preserve:
 
-### P1.7 Add missing behavioral families
+- source issue/evidence references;
+- redaction/synthesis provenance;
+- expected failure/non-failure behavior;
+- case family;
+- evaluator needs;
+- review receipt;
+- immutable case digest.
 
-Prioritize over-engineering, architecture churn, scope expansion, planning-instead-of-doing, false completion, and instruction noncompliance.
+Do not blindly copy private transcript text into permanent eval datasets.
 
-### P1.8 Add hybrid recurrence discovery
+### P1.4 Versioned evaluator lifecycle
 
-Use deterministic detectors for high-precision signatures plus semantic clustering for recurrence discovery. Model-assisted clustering remains a proposal until evidence grouping is verified.
+Adapt may define behavioral evaluator proposals; CodeRight owns generic evaluator execution.
 
-### P1.9 Add guard/evaluator/remediation proposals
+A promoted evaluator should bind:
 
-Keep effect/authority separate from the Insight record.
+- evaluator id/version;
+- source Insight issue/family;
+- code/prompt digest;
+- dataset/case contract;
+- score/verdict semantics;
+- optimization direction;
+- applicable models/clients/tasks;
+- execution receipt requirements;
+- retirement/supersession state.
 
-### P1.10 Add mitigation outcome tracking
+Phoenix's dataset-evaluator model is a useful reference: attach reusable evaluators to stable test cases and trace evaluator execution.
 
-Measure recurrence after intervention and reopen issues on regression.
+### P1.5 Close the improvement loop
 
-### P1.11 Implement persistent-context cost attribution
+Operationalize:
 
-Use measured totals and honest inferred splits.
+```text
+production failure
+ -> Insight issue
+ -> reviewed regression case/evaluator
+ -> CodeRight baseline experiment
+ -> remediation/harness/prompt/routing change
+ -> repeat experiment
+ -> deploy if gate passes
+ -> online recurrence measurement
+ -> close or reopen Insight
+```
+
+This follows the useful Braintrust/Langfuse/Phoenix loop while preserving Adapt authority and Cortex admission.
+
+### P1.6 Complete host user-act integration
+
+For CodeRight and every supported host that can expose the signals, qualify:
+
+- accept;
+- reject;
+- post-accept edit;
+- repeated edit;
+- named choice;
+- explicit correction.
+
+Unavailable signals must remain explicitly unavailable; do not infer authenticated UI acts from assistant text.
+
+### P1.7 Deterministic completion/evidence integrity
+
+Absorb CHIRON/HORKOS lessons:
+
+- prefer deterministic capture when the event is mechanically knowable;
+- completion claims should be cross-referenced against real execution/artifact/verification receipts;
+- zero-LLM live guards are preferable for exact write/verification facts;
+- every false-positive fix becomes a benchmark case.
+
+CodeRight may enforce approved completion guards live. Adapt records recurrence/effectiveness and learns broader patterns; it does not need to be in the blocking hot path for every exact receipt check.
+
+### P1.8 Retrieval/context failure learning
+
+Consume typed Pull/Ledger/Push outcome signals such as:
+
+- repeated irrelevant Ledger retrieval;
+- required evidence omitted then searched manually;
+- stale/missing resolver failures;
+- context packet insufficient then corrected;
+- Push reduction restored because protected evidence was lost;
+- persistent context source repeatedly selected but apparently unused.
+
+Adapt may propose ranking, alias, chunking, query, or reduction changes. The owning subsystem must evaluate and promote them against its frozen corpus.
 
 ## P2 — measured adaptive behavior
 
-- Taste counterfactual A/B evaluation;
-- per-model/client Taste effectiveness;
-- per-model/client Insight recurrence;
-- automatic retirement suggestions after model/tool changes;
-- team/org Taste packaging only after origin and precedence contracts are proven;
-- organization-level aggregate Insight analytics without leaking personal/private transcript content.
+### P2.1 Taste effectiveness in real workloads
+
+Measure baseline vs Taste-enabled comparable tasks for:
+
+- repeated-correction rate;
+- correctness;
+- policy compliance;
+- token/context overhead;
+- user overrides;
+- per-model/client effects.
+
+### P2.2 Insight mitigation effectiveness
+
+Track exposure-adjusted recurrence before and after mitigation, not raw counts alone.
+
+### P2.3 Model/client-specific routing evidence
+
+Adapt may identify recurring surface-specific gotchas. CodeRight's routing/eval plane decides whether a routing change is beneficial through controlled experiments.
+
+### P2.4 Retirement and drift
+
+Use meaningful model/client/tool/repository changes plus measured effectiveness to propose retirement or revalidation. Never silently decay authority with time.
+
+### P2.5 Organization aggregates
+
+Only after privacy and origin contracts are proven, support aggregate failure/preference effectiveness without leaking transcript text or individual user identity.
 
 ---
+
+## Roadmap exclusion rule
+
+Do not add a feature to Adapt merely because it appears in Braintrust, Langfuse, Phoenix, CHIRON, HORKOS, or another comparator.
+
+A feature belongs in Adapt only when it is specifically about **behavioral learning from experience**.
+
+Generic tracing, dataset storage, experiment execution, model comparison, and scorer infrastructure belong in CodeRight.
+
+Document indexing belongs in Ledger.
+
+Durable admission/lifecycle/storage/retrieval belongs in Cortex.
 
 # 15. Documentation and terminology firewall
 
@@ -1279,184 +1617,225 @@ Do not silently rewrite historical evidence in a way that changes what was origi
 
 # 16. Research-derived lessons (non-normative)
 
-Research is evidence for improvement, not product authority. External product behavior may change and must be reverified before making time-sensitive claims.
+Research is evidence for improvement, not product authority. External products change; reverify their current behavior before relying on specific shipping claims.
 
 ## 16.1 Taste comparators
 
 ### Command Code Taste
 
-Closest direct shipping comparator identified. Useful mechanisms:
+Closest direct shipping comparator for the Taste product surface.
 
-- accept/reject/post-accept-edit signals;
-- project/global/remote Taste packaging;
+Useful mechanisms:
+
+- explicit and behavioral user signals;
+- project/global/distributed Taste packaging;
 - inspect/list/lint/push/pull/compose UX;
-- immediate in-session conditioning.
+- immediate conditioning.
 
-Adapt should absorb signal breadth and distribution UX without adopting opaque authority or allowing inferred preferences to outrank explicit committed policy.
-
-### Vorpl
-
-Relevant behavioral-learning comparator because it learns corrections/preferences/repeated patterns and measures rule effectiveness. Useful lesson: measure whether learned interventions actually change outcomes.
+Adapt should absorb signal breadth and distribution UX without allowing inferred preferences to outrank authored/current policy.
 
 ### CHIRON
 
-Relevant correction-to-rule compiler. Useful lesson: keep correction/gotcha evidence inspectable and contradiction-aware.
+Verified public repository lessons:
 
-### Gensyn CodeAssist
+- deterministic gates;
+- zero LLM in the capture path;
+- reviewable correction-to-rule records;
+- contradictions surfaced rather than silently resolved;
+- reproducible local benchmark suite.
 
-Historical precedent for learning from typing/fixes/deletions/retained output. Useful for signal design, not a current shipping benchmark.
+The public README currently reports a 35/35 benchmark suite. This is vendor/self-reported evidence, but the benchmarks are shipped and rerunnable.
+
+Adapt's lesson is not "copy CHIRON's ontology." It is: when a fact can be captured deterministically, do not insert a model into the authority path merely for convenience.
+
+### Vorpl / Gensyn / adjacent systems
+
+Useful primarily for behavioral-signal and effectiveness ideas. They do not define Adapt's authority model.
 
 ## 16.2 Insights comparators
 
-### LangSmith Insights / Engine
+### Braintrust Topics / eval improvement loop
 
-Strong reference for recurring failure discovery and the detect → diagnose → fix → evaluator → regression/reopen loop.
+Official Braintrust material describes:
 
-### Braintrust Topics / Loop
+- trace preprocessing;
+- LLM-derived facets including Issues;
+- recurring-topic clustering;
+- classification of new traces into discovered topics;
+- production finding → dataset → baseline → fix → eval → deploy → online monitoring.
 
-Useful for semantic issue discovery and turning recurring problems into datasets/scorers/optimization loops.
+Adapt should absorb:
+
+- unknown failure-pattern discovery;
+- recurring pattern review;
+- conversion of confirmed production failures into governed regression cases.
+
+Adapt must retain stronger proposal/evidence/authority separation than a generic observability topic classifier.
+
+### Langfuse
+
+Official Langfuse evaluation material provides useful workflow patterns:
+
+- traces/observations/sessions;
+- generic scores;
+- online and offline evaluation;
+- production examples promoted into datasets;
+- experiments comparing prompt/model/code variants;
+- deterministic or LLM evaluators;
+- annotation queues for structured human review.
+
+The generic tracing/score/dataset/experiment platform belongs in CodeRight. Adapt should absorb the **behavioral review workflow** and consume typed evaluation outcomes.
+
+### Arize Phoenix
+
+Official Phoenix material provides useful evaluator/experiment patterns:
+
+- datasets as stable test suites;
+- reusable dataset evaluators;
+- deterministic code evaluators and LLM evaluators;
+- evaluator execution traces;
+- experiments over prompts/models/application changes;
+- failure-mode review followed by evaluator creation.
+
+Again, generic execution belongs in CodeRight. Adapt owns the semantic link from an Insight issue to a proposed evaluator and the recurrence/effectiveness interpretation afterward.
 
 ### HORKOS
 
-Narrow deterministic enforcement reference for explicit guardable failure classes.
+Verified public repository lessons:
 
-### Phoenix
+- live write ledger;
+- completion claims cross-checked against real writes/artifacts;
+- deterministic/zero-LLM audit path;
+- explicit unknown/unverified behavior;
+- offline-rerunnable audit receipts;
+- false positives turned into regression scenarios.
 
-Useful observability/evaluation/annotation substrate; not by itself a complete Adapt Insights product.
+The public README currently reports 59/59 in its full deterministic benchmark suite.
 
-### Failure research
+Adapt should treat exact completion/receipt mismatches as structured evidence. CodeRight may enforce an approved exact guard live; Adapt should learn whether and where the failure recurs.
 
-MAST, TRAIL, coding-agent failure studies, Who&When Pro, and related work provide taxonomies and labelled trajectories useful for benchmarking Insights. They are not a reason to broaden Insights beyond what can be honestly detected from available evidence.
+### Agent-failure research
+
+MAST, coding-agent failure studies, model/client-specific failure research, and other labelled-trajectory work are useful for family taxonomies and held-out evaluation. They do not justify failure labels that cannot be honestly supported by the available evidence.
 
 ## 16.3 Adjacent memory systems
 
-Claude Code auto memory, Codex memories, Cline memory banks, Cursor rules, and similar systems may provide useful storage/retrieval/editing UX patterns.
+Claude Code auto memory, Codex/Cline/Cursor memory/rules systems and similar products may provide editing/distribution UX patterns.
 
-They are **not direct Adapt competitors** and must not be used to define Adapt's semantic category.
-
----
+They are not direct Adapt competitors and must not define Adapt's semantic category.
 
 # 17. Source register
 
-## 17.1 Current Membrane / Adapt implementation
+## 17.1 Current repository evidence
 
-- `main@7c05b49b6f9ea202116f6829e4f74949a4529592` — held-out semantic admission repair
-- `f602fbbaec1d13629e6b09ca4d6d4c07277ad7ba` — multi-source transcript learning
-- `adapt/src/adapt/taste_v2.py`
-- `adapt/src/adapt/taste_v2_pipeline.py`
-- `adapt/src/adapt/preference_record.py`
-- `adapt/src/adapt/manifest.py`
-- `adapt/src/adapt/taste_apply.py`
-- `adapt/src/adapt/semantic_validate_manifest.py`
-- `adapt/src/adapt/consolidate_manifest.py`
-- `adapt/src/adapt/insights.py`
-- `adapt/src/adapt/insight_persistence.py`
-- `adapt/src/adapt/token_spend.py`
-- `adapt/src/adapt/transcript_snapshots.py`
-- `adapt/src/adapt/mine_snapshot_manifest.py`
-- `continuity/transcript/`
-- `scripts/run-adapt-installed-current.mjs`
-- `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
-- `docs/subsystems/adapt.md`
-- `adapt/README.md`
+Before execution, regenerate this inventory from current `main`.
 
-## 17.2 Reconciled Adapt research
+Canonical implementation owners to inspect include:
 
-- Claude consolidated analysis commit `c0a1b463a6a792ea5a8c931d4791715a0e3ef497`
-- prior Claude research commit `35711f965463b80d8d2a24875e83f1305f28d69d`
-- `docs/research/competitors/adapt-analysis.md`
-- external verified analysis previously retained as `sources/ADAPT-BEHAVIORAL-LEARNING-ANALYSIS.md`
+- `engine/crates/membrane-adapt/`
+- `engine/crates/membrane-transcript/`
+- Adapt native CLI integration in Membrane runtime;
+- Cortex admission/retrieval APIs;
+- Ledger document/index integration;
+- Pull context receipts;
+- Push reduction/restore receipts;
+- root CI and runtime-language manifest;
+- CodeRight integration crates/configuration where available.
 
-## 17.3 Taste references
+Legacy sources under `adapt/src/adapt/` and legacy tests are differential/oracle evidence only where the runtime-language manifest says they are release-excluded.
 
-- https://commandcode.ai/docs/taste
-- https://commandcode.ai/blog/taste-skills-rules
-- https://commandcode.ai/docs/core-concepts/memory — relevant specifically because Command Code separates memory from Taste
-- https://vorpl.ai/
-- https://github.com/eragonlonelyboy-lab/chiron
-- https://docs.gensyn.ai/testnet/codeassist
+## 17.2 External product/research references
 
-## 17.4 Insights references
+Taste:
 
-- https://docs.langchain.com/langsmith/insights
-- https://docs.langchain.com/langsmith/engine
-- https://www.braintrust.dev/docs/observe/topics
-- https://www.braintrust.dev/docs/loop
-- https://arize.com/docs/phoenix
-- https://github.com/eragonlonelyboy-lab/horkos
-- https://arxiv.org/abs/2605.29442
-- https://github.com/multi-agent-systems-failure-taxonomy/MAST
-- https://arxiv.org/abs/2607.09996
-- https://arxiv.org/abs/2607.18754
+- Command Code Taste documentation
+- CHIRON — https://github.com/eragonlonelyboy-lab/chiron
+- Vorpl
+- Gensyn CodeAssist
 
----
+Insights/eval loop:
 
-# 18. Codex / implementation-agent instructions
+- Braintrust Topics — https://www.braintrust.dev/docs/observe/topics
+- Braintrust eval improvement loop — https://www.braintrust.dev/foundations/understanding-the-eval-improvement-loop
+- Langfuse evaluation overview — https://langfuse.com/docs/evaluation/overview
+- Langfuse annotation queues — https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
+- Langfuse datasets/experiments — https://langfuse.com/docs/evaluation/experiments/datasets
+- Phoenix datasets/evaluators/experiments — https://arize.com/docs/phoenix/datasets-and-experiments/
+- HORKOS — https://github.com/eragonlonelyboy-lab/horkos
 
-An agent asked to implement or repair Adapt MUST begin from this section and the current repository head.
+Research references should be maintained in a separate research companion when detailed claims, benchmark tables, or competitor matrices are needed. The canonical product document should retain only stable architectural lessons.
+
+# 18. Implementation-agent instructions
+
+An agent implementing or repairing Adapt MUST start here and from current repository truth.
 
 ## 18.1 Preflight
 
-1. Confirm `main` HEAD; do not assume `7c05b49` is still current.
+1. Resolve current `main`; do not trust a stale commit printed in a historical status section.
 2. Read this canonical document.
-3. Read current Membrane canonical doctrine and native-runtime migration spec.
-4. Inspect `adapt/`, `continuity/`, Cortex admission APIs, root CI, generated docs, and installed Adapt launch sites.
-5. Classify work as one of:
+3. Read current Membrane canonical doctrine.
+4. Read the native-runtime migration spec.
+5. Read the Ledger canonical plan and CodeRight integration plan when the task crosses those seams.
+6. Inspect current native owners before touching the Python oracle.
+7. Re-derive §10 and the applicable capability matrix.
+8. Classify the task as:
    - ontology/docs;
-   - native migration;
-   - Taste behavior;
-   - Insights behavior;
+   - Taste;
+   - Insights;
+   - CodeRight evidence seam;
    - shared admission/integrity;
-   - evaluation/CI.
-6. Do not mix unrelated categories in one large implementation unless dependency order requires it.
+   - evaluation/CI;
+   - retrieval/context-feedback integration.
 
 ## 18.2 Hard constraints
 
-- Do not call Adapt memory.
+- Do not call Adapt a memory system.
 - Do not treat agent-authored memories as Taste authority.
 - Do not let Insights establish user preference.
 - Do not create a second durable store.
-- Do not add new production Python/Node implementation as a shortcut.
+- Do not make CodeRight raw tracing a Cortex replacement.
+- Do not make Ledger a raw transcript authority.
+- Do not add production Python/Node as a shortcut.
 - Do not weaken explicit policy precedence.
 - Do not widen malformed scopes.
-- Do not preserve known integrity defects for bug-for-bug parity during the Rust port.
-- Do not automate remediation from unmeasured Insight detectors.
-- Do not claim completion while installed Adapt still needs Python.
+- Do not tune against the final held-out benchmark.
+- Do not let a model-created cluster become an authoritative issue/family without promotion evidence.
+- Do not automate broad remediation from unqualified detectors.
+- Do not claim a capability is landed because a module or index exists.
 
-## 18.3 First documentation repair
+## 18.3 Production-path proof rule
 
-The first bounded docs change should:
+For every capability claimed complete, provide:
 
-- add this canonical document at a stable path such as `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`;
-- point `docs/subsystems/adapt.md` to it;
-- update Membrane doctrine's Adapt section;
-- rewrite Adapt README product description/surfaces;
-- update Adapt `AGENTS.md`/`CLAUDE.md` guidance;
-- update the product-truth generator source, then regenerate generated docs;
-- add an ontology terminology checker to CI;
-- mark older `coding-taste memory` plans as historical/superseded rather than current truth.
+1. **source proof** — implementation exists;
+2. **integration proof** — the actual production path calls it;
+3. **behavior proof** — the intended semantic behavior is exercised;
+4. **measured proof** — where replacing/optimizing a path, frozen evidence shows it meets the acceptance threshold;
+5. **installed proof** — when packaging/runtime is relevant, the installed candidate reaches the same path.
+
+A test that proves outputs are unchanged whether a new mechanism is present or absent is evidence that the mechanism may be inert, not evidence that it shipped.
 
 ## 18.4 Runtime work order
 
-Follow the companion migration plan's N0-N10 sequence. This document decides Adapt meaning and feature dependencies; it does not create a second runtime sequence.
+Follow the companion native migration plan for runtime sequencing. This document defines Adapt meaning and remaining product work; it does not create a second native-port sequence.
 
 ## 18.5 Acceptance evidence
 
-An implementation is not complete because code exists. Required evidence includes:
+Depending on scope, evidence includes:
 
-- contract tests;
-- adversarial authority tests;
+- authority/adversarial tests;
+- exact evidence binding;
 - scope fail-closed tests;
 - semantic-seal mutation tests;
-- portable Insights benchmark results;
+- portable synthetic corpus;
+- real held-out corpus and interval report;
 - native Rust tests;
-- installed-artifact process-tree evidence;
-- Python/Node-absent Adapt execution evidence;
-- regenerated docs check;
-- ontology terminology CI pass;
-- deletion receipt for retired production Python paths.
-
----
+- production-path execution receipts;
+- CodeRight integration fixtures;
+- evaluation experiment receipts;
+- ontology terminology CI;
+- native installed-artifact evidence;
+- deletion/exclusion proof for retired interpreter paths.
 
 # 19. Final canonical decisions
 
@@ -1471,19 +1850,27 @@ The following are the final product shape unless a future architecture amendment
 7. **Cortex owns durable admission/storage/lifecycle/retrieval; Adapt does not become a parallel store.**
 8. **Authored/current policy outranks learned Taste.**
 9. **Taste delivery is bounded-core plus cheap scoped preference selection, not full-memory reconstruction.**
-10. **Insights is episode/issue/outcome oriented and must measure recurrence reduction.**
+10. **Insights is episode/issue/outcome oriented and optimizes recurrence reduction.**
 11. **Durable semantics are sealed; mutable lifecycle changes are receipted.**
 12. **Malformed narrowing scope fails closed.**
 13. **`episodic_fact` is not a Taste semantic class.**
-14. **Model-generated extraction/clustering/remediation is proposal-only until bound to evidence and deterministic policy.**
-15. **The final Membrane-owned Adapt runtime is native Rust.**
-16. **Python Adapt is migration scaffolding and must be deleted from installed production paths after parity/cutover.**
-17. **Insights detector measurement gates automation in the Insights lane, not unrelated Adapt work.**
-18. **Competitor research is evidence, not product ontology.**
-19. **CI must prevent Adapt/memory conflation from re-entering current documentation.**
-20. **The measure of success is fewer repeated corrections and fewer recurring failures, without weakening correctness, security, or user authority.**
-
----
+14. **Model-generated extraction/clustering/remediation is proposal-only until bound to evidence and policy.**
+15. **Known-family detection and emergent failure discovery are separate Insights lanes.**
+16. **The final Membrane-owned Adapt runtime is native Rust.**
+17. **Legacy Python is bounded migration/oracle evidence, not production authority.**
+18. **Synthetic conformance and real held-out evaluation are separate evidence classes.**
+19. **A detector/evaluator may not claim production precision from the synthetic corpus alone.**
+20. **CodeRight should emit structured execution observations when it knows a fact directly rather than forcing Adapt to infer it from prose.**
+21. **CodeRight owns generic traces, datasets, experiments, evaluator execution, and model/harness comparison.**
+22. **Adapt may propose behavioral evaluators; CodeRight executes them and returns typed outcomes.**
+23. **Confirmed production failures should be convertible into privacy-safe reviewed regression cases.**
+24. **Emergent clusters cannot self-promote to durable issues or guards.**
+25. **Ledger is the canonical Membrane document-navigation/index subsystem name; historical Guide/Spine wording is retired.**
+26. **Ledger projections do not replace exact structured execution/transcript evidence.**
+27. **Competitor research is evidence, not product ontology.**
+28. **CI must prevent Adapt/memory conflation from re-entering current documentation.**
+29. **A capability is not landed until the production path exercises it and acceptance evidence qualifies it.**
+30. **Success means fewer repeated corrections and fewer recurring failures without weakening correctness, security, authority, or task performance.**
 
 # 20. Canonical short copy
 
@@ -1497,4 +1884,4 @@ The following are the final product shape unless a future architecture amendment
 
 ## Architecture boundary
 
-> **Adapt owns learning from experience. Cortex owns durable admission and storage. Agent memory owns contextual recall. Repository policy owns explicit project rules. These boundaries must remain visible in code, docs, schemas, evaluation, and UI.**
+> **Adapt owns behavioral learning from experience. Cortex owns durable admission and storage. Ledger owns document navigation/index projections. CodeRight owns agent execution and generic eval/trace machinery. Repository policy owns explicit project rules. These boundaries must remain visible in code, docs, schemas, evaluation, and UI.**
