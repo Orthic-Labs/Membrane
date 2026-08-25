@@ -1,6 +1,6 @@
 //! Cortex durable-memory public API.
 //!
-//! Membrane owns orchestration & its Pull, Push, Guide, Blueprint, & Adapt
+//! Membrane owns orchestration & its Pull, Push, Ledger, Blueprint, & Adapt
 //! namespaces. Cortex exposes only durable-memory storage primitives here.
 //!
 //! This crate is the stable executable-facing API: consumers depend on its

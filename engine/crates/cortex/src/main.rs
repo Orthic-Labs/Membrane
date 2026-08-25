@@ -6,7 +6,7 @@ fn print_help() {
         "  {}",
         membrane_runtime::cli::CORTEX_DURABLE_COMMANDS.join(", ")
     );
-    println!("\nPull, Push, Guide, Blueprint, Adapt, & service orchestration belong to Membrane.");
+    println!("\nPull, Push, Ledger, Blueprint, Adapt, & service orchestration belong to Membrane.");
 }
 
 fn main() {

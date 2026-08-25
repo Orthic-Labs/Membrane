@@ -1,15 +1,16 @@
-//! M8 acceptance for deterministic transcript projection and Guide ledger.
+//! M8 acceptance for deterministic transcript projection and Ledger's session document projection.
 
 use cortex_core::absorbed::SessionEvent;
 use cortex_core::transcript::{
     build_transcript_chunks, retrieve_transcript_chunks, TranscriptChunk, TranscriptChunkConfig,
 };
 use cortex_store::{MemDb, TranscriptChunkRecord, TranscriptStore};
-use membrane_runtime::guide::ledger::{
-    build_session_ledger, index_session_ledger, LedgerDecisionV1, LedgerEventV1,
-    LedgerSourceCursor, LedgerTaskV1, SessionLedgerInputV1,
+use membrane_runtime::ledger::session_projection::{
+    build_session_projection, index_session_projection, SessionDocumentProjectionInputV1,
+    SessionProjectionDecisionV1, SessionProjectionEventV1, SessionProjectionSourceCursor,
+    SessionProjectionTaskV1,
 };
-use membrane_runtime::guide::GuideDb;
+use membrane_runtime::ledger::LedgerDb;
 use serde_json::json;
 
 fn event(seq: u64, content: &str) -> SessionEvent {
@@ -46,24 +47,24 @@ fn transcript_split_is_rebuildable_and_scope_safe() {
 }
 
 #[test]
-fn ledger_retains_cursor_links_and_explicit_omissions() {
-    let input = SessionLedgerInputV1 {
+fn session_projection_retains_cursor_links_and_explicit_omissions() {
+    let input = SessionDocumentProjectionInputV1 {
         session_id: "s1".into(),
         title: Some("Handoff".into()),
-        source_cursor: LedgerSourceCursor { session_id: "s1".into(), last_seq: 3 },
+        source_cursor: SessionProjectionSourceCursor { session_id: "s1".into(), last_seq: 3 },
         source_content_hash: "sha256:source".into(),
-        events: vec![LedgerEventV1 { event_id: "e1".into(), seq: 1, event_type: "message".into(), content: "started".into(), occurred_at_ms: 1 }],
-        tasks: vec![LedgerTaskV1 { task_id: "t1".into(), title: "Continue".into(), status: "open".into(), link: None }],
+        events: vec![SessionProjectionEventV1 { event_id: "e1".into(), seq: 1, event_type: "message".into(), content: "started".into(), occurred_at_ms: 1 }],
+        tasks: vec![SessionProjectionTaskV1 { task_id: "t1".into(), title: "Continue".into(), status: "open".into(), link: None }],
         artifacts: Vec::new(),
-        decisions: vec![LedgerDecisionV1 { decision_id: "d1".into(), title: "Keep raw events".into(), content: "Ledger is derived".into(), link: None }],
+        decisions: vec![SessionProjectionDecisionV1 { decision_id: "d1".into(), title: "Keep raw events".into(), content: "Session projection is derived".into(), link: None }],
     };
-    let document = build_session_ledger(&input).unwrap();
-    let replay = build_session_ledger(&input).unwrap();
+    let document = build_session_projection(&input).unwrap();
+    let replay = build_session_projection(&input).unwrap();
     assert_eq!(document.content_hash, replay.content_hash);
     assert!(document.markdown.contains("Continue"));
     assert!(document.omissions.iter().any(|value| value.contains("missing event sequence 2..4")));
     assert_eq!(document.links.len(), 2);
-    index_session_ledger(&GuideDb::open_in_memory(), &document, "rev-1", 1).unwrap();
+    index_session_projection(&LedgerDb::open_in_memory(), &document, "rev-1", 1).unwrap();
 }
 
 fn stored_chunk(chunk: &TranscriptChunk) -> TranscriptChunkRecord {
@@ -122,16 +123,16 @@ fn transcript_projection_rebuilds_from_events_after_persisted_restart() {
 }
 
 #[test]
-fn ledger_index_reopens_with_same_hash_bound_projection() {
-    let input = SessionLedgerInputV1 {
+fn session_projection_index_reopens_with_same_hash_bound_projection() {
+    let input = SessionDocumentProjectionInputV1 {
         session_id: "persisted-ledger".into(),
         title: Some("Replay".into()),
-        source_cursor: LedgerSourceCursor {
+        source_cursor: SessionProjectionSourceCursor {
             session_id: "persisted-ledger".into(),
             last_seq: 1,
         },
         source_content_hash: "sha256:source".into(),
-        events: vec![LedgerEventV1 {
+        events: vec![SessionProjectionEventV1 {
             event_id: "e1".into(),
             seq: 1,
             event_type: "message".into(),
@@ -142,22 +143,22 @@ fn ledger_index_reopens_with_same_hash_bound_projection() {
         artifacts: Vec::new(),
         decisions: Vec::new(),
     };
-    let document = build_session_ledger(&input).unwrap();
+    let document = build_session_projection(&input).unwrap();
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let path = std::env::temp_dir().join(format!("membrane-mem-i02-guide-{stamp}.sqlite3"));
+    let path = std::env::temp_dir().join(format!("membrane-mem-i02-ledger-{stamp}.sqlite3"));
     let _ = std::fs::remove_file(&path);
     {
-        let guide = GuideDb::open(&path).unwrap();
-        index_session_ledger(&guide, &document, "rev-1", 1).unwrap();
+        let ledger = LedgerDb::open(&path).unwrap();
+        index_session_projection(&ledger, &document, "rev-1", 1).unwrap();
     }
-    let reopened = GuideDb::open(&path).unwrap();
+    let reopened = LedgerDb::open(&path).unwrap();
     let count: i64 = reopened
         .lock()
         .query_row(
-            "SELECT COUNT(*) FROM guide_doc_projections WHERE parent_doc_id=?1 AND source_content_hash=?2",
+            "SELECT COUNT(*) FROM ledger_doc_projections WHERE parent_doc_id=?1 AND source_content_hash=?2",
             [&document.document_id, &document.source_content_hash],
             |row| row.get(0),
         )
