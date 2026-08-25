@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { acquireStoreLease, isStoreLeaseHeld, readStoreLeaseMetadata } from "../src/graph/store-lease.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RepositoryActor } from "../watchman/repo-actor.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -106,10 +107,32 @@ test("Hub-hosted repository actor holds the resident lease for its writable life
         () => acquireStoreLease(path, { ownerKind: "one_shot" }),
         (error) => error.code === "resident_owner_active",
       );
+      const residentService = createBlueprintApplicationService({ freshnessOwnership: "resident" });
+      const result = await residentService.search({ repoRoot: root, query: "answer", allowStale: true });
+      assert.ok(Array.isArray(result.results), "resident query must read without self-contending for the actor lease");
+      assert.equal(result.freshnessReceipt.details.readOnly, true);
     } finally {
       await actor.stop();
     }
     assert.equal(isStoreLeaseHeld(path), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("RepositoryActor without a supervisor owner is a bounded one-shot owner", async () => {
+  const root = fixtureRepo();
+  try {
+    const built = graphBuild(root);
+    assert.equal(built.status, 0, built.stderr);
+    const actor = new RepositoryActor({ root });
+    await actor.initialize();
+    try {
+      assert.equal(readStoreLeaseMetadata(dbPath(root)).owner_kind, "one_shot");
+    } finally {
+      await actor.stop();
+    }
+    assert.equal(isStoreLeaseHeld(dbPath(root)), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

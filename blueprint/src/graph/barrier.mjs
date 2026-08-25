@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { reconcile } from "../../watchman/reconcile.mjs";
-import { closeStore, getGenerationEnvelope, insertGenerationReceipt, openStore } from "./store-sqlite.mjs";
+import { closeStore, getGenerationEnvelope, insertGenerationReceipt, openStore, openStoreReadOnly } from "./store-sqlite.mjs";
 import { recordBarrierDuration } from "../lib/telemetry.mjs";
 import { withStoreLease } from "./store-lease.mjs";
 
@@ -147,4 +147,38 @@ export async function syncToCurrentSourceAtPath(root, { outDir = ".agent", ...op
     try { return await syncToCurrentSource(db, root, { ...options, outDir }); }
     finally { closeStore(db); }
   });
+}
+
+/**
+ * Observe watcher progress without taking write ownership. Resident query
+ * roles use this while the Hub-hosted RepositoryActor holds the store lease;
+ * direct one-shot callers use syncToCurrentSourceAtPath instead.
+ */
+export function observeCurrentSourceAtPath(root, { outDir = ".agent" } = {}) {
+  const repoRoot = canonicalRoot(root);
+  const dbPath = join(repoRoot, outDir, "graph", "graph.db");
+  if (!existsSync(dbPath)) throw new Error("graph store is missing");
+  const db = openStoreReadOnly(dbPath);
+  try {
+    const current = state(db);
+    const envelope = getGenerationEnvelope(db);
+    const sourceClock = Number(current.source_clock ?? 0);
+    const appliedClock = Number(current.applied_clock ?? 0);
+    const pendingEvents = Number(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get()?.n ?? 0);
+    const caughtUp = current.event_gap !== "1" && appliedClock >= sourceClock && pendingEvents === 0;
+    return Object.freeze({
+      receiptId: `generation-readonly-${envelope?.manifest?.generationId ?? "missing"}`,
+      createdMs: Date.now(),
+      repoRoot,
+      generationId: envelope?.manifest?.generationId ?? null,
+      sourceClock,
+      appliedClock,
+      eventGap: current.event_gap === "1",
+      domainsPending: pendingDomains(current),
+      barrierResult: caughtUp ? "caught_up" : "timeout",
+      details: { readOnly: true, pendingEvents },
+    });
+  } finally {
+    closeStore(db);
+  }
 }

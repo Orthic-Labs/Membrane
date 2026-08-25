@@ -268,9 +268,9 @@ export class RepositoryActor extends EventEmitter {
     // flush, and gap, multiplying open/close churn against the same file
     // that `blueprint build` and the status poller also touch concurrently.
     this.db = null;
-    // Hub owns this lease for exactly the actor's writable lifetime. The DB is
-    // never opened before the OS lock is won, and the lock is released only
-    // after the final writable handle closes.
+    // The actor owns this lease for exactly its writable lifetime. A
+    // supervisor-bound actor is resident (`hub`); direct/worker actors are
+    // bounded (`one_shot`). The DB is never opened before the OS lock is won.
     this.storeLease = null;
     // Coalesces gap-repair reconciles: a real overflow burst can re-fire the
     // gap callback repeatedly (that IS the overflow reported in production).
@@ -306,7 +306,10 @@ export class RepositoryActor extends EventEmitter {
     if (!this.db) {
       assertSafeMutableStorePath(this.dbPath);
       this.storeLease = acquireStoreLease(this.dbPath, {
-        ownerKind: "hub",
+        // A supervisor-issued ownerId is the proof this actor belongs to the
+        // resident Hub-hosted watcher role. Direct RepositoryActor users and
+        // BlueprintRepositoryWorker are bounded one-shots.
+        ownerKind: this.ownerId ? "hub" : "one_shot",
         ...(this.ownerId ? { ownerInstanceId: this.ownerId } : {}),
       });
       try {
