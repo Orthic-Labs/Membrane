@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane.internal/schemas/ledger-eval-corpus-case.v1.json",
+  "title": "Ledger held-out retrieval evaluation case (v1)",
+  "description": "One machine-checkable query/expected-answer case for the Ledger document-retrieval evaluation corpus described in docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md section 12. Cases are stored as JSON Lines, one object per line, split across train.jsonl / dev.jsonl / heldout.jsonl. This schema describes exactly one line of any of those files.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "split", "case_type", "tags", "source_corpus", "query", "query_script", "expected", "notes"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^LEDG-EVAL-[0-9]{4}$",
+      "description": "Stable, corpus-unique case identifier. Never renumbered after first publication; a retired case is marked instead of having its id reused."
+    },
+    "split": {
+      "type": "string",
+      "enum": ["train", "dev", "heldout"],
+      "description": "authoring/train split | development/tuning split | held-out test split, per canon section 12.1. Tokenizer, BM25 weights, query normalization, title-chain treatment, expansion parameters, and rank tuning may use train/dev only. heldout is run exactly once per frozen candidate and is never used to tune."
+    },
+    "case_type": {
+      "type": "string",
+      "enum": [
+        "exact_document",
+        "exact_section",
+        "table_content",
+        "fenced_code",
+        "list_item",
+        "blockquote",
+        "link_reference",
+        "negative_no_answer",
+        "paraphrase",
+        "non_ascii_cjk",
+        "mixed_script",
+        "identifier_snake_case",
+        "identifier_camel_case",
+        "identifier_path_fragment",
+        "short_query",
+        "multi_section_synthesis",
+        "stale_relocation"
+      ],
+      "description": "Primary coverage category this case exercises, drawn from canon section 12.3's minimum query classes plus the task's identifier/short-query/CJK/stale-revision requirements."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Secondary/free-form coverage labels. A case may legitimately serve more than one coverage class (e.g. an environment-variable list item is both list_item and identifier); case_type names the primary class used for per-category reporting, tags record the rest."
+    },
+    "source_corpus": {
+      "type": "string",
+      "enum": ["membrane-docs", "research-papers"],
+      "description": "Which of the two required real corpora (canon 12.3: 'real Membrane documentation' plus 'a second real corpus with different authoring style/structure') this case's target document(s) belong to. research-papers = docs/research/papers/** (dense academic PDF-extracted prose, citation-heavy, largely undocumented GFM structure) as the second, structurally different real corpus."
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The literal query text a retrieval harness should issue. For non_ascii_cjk/mixed_script cases this is non-ASCII (or mixed-script) text verbatim, never a transliteration."
+    },
+    "query_script": {
+      "type": ["string", "null"],
+      "description": "Script/language hint for non-Latin or mixed-script queries (e.g. 'ja', 'zh', 'ko', 'mixed-en-ja'). null for plain-ASCII queries.",
+      "examples": ["ja", "zh", "ko", "mixed-en-ja", "mixed-en-accented"]
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "match_mode", "targets", "plausible_distractors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["match", "no_match", "relocation"],
+          "description": "match: at least one target below is a correct retrieval outcome. no_match: no document in this corpus correctly answers the query (negative case; correct system behavior is abstention, not a best-effort guess). relocation: the naive/literal target is stale, retired, or not-yet-landed; the listed target(s) are the CURRENT correct answer, and notes explains the relocation/refusal semantics being tested (canon section 7.4 stale/typed-relocation contract)."
+        },
+        "match_mode": {
+          "type": "string",
+          "enum": ["single", "any_of", "all_of"],
+          "description": "single/any_of: retrieval succeeds if it surfaces at least one listed target (any_of is used when more than one target is independently acceptable, e.g. a naming-drift case with both the old and new document). all_of: a correct answer must synthesize evidence from every listed target (multi_section_synthesis cases)."
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["document", "heading", "quote"],
+            "properties": {
+              "document": {
+                "type": "string",
+                "description": "Repository-root-relative path to the expected source document. Every path here also appears in manifest.json with its sha256 at authoring time."
+              },
+              "heading": {
+                "type": ["string", "null"],
+                "description": "Exact heading text (without the leading '#' markers) of the expected section, verbatim as it appears in the source document. null when the case targets document-level content that precedes any heading (e.g. YAML frontmatter, page chrome in a scraped article) or when the document has no GFM heading structure at all. This is a human-readable alias for locating the section, not canonical node identity -- consistent with the Ledger canon's section 7.3 treatment of heading slugs."
+              },
+              "quote": {
+                "type": ["string", "null"],
+                "description": "An exact, verbatim, single-line-safe substring of the source document that a correct retrieval/resolution must be able to reproduce or point at. Used both as machine-checkable ground truth (grep-verified at corpus-build time; see build_corpus.py in the corpus provenance) and as a human-readable pointer. null only when a case is document-level (case_type=exact_document) and no specific span is being tested."
+              }
+            }
+          },
+          "description": "Empty array iff expected.status == 'no_match'."
+        },
+        "plausible_distractors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Repository-root-relative paths a naive lexical/BM25 matcher might over-rank for this query despite not answering it. Populated mainly on negative_no_answer and stale_relocation cases to make false-positive scoring possible; empty array otherwise."
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text rationale: why this case exists, what specific failure mode it is designed to catch, and any authoring caveats (e.g. 'this document has no GFM headings'). Never omitted -- use an empty string only if truly nothing needs saying."
+    }
+  }
+}

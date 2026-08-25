@@ -58,7 +58,10 @@ Rust crates:
 
 binaries:
   cortex
-  membrane supervisor-child
+  membrane (stateless CLI transport)
+
+resident host:
+  Membrane Hub process
 
 environment:
   MEMBRANE_PORT
@@ -90,4 +93,6 @@ store:
 - [ ] Lifecycle is deterministic/versioned/reversible where possible.
 - [ ] Dream is undoable and never creates authority.
 - [ ] Backup/restore preserves logical identities, lineage, and recall equivalence.
-- [ ] Canonical runtime uses `cortex`, `membrane supervisor-child`, `MEMBRANE_*`, and `cortex-engine.db` exclusively.
+- [ ] Canonical runtime uses `cortex`, stateless `membrane` transports,
+      Hub-hosted runtime ownership, `MEMBRANE_*`, and `cortex-engine.db`
+      exclusively; no `membrane supervisor-child` process exists.

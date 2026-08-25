@@ -127,7 +127,7 @@ Membrane is the parent context system. Its six named subsystems are:
 - Pull — semantic evidence retrieval, admission, fusion, & publication;
 - Blueprint — repository truth/evidence;
 - Cortex — durable knowledge;
-- Guide — document navigation/index;
+- Ledger — document registry, navigation & index;
 - Adapt — learning/proposals;
 - Push — reversible reduction.
 
@@ -139,6 +139,10 @@ Read these before architecture or migration work:
 
 1. `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
 2. `docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
+3. `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
+4. `docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`
+5. `docs/subsystems/MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md`
+6. `docs/subsystems/CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md`
 
 `docs/subsystems/SYSTEM.md` and the subsystem reference files are derived navigation aids only.
 
@@ -153,25 +157,28 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 
 ## Locked invariants
 
-- Membrane is parent system; Pull, Push, Cortex, Blueprint, Guide, & Adapt are named subsystems.
+- Membrane is parent system; Pull, Push, Cortex, Blueprint, Ledger, & Adapt are named subsystems.
 - One Membrane planner owns final grant, eligibility, authority, freshness, sufficiency, fusion, admission, representation policy, publication, omissions, and receipts.
 - Preserve the five public V1 shapes until a real consumer requires V2.
 - Blueprint owns repository semantics, source identity, graph traversal, and re-anchoring.
 - Pull owns semantic evidence retrieval, provider admission, fusion, & publication.
 - Cortex owns durable knowledge admission, conflict/supersession, temporal/lifecycle semantics, & durable-memory retrieval.
-- Guide owns document navigation/index projections, not document truth or durable memory.
+- Ledger owns document navigation/index projections, not document truth or durable memory.
 - Adapt emits proposals; it never writes durable truth directly.
 - Push executes faithful reduction; it never becomes a second planner.
 - Keep provider authority and freshness distinct.
 - Record material omissions, timeouts, inaccessible sources, degradation, and budget drops in receipts.
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
-- New documentation uses Pull / Push / Cortex / Blueprint / Guide / Adapt.
+- New documentation uses Pull / Push / Cortex / Blueprint / Ledger / Adapt. Guide is retired; `guide`-named code/paths are pending rename, not a second name.
+- Membrane runtime executes only inside the active Hub process; Hub off means no Membrane context (typed `membrane_unavailable { hub_inactive }`).
+- Blueprint is independently usable but not independently resident; its watcher runs only under Hub, and Hub-off access is a bounded one-shot operation.
+- A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.
 
 ## Boundary discipline
 
 - Do not create a second Membrane protocol authority or a generic shared-contract bucket.
-- Do not create a standalone Pull, Push, or Guide crate merely for naming symmetry; physical boundaries require an implementation reason.
+- Do not create a standalone Pull, Push, or Ledger crate merely for naming symmetry; physical boundaries require an implementation reason.
 - Retired phantom seam-contract paths are not prerequisites. Canonical doctrines own seam semantics.
 
 ## Verification
@@ -180,10 +187,10 @@ Before claiming completion:
 
 - run focused tests, then relevant full suites;
 - verify packet/receipt schemas together after contract changes;
-- prove Blueprint daemon generation/schema mismatch fails closed;
+- prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;
 - prove Cortex durable-store integrity, backup/restore, & recall equivalence;
-- prove Guide hash-bound section resolution;
+- prove Ledger hash-bound section resolution;
 - prove Push protected-span fidelity;
 - distinguish advisory feedback from verifier/host-bound outcomes;
 - compare claims against landed code and generated runtime truth.

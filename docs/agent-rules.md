@@ -67,7 +67,7 @@ Before claiming completion:
 
 - run focused tests, then relevant full suites;
 - verify packet/receipt schemas together after contract changes;
-- prove Blueprint daemon generation/schema mismatch fails closed;
+- prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;
 - prove Cortex durable-store integrity, backup/restore, & recall equivalence;
 - prove Ledger hash-bound section resolution;

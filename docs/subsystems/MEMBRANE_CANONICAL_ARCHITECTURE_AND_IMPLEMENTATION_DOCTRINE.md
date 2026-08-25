@@ -102,8 +102,9 @@ retain separate ownership, tests, metrics, and improvement paths:
 | **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
 
 Membrane Hub is not a seventh axis. It is the sole resident service, process,
-installation, update, and release authority for Membrane runtime. Blueprint is
-an independently versioned external service reached through one typed native client.
+installation, update, and release authority for Membrane runtime. Blueprint
+retains an independently versioned package and protocol, but its continuous
+runtime role is hosted inside Hub and reached through one typed native client.
 
 The current supported target is macOS. Other targets are not current supported
 targets until separately qualified and added to canonical capability truth.
@@ -235,7 +236,7 @@ The architecture must reject scope growth that does not improve the core objecti
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
 | Audit findings | Audit | Consume typed findings |
 | Architectural decisions/plans | Decision/architecture provider | Consume as evidence, never current-code truth |
-| OS startup / child processes / restart/backoff | Hub | Sole resident service authority; expose readiness/drain/identity |
+| OS startup / resident lifecycle / restart-backoff | Hub | Sole resident service authority; expose readiness/drain/identity; no Membrane child process |
 | Agent execution / model routing | Legion / OmniRouter / host | Out of scope |
 | Host conversation compaction | Host | Membrane may supply artifacts/context, not own transcript |
 | Immutable raw reduction artifacts | Membrane | Govern content-addressed recoverability |
@@ -1162,16 +1163,22 @@ Membrane:
 
 Membrane does not traverse the Blueprint graph itself.
 
-The normal machine-to-machine transport is the persistent Blueprint service daemon over local IPC through a long-lived Membrane-side client.
+The normal machine-to-machine transport is the Hub-hosted Blueprint query role
+over local IPC through a long-lived Membrane-side client. Blueprint has no
+independently resident daemon.
 
 ```text
 Membrane
-→ persistent Blueprint client
-→ Blueprint service `recall`
+→ Hub-hosted Blueprint client
+→ Blueprint protocol `recall`
 → RecallCircuit
 ```
 
-Per-query Node subprocess execution is not part of the end-state path. Daemon unavailability fails closed for the Blueprint lane with a typed degradation/transport reason.
+While Hub is active, normal Membrane requests never create a per-query Node
+process. If Hub is inactive, Membrane returns typed
+`membrane_unavailable { reason: hub_inactive, retryable: true }` and does not
+fall back to Blueprint. An explicit direct Blueprint request may use the
+bounded one-shot path defined by Blueprint's canon.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
@@ -1428,9 +1435,9 @@ Never silently delete the database and regenerate as if nothing happened.
 
 ---
 
-# 15. Process planes and operations
+# 15. Runtime responsibility planes and operations
 
-Preserve the existing three-plane contract:
+Preserve the three responsibility planes inside the Hub-hosted runtime:
 
 ```text
 Application
@@ -1438,17 +1445,19 @@ Control
 Data
 ```
 
-No fourth process plane without a deliberate versioned architecture change.
+These are ownership boundaries, not permission to create separate resident
+processes. No fourth plane without a deliberate versioned architecture change.
 
 ## Application plane
 
 Owns:
 
-- CLI;
-- stdio MCP;
-- loopback API;
+- Hub-side CLI/MCP/API request handling;
 - request routing;
 - typed packets/receipts.
+
+External CLI and stdio MCP executables are stateless transports into this
+Hub-side application plane. They do not host or launch Membrane runtime logic.
 
 It does not own direct durable storage mutation outside typed APIs.
 
@@ -1456,11 +1465,10 @@ It does not own direct durable storage mutation outside typed APIs.
 
 Owns:
 
-- supervisor child;
-- leases;
-- heartbeat;
+- in-Hub lifecycle coordination;
+- leases and heartbeat;
 - bounded maintenance ownership;
-- restart/coordination protocol.
+- drain/shutdown coordination.
 
 It does not become a second data store.
 
@@ -1481,15 +1489,18 @@ It does not own network transport.
 Hub owns:
 
 - start-at-login;
-- OS child lifecycle;
+- the sole resident process lifecycle;
 - installer/updater lifecycle;
-- process restart/backoff.
+- Hub restart/backoff;
+- the Blueprint watcher/query residency while Hub is active.
 
-Hub is the only resident service authority and the only process in which the Membrane runtime executes. It owns Membrane
-service identity, ports, leases, readiness, drain, and shutdown. Blueprint owns
-its separately versioned daemon lifecycle. Cortex may expose durable-memory
-library and CLI operations to Hub, but it does not claim a resident service,
-service identity, port, lease, or process lifecycle.
+Hub is the only resident service authority and the only process in which the
+Membrane runtime executes. It owns Membrane service identity, ports, leases,
+readiness, drain, and shutdown. Blueprint owns its package, protocol, store,
+watcher semantics, and query behavior, while Hub owns their resident lifecycle.
+Cortex may expose durable-memory library and CLI operations to Hub, but it does
+not claim a resident service, service identity, port, lease, or process
+lifecycle.
 
 Membrane exposes:
 
@@ -1943,12 +1954,13 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 
 **Rename / modify**
 - `engine/federation/providers/blueprint.py` — final name of the former repository-truth adapter.
-- use a long-lived Blueprint daemon client for the normal path;
+- use a long-lived client to the Hub-hosted Blueprint role for the normal path;
 - request generation-bound `RecallCircuit`;
 - validate schema/generation before conversion;
 - convert one complete path into one atomic evidence unit/candidate;
 - obtain code-anchor resolution from Blueprint;
-- remove subprocess fallback; daemon unavailability stays typed and fail-closed.
+- remove subprocess fallback from Membrane; Hub unavailability returns typed
+  `membrane_unavailable { hub_inactive }` and invokes no Blueprint one-shot.
 
 **Do not add**
 - Blueprint graph traversal;
@@ -1981,7 +1993,8 @@ The early slice is complete only when:
 1. multi-signal requirements are deterministic and unioned;
 2. broad fallback is exercised on ambiguity;
 3. outcome rows join to delivered candidate/packet ids;
-4. normal Blueprint recall uses the resident daemon;
+4. normal Blueprint recall uses the Hub-hosted Blueprint role and never a
+   per-query process;
 5. Blueprint generation mismatch fails closed;
 6. each complete RecallCircuit path stays atomic;
 7. the Membrane planner remains the only final policy owner;
@@ -2123,7 +2136,8 @@ It is done when the product purpose is mechanically true.
 - [ ] Generation mismatch fails closed for Blueprint.
 - [ ] A `no_relevant_seed` Blueprint result emits no fake repository context.
 - [ ] Code anchor relocation/re-anchoring is delegated to Blueprint.
-- [ ] Blueprint recall uses a persistent daemon client with no subprocess fallback.
+- [ ] Blueprint recall uses the Hub-hosted client while Hub is active; Membrane
+      has no one-shot fallback when Hub is inactive.
 - [ ] Membrane contains no duplicate structural re-anchor implementation.
 - [ ] Unsupported/ambiguous/missing are not collapsed.
 - [ ] Repository evidence remains `data_only`.

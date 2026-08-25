@@ -46,3 +46,6 @@ docs/evidence/productization/
 
 # Research PDFs are not committed — see docs/research/papers/MANIFEST.md
 docs/research/**/*.pdf
+
+# Subagent isolation worktrees — transient nested checkouts of this repo
+.claude/worktrees/

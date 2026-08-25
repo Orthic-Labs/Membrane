@@ -67,7 +67,9 @@ fallback into Ledger.
 - [ ] A recalled section round-trips through source resolution with hash verification.
 - [ ] Sync is incremental, bounded, and reports typed outcomes.
 - [ ] Workspace/document roots outside repository code can be indexed only when the active grant permits them.
-- [x] Ledger implementation & tests live under a discoverable `ledger` namespace without compatibility wrappers.
+- [ ] Ledger implementation & tests live under a discoverable `ledger`
+      namespace without compatibility wrappers; the pushed rename lane remains
+      unverified until its scoped build/tests and upgrade behavior pass.
 
 
 ## Naming
