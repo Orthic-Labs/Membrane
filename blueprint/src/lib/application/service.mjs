@@ -4,18 +4,21 @@ import { observeCurrentSourceAtPath, syncToCurrentSourceAtPath } from "../../gra
 import {
   closeStore,
   listClaimSlice,
+  loadGeneration,
   openStoreReadOnly,
 } from "../../graph/store-sqlite.mjs";
 import {
   boundedArchitecture,
   boundedImpact,
   boundedNeighbors,
+  boundedPath,
   indexedQueryGeneration,
   indexedResolve,
   readIndexedMeta,
 } from "../../graph/traverse-store.mjs";
 import {
   graphStatus,
+  graphFlowInventory,
   queryGraph,
   repositoryIdentity,
 } from "../../graph/static-provider.mjs";
@@ -31,6 +34,65 @@ function databasePath(root, outDir) {
 
 function throwIfAborted(signal) {
   if (signal?.aborted) fail("request_cancelled", "request cancelled");
+}
+
+function flowCursor(generationId, offset) {
+  return Buffer.from(JSON.stringify({ view: "flows", generationId, offset })).toString("base64url");
+}
+
+function decodeFlowCursor(cursor, generationId) {
+  if (!cursor) return 0;
+  try {
+    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+    if (value.view !== "flows" || value.generationId !== generationId || !Number.isSafeInteger(value.offset) || value.offset < 0 || value.offset > 10000) {
+      fail("cursor_invalid", "Architecture flow cursor does not match the served generation.");
+    }
+    return value.offset;
+  } catch (error) {
+    if (error?.code === "cursor_invalid") throw error;
+    fail("cursor_invalid", "Architecture flow cursor is malformed.");
+  }
+}
+
+function architectureFlowPage(db, meta, input, freshness) {
+  const generationId = meta.manifest.generationId;
+  const offset = decodeFlowCursor(input.cursor, generationId);
+  const requestedMaxFlows = Number(input.maxFlows ?? input.limit ?? 50);
+  if (!Number.isSafeInteger(requestedMaxFlows) || requestedMaxFlows < 1 || requestedMaxFlows > 200) {
+    fail("architecture_bounds_invalid", "Architecture flow maxFlows must be an integer from 1 to 200.");
+  }
+  const maxFlows = requestedMaxFlows;
+  const inventory = graphFlowInventory(loadGeneration(db), {
+    complete: false,
+    maxFlows: offset + maxFlows + 1,
+  });
+  const compactNode = (node) => {
+    const evidence = node?.evidence?.[0] ?? {};
+    return { id: node.id, kind: node.kind, path: node.path ?? evidence.path ?? null, startLine: evidence.startLine ?? null, endLine: evidence.endLine ?? null };
+  };
+  const flows = inventory.flows.slice(offset, offset + maxFlows).map((flow) => ({
+    id: flow.id ?? `flow:${flow.entry.id}:broken`,
+    status: flow.status,
+    entry: compactNode(flow.entry),
+    ...(flow.terminal ? { terminal: compactNode(flow.terminal) } : {}),
+    path: flow.path.map(compactNode),
+    ...(flow.missingHop ? { missingHop: flow.missingHop } : {}),
+    evidence: flow.evidence.map((item) => ({ path: item.path, startLine: item.startLine ?? null, endLine: item.endLine ?? null, contentHash: item.contentHash ?? null })),
+  }));
+  const truncated = inventory.flows.length > offset + flows.length;
+  return {
+    schemaVersion: 2,
+    provider: inventory.provider,
+    kind: "architecture",
+    view: "flows",
+    ...freshness,
+    ordering: "entry.id,path[].id",
+    bounds: { maxFlows, maxDepth: 12 },
+    entryPoints: inventory.entryPoints,
+    flows,
+    truncated,
+    continuationCursor: truncated ? flowCursor(generationId, offset + flows.length) : null,
+  };
 }
 
 export function createBlueprintApplicationService({
@@ -278,16 +340,56 @@ export function createBlueprintApplicationService({
       }
     },
 
+    async path(input = {}, options = {}) {
+      const fromInput = String(input.from ?? "").trim();
+      const toInput = String(input.to ?? "").trim();
+      if (!fromInput || !toInput) fail("path_endpoint_required", "Path requires non-empty from and to anchors.");
+      const maxDepth = Number(input.maxDepth ?? 5);
+      if (!Number.isSafeInteger(maxDepth) || maxDepth < 1 || maxDepth > 12) {
+        fail("path_bounds_invalid", "Path maxDepth must be an integer from 1 to 12.");
+      }
+      const budget = Number(input.budget ?? 2000);
+      if (!Number.isSafeInteger(budget) || budget < 128 || budget > 32000) {
+        fail("path_bounds_invalid", "Path budget must be an integer from 128 to 32000.");
+      }
+      const session = await openFreshnessSession(input, options);
+      try {
+        const scopedOptions = { ...options, session };
+        const from = await resolveAnchor({ ...input, anchor: fromInput }, scopedOptions);
+        const to = await resolveAnchor({ ...input, anchor: toInput }, scopedOptions);
+        return withCurrentDb(input, ({ db, receipt }) => boundedPath(db, {
+          from,
+          to,
+          maxDepth,
+          budget,
+          cursor: input.cursor,
+          freshness: {
+            generationId: receipt.generationId,
+            sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
+            dirtyFileCount: 0,
+          },
+        }), scopedOptions);
+      } finally {
+        session.close();
+      }
+    },
+
     async architecture(input = {}, options = {}) {
-      return withCurrentDb(input, ({ db, receipt }) => boundedArchitecture(db, {
-        budget: Number(input.budget ?? 2000),
-        cursor: input.cursor,
-        freshness: {
+      return withCurrentDb(input, ({ db, meta, receipt }) => {
+        const freshness = {
           generationId: receipt.generationId,
           sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
           dirtyFileCount: 0,
-        },
-      }), options);
+        };
+        const view = input.view ?? "summary";
+        if (view === "flows") return architectureFlowPage(db, meta, input, freshness);
+        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary or flows.");
+        return { ...boundedArchitecture(db, {
+          budget: Number(input.budget ?? 2000),
+          cursor: input.cursor,
+          freshness,
+        }), view: "summary" };
+      }, options);
     },
 
     async documentTruth(input = {}, options = {}) {

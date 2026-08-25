@@ -12,6 +12,7 @@
     {"name":"DocumentClaimV1","version":1,"file":"document-claim-v1.schema.json","stability":"stable"},
     {"name":"ClaimVerdictV1","version":1,"file":"claim-verdict-v1.schema.json","stability":"stable"},
     {"name":"ArchitectureRuleResultV1","version":1,"file":"architecture-rule-result-v1.schema.json","stability":"beta"},
+    {"name":"ArchitectureFlowViewV1","version":1,"file":"architecture-flow-view-v1.schema.json","stability":"beta"},
     {"name":"RunAttestationV1","version":1,"file":"run-attestation-v1.schema.json","stability":"beta"},
     {"name":"RepairResultV1","version":1,"file":"repair-result-v1.schema.json","stability":"beta"},
     {"name":"UpdateManifestV1","version":1,"file":"update-manifest-v1.schema.json","stability":"beta"},

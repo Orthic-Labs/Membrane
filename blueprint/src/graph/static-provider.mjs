@@ -1105,7 +1105,9 @@ export function graphFlowInventory(generation, options = {}) {
   const maxFlows = Number(options.maxFlows ?? (complete ? 5000 : 200));
   const outgoing = new Set(generation.edges.map((edge) => edge.source));
   const incoming = new Set(generation.edges.map((edge) => edge.target));
-  const entryPoints = generation.nodes.filter((node) => node.kind === "symbol" && outgoing.has(node.id) && !incoming.has(node.id));
+  const entryPoints = generation.nodes
+    .filter((node) => node.kind === "symbol" && outgoing.has(node.id) && !incoming.has(node.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
   // NOTE: the spec's third flow status, "unsupported", is intentionally NOT emitted
   // here. It is only honest once we can DETECT a flow crossing into untraceable
   // territory — an HTTP route, a Tauri IPC boundary, or an unparsed-language hop —
@@ -1156,7 +1158,9 @@ function terminalPathsFrom(generation, entryId, limit = 200) {
   while (queue.length && paths.length < limit) {
     const ids = queue.shift();
     const current = ids.at(-1);
-    const outgoing = generation.edges.filter((edge) => edge.source === current);
+    const outgoing = generation.edges
+      .filter((edge) => edge.source === current)
+      .sort((left, right) => String(left.target ?? "").localeCompare(String(right.target ?? "")) || left.id.localeCompare(right.id));
     if (!outgoing.length && ids.length > 1) {
       paths.push(ids.map((id) => generation.nodes.find((node) => node.id === id)).filter(Boolean));
       continue;
