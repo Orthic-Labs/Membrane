@@ -11,7 +11,9 @@
 
 Planner, provider adapters, host adapters, MCP, supervisor/updater, and Hub integration are Membrane core/modules/surfaces. They are not peer semantic subsystems.
 
-A subsystem may retain its own process, package, protocol, or store. Being under Membrane does not imply in-process coupling.
+A subsystem may retain its own package, protocol, or store. Resident Membrane
+lifecycle belongs only to Hub. Blueprint may use an explicit bounded one-shot
+while Hub is inactive, but it does not retain independent residency.
 
 ## 2. One question per subsystem
 
@@ -87,7 +89,9 @@ Rules:
 
 ## 6. Physical placement is separate from semantic hierarchy
 
-- Blueprint may be independently packaged, runnable, and published while remaining a Membrane subsystem.
+- Blueprint may be independently packaged, directly usable, and published while
+  remaining a Membrane subsystem. Its continuous watcher/query role is hosted
+  under Hub; Hub-off direct access is bounded one-shot only.
 - Cortex is a Membrane-owned durable subsystem.
 - Ledger may remain implemented inside Membrane runtime code while still having distinct semantic ownership.
 - Adapt lives at `adapt/` within Membrane while retaining its semantic boundary.
@@ -95,8 +99,13 @@ Rules:
 
 ## 7. Normative authorities
 
-Two architecture authorities govern Membrane:
+Six canonical authorities govern Membrane:
 
-1. `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
-2. `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
+1. `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
+2. `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
+3. `ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
+4. `LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`
+5. `MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md`
+6. `CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md`
+
 This map and the subsystem reference files are derived navigation aids, not parallel authorities.

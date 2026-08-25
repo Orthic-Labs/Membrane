@@ -1,7 +1,7 @@
 # Membrane Native Rust Migration, Runtime Closure, and CodeRight Integration Specification
 
 **Status:** Canonical / authoritative migration specification
-**Date:** 2026-08-24
+**Date:** 2026-08-25
 **Repository:** `Orthic-Labs/Membrane`
 **Current repository baseline reviewed:** `8a215ac6fab11cc24bb821507057743b7898e09f`
 **Implementation status reviewed:** `main@601c234cd0b9781a29a99843f8aa6c228b3c2865` (2026-08-25)
@@ -21,13 +21,18 @@ This document exclusively owns native runtime/process topology, packaging and de
 
 Membrane's production implementation is **native Rust end to end**.
 
-That decision applies to the **whole Membrane product**, not only to federation. The current generated product truth defines six Membrane axes — Pull, Push, Cortex, Blueprint, Guide, and Adapt. A migration cannot be called complete merely because federation moved to Rust while another canonical subsystem still executes Python or Node.
+That decision applies to the **whole Membrane product**, not only to federation.
+The six canonical axes are Pull, Push, Cortex, Blueprint, Ledger, and Adapt.
+Generated runtime truth may continue to expose the historical `Guide` name until
+the verified rename cutover lands; that is implementation status, not a second
+canonical axis. A migration cannot be called complete merely because federation
+moved to Rust while another canonical subsystem still executes Python or Node.
 
 The final product therefore obeys all of the following:
 
 1. **Membrane-owned runtime authority, policy, state transitions, storage, and effects execute as native Rust or are declarative data.** Installed Hub presentation may use only the bounded OS-WebView exception in §1.5.
 2. **No installed Membrane runtime implementation requires Python, Node, npm, npx, pip, a virtual environment, or dynamically interpreted Membrane-owned source.** Bounded WebView assets execute in the OS-provided WebView and never require Node.
-3. **CodeRight consumes Membrane behavior in-process through Rust APIs.** A resident Membrane may remain an optional canonical data host, but never a required code/runtime dependency.
+3. **CodeRight consumes Membrane through exactly one compatible active-Hub binding.** It does not embed a second Membrane backend or open a local fallback store.
 4. **External products and target-project tools are reached only through explicit typed boundaries.** They do not justify an internal language worker.
 5. **Development-only Python/JavaScript is permitted only when it is provably absent from installed execution paths and release artifacts.** The only installed JavaScript exception is §1.5's explicitly inventoried presentation sandbox.
 6. **A Rust implementation existing beside an executable Python/Node fallback is not completion.** Final production is `native-only`, not `native-with-legacy-available`.
@@ -117,7 +122,9 @@ The migration is complete only when **every** item below is true:
 - [ ] Live Diagnostics remains a Membrane module under Hub, not a seventh subsystem; provider degradation cannot determine parent Membrane health.
 - [ ] No runtime documentation or generated host configuration points users/hosts at an interpreter-backed Membrane path.
 - [ ] A separately bounded external product may be unavailable without causing Membrane to spawn or bootstrap its language runtime; the result is a typed degraded/unavailable state.
-- [ ] CodeRight can link Membrane crates and use embedded behavior without launching Membrane, Python, Node, or a Membrane-owned helper process.
+- [ ] CodeRight binds to exactly one compatible active-Hub Membrane capability,
+  opens no embedded/local fallback store, and receives typed unavailability
+  when Hub is inactive.
 - [ ] Exact installed artifacts pass qualification with `python`, `python3`, `node`, `npm`, `npx`, and `pip` absent from `PATH` and without development checkout paths.
 - [ ] Package/SBOM inspection proves no undeclared interpreter/runtime payload is shipped for Membrane-owned behavior.
 - [ ] Every installed WebView script is declared as `bounded-presentation`, ships without Node,
@@ -155,7 +162,7 @@ A Python/JavaScript executable may remain after native migration only when all o
 - no production caller/import/launch site reaches it;
 - it is excluded from install/package/SBOM runtime payloads;
 - no host config, user shim, scheduler, or service points to it;
-- it is not needed for `membrane`, Hub, MCP, Adapt, Cortex, Guide, Pull, Push, or normal Blueprint integration to operate;
+- it is not needed for `membrane`, Hub, MCP, Adapt, Cortex, Ledger, Pull, Push, or normal Blueprint integration to operate;
 - native-only installed-artifact qualification passes with the interpreter absent;
 - it has a row in canonical `migration/native-rust/runtime-language-manifest.json` with
   disposition `dev-only`, graph-derived non-reachability, and machine-verifiable exclusion evidence.
@@ -175,7 +182,11 @@ An external executable is permitted only when it is **not Membrane-owned runtime
 - stable typed failure/coverage-gap representation;
 - receipt/provenance sufficient to distinguish the external tool from Membrane-owned behavior.
 
-Examples include a compiler, linter, scanner, VCS executable where a Rust library is not appropriate, or a separately versioned Blueprint service during a migration period. Spawning Python to run Adapt or federation is never an external-tool exception.
+Examples include a compiler, linter, scanner, VCS executable where a Rust
+library is not appropriate, or a Blueprint-owned runtime package while it is
+hosted under Hub lifecycle during migration. Independent Blueprint residency is
+not an external-tool exception. Spawning Python to run Adapt or federation is
+never an external-tool exception.
 
 ### 1.4 Self-contained
 
@@ -216,26 +227,22 @@ Any Hub script that owns business/runtime semantics, performs an effect, or requ
 ### 2.1 Logical target
 
 ```text
-                          CodeRight composition root
+                          CodeRight / hosts
                                    |
-                                   | direct Rust APIs
+                                   | typed Hub binding
                                    v
 +-----------------------------------------------------------------------+
+|                    Active Membrane Hub process                         |
+|                                                                       |
 |                         Membrane native core                           |
-|                                                                       |
 | Pull / Federation   Push / Reduction   Adapt / Learning               |
-| Guide / Navigation  Cortex / Durable Knowledge  Blueprint client      |
-|                                                                       |
+| Ledger / Navigation Cortex / Durable Knowledge  Blueprint client      |
 | transcript normalization | authority/admission | lifecycle | receipts |
 +----------------------+---------------------+----------------------------+
                        |                     |
                        v                     v
-             native Cortex store        external typed services/tools
-                                        only where ownership is external
-                       |
-                       v
-                 Membrane Hub
-        standalone lifecycle / install / update
+             native Cortex store      Hub-hosted Blueprint role and
+                                      external typed target tools
 
 Host surfaces (all stateless Hub clients; none may launch or auto-start anything):
   native `membrane` CLI
@@ -260,10 +267,10 @@ Exact crate names may vary, but ownership MUST be equivalent to the following:
 | `membrane-transcript` (current candidate to adopt/reconcile) | Canonical transcript discovery/adapters, `TranscriptEventV1`, byte spans, provenance, parser receipts, typed unavailable/error semantics |
 | `membrane-adapt` (current candidate to adopt/reconcile) | Taste/Insights mining, authority/admission, manifest, semantic validation, lifecycle, application receipts, native Adapt CLI/service surface |
 | Cortex crates | Durable memory, embeddings, vector/lexical retrieval, lifecycle/persistence |
-| Guide native module | Rebuildable document navigation and hash-bound section projections; no document truth |
+| Ledger native module | Rebuildable document navigation and hash-bound section projections; no document truth |
 | `membrane-mcp` | Native stdio MCP adapter over the same Rust API; no duplicate implementation |
-| `membrane-client` | Remote typed client only when a separately running service is intentionally selected |
-| Hub | Sole resident lifecycle/install/update authority for Membrane runtime; not Blueprint daemon authority |
+| `membrane-client` | Typed client for the active Hub binding; no embedded or alternate resident backend |
+| Hub | Sole resident lifecycle/install/update authority, including Blueprint residency; no Membrane child process |
 
 Live Diagnostics is implemented inside `membrane-protocol`, `membrane-runtime`, `membrane`, and
 the native host/MCP adapters. It is not a new subsystem crate required for naming symmetry. Extract
@@ -299,7 +306,7 @@ The current product truth enumerates six axes. This section makes their runtime 
 | **Push** | Rust reduction/reconstruction/budget logic | Canonical renderer/reconciliation in Rust; CJS mirror cannot remain authoritative |
 | **Cortex** | Existing Rust engine/store | No competing Python memory writer; remote use only through typed client when selected |
 | **Blueprint** | Typed Rust client/interface; Hub-hosted native implementation | Independently usable, not independently resident; watcher only under Hub; Hub-off access is bounded one-shot; absence degrades explicitly |
-| **Guide** | Rust record/index/navigation implementation | No interpreter-backed runtime dependency |
+| **Ledger** | Rust record/index/navigation implementation | No interpreter-backed runtime dependency |
 | **Adapt** | Rust learning subsystem over native transcript + Cortex interfaces | Python package/CLI/shims/scheduler are migration scaffolding only |
 
 The runtime ledger MUST additionally cover Hub, MCP, client adapters, installers/updaters, generated host configuration, and release payloads because those surfaces can reintroduce interpreters even though they are not one of the six semantic axes.
@@ -604,19 +611,26 @@ Membrane MUST NOT duplicate Blueprint's repository graph merely to remove a proc
 
 ### 8.2 Migration-period allowance
 
-Blueprint MAY remain a separately running external daemon during this migration if:
+Blueprint MAY remain a separately running external daemon only as a bounded
+migration state if:
 
 - the protocol is typed/versioned;
 - Membrane never reaches it through a Node CLI fallback;
 - its absence produces a typed `Unavailable`/degraded subsystem state and provider omission;
 - Membrane does not dynamically discover/load Blueprint source from a workspace;
-- the Membrane installed artifact does not bootstrap Node to execute a hidden Membrane-owned implementation.
+- the Membrane installed artifact does not bootstrap Node to execute a hidden Membrane-owned implementation;
+- the migration ledger names its Hub-hosting cutover and deletion/disable gate;
+- it does not register or preserve an independently resident final topology.
 
 ### 8.3 Final packaging decision
 
-Blueprint remains a separately versioned external product/service. Membrane ships one typed native Blueprint client/protocol and never opens Blueprint SQLite directly. Blueprint absence yields typed `Unavailable`/degraded status for Blueprint-dependent requests while unrelated Membrane functions continue. Membrane never bundles, launches, or falls back to a Node Blueprint implementation.
-
-Hub is sole resident lifecycle authority for Membrane runtime. Blueprint owns its independently versioned daemon lifecycle.
+Blueprint retains an independently versioned package and protocol, but not an
+independently resident service. While Hub is active, Hub owns Blueprint
+residency and hosts its watcher/query role; Membrane reaches it through one
+typed native client and never opens Blueprint SQLite directly. When Hub is
+inactive, Membrane returns typed `membrane_unavailable { hub_inactive }` and
+does not fall back. An explicit direct Blueprint request may use a bounded
+one-shot operation that publishes transactionally and exits.
 
 ---
 
@@ -626,8 +640,8 @@ Hub is sole resident lifecycle authority for Membrane runtime. Blueprint owns it
 
 Allowed:
 
-1. Hub -> an explicitly requested, bounded one-shot Blueprint operation that publishes transactionally and exits;
-2. Membrane -> separately owned external service over a typed protocol;
+1. Hub -> a Blueprint-owned runtime role whose residency ends with Hub and that never registers an independent OS service;
+2. an explicit direct Blueprint client -> a bounded Hub-off one-shot operation that publishes transactionally and exits;
 3. a governed Rust effect executor -> approved external target/project tools.
 
 Forbidden:
@@ -688,7 +702,7 @@ The valid ownership decisions from the prior migration specification remain auth
 - admitted Taste preferences, Insight issues, and other governed knowledge;
 - retrieval indexes and recall/delivery receipts.
 
-Native transcript code owns normalization, stable event identity, provenance, and typed parse failures. Source hosts retain raw transcripts until explicit Cortex durable admission. Guide owns rebuildable navigation/section projections only.
+Native transcript code owns normalization, stable event identity, provenance, and typed parse failures. Source hosts retain raw transcripts until explicit Cortex durable admission. Ledger owns rebuildable navigation/section projections only.
 
 **CodeRight owns live transactional execution state:**
 
@@ -698,30 +712,30 @@ Native transcript code owns normalization, stable event identity, provenance, an
 - execution-only budgets/queues/outboxes;
 - state-machine data not intended for later semantic/lexical retrieval.
 
-Test: if an admitted record will later be retrieved by meaning/keyword, Cortex is its default durable owner. Raw unadmitted transcript material stays with its source host; navigation projections belong to Guide; hot state-machine data stays with CodeRight.
+Test: if an admitted record will later be retrieved by meaning/keyword, Cortex is its default durable owner. Raw unadmitted transcript material stays with its source host; navigation projections belong to Ledger; hot state-machine data stays with CodeRight.
 
 ### 10.2 One memory universe
 
-CodeRight uses a typed `MemoryBackend` with embedded and service-backed implementations.
+CodeRight uses exactly one typed Membrane capability binding served by an
+active Hub. There is no embedded CodeRight Membrane backend and no alternate
+local Cortex store.
 
 Startup:
 
-1. probe resident service with versioned compatibility handshake;
-2. if compatible service is selected, **do not open the embedded local DB**;
-3. otherwise use embedded backend;
-4. bind one backend for daemon lifetime;
-5. service failure after binding is explicit and MUST NOT silently create a local divergent universe.
+1. probe Hub and perform the versioned Membrane capability handshake;
+2. verify protocol, capability set, installation identity, and Cortex store identity;
+3. if Hub is inactive or incompatible, block Membrane-required agent execution with typed unavailability;
+4. bind the compatible Hub/store identity for the session;
+5. binding loss remains explicit and MUST NOT create a local divergent universe.
 
-Transition from embedded to resident service is receipt-backed, idempotent, verified, and no-dual-write.
-
-After a service-backed binding is selected, backend loss behaves as follows:
+After an active-Hub binding is selected, backend loss behaves as follows:
 
 1. never open, create, or write an embedded fallback database;
 2. memory reads return typed `BackendUnavailable`; optional context lanes record an attributable omission, while memory-required operations stop;
 3. new durable writes fail closed with retryable `BackendUnavailable` before acceptance and retain a caller-supplied idempotency key for explicit retry;
 4. an in-flight write with unknown commit outcome returns typed `CommitUnknown` plus request/idempotency identity; recovery queries the original backend receipt before any retry;
 5. CodeRight may continue unrelated hot transactional work, but it cannot report a memory-dependent transition as complete;
-6. recovery rebinds only to the same compatible service/store identity. A different store identity requires explicit migration or process restart with a rebind receipt.
+6. recovery rebinds only to the same compatible Hub/store identity. A different store identity requires explicit migration or process restart with a rebind receipt.
 
 No volatile queue may report a durable write as accepted. These rules prefer visible unavailability over split-brain or silent loss.
 
@@ -740,7 +754,7 @@ Absorbed session/event storage preserves:
 ### 10.4 Transcript routing
 
 - admitted structured transcript chunks/events -> Cortex/native event store with lexical+semantic retrieval;
-- human-readable per-session summary/handoff -> Guide navigation projection;
+- human-readable per-session summary/handoff -> Ledger navigation projection;
 - summaries never replace the raw authoritative event history.
 
 ### 10.5 Retrieval
@@ -947,34 +961,37 @@ configuration contains a legacy interpreter key.
 
 **Status: OPEN.**
 
-Implement Section 8.3's settled external-service state B. Include the merged D0a/D0b findings
-surface, named-generation baseline/delta, exact content hashes, affected-closure evidence, and
-typed omissions. Membrane consumes these only through Blueprint's public service and never
-duplicates its graph/resolution owner.
+Implement Section 8.3's Hub-hosted residency and bounded one-shot contract.
+Include the merged D0a/D0b findings surface, named-generation baseline/delta,
+exact content hashes, affected-closure evidence, typed omissions, store lease,
+and freshness/coherence separation. Membrane consumes these only through
+Blueprint's public protocol and never duplicates its graph/resolution owner.
 
-**Exit gate:** native-only Membrane package neither requires nor bootstraps Node; typed native
-Blueprint client passes available/unavailable, generation/hash mismatch, findings omission, and
-dirty-overlay conformance with honest degradation.
+**Exit gate:** typed native Blueprint client passes Hub-hosted, Hub-off one-shot,
+Membrane Hub-off no-fallback, active-writer exclusion, generation/hash mismatch,
+findings omission, and dirty-overlay conformance with honest degradation. The
+`path`, `flows`, and complete inventory/audit obligations from Blueprint canon
+§17.3 are satisfied before residency cutover.
 
-### N9 — Finish CodeRight native embedding/storage integration
+### N9 — Finish CodeRight Hub binding/storage integration
 
 **Status: OPEN.**
 
-Preserve prior CodeRight plan:
+Implement the CodeRight integration canon:
 
-- native Membrane crate link;
-- one `MemoryBackend` selection;
-- service-backed zero-local-DB invariant;
+- one versioned active-Hub Membrane binding;
+- no embedded Membrane backend or local fallback store;
 - session/event/task/artifact migration;
 - FTS/hybrid retrieval;
-- no Membrane process for embedded behavior;
-- service-loss conformance for `BackendUnavailable`, `CommitUnknown`, same-store recovery, and zero local fallback.
-- in-process Live Diagnostics workspace/mutation APIs for CodeRight transactional mode;
+- Hub-loss conformance for `membrane_unavailable`, `BackendUnavailable`,
+  `CommitUnknown`, same-store recovery, and zero local fallback;
+- typed Hub-served Live Diagnostics workspace/mutation APIs for CodeRight transactional mode;
 - exact mutation sealing, operational gate consumption, and host enforcement without MCP,
-  loopback HTTP, Node, or a Membrane helper process.
+  loopback HTTP, or a second Membrane runtime.
 
-**Exit gate:** CodeRight memory and transactional diagnostics conformance passes with no
-Membrane/Python/Node helper process, no split memory universe, and no stale-byte fence clearance.
+**Exit gate:** CodeRight memory and transactional diagnostics conformance passes
+through one Hub binding, with no embedded/local fallback, no split memory
+universe, and no stale-byte fence clearance.
 
 ### N10 — Native-only release seal
 
@@ -1039,8 +1056,8 @@ The following are settled:
 - MCP/runtime rendering must be native;
 - Cortex remains durable-memory authority;
 - Adapt proposes/applies through Cortex rather than owning a competing DB;
-- CodeRight embeds Membrane behavior in-process;
-- a resident Membrane may be the selected data host but never a required code runtime;
+- CodeRight binds to Membrane only through active Hub;
+- no embedded CodeRight Membrane backend or local fallback store exists;
 - production does not spawn Python/Node to execute Membrane-owned source;
 - external product/tool boundaries are explicit and typed;
 - dev-only scripts are allowed only with exclusion proof;
@@ -1194,7 +1211,7 @@ At minimum:
 - machine-only record cannot deliver cross-machine;
 - apply is atomic/idempotent under replay;
 - multiwriter ordering/convergence rules hold;
-- service-backed CodeRight selection opens no local DB;
+- active-Hub CodeRight binding opens no local DB;
 - native MCP outputs remain deterministic for fixed inputs.
 - deleted/unreadable changed paths remain represented in the source-manifest digest;
 - an old cleared epoch cannot clear modified, added, deleted, symlink-escaped, or differently rooted bytes;
@@ -1232,7 +1249,7 @@ Inject failures at:
 - host pre-verification and completion fence boundaries;
 - Hub schedule/crash/restart;
 - external process timeout/kill where any allowed external tool is used;
-- CodeRight service-backed backend loss;
+- CodeRight active-Hub binding loss;
 - installer/updater/rollback transitions.
 
 ### 15.5 Behavioral Adapt evaluation
@@ -1328,7 +1345,7 @@ Exercise:
   modify/add/delete, root mismatch, symlink escape, stale epoch, unavailable provider/service,
   malformed command, and compound-command cases;
 - Cortex memory/retrieval;
-- Guide record/navigation path;
+- Ledger record/navigation path;
 - Adapt mine/review/apply/recall/doctor path;
 - Blueprint unavailable/degraded behavior according to Section 8;
 - external diagnostic tools absent/`Not configured` without false clean;
@@ -1341,18 +1358,21 @@ Exercise:
 Use the same Membrane package digest with no development checkout and no Membrane-bundled
 interpreter. Provision each external dependency independently before Membrane starts:
 
-- Blueprint runs as its separately versioned installed service under Blueprint-owned lifecycle;
-  Membrane receives only its typed endpoint/identity and never launches Blueprint source or Node;
+- Blueprint runs as a Hub-hosted role under Hub-owned residency using its
+  independently versioned package/protocol identity; it does not register an
+  independent service;
 - each diagnostic engine is supplied on a controlled injected search path with exact executable,
   version, digest, protocol, side-effect class, and transitive-runtime identity;
 - prefer a self-contained native engine such as `tsgo` for TypeScript D1 seal evidence; any
   separately tested interpreter-backed external tool must bring its own declared runtime outside
   the Membrane package and cannot establish a Membrane runtime dependency.
 
-Exercise Blueprint available/generation-switch/hash-mismatch behavior and available external-tool
-conformance. Evidence separates Membrane processes, Blueprint-owned service processes, and declared
-external-tool processes. Membrane never fetches, installs, bootstraps, or resolves an interpreter
-from its own package or an uncontrolled PATH.
+Exercise Blueprint Hub-hosted, Hub-off bounded one-shot,
+generation-switch/hash-mismatch, and active-writer-exclusion behavior plus
+available external-tool conformance. Evidence separates the Hub process,
+bounded Blueprint one-shot processes, and declared external-tool processes.
+Membrane never fetches, installs, bootstraps, or resolves an interpreter from
+its own package or an uncontrolled PATH.
 
 Inspect:
 
@@ -1395,8 +1415,9 @@ migration/native-rust/native-only-seal.json
 - [ ] No installed Membrane runtime feature requires Python/Node/npm/pip or interpreter-managed standard libraries.
 - [ ] No production dynamic import/module resolution from development workspaces exists.
 - [ ] No installed shim/scheduler/host config points at source-checkout `.py/.js/.mjs/.cjs`.
-- [ ] Hub supervises only intended native Membrane children and declared external target tools;
-  no Membrane-owned interpreter child exists.
+- [ ] Membrane runtime exists only in the Hub process; Hub launches no
+  Membrane child, and any declared external target-tool or bounded Blueprint
+  one-shot process is identity-bound and exits under its governing contract.
 
 ### 17.2 Federation
 
@@ -1458,18 +1479,18 @@ migration/native-rust/native-only-seal.json
 
 ### 17.7 Blueprint
 
-- [ ] Final packaging implements Section 8.3 external-service state B.
+- [ ] Final packaging implements Section 8.3 Hub-hosted residency and bounded one-shot contract.
 - [ ] No Node Blueprint CLI fallback exists inside Membrane providers.
-- [ ] Blueprint absence/degradation is typed and honest.
+- [ ] Hub-off Membrane requests return typed unavailability and never invoke Blueprint one-shot.
+- [ ] Direct Hub-off Blueprint requests are bounded, publish transactionally, and exit.
 - [ ] Native-only Membrane artifact does not bootstrap an undeclared Node runtime.
 
 ### 17.8 Cortex / data / CodeRight
 
 - [ ] Cortex remains the single durable-memory authority for Adapt records.
-- [ ] CodeRight links native Membrane APIs for embedded behavior.
-- [ ] CodeRight uses in-process transactional diagnostics and host enforcement without MCP,
-  loopback HTTP, or a helper process.
-- [ ] Selected resident memory backend causes zero embedded local DB opens.
+- [ ] CodeRight uses exactly one compatible active-Hub Membrane binding.
+- [ ] CodeRight uses Hub-served transactional diagnostics and host enforcement without a second Membrane runtime.
+- [ ] CodeRight opens no embedded/local fallback Cortex DB.
 - [ ] Backend failure does not silently split memory universes.
 - [ ] Sessions/events/tasks/artifacts migrate with verified receipts.
 - [ ] `(session_id, seq)` invariants pass.
@@ -1561,7 +1582,7 @@ Every executable/invocation item gets a row with at least:
 | `runtime` | `rust`, `python`, `node`, `shell`, `declarative`, `webview`, `external` |
 | `kind` | source module, binary, shim, scheduler, service, config generator, test, benchmark, etc. |
 | `invoked_by` | exact caller/entrypoint(s) |
-| `product_surface` | Pull/Push/Cortex/Blueprint/Guide/Adapt/Hub/MCP/install/CI/etc. |
+| `product_surface` | Pull/Push/Cortex/Blueprint/Ledger/Adapt/Hub/MCP/install/CI/etc. |
 | `production_reachable` | boolean proven from invocation graph |
 | `packaged` | whether exact release candidate contains/requires it |
 | `semantics_owned` | contracts/invariants currently implemented |
@@ -1650,7 +1671,7 @@ Load-bearing current evidence includes:
 - commit `8a215ac6fab11cc24bb821507057743b7898e09f` — current baseline, adding qualified Live Diagnostics Rust core/providers/contracts, Blueprint D0 findings, seven JS diagnostic MCP tools, and installed Node hook enforcement;
 - `docs/design/membrane-live-diagnostics-final-architecture.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
 - `engine/crates/membrane-protocol/src/diagnostics.rs` and
-  `engine/crates/membrane-runtime/src/{live_diagnostics.rs,live_diagnostics_service.rs,providers/}` — native operational contracts, evaluator, resident service, and qualified providers;
+  `engine/crates/membrane-runtime/src/{live_diagnostics.rs,live_diagnostics_service.rs,providers/}` — native operational contracts, evaluator, Hub-hosted service module, and qualified providers;
 - `mcp/server.mjs`, `mcp/toolsets.mjs`, `mcp/lib/diagnostics-client.mjs`, and
   `mcp/hooks/` — current interpreter-backed diagnostic MCP/host surfaces that N6 must port or demote;
 - `engine/crates/membrane-mcp/src/tools.rs` — native MCP currently advertises no tools, correctly avoiding advertisement before native execution exists;
@@ -1691,7 +1712,7 @@ That is the canonical completion definition.
 
 ---
 
-## Appendix — Hub-owned runtime lifecycle (supersedes conflicting text above)
+## Appendix — Hub-owned runtime lifecycle summary
 
 The Membrane runtime executes only inside the active Hub process. MCP and CLI
 surfaces are stateless Hub clients; they never launch, auto-start, or register a

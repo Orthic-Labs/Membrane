@@ -951,7 +951,7 @@ Run real experiments showing:
 - incompatible version;
 - store identity mismatch;
 - backend death;
-- no local fallback after service bind;
+- no local fallback after Hub bind;
 - migration-required path.
 
 ## Event/evidence
@@ -988,7 +988,7 @@ Run real experiments showing:
 - raw trace not silently inserted into Cortex;
 - admitted durable record goes to Cortex;
 - document virtual source goes to Ledger only after qualification;
-- no duplicate CodeRight memory DB when service-backed Cortex is selected.
+- no duplicate CodeRight memory DB when the Hub-served Cortex binding is selected.
 
 ---
 

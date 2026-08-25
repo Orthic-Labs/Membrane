@@ -14,7 +14,7 @@ not runtime configuration.
 production launch or loopback site. Python federation gateway/providers are
 `port` rows owned by MEM-014, MEM-017–026, or MEM-027, then deleted by MEM-030.
 The Python worker bridge is deleted by MEM-029. Existing Hub, MCP, Blueprint,
-Cortex, and Guide boundaries remain typed owner boundaries.
+Cortex, and Ledger boundaries remain typed owner boundaries.
 
 Canonical plan expands runtime closure beyond this federation-baseline ledger to transcript normalization, Adapt, MCP/renderer, Blueprint packaging, CodeRight integration, and native-only release qualification.
 
@@ -37,10 +37,12 @@ audit, architect, skills, cortex`, as locked by MEM-010. Candidate IDs use
 first-wins deduplication after native canonical ordering. One monotonic deadline
 flows from ingress through freshness, provider work, merge, and publication.
 
-Blueprint owns repository truth and remains daemon/protocol-only. Cortex owns
-durable memory and remains application-API-only. Guide owns its rebuildable
-document index. Membrane catalog owns grants, generations, events, and
-content-free receipts. No provider opens another owner's SQLite store.
+Blueprint owns repository truth and remains protocol-only to Membrane. Its
+continuous role is hosted under Hub lifecycle; explicit Hub-off access is a
+bounded one-shot. Cortex owns durable memory and remains application-API-only.
+Ledger owns its rebuildable document index. Membrane catalog owns grants,
+generations, events, and content-free receipts. No provider opens another
+owner's SQLite store.
 
 ## Nine-lane contract
 
