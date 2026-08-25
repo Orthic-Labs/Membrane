@@ -71,6 +71,18 @@ CREATE TABLE IF NOT EXISTS ledger_nodes (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_nodes_generation
   ON ledger_nodes(doc_id, ledger_generation);
+CREATE TABLE IF NOT EXISTS ledger_index_publications (
+    doc_id TEXT PRIMARY KEY,
+    content_hash TEXT NOT NULL,
+    node_count INTEGER NOT NULL,
+    parser_version TEXT NOT NULL,
+    projection_schema_version TEXT NOT NULL,
+    fts_schema_version TEXT NOT NULL,
+    tokenizer_id TEXT NOT NULL,
+    query_normalizer_version TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    ledger_generation INTEGER NOT NULL
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS ledger_node_fts USING fts5(
     doc_id UNINDEXED,
     node_id UNINDEXED,

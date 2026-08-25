@@ -6,7 +6,8 @@ use crate::{
         ProjectionKind, ProjectionProvenanceV1,
     },
     ledger::index::{
-        advance_unchanged_generation_tx, replace_document_index_tx, IndexDocumentInput,
+        advance_unchanged_generation_tx, document_index_is_current_tx,
+        replace_document_index_tx, IndexDocumentInput,
     },
     ledger::LedgerDb,
 };
@@ -202,10 +203,32 @@ fn lexical_score(content: &str, terms: &[String]) -> usize {
 pub fn recall(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
     match super::index::recall_mode(db)? {
         super::index::LedgerRecallMode::LedgerFts => recall_fts(db, query, k),
-        super::index::LedgerRecallMode::LegacyScan | super::index::LedgerRecallMode::Shadow => {
-            recall_legacy(db, query, k)
-        }
+        super::index::LedgerRecallMode::Shadow => Ok(recall_shadow(db, query, k)?.legacy_hits),
+        super::index::LedgerRecallMode::LegacyScan => recall_legacy(db, query, k),
     }
+}
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq)]
+pub struct LedgerShadowRecallV1 {
+    pub normalized_query: String,
+    pub legacy_hits: Vec<DocRecallHitV1>,
+    pub fts_hits: Vec<DocRecallHitV1>,
+}
+
+/// Execute both lanes for qualification/debugging while leaving caller-visible production
+/// behavior on the legacy result. This remains available before FTS activation is trusted.
+pub fn recall_shadow(
+    db: &LedgerDb,
+    query: &str,
+    k: usize,
+) -> Result<LedgerShadowRecallV1, String> {
+    let legacy_hits = recall_legacy(db, query, k)?;
+    let fts_hits = recall_fts(db, query, k)?;
+    Ok(LedgerShadowRecallV1 {
+        normalized_query: super::index::normalize_query(query),
+        legacy_hits,
+        fts_hits,
+    })
 }
 
 fn recall_legacy(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
@@ -538,7 +561,44 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     walk(&root, &mut files, &mut excluded_health).map_err(|e| e.to_string())?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let generation: i64 = tx
+        .query_row(
+            "SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    // A sync publishes one database-wide generation. Previously verified rows from other roots
+    // advance in the same transaction; recall still hash-checks their live source before emit.
+    tx.execute(
+        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_doc_projections SET index_generation=?1
+         WHERE parent_doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_nodes SET ledger_generation=?1
+         WHERE doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_index_publications SET ledger_generation=?1
+         WHERE doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
     let projections_available: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",
@@ -596,11 +656,15 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                         |row| row.get(0),
                     )
                     .map_err(|e| e.to_string())?;
+            let has_current_index =
+                document_index_is_current_tx(&tx, id, DOC_PARSER_VERSION, &hash)
+                    .map_err(|error| error.to_string())?;
             if old_hash == &hash
                 && parser_version == DOC_PARSER_VERSION
                 && superseded_by.is_none()
                 && !supersedes
                 && has_projection
+                && has_current_index
             {
                 tx.execute(
                     "UPDATE ledger_doc_artifacts \

@@ -12,6 +12,11 @@ pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
 
+// Activation is a host decision, not a property a caller can grant itself by hashing JSON.
+// The allowlist intentionally remains empty until the post-rename ledger-eval-v2 candidate has
+// a measured, verifier-issued receipt. Shadow indexing and comparison do not depend on it.
+const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] = &[];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LedgerRecallMode {
     LegacyScan,
@@ -32,11 +37,16 @@ impl LedgerRecallMode {
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LedgerQualificationReceiptV1 {
+    pub schema_version: String,
+    pub receipt_source: String,
+    pub host_id: String,
+    pub verifier_id: String,
+    pub commit_sha256: String,
     pub receipt_sha256: String,
     pub corpus_version: String,
-    pub exact_resolution_passed: bool,
-    pub stale_refusal_passed: bool,
-    pub production_fts_path_passed: bool,
+    pub corpus_sha256: String,
+    pub run_sha256: String,
+    pub result_sha256: String,
 }
 
 pub fn recall_mode(db: &LedgerDb) -> Result<LedgerRecallMode, String> {
@@ -65,16 +75,23 @@ pub fn activate(
 ) -> Result<(), String> {
     if mode == LedgerRecallMode::LedgerFts {
         let receipt = receipt.ok_or_else(|| "ledger_fts_requires_qualification".to_owned())?;
-        let valid_hash = receipt.receipt_sha256.len() == 64
-            && receipt.receipt_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        let valid_hash = is_sha256(&receipt.receipt_sha256)
             && receipt.receipt_sha256 == qualification_receipt_sha256(receipt);
         if !valid_hash
+            || receipt.schema_version != "ledger.qualification-receipt.v1"
+            || receipt.receipt_source != "membrane-host/ledger-qualification"
+            || receipt.host_id.trim().is_empty()
+            || receipt.verifier_id.trim().is_empty()
+            || !is_sha256(&receipt.commit_sha256)
             || receipt.corpus_version.trim().is_empty()
-            || !receipt.exact_resolution_passed
-            || !receipt.stale_refusal_passed
-            || !receipt.production_fts_path_passed
+            || !is_sha256(&receipt.corpus_sha256)
+            || !is_sha256(&receipt.run_sha256)
+            || !is_sha256(&receipt.result_sha256)
         {
             return Err("ledger_fts_qualification_failed".to_owned());
+        }
+        if !TRUSTED_LEDGER_FTS_RECEIPTS.contains(&receipt.receipt_sha256.as_str()) {
+            return Err("ledger_fts_qualification_untrusted".to_owned());
         }
     }
     let (sha, corpus) = receipt
@@ -99,13 +116,22 @@ pub fn activate(
 /// output, so verification remains stable across JSON formatting and map ordering.
 pub fn qualification_receipt_sha256(receipt: &LedgerQualificationReceiptV1) -> String {
     let payload = format!(
-        "ledger.qualification.v1\0{}\0{}\0{}\0{}",
+        "ledger.qualification.v1\0{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}\0{}",
+        receipt.schema_version,
+        receipt.receipt_source,
+        receipt.host_id,
+        receipt.verifier_id,
+        receipt.commit_sha256,
         receipt.corpus_version,
-        receipt.exact_resolution_passed,
-        receipt.stale_refusal_passed,
-        receipt.production_fts_path_passed,
+        receipt.corpus_sha256,
+        receipt.run_sha256,
+        receipt.result_sha256,
     );
     hex::encode(Sha256::digest(payload.as_bytes()))
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[derive(Clone, Debug)]
@@ -124,7 +150,14 @@ pub(crate) fn replace_document_index_tx(
     tx: &Transaction<'_>,
     input: &IndexDocumentInput<'_>,
 ) -> rusqlite::Result<()> {
-    tx.execute("DELETE FROM ledger_node_fts WHERE doc_id=?1", [input.doc_id])?;
+    tx.execute(
+        "DELETE FROM ledger_index_publications WHERE doc_id=?1",
+        [input.doc_id],
+    )?;
+    tx.execute(
+        "DELETE FROM ledger_node_fts WHERE doc_id=?1",
+        [input.doc_id],
+    )?;
     tx.execute("DELETE FROM ledger_nodes WHERE doc_id=?1", [input.doc_id])?;
 
     let outline = build_outline(
@@ -238,12 +271,13 @@ pub(crate) fn replace_document_index_tx(
             .iter()
             .rev()
             .find(|section| section.start_byte <= start && end <= section.end_byte);
-        let parent_id = containing_section
-            .and_then(|section| anchor_to_node.get(&section.anchor_id))
-            .cloned();
-        let heading_path = containing_section
-            .map(|section| section.breadcrumb.join(" > "))
-            .unwrap_or_default();
+        // Every emitted navigation anchor must be accepted by the canonical section reader.
+        // Blocks outside a reader-visible section are not safe candidates and stay unindexed.
+        let Some(containing_section) = containing_section else {
+            continue;
+        };
+        let parent_id = anchor_to_node.get(&containing_section.anchor_id).cloned();
+        let heading_path = containing_section.breadcrumb.join(" > ");
         let span_hash = hex::encode(Sha256::digest(body.as_bytes()));
         let node_id = stable_node_id(
             input.doc_id,
@@ -263,7 +297,7 @@ pub(crate) fn replace_document_index_tx(
             rusqlite::params![
                 input.doc_id,
                 node_id,
-                format!("node:{block_ordinal}"),
+                containing_section.anchor_id,
                 parent_id,
                 block_ordinal as i64,
                 node_kind,
@@ -284,7 +318,14 @@ pub(crate) fn replace_document_index_tx(
         tx.execute(
             "INSERT INTO ledger_node_fts(doc_id,node_id,path,title,heading,body,identifier_aliases)
              VALUES (?1,?2,?3,?4,'',?5,?6)",
-            rusqlite::params![input.doc_id,node_id,input.path,input.title,body,aliases],
+            rusqlite::params![
+                input.doc_id,
+                node_id,
+                input.path,
+                input.title,
+                body,
+                aliases
+            ],
         )?;
         block_ordinal += 1;
     }
@@ -303,7 +344,30 @@ pub(crate) fn replace_document_index_tx(
             rusqlite::params![input.doc_id,node_id,input.path,input.title,input.markdown,aliases],
         )?;
     }
-    let _ = input.content_hash;
+    let node_count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM ledger_nodes WHERE doc_id=?1",
+        [input.doc_id],
+        |row| row.get(0),
+    )?;
+    tx.execute(
+        "INSERT INTO ledger_index_publications (
+            doc_id,content_hash,node_count,parser_version,projection_schema_version,
+            fts_schema_version,tokenizer_id,query_normalizer_version,source_revision,
+            ledger_generation
+         ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+        rusqlite::params![
+            input.doc_id,
+            input.content_hash,
+            node_count,
+            input.parser_version,
+            PROJECTION_SCHEMA_VERSION,
+            FTS_SCHEMA_VERSION,
+            TOKENIZER_ID,
+            QUERY_NORMALIZER_VERSION,
+            input.source_revision,
+            input.generation,
+        ],
+    )?;
     Ok(())
 }
 
@@ -317,7 +381,49 @@ pub(crate) fn advance_unchanged_generation_tx(
         "UPDATE ledger_nodes SET source_revision=?1, ledger_generation=?2 WHERE doc_id=?3",
         rusqlite::params![source_revision, generation, doc_id],
     )?;
+    tx.execute(
+        "UPDATE ledger_index_publications
+         SET source_revision=?1, ledger_generation=?2 WHERE doc_id=?3",
+        rusqlite::params![source_revision, generation, doc_id],
+    )?;
     Ok(())
+}
+
+pub(crate) fn document_index_is_current_tx(
+    tx: &Transaction<'_>,
+    doc_id: &str,
+    parser_version: &str,
+    content_hash: &str,
+) -> rusqlite::Result<bool> {
+    tx.query_row(
+        "SELECT EXISTS(
+             SELECT 1 FROM ledger_index_publications publication
+             WHERE publication.doc_id=?1
+               AND publication.node_count > 0
+               AND publication.parser_version=?2
+               AND publication.projection_schema_version=?3
+               AND publication.fts_schema_version=?4
+               AND publication.tokenizer_id=?5
+               AND publication.query_normalizer_version=?6
+               AND publication.content_hash=?7
+               AND publication.node_count=(
+                   SELECT COUNT(*) FROM ledger_nodes node WHERE node.doc_id=?1
+               )
+               AND publication.node_count=(
+                   SELECT COUNT(*) FROM ledger_node_fts fts WHERE fts.doc_id=?1
+               )
+         )",
+        rusqlite::params![
+            doc_id,
+            parser_version,
+            PROJECTION_SCHEMA_VERSION,
+            FTS_SCHEMA_VERSION,
+            TOKENIZER_ID,
+            QUERY_NORMALIZER_VERSION,
+            content_hash,
+        ],
+        |row| row.get(0),
+    )
 }
 
 #[derive(Clone, Debug)]
@@ -332,7 +438,11 @@ pub(crate) struct FtsHitRow {
     pub score: f32,
 }
 
-pub(crate) fn recall_fts(db: &LedgerDb, query: &str, k: usize) -> Result<(String, Vec<FtsHitRow>), String> {
+pub(crate) fn recall_fts(
+    db: &LedgerDb,
+    query: &str,
+    k: usize,
+) -> Result<(String, Vec<FtsHitRow>), String> {
     let normalized = normalize_query(query);
     let terms = query_terms(query);
     if terms.is_empty() || k == 0 {
@@ -344,6 +454,13 @@ pub(crate) fn recall_fts(db: &LedgerDb, query: &str, k: usize) -> Result<(String
         .collect::<Vec<_>>()
         .join(" OR ");
     let conn = db.lock();
+    let pinned_generation: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(index_generation), 0) FROM ledger_doc_artifacts",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
     let mut statement = conn
         .prepare(
             "SELECT artifact.doc_id, fts.node_id, artifact.repository_root, artifact.path,
@@ -355,25 +472,33 @@ pub(crate) fn recall_fts(db: &LedgerDb, query: &str, k: usize) -> Result<(String
              WHERE ledger_node_fts MATCH ?1
                AND artifact.lifecycle_state='active'
                AND artifact.sensitivity='normal'
+               AND artifact.index_generation=?2
                AND node.ledger_generation=artifact.index_generation
                AND node.source_revision=artifact.revision
              ORDER BY score DESC, artifact.doc_id, node.ordinal
-             LIMIT ?2",
+             LIMIT ?3",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(rusqlite::params![match_query, (k.saturating_mul(8)).max(k) as i64], |row| {
-            Ok(FtsHitRow {
-                doc_id: row.get(0)?,
-                node_id: row.get(1)?,
-                repository_root: row.get(2)?,
-                path: row.get(3)?,
-                expected_hash: row.get(4)?,
-                anchor_id: row.get(5)?,
-                generation: row.get(6)?,
-                score: row.get::<_, f64>(7)? as f32,
-            })
-        })
+        .query_map(
+            rusqlite::params![
+                match_query,
+                pinned_generation,
+                (k.saturating_mul(8)).max(k) as i64
+            ],
+            |row| {
+                Ok(FtsHitRow {
+                    doc_id: row.get(0)?,
+                    node_id: row.get(1)?,
+                    repository_root: row.get(2)?,
+                    path: row.get(3)?,
+                    expected_hash: row.get(4)?,
+                    anchor_id: row.get(5)?,
+                    generation: row.get(6)?,
+                    score: row.get::<_, f64>(7)? as f32,
+                })
+            },
+        )
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -381,7 +506,10 @@ pub(crate) fn recall_fts(db: &LedgerDb, query: &str, k: usize) -> Result<(String
 }
 
 pub fn normalize_query(query: &str) -> String {
-    query.nfkc().flat_map(char::to_lowercase).collect::<String>()
+    query
+        .nfkc()
+        .flat_map(char::to_lowercase)
+        .collect::<String>()
 }
 
 pub fn query_terms(query: &str) -> Vec<String> {
@@ -411,7 +539,10 @@ fn add_component_aliases(component: &str, output: &mut BTreeSet<String>) {
     if component.is_empty() {
         return;
     }
-    let folded = component.nfkc().flat_map(char::to_lowercase).collect::<String>();
+    let folded = component
+        .nfkc()
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
     output.insert(folded.clone());
     let mut start = 0;
     let chars = component.char_indices().collect::<Vec<_>>();
@@ -427,12 +558,22 @@ fn add_component_aliases(component: &str, output: &mut BTreeSet<String>) {
                 || (previous.is_uppercase() && next_is_lower))
         {
             let end = chars[index].0;
-            output.insert(component[start..end].nfkc().flat_map(char::to_lowercase).collect());
+            output.insert(
+                component[start..end]
+                    .nfkc()
+                    .flat_map(char::to_lowercase)
+                    .collect(),
+            );
             start = end;
         }
     }
     if start > 0 {
-        output.insert(component[start..].nfkc().flat_map(char::to_lowercase).collect());
+        output.insert(
+            component[start..]
+                .nfkc()
+                .flat_map(char::to_lowercase)
+                .collect(),
+        );
     }
     if folded.chars().any(|character| !character.is_ascii()) {
         let chars = folded.chars().collect::<Vec<_>>();
@@ -455,7 +596,10 @@ fn stable_node_id(
         "{doc_id}\0{}\0{kind}\0{span_hash}\0{ordinal}",
         parent_id.unwrap_or("")
     );
-    format!("ledger.node:{}", hex::encode(Sha256::digest(evidence.as_bytes())))
+    format!(
+        "ledger.node:{}",
+        hex::encode(Sha256::digest(evidence.as_bytes()))
+    )
 }
 
 fn ast_node_kind(value: &NodeValue) -> Option<&'static str> {
