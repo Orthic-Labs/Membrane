@@ -2,6 +2,13 @@
 set -euo pipefail
 
 pnpm install --frozen-lockfile
+# Temporary verification-branch gate: execute the Blueprint lease production
+# path before unrelated baseline failures stop the broader repository suite.
+node --test \
+  blueprint/tests/store-lease.test.mjs \
+  blueprint/tests/freshness-observation.test.mjs \
+  blueprint/tests/production-store-lease.test.mjs \
+  blueprint/tests/application-service.test.mjs
 pnpm test
 pnpm test:random
 pnpm test:all
