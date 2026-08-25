@@ -304,7 +304,7 @@ fn known_gap_cases_reproduce_exactly_as_documented() {
 }
 
 /// Prints the full per-family precision/recall table. Run with
-/// `cargo test -p membrane-adapt --test insights_detector_benchmark -- --nocapture`
+/// `rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --test insights_detector_benchmark -- --nocapture`
 /// to see it. Not itself a pass/fail gate beyond "the corpus loads and
 /// every case scores against all 33 families" — the gating invariants
 /// live in the tests above.
