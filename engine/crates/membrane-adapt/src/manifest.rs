@@ -7,26 +7,50 @@
 //! identity, evidence contexts without exactly one authority-eligible
 /// external-user source event, and semantic-validation receipts that do not
 /// exactly cover the manifest's records.
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::authority::{AuthorityEffect, PrecedenceTier};
 use crate::canonical::{canonical_object, sha256_canonical};
+use crate::duplicate_groups::{
+    build_group, verify_reviewed_resolution, DuplicateCandidateV1, DuplicateGroupV1,
+    DuplicateResolutionV1, DETERMINISTIC_EXACT_ALGORITHM, DUPLICATE_GROUP_CONTRACT,
+};
+use crate::record::{InfluenceClass, RecordClass};
+use crate::scope::ScopeDimensions;
+use crate::seal::{
+    verify_seal, SemanticPayloadV1, ADMISSION_POLICY_VERSION, PROVENANCE_CONTRACT_VERSION,
+    REDACTION_CONTRACT_VERSION, SEAL_CONTRACT_VERSION,
+};
 
-pub const MANIFEST_SCHEMA_VERSION: &str = "1.3.0";
+pub const MANIFEST_SCHEMA_VERSION: &str = "1.4.0";
 pub const SEMANTIC_VALIDATION_CONTRACT: &str = "direct-evidence-global-pool-v1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManifestError {
     UnsupportedSchema(String),
-    PayloadMismatch { record_id: String },
-    PendingAtApplyTime { record_id: String },
+    PayloadMismatch {
+        record_id: String,
+    },
+    PendingAtApplyTime {
+        record_id: String,
+    },
     MissingBatchIdentity,
     DuplicateSourceRef(String),
     SourceSessionMismatch,
-    UnknownSourceId { record_id: String, source_id: String },
-    EvidenceContextInvalid { record_id: String, reason: String },
+    UnknownSourceId {
+        record_id: String,
+        source_id: String,
+    },
+    EvidenceContextInvalid {
+        record_id: String,
+        reason: String,
+    },
     SemanticValidation(String),
+    SemanticSeal {
+        record_id: String,
+        reason: String,
+    },
     NotJson(String),
 }
 
@@ -45,13 +69,22 @@ impl std::fmt::Display for ManifestError {
             ManifestError::SourceSessionMismatch => {
                 write!(f, "source_session_ids must match source_refs order")
             }
-            ManifestError::UnknownSourceId { record_id, source_id } => {
-                write!(f, "record {record_id} references unknown source {source_id}")
+            ManifestError::UnknownSourceId {
+                record_id,
+                source_id,
+            } => {
+                write!(
+                    f,
+                    "record {record_id} references unknown source {source_id}"
+                )
             }
             ManifestError::EvidenceContextInvalid { record_id, reason } => {
                 write!(f, "record {record_id} evidence context invalid: {reason}")
             }
             ManifestError::SemanticValidation(msg) => write!(f, "semantic validation: {msg}"),
+            ManifestError::SemanticSeal { record_id, reason } => {
+                write!(f, "semantic seal {record_id}: {reason}")
+            }
             ManifestError::NotJson(msg) => write!(f, "manifest is not valid JSON: {msg}"),
         }
     }
@@ -106,6 +139,8 @@ pub struct ManifestRecord {
     #[serde(default)]
     pub scope_dimensions: BTreeMap2,
     pub record_type: String,
+    /// Evidence authority class computed before proposal construction.
+    pub evidence_class: String,
     pub authority_effect: String,
     pub status: String,
     pub confidence: f64,
@@ -132,6 +167,12 @@ pub struct ManifestRecord {
     /// records at apply time.
     pub validator_receipt_id: String,
     pub validator_receipt_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_user_act_receipt_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_payload: Option<SemanticPayloadV1>,
+    #[serde(default)]
+    pub semantic_digest: String,
     pub evidence_contexts: Vec<EvidenceContext>,
 }
 
@@ -167,6 +208,14 @@ pub struct PreferenceManifestV1 {
     pub forbidden_scopes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semantic_validation: Option<SemanticValidationReceipt>,
+    /// Trusted signed adjudication carried through to the irreversible apply
+    /// boundary; a digest-shaped validator field alone is never authority.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_adjudication: Option<crate::proposal::SemanticAdjudicationV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duplicate_groups: Vec<DuplicateGroupV1>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub duplicate_resolutions: Vec<DuplicateResolutionV1>,
     pub records: Vec<ManifestRecord>,
     /// Digest over everything above except this field itself.
     pub manifest_sha256: String,
@@ -264,6 +313,7 @@ pub fn candidate_payload(rec: &ManifestRecord) -> Value {
             Value::String(rec.evidence_excerpt.clone()),
         ),
         ("record_type", Value::String(rec.record_type.clone())),
+        ("evidence_class", Value::String(rec.evidence_class.clone())),
         ("confidence", Value::from(rec.confidence)),
         ("needs_review", Value::Bool(rec.needs_review)),
         (
@@ -287,6 +337,18 @@ pub fn candidate_payload(rec: &ManifestRecord) -> Value {
             Value::String(rec.validator_receipt_sha256.clone()),
         ),
         (
+            "verified_user_act_receipt_sha256",
+            serde_json::to_value(&rec.verified_user_act_receipt_sha256).unwrap(),
+        ),
+        (
+            "semantic_payload",
+            serde_json::to_value(&rec.semantic_payload).unwrap(),
+        ),
+        (
+            "semantic_digest",
+            Value::String(rec.semantic_digest.clone()),
+        ),
+        (
             "evidence_contexts",
             serde_json::to_value(&rec.evidence_contexts).unwrap_or(Value::Null),
         ),
@@ -304,6 +366,168 @@ pub fn payload_sha256(rec: &ManifestRecord) -> String {
     sha256_canonical(&candidate_payload(rec))
 }
 
+fn authority_effect(value: &str) -> Result<AuthorityEffect, ManifestError> {
+    serde_json::from_value(Value::String(value.to_string())).map_err(|_| {
+        ManifestError::SemanticSeal {
+            record_id: "<authority-effect>".into(),
+            reason: "unknown authority effect".into(),
+        }
+    })
+}
+
+pub fn semantic_payload_for_record(
+    rec: &ManifestRecord,
+    canonical_pool_sha256: &str,
+) -> Result<SemanticPayloadV1, ManifestError> {
+    let record_class =
+        RecordClass::parse(&rec.record_type).ok_or_else(|| ManifestError::SemanticSeal {
+            record_id: rec.id.clone(),
+            reason: "unknown record class".into(),
+        })?;
+    let scope_dimensions =
+        ScopeDimensions::normalize(&rec.scope_dimensions.0).map_err(|error| {
+            ManifestError::SemanticSeal {
+                record_id: rec.id.clone(),
+                reason: format!("scope: {error}"),
+            }
+        })?;
+    let mut evidence = rec
+        .source_file_hashes
+        .iter()
+        .map(|item| item.sha256.trim_start_matches("sha256:").to_lowercase())
+        .collect::<Vec<_>>();
+    evidence.push(crate::canonical::sha256_hex(
+        rec.evidence_excerpt.as_bytes(),
+    ));
+    if let Some(receipt) = &rec.verified_user_act_receipt_sha256 {
+        evidence.push(receipt.clone());
+    }
+    evidence.sort();
+    evidence.dedup();
+    let user_authoritative = rec.evidence_class == "user_authoritative";
+    let user_behavioral = rec.evidence_class == "user_behavioral";
+    if !user_authoritative && !user_behavioral {
+        return Err(ManifestError::SemanticSeal {
+            record_id: rec.id.clone(),
+            reason: "non-Taste evidence class".into(),
+        });
+    }
+    Ok(SemanticPayloadV1 {
+        seal_contract_version: SEAL_CONTRACT_VERSION.into(),
+        record_kind: "preference".into(),
+        category: rec.category.clone(),
+        canonical_text: crate::canonical::normalize_text(&rec.rule),
+        scope: rec.scope.clone(),
+        scope_dimensions,
+        authority_tier: match (
+            user_authoritative,
+            rec.scope.trim().eq_ignore_ascii_case("global"),
+        ) {
+            (true, true) => PrecedenceTier::ExplicitGlobalUserPreference,
+            (true, false) => PrecedenceTier::ExplicitScopedUserPreference,
+            (false, true) => PrecedenceTier::InferredGlobalUserPreference,
+            (false, false) => PrecedenceTier::InferredScopedUserPreference,
+        },
+        authority_effect: authority_effect(&rec.authority_effect)?,
+        influence_class: if user_behavioral || rec.needs_review {
+            InfluenceClass::Provisional
+        } else {
+            InfluenceClass::BehavioralDirective
+        },
+        record_class: Some(record_class),
+        machine_binding: rec.machine_only.then(|| rec.machine.clone()),
+        source_evidence_digests: evidence,
+        canonical_pool_sha256: canonical_pool_sha256.into(),
+        admission_policy_version: ADMISSION_POLICY_VERSION.into(),
+        validator_receipt_id: rec.validator_receipt_id.clone(),
+        validator_receipt_sha256: rec.validator_receipt_sha256.clone(),
+        redaction_contract_version: REDACTION_CONTRACT_VERSION.into(),
+        provenance_contract_version: PROVENANCE_CONTRACT_VERSION.into(),
+    })
+}
+
+pub fn seal_manifest_record(
+    rec: &mut ManifestRecord,
+    canonical_pool_sha256: &str,
+) -> Result<(), ManifestError> {
+    let payload = semantic_payload_for_record(rec, canonical_pool_sha256)?;
+    rec.semantic_digest = payload.seal_digest();
+    rec.semantic_payload = Some(payload);
+    Ok(())
+}
+
+/// Digest of sealed meaning/applicability fields only. Evidence, validation,
+/// and provenance bindings remain in the full semantic seal but cannot make
+/// otherwise-identical semantics look different during duplicate grouping.
+pub fn semantic_equivalence_digest(payload: &SemanticPayloadV1) -> String {
+    sha256_canonical(&canonical_object([
+        (
+            "seal_contract_version",
+            Value::String(payload.seal_contract_version.clone()),
+        ),
+        ("record_kind", Value::String(payload.record_kind.clone())),
+        ("category", Value::String(payload.category.clone())),
+        (
+            "canonical_text",
+            Value::String(payload.canonical_text.clone()),
+        ),
+        ("scope", Value::String(payload.scope.clone())),
+        (
+            "scope_dimensions",
+            serde_json::to_value(&payload.scope_dimensions).expect("scope serializes"),
+        ),
+        (
+            "authority_tier",
+            serde_json::to_value(payload.authority_tier).expect("authority serializes"),
+        ),
+        (
+            "authority_effect",
+            serde_json::to_value(payload.authority_effect).expect("effect serializes"),
+        ),
+        (
+            "influence_class",
+            serde_json::to_value(payload.influence_class).expect("influence serializes"),
+        ),
+        (
+            "record_class",
+            serde_json::to_value(payload.record_class).expect("class serializes"),
+        ),
+        (
+            "machine_binding",
+            serde_json::to_value(&payload.machine_binding).expect("machine serializes"),
+        ),
+        (
+            "admission_policy_version",
+            Value::String(payload.admission_policy_version.clone()),
+        ),
+        (
+            "redaction_contract_version",
+            Value::String(payload.redaction_contract_version.clone()),
+        ),
+    ]))
+}
+
+pub fn verify_manifest_record_seal<'a>(
+    rec: &'a ManifestRecord,
+    canonical_pool_sha256: &str,
+) -> Result<&'a SemanticPayloadV1, ManifestError> {
+    let payload = rec
+        .semantic_payload
+        .as_ref()
+        .ok_or_else(|| ManifestError::SemanticSeal {
+            record_id: rec.id.clone(),
+            reason: "missing payload".into(),
+        })?;
+    let expected = semantic_payload_for_record(rec, canonical_pool_sha256)?;
+    if payload != &expected || verify_seal(payload, &rec.semantic_digest).is_err() {
+        return Err(ManifestError::SemanticSeal {
+            record_id: rec.id.clone(),
+            reason: "payload or digest mismatch".into(),
+        });
+    }
+    Ok(payload)
+}
+
 /// Hash a full manifest over everything except its own `manifest_sha256`.
 pub fn manifest_hash(manifest: &PreferenceManifestV1) -> String {
     let mut value = serde_json::to_value(manifest).expect("manifest serializes");
@@ -315,7 +539,9 @@ pub fn manifest_hash(manifest: &PreferenceManifestV1) -> String {
 
 fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestError> {
     if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
-        return Err(ManifestError::UnsupportedSchema(manifest.schema_version.clone()));
+        return Err(ManifestError::UnsupportedSchema(
+            manifest.schema_version.clone(),
+        ));
     }
     if manifest.batch_id.trim().is_empty() || manifest.installation_id.trim().is_empty() {
         return Err(ManifestError::MissingBatchIdentity);
@@ -331,7 +557,11 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
             return Err(ManifestError::DuplicateSourceRef(r.source_id.clone()));
         }
     }
-    let session_ids: Vec<String> = manifest.source_refs.iter().map(|r| r.source_id.clone()).collect();
+    let session_ids: Vec<String> = manifest
+        .source_refs
+        .iter()
+        .map(|r| r.source_id.clone())
+        .collect();
     if manifest.source_session_ids != session_ids {
         return Err(ManifestError::SourceSessionMismatch);
     }
@@ -340,7 +570,32 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
         .iter()
         .map(|r| (r.source_id.as_str(), r.sha256.as_str()))
         .collect();
+    let record_by_id: std::collections::BTreeMap<&str, &ManifestRecord> = manifest
+        .records
+        .iter()
+        .map(|record| (record.id.as_str(), record))
+        .collect();
+    if record_by_id.len() != manifest.records.len() {
+        return Err(ManifestError::SemanticValidation(
+            "duplicate record id".into(),
+        ));
+    }
     for rec in &manifest.records {
+        if let Some(receipt) = &rec.verified_user_act_receipt_sha256 {
+            if receipt.len() != 64
+                || !receipt
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            {
+                return Err(ManifestError::SemanticSeal {
+                    record_id: rec.id.clone(),
+                    reason: "invalid verified user-act receipt digest".into(),
+                });
+            }
+        }
+        if rec.semantic_payload.is_some() || !rec.semantic_digest.is_empty() {
+            verify_manifest_record_seal(rec, &manifest.canonical_pool_sha256)?;
+        }
         let mut uniq = rec.source_ids.clone();
         uniq.sort();
         uniq.dedup();
@@ -381,13 +636,17 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
                 });
             }
             let s = sources[0];
-            if s.provenance != "external_user"
-                || s.kind != "user_message"
-                || s.role != "user"
-            {
+            let transcript_user =
+                s.provenance == "external_user" && s.kind == "user_message" && s.role == "user";
+            let verified_act = rec.verified_user_act_receipt_sha256.is_some()
+                && s.provenance == "verified_user_act"
+                && s.kind == "user_act"
+                && s.role == "user";
+            if !transcript_user && !verified_act {
                 return Err(ManifestError::EvidenceContextInvalid {
                     record_id: rec.id.clone(),
-                    reason: "source event must be an external user message".into(),
+                    reason: "source event must be an external user message or verified host act"
+                        .into(),
                 });
             }
             if ctx.evidence_text != s.text
@@ -401,6 +660,90 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
                 });
             }
         }
+    }
+    let mut group_digests = std::collections::BTreeSet::new();
+    for group in &manifest.duplicate_groups {
+        if group.contract_version != DUPLICATE_GROUP_CONTRACT
+            || group.algorithm != DETERMINISTIC_EXACT_ALGORITHM
+            || !group_digests.insert(group.group_digest.as_str())
+        {
+            return Err(ManifestError::SemanticValidation(
+                "invalid or duplicate automatic duplicate group".into(),
+            ));
+        }
+        let rebuilt = build_group(group.members.clone(), &group.algorithm).map_err(|error| {
+            ManifestError::SemanticValidation(format!("invalid duplicate group: {error:?}"))
+        })?;
+        if rebuilt != *group {
+            return Err(ManifestError::SemanticValidation(
+                "duplicate group digest mismatch".into(),
+            ));
+        }
+        let candidates = group
+            .members
+            .iter()
+            .map(|member| {
+                let record = record_by_id.get(member.record_id.as_str()).ok_or_else(|| {
+                    ManifestError::SemanticValidation(format!(
+                        "duplicate member missing: {}",
+                        member.record_id
+                    ))
+                })?;
+                if record.semantic_digest != member.semantic_seal {
+                    return Err(ManifestError::SemanticValidation(format!(
+                        "duplicate member seal mismatch: {}",
+                        member.record_id
+                    )));
+                }
+                let payload = record.semantic_payload.as_ref().ok_or_else(|| {
+                    ManifestError::SemanticValidation(format!(
+                        "duplicate member is not sealed: {}",
+                        member.record_id
+                    ))
+                })?;
+                Ok(DuplicateCandidateV1 {
+                    record_id: record.id.clone(),
+                    canonical_text: record.rule.clone(),
+                    scope: record.scope.clone(),
+                    semantic_seal: record.semantic_digest.clone(),
+                    semantic_equivalence_digest: semantic_equivalence_digest(payload),
+                    evidence_count: record.evidence_count,
+                    existing_canonical: false,
+                })
+            })
+            .collect::<Result<Vec<_>, ManifestError>>()?;
+        let regrouped =
+            crate::duplicate_groups::deterministic_exact_groups(&candidates).map_err(|error| {
+                ManifestError::SemanticValidation(format!(
+                    "invalid deterministic duplicate group: {error:?}"
+                ))
+            })?;
+        if regrouped.as_slice() != std::slice::from_ref(group) {
+            return Err(ManifestError::SemanticValidation(
+                "duplicate group is not semantically equivalent".into(),
+            ));
+        }
+        let expected = verify_reviewed_resolution(group, None, &std::collections::BTreeMap::new())
+            .map_err(|error| {
+                ManifestError::SemanticValidation(format!(
+                    "invalid abstaining duplicate group: {error:?}"
+                ))
+            })?;
+        let matches: Vec<_> = manifest
+            .duplicate_resolutions
+            .iter()
+            .filter(|resolution| resolution.group_digest == group.group_digest)
+            .collect();
+        if matches.len() != 1 || matches.first().copied() != Some(&expected) {
+            return Err(ManifestError::SemanticValidation(
+                "duplicate resolution is absent or noncanonical".into(),
+            ));
+        }
+    }
+    if manifest.duplicate_resolutions.len() != manifest.duplicate_groups.len() {
+        return Err(ManifestError::SemanticValidation(
+            "orphan duplicate resolution".into(),
+        ));
     }
     Ok(())
 }
@@ -418,9 +761,7 @@ pub fn validate_schema(manifest: &PreferenceManifestV1) -> Result<(), ManifestEr
     Ok(())
 }
 
-fn semantic_validation_errors(
-    manifest: &PreferenceManifestV1,
-) -> Result<(), ManifestError> {
+fn semantic_validation_errors(manifest: &PreferenceManifestV1) -> Result<(), ManifestError> {
     if manifest.records.is_empty() {
         return Ok(());
     }
@@ -454,8 +795,11 @@ fn semantic_validation_errors(
     }
     let record_ids: std::collections::BTreeSet<&str> =
         manifest.records.iter().map(|r| r.id.as_str()).collect();
-    let covered: std::collections::BTreeSet<&str> =
-        receipt.record_results.iter().map(|r| r.id.as_str()).collect();
+    let covered: std::collections::BTreeSet<&str> = receipt
+        .record_results
+        .iter()
+        .map(|r| r.id.as_str())
+        .collect();
     if covered != record_ids {
         errors.push("coverage does not exactly match manifest records".into());
     }
@@ -465,7 +809,9 @@ fn semantic_validation_errors(
         .map(|r| (r.id.as_str(), r))
         .collect();
     for rec in &manifest.records {
-        let Some(result) = by_id.get(rec.id.as_str()) else { continue };
+        let Some(result) = by_id.get(rec.id.as_str()) else {
+            continue;
+        };
         if result.payload_sha256 != rec.payload_sha256 {
             errors.push(format!("payload mismatch: {}", rec.id));
         }
@@ -509,6 +855,9 @@ pub fn apply_time_validate(manifest: &PreferenceManifestV1) -> Result<(), Manife
             return Err(ManifestError::PendingAtApplyTime {
                 record_id: rec.id.clone(),
             });
+        }
+        if rec.status == "accepted" {
+            verify_manifest_record_seal(rec, &manifest.canonical_pool_sha256)?;
         }
     }
     semantic_validation_errors(manifest)

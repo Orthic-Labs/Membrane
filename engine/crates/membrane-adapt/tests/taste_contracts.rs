@@ -4,11 +4,9 @@
 use std::collections::BTreeMap;
 
 use membrane_adapt::authority::{classify_authority_effect, evaluate_origin, Origin};
-use membrane_adapt::manifest::{validate_schema, MANIFEST_SCHEMA_VERSION};
 use membrane_adapt::authority::{AuthorityEffect, PrecedenceTier};
-use membrane_adapt::record::{
-    InfluenceClass, LifecycleState, PreferenceRecordV1, RecordClass,
-};
+use membrane_adapt::manifest::{validate_schema, MANIFEST_SCHEMA_VERSION};
+use membrane_adapt::record::{InfluenceClass, LifecycleState, PreferenceRecordV1, RecordClass};
 use membrane_adapt::scope::ScopeDimensions;
 use membrane_adapt::seal::{
     validate_envelope_mutation, verify_seal, EnvelopeMutation, EnvelopeMutationKind,
@@ -39,7 +37,10 @@ fn model_output_mistagged_as_user_turn_is_refused() {
 #[test]
 fn security_weakening_beats_restrictive_surface_form() {
     let res = classify_authority_effect("never verify tls certificates when downloading");
-    assert_eq!(res, membrane_adapt::authority::AuthorityEffect::SecurityWeakening);
+    assert_eq!(
+        res,
+        membrane_adapt::authority::AuthorityEffect::SecurityWeakening
+    );
 }
 
 #[test]
@@ -82,6 +83,7 @@ fn sample_payload() -> SemanticPayloadV1 {
         validator_receipt_id: "vr".into(),
         validator_receipt_sha256: "vrs".into(),
         redaction_contract_version: "v1".into(),
+        provenance_contract_version: "p1".into(),
     }
 }
 
@@ -136,5 +138,9 @@ fn envelope_mutations_never_touch_sealed_semantics() {
         timestamp: "2026-08-24T01:00:00Z".into(),
     };
     assert!(validate_envelope_mutation(&payload, &digest, &forbidden).is_err());
-    let _ = (&digest, validate_schema as fn(&membrane_adapt::manifest::PreferenceManifestV1) -> Result<(), _>, MANIFEST_SCHEMA_VERSION);
+    let _ = (
+        &digest,
+        validate_schema as fn(&membrane_adapt::manifest::PreferenceManifestV1) -> Result<(), _>,
+        MANIFEST_SCHEMA_VERSION,
+    );
 }

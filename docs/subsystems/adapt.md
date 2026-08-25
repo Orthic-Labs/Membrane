@@ -51,11 +51,19 @@ Passing one gate grants no authority at another.
 5. Authority class resolves before specificity.
 6. Malformed narrowing scope fails closed.
 7. Durable Adapt outputs cross typed Cortex admission.
-8. Production Adapt is native Rust; Python is release-excluded differential evidence only.
+8. Native Rust is the production owner. Legacy Python is migration/differential
+   material whose exclusion from the exact release artifact remains an open N10 gate.
 
 ## Completion
 
 - [x] Taste & Insights ship as separate, inspectable surfaces.
 - [x] Durable outputs remain evidence-backed, scoped, reversible & receipted.
-- [x] Insights detectors pass a portable labelled benchmark before automated effect.
-- [x] Native installed Adapt performs mine/review/apply/recall with Python/Node absent.
+- [x] Insights detectors have a portable labelled benchmark and committed measured
+  results with documented gaps; automated effect remains blocked pending its gates.
+- [x] Taste passes its predeclared synthetic conformance thresholds (extraction
+  precision/recall 0.9667/1.0; admission 0.9524/1.0; semantic projection 1.0;
+  authority false-positive rate 0/11).
+- [ ] Taste real-world held-out interval evidence, implicit-evidence qualification,
+  and exact released-package qualification remain open.
+- [ ] Exact installed Adapt/package proof with Python and Node absent remains open;
+  a copied source-built native binary smoke test is not that release receipt.

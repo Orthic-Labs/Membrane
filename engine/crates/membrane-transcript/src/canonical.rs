@@ -61,6 +61,7 @@ const PARSER_SOURCES: &[(&str, &[u8])] = &[
     ("parser.rs", include_bytes!("parser.rs")),
     ("redact.rs", include_bytes!("redact.rs")),
     ("source.rs", include_bytes!("source.rs")),
+    ("user_act.rs", include_bytes!("user_act.rs")),
 ];
 
 /// sha256 over the parser implementation bytes (`name \0 bytes \0` per file).

@@ -666,6 +666,7 @@ mod tests {
 
     #[test]
     fn retired_resident_modes_are_rejected() {
+        assert!(parse_mode(["membrane", "serve"].iter().copied()).is_err());
         assert!(parse_mode(["membrane", "loopback-api"].iter().copied()).is_err());
         assert!(parse_mode(["membrane", "supervisor-child"].iter().copied()).is_err());
     }

@@ -2407,9 +2407,11 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "hex",
+ "membrane-adapt",
  "membrane-mcp",
  "membrane-protocol",
  "membrane-runtime",
+ "ring",
  "serde",
  "serde_json",
  "sha2",
@@ -2555,10 +2557,12 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "regex",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
  "thiserror 2.0.20",
 ]
 

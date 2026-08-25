@@ -1,21 +1,20 @@
-# Membrane Adapt — parent workspace interface
+# Membrane Adapt — workspace interface
 
-Adapt lives at `membrane/adapt/` and consumes a small set of shared workspace
-services through one explicit boundary.
+Adapt's installed boundary is native Rust. Production code must use typed crate and
+protocol interfaces; it must not import the legacy Python workspace adapters or reach
+through another subsystem's storage.
 
-## Import boundary
+| Capability | Native boundary | Owner |
+|---|---|---|
+| Transcript events and provenance | `membrane-transcript` types and host adapters | Adapt transcript layer |
+| Preference/Insight contracts and evaluation | `membrane-adapt` public Rust API | Adapt |
+| Durable batch admission and scoped recall | native runtime/store APIs | Cortex |
+| Scheduling and resident lifecycle | in-process runtime task hosted by Hub | Hub |
+| Repository facts | typed Blueprint protocol calls | Blueprint |
+| Document search | typed Ledger/runtime calls | Ledger |
 
-| Capability | Adapter | Parent source | Consumers |
-|---|---|---|---|
-| Membrane loopback port | `workspace_runtime.membrane_port` | `tools/lib/memory/runtime_config.py` | `adapt_persistence`, Doctor/conformance |
-| Session inventory | `workspace_runtime.context_session_inventory` | `tools/pipelines/memory/context_session_inventory.py` | `multiwriter_conformance` |
-| Session adapters | `workspace_runtime.context_session_adapters` | `tools/pipelines/memory/context_session_adapters.py` | `multiwriter_conformance` |
-| Append-only mirror | `workspace_runtime.mirror_append_only` | `tools/pipelines/memory/mirror_append_only.py` | `multiwriter_conformance` |
-
-All Adapt code that needs these services should import **`workspace_runtime`**,
-not reach into `tools/` directly. Missing services fail closed.
-
-## What is intentionally out of scope
-
-- Duplicating shared `tools/pipelines/memory` services inside Adapt
-- Pretending Cortex/Forge Doctor checks exist (see `doctor.py --scope`)
+Missing trust material, malformed protocol data, unavailable owner services, and stale
+or unsealed records fail closed. The Python `workspace_runtime` module and scripts under
+`adapt/src/adapt/` remain migration/differential inputs only; they are not an approved
+installed interface. Their release exclusion is an N10 packaging obligation, not an
+assumption made by this document.

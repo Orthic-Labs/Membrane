@@ -36,6 +36,7 @@ pub mod remediation;
 pub mod outcomes;
 pub mod context_cost;
 pub mod delivery;
+pub mod duplicate_groups;
 pub mod multiwriter;
 pub mod portable;
 pub mod proposal;

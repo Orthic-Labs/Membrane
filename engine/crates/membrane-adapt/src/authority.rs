@@ -55,6 +55,7 @@ fn re(pattern: &str) -> Regex {
 
 struct Patterns {
     restrictive: Regex,
+    protective_double_negation: Regex,
     permission: Vec<Regex>,
     permission_override: Vec<Regex>,
     insecure: Vec<Regex>,
@@ -70,6 +71,9 @@ fn patterns() -> &'static Patterns {
     P.get_or_init(|| Patterns {
         restrictive: re(
             r"^(?:never\b|do not\b|don't\b|must not\b|should not\b)|\b(?:requires?|only after|only with) explicit (?:user )?(?:approval|permission|review)\b",
+        ),
+        protective_double_negation: re(
+            r"^(?:never|do not|don't|must not|should not)\s+(?:disable|skip|turn off|ignore|bypass|remove|drop)\b",
         ),
         permission: vec![
             re(r"\btreat\b.+\bas (?:implicitly )?authorized\b"),
@@ -177,6 +181,12 @@ pub fn evaluate_origin(origin: Origin, evidence_text: &str) -> AuthorityResult {
 pub fn classify_authority_effect(text: &str) -> AuthorityEffect {
     let normalized = crate::canonical::normalize_text(text);
     let p = patterns();
+    // "Never skip authentication checks" is protective, while "never verify
+    // certificates" weakens security. Resolve that polarity before the broad
+    // insecure-action patterns below.
+    if p.protective_double_negation.is_match(&normalized) {
+        return AuthorityEffect::Restrictive;
+    }
     if p.insecure.iter().any(|r| r.is_match(&normalized)) {
         return AuthorityEffect::SecurityWeakening;
     }

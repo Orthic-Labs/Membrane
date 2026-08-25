@@ -1,0 +1,57 @@
+{
+  "schema_version": "adapt.taste-benchmark-scorecard.v1",
+  "corpus_version": "v1",
+  "corpus_sha256": "92151855419dfd7f4826f7f6a08fd932844a7cc8aea231602a838e7e285e7f11",
+  "corpus_kind": "synthetic_conformance",
+  "implementation": "membrane_adapt::{taste::extract_candidates_with_source,admission::evaluate_eligibility}",
+  "source_digest": "f1c93aa760a4a9bd9e13ca385d1260f230dddb98ef8bfb514d8e21cd9328fe6d",
+  "thresholds": {
+    "extraction_precision_min": 0.95,
+    "extraction_recall_min": 0.75,
+    "admission_precision_min": 0.95,
+    "admission_recall_min": 0.75,
+    "semantic_projection_precision_min": 0.95,
+    "authority_false_positive_rate_max": 0.0
+  },
+  "metrics": {
+    "extraction": {
+      "true_positive": 29,
+      "false_positive": 1,
+      "false_negative": 0,
+      "true_negative": 12
+    },
+    "extraction_precision": 0.9666666666666667,
+    "extraction_recall": 1.0,
+    "admission": {
+      "true_positive": 20,
+      "false_positive": 1,
+      "false_negative": 0,
+      "true_negative": 21
+    },
+    "admission_precision": 0.9523809523809523,
+    "admission_recall": 1.0,
+    "semantic_projection_correct": 29,
+    "semantic_projection_total": 29,
+    "semantic_projection_precision": 1.0,
+    "authority_negative_cases": 11,
+    "authority_false_positives": 0,
+    "authority_false_positive_rate": 0.0
+  },
+  "synthetic_conformance_gate": "passed",
+  "implicit_evidence_diagnostic": {
+    "cases": 2,
+    "extracted": 0,
+    "admitted": 0,
+    "status": "unsupported_not_gated"
+  },
+  "n4_exit_gate": "open_real_world_held_out_and_installed_qualification_required",
+  "remaining_n4_evidence": [
+    "An approved, independently sourced real-world held-out Taste corpus.",
+    "An interval report for extraction and admission metrics on that corpus.",
+    "Installed-artifact qualification using the released package path."
+  ],
+  "case_failures": [
+    "neg-product-fact-modal: extraction expected false, observed true",
+    "neg-product-fact-modal: admission expected false, observed true (Some(Admitted))"
+  ]
+}

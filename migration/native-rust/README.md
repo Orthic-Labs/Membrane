@@ -4,9 +4,10 @@
 
 **Adapt semantic authority:** [`../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`](../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md)
 
-This directory freezes Membrane's executable federation boundary at baseline
+This directory freezes Membrane's historical executable federation boundary at baseline
 `322855c33e65dc936e3927570451c98e54fb0bd2` for MEM-000. It is migration input,
-not runtime configuration.
+not runtime configuration or current implementation status. Current package status is summarized
+below and governed by the canonical plan's Section 0.1.1 and Section 17.
 
 ## Ledger scope
 
@@ -21,13 +22,16 @@ Canonical plan expands runtime closure beyond this federation-baseline ledger to
 ## Current cutover status
 
 - N0-N1: canonical invocation graph, runtime-language policy & frozen internal contracts land with recurring gates.
-- N2: `membrane-transcript` is native production owner; Python `continuity` is release-excluded differential evidence.
-- N3-N5: `membrane-adapt`, native `membrane adapt`, Cortex batch admission, recall metadata, delivery receipts & Hub-owned scheduling/launcher replacement land. Exact copied candidate completes mine/review/adjudicate/apply/recall with interpreter PATH unavailable & no checkout cwd.
-- N6-N9 remain separate migration lanes. N10 native-only seal remains withheld until each completes.
+- N2 is PARTIAL: `membrane-transcript` is the native production owner; deletion or proven release exclusion of Python `continuity` remains open.
+- N3 is DONE: the native deterministic Adapt core, authority/admission, semantic sealing, and fail-closed contracts have landed.
+- N4 is PARTIAL: the committed 44-case synthetic Taste conformance scorecard passes its declared thresholds (extraction precision `0.9667`/recall `1.0`, admission precision `0.9524`/recall `1.0`, semantic-projection precision `1.0`, and `0/11` authority-negative false positives). An independently sourced real-world held-out corpus, interval report, and released-package run remain open.
+- N5 is PARTIAL: native Adapt source/CLI and an isolated copied source-built-binary test have landed. Exact released-package proof and replacement or explicit dev-only demotion of `scripts/run-adapt-installed-current.mjs` as an authority test remain open.
+- N6-N9 remain separate open migration lanes. N10 remains BLOCKED on those lanes, N2 closure, N4/N5 release evidence, and the remaining package/SBOM/process-tree/native-only gates. The committed behavioral scorecards are no longer an N10 blocker.
 
-Tests, benchmarks, evaluation runners, release helpers, and unrelated workspace
-tooling are development-only inputs. Their parity responsibilities are named
-by fixture or shadow packets; they are not production launch edges.
+Tests, benchmarks, evaluation runners, release helpers, and unrelated workspace tooling qualify
+as development-only inputs only when the runtime manifest and release evidence prove them
+unreachable from the installed product. Their parity responsibilities are named by fixture or
+shadow packets; classification alone is not exclusion proof.
 
 ## Locked ordering and ownership
 

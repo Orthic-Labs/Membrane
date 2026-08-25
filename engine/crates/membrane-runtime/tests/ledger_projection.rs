@@ -202,7 +202,7 @@ fn projection_store_persists_lexical_whole_document_and_provenance() {
 fn projection_store_replaces_stale_parent_rows_atomically() {
     let db = LedgerDb::open_in_memory();
     let initial = DocumentProjectionStoreInputV1 {
-        parent_doc_id: "doc:guide".into(),
+        parent_doc_id: "doc:ledger".into(),
         source_content_hash: "sha256:old".into(),
         source_revision: "old-revision".into(),
         index_generation: 1,
@@ -218,7 +218,7 @@ fn projection_store_replaces_stale_parent_rows_atomically() {
     replace_doc_projections(&db, &initial).unwrap();
 
     let replacement = DocumentProjectionStoreInputV1 {
-        parent_doc_id: "doc:guide".into(),
+        parent_doc_id: "doc:ledger".into(),
         source_content_hash: "sha256:new".into(),
         source_revision: "new-revision".into(),
         index_generation: 2,
@@ -234,7 +234,7 @@ fn projection_store_replaces_stale_parent_rows_atomically() {
     let rows = conn
         .prepare("SELECT kind, anchor_id, source_content_hash, source_revision, index_generation FROM ledger_doc_projections WHERE parent_doc_id=?1 ORDER BY kind")
         .unwrap()
-        .query_map(["doc:guide"], |row| {
+        .query_map(["doc:ledger"], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,

@@ -1,5 +1,10 @@
 # Membrane lane handoff
 
+> **Superseded:** This point-in-time handoff is retained as historical evidence. Its
+> implementation percentages, open-lane table, and “not started” list do not describe
+> current `main`; use the subsystem canons and native-runtime migration ledger for
+> current status.
+
 **Date:** 2026-08-25
 **Base:** `main` @ `de2f95c`
 **Status:** architecture complete; implementation ~10-15%, largest items not started

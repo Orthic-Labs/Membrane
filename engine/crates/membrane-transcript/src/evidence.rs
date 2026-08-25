@@ -11,7 +11,8 @@ use crate::canonical::sha256_hex;
 
 /// Internal domain-contract schema tag. This is an Adapt-internal V1 schema,
 /// not one of Membrane's five public protocol shapes.
-pub const USER_ACT_EVIDENCE_SCHEMA: &str = "adapt.user-act-evidence.v1";
+pub const USER_ACT_EVIDENCE_SCHEMA: &str = "adapt.user-act-evidence.v2";
+pub const USER_ACT_RECEIPT_CONTRACT: &str = "adapt.user-act-receipt.v1";
 
 /// Kinds of user acts that may carry learning signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -44,7 +45,13 @@ impl ActKind {
     /// Only these kinds are user-authoritative when they originate from an
     /// authenticated external-user turn.
     pub fn is_user_authoritative_kind(self) -> bool {
-        !matches!(self, ActKind::Accept)
+        matches!(
+            self,
+            ActKind::ExplicitPreference
+                | ActKind::Correction
+                | ActKind::Reject
+                | ActKind::NamedChoice
+        )
     }
 }
 
@@ -67,6 +74,13 @@ pub enum EvidenceError {
     SpanDigestMismatch { expected: String, found: String },
     SilentAcceptanceAlone,
     MissingProvenanceReceipt,
+    InvalidProvenanceReceipt,
+    UntrustedIssuer,
+    InstallationMismatch,
+    HostMismatch,
+    ReceiptBindingMismatch,
+    ReceiptForgery,
+    ReceiptReplay,
 }
 
 impl std::fmt::Display for EvidenceError {
@@ -85,8 +99,54 @@ impl std::fmt::Display for EvidenceError {
                 write!(f, "silent acceptance cannot authorize Taste alone")
             }
             EvidenceError::MissingProvenanceReceipt => write!(f, "missing provenance receipt"),
+            EvidenceError::InvalidProvenanceReceipt => write!(f, "invalid provenance receipt"),
+            EvidenceError::UntrustedIssuer => write!(f, "untrusted user-act issuer"),
+            EvidenceError::InstallationMismatch => write!(f, "user-act installation mismatch"),
+            EvidenceError::HostMismatch => write!(f, "user-act host mismatch"),
+            EvidenceError::ReceiptBindingMismatch => write!(f, "user-act receipt binding mismatch"),
+            EvidenceError::ReceiptForgery => write!(f, "user-act receipt signature invalid"),
+            EvidenceError::ReceiptReplay => write!(f, "user-act receipt replayed"),
         }
     }
+}
+
+/// Host-issued proof over every authority-bearing user-act field. The host
+/// signs the canonical [`UserActReceiptPayloadV1`] bytes; callers cannot make
+/// a row authoritative by inserting an actor label or arbitrary digest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserActProvenanceReceiptV1 {
+    pub contract_version: String,
+    pub issuer_id: String,
+    pub key_id: String,
+    pub installation_id: String,
+    pub host: String,
+    pub session_id: String,
+    pub sequence: u64,
+    pub nonce: String,
+    pub payload_sha256: String,
+    pub signature_hex: String,
+}
+
+/// Exact signed material. Struct field order is the versioned canonical wire
+/// order for this internal contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserActReceiptPayloadV1 {
+    pub contract_version: String,
+    pub issuer_id: String,
+    pub key_id: String,
+    pub evidence_id: String,
+    pub installation_id: String,
+    pub host: String,
+    pub session_id: String,
+    pub event_ids: Vec<String>,
+    pub act_kind: ActKind,
+    pub before_digest: Option<String>,
+    pub after_digest: Option<String>,
+    pub user_source_span: Option<SourceSpan>,
+    pub scope_context: BTreeMap<String, String>,
+    pub timestamp: String,
+    pub sequence: u64,
+    pub nonce: String,
 }
 
 impl std::error::Error for EvidenceError {}
@@ -146,8 +206,8 @@ pub struct UserActEvidenceV1 {
     pub timestamp: String,
     /// Weighting strength in 0..=1.
     pub signal_strength: f64,
-    /// Digest of the provenance receipt binding this evidence to its source.
-    pub provenance_receipt: String,
+    /// Authenticated host receipt binding this evidence to its source.
+    pub provenance_receipt: UserActProvenanceReceiptV1,
 }
 
 impl UserActEvidenceV1 {
@@ -166,9 +226,19 @@ impl UserActEvidenceV1 {
         user_source_span: Option<SourceSpan>,
         scope_context: BTreeMap<String, String>,
         timestamp: &str,
-        provenance_receipt_digest: &str,
+        provenance_receipt: UserActProvenanceReceiptV1,
     ) -> Result<Self, EvidenceError> {
-        if provenance_receipt_digest.trim().is_empty() {
+        if provenance_receipt.contract_version != USER_ACT_RECEIPT_CONTRACT
+            || provenance_receipt.issuer_id.trim().is_empty()
+            || provenance_receipt.key_id.trim().is_empty()
+            || provenance_receipt.installation_id.trim().is_empty()
+            || provenance_receipt.host.trim().is_empty()
+            || provenance_receipt.session_id.trim().is_empty()
+            || provenance_receipt.sequence == 0
+            || provenance_receipt.nonce.trim().is_empty()
+            || provenance_receipt.payload_sha256.len() != 64
+            || provenance_receipt.signature_hex.len() != 128
+        {
             return Err(EvidenceError::MissingProvenanceReceipt);
         }
         if let Some(span) = &user_source_span {
@@ -192,26 +262,32 @@ impl UserActEvidenceV1 {
             scope_context,
             timestamp: timestamp.to_string(),
             signal_strength: act_kind.default_signal_strength(),
-            provenance_receipt: provenance_receipt_digest.to_string(),
+            provenance_receipt,
         })
     }
 
-    /// The evidence class implied by kind + authentication of origin.
-    /// `authenticated_user_origin` must come from the transcript layer's
-    /// provenance classification (`external_user`), never from model output.
-    pub fn classify(&self, authenticated_user_origin: bool) -> EvidenceClass {
-        if authenticated_user_origin && self.act_kind.is_user_authoritative_kind() {
-            if self.act_kind == ActKind::Accept && self.signal_strength < 0.5 {
-                // Pure silent acceptance is support-only, never standalone
-                // authority.
-                return EvidenceClass::UserBehavioral;
-            }
-            return EvidenceClass::UserAuthoritative;
+    pub fn receipt_payload(&self) -> UserActReceiptPayloadV1 {
+        let mut event_ids = self.event_ids.clone();
+        event_ids.sort();
+        event_ids.dedup();
+        UserActReceiptPayloadV1 {
+            contract_version: self.provenance_receipt.contract_version.clone(),
+            issuer_id: self.provenance_receipt.issuer_id.clone(),
+            key_id: self.provenance_receipt.key_id.clone(),
+            evidence_id: self.evidence_id.clone(),
+            installation_id: self.installation_id.clone(),
+            host: self.host.clone(),
+            session_id: self.session_id.clone(),
+            event_ids,
+            act_kind: self.act_kind,
+            before_digest: self.before_digest.clone(),
+            after_digest: self.after_digest.clone(),
+            user_source_span: self.user_source_span.clone(),
+            scope_context: self.scope_context.clone(),
+            timestamp: self.timestamp.clone(),
+            sequence: self.provenance_receipt.sequence,
+            nonce: self.provenance_receipt.nonce.clone(),
         }
-        if self.act_kind.is_user_authoritative_kind() || self.act_kind == ActKind::Accept {
-            return EvidenceClass::UserBehavioral;
-        }
-        EvidenceClass::Diagnostic
     }
 
     /// Attach before/after content for edit/reject-style counterfactuals.
@@ -248,8 +324,8 @@ impl UserActEvidenceV1 {
             return Err(EvidenceError::MissingProvenanceReceipt);
         };
         let start = span.byte_start.max(0) as usize;
-        let end = (span.byte_end.max(0) as usize).min(source_bytes.len());
-        if start > end {
+        let end = span.byte_end.max(0) as usize;
+        if start > end || end > source_bytes.len() {
             return Err(EvidenceError::InvalidSpanRange);
         }
         let found = sha256_hex(&source_bytes[start..end]);
@@ -263,9 +339,58 @@ impl UserActEvidenceV1 {
     }
 }
 
+/// Authority-bearing evidence produced only by trusted signature, binding,
+/// and replay verification. It deliberately has no public constructor and is
+/// not deserializable.
+#[derive(Debug, Clone)]
+pub struct VerifiedUserActEvidence {
+    evidence: UserActEvidenceV1,
+    receipt_sha256: String,
+}
+
+impl VerifiedUserActEvidence {
+    pub(crate) fn new(evidence: UserActEvidenceV1, receipt_sha256: String) -> Self {
+        Self {
+            evidence,
+            receipt_sha256,
+        }
+    }
+
+    pub fn evidence(&self) -> &UserActEvidenceV1 {
+        &self.evidence
+    }
+
+    pub fn receipt_sha256(&self) -> &str {
+        &self.receipt_sha256
+    }
+
+    pub fn classify(&self) -> EvidenceClass {
+        if self.evidence.act_kind.is_user_authoritative_kind() {
+            EvidenceClass::UserAuthoritative
+        } else {
+            EvidenceClass::UserBehavioral
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn receipt() -> UserActProvenanceReceiptV1 {
+        UserActProvenanceReceiptV1 {
+            contract_version: USER_ACT_RECEIPT_CONTRACT.into(),
+            issuer_id: "issuer".into(),
+            key_id: "key".into(),
+            installation_id: "inst-1".into(),
+            host: "pi".into(),
+            session_id: "sess-1".into(),
+            sequence: 1,
+            nonce: "nonce-1".into(),
+            payload_sha256: "a".repeat(64),
+            signature_hex: "b".repeat(128),
+        }
+    }
 
     fn sample() -> UserActEvidenceV1 {
         UserActEvidenceV1::new(
@@ -278,7 +403,7 @@ mod tests {
             None,
             BTreeMap::new(),
             "2026-08-24T00:00:00Z",
-            "receipt-digest",
+            receipt(),
         )
         .unwrap()
     }
@@ -295,7 +420,10 @@ mod tests {
             None,
             BTreeMap::new(),
             "t",
-            "",
+            UserActProvenanceReceiptV1 {
+                issuer_id: String::new(),
+                ..receipt()
+            },
         )
         .unwrap_err();
         assert_eq!(err, EvidenceError::MissingProvenanceReceipt);
@@ -306,15 +434,20 @@ mod tests {
         let mut ev = sample();
         ev.act_kind = ActKind::Accept;
         ev.signal_strength = 0.20;
-        assert_eq!(ev.classify(true), EvidenceClass::UserBehavioral);
+        assert_eq!(
+            VerifiedUserActEvidence::new(ev, "r".into()).classify(),
+            EvidenceClass::UserBehavioral
+        );
     }
 
     #[test]
     fn explicit_correction_from_authenticated_user_is_authoritative() {
         let mut ev = sample();
         ev.act_kind = ActKind::Correction;
-        assert_eq!(ev.classify(true), EvidenceClass::UserAuthoritative);
-        assert_eq!(ev.classify(false), EvidenceClass::UserBehavioral);
+        assert_eq!(
+            VerifiedUserActEvidence::new(ev, "r".into()).classify(),
+            EvidenceClass::UserAuthoritative
+        );
     }
 
     #[test]
@@ -328,6 +461,18 @@ mod tests {
             ev.verify_span(tampered),
             Err(EvidenceError::SpanDigestMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn span_verification_rejects_out_of_bounds_end_instead_of_clamping() {
+        let bytes = b"always run focused tests";
+        let mut ev = sample();
+        ev.user_source_span = Some(SourceSpan::new("e", "s", 0, bytes.len() as i64, bytes));
+        ev.user_source_span.as_mut().unwrap().byte_end += 1;
+        assert_eq!(
+            ev.verify_span(bytes).unwrap_err(),
+            EvidenceError::InvalidSpanRange
+        );
     }
 
     #[test]

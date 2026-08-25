@@ -31,7 +31,7 @@ use axum::routing::{any, get};
 use axum::Router;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -41,6 +41,7 @@ const MAX_BODY_BYTES: usize = 1 << 20;
 const MAX_QUERY_CHARS: usize = 8 * 1024;
 const MAX_CONTENT_CHARS: usize = 256 * 1024;
 const MAX_RECALL_K: u64 = 50;
+static TASTE_REQUEST_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 const MAX_CONCURRENT_REQUESTS: usize = 32;
 // FastEmbedder owns one TextEmbedding behind a Mutex and compression can own a
 // separate ONNX runtime. Keep all model-heavy work behind one conservative lane
@@ -67,6 +68,7 @@ const SNAPSHOT_MAX_ITEMS_PER_SECTION: usize = 1000;
 const SNAPSHOT_MAX_REASON_BYTES: usize = 200;
 const SNAPSHOT_MAX_ITEM_LABEL_BYTES: usize = 128;
 const SNAPSHOT_MAX_ITEM_KIND_BYTES: usize = 64;
+const RESERVED_ADAPT_ADMISSION_REASON: &str = "reserved_adapt_authority";
 const SNAPSHOT_MAX_ITEM_STRING_BYTES: usize = 512;
 const SNAPSHOT_MAX_TOTAL_BYTES: usize = 65_536;
 #[cfg(test)]
@@ -2473,6 +2475,15 @@ fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, Stri
     route_with_context_ingest_lease(store, None, method, url, body)
 }
 
+fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool {
+    item.artifact_family == "adapt"
+        || item.producer == "adapt_native"
+        || item.record_type == "taste_preference"
+        || item.client == "membrane_adapt"
+        || (item.lifecycle.authority.as_deref() == Some("A2")
+            && item.lifecycle.influence_class.as_deref() == Some("behavioral_directive"))
+}
+
 /// Process-wide resident federation worker (plan 2026-07-26, Tasks 4+5,
 /// amendments A2/A3). The `Mutex` doubles as the one-slot orchestration
 /// admission: `try_lock` contention returns 503 immediately so the hook falls
@@ -3049,6 +3060,39 @@ fn route_with_context_ingest_lease(
                 );
             }
         };
+        if let Some(item) = request
+            .items
+            .iter()
+            .find(|item| claims_reserved_adapt_authority(item))
+        {
+            let context = MemoryEventContext::new(&item.client)
+                .with_session(&item.session_id)
+                .with_turn(&item.turn_id)
+                .with_trace(&item.trace_id);
+            if let Some(response) = record_external_or_500(
+                store,
+                &context,
+                "write",
+                ExternalLifecycleStage::Validation,
+                "failed",
+                RESERVED_ADAPT_ADMISSION_REASON,
+                Some(&format!("batch/{}", request.batch_id)),
+                Some(&item.scope),
+                "memory",
+                "http",
+                1,
+            ) {
+                return response;
+            }
+            return (
+                403,
+                serde_json::json!({
+                    "error": "reserved Adapt authority requires verified native apply",
+                    "code": RESERVED_ADAPT_ADMISSION_REASON,
+                })
+                .to_string(),
+            );
+        }
         let context = request
             .items
             .first()
@@ -3726,41 +3770,216 @@ fn route_with_context_ingest_lease(
                 chain.push(c);
             }
         }
+        let bounded_taste_count = |key: &str, default: usize, max: usize| {
+            let value = v
+                .get(key)
+                .and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .unwrap_or(default);
+            (value <= max).then_some(value).ok_or_else(|| {
+                (
+                    400,
+                    serde_json::json!({"error": format!("{key} must be between 0 and {max}")})
+                        .to_string(),
+                )
+            })
+        };
+        let taste_core_records = match bounded_taste_count("taste_max_core", 2, 4) {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let taste_scoped_records = match bounded_taste_count("taste_max_scoped", 4, 16) {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let model = match v.get("model") {
+            None => None,
+            Some(Value::String(value))
+                if !value.trim().is_empty() && value.chars().count() <= 200 =>
+            {
+                Some(value.trim().to_string())
+            }
+            Some(_) => return (400, "{\"error\":\"invalid model dimension\"}".into()),
+        };
+        let machine = match v.get("machine") {
+            None => None,
+            Some(Value::String(value))
+                if !value.trim().is_empty() && value.chars().count() <= 200 =>
+            {
+                Some(value.trim().to_string())
+            }
+            Some(_) => return (400, "{\"error\":\"invalid machine identity\"}".into()),
+        };
+        let mut raw_dimensions = BTreeMap::new();
+        if let Some(dimensions) = v.get("dimensions") {
+            let Some(dimensions) = dimensions.as_object() else {
+                return (400, "{\"error\":\"dimensions must be an object\"}".into());
+            };
+            for (key, value) in dimensions {
+                let Some(value) = value.as_str() else {
+                    return (
+                        400,
+                        "{\"error\":\"dimension values must be strings\"}".into(),
+                    );
+                };
+                let normalized_key = key.trim().to_ascii_lowercase();
+                if normalized_key.is_empty() || raw_dimensions.contains_key(&normalized_key) {
+                    return (
+                        400,
+                        serde_json::json!({"error": format!("duplicate normalized Taste dimension: {normalized_key}")})
+                            .to_string(),
+                    );
+                }
+                raw_dimensions.insert(normalized_key, value.trim().to_string());
+            }
+        }
+        for (key, value) in [("client", Some(client)), ("model", model.as_deref())] {
+            let Some(value) = value else { continue };
+            if raw_dimensions
+                .get(key)
+                .is_some_and(|declared| !declared.eq_ignore_ascii_case(value))
+            {
+                return (
+                    400,
+                    serde_json::json!({"error": format!("{key} dimension conflicts with request attribution")})
+                        .to_string(),
+                );
+            }
+            raw_dimensions.insert(key.into(), value.into());
+        }
+        let taste_dimensions = match membrane_adapt::scope::ScopeDimensions::normalize(
+            &raw_dimensions,
+        ) {
+            Ok(dimensions) => dimensions,
+            Err(error) => return (
+                400,
+                serde_json::json!({"error": format!("invalid Taste scope dimensions: {error}")})
+                    .to_string(),
+            ),
+        };
+        let inventory = match store.taste_delivery_inventory() {
+            Ok(inventory) => inventory,
+            Err(error) => {
+                return (
+                    500,
+                    serde_json::json!({"error": "Taste delivery unavailable", "detail": error})
+                        .to_string(),
+                )
+            }
+        };
+        let mut allowed_taste_scopes = if chain.is_empty() {
+            vec!["global".to_string()]
+        } else {
+            chain.clone()
+        };
+        allowed_taste_scopes.sort();
+        allowed_taste_scopes.dedup();
+        let delivery_timestamp = crate::time::now_iso();
+        let taste_request_id = format!(
+            "taste-request-{}-{}",
+            crate::time::now_millis(),
+            TASTE_REQUEST_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let delivery_plan = membrane_adapt::delivery::select_delivery_candidates(
+            &inventory.candidates,
+            &membrane_adapt::delivery::PreferenceDeliveryContextV1 {
+                allowed_scopes: allowed_taste_scopes,
+                dimensions: taste_dimensions,
+                machine,
+                max_core_records: taste_core_records,
+                max_scoped_records: taste_scoped_records,
+                max_total_records: k,
+                max_rendered_chars: total_preview_chars,
+                timestamp: delivery_timestamp,
+                session_id: v
+                    .get("session")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .into(),
+                trace_id: v
+                    .get("trace_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .into(),
+                request_id: taste_request_id,
+                client: client.into(),
+                model,
+            },
+        );
         let mut full_chars = 0usize;
         let mut injected_chars = 0usize;
         let mut remaining_preview_chars = total_preview_chars;
-        let hits: Vec<serde_json::Value> = store
-            .recall_scored_detailed(query, k, &chain)
-            .into_iter()
-            .enumerate()
-            .filter_map(|(rank, hit)| {
-                let e = hit.entry;
-                let cos = hit.score;
-                // Graduated top-1 (2026-07-05, E6): the top hit gets a bigger inline budget
-                // ONLY when strongly relevant (cos >= 0.55, above the hook's 0.40 floor) —
-                // usefulness delivered inline beats the fetch loop's friction, but an
-                // out-of-domain top-1 must not inject a large irrelevant block.
-                if remaining_preview_chars == 0 {
-                    return None;
-                }
-                let desired = if rank == 0 && cos >= 0.55 {
-                    top_preview_chars
-                } else {
-                    preview_chars
-                };
-                let budget = desired.min(remaining_preview_chars);
-                let skel = preview(&e.content, budget);
-                full_chars += e.content.chars().count();
-                let actual = skel.chars().count();
-                injected_chars += actual;
-                remaining_preview_chars = remaining_preview_chars.saturating_sub(actual);
-                Some(serde_json::json!({
-                    "id": e.id, "skel": skel, "type": "memory",
-                    "scope": e.scope_id, "kind": "memory", "score": cos, "cos": cos,
-                    "origin": hit.origin,
-                }))
-            })
-            .collect();
+        let mut hits = Vec::with_capacity(k);
+        let mut seen_ids = HashSet::new();
+        for delivered in delivery_plan.delivered {
+            let Some(memory_id) = inventory.memory_id_for_record(&delivered.record_id) else {
+                return (
+                    500,
+                    "{\"error\":\"selected Taste record lost its Cortex binding\"}".into(),
+                );
+            };
+            let chars = delivered.rule.chars().count();
+            full_chars += chars;
+            injected_chars += chars;
+            remaining_preview_chars = remaining_preview_chars.saturating_sub(chars);
+            seen_ids.insert(memory_id.to_string());
+            hits.push(serde_json::json!({
+                "id": memory_id,
+                "skel": delivered.rule,
+                "type": "taste_preference",
+                "scope": inventory.scope_for_record(&delivered.record_id).unwrap_or("global"),
+                "kind": "taste_preference",
+                "score": 1.0,
+                "cos": 1.0,
+                "origin": "taste",
+                "delivery_receipt": delivered.receipt,
+            }));
+        }
+        let generic_slots = k.saturating_sub(hits.len());
+        let generic_candidates = if generic_slots == 0 {
+            Vec::new()
+        } else {
+            store.recall_scored_detailed(
+                query,
+                generic_slots.saturating_add(inventory.memory_ids.len()),
+                &chain,
+            )
+        };
+        let mut generic_rank = 0usize;
+        for hit in generic_candidates {
+            if hits.len() >= k || inventory.memory_ids.contains(&hit.entry.id) {
+                continue;
+            }
+            let e = hit.entry;
+            let cos = hit.score;
+            // Graduated top-1 (2026-07-05, E6): the top hit gets a bigger inline budget
+            // ONLY when strongly relevant (cos >= 0.55, above the hook's 0.40 floor) —
+            // usefulness delivered inline beats the fetch loop's friction, but an
+            // out-of-domain top-1 must not inject a large irrelevant block.
+            if remaining_preview_chars == 0 {
+                break;
+            }
+            let desired = if generic_rank == 0 && cos >= 0.55 {
+                top_preview_chars
+            } else {
+                preview_chars
+            };
+            let budget = desired.min(remaining_preview_chars);
+            let skel = preview(&e.content, budget);
+            full_chars += e.content.chars().count();
+            let actual = skel.chars().count();
+            injected_chars += actual;
+            remaining_preview_chars = remaining_preview_chars.saturating_sub(actual);
+            if !seen_ids.insert(e.id.clone()) {
+                continue;
+            }
+            hits.push(serde_json::json!({
+                "id": e.id, "skel": skel, "type": "memory",
+                "scope": e.scope_id, "kind": "memory", "score": cos, "cos": cos,
+                "origin": hit.origin,
+            }));
+            generic_rank += 1;
+        }
         let ids: Vec<String> = hits
             .iter()
             .filter_map(|h| h.get("id").and_then(|x| x.as_str()).map(String::from))
@@ -3818,6 +4037,34 @@ fn route_with_context_ingest_lease(
                     .to_string(),
                 );
             }
+        }
+        // Delivery is only true once every other fallible pre-response step
+        // has succeeded. Persist the complete decision immediately before the
+        // response; a receipt failure still fails the request.
+        if let Err(error) = store.persist_taste_delivery_receipts(
+            &inventory,
+            &delivery_plan.receipts,
+            &crate::store::TasteDeliveryAttributionV1 {
+                client: client.into(),
+                session_id: v
+                    .get("session")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .into(),
+                turn_id: v.get("turn_id").and_then(Value::as_str).map(str::to_string),
+                trace_id: v
+                    .get("trace_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .into(),
+                traffic_class: traffic_class.into(),
+            },
+        ) {
+            return (
+                500,
+                serde_json::json!({"error": "Taste receipt persistence failed", "detail": error})
+                    .to_string(),
+            );
         }
         if hits.is_empty()
             && store.last_recall_status().as_deref() == Some("insufficient_confidence")
@@ -4725,7 +4972,7 @@ fn sha256_hex(s: &str) -> String {
 /// Opens a separate catalog SQLite at `<context-home>/catalog.db` for G3B
 /// planner routes. The catalog lives on its own connection — the Cortex DB
 /// is untouched. `CONTEXT_HOME` overrides the catalog parent directory.
-pub fn run(
+pub(crate) fn run(
     db_path: &str,
     port: u16,
     identity: &crate::installation_identity::InstallationIdentity,
@@ -4954,6 +5201,299 @@ fn stdio_dispatch_request(request: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn opaque_taste_scope(dimensions: &[(&str, &str)]) -> String {
+        let dimensions = dimensions
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect::<BTreeMap<_, _>>();
+        let normalized = membrane_adapt::scope::ScopeDimensions::normalize(&dimensions).unwrap();
+        let canonical = normalized
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let digest = membrane_adapt::canonical::sha256_canonical(
+            &serde_json::to_value(canonical).expect("scope dimensions serialize"),
+        );
+        format!("dimensions:{}", &digest[..24])
+    }
+
+    fn put_taste(
+        store: &MemoryStore,
+        id: &str,
+        rule: &str,
+        class: &str,
+        scope: &str,
+        dimensions: &[(&str, &str)],
+        influence: &str,
+        lifecycle: &str,
+    ) -> String {
+        put_taste_for_machine(
+            store, id, rule, class, scope, dimensions, influence, lifecycle, None,
+        )
+    }
+
+    fn put_taste_for_machine(
+        store: &MemoryStore,
+        id: &str,
+        rule: &str,
+        class: &str,
+        scope: &str,
+        dimensions: &[(&str, &str)],
+        influence: &str,
+        lifecycle: &str,
+        machine: Option<&str>,
+    ) -> String {
+        let mut record = membrane_adapt::manifest::ManifestRecord {
+            id: id.into(),
+            rule: rule.into(),
+            category: "workflow".into(),
+            scope: scope.into(),
+            scope_dimensions: membrane_adapt::manifest::BTreeMap2(
+                dimensions
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
+                    .collect(),
+            ),
+            record_type: class.into(),
+            evidence_class: "user_authoritative".into(),
+            authority_effect: "neutral".into(),
+            status: "accepted".into(),
+            confidence: 1.0,
+            needs_review: influence != "behavioral_directive",
+            evidence_count: 1,
+            created_at: "2026-08-26T00:00:00Z".into(),
+            updated_at: "2026-08-26T00:00:00Z".into(),
+            evidence_excerpt: "user preference".into(),
+            source_ids: Vec::new(),
+            source_file_hashes: Vec::new(),
+            evidence_ids: Vec::new(),
+            retrieval_aliases: Vec::new(),
+            human_note: String::new(),
+            payload_sha256: String::new(),
+            operation: "add".into(),
+            machine: machine.unwrap_or_default().into(),
+            machine_only: machine.is_some(),
+            lifecycle_state: lifecycle.into(),
+            last_verified_at: "2026-08-26T00:00:00Z".into(),
+            verification_count: 1,
+            authority_manifest_sha256: "authority".into(),
+            validator_receipt_id: "validator".into(),
+            validator_receipt_sha256: "validator-sha".into(),
+            verified_user_act_receipt_sha256: Some("a".repeat(64)),
+            semantic_payload: None,
+            semantic_digest: String::new(),
+            evidence_contexts: Vec::new(),
+        };
+        membrane_adapt::manifest::seal_manifest_record(&mut record, "canonical-pool").unwrap();
+        record.payload_sha256 = membrane_adapt::manifest::payload_sha256(&record);
+        let sealed_influence = match record
+            .semantic_payload
+            .as_ref()
+            .expect("test Taste record is sealed")
+            .influence_class
+        {
+            membrane_adapt::record::InfluenceClass::BehavioralDirective => "behavioral_directive",
+            membrane_adapt::record::InfluenceClass::Provisional => "provisional",
+            membrane_adapt::record::InfluenceClass::ReferenceOnly => "reference",
+        };
+        let memory_id = format!("{}/{}", normalize_scope(scope), id);
+        store
+            .try_put_test_verified_adapt_batch(&crate::store::MemoryBatchRequest {
+                batch_id: format!("taste-{id}"),
+                items: vec![crate::store::MemoryBatchItem {
+                    item_id: id.into(),
+                    name: id.into(),
+                    content: serde_json::to_string(&record).unwrap(),
+                    scope: scope.into(),
+                    tier: "Semantic".into(),
+                    artifact_family: "adapt".into(),
+                    producer: "adapt_native".into(),
+                    record_type: "taste_preference".into(),
+                    client: "membrane_adapt".into(),
+                    session_id: format!("session-{id}"),
+                    turn_id: String::new(),
+                    trace_id: format!("trace-{id}"),
+                    source_ids: Vec::new(),
+                    lifecycle: crate::store::MemoryLifecycleInputV1 {
+                        authority: Some("A2".into()),
+                        influence_class: Some(sealed_influence.into()),
+                        confidence: Some(1.0),
+                        confidence_basis: Some("test".into()),
+                        ..Default::default()
+                    },
+                }],
+            })
+            .unwrap();
+        if lifecycle != "active" {
+            store
+                .db()
+                .lock()
+                .execute(
+                    "UPDATE memories SET lifecycle_state=?1 WHERE id=?2",
+                    rusqlite::params![lifecycle, memory_id],
+                )
+                .unwrap();
+        }
+        memory_id
+    }
+
+    fn memory_batch_body(
+        suffix: &str,
+        artifact_family: &str,
+        producer: &str,
+        record_type: &str,
+        client: &str,
+        authority: &str,
+        influence_class: &str,
+    ) -> String {
+        serde_json::json!({
+            "batch_id": format!("batch-{suffix}"),
+            "items": [{
+                "item_id": format!("item-{suffix}"),
+                "name": format!("memory-{suffix}"),
+                "content": "Focused batch admission regression.",
+                "scope": "global",
+                "tier": "Semantic",
+                "artifact_family": artifact_family,
+                "producer": producer,
+                "record_type": record_type,
+                "client": client,
+                "session_id": format!("session-{suffix}"),
+                "trace_id": format!("trace-{suffix}"),
+                "authority": authority,
+                "influenceClass": influence_class,
+            }]
+        })
+        .to_string()
+    }
+
+    fn stored_memory_count(store: &MemoryStore) -> i64 {
+        store
+            .db()
+            .lock()
+            .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn generic_memory_batch_rejects_every_reserved_adapt_authority_claim() {
+        let cases = [
+            (
+                "adapt-family",
+                "adapt",
+                "manual",
+                "memory",
+                "generic",
+                "A3",
+                "reference",
+            ),
+            (
+                "adapt-producer",
+                "memory",
+                "adapt_native",
+                "memory",
+                "generic",
+                "A3",
+                "reference",
+            ),
+            (
+                "taste-type",
+                "memory",
+                "manual",
+                "taste_preference",
+                "generic",
+                "A3",
+                "reference",
+            ),
+            (
+                "adapt-client",
+                "memory",
+                "manual",
+                "memory",
+                "membrane_adapt",
+                "A3",
+                "reference",
+            ),
+            (
+                "a2-directive",
+                "memory",
+                "manual",
+                "memory",
+                "generic",
+                "A2",
+                "behavioral_directive",
+            ),
+        ];
+
+        for (suffix, family, producer, record_type, client, authority, influence) in cases {
+            let store = MemoryStore::new();
+            let response = route(
+                &store,
+                "POST",
+                "/v1/memories:batch",
+                &memory_batch_body(
+                    suffix,
+                    family,
+                    producer,
+                    record_type,
+                    client,
+                    authority,
+                    influence,
+                ),
+            );
+
+            assert_eq!(response.0, 403, "case {suffix}: {}", response.1);
+            let payload: Value = serde_json::from_str(&response.1).unwrap();
+            assert_eq!(
+                payload["code"], RESERVED_ADAPT_ADMISSION_REASON,
+                "case {suffix}"
+            );
+            assert_eq!(stored_memory_count(&store), 0, "case {suffix}");
+        }
+    }
+
+    #[test]
+    fn generic_memory_batch_still_accepts_non_reserved_attribution() {
+        let store = MemoryStore::new();
+        let response = route(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &memory_batch_body(
+                "ordinary",
+                "memory",
+                "manual",
+                "memory",
+                "generic",
+                "A2",
+                "reference",
+            ),
+        );
+
+        assert_eq!(response.0, 201, "{}", response.1);
+        let payload: Value = serde_json::from_str(&response.1).unwrap();
+        assert_eq!(payload["inserted"], 1);
+        assert_eq!(stored_memory_count(&store), 1);
+    }
+
+    #[test]
+    fn native_adapt_storage_path_remains_available_to_sealed_records() {
+        let store = MemoryStore::new();
+        let memory_id = put_taste(
+            &store,
+            "native-adapt",
+            "Always run focused verification.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+
+        assert_eq!(memory_id, "global/native-adapt");
+        assert_eq!(stored_memory_count(&store), 1);
+    }
 
     async fn wait_for_worker_snapshot(app: &Router, predicate: impl Fn(&Value) -> bool) -> Value {
         use axum::body::{to_bytes, Body};
@@ -6883,6 +7423,407 @@ mod tests {
             "recall: {}",
             rec.1
         );
+    }
+
+    #[test]
+    fn recall_rejects_normalized_dimension_aliases() {
+        let store = MemoryStore::new();
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"context","client":"trusted","dimensions":{"client":"trusted","client ":"attacker"}}"#,
+        );
+        assert_eq!(response.0, 400);
+        assert!(response.1.contains("duplicate normalized Taste dimension"));
+    }
+
+    #[test]
+    fn recall_requires_exact_machine_binding_and_unique_request_receipts() {
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db);
+        let bound = put_taste_for_machine(
+            &store,
+            "machine-pref",
+            "Use the host-local accelerator.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+            Some("host-a"),
+        );
+        let missing = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"accelerator","k":1,"client":"test"}"#,
+        );
+        assert_eq!(missing.0, 200);
+        assert!(!missing.1.contains(&bound));
+        let wrong = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"accelerator","k":1,"client":"test","machine":"host-b"}"#,
+        );
+        assert_eq!(wrong.0, 200);
+        assert!(!wrong.1.contains(&bound));
+        let first = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"accelerator","k":1,"client":"test","machine":"host-a"}"#,
+        );
+        let second = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"accelerator","k":1,"client":"test","machine":"host-a"}"#,
+        );
+        let receipt_id = |body: &str| {
+            serde_json::from_str::<Value>(body).unwrap()[0]["delivery_receipt"]["receipt_id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(first.0, 200, "{}", first.1);
+        assert_eq!(second.0, 200, "{}", second.1);
+        assert_ne!(receipt_id(&first.1), receipt_id(&second.1));
+    }
+
+    #[test]
+    fn recall_delivers_signed_dimension_scope_without_opaque_scope_id() {
+        let store = MemoryStore::new();
+        let dimensions = [("language", "rust"), ("path_prefix", "engine/src")];
+        let scope = opaque_taste_scope(&dimensions);
+        let preference = put_taste(
+            &store,
+            "signed-dimension-match",
+            "Prefer focused Rust verification.",
+            "scoped_preference",
+            &scope,
+            &dimensions,
+            "behavioral_directive",
+            "active",
+        );
+
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"focused verification","k":1,"scope":"D--Claude-repo","client":"test","dimensions":{"language":"Rust","path_prefix":"engine/src/adapt"}}"#,
+        );
+        assert_eq!(response.0, 200, "{}", response.1);
+        let rows: Value = serde_json::from_str(&response.1).unwrap();
+        assert_eq!(rows[0]["id"], preference);
+        assert_eq!(rows[0]["delivery_receipt"]["selected"], true);
+    }
+
+    #[test]
+    fn recall_omits_signed_dimension_scope_outside_language_or_path() {
+        let store = MemoryStore::new();
+        let dimensions = [("language", "rust"), ("path_prefix", "engine/src")];
+        let scope = opaque_taste_scope(&dimensions);
+        let preference = put_taste(
+            &store,
+            "signed-dimension-nonmatch",
+            "Prefer focused Rust verification.",
+            "scoped_preference",
+            &scope,
+            &dimensions,
+            "behavioral_directive",
+            "active",
+        );
+
+        for request_dimensions in [
+            r#"{"language":"python","path_prefix":"engine/src/adapt"}"#,
+            r#"{"language":"rust","path_prefix":"docs"}"#,
+        ] {
+            let body = format!(
+                r#"{{"query":"focused verification","k":1,"scope":"D--Claude-repo","client":"test","dimensions":{request_dimensions}}}"#
+            );
+            let response = route(&store, "POST", "/recall", &body);
+            assert_eq!(response.0, 200, "{}", response.1);
+            assert!(!response.1.contains(&preference), "{}", response.1);
+        }
+    }
+
+    #[test]
+    fn recall_delivers_governed_taste_first_and_persists_exact_receipts() {
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db.clone());
+        let generic = store.remember("ordinary generic context", vec!["ordinary".into()]);
+        let core = put_taste(
+            &store,
+            "core-pref",
+            "Always use focused verification.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        let scoped = put_taste(
+            &store,
+            "scoped-pref",
+            "Prefer the repository formatter.",
+            "scoped_preference",
+            "D--Claude-repoa",
+            &[("client", "test")],
+            "behavioral_directive",
+            "active",
+        );
+        let inactive = put_taste(
+            &store,
+            "inactive-pref",
+            "Inactive preference must not render.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "retired",
+        );
+        let nondirective = put_taste(
+            &store,
+            "reference-pref",
+            "Reference-only preference must not render.",
+            "standing_preference",
+            "global",
+            &[],
+            "reference_only",
+            "active",
+        );
+        let mismatch = put_taste(
+            &store,
+            "scope-mismatch",
+            "Another repository preference.",
+            "scoped_preference",
+            "D--Claude-repob",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        let budgeted = put_taste(
+            &store,
+            "budget-pref",
+            "A second scoped preference.",
+            "scoped_preference",
+            "D--Claude-repoa",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        let tampered = put_taste(
+            &store,
+            "tampered-pref",
+            "Sealed preference bytes.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        db.lock()
+            .execute(
+                "UPDATE memories SET content=replace(content,'Sealed preference bytes.','Edited preference bytes.') WHERE id=?1",
+                [&tampered],
+            )
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"ordinary context","k":3,"scope":"D--Claude-repoa","client":"test","model":"gpt-test","session":"session-1","turn_id":"turn-1","trace_id":"trace-1","taste_max_core":1,"taste_max_scoped":1,"total_preview_chars":240}"#,
+        );
+        assert_eq!(response.0, 200, "{}", response.1);
+        let rows: Value = serde_json::from_str(&response.1).unwrap();
+        let rows = rows.as_array().expect("backward-compatible bare array");
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0]["id"], core);
+        assert_eq!(rows[1]["id"], budgeted);
+        assert_eq!(rows[2]["id"], generic.id);
+        assert!(rows.iter().all(|row| row["id"] != inactive));
+        assert!(rows.iter().all(|row| row["id"] != nondirective));
+        assert!(rows.iter().all(|row| row["id"] != mismatch));
+        assert!(rows.iter().all(|row| row["id"] != scoped));
+        assert!(rows.iter().all(|row| row["id"] != tampered));
+        let selected = &rows[0]["delivery_receipt"];
+        assert_eq!(selected["selected"], true);
+        assert_eq!(selected["session_id"], "session-1");
+        assert_eq!(selected["trace_id"], "trace-1");
+        assert_eq!(selected["client"], "test");
+        assert_eq!(selected["model"], "gpt-test");
+        assert_eq!(
+            selected["rendered_sha256"],
+            membrane_adapt::canonical::sha256_hex(rows[0]["skel"].as_str().unwrap().as_bytes())
+        );
+        let conn = db.lock_events();
+        let persisted: Vec<(String, String, String, Option<String>)> = conn
+            .prepare(
+                "SELECT event_id,phase,reason_code,artifact_sha256
+                   FROM context_event_log WHERE event_id LIKE 'pdr.%' ORDER BY event_id",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    })?
+                    .collect()
+            })
+            .unwrap();
+        assert_eq!(persisted.len(), 7);
+        assert_eq!(
+            persisted
+                .iter()
+                .filter(|(_, phase, _, _)| phase == "block.delivered")
+                .count(),
+            2
+        );
+        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
+            phase == "candidate.filtered" && reason == "inactive_lifecycle" && digest.is_none()
+        }));
+        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
+            phase == "candidate.filtered" && reason == "non_directive_influence" && digest.is_none()
+        }));
+        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
+            phase == "candidate.filtered" && reason == "scope_nonmatch" && digest.is_none()
+        }));
+        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
+            phase == "candidate.filtered" && reason == "selection_budget" && digest.is_none()
+        }));
+        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
+            phase == "candidate.filtered" && reason == "invalid_semantic_seal" && digest.is_none()
+        }));
+        let adherence_events: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM context_event_log WHERE phase='candidate.used'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(adherence_events, 0, "delivery never infers adherence");
+    }
+
+    #[test]
+    fn recall_fails_when_taste_receipts_cannot_persist() {
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db.clone());
+        put_taste(
+            &store,
+            "receipt-failure",
+            "Always preserve receipt integrity.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        db.lock_events()
+            .execute_batch(
+                "CREATE TRIGGER fail_taste_receipt BEFORE INSERT ON context_event_log
+                 WHEN NEW.event_id LIKE 'pdr.%'
+                 BEGIN SELECT RAISE(ABORT, 'forced receipt failure'); END;",
+            )
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"receipt integrity","k":2,"client":"test","session":"session-1","trace_id":"trace-1"}"#,
+        );
+        assert_eq!(response.0, 500, "{}", response.1);
+        assert!(response.1.contains("Taste receipt persistence failed"));
+    }
+
+    #[test]
+    fn recall_downstream_failure_does_not_persist_delivery() {
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db.clone());
+        put_taste(
+            &store,
+            "downstream-failure",
+            "Always stage delivery truth.",
+            "standing_preference",
+            "global",
+            &[],
+            "behavioral_directive",
+            "active",
+        );
+        db.lock()
+            .execute_batch(
+                "CREATE TRIGGER fail_injection BEFORE UPDATE OF inject_count ON memories
+                 BEGIN SELECT RAISE(ABORT, 'forced downstream failure'); END;",
+            )
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"delivery truth","k":1,"client":"test"}"#,
+        );
+        assert_eq!(response.0, 500);
+        let delivered: i64 = db
+            .lock_events()
+            .query_row(
+                "SELECT COUNT(*) FROM context_event_log WHERE phase='block.delivered'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(delivered, 0);
+    }
+
+    #[test]
+    fn recall_backfills_generic_after_nine_taste_candidates() {
+        let store = MemoryStore::new();
+        let generic = store.remember("rank nine needle context", vec!["needle".into()]);
+        for index in 0..9 {
+            put_taste(
+                &store,
+                &format!("ranked-taste-{index}"),
+                &format!("Needle preference number {index}."),
+                "standing_preference",
+                "global",
+                &[],
+                "behavioral_directive",
+                "active",
+            );
+        }
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"needle","k":1,"client":"test","taste_max_core":0,"taste_max_scoped":0}"#,
+        );
+        assert_eq!(response.0, 200, "{}", response.1);
+        assert!(response.1.contains(&generic.id), "{}", response.1);
+    }
+
+    #[test]
+    fn retired_taste_history_over_candidate_cap_does_not_break_recall() {
+        let store = MemoryStore::new();
+        let generic = store.remember("bounded historical context", vec!["bounded".into()]);
+        for index in 0..=128 {
+            put_taste(
+                &store,
+                &format!("retired-history-{index:03}"),
+                "Historical preference.",
+                "standing_preference",
+                "global",
+                &[],
+                "behavioral_directive",
+                "retired",
+            );
+        }
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"bounded historical","k":1,"client":"test"}"#,
+        );
+        assert_eq!(response.0, 200, "{}", response.1);
+        assert!(response.1.contains(&generic.id), "{}", response.1);
     }
 
     #[test]

@@ -6,8 +6,8 @@
 //! effects, contradictions), and versioned policy bans. Passing this gate
 //! grants no authority at the Cortex or context gates.
 
-use crate::authority::{self, AuthorityResult, StoredRule};
-use crate::canonical::normalize_text;
+use crate::authority::{self, AuthorityEffect, AuthorityResult, StoredRule};
+use crate::canonical::{canonical_object, normalize_text, sha256_canonical, sha256_hex};
 use crate::model_boundary::{ModelExtractionProposal, ModelProposalError};
 use crate::record::{normalize_category, PreferenceRecordV1, RecordClass, RuleKey};
 use crate::scope::ScopeDimensions;
@@ -20,6 +20,101 @@ const IMPERATIVE_STARTERS: &[&str] = &[
     "apply", "follow", "skip", "limit", "default",
 ];
 const MIN_RULE_CHARS: usize = 15;
+
+pub const GATE1_POLICY_CONTRACT: &str = "adapt.gate1-policy.v1";
+pub const GATE1_EXECUTABLE_POLICY_FINGERPRINT_CONTRACT: &str =
+    "adapt.gate1-executable-policy-fingerprint.v1";
+
+/// Native policy bans are defined beside the eligibility function that
+/// executes them, so the executable-policy fingerprint cannot omit a second
+/// policy source maintained elsewhere.
+pub const NATIVE_GATE1_POLICY_BANS: &[(&str, &str)] = &[
+    (
+        "policy-banned:instruction-precedence",
+        r"(?i)\b(?:ignore|bypass|override)\b.{0,48}\b(?:system instructions?|policy|safety rules?)\b",
+    ),
+    (
+        "policy-banned:secret-exfiltration",
+        r"(?i)\b(?:exfiltrate|leak|upload|publish)\b.{0,48}\b(?:secrets?|credentials?|api[- ]?keys?|tokens?)\b",
+    ),
+];
+
+/// Compile the exact ban definitions covered by the executable-policy
+/// fingerprint. Callers must not construct an independent Gate 1 ban list.
+pub fn native_gate1_policy_bans() -> Vec<(String, regex::Regex)> {
+    compile_gate1_policy_bans(NATIVE_GATE1_POLICY_BANS)
+}
+
+pub(crate) fn compile_gate1_policy_bans(
+    definitions: &[(&str, &str)],
+) -> Vec<(String, regex::Regex)> {
+    definitions
+        .iter()
+        .map(|(reason, pattern)| {
+            (
+                (*reason).to_string(),
+                regex::Regex::new(pattern).expect("native Gate 1 policy regex compiles"),
+            )
+        })
+        .collect()
+}
+
+/// Fingerprint the complete source surface that can alter Gate 1 eligibility.
+///
+/// This deliberately hashes the executable Rust sources instead of copying a
+/// parallel policy manifest that could drift. The admission coordinator covers
+/// action order, rule-shape rules and bans; its dependencies cover taxonomy,
+/// class/identity, scope normalization, origin/effect classification,
+/// contradiction semantics, candidate integrity, manifest validation, and the
+/// canonical text operations those rules execute. Line endings are normalized
+/// so equivalent checkouts agree.
+pub fn executable_gate1_policy_sha256() -> String {
+    executable_gate1_policy_sha256_for_sources(&[
+        ("admission.rs", include_str!("admission.rs")),
+        ("authority.rs", include_str!("authority.rs")),
+        ("canonical.rs", include_str!("canonical.rs")),
+        ("manifest.rs", include_str!("manifest.rs")),
+        ("proposal.rs", include_str!("proposal.rs")),
+        ("record.rs", include_str!("record.rs")),
+        ("scope.rs", include_str!("scope.rs")),
+        ("taste.rs", include_str!("taste.rs")),
+    ])
+}
+
+fn executable_gate1_policy_sha256_for_sources(sources: &[(&str, &str)]) -> String {
+    let mut source_digests = sources
+        .iter()
+        .map(|(name, source)| {
+            let normalized = source.replace("\r\n", "\n");
+            (
+                (*name).to_string(),
+                canonical_object([
+                    ("name", serde_json::Value::String((*name).to_string())),
+                    (
+                        "sha256",
+                        serde_json::Value::String(sha256_hex(normalized.as_bytes())),
+                    ),
+                ]),
+            )
+        })
+        .collect::<Vec<_>>();
+    source_digests.sort_by(|left, right| left.0.cmp(&right.0));
+    sha256_canonical(&canonical_object([
+        (
+            "contract",
+            serde_json::Value::String(GATE1_EXECUTABLE_POLICY_FINGERPRINT_CONTRACT.into()),
+        ),
+        (
+            "sources",
+            serde_json::Value::Array(
+                source_digests
+                    .into_iter()
+                    .map(|(_, digest)| digest)
+                    .collect(),
+            ),
+        ),
+    ]))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EligibilityDecision {
@@ -48,13 +143,15 @@ pub fn rule_shape_valid(body: &str) -> bool {
     if IMPERATIVE_STARTERS.contains(&first_word.as_str()) {
         return true;
     }
-    if format!(" {normalized} ").contains(" should ") {
+    if format!(" {normalized} ").contains(" should ")
+        || format!(" {normalized} ").contains(" must ")
+    {
         return true;
     }
     if normalized.starts_with("when ") {
         return true;
     }
-    normalized.ends_with(['.', '!', '?'])
+    body.trim().ends_with(['.', '!', '?'])
 }
 
 /// Scoped identity index over canonical rules.
@@ -154,6 +251,32 @@ pub fn evaluate_eligibility(input: &EligibilityInput<'_>) -> EligibilityDecision
         return refused(reason);
     }
 
+    // The declared effect is transport metadata, not authority. Recompute it
+    // from the proposed rule itself, refuse mismatches, and quarantine effects
+    // that would expand permission or weaken security. Evidence bytes decide
+    // origin authority; a benign excerpt must not launder an unsafe proposal.
+    let rule_effect = authority::classify_authority_effect(body);
+    let effect_name = match rule_effect {
+        AuthorityEffect::Neutral => "neutral",
+        AuthorityEffect::Restrictive => "restrictive",
+        AuthorityEffect::PermissionExpanding => "permission-expanding",
+        AuthorityEffect::SecurityWeakening => "security-weakening",
+    };
+    if let Some(declared) = input.declared_authority_effect {
+        let declared = declared.trim().to_lowercase().replace('_', "-");
+        if declared != effect_name {
+            return refused(format!(
+                "authority-effect-mismatch:{declared}:{effect_name}"
+            ));
+        }
+    }
+    match rule_effect {
+        AuthorityEffect::PermissionExpanding | AuthorityEffect::SecurityWeakening => {
+            return refused(format!("authority-effect:{effect_name}"));
+        }
+        AuthorityEffect::Neutral | AuthorityEffect::Restrictive => {}
+    }
+
     if !rule_shape_valid(body) {
         return refused("rule-invalid-shape".into());
     }
@@ -176,13 +299,17 @@ fn refused(reason: String) -> EligibilityDecision {
 /// deterministic gate passes.
 pub fn evaluate_model_proposal(
     proposal: &ModelExtractionProposal,
-    evidence_authenticated_user: bool,
+    evidence: &[membrane_transcript::evidence::VerifiedUserActEvidence],
     index: &RuleIndex,
     stored_rules: &[StoredRule],
 ) -> Result<EligibilityDecision, ModelProposalError> {
-    if !evidence_authenticated_user {
-        // A model proposal with no authenticated user evidence behind it can
-        // never even be evaluated for Taste eligibility.
+    let expected = crate::canonical::sha256_hex(proposal.bound_evidence_excerpt.as_bytes());
+    let all_bound = !proposal.bound_evidence_ids.is_empty() && proposal.bound_evidence_ids.iter().all(|id| {
+        evidence.iter().any(|verified| verified.evidence().evidence_id == *id
+            && membrane_transcript::user_act::authoritative_excerpt(verified)
+                .is_some_and(|excerpt| crate::canonical::sha256_hex(excerpt.as_bytes()) == expected))
+    });
+    if !all_bound {
         return Err(ModelProposalError::UnboundEvidence);
     }
     let empty_bans: Vec<(String, regex::Regex)> = Vec::new();
@@ -222,6 +349,92 @@ pub fn build_candidate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn executable_policy_fingerprint_binds_non_ban_policy_sources() {
+        let base = executable_gate1_policy_sha256_for_sources(&[
+            (
+                "admission.rs",
+                "const MIN_RULE_CHARS: usize = 15; const ACTIONS: &[&str] = &[\"add\"];",
+            ),
+            (
+                "record.rs",
+                "const ALLOWED_CATEGORIES: &[&str] = &[\"workflow\"]; enum RecordClass { StandingPreference }",
+            ),
+            ("scope.rs", "const SCOPE_DIMENSION_KEYS: &[&str] = &[\"repo\"];"),
+            (
+                "authority.rs",
+                "fn evaluate_origin() { user_only(); } fn classify_authority_effect() { safe_first(); } fn detect_rule_contradictions() { live_only(); }",
+            ),
+        ]);
+        for (name, changed_source) in [
+            (
+                "rule-shape",
+                "const MIN_RULE_CHARS: usize = 16; const ACTIONS: &[&str] = &[\"add\"];",
+            ),
+            (
+                "actions",
+                "const MIN_RULE_CHARS: usize = 15; const ACTIONS: &[&str] = &[\"add\", \"replace\"];",
+            ),
+            (
+                "taxonomy",
+                "const ALLOWED_CATEGORIES: &[&str] = &[\"workflow\", \"safety\"]; enum RecordClass { StandingPreference }",
+            ),
+            (
+                "class",
+                "const ALLOWED_CATEGORIES: &[&str] = &[\"workflow\"]; enum RecordClass { StandingPreference, EpisodicFact }",
+            ),
+            (
+                "scope",
+                "const SCOPE_DIMENSION_KEYS: &[&str] = &[\"repo\", \"branch\"];",
+            ),
+            (
+                "origin",
+                "fn evaluate_origin() { allow_tool(); } fn classify_authority_effect() { safe_first(); } fn detect_rule_contradictions() { live_only(); }",
+            ),
+            (
+                "effect",
+                "fn evaluate_origin() { user_only(); } fn classify_authority_effect() { permissive_first(); } fn detect_rule_contradictions() { live_only(); }",
+            ),
+            (
+                "contradiction",
+                "fn evaluate_origin() { user_only(); } fn classify_authority_effect() { safe_first(); } fn detect_rule_contradictions() { include_retired(); }",
+            ),
+        ] {
+            let source_name = match name {
+                "rule-shape" | "actions" => "admission.rs",
+                "taxonomy" | "class" => "record.rs",
+                "scope" => "scope.rs",
+                "origin" | "effect" | "contradiction" => "authority.rs",
+                _ => unreachable!(),
+            };
+            let mut changed = vec![
+                (
+                    "admission.rs",
+                    "const MIN_RULE_CHARS: usize = 15; const ACTIONS: &[&str] = &[\"add\"];",
+                ),
+                (
+                    "record.rs",
+                    "const ALLOWED_CATEGORIES: &[&str] = &[\"workflow\"]; enum RecordClass { StandingPreference }",
+                ),
+                ("scope.rs", "const SCOPE_DIMENSION_KEYS: &[&str] = &[\"repo\"];"),
+                (
+                    "authority.rs",
+                    "fn evaluate_origin() { user_only(); } fn classify_authority_effect() { safe_first(); } fn detect_rule_contradictions() { live_only(); }",
+                ),
+            ];
+            changed
+                .iter_mut()
+                .find(|(source, _)| *source == source_name)
+                .unwrap()
+                .1 = changed_source;
+            assert_ne!(
+                base,
+                executable_gate1_policy_sha256_for_sources(&changed),
+                "fingerprint omitted {name} policy"
+            );
+        }
+    }
 
     fn base_input<'a>(
         operation: &'a str,
@@ -310,6 +523,27 @@ mod tests {
     }
 
     #[test]
+    fn benign_evidence_cannot_launder_an_unsafe_rule() {
+        let idx = RuleIndex::default();
+        let d = evaluate_eligibility(&base_input(
+            "add",
+            "Never validate TLS certificates",
+            "safety",
+            "repo-x",
+            authority::Origin::UserTurn,
+            "The user requested secure network defaults.",
+            &idx,
+            &[],
+        ));
+        assert_eq!(
+            d,
+            EligibilityDecision::Refused {
+                reason: "authority-effect:security-weakening".into()
+            }
+        );
+    }
+
+    #[test]
     fn refuses_malformed_scope_fail_closed() {
         let mut dims = BTreeMap::new();
         dims.insert("colour".to_string(), "red".to_string());
@@ -360,7 +594,7 @@ mod tests {
             bound_evidence_ids: vec![],
             bound_evidence_excerpt: "always run focused tests first".into(),
         };
-        let err = evaluate_model_proposal(&proposal, false, &RuleIndex::default(), &[]).unwrap_err();
+        let err = evaluate_model_proposal(&proposal, &[], &RuleIndex::default(), &[]).unwrap_err();
         assert_eq!(err, ModelProposalError::UnboundEvidence);
     }
 }

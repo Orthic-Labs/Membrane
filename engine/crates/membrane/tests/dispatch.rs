@@ -51,8 +51,44 @@ fn exit_code_table_is_stable_across_modes() {
 
 #[test]
 fn retired_resident_modes_are_rejected() {
+    assert!(parse_mode(["membrane", "serve"].iter().copied()).is_err());
     assert!(parse_mode(["membrane", "loopback-api"].iter().copied()).is_err());
     assert!(parse_mode(["membrane", "supervisor-child"].iter().copied()).is_err());
+}
+
+#[test]
+fn installed_cli_cannot_start_a_resident() {
+    use std::process::{Command, Stdio};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    for args in [["serve"].as_slice(), ["cli", "serve"].as_slice()] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_membrane"))
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn installed membrane binary");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("poll membrane CLI") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                child.kill().expect("stop unexpected resident process");
+                let _ = child.wait();
+                panic!("`membrane {}` started or blocked in resident mode", args.join(" "));
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(
+            status.code(),
+            Some(2),
+            "`membrane {}` must fail as a rejected public command",
+            args.join(" ")
+        );
+    }
 }
 
 #[test]

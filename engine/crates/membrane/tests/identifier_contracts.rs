@@ -136,23 +136,23 @@ fn worktree_document_rejections_are_typed_before_io() {
     for (source_ref, expected) in [
         ("doc://repo/worktree/", WorktreeDocRefError::EmptyPath),
         (
-            "doc://repo/worktree/docs//guide.md",
+            "doc://repo/worktree/docs//ledger.md",
             WorktreeDocRefError::AliasCollision,
         ),
         (
-            "doc://repo/worktree/docs/%2e%2e/guide.md",
+            "doc://repo/worktree/docs/%2e%2e/ledger.md",
             WorktreeDocRefError::AliasCollision,
         ),
         (
-            "doc://repo/worktree/C:/repo/guide.md",
+            "doc://repo/worktree/C:/repo/ledger.md",
             WorktreeDocRefError::WindowsPath,
         ),
         (
-            "doc://repo/worktree/docs\\guide.md",
+            "doc://repo/worktree/docs\\ledger.md",
             WorktreeDocRefError::WindowsPath,
         ),
         (
-            "doc://repo/worktree/docs/∕guide.md",
+            "doc://repo/worktree/docs/∕ledger.md",
             WorktreeDocRefError::UnicodeAmbiguity,
         ),
     ] {
@@ -160,11 +160,11 @@ fn worktree_document_rejections_are_typed_before_io() {
     }
 
     assert_eq!(
-        WorktreeDocRef::parse("doc://other/worktree/docs/guide.md").unwrap_err(),
+        WorktreeDocRef::parse("doc://other/worktree/docs/ledger.md").unwrap_err(),
         WorktreeDocRefError::CrossRepository
     );
     assert_eq!(
-        WorktreeDocRef::parse("Doc://repo/worktree/docs/guide.md").unwrap_err(),
+        WorktreeDocRef::parse("Doc://repo/worktree/docs/ledger.md").unwrap_err(),
         WorktreeDocRefError::PrefixMismatch
     );
 }

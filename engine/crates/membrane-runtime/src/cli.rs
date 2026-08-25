@@ -1,4 +1,4 @@
-//! Membrane CLI — serve the memory contract, or migrate a markdown corpus into the engine.
+//! Membrane one-shot CLI. Resident runtime startup is owned exclusively by Hub.
 //! Real BGE embeddings need `--features fastembed` + `$ORT_DYLIB_PATH`.
 
 use crate::scope::{normalize_scope, path_to_scope};
@@ -246,6 +246,9 @@ struct DeployedRuntime {
     token_file: PathBuf,
     ort: PathBuf,
     hf_home: PathBuf,
+    user_act_trust: PathBuf,
+    user_act_replay: PathBuf,
+    semantic_adjudicator_trust: PathBuf,
 }
 
 fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
@@ -279,6 +282,9 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
         token_file: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
+        user_act_trust: tools.join("lib/memory/adapt-user-act-trust.json"),
+        user_act_replay: tools.join(".cache/memory/adapt-user-act-replay.db"),
+        semantic_adjudicator_trust: tools.join("lib/memory/adapt-semantic-adjudicator-trust.json"),
     })
 }
 
@@ -653,11 +659,6 @@ enum Cmd {
     },
     /// Explain one memory's content-free lifecycle, provenance, and use metadata.
     Explain { id: String },
-    /// Serve /health /recall /use on 127.0.0.1:<port>.
-    Serve {
-        #[arg(long)]
-        port: Option<u16>,
-    },
     /// Ingest every ~/.claude/projects/*/memory dir (+ global) under its scope.
     Migrate,
     /// Ingest every <WORKSPACE_ROOT>/*/.agent/okf bundle, scoped per repo.
@@ -2815,6 +2816,40 @@ fn print_adapt_json<T: Serialize>(value: &T) -> Result<(), String> {
     Ok(())
 }
 
+const TASTE_REVIEW_INPUT_CONTRACT: &str = "adapt.taste-review-input.v1";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TasteReviewSourceV1 {
+    path: PathBuf,
+    #[serde(default)]
+    host: Option<String>,
+    prefix_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TasteReviewInputV1 {
+    contract: String,
+    scope: String,
+    sources: Vec<TasteReviewSourceV1>,
+    candidate_set_sha256: String,
+}
+
+fn taste_candidate_set_sha256(candidates: &[membrane_adapt::taste::TasteCandidateV1]) -> String {
+    membrane_adapt::canonical::sha256_canonical(
+        &serde_json::to_value(candidates).expect("Taste candidates serialize"),
+    )
+}
+
+fn require_current_taste_canonical_pool(
+    reviewed_pool_sha256: &str,
+    current: &membrane_adapt::proposal::Gate1ReviewContextV1,
+) -> Result<(), String> {
+    if reviewed_pool_sha256 != current.canonical_pool_sha256() {
+        return Err("Taste canonical pool changed since review".into());
+    }
+    Ok(())
+}
+
 fn adapt_scope_dimensions(
     values: &[String],
 ) -> Result<membrane_adapt::scope::ScopeDimensions, String> {
@@ -2850,6 +2885,20 @@ fn run_adapt(
             let mut events = Vec::new();
             let mut taste_candidates = Vec::new();
             let mut omissions = Vec::new();
+            let mut verified_user_acts = Vec::new();
+            let mut taste_review_sources = Vec::new();
+            let mut act_hosts = std::collections::BTreeSet::new();
+            let mut user_act_verifier = deployed.and_then(|runtime| {
+                let trust = membrane_transcript::user_act::HostActTrustStoreV1::load(
+                    &runtime.user_act_trust,
+                )
+                .ok()?;
+                let replay = membrane_transcript::user_act::SqliteReplayStore::open(
+                    &runtime.user_act_replay,
+                )
+                .ok()?;
+                membrane_transcript::user_act::HostActVerifier::new(trust, replay).ok()
+            });
             let mut sources: Vec<(PathBuf, Option<String>)> = transcripts
                 .into_iter()
                 .map(|path| (path, host.clone()))
@@ -2874,6 +2923,36 @@ fn run_adapt(
                 return Err("Adapt discovery found no transcript sources".into());
             }
             for (transcript, source_host) in sources {
+                if let Ok(rows) = membrane_transcript::user_act::read_user_act_rows(&transcript) {
+                    let source_bytes = std::fs::read(&transcript).ok();
+                    for row in rows {
+                        let is_user_act = matches!(
+                            row.get("type").and_then(serde_json::Value::as_str),
+                            Some(
+                                "adapt_user_act_v1"
+                                    | membrane_transcript::user_act::USER_ACT_ROW_TYPE
+                            )
+                        );
+                        if !is_user_act {
+                            continue;
+                        }
+                        match user_act_verifier.as_mut() {
+                            Some(verifier) => match verifier.verify_row_with_source(&row, source_bytes.as_deref()) {
+                                Ok(Some(evidence)) => {
+                                    act_hosts.insert(evidence.evidence().host.clone());
+                                    verified_user_acts.push(evidence);
+                                }
+                                Ok(None) => {}
+                                Err(error) => omissions.push(serde_json::json!({
+                                    "path": transcript, "stage": "user_act_verify", "reason": error.to_string(),
+                                })),
+                            },
+                            None => omissions.push(serde_json::json!({
+                                "path": transcript, "stage": "user_act_verify", "reason": "trusted_host_verifier_unavailable",
+                            })),
+                        }
+                    }
+                }
                 let prefix = match membrane_transcript::parse_prefix_receipt(
                     &transcript,
                     source_host.as_deref(),
@@ -2904,6 +2983,16 @@ fn run_adapt(
                         continue;
                     }
                 };
+                taste_review_sources.push(TasteReviewSourceV1 {
+                    path: std::fs::canonicalize(&transcript).map_err(|error| {
+                        format!(
+                            "canonicalize Taste source {}: {error}",
+                            transcript.display()
+                        )
+                    })?,
+                    host: source_host.clone(),
+                    prefix_digest: prefix.receipt.prefix_digest.clone(),
+                });
                 taste_candidates.extend(membrane_adapt::taste::extract_candidates_with_source(
                     &normalized,
                     &scope,
@@ -2919,6 +3008,33 @@ fn run_adapt(
                     }
                 }
             }
+            taste_candidates.extend(
+                membrane_adapt::taste::extract_candidates_from_verified_acts(
+                    &verified_user_acts,
+                    &scope,
+                ),
+            );
+            taste_candidates.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
+            taste_candidates.dedup_by(|left, right| left.candidate_id == right.candidate_id);
+            if let Some(selected) = host.as_ref() {
+                act_hosts.insert(selected.clone());
+            }
+            let user_act_capabilities: Vec<_> = act_hosts
+                .iter()
+                .map(|act_host| {
+                    membrane_transcript::user_act::capability_report(
+                        act_host,
+                        &verified_user_acts,
+                        vec![],
+                    )
+                })
+                .collect();
+            let taste_review = TasteReviewInputV1 {
+                contract: TASTE_REVIEW_INPUT_CONTRACT.into(),
+                scope: scope.clone(),
+                sources: taste_review_sources,
+                candidate_set_sha256: taste_candidate_set_sha256(&taste_candidates),
+            };
             let response = cli_api::handle_mine(&cli_api::MineRequest {
                 events,
                 min_recurrence,
@@ -2926,6 +3042,8 @@ fn run_adapt(
             print_adapt_json(&serde_json::json!({
                 "response": response,
                 "taste_candidates": taste_candidates,
+                "taste_review": taste_review,
+                "user_act_capabilities": user_act_capabilities,
                 "omissions": omissions,
             }))
         }
@@ -2946,14 +3064,104 @@ fn run_adapt(
             created_at,
         } => {
             let value: serde_json::Value = read_adapt_json(&input)?;
-            let candidates: Vec<membrane_adapt::taste::TasteCandidateV1> =
-                serde_json::from_value(value.get("taste_candidates").cloned().unwrap_or(value))
-                    .map_err(|error| format!("parse Adapt Taste candidates: {error}"))?;
+            let review: TasteReviewInputV1 = serde_json::from_value(
+                value.get("taste_review").cloned().ok_or_else(||
+                    "Taste review input lacks native source bindings; bare candidate JSON is not authoritative".to_string())?
+            ).map_err(|error| format!("parse Adapt Taste source bindings: {error}"))?;
+            if review.contract != TASTE_REVIEW_INPUT_CONTRACT || review.scope.trim().is_empty() {
+                return Err("invalid Adapt Taste review source contract".into());
+            }
+            for source in &review.sources {
+                let canonical = std::fs::canonicalize(&source.path).map_err(|error| {
+                    format!(
+                        "canonicalize Taste review source {}: {error}",
+                        source.path.display()
+                    )
+                })?;
+                if !source.path.is_absolute() || canonical != source.path {
+                    return Err("Taste review source paths must be canonical absolute paths".into());
+                }
+            }
+            let mut candidates = Vec::new();
+            let mut verified_user_acts = Vec::new();
+            let mut user_act_verifier = deployed.and_then(|runtime| {
+                let trust = membrane_transcript::user_act::HostActTrustStoreV1::load(
+                    &runtime.user_act_trust,
+                )
+                .ok()?;
+                let replay = membrane_transcript::user_act::SqliteReplayStore::open(
+                    &runtime.user_act_replay,
+                )
+                .ok()?;
+                membrane_transcript::user_act::HostActVerifier::new(trust, replay).ok()
+            });
+            for source in &review.sources {
+                let prefix =
+                    membrane_transcript::parse_prefix_receipt(&source.path, source.host.as_deref())
+                        .map_err(|error| {
+                            format!("verify Taste source {}: {error}", source.path.display())
+                        })?;
+                if prefix.receipt.prefix_digest != source.prefix_digest {
+                    return Err(format!(
+                        "Taste source digest changed: {}",
+                        source.path.display()
+                    ));
+                }
+                let normalized =
+                    membrane_transcript::parse_source_events(&source.path, source.host.as_deref())
+                        .map_err(|error| {
+                            format!("reparse Taste source {}: {error}", source.path.display())
+                        })?;
+                candidates.extend(membrane_adapt::taste::extract_candidates_with_source(
+                    &normalized,
+                    &review.scope,
+                    &prefix.receipt.prefix_digest,
+                ));
+                if let Ok(rows) = membrane_transcript::user_act::read_user_act_rows(&source.path) {
+                    let bytes = std::fs::read(&source.path).ok();
+                    for row in rows {
+                        if let Some(verifier) = user_act_verifier.as_mut() {
+                            if let Some(evidence) = verifier
+                                .verify_row_with_source(&row, bytes.as_deref())
+                                .map_err(|error| {
+                                    format!(
+                                        "verify Taste user act {}: {error}",
+                                        source.path.display()
+                                    )
+                                })?
+                            {
+                                verified_user_acts.push(evidence);
+                            }
+                        }
+                    }
+                }
+            }
+            candidates.extend(
+                membrane_adapt::taste::extract_candidates_from_verified_acts(
+                    &verified_user_acts,
+                    &review.scope,
+                ),
+            );
+            candidates.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
+            candidates.dedup_by(|left, right| left.candidate_id == right.candidate_id);
+            if taste_candidate_set_sha256(&candidates) != review.candidate_set_sha256 {
+                return Err("Taste candidate set does not match reverified native sources".into());
+            }
+            let db = resolve_db(
+                db_arg,
+                std::env::var("CORTEX_DB").ok(),
+                deployed.map(|runtime| runtime.db.as_path()),
+            )?;
+            let store = open(&db)?;
+            let gate1 = store
+                .taste_gate1_review_context()
+                .map_err(|error| format!("load complete Taste Gate 1 context: {error}"))?;
             let manifest = membrane_adapt::proposal::build_pending_manifest(
                 &candidates,
                 &installation_id,
                 &canonical_pool_sha256,
                 &created_at,
+                &gate1,
             )
             .map_err(|error| format!("build Taste review manifest: {error}"))?;
             print_adapt_json(&manifest)
@@ -2967,17 +3175,53 @@ fn run_adapt(
                 read_adapt_json(&manifest)?;
             let adjudication: membrane_adapt::proposal::SemanticAdjudicationV1 =
                 read_adapt_json(&decisions)?;
-            let finalised = membrane_adapt::proposal::adjudicate_manifest(
+            if adjudication.validated_at != validated_at {
+                return Err("validated-at must match the signed semantic adjudication".into());
+            }
+            let trust_path = deployed
+                .map(|runtime| runtime.semantic_adjudicator_trust.as_path())
+                .ok_or_else(|| "deployed semantic-adjudicator trust is unavailable".to_string())?;
+            let trust = membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1::load(trust_path)
+                .map_err(|error| format!("load semantic-adjudicator trust: {error}"))?;
+            let verified = membrane_adapt::proposal::verify_semantic_adjudication(
                 &pending,
-                &adjudication,
-                &validated_at,
+                adjudication,
+                &trust,
             )
-            .map_err(|error| format!("adjudicate Taste manifest: {error}"))?;
+            .map_err(|error| format!("verify Taste semantic adjudication: {error}"))?;
+            let finalised = membrane_adapt::proposal::adjudicate_manifest(&pending, &verified)
+                .map_err(|error| format!("adjudicate Taste manifest: {error}"))?;
             print_adapt_json(&finalised)
         }
         AdaptCmd::Apply { manifest, dry_run } => {
             let manifest: membrane_adapt::manifest::PreferenceManifestV1 =
                 read_adapt_json(&manifest)?;
+            let trust_path = deployed
+                .map(|runtime| runtime.semantic_adjudicator_trust.as_path())
+                .ok_or_else(|| "deployed semantic-adjudicator trust is unavailable".to_string())?;
+            let trust = membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1::load(trust_path)
+                .map_err(|error| format!("load semantic-adjudicator trust: {error}"))?;
+            membrane_adapt::proposal::verify_final_manifest_adjudication(&manifest, &trust)
+                .map_err(|error| {
+                    format!("verify Taste semantic adjudication before apply: {error}")
+                })?;
+            let db = resolve_db(
+                db_arg,
+                std::env::var("CORTEX_DB").ok(),
+                deployed.map(|runtime| runtime.db.as_path()),
+            )?;
+            let store = open(&db)?;
+            if dry_run {
+                let manifest_record_payloads: std::collections::BTreeMap<String, String> = manifest
+                    .records
+                    .iter()
+                    .map(|record| (record.id.clone(), record.payload_sha256.clone()))
+                    .collect();
+                let gate1 = store
+                    .taste_gate1_review_context_excluding(&manifest_record_payloads)
+                    .map_err(|error| format!("reload complete Taste Gate 1 context: {error}"))?;
+                require_current_taste_canonical_pool(&manifest.canonical_pool_sha256, &gate1)?;
+            }
             let response = cli_api::handle_apply(&cli_api::ApplyRequest {
                 manifest: manifest.clone(),
                 dry_run,
@@ -2985,53 +3229,8 @@ fn run_adapt(
             if !response.valid || dry_run || response.accepted_record_ids.is_empty() {
                 return print_adapt_json(&serde_json::json!({"response": response}));
             }
-            let db = resolve_db(
-                db_arg,
-                std::env::var("CORTEX_DB").ok(),
-                deployed.map(|runtime| runtime.db.as_path()),
-            )?;
-            let store = open(&db)?;
-            let accepted: std::collections::BTreeSet<&str> = response
-                .accepted_record_ids
-                .iter()
-                .map(String::as_str)
-                .collect();
-            let items = manifest
-                .records
-                .iter()
-                .filter(|record| accepted.contains(record.id.as_str()))
-                .map(|record| crate::store::MemoryBatchItem {
-                    item_id: record.id.clone(),
-                    name: record.id.clone(),
-                    content: serde_json::to_string(record).expect("ManifestRecord serializes"),
-                    scope: record.scope.clone(),
-                    tier: "Semantic".into(),
-                    artifact_family: "adapt".into(),
-                    producer: "adapt_native".into(),
-                    record_type: "taste_preference".into(),
-                    client: "membrane_adapt".into(),
-                    session_id: manifest.batch_id.clone(),
-                    turn_id: String::new(),
-                    trace_id: response.manifest_hash.clone(),
-                    source_ids: record.source_ids.clone(),
-                    lifecycle: crate::store::MemoryLifecycleInputV1 {
-                        authority: Some("A2".into()),
-                        influence_class: Some(if record.needs_review {
-                            "provisional".into()
-                        } else {
-                            "behavioral_directive".into()
-                        }),
-                        confidence: Some(record.confidence),
-                        confidence_basis: Some("adapt_semantic_validation".into()),
-                        ..Default::default()
-                    },
-                })
-                .collect();
             let receipt = store
-                .try_put_batch(&crate::store::MemoryBatchRequest {
-                    batch_id: manifest.batch_id,
-                    items,
-                })
+                .try_put_verified_adapt_taste_manifest(&manifest, &trust)
                 .map_err(|error| error.to_string())?;
             print_adapt_json(&serde_json::json!({
                 "response": response,
@@ -3079,47 +3278,8 @@ fn run_adapt(
                 deployed.map(|runtime| runtime.db.as_path()),
             )?;
             let store = open(&db)?;
-            let items = issues
-                .iter()
-                .map(|issue| crate::store::MemoryBatchItem {
-                    item_id: issue.issue_id.clone(),
-                    name: issue.payload.family.clone(),
-                    content: serde_json::to_string(issue).expect("sealed Insight serializes"),
-                    scope: issue
-                        .payload
-                        .applicability
-                        .get("repos")
-                        .and_then(|values| values.first())
-                        .cloned()
-                        .unwrap_or_else(|| "global".into()),
-                    tier: "Semantic".into(),
-                    artifact_family: "adapt".into(),
-                    producer: "adapt_native".into(),
-                    record_type: "insight_issue".into(),
-                    client: "membrane_adapt".into(),
-                    session_id: batch_id.clone(),
-                    turn_id: String::new(),
-                    trace_id: issue.payload_sha256.clone(),
-                    source_ids: issue
-                        .payload
-                        .episode_refs
-                        .iter()
-                        .map(|reference| reference.episode_id.clone())
-                        .collect(),
-                    lifecycle: crate::store::MemoryLifecycleInputV1 {
-                        authority: Some("reference".into()),
-                        influence_class: Some("reference_only".into()),
-                        confidence: Some(issue.payload.confidence),
-                        confidence_basis: Some(issue.payload.evidence_quality.as_str().into()),
-                        ..Default::default()
-                    },
-                })
-                .collect();
             let receipt = store
-                .try_put_batch(&crate::store::MemoryBatchRequest {
-                    batch_id: batch_id.clone(),
-                    items,
-                })
+                .try_put_verified_adapt_insights(&issues)
                 .map_err(|error| error.to_string())?;
             let admitted: Vec<_> = envelopes
                 .into_iter()
@@ -3527,26 +3687,6 @@ fn run_installation(command: &InstallationCmd) -> Result<(), String> {
     Ok(())
 }
 
-fn service_workspace_root(db: &Path) -> PathBuf {
-    std::env::var_os("WORKSPACE_ROOT")
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            let memory = db.parent()?;
-            let cache = memory.parent()?;
-            let tools = cache.parent()?;
-            if memory.file_name().is_some_and(|name| name == "memory")
-                && cache.file_name().is_some_and(|name| name == ".cache")
-                && tools.file_name().is_some_and(|name| name == "tools")
-            {
-                tools.parent().map(Path::to_path_buf)
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| skill_workspace_root(None))
-}
-
 #[derive(Debug, Deserialize)]
 struct ReplayQuery {
     row_id: String,
@@ -3941,21 +4081,6 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 "{}",
                 serde_json::to_string(&report).map_err(|error| error.to_string())?
             );
-        }
-        Cmd::Serve { port } => {
-            let canonical_port = std::env::var("MEMBRANE_PORT").ok();
-            let port = resolve_service_port(
-                port,
-                canonical_port.as_deref(),
-                deployed.as_ref().map(|runtime| runtime.port),
-            );
-            let workspace_root = service_workspace_root(Path::new(&db));
-            let (identity, claim) =
-                crate::installation_identity::prepare_service_start(&workspace_root)
-                    .map_err(|error| format!("prepare installation identity: {error}"))?;
-            std::env::set_var("MEMBRANE_INSTALLATION_ID", &identity.installation_id);
-            std::env::set_var("MEMBRANE_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-            crate::serve::run(&db, port, &identity, &claim)?;
         }
         Cmd::Migrate => {
             let store = open(&db)?;
@@ -5056,8 +5181,9 @@ mod tests {
             Err(error) => error.to_string(),
             Ok(_) => panic!("--help must return clap's display-help outcome"),
         };
-        assert!(help.contains("supplied trusted-host billing observations"));
-        assert!(help.contains("does not discover provider bills"));
+        let normalized_help = help.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(normalized_help.contains("supplied trusted-host billing observations"));
+        assert!(normalized_help.contains("does not discover provider bills"));
         let parsed = super::Cli::try_parse_from([
             "membrane",
             "adapt",
@@ -5072,6 +5198,23 @@ mod tests {
                 command: super::AdaptCmd::ContextCost { ref input }
             } if input == Path::new("trusted-host-observations.json")
         ));
+    }
+
+    #[test]
+    fn adapt_apply_refuses_a_changed_canonical_pool() {
+        let current =
+            membrane_adapt::proposal::Gate1ReviewContextV1::from_verified_canonical_inventory(
+                vec![],
+            );
+        assert!(super::require_current_taste_canonical_pool(
+            current.canonical_pool_sha256(),
+            &current,
+        )
+        .is_ok());
+        let error =
+            super::require_current_taste_canonical_pool("sha256:stale-review-pool", &current)
+                .unwrap_err();
+        assert_eq!(error, "Taste canonical pool changed since review");
     }
 
     #[test]

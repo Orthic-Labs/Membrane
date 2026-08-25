@@ -6,7 +6,7 @@
 //! run, relevant entries are retrieved and injected so the system draws on past
 //! experience. Persisted to the `memories` table of the evolution database.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -341,6 +341,11 @@ pub enum MemoryBatchError {
     Persist(String),
 }
 
+struct TasteCanonicalPoolGuard {
+    expected_sha256: String,
+    excluded_record_payloads: BTreeMap<String, String>,
+}
+
 /// Content-free, replayable lifecycle transition for one memory row.
 ///
 /// `event_id` is the idempotency key. A supersession is deliberately one-to-one:
@@ -574,6 +579,38 @@ pub struct ScoredRecallHit {
     pub entry: MemoryEntry,
     pub score: f32,
     pub origin: &'static str,
+}
+
+const MAX_TASTE_DELIVERY_CANDIDATES: usize = 128;
+
+#[derive(Clone, Debug)]
+pub struct TasteDeliveryInventoryV1 {
+    pub candidates: Vec<membrane_adapt::delivery::PreferenceDeliveryCandidateV1>,
+    pub memory_ids: HashSet<String>,
+    bindings: BTreeMap<String, (String, String)>,
+}
+
+impl TasteDeliveryInventoryV1 {
+    pub fn memory_id_for_record(&self, record_id: &str) -> Option<&str> {
+        self.bindings
+            .get(record_id)
+            .map(|(memory_id, _)| memory_id.as_str())
+    }
+
+    pub fn scope_for_record(&self, record_id: &str) -> Option<&str> {
+        self.bindings
+            .get(record_id)
+            .map(|(_, scope_id)| scope_id.as_str())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TasteDeliveryAttributionV1 {
+    pub client: String,
+    pub session_id: String,
+    pub turn_id: Option<String>,
+    pub trace_id: String,
+    pub traffic_class: String,
 }
 
 /// One typed normal-recall result. Temporal facts stay structured so object
@@ -1536,6 +1573,37 @@ fn memory_batch_tier(value: &str) -> Result<MemoryTier, MemoryBatchError> {
         "Episodic" => Ok(MemoryTier::Episodic),
         "Semantic" => Ok(MemoryTier::Semantic),
         _ => Err(MemoryBatchError::Invalid("tier is not registered".into())),
+    }
+}
+
+fn claims_reserved_adapt_authority(item: &MemoryBatchItem) -> bool {
+    item.artifact_family == "adapt"
+        || item.producer == "adapt_native"
+        || item.record_type == "taste_preference"
+        || item.client == "membrane_adapt"
+        || (item.lifecycle.authority.as_deref() == Some("A2")
+            && item.lifecycle.influence_class.as_deref() == Some("behavioral_directive"))
+}
+
+fn taste_authority(tier: membrane_adapt::authority::PrecedenceTier) -> &'static str {
+    match tier {
+        membrane_adapt::authority::PrecedenceTier::CurrentExplicitUserInstruction
+        | membrane_adapt::authority::PrecedenceTier::SafetyOrganizationPolicy
+        | membrane_adapt::authority::PrecedenceTier::ExplicitRepositoryPolicy => "A1",
+        membrane_adapt::authority::PrecedenceTier::ExplicitScopedUserPreference
+        | membrane_adapt::authority::PrecedenceTier::ExplicitGlobalUserPreference => "A2",
+        membrane_adapt::authority::PrecedenceTier::InferredScopedUserPreference
+        | membrane_adapt::authority::PrecedenceTier::InferredGlobalUserPreference => "A3",
+        membrane_adapt::authority::PrecedenceTier::TrustedImportedPreference => "A4",
+        membrane_adapt::authority::PrecedenceTier::ProvisionalCandidate => "A5",
+    }
+}
+
+fn taste_influence(influence: membrane_adapt::record::InfluenceClass) -> &'static str {
+    match influence {
+        membrane_adapt::record::InfluenceClass::BehavioralDirective => "behavioral_directive",
+        membrane_adapt::record::InfluenceClass::Provisional => "provisional",
+        membrane_adapt::record::InfluenceClass::ReferenceOnly => "reference",
     }
 }
 
@@ -5288,6 +5356,442 @@ impl MemoryStore {
         self.embedder.dim()
     }
 
+    /// Load the bounded Taste delivery universe from Cortex. Stored manifest bytes
+    /// are treated as immutable evidence, while lifecycle and influence eligibility
+    /// are read from the current Cortex envelope on every request.
+    pub fn taste_delivery_inventory(&self) -> Result<TasteDeliveryInventoryV1, String> {
+        use membrane_adapt::record::{InfluenceClass, LifecycleState, RecordClass};
+
+        let now = crate::time::now_millis() as i64;
+        let conn = self.db.lock();
+        let eligible_ids = recall_eligible_ids_on(&conn, now, false).map_err(|error| {
+            self.persist_error(format!("Taste lifecycle query failed: {error}"))
+        })?;
+        // Keep the complete identity set so generic recall can exclude every
+        // Taste row without deserializing an unbounded historical archive.
+        let memory_ids = conn
+            .prepare(
+                "SELECT id FROM memories
+                  WHERE artifact_family='adapt' AND record_type='taste_preference'",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<HashSet<_>>>()
+            })
+            .map_err(|error| self.persist_error(format!("Taste identity query failed: {error}")))?;
+        let mut statement = conn
+            .prepare(
+                "SELECT id,content,scope_id,lifecycle_state,influence_class,authority
+                   FROM memories
+                  WHERE artifact_family='adapt' AND record_type='taste_preference'
+                  ORDER BY CASE
+                    WHEN lifecycle_state='active' AND influence_class='behavioral_directive' THEN 0
+                    WHEN lifecycle_state='active' THEN 1
+                    ELSE 2
+                  END, id
+                  LIMIT ?1",
+            )
+            .map_err(|error| self.persist_error(format!("Taste query prepare failed: {error}")))?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![MAX_TASTE_DELIVERY_CANDIDATES as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )
+            .map_err(|error| self.persist_error(format!("Taste query failed: {error}")))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| self.persist_error(format!("Taste row read failed: {error}")))?;
+        let mut candidates = Vec::with_capacity(rows.len());
+        let mut bindings = BTreeMap::new();
+        for (memory_id, content, scope_id, lifecycle, influence, authority) in rows {
+            let parsed = serde_json::from_str::<membrane_adapt::manifest::ManifestRecord>(&content);
+            let fallback_id = memory_id
+                .rsplit_once('/')
+                .map(|(_, name)| name)
+                .unwrap_or(memory_id.as_str())
+                .to_string();
+            let (
+                record_id,
+                rule,
+                class,
+                dimensions,
+                machine_binding,
+                authority_tier,
+                semantic_verified,
+            ) = match parsed {
+                Ok(record) => {
+                    let class = RecordClass::parse(&record.record_type);
+                    let dimensions = membrane_adapt::scope::ScopeDimensions::normalize(
+                        &record.scope_dimensions.0,
+                    );
+                    let sealed = record.semantic_payload.as_ref().and_then(|payload| {
+                        membrane_adapt::manifest::verify_manifest_record_seal(
+                            &record,
+                            &payload.canonical_pool_sha256,
+                        )
+                        .ok()
+                    });
+                    let envelope_matches_seal = sealed.is_some_and(|payload| {
+                        let expected_tier = if scope_id == "global" {
+                            membrane_adapt::authority::PrecedenceTier::ExplicitGlobalUserPreference
+                        } else {
+                            membrane_adapt::authority::PrecedenceTier::ExplicitScopedUserPreference
+                        };
+                        payload.scope == record.scope
+                            && payload.scope_dimensions == dimensions.clone().unwrap_or_default()
+                            && payload.record_class == class
+                            && payload.authority_tier == expected_tier
+                            && payload.influence_class
+                                == match influence.as_str() {
+                                    "behavioral_directive" => InfluenceClass::BehavioralDirective,
+                                    "provisional" => InfluenceClass::Provisional,
+                                    _ => InfluenceClass::ReferenceOnly,
+                                }
+                    });
+                    let machine_binding =
+                        sealed.and_then(|payload| payload.machine_binding.clone());
+                    let authority_tier = sealed
+                        .map(|payload| payload.authority_tier)
+                        .unwrap_or(membrane_adapt::authority::PrecedenceTier::ProvisionalCandidate);
+                    let verified = record.status == "accepted"
+                        && record.id == fallback_id
+                        && crate::scope::normalize_scope(&record.scope) == scope_id
+                        && record.payload_sha256
+                            == membrane_adapt::manifest::payload_sha256(&record)
+                        && class.is_some()
+                        && dimensions.is_ok()
+                        && authority == "A2"
+                        && envelope_matches_seal;
+                    (
+                        record.id,
+                        record.rule,
+                        class.unwrap_or(RecordClass::StandingPreference),
+                        dimensions.unwrap_or_default(),
+                        machine_binding,
+                        authority_tier,
+                        verified,
+                    )
+                }
+                Err(_) => (
+                    fallback_id,
+                    String::new(),
+                    RecordClass::StandingPreference,
+                    membrane_adapt::scope::ScopeDimensions::default(),
+                    None,
+                    membrane_adapt::authority::PrecedenceTier::ProvisionalCandidate,
+                    false,
+                ),
+            };
+            if bindings
+                .insert(record_id.clone(), (memory_id.clone(), scope_id.clone()))
+                .is_some()
+            {
+                return Err(format!(
+                    "Taste delivery record id is duplicated: {record_id}"
+                ));
+            }
+            let lifecycle_state =
+                LifecycleState::parse(&lifecycle).unwrap_or(LifecycleState::Candidate);
+            let influence_class = match influence.as_str() {
+                "behavioral_directive" => InfluenceClass::BehavioralDirective,
+                "provisional" => InfluenceClass::Provisional,
+                _ => InfluenceClass::ReferenceOnly,
+            };
+            candidates.push(membrane_adapt::delivery::PreferenceDeliveryCandidateV1 {
+                record_id,
+                rule,
+                class,
+                scope: scope_id,
+                scope_dimensions: dimensions,
+                machine_binding,
+                authority_tier,
+                lifecycle_state,
+                lifecycle_eligible: eligible_ids.contains(&memory_id),
+                influence_class,
+                semantic_verified,
+            });
+        }
+        Ok(TasteDeliveryInventoryV1 {
+            candidates,
+            memory_ids,
+            bindings,
+        })
+    }
+
+    /// Load the complete live canonical Taste rule universe for Gate 1.
+    ///
+    /// Review fails closed if any live row cannot be parsed and revalidated;
+    /// evaluating a proposal against a partial inventory could miss either an
+    /// exact duplicate or a contradiction.
+    pub fn taste_gate1_review_context(
+        &self,
+    ) -> Result<membrane_adapt::proposal::Gate1ReviewContextV1, String> {
+        self.taste_gate1_review_context_excluding(&BTreeMap::new())
+    }
+
+    /// As [`Self::taste_gate1_review_context`], excluding the manifest's own
+    /// records when an idempotent apply rechecks the pre-application pool.
+    pub fn taste_gate1_review_context_excluding(
+        &self,
+        excluded_record_payloads: &BTreeMap<String, String>,
+    ) -> Result<membrane_adapt::proposal::Gate1ReviewContextV1, String> {
+        let conn = self.db.lock();
+        self.taste_gate1_review_context_excluding_on(&conn, excluded_record_payloads)
+    }
+
+    fn taste_gate1_review_context_excluding_on(
+        &self,
+        conn: &rusqlite::Connection,
+        excluded_record_payloads: &BTreeMap<String, String>,
+    ) -> Result<membrane_adapt::proposal::Gate1ReviewContextV1, String> {
+        let mut statement = conn
+            .prepare(
+                "SELECT id,content,scope_id,lifecycle_state,authority,influence_class
+                   FROM memories
+                  WHERE artifact_family='adapt' AND record_type='taste_preference'
+                    AND lifecycle_state NOT IN ('retired','deprecated','superseded')
+                  ORDER BY id LIMIT ?1",
+            )
+            .map_err(|error| {
+                self.persist_error(format!("Taste Gate 1 query prepare failed: {error}"))
+            })?;
+        let rows = statement
+            .query_map(
+                rusqlite::params![(MAX_TASTE_DELIVERY_CANDIDATES + 1) as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )
+            .map_err(|error| self.persist_error(format!("Taste Gate 1 query failed: {error}")))?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("Taste Gate 1 row read failed: {error}"))
+            })?;
+        if rows.len() > MAX_TASTE_DELIVERY_CANDIDATES {
+            return Err(format!(
+                "Taste Gate 1 inventory cap {MAX_TASTE_DELIVERY_CANDIDATES} exceeded"
+            ));
+        }
+
+        let mut canonical_records = Vec::with_capacity(rows.len());
+        let mut canonical_record_ids = HashSet::with_capacity(rows.len());
+        for (memory_id, content, scope_id, lifecycle, authority, influence_class) in rows {
+            let record: membrane_adapt::manifest::ManifestRecord = serde_json::from_str(&content)
+                .map_err(|error| {
+                self.persist_error(format!(
+                    "Taste Gate 1 record {memory_id} is malformed: {error}"
+                ))
+            })?;
+            let expected_id = memory_id
+                .rsplit_once('/')
+                .map(|(_, name)| name)
+                .unwrap_or(memory_id.as_str());
+            let dimensions =
+                membrane_adapt::scope::ScopeDimensions::normalize(&record.scope_dimensions.0)
+                    .map_err(|error| {
+                        self.persist_error(format!(
+                            "Taste Gate 1 record {memory_id} has malformed scope: {error}"
+                        ))
+                    })?;
+            let semantic = record.semantic_payload.as_ref().ok_or_else(|| {
+                self.persist_error(format!(
+                    "Taste Gate 1 record {memory_id} lacks a semantic seal"
+                ))
+            })?;
+            let sealed = membrane_adapt::manifest::verify_manifest_record_seal(
+                &record,
+                &semantic.canonical_pool_sha256,
+            )
+            .map_err(|error| {
+                self.persist_error(format!(
+                    "Taste Gate 1 record {memory_id} has an invalid seal: {error}"
+                ))
+            })?
+            .clone();
+            let expected_authority = match sealed.authority_tier {
+                membrane_adapt::authority::PrecedenceTier::CurrentExplicitUserInstruction
+                | membrane_adapt::authority::PrecedenceTier::SafetyOrganizationPolicy
+                | membrane_adapt::authority::PrecedenceTier::ExplicitRepositoryPolicy => "A1",
+                membrane_adapt::authority::PrecedenceTier::ExplicitScopedUserPreference
+                | membrane_adapt::authority::PrecedenceTier::ExplicitGlobalUserPreference => "A2",
+                membrane_adapt::authority::PrecedenceTier::InferredScopedUserPreference
+                | membrane_adapt::authority::PrecedenceTier::InferredGlobalUserPreference => "A3",
+                membrane_adapt::authority::PrecedenceTier::TrustedImportedPreference => "A4",
+                membrane_adapt::authority::PrecedenceTier::ProvisionalCandidate => "A5",
+            };
+            let expected_influence = match sealed.influence_class {
+                membrane_adapt::record::InfluenceClass::BehavioralDirective => {
+                    "behavioral_directive"
+                }
+                membrane_adapt::record::InfluenceClass::Provisional => "provisional",
+                membrane_adapt::record::InfluenceClass::ReferenceOnly => "reference",
+            };
+            if record.status != "accepted"
+                || record.id != expected_id
+                || crate::scope::normalize_scope(&record.scope) != scope_id
+                || record.payload_sha256 != membrane_adapt::manifest::payload_sha256(&record)
+                || sealed.scope != record.scope
+                || sealed.scope_dimensions != dimensions
+                || authority != expected_authority
+                || influence_class != expected_influence
+            {
+                return Err(self.persist_error(format!(
+                    "Taste Gate 1 record {memory_id} failed canonical binding"
+                )));
+            }
+            if !canonical_record_ids.insert(record.id.clone()) {
+                return Err(self.persist_error(format!(
+                    "Taste Gate 1 record id is duplicated: {}",
+                    record.id
+                )));
+            }
+            if excluded_record_payloads
+                .get(&record.id)
+                .is_some_and(|payload| payload == &record.payload_sha256)
+            {
+                continue;
+            }
+            canonical_records.push(membrane_adapt::proposal::CanonicalTasteRecordV1 {
+                stored_rule: membrane_adapt::authority::StoredRule {
+                    id: record.id,
+                    rule: record.rule,
+                    scope: record.scope,
+                    lifecycle_state: lifecycle,
+                },
+                payload_sha256: record.payload_sha256,
+                semantic_digest: record.semantic_digest,
+                semantic_payload: sealed,
+                authority_manifest_sha256: record.authority_manifest_sha256,
+                validator_receipt_id: record.validator_receipt_id,
+                validator_receipt_sha256: record.validator_receipt_sha256,
+                verified_user_act_receipt_sha256: record.verified_user_act_receipt_sha256,
+                current_authority: authority,
+                current_influence_class: influence_class,
+            });
+        }
+        Ok(
+            membrane_adapt::proposal::Gate1ReviewContextV1::from_verified_canonical_inventory(
+                canonical_records,
+            ),
+        )
+    }
+
+    /// Persist the complete Taste selection decision before `/recall` exposes any
+    /// selected rule. Selected receipts are delivery events; omissions remain
+    /// filtered candidates and can never be mistaken for delivered context.
+    pub fn persist_taste_delivery_receipts(
+        &self,
+        inventory: &TasteDeliveryInventoryV1,
+        receipts: &[membrane_adapt::delivery::PreferenceDeliveryReceiptV1],
+        attribution: &TasteDeliveryAttributionV1,
+    ) -> Result<(), String> {
+        let session = if attribution.session_id.trim().is_empty() {
+            format!("system-session:{}", attribution.client)
+        } else {
+            attribution.session_id.clone()
+        };
+        let trace = if attribution.trace_id.trim().is_empty() {
+            format!("taste-delivery:{}:{}", session, attribution.client)
+        } else {
+            attribution.trace_id.clone()
+        };
+        let mut events = Vec::with_capacity(receipts.len());
+        for receipt in receipts {
+            let Some((memory_id, scope_id)) = inventory.bindings.get(&receipt.record_id) else {
+                return Err(format!(
+                    "Taste receipt has no stored binding: {}",
+                    receipt.record_id
+                ));
+            };
+            events.push(ContextEvent {
+                schema_version: 1,
+                event_id: receipt.receipt_id.clone(),
+                ts: receipt.timestamp.clone(),
+                installation_id: self.operation_attribution.installation_id.clone(),
+                service_instance_id: self.operation_attribution.service_instance_id.clone(),
+                workspace_id: self.operation_attribution.workspace_id.clone(),
+                client: registry_token(&attribution.client, "unknown"),
+                client_version: None,
+                producer: "adapt_native".into(),
+                producer_version: Some(env!("CARGO_PKG_VERSION").into()),
+                session_id: opaque_correlation_token(&session, "session"),
+                turn_id: attribution
+                    .turn_id
+                    .as_deref()
+                    .map(|turn| opaque_correlation_token(turn, "turn")),
+                trace_id: opaque_correlation_token(&trace, "trace"),
+                span_id: opaque_correlation_token(&receipt.receipt_id, "span"),
+                parent_span_id: None,
+                artifact_family: "adapt".into(),
+                provider: "membrane".into(),
+                provider_version: Some(env!("CARGO_PKG_VERSION").into()),
+                release_generation: Some(crate::release_identity::release_generation()),
+                phase: if receipt.selected {
+                    "block.delivered".into()
+                } else {
+                    "candidate.filtered".into()
+                },
+                operation: "read".into(),
+                status: if receipt.selected {
+                    "success".into()
+                } else {
+                    "filtered".into()
+                },
+                reason_code: Some(receipt.applicability_reason.clone()),
+                scope_id: Some(opaque_token(scope_id, "scope")),
+                artifact_id: Some(stable_artifact_id(memory_id)),
+                artifact_sha256: receipt.rendered_sha256.clone(),
+                traffic_class: registry_token(&attribution.traffic_class, "production"),
+                policy_version: None,
+                policy_activation_sha256: None,
+                cohort: None,
+                task_class: None,
+                source_generation: None,
+                duration_ms: None,
+                quantity: Some(i64::from(receipt.selected)),
+                token_count: None,
+                char_count: receipt
+                    .rendered_chars
+                    .and_then(|value| i64::try_from(value).ok()),
+                meta: None,
+                measurements: Vec::new(),
+                links: Vec::new(),
+            });
+        }
+        if events.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.db.lock_events();
+        let tx = conn.transaction().map_err(|error| {
+            self.persist_error(format!("Taste receipt transaction failed: {error}"))
+        })?;
+        append_context_events_on(&tx, &ContextEventBatch { events }).map_err(|error| {
+            self.persist_error(format!("Taste receipt persistence failed: {error}"))
+        })?;
+        tx.commit()
+            .map_err(|error| self.persist_error(format!("Taste receipt commit failed: {error}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
+        self.clear_last_persist_error();
+        Ok(())
+    }
+
     /// Read-only accessor for the underlying DB. Lane B (memory provider) uses this from
     /// integration tests to set up fixtures (e.g. a row with a low score so the demotion gate
     /// can be exercised). The provider itself does NOT use this accessor — it reads through
@@ -6037,6 +6541,275 @@ impl MemoryStore {
         &self,
         request: &MemoryBatchRequest,
     ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        if request.items.iter().any(claims_reserved_adapt_authority) {
+            return Err(MemoryBatchError::Invalid(
+                "reserved Adapt authority requires a verified native admission path".into(),
+            ));
+        }
+        self.try_put_batch_inner(request, None)
+    }
+
+    pub(crate) fn try_put_verified_adapt_taste_manifest(
+        &self,
+        manifest: &membrane_adapt::manifest::PreferenceManifestV1,
+        trust: &membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1,
+    ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        membrane_adapt::proposal::verify_final_manifest_adjudication(manifest, trust).map_err(
+            |error| {
+                MemoryBatchError::Invalid(format!(
+                    "verified Adapt Taste adjudication is invalid: {error}"
+                ))
+            },
+        )?;
+        let accepted = membrane_adapt::manifest::apply_plan(manifest)
+            .map_err(|error| MemoryBatchError::Invalid(error.to_string()))?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let items = manifest
+            .records
+            .iter()
+            .filter(|record| accepted.contains(&record.id))
+            .map(|record| {
+                let sealed = membrane_adapt::manifest::verify_manifest_record_seal(
+                    record,
+                    &manifest.canonical_pool_sha256,
+                )
+                .map_err(|error| {
+                    MemoryBatchError::Invalid(format!(
+                        "verified Adapt Taste record {} is invalid: {error}",
+                        record.id
+                    ))
+                })?;
+                Ok(MemoryBatchItem {
+                    item_id: record.id.clone(),
+                    name: record.id.clone(),
+                    content: serde_json::to_string(record).map_err(|error| {
+                        MemoryBatchError::Invalid(format!(
+                            "verified Adapt Taste record {} cannot serialize: {error}",
+                            record.id
+                        ))
+                    })?,
+                    scope: record.scope.clone(),
+                    tier: "Semantic".into(),
+                    artifact_family: "adapt".into(),
+                    producer: "adapt_native".into(),
+                    record_type: "taste_preference".into(),
+                    client: "membrane_adapt".into(),
+                    session_id: manifest.batch_id.clone(),
+                    turn_id: String::new(),
+                    trace_id: manifest.manifest_sha256.clone(),
+                    source_ids: record.source_ids.clone(),
+                    lifecycle: MemoryLifecycleInputV1 {
+                        authority: Some(taste_authority(sealed.authority_tier).into()),
+                        influence_class: Some(taste_influence(sealed.influence_class).into()),
+                        confidence: Some(record.confidence),
+                        confidence_basis: Some("adapt_semantic_validation".into()),
+                        ..Default::default()
+                    },
+                })
+            })
+            .collect::<Result<Vec<_>, MemoryBatchError>>()?;
+        let excluded_record_payloads = manifest
+            .records
+            .iter()
+            .filter(|record| accepted.contains(&record.id))
+            .map(|record| (record.id.clone(), record.payload_sha256.clone()))
+            .collect();
+        self.try_put_batch_inner(
+            &MemoryBatchRequest {
+                batch_id: manifest.batch_id.clone(),
+                items,
+            },
+            Some(&TasteCanonicalPoolGuard {
+                expected_sha256: manifest.canonical_pool_sha256.clone(),
+                excluded_record_payloads,
+            }),
+        )
+    }
+
+    pub(crate) fn try_put_verified_adapt_insights(
+        &self,
+        issues: &[membrane_adapt::insights::sealed_issue::SealedInsightIssueV1],
+    ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        if issues.is_empty() {
+            return Err(MemoryBatchError::Invalid(
+                "verified Adapt Insights batch is empty".into(),
+            ));
+        }
+        let mut ids = Vec::with_capacity(issues.len());
+        for issue in issues {
+            issue.verify().map_err(|error| {
+                MemoryBatchError::Invalid(format!(
+                    "verified Adapt Insight {} is invalid: {error:?}",
+                    issue.issue_id
+                ))
+            })?;
+            if issue.schema_version != membrane_adapt::insights::sealed_issue::SEALED_ISSUE_SCHEMA
+                || issue.contract != "InsightIssueV1"
+                || issue.payload.record_kind != "insight_issue"
+                || issue.payload.authority_class != "reference"
+                || issue.payload.influence_class != "diagnostic_reference"
+                || issue.state.receipts.is_empty()
+            {
+                return Err(MemoryBatchError::Invalid(format!(
+                    "verified Adapt Insight {} claims non-reference authority",
+                    issue.issue_id
+                )));
+            }
+            ids.push(issue.issue_id.clone());
+        }
+        ids.sort();
+        ids.dedup();
+        if ids.len() != issues.len() {
+            return Err(MemoryBatchError::Invalid(
+                "duplicate verified Adapt Insight issue id".into(),
+            ));
+        }
+        let batch_id = format!(
+            "adapt-insights-{}",
+            membrane_adapt::canonical::sha256_canonical(
+                &serde_json::to_value(&ids).expect("Insight ids serialize")
+            )
+        );
+        let items = issues
+            .iter()
+            .map(|issue| MemoryBatchItem {
+                item_id: issue.issue_id.clone(),
+                name: issue.payload.family.clone(),
+                content: serde_json::to_string(issue).expect("sealed Insight serializes"),
+                scope: issue
+                    .payload
+                    .applicability
+                    .get("repos")
+                    .and_then(|values| values.first())
+                    .cloned()
+                    .unwrap_or_else(|| "global".into()),
+                tier: "Semantic".into(),
+                artifact_family: "adapt".into(),
+                producer: "adapt_native".into(),
+                record_type: "insight_issue".into(),
+                client: "membrane_adapt".into(),
+                session_id: batch_id.clone(),
+                turn_id: String::new(),
+                trace_id: issue.payload_sha256.clone(),
+                source_ids: issue
+                    .payload
+                    .episode_refs
+                    .iter()
+                    .map(|reference| reference.episode_id.clone())
+                    .collect(),
+                lifecycle: MemoryLifecycleInputV1 {
+                    authority: Some("A5".into()),
+                    influence_class: Some("reference".into()),
+                    confidence: Some(issue.payload.confidence),
+                    confidence_basis: Some(issue.payload.evidence_quality.as_str().into()),
+                    ..Default::default()
+                },
+            })
+            .collect();
+        self.try_put_batch_inner(&MemoryBatchRequest { batch_id, items }, None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_put_test_verified_adapt_batch(
+        &self,
+        request: &MemoryBatchRequest,
+    ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        Self::validate_test_verified_adapt_batch(request)?;
+        self.try_put_batch_inner(request, None)
+    }
+
+    #[cfg(test)]
+    fn validate_test_verified_adapt_batch(
+        request: &MemoryBatchRequest,
+    ) -> Result<BTreeMap<String, String>, MemoryBatchError> {
+        let mut record_payloads = BTreeMap::new();
+        for item in &request.items {
+            if item.artifact_family != "adapt"
+                || item.producer != "adapt_native"
+                || item.record_type != "taste_preference"
+                || item.client != "membrane_adapt"
+            {
+                return Err(MemoryBatchError::Invalid(
+                    "test Adapt fixture does not claim exact native Taste provenance".into(),
+                ));
+            }
+            let record: membrane_adapt::manifest::ManifestRecord =
+                serde_json::from_str(&item.content).map_err(|error| {
+                    MemoryBatchError::Invalid(format!("test Adapt fixture is malformed: {error}"))
+                })?;
+            let pool = record
+                .semantic_payload
+                .as_ref()
+                .map(|payload| payload.canonical_pool_sha256.as_str())
+                .ok_or_else(|| {
+                    MemoryBatchError::Invalid("test Adapt fixture is not sealed".into())
+                })?;
+            let sealed = membrane_adapt::manifest::verify_manifest_record_seal(&record, pool)
+                .map_err(|error| {
+                    MemoryBatchError::Invalid(format!(
+                        "test Adapt fixture seal is invalid: {error}"
+                    ))
+                })?;
+            if record.status != "accepted"
+                || item.item_id != record.id
+                || item.name != record.id
+                || crate::scope::normalize_scope(&item.scope)
+                    != crate::scope::normalize_scope(&record.scope)
+                || item.lifecycle.authority.as_deref()
+                    != Some(taste_authority(sealed.authority_tier))
+                || item.lifecycle.influence_class.as_deref()
+                    != Some(taste_influence(sealed.influence_class))
+            {
+                return Err(MemoryBatchError::Invalid(
+                    "test Adapt fixture disagrees with its sealed record".into(),
+                ));
+            }
+            if record_payloads
+                .insert(record.id.clone(), record.payload_sha256.clone())
+                .is_some()
+            {
+                return Err(MemoryBatchError::Invalid(
+                    "test Adapt fixture duplicates a Taste record id".into(),
+                ));
+            }
+        }
+        Ok(record_payloads)
+    }
+
+    #[cfg(test)]
+    fn try_put_test_verified_adapt_batch_with_pool_guard(
+        &self,
+        request: &MemoryBatchRequest,
+        expected_sha256: &str,
+    ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        let excluded_record_payloads = Self::validate_test_verified_adapt_batch(request)?;
+        for item in &request.items {
+            let record: membrane_adapt::manifest::ManifestRecord =
+                serde_json::from_str(&item.content).map_err(|error| {
+                    MemoryBatchError::Invalid(format!("test Adapt fixture is malformed: {error}"))
+                })?;
+            membrane_adapt::manifest::verify_manifest_record_seal(&record, expected_sha256)
+                .map_err(|error| {
+                    MemoryBatchError::Invalid(format!(
+                        "test Adapt fixture seal is invalid: {error}"
+                    ))
+                })?;
+        }
+        self.try_put_batch_inner(
+            request,
+            Some(&TasteCanonicalPoolGuard {
+                expected_sha256: expected_sha256.into(),
+                excluded_record_payloads,
+            }),
+        )
+    }
+
+    fn try_put_batch_inner(
+        &self,
+        request: &MemoryBatchRequest,
+        taste_pool_guard: Option<&TasteCanonicalPoolGuard>,
+    ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
         if !self.writes_enabled {
             return Err(MemoryBatchError::Persist(
                 self.embedder_issue.clone().unwrap_or_else(|| {
@@ -6130,6 +6903,18 @@ impl MemoryStore {
             Self::replay_memory_batch_on(&tx, &request.batch_id, &request_sha256)?
         {
             return Ok(receipt);
+        }
+        if let Some(guard) = taste_pool_guard {
+            let current = self
+                .taste_gate1_review_context_excluding_on(&tx, &guard.excluded_record_payloads)
+                .map_err(MemoryBatchError::Persist)?;
+            if current.canonical_pool_sha256() != guard.expected_sha256 {
+                return Err(MemoryBatchError::Invalid(format!(
+                    "Taste canonical pool changed since review: expected {}, current {}",
+                    guard.expected_sha256,
+                    current.canonical_pool_sha256()
+                )));
+            }
         }
         tx.execute(
             "INSERT INTO memory_batch_receipt (batch_id, request_sha256, item_count, created_at)
@@ -7254,6 +8039,319 @@ mod tests {
             batch_id: batch_id.into(),
             items: vec![make("item-1", "batch-one"), make("item-2", "batch-two")],
         }
+    }
+
+    fn guarded_taste_request(
+        batch_id: &str,
+        record_id: &str,
+        rule: &str,
+        canonical_pool_sha256: &str,
+    ) -> MemoryBatchRequest {
+        let mut record = membrane_adapt::manifest::ManifestRecord {
+            id: record_id.into(),
+            rule: rule.into(),
+            category: "workflow".into(),
+            scope: "global".into(),
+            scope_dimensions: membrane_adapt::manifest::BTreeMap2::default(),
+            record_type: "standing_preference".into(),
+            evidence_class: "user_authoritative".into(),
+            authority_effect: "neutral".into(),
+            status: "accepted".into(),
+            confidence: 1.0,
+            needs_review: false,
+            evidence_count: 1,
+            created_at: "2026-08-26T00:00:00Z".into(),
+            updated_at: "2026-08-26T00:00:00Z".into(),
+            evidence_excerpt: "explicit user preference".into(),
+            source_ids: Vec::new(),
+            source_file_hashes: Vec::new(),
+            evidence_ids: Vec::new(),
+            retrieval_aliases: Vec::new(),
+            human_note: String::new(),
+            payload_sha256: String::new(),
+            operation: "add".into(),
+            machine: String::new(),
+            machine_only: false,
+            lifecycle_state: "active".into(),
+            last_verified_at: "2026-08-26T00:00:00Z".into(),
+            verification_count: 1,
+            authority_manifest_sha256: "authority-manifest".into(),
+            validator_receipt_id: "validator-receipt".into(),
+            validator_receipt_sha256: "validator-sha".into(),
+            verified_user_act_receipt_sha256: Some("a".repeat(64)),
+            semantic_payload: None,
+            semantic_digest: String::new(),
+            evidence_contexts: Vec::new(),
+        };
+        membrane_adapt::manifest::seal_manifest_record(&mut record, canonical_pool_sha256).unwrap();
+        record.payload_sha256 = membrane_adapt::manifest::payload_sha256(&record);
+        let sealed = record.semantic_payload.as_ref().unwrap();
+        MemoryBatchRequest {
+            batch_id: batch_id.into(),
+            items: vec![MemoryBatchItem {
+                item_id: record_id.into(),
+                name: record_id.into(),
+                content: serde_json::to_string(&record).unwrap(),
+                scope: "global".into(),
+                tier: "Semantic".into(),
+                artifact_family: "adapt".into(),
+                producer: "adapt_native".into(),
+                record_type: "taste_preference".into(),
+                client: "membrane_adapt".into(),
+                session_id: format!("session-{record_id}"),
+                turn_id: String::new(),
+                trace_id: format!("trace-{record_id}"),
+                source_ids: Vec::new(),
+                lifecycle: MemoryLifecycleInputV1 {
+                    authority: Some(taste_authority(sealed.authority_tier).into()),
+                    influence_class: Some(taste_influence(sealed.influence_class).into()),
+                    confidence: Some(1.0),
+                    confidence_basis: Some("adapt_semantic_validation".into()),
+                    ..Default::default()
+                },
+            }],
+        }
+    }
+
+    #[test]
+    fn taste_pool_guard_is_atomic_exact_and_replay_safe() {
+        let store = MemoryStore::new();
+        let reviewed_pool =
+            membrane_adapt::proposal::Gate1ReviewContextV1::from_verified_canonical_inventory(
+                Vec::new(),
+            )
+            .canonical_pool_sha256()
+            .to_string();
+        let requests = [
+            guarded_taste_request(
+                "taste-pool-race-a",
+                "pool-race-a",
+                "Prefer atomic writer A",
+                &reviewed_pool,
+            ),
+            guarded_taste_request(
+                "taste-pool-race-b",
+                "pool-race-b",
+                "Prefer atomic writer B",
+                &reviewed_pool,
+            ),
+        ];
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let handles = requests
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, request)| {
+                let thread_store = store.clone();
+                let thread_barrier = Arc::clone(&barrier);
+                let pool = reviewed_pool.clone();
+                std::thread::spawn(move || {
+                    thread_barrier.wait();
+                    (
+                        index,
+                        thread_store
+                            .try_put_test_verified_adapt_batch_with_pool_guard(&request, &pool),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        barrier.wait();
+        let results = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+
+        let winner = results
+            .iter()
+            .find_map(|(index, result)| result.as_ref().ok().map(|_| *index))
+            .expect("one writer must commit");
+        let loser = 1 - winner;
+        assert_eq!(
+            results.iter().filter(|(_, result)| result.is_ok()).count(),
+            1
+        );
+        assert!(matches!(
+            &results[loser].1,
+            Err(MemoryBatchError::Invalid(message))
+                if message.contains("Taste canonical pool changed since review")
+        ));
+
+        let retry = store
+            .try_put_test_verified_adapt_batch_with_pool_guard(&requests[winner], &reviewed_pool)
+            .unwrap();
+        assert_eq!((retry.inserted, retry.duplicates), (0, 1));
+
+        let conflicting = guarded_taste_request(
+            &requests[winner].batch_id,
+            "same-batch-different-record",
+            "A different canonical request",
+            &reviewed_pool,
+        );
+        assert!(matches!(
+            store.try_put_test_verified_adapt_batch_with_pool_guard(&conflicting, &reviewed_pool),
+            Err(MemoryBatchError::Conflict)
+        ));
+
+        let winner_id = &requests[winner].items[0].item_id;
+        let mismatched_payload = guarded_taste_request(
+            "taste-pool-mismatched-payload",
+            winner_id,
+            "Changed meaning must not be excluded by id alone",
+            &reviewed_pool,
+        );
+        assert!(matches!(
+            store.try_put_test_verified_adapt_batch_with_pool_guard(
+                &mismatched_payload,
+                &reviewed_pool
+            ),
+            Err(MemoryBatchError::Invalid(message))
+                if message.contains("Taste canonical pool changed since review")
+        ));
+
+        let loser_item = &requests[loser].items[0];
+        let conn = store.db.lock();
+        for (table, expected) in [
+            ("memories", 1_i64),
+            ("memory_batch_receipt", 1_i64),
+            ("memory_batch_item_receipt", 1_i64),
+        ] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, expected, "{table} retained a stale partial write");
+        }
+        let loser_memory_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id=?1",
+                rusqlite::params![format!("global/{}", loser_item.item_id)],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let loser_event_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log WHERE trace_id=?1",
+                rusqlite::params![loser_item.trace_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(loser_memory_count, 0);
+        assert_eq!(loser_event_count, 0);
+    }
+
+    #[test]
+    fn public_memory_batch_rejects_reserved_adapt_authority_at_store_boundary() {
+        let base = batch_request("reserved-store-boundary");
+        let mut cases = Vec::new();
+
+        let mut family = base.clone();
+        family.items[0].artifact_family = "adapt".into();
+        cases.push(("artifact_family", family));
+
+        let mut producer = base.clone();
+        producer.items[0].producer = "adapt_native".into();
+        cases.push(("producer", producer));
+
+        let mut record_type = base.clone();
+        record_type.items[0].record_type = "taste_preference".into();
+        cases.push(("record_type", record_type));
+
+        let mut client = base.clone();
+        client.items[0].client = "membrane_adapt".into();
+        cases.push(("client", client));
+
+        let mut directive = base;
+        directive.items[0].lifecycle.authority = Some("A2".into());
+        directive.items[0].lifecycle.influence_class = Some("behavioral_directive".into());
+        cases.push(("A2 directive", directive));
+
+        for (claim, request) in cases {
+            let store = MemoryStore::new();
+            let error = store.try_put_batch(&request).unwrap_err();
+            assert!(
+                matches!(error, MemoryBatchError::Invalid(ref message) if message.contains("reserved Adapt authority")),
+                "{claim}: {error}"
+            );
+            assert!(store.list(None).is_empty(), "{claim} reached persistence");
+        }
+    }
+
+    #[test]
+    fn verified_native_insights_path_persists_reference_only_issue() {
+        use membrane_adapt::insights::sealed_issue::{
+            EpisodeRefV1, EvidenceQuality, InsightIssuePayloadV1, InsightIssueStateV1,
+            IssueStateReceiptV1, SealedInsightIssueV1, SEALED_ISSUE_SCHEMA,
+        };
+        use membrane_adapt::insights::IssueState;
+
+        let issue_id = membrane_adapt::canonical::derive_issue_id("repeated_failure", "sig");
+        let payload = InsightIssuePayloadV1 {
+            record_kind: "insight_issue".into(),
+            family: "repeated_failure".into(),
+            recurrence_signature: "sig".into(),
+            canonical_description: "A repeated failure".into(),
+            applicability: BTreeMap::new(),
+            authority_class: "reference".into(),
+            influence_class: "diagnostic_reference".into(),
+            episode_refs: vec![EpisodeRefV1 {
+                episode_id: "episode-1".into(),
+                episode_payload_sha256: "episode-sha".into(),
+            }],
+            evidence_digests: vec!["evidence-sha".into()],
+            confidence: 0.9,
+            evidence_quality: EvidenceQuality::Deterministic,
+            candidate_mechanisms: Vec::new(),
+            honesty_limit: "descriptive only".into(),
+            admission_policy_version: "adapt.admission.v1".into(),
+            redaction_contract_version: "membrane.redaction.v1".into(),
+            semantic_validator_receipt_id: None,
+        };
+        let payload_sha256 =
+            membrane_adapt::canonical::sha256_canonical(&serde_json::to_value(&payload).unwrap());
+        let issue = SealedInsightIssueV1 {
+            schema_version: SEALED_ISSUE_SCHEMA.into(),
+            contract: "InsightIssueV1".into(),
+            issue_id,
+            payload_sha256,
+            payload,
+            state: InsightIssueStateV1 {
+                lifecycle: IssueState::Observed,
+                recurrence_count: 1,
+                first_seen: "2026-08-26T00:00:00Z".into(),
+                last_seen: "2026-08-26T00:00:00Z".into(),
+                updated_at: "2026-08-26T00:00:00Z".into(),
+                mitigation_links: Vec::new(),
+                recurrence_after_mitigation: None,
+                receipts: vec![IssueStateReceiptV1 {
+                    transition: "issue_sealed".into(),
+                    at: "2026-08-26T00:00:00Z".into(),
+                    actor: "test".into(),
+                    prev_status: None,
+                    new_status: "observed".into(),
+                    receipt_id: "rcpt_test".into(),
+                    note: "sealed test issue".into(),
+                }],
+            },
+        };
+        let store = MemoryStore::new();
+
+        let receipt = store.try_put_verified_adapt_insights(&[issue]).unwrap();
+
+        assert_eq!(receipt.inserted, 1);
+        let (authority, influence): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority,influence_class FROM memories WHERE artifact_family='adapt' AND record_type='insight_issue'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (authority.as_str(), influence.as_str()),
+            ("A5", "reference")
+        );
     }
 
     #[test]

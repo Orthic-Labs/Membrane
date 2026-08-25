@@ -1,0 +1,31 @@
+{
+  "schema_version": "adapt.taste-benchmark-manifest.v1",
+  "corpus_version": "v1",
+  "corpus_file": "cases.jsonl",
+  "corpus_sha256": "92151855419dfd7f4826f7f6a08fd932844a7cc8aea231602a838e7e285e7f11",
+  "corpus_kind": "synthetic_conformance",
+  "labels_frozen_before_measurement": true,
+  "evidence_claim": "Portable synthetic conformance evidence for the native deterministic Taste extraction and admission path.",
+  "non_claims": [
+    "This corpus is not sampled from real user traffic.",
+    "This corpus is not independent real-world held-out evidence.",
+    "Passing these thresholds does not by itself close migration obligation N4."
+  ],
+  "partitions": {
+    "gate": "Predeclared synthetic conformance cases scored against thresholds.",
+    "diagnostic": "Unsupported implicit-evidence probes reported separately and excluded from the conformance gate."
+  },
+  "thresholds": {
+    "extraction_precision_min": 0.95,
+    "extraction_recall_min": 0.75,
+    "admission_precision_min": 0.95,
+    "admission_recall_min": 0.75,
+    "semantic_projection_precision_min": 0.95,
+    "authority_false_positive_rate_max": 0.0
+  },
+  "remaining_n4_evidence": [
+    "An approved, independently sourced real-world held-out Taste corpus.",
+    "An interval report for extraction and admission metrics on that corpus.",
+    "Installed-artifact qualification using the released package path."
+  ]
+}

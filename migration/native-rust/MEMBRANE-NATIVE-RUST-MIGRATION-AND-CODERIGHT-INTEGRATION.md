@@ -3,8 +3,8 @@
 **Status:** Canonical / authoritative migration specification
 **Date:** 2026-08-25
 **Repository:** `Orthic-Labs/Membrane`
-**Current repository baseline reviewed:** `8a215ac6fab11cc24bb821507057743b7898e09f`
-**Implementation status reviewed:** `main@601c234cd0b9781a29a99843f8aa6c228b3c2865` (2026-08-25)
+**Historical source-audit baseline:** `8a215ac6fab11cc24bb821507057743b7898e09f` (Sections 0.1 and 21 preserve that dated audit; they are not current implementation status)
+**Current implementation status reviewed:** integration tree based on `4bf649e4a43ff55db2c21c496be86a2661a56bfe` (2026-08-26; see Section 0.1.1)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
 **Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, `docs/plans/2026-08-22-full-rust-federation-port-architecture.md` for federation execution and closure, the runtime/process/cutover portions of `docs/design/membrane-live-diagnostics-final-architecture.md` and `docs/plans/membrane-live-diagnostics-final-architecture-revised.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
@@ -37,13 +37,15 @@ The final product therefore obeys all of the following:
 5. **Development-only Python/JavaScript is permitted only when it is provably absent from installed execution paths and release artifacts.** The only installed JavaScript exception is §1.5's explicitly inventoried presentation sandbox.
 6. **A Rust implementation existing beside an executable Python/Node fallback is not completion.** Final production is `native-only`, not `native-with-legacy-available`.
 
-### 0.1 Current baseline verdict
+### 0.1 Historical source-audit baseline verdict
 
-At repository baseline `8a215ac6...`, Membrane is **not yet native-only**.
+At the historical repository baseline `8a215ac6...`, Membrane was **not yet native-only**.
+This subsection preserves the source audit that motivated the migration. It must not be used as
+the current implementation ledger; current package status is in Section 0.1.1.
 
-The audit establishes this current state:
+The audit established this historical state:
 
-| Surface | Current state at baseline | Canonical disposition |
+| Surface | State at historical baseline | Canonical disposition |
 |---|---|---|
 | Federation request/fan-out/merge production route | Native Rust, same-process, authoritative | Keep Rust; finish legacy deletion |
 | Legacy federation Python gateway/providers | Still present for shadow/qualification | Transfer fixtures, then delete executable Python |
@@ -59,7 +61,7 @@ The audit establishes this current state:
 | Python/JS benchmark, migration, and repository-maintenance scripts | Mixed | May remain dev-only with machine-verifiable exclusion from release/runtime |
 | Root CI | Node-oriented; does not itself prove interpreter-free installed operation | Add independent native-only installed-artifact gate |
 
-**Uncommitted worktree candidates observed during this revision:**
+**Historical uncommitted worktree candidates observed during that revision:**
 
 - `engine/crates/membrane-transcript/` contains a substantial candidate native transcript crate;
 - `engine/crates/membrane-adapt/` contains a substantial candidate native Adapt crate.
@@ -76,7 +78,9 @@ The previous migration was therefore **a successful federation port but an incom
 
 ### 0.1.1 Current implementation status
 
-Status below is bound to `main@601c234cd0b9781a29a99843f8aa6c228b3c2865`:
+Status below is current through the integration tree based on
+`4bf649e4a43ff55db2c21c496be86a2661a56bfe` (2026-08-26). A source-built or
+copied-binary test is not an exact released-package qualification.
 
 | Package | Status | Integrated evidence / remaining gate |
 |---|---|---|
@@ -84,13 +88,13 @@ Status below is bound to `main@601c234cd0b9781a29a99843f8aa6c228b3c2865`:
 | N1 | **DONE** | Seven hashed language-neutral internal contracts, examples, policy, and recurring contract gates are checked in and pass. |
 | N2 | **PARTIAL** | Native `membrane-transcript` owner, raw host discovery/parsing, exact provenance, receipts, and conformance tests pass. Adapt uses the native seam. Exact exit remains open until executable Python `continuity/transcript` is deleted or reduced to independently useful release-excluded fixtures/dev tooling with a deletion/exclusion receipt. |
 | N3 | **DONE** | Native deterministic Adapt core, authority/admission, scope/lifecycle, semantic sealing, manifests, multiwriter behavior, Insights report-only controls, and fail-closed tests pass. |
-| N4 | **DONE** | Native proposal/model boundary and independent adjudication are receipt-bound; sealed 70-case/33-family benchmark and proposal gates pass. A committed scorecard/results artifact remains a separate N10 acceptance item. |
-| N5 | **DONE** | Native CLI, Cortex batch apply/recall receipts, Hub launcher/scheduling seam, and copied-candidate mine/review/adjudicate/apply/recall qualification pass with interpreter PATH unavailable and no checkout cwd. |
+| N4 | **PARTIAL** | Native proposal/model boundary and independent adjudication are receipt-bound. The committed 44-case synthetic conformance scorecard passes its declared thresholds: extraction precision `0.9667`/recall `1.0`, admission precision `0.9524`/recall `1.0`, semantic-projection precision `1.0`, and `0/11` authority-negative false positives. Exit still requires an independently sourced real-world held-out Taste corpus, interval reporting, and the released-package run. |
+| N5 | **PARTIAL** | Native Adapt source, CLI surfaces, and isolated copied source-built-binary tests have landed. Those tests do not prove the exact released package. Exit still requires released-package qualification and replacement or explicit dev-only demotion of `scripts/run-adapt-installed-current.mjs` as an authority test. |
 | N6 | **OPEN** | MCP/server/renderer and installed host-fence cutover remain. |
 | N7 | **OPEN** | Legacy executable federation Python/shadow deletion remains. |
 | N8 | **OPEN** | Blueprint external-service packaging/runtime boundary remains. |
 | N9 | **OPEN** | CodeRight native embedding/storage integration remains. |
-| N10 | **BLOCKED** | Native-only seal waits for N2 deletion closure, N6-N9, a committed behavioral scorecard/results artifact, and remaining Section 17 gates. |
+| N10 | **BLOCKED** | Behavioral scorecards are committed and are no longer an N10 blocker. The native-only seal still waits for N2 deletion closure, the open N4/N5 release evidence, N6-N9, and the remaining Section 17 package/SBOM/process-tree/native-only gates. |
 
 ### 0.2 Why the previous migration missed Adapt and transcript normalization
 
@@ -773,7 +777,7 @@ The earlier federation work packages are historical evidence. The following work
 
 ### N0 — Refresh the complete executable/runtime ledger
 
-**Status: DONE — `main@601c234`.**
+**Status: DONE — current implementation status is recorded in Section 0.1.1.**
 
 **Goal:** make the product-wide language/runtime graph exhaustive.
 
@@ -823,7 +827,7 @@ integration/supersession disposition.
 
 ### N1 — Freeze language-neutral contracts and native-only policy
 
-**Status: DONE — `main@601c234`.**
+**Status: DONE — current implementation status is recorded in Section 0.1.1.**
 
 Freeze fixtures/contracts for:
 
@@ -867,7 +871,7 @@ language-neutral fixtures/dev tools.
 
 ### N3 — Port Adapt deterministic core
 
-**Status: DONE — `main@601c234`.**
+**Status: DONE — current implementation status is recorded in Section 0.1.1.**
 
 First audit the current `engine/crates/membrane-adapt/` worktree candidate. Adopt/integrate it
 when contract-correct; otherwise explicitly supersede it before writing replacement code.
@@ -894,15 +898,23 @@ retired/narrow records cannot enter always-on core.
 
 ### N4 — Port Adapt proposal/adjudication/model boundary
 
-**Status: DONE — `main@601c234`.**
+**Status: PARTIAL — native boundary and synthetic conformance gate landed; real-world held-out,
+interval, and released-package evidence remain open.**
 
 Implement native proposal source, adjudication, and semantic-validation orchestration. Preserve exact source rebinding and authority separation.
+
+Current synthetic evidence is the committed 44-case `adapt.taste-benchmark-scorecard.v1`:
+extraction precision `0.9667` and recall `1.0`; admission precision `0.9524` and recall `1.0`;
+semantic-projection precision `1.0`; authority-negative false-positive rate `0.0` (`0/11`). This is
+synthetic conformance evidence, not an independently sourced real-world held-out corpus and not an
+interval estimate.
 
 **Exit gate:** held-out extraction/admission quality gate meets approved thresholds; no installed Adapt operation needs `python`, Pi CLI, OpenCode CLI, or other interpreter-backed Membrane worker.
 
 ### N5 — Native Adapt persistence, delivery receipts, CLI, and Hub scheduling
 
-**Status: DONE — `main@601c234`.**
+**Status: PARTIAL — native source and copied source-built-binary qualification landed; exact
+released-package proof and legacy authority-runner replacement remain open.**
 
 - native Cortex batch apply;
 - current-policy/lifecycle projection;
@@ -995,7 +1007,8 @@ universe, and no stale-byte fence clearance.
 
 ### N10 — Native-only release seal
 
-**Status: BLOCKED — waits for N2 deletion closure, N6-N9, a committed behavioral scorecard/results artifact, and remaining Section 17 gates.**
+**Status: BLOCKED — behavioral scorecards are committed and are no longer blockers; waits for N2
+deletion closure, the open N4/N5 release evidence, N6-N9, and remaining Section 17 gates.**
 
 Run the full Section 15–16 qualification profiles against one exact package candidate digest,
 including bounded Hub presentation and declared external-integration evidence.
@@ -1443,15 +1456,18 @@ migration/native-rust/native-only-seal.json
 ### 17.4 Adapt
 
 - [x] Native deterministic extraction/authority/admission/manifest/apply pipeline passes.
-- [x] Native proposal/adjudication interface passes held-out quality/safety gates.
-- [x] Installed Adapt needs no Python, Pi CLI, OpenCode CLI, or source checkout.
+- [x] The committed 44-case synthetic Taste conformance scorecard passes its declared point thresholds.
+- [ ] An independently sourced real-world held-out Taste corpus passes approved extraction/admission thresholds with interval reporting.
+- [x] A copied source-built `membrane` binary passes isolated Adapt qualification without interpreter tools or a checkout cwd.
+- [ ] The exact released package passes Adapt qualification without Python, Pi CLI, OpenCode CLI, or a source checkout.
+- [ ] `scripts/run-adapt-installed-current.mjs` is replaced as an authority test or explicitly proven release-excluded and dev-only.
 - [x] Manifest digest covers semantically active applicability/lifecycle fields.
 - [x] Malformed declared scope cannot broaden eligibility.
 - [x] Decision-making projections preserve lifecycle/scope/machine/current-policy controls.
 - [x] Core compiler selects only active eligible standing preferences using canonical root semantics.
 - [x] Insights remains report-only unless separately admitted through governed policy.
 - [x] Live interaction-signal learning is claimed only if host delivery/outcome receipts actually ship.
-- [ ] Current committed behavioral scorecard exists before comparative “better” claims.
+- [x] Current behavioral scorecards are committed; their synthetic/held-out scope is stated before comparative “better” claims.
 
 ### 17.5 MCP / Push rendering
 
@@ -1652,11 +1668,13 @@ No document may claim “native-only” before Section 17 passes.
 
 ---
 
-## 21. Source audit baseline and evidence
+## 21. Historical source-audit baseline and evidence
 
-This revision uses the prior Claude/native migration document as its base and reconciles it against current repository state through `8a215ac6...`.
+This section preserves the dated source audit through `8a215ac6...`; its uses of “current” describe
+that historical baseline only. For current package status, use Section 0.1.1 and the Section 17
+acceptance checklist.
 
-Load-bearing current evidence includes:
+Load-bearing evidence at that historical baseline included:
 
 - `docs/product-truth.md` — six axes include Adapt and current MCP truth lists 17 tools, including seven diagnostic tools;
 - `docs/architecture.md` — current generated source of truth still names `mcp/server.mjs` and `mcp/context-renderer-lib.cjs` on production surfaces;
@@ -1668,7 +1686,7 @@ Load-bearing current evidence includes:
 - `scripts/run-adapt-installed-current.mjs` — installed-current check explicitly binds Python interpreter, Python runner, Python CLI shim, and scheduler source path;
 - commit `f602fbbaec1d13629e6b09ca4d6d4c07277ad7ba` — substantial new Python Adapt multi-source transcript learning after the Rust migration decision;
 - commit `7c05b49b6f9ea202116f6829e4f74949a4529592` — prior baseline, adding held-out semantic admission enforcement in Adapt;
-- commit `8a215ac6fab11cc24bb821507057743b7898e09f` — current baseline, adding qualified Live Diagnostics Rust core/providers/contracts, Blueprint D0 findings, seven JS diagnostic MCP tools, and installed Node hook enforcement;
+- commit `8a215ac6fab11cc24bb821507057743b7898e09f` — historical audit baseline, adding qualified Live Diagnostics Rust core/providers/contracts, Blueprint D0 findings, seven JS diagnostic MCP tools, and installed Node hook enforcement;
 - `docs/design/membrane-live-diagnostics-final-architecture.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
 - `engine/crates/membrane-protocol/src/diagnostics.rs` and
   `engine/crates/membrane-runtime/src/{live_diagnostics.rs,live_diagnostics_service.rs,providers/}` — native operational contracts, evaluator, Hub-hosted service module, and qualified providers;

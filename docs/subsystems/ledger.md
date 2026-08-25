@@ -4,7 +4,7 @@
 **Canonical name:** Ledger  
 **Historical name:** Spine / Markdown Doc Spine / RMS D1–D4  
 **Parent system:** Membrane  
-**Current implementation namespace:** `membrane-runtime::ledger::{db, outline, identifier, doc_projection, doc_spine, doc_shadow, doc_candidate_provider}`.
+**Current implementation namespace:** `membrane-runtime::ledger::{db, index, outline, identifier, doc_projection, doc_spine, doc_shadow, doc_candidate_provider}`.
 
 ## Purpose
 
@@ -64,13 +64,14 @@ fallback into Ledger.
 - [x] `docs/subsystems/spine.md` is retired in favor of this file.
 - [x] Ledger has a separately owned rebuildable index store/projection.
 - [ ] Ledger candidates can participate in the Membrane planner rather than remaining permanently shadow-only.
-- [ ] A recalled section round-trips through source resolution with hash verification.
+- [x] Recalled sections round-trip through source resolution with hash verification;
+      stale or changed bytes fail closed.
 - [ ] Sync is incremental, bounded, and reports typed outcomes.
 - [ ] Workspace/document roots outside repository code can be indexed only when the active grant permits them.
 - [x] Ledger implementation & tests live under a discoverable `ledger`
       namespace without current-product compatibility wrappers.
-- [ ] The rename cutover has fresh scoped Rust build/test evidence; the prior
-      pre-Hub/protocol compile is not current-head proof.
+- [x] The rename cutover and Ledger indexing have current scoped Rust test evidence,
+      including projection, outline, spine, identifier, activation, and rollback paths.
 
 
 ## Naming

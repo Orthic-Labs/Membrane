@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-24T23:23:04.209Z",
+ "generatedAt": "2026-08-25T21:09:46.506Z",
  "enforcementMode": "migration",
  "policyDigest": "fdbe7ff961c271671f829450e6df8509c2798f86b6b9352438778bbb27df4421",
  "totals": {
-  "files": 1144,
+  "files": 1161,
   "rows": 58,
   "byRuntime": {
    "python": 12,
@@ -76,6 +76,7 @@
     "adapt/eval/freeze_pilot.py",
     "adapt/eval/gate3_review.py",
     "adapt/eval/grade.py",
+    "adapt/eval/insights_detector_bench/build_cases.py",
     "adapt/eval/rescope_compiler_results.py",
     "adapt/eval/run_budgeted_delivery_hybrid.py",
     "adapt/eval/run_compact_conflict_review.py",
@@ -88,7 +89,7 @@
     "adapt/eval/smoke_production_delivery.py",
     "adapt/eval/validate_insights_bench.py"
    ],
-   "content_digest": "834e9658ab663f923375f866a91ad7590271451bf221833f10ec56198041e486"
+   "content_digest": "308d4fb98e2c973bbba77651289db5b23318f9cbfb3ed682e2bd0611d8122fee"
   },
   {
    "id": "adapt-runtime-adapt-runtime",
@@ -385,7 +386,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "5de3fc3d52e874fd66429bf1e09216c12766f21e37aae09fb1d645e65bde59fd"
+   "content_digest": "5b6b3c1ef32e5ce8f8d0fb36c62592d19b02fc2e5eebca92e70c6d0280ea069b"
   },
   {
    "id": "blueprint-nested-blueprint/src",
@@ -410,8 +411,10 @@
     "blueprint/src/graph/bootstrap.mjs",
     "blueprint/src/graph/confidence-tiers.mjs",
     "blueprint/src/graph/delta-store.mjs",
+    "blueprint/src/graph/freshness-receipt.mjs",
     "blueprint/src/graph/generation-identity.mjs",
     "blueprint/src/graph/generic-ast-walker.mjs",
+    "blueprint/src/graph/git-source-observation.mjs",
     "blueprint/src/graph/ignored-prefixes.mjs",
     "blueprint/src/graph/language-extractors.mjs",
     "blueprint/src/graph/language-registry.mjs",
@@ -470,6 +473,7 @@
     "blueprint/src/graph/snapshots.mjs",
     "blueprint/src/graph/stable-read.mjs",
     "blueprint/src/graph/static-provider.mjs",
+    "blueprint/src/graph/store-lease.mjs",
     "blueprint/src/graph/store-sqlite.mjs",
     "blueprint/src/graph/traversal-policy.mjs",
     "blueprint/src/graph/traverse-store.mjs",
@@ -560,7 +564,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "70dc8785403b4b7e08b68c2a4d02d9fb27c8c0c3812a3efae1d43da48e321fb6"
+   "content_digest": "2ff92d5c45fbe94f77edf0826ec62a793265124656325f5e0c9c7f6cd808e6cb"
   },
   {
    "id": "blueprint-nested-blueprint/tests",
@@ -584,6 +588,7 @@
     "blueprint/tests/application-service-queries.test.mjs",
     "blueprint/tests/application-service.test.mjs",
     "blueprint/tests/atomic-store-adoption.test.mjs",
+    "blueprint/tests/audit-projection.test.mjs",
     "blueprint/tests/baseline-named.test.mjs",
     "blueprint/tests/benchmark-contract.test.mjs",
     "blueprint/tests/benchmark-storage.test.mjs",
@@ -621,9 +626,11 @@
     "blueprint/tests/fixtures/languages/javascript/basic.py",
     "blueprint/tests/fixtures/languages/javascript/basic.rs",
     "blueprint/tests/fixtures/languages/javascript/basic.ts",
+    "blueprint/tests/fixtures/store-lease-holder.mjs",
     "blueprint/tests/flow-inventory.test.mjs",
     "blueprint/tests/freshness-barrier.test.mjs",
     "blueprint/tests/freshness-observation.test.mjs",
+    "blueprint/tests/freshness-receipt.test.mjs",
     "blueprint/tests/freshness-regressions.test.mjs",
     "blueprint/tests/generated-docs.test.mjs",
     "blueprint/tests/generic-ast-walker.test.mjs",
@@ -670,6 +677,7 @@
     "blueprint/tests/performance-envelopes.test.mjs",
     "blueprint/tests/plugin-boundary.test.mjs",
     "blueprint/tests/portable-contract.test.mjs",
+    "blueprint/tests/production-store-lease.test.mjs",
     "blueprint/tests/prompt-read-only.test.mjs",
     "blueprint/tests/python-rust-graph.test.mjs",
     "blueprint/tests/python-test-runtime.mjs",
@@ -712,12 +720,14 @@
     "blueprint/tests/stable-read.test.mjs",
     "blueprint/tests/standalone-completion.test.mjs",
     "blueprint/tests/store-busy-timeout.test.mjs",
+    "blueprint/tests/store-lease.test.mjs",
     "blueprint/tests/store-maintenance.test.mjs",
     "blueprint/tests/store-migrations.test.mjs",
     "blueprint/tests/store-rollback.test.mjs",
     "blueprint/tests/store-sqlite.test.mjs",
     "blueprint/tests/superseded-docs.test.mjs",
     "blueprint/tests/support-bundle-redaction.test.mjs",
+    "blueprint/tests/surface-obligations.test.mjs",
     "blueprint/tests/test_repository_subgraph_slice_contract.py",
     "blueprint/tests/token-budget.test.mjs",
     "blueprint/tests/treesitter-provider.test.mjs",
@@ -726,12 +736,13 @@
     "blueprint/tests/update-rollback.test.mjs",
     "blueprint/tests/watch-supervisor.test.mjs",
     "blueprint/tests/watchman.test.mjs",
+    "blueprint/tests/windows-entrypoint.test.mjs",
     "blueprint/tests/workspace/context-contract.test.mjs",
     "blueprint/tests/workspace/graph-candidate-contract.test.mjs",
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "d7c95f9ff9da809639076dd7399cbd16c7ba6f5ab461efcb9c83d77d78bff2bb"
+   "content_digest": "c1f18e50ef929ec9754fa3eaef8246126403b1c7c78c9f8cef62ad8b654b120f"
   },
   {
    "id": "blueprint-nested-blueprint/watchman",
@@ -754,7 +765,7 @@
     "blueprint/watchman/repo-actor.mjs",
     "blueprint/watchman/supervisor.mjs"
    ],
-   "content_digest": "719f6c60ca5e4a425a3198ec574322db7c3a900613035e84e9d723b191872520"
+   "content_digest": "c2a6a2610491472c8c17c084b209fdd4f31747720aaa09c45dd60b24fd9a005a"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -944,7 +955,7 @@
     "engine/crates/cortex/tests/public_api_signature.rs",
     "engine/crates/cortex/tests/skill_read_test.rs"
    ],
-   "content_digest": "fbbdb493db6da68a1bb2546b48281da863dc58361ca5f2b3c4513ab5d89cd25f"
+   "content_digest": "72954017cef3216d6075cc09cb636c393d6da45b57633027fc15469a8924d91a"
   },
   {
    "id": "engine-crates-engine/crates/cortex-core",
@@ -1078,7 +1089,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "b1d6ab770e5df57eb7af3720a14e359c4f88ee1ea4645756d315d1429b782dae"
+   "content_digest": "187136f9432f49b3cab583814700a9096d4ad08ef5c9cc0d91936fd74dbced66"
   },
   {
    "id": "engine-crates-engine/crates/membrane-adapt",
@@ -1104,6 +1115,7 @@
     "engine/crates/membrane-adapt/src/cli_api.rs",
     "engine/crates/membrane-adapt/src/context_cost.rs",
     "engine/crates/membrane-adapt/src/delivery.rs",
+    "engine/crates/membrane-adapt/src/duplicate_groups.rs",
     "engine/crates/membrane-adapt/src/evidence.rs",
     "engine/crates/membrane-adapt/src/gates.rs",
     "engine/crates/membrane-adapt/src/insights/detectors.rs",
@@ -1126,12 +1138,14 @@
     "engine/crates/membrane-adapt/tests/canonical_and_ids.rs",
     "engine/crates/membrane-adapt/tests/cli_surface_and_convergence.rs",
     "engine/crates/membrane-adapt/tests/gates_and_boundaries.rs",
+    "engine/crates/membrane-adapt/tests/insights_detector_benchmark.rs",
     "engine/crates/membrane-adapt/tests/insights_pipeline.rs",
     "engine/crates/membrane-adapt/tests/portable_insights_benchmark.rs",
     "engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs",
-    "engine/crates/membrane-adapt/tests/taste_contracts.rs"
+    "engine/crates/membrane-adapt/tests/taste_contracts.rs",
+    "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "dd6b206c1179b38997d460c0cee22e68bca0ed6e8ff4e8fa5d3983d718f87a96"
+   "content_digest": "921db6cf151f8ef84ab8b0f594f87de39bca1e4b6f6b40789c55a7e710bdce87"
   },
   {
    "id": "engine-crates-engine/crates/membrane-core",
@@ -1294,7 +1308,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "3d941ba01fa7982196ee2fc1d87395b60fb370c06246288b043d4294c4b5673e"
+   "content_digest": "cace86975d9b15c89249f35bd109110e2a40c6fe965ab40f396c934a48fb9d13"
   },
   {
    "id": "engine-crates-engine/crates/membrane-provider-sdk",
@@ -1357,19 +1371,20 @@
     "engine/crates/membrane-runtime/src/feedback.rs",
     "engine/crates/membrane-runtime/src/fleet.rs",
     "engine/crates/membrane-runtime/src/freshness.rs",
-    "engine/crates/membrane-runtime/src/guide/db.rs",
-    "engine/crates/membrane-runtime/src/guide/doc_candidate_provider.rs",
-    "engine/crates/membrane-runtime/src/guide/doc_projection.rs",
-    "engine/crates/membrane-runtime/src/guide/doc_shadow.rs",
-    "engine/crates/membrane-runtime/src/guide/doc_spine.rs",
-    "engine/crates/membrane-runtime/src/guide/identifier.rs",
-    "engine/crates/membrane-runtime/src/guide/ledger.rs",
-    "engine/crates/membrane-runtime/src/guide/mod.rs",
-    "engine/crates/membrane-runtime/src/guide/outline.rs",
     "engine/crates/membrane-runtime/src/hub.rs",
     "engine/crates/membrane-runtime/src/hub_inputs.rs",
     "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
     "engine/crates/membrane-runtime/src/installation_manifest.rs",
+    "engine/crates/membrane-runtime/src/ledger/db.rs",
+    "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
+    "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
+    "engine/crates/membrane-runtime/src/ledger/doc_shadow.rs",
+    "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+    "engine/crates/membrane-runtime/src/ledger/identifier.rs",
+    "engine/crates/membrane-runtime/src/ledger/index.rs",
+    "engine/crates/membrane-runtime/src/ledger/mod.rs",
+    "engine/crates/membrane-runtime/src/ledger/outline.rs",
+    "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
     "engine/crates/membrane-runtime/src/lib.rs",
     "engine/crates/membrane-runtime/src/live_diagnostics.rs",
     "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
@@ -1416,16 +1431,18 @@
     "engine/crates/membrane-runtime/src/store.rs",
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
-    "engine/crates/membrane-runtime/tests/guide_h2_local_replay_gate.rs",
-    "engine/crates/membrane-runtime/tests/guide_outline.rs",
-    "engine/crates/membrane-runtime/tests/guide_projection.rs",
-    "engine/crates/membrane-runtime/tests/guide_recall_index_contract.rs",
-    "engine/crates/membrane-runtime/tests/guide_shadow.rs",
-    "engine/crates/membrane-runtime/tests/guide_spine.rs",
-    "engine/crates/membrane-runtime/tests/guide_spine_equivalence.rs",
-    "engine/crates/membrane-runtime/tests/guide_spine_shadow_replay_corpus.rs",
+    "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
     "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
     "engine/crates/membrane-runtime/tests/installation_manifest.rs",
+    "engine/crates/membrane-runtime/tests/ledger_h2_local_replay_gate.rs",
+    "engine/crates/membrane-runtime/tests/ledger_indexing.rs",
+    "engine/crates/membrane-runtime/tests/ledger_outline.rs",
+    "engine/crates/membrane-runtime/tests/ledger_projection.rs",
+    "engine/crates/membrane-runtime/tests/ledger_recall_index_contract.rs",
+    "engine/crates/membrane-runtime/tests/ledger_shadow.rs",
+    "engine/crates/membrane-runtime/tests/ledger_spine.rs",
+    "engine/crates/membrane-runtime/tests/ledger_spine_equivalence.rs",
+    "engine/crates/membrane-runtime/tests/ledger_spine_shadow_replay_corpus.rs",
     "engine/crates/membrane-runtime/tests/paths.rs",
     "engine/crates/membrane-runtime/tests/pull_catalog.rs",
     "engine/crates/membrane-runtime/tests/pull_federate_route.rs",
@@ -1433,9 +1450,9 @@
     "engine/crates/membrane-runtime/tests/pull_memory_provider.rs",
     "engine/crates/membrane-runtime/tests/pull_planner_conformance_scope.rs",
     "engine/crates/membrane-runtime/tests/receipt.rs",
-    "engine/crates/membrane-runtime/tests/session_ledger.rs"
+    "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "a211cc475bf07ebdfc3e836fa4a128d719c6423e6d4a092a43477cc85d1d661f"
+   "content_digest": "42bfe9972be72685458d5e59302af8be8be8d74adedd3a19cc8246867f677ba6"
   },
   {
    "id": "engine-crates-engine/crates/membrane-transcript",
@@ -1467,7 +1484,7 @@
     "engine/crates/membrane-transcript/tests/host_conformance.rs",
     "engine/crates/membrane-transcript/tests/normalize.rs"
    ],
-   "content_digest": "35743a83852031b798b19ea08aa0b6835df84d5dd07131e28b098dd7061b6c41"
+   "content_digest": "3dcbae64bd746e86a5ed7cdaafdc8495f88515739d488c5d9bb0251a8bd80ad4"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",
@@ -1589,7 +1606,7 @@
     "engine/tests/memory_backend_acceptance.rs",
     "engine/tests/transcript_ledger_acceptance.rs"
    ],
-   "content_digest": "833a2c201332368c8c008b9a428b34cc7baf3be8cd182f5baf6a786e3da1a999"
+   "content_digest": "2cbf679ddeb736de35017f514a1092e342fb8a4b76000487d0562a30d4766bb5"
   },
   {
    "id": "federation-legacy-federation-legacy",
@@ -1683,7 +1700,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "ff7e8fe97558c001ce98381e62d5e7cbae9d752922f7d9f057afafdffdc07bc7"
+   "content_digest": "841cc947fbf832664b65dcf87a111a25d526ea0e0fb0d872dc5affb0bfe16202"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -1725,7 +1742,7 @@
     "apps/membrane-hub/tests/runtime-inventory.test.mjs",
     "apps/membrane-hub/tests/sources-explorer.test.mjs"
    ],
-   "content_digest": "e080f294b489ff1e4524444b6404de5721ba7f10e5948875a656dc3331384061"
+   "content_digest": "0034a5c5149b35a0f17c7db48f87b047d2f246f83b643deecccae39ce32125f8"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1757,7 +1774,7 @@
     "apps/membrane-hub/scripts/verify-unpacked-artifact.mjs",
     "apps/membrane-hub/scripts/write-release-manifest.mjs"
    ],
-   "content_digest": "a5f7d66b1d82271e8644e4275a9592e4c87da08163eb306849e663f96975c136"
+   "content_digest": "0f2d07ce456cf157d5426cd6446af6cec581be9deda75a67bf65840969a7fa81"
   },
   {
    "id": "install-tests-install-tests",
@@ -2189,7 +2206,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "6c0e18802ea826c9cf37c3b2350dfcf5d0bdfaa529788989076989dbe510a0db"
+   "content_digest": "b10b1d3b893fed863f3ebd4b157c38e553fc92ec84ffb6f7ed7d7c891b473052"
   },
   {
    "id": "tests-root-tests-root",

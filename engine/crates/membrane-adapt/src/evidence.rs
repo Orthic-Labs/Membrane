@@ -3,5 +3,6 @@
 
 pub use membrane_transcript::evidence::{
     ActKind, EvidenceClass, EvidenceError, SourceSpan, UserActEvidenceV1,
+    VerifiedUserActEvidence,
     USER_ACT_EVIDENCE_SCHEMA,
 };

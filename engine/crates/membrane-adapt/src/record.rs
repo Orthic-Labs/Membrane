@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::authority::PrecedenceTier;
 use crate::authority::{self, AuthorityEffect, StoredRule};
 use crate::canonical::derive_preference_id;
 use crate::scope::ScopeDimensions;
-use crate::seal::{verify_seal, SemanticPayloadV1, SealError, SEAL_CONTRACT_VERSION};
-use crate::authority::PrecedenceTier;
+use crate::seal::{verify_seal, SealError, SemanticPayloadV1, SEAL_CONTRACT_VERSION};
 
 pub const PREFERENCE_RECORD_SCHEMA: &str = "adapt.preference-record.v1";
 pub const KIND: &str = "preference";
@@ -91,7 +91,12 @@ impl LifecycleState {
     pub fn legal_transitions(self) -> &'static [LifecycleState] {
         match self {
             Self::Candidate => &[Self::Active, Self::Retired],
-            Self::Active => &[Self::Disputed, Self::Deprecated, Self::Superseded, Self::Retired],
+            Self::Active => &[
+                Self::Disputed,
+                Self::Deprecated,
+                Self::Superseded,
+                Self::Retired,
+            ],
             Self::Disputed => &[Self::Active, Self::Deprecated, Self::Retired],
             Self::Deprecated => &[Self::Retired, Self::Active],
             Self::Superseded => &[Self::Retired],
@@ -108,7 +113,10 @@ impl LifecycleState {
 pub enum LifecycleError {
     UnknownState(String),
     MissingReceipt,
-    IllegalTransition { from: LifecycleState, to: LifecycleState },
+    IllegalTransition {
+        from: LifecycleState,
+        to: LifecycleState,
+    },
 }
 
 /// A receipted lifecycle transition event. Applying it is the only way
@@ -244,6 +252,7 @@ impl PreferenceRecordV1 {
             validator_receipt_id: context.validator_receipt_id.into(),
             validator_receipt_sha256: context.validator_receipt_sha256.into(),
             redaction_contract_version: context.redaction_contract_version.into(),
+            provenance_contract_version: crate::seal::PROVENANCE_CONTRACT_VERSION.into(),
         }
     }
 
@@ -307,7 +316,8 @@ impl PreferenceRecordV1 {
     /// Reject non-Taste semantic classes (`episodic_fact`, `unclassified`)
     /// from the Taste lane at construction time.
     pub fn require_taste_class(raw_class: &str) -> Result<RecordClass, RecordError> {
-        RecordClass::parse(raw_class).ok_or_else(|| RecordError::NotTasteClass(raw_class.to_string()))
+        RecordClass::parse(raw_class)
+            .ok_or_else(|| RecordError::NotTasteClass(raw_class.to_string()))
     }
 
     /// Apply a receipted lifecycle transition, enforcing legality. Returns the
@@ -325,10 +335,16 @@ impl PreferenceRecordV1 {
         }
         let current = self.lifecycle_state;
         if current == target {
-            return Err(LifecycleError::IllegalTransition { from: current, to: target });
+            return Err(LifecycleError::IllegalTransition {
+                from: current,
+                to: target,
+            });
         }
         if !current.can_transition_to(target) {
-            return Err(LifecycleError::IllegalTransition { from: current, to: target });
+            return Err(LifecycleError::IllegalTransition {
+                from: current,
+                to: target,
+            });
         }
         let mut updated = self.clone();
         updated.lifecycle_state = target;
@@ -386,8 +402,17 @@ mod tests {
     #[test]
     fn unknown_category_is_refused_not_mapped() {
         assert_eq!(
-            PreferenceRecordV1::new_candidate("rule text here ok", "branding", RecordClass::StandingPreference, "s", ScopeDimensions::default(), 0.9, vec![], "t")
-                .unwrap_err(),
+            PreferenceRecordV1::new_candidate(
+                "rule text here ok",
+                "branding",
+                RecordClass::StandingPreference,
+                "s",
+                ScopeDimensions::default(),
+                0.9,
+                vec![],
+                "t"
+            )
+            .unwrap_err(),
             RecordError::UnknownCategory("branding".into())
         );
     }

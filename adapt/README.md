@@ -33,7 +33,9 @@ Only authenticated **user-origin** evidence can create durable preference author
 - assistant-authored narration and echoed tool/repository output (a prompt-injection lexical scan backs up the origin tags)
 - permission or approval expansion, and anything that weakens security
 - conflicts with the active `AGENTS.md` / `CLAUDE.md` / workspace rules, and contradictions with an active stored rule
-- transient environment claims, forbidden scopes, unknown categories, duplicates, and rules too short to mean anything
+- transient environment claims, forbidden scopes, unknown categories, unsafe duplicate
+  collapse, and rules too short to mean anything; the synthetic quality scorecard records
+  one remaining product-fact modal false positive
 
 Categories are a controlled taxonomy (`workflow`, `verification`, `safety`, `architecture`, `tooling`, `code-style`, `documentation`, `model-routing`); anything else is forced into review, never silently admitted.
 
@@ -61,9 +63,9 @@ Run journals checkpoint every stage; safe resume reuses cached stages only while
 
 | Surface | Role | Status |
 |---|---|---|
-| **Taste** | reviewed preferences → Cortex | native mine/review/adjudicate/apply/recall ships |
-| **Insights** | failure/waste episodes, issues, remediation proposals & outcomes | native detection, benchmark, reference-only Cortex admission & reporting ship |
-| **Adaptive evaluation** | delivery/effectiveness, counterfactuals, retirement suggestions & privacy-bounded aggregates | native library surface ships |
+| **Taste** | reviewed preferences → Cortex | native source path and synthetic conformance gate pass; real-world held-out, implicit-evidence, and exact package qualification remain open |
+| **Insights** | failure/waste episodes, issues, remediation proposals & outcomes | native detection and portable benchmark ship with documented detector gaps; automated effect remains blocked |
+| **Adaptive evaluation** | delivery/effectiveness, counterfactuals, retirement suggestions & privacy-bounded aggregates | native contracts ship; only production-integrated, persisted receipts count as runtime evidence |
 
 ## Using it
 
@@ -79,30 +81,27 @@ membrane adapt adjudicate-taste --manifest pending.json \
 membrane adapt apply --manifest accepted.json
 membrane adapt recall "focused tests" --scope workspace
 membrane adapt benchmark --input adapt/eval/insights_bench/v1/cases.jsonl
+membrane adapt context-cost --input context-cost-observations.json
 membrane adapt doctor
 ```
 
-### Token spend
+### Persistent-context cost
 
-`--token-spend` answers "where did the tokens go, and which were wasted?" from
-usage the transcript already records — no tokenizer, no API call. Totals
-(fresh input, cache read, cache write, output, thinking; per model, and main
-vs subagent lane) are provider-reported billed counts, so they are exact.
-Per-tool attribution splits each request's context growth across the tool
-results and messages that entered since the previous request; it is bounded by
-what that text could plausibly cost, and the unexplained remainder is reported
-as `session_prefix` / `context_overhead` rather than charged to the last
-message. Fields named `attributed*` are inferences, not measurements.
+`membrane adapt context-cost --input …` analyzes trusted host observations supplied
+as JSON. Provider-billed input, cache-read, cache-write, and output counts remain
+measured. Allocation to persistent sources is deterministic and bounded but is
+labelled inferred; any remainder stays unattributed. Findings include
+`apparently_unused_always_on_context`, `duplicated_persistent_instruction`,
+`stale_or_shadowed_persistent_source`, `memory_recall_never_used`,
+`always_on_prefix_dominates`, `oversized_instruction_file`, and
+`mcp_tool_definitions_dominate`. The command does not discover provider bills, inspect
+accounts, or bundle a price table.
 
-Waste findings: `oversized_tool_result`, `duplicate_tool_call_cost`,
-`cold_cache_rebuild`, `tool_dominates_context` — each naming its measured
-token cost. Cost in currency is opt-in via `--rates` (a caller-supplied
-model → per-million-token table); no rate table is bundled, because a stale
-hard-coded price is a fabricated number. The same block appears in the
-`--insights` JSON report under `tokenSpend`, per session and aggregate, and
-never affects the failure score.
-
-Writes remain explicit. Mining/review/adjudication are non-mutating; apply verifies complete independent decisions, immutable semantic seals, exact transcript bindings & Cortex admission receipts. Installed Adapt invokes no Python, Node, Pi CLI, OpenCode CLI, or model worker. Legacy Python tests remain release-excluded differential oracles only.
+Writes remain explicit. Mining/review/adjudication are non-mutating; apply verifies
+complete independent decisions, semantic seals, transcript bindings, and Cortex
+admission receipts. The native Adapt path does not invoke an external model CLI or
+interpreter-backed worker. Product-wide installed-artifact exclusion of legacy
+Python/Node remains an open release qualification gate.
 
 ## Repository layout
 
@@ -110,12 +109,14 @@ Writes remain explicit. Mining/review/adjudication are non-mutating; apply verif
 |---|---|
 | `../engine/crates/membrane-transcript/` | canonical native transcript owner & host adapters |
 | `../engine/crates/membrane-adapt/` | canonical native Taste/Insights owner |
-| `src/adapt/` | retired Python differential oracle, excluded from installed artifacts |
+| `src/adapt/` | legacy Python migration/differential material; release exclusion still must be proven |
 | `tests/` | legacy differential tests |
 | `eval/` | offline evaluation and delivery-parity tooling |
 | `docs/` | architecture, operations & historical plans |
 
-`membrane adapt` is installed authority. `adapt.py` remains source-checkout migration evidence only.
+`membrane adapt` is the production authority. `adapt.py` is legacy migration evidence,
+not an approved runtime path; exact package exclusion is tracked by the native migration
+ledger.
 
 ## Recent
 
@@ -125,7 +126,15 @@ Writes remain explicit. Mining/review/adjudication are non-mutating; apply verif
 
 ## Current limits
 
-Model-assisted semantic discovery still produces proposals only; independent adjudication remains mandatory before apply. Lexical contradiction checks cover direct polarity conflicts, while semantic conflicts require adjudication. Host UI signals remain capability-specific & unavailable signals are reported explicitly.
+Model-assisted semantic discovery still produces proposals only; independent
+adjudication remains mandatory before apply. Lexical contradiction checks cover direct
+polarity conflicts, while semantic conflicts require adjudication. Host UI signals
+remain capability-specific and unavailable signals are reported explicitly. The Taste
+quality corpus is synthetic conformance evidence, with one recorded product-fact modal
+false positive; real-world held-out and exact released-package qualification remain
+open. CodeRight user-act signing/trust provisioning, semantic-adjudicator trust
+provisioning, and installed reviewed-merge delivery are external integration gaps and
+fail closed when absent.
 
 ---
 

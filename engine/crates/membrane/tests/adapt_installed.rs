@@ -2,6 +2,7 @@
 
 use std::{fs, path::Path, process::Command};
 
+use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
 
 fn run_json(binary: &Path, cwd: &Path, args: &[&str]) -> Value {
@@ -30,8 +31,32 @@ fn copied_candidate_runs_full_adapt_flow_without_interpreters_or_checkout() {
     let source_binary = Path::new(env!("CARGO_BIN_EXE_membrane"));
     let temp = tempfile::tempdir().unwrap();
     assert!(!temp.path().starts_with(env!("CARGO_MANIFEST_DIR")));
-    let candidate = temp.path().join("membrane");
+    let tools = temp.path().join("tools");
+    fs::create_dir_all(tools.join("bin")).unwrap();
+    fs::create_dir_all(tools.join("lib/memory")).unwrap();
+    fs::create_dir_all(tools.join(".cache/memory")).unwrap();
+    let canonical_pool =
+        membrane_adapt::proposal::Gate1ReviewContextV1::from_verified_canonical_inventory(vec![])
+            .canonical_pool_sha256()
+            .to_string();
+    let candidate = tools.join("bin/membrane");
     fs::copy(source_binary, &candidate).unwrap();
+    write_json(
+        &tools.join("lib/memory/runtime.json"),
+        &json!({
+            "schemaVersion": 1, "serviceId": "membrane-local-v1", "host": "127.0.0.1", "port": 47851
+        }),
+    );
+    let adjudicator = Ed25519KeyPair::from_seed_unchecked(&[55; 32]).unwrap();
+    write_json(
+        &tools.join("lib/memory/adapt-semantic-adjudicator-trust.json"),
+        &json!({
+            "contract_version": membrane_adapt::proposal::SEMANTIC_ADJUDICATOR_TRUST_CONTRACT,
+            "installation_id": "qual-machine",
+            "issuers": [{"issuer_id":"qual-validator","key_id":"key-1",
+                "public_key_hex":hex::encode(adjudicator.public_key().as_ref()),"revoked":false}]
+        }),
+    );
 
     let transcript = temp.path().join("transcript.jsonl");
     fs::write(
@@ -62,6 +87,30 @@ fn copied_candidate_runs_full_adapt_flow_without_interpreters_or_checkout() {
     );
     assert_eq!(mined["taste_candidates"].as_array().unwrap().len(), 1);
     write_json(&temp.path().join("mined.json"), &mined);
+    write_json(
+        &temp.path().join("bare-candidates.json"),
+        &mined["taste_candidates"],
+    );
+    let bare_refused = Command::new(&candidate)
+        .args([
+            "adapt", "review-taste", "--input", "bare-candidates.json",
+            "--installation-id", "qual-machine", "--canonical-pool-sha256", &canonical_pool,
+            "--created-at", "2026-08-25T00:00:00Z",
+        ])
+        .current_dir(temp.path())
+        .env("PATH", "/__membrane_no_interpreters__")
+        .env_remove("PYTHONPATH")
+        .output()
+        .unwrap();
+    assert!(!bare_refused.status.success());
+    assert!(String::from_utf8_lossy(&bare_refused.stderr)
+        .contains("bare candidate JSON is not authoritative"));
+
+    let mut laundered = mined.clone();
+    laundered["taste_candidates"][0]["candidate_id"] = json!("attacker-selected");
+    laundered["taste_candidates"][0]["evidence_text_sha256"] = json!("f".repeat(64));
+    laundered["taste_candidates"][0]["verified_user_act_receipt_sha256"] = json!("b".repeat(64));
+    write_json(&temp.path().join("laundered.json"), &laundered);
 
     let pi_session = temp.path().join(".pi/agent/sessions/repo/session.jsonl");
     fs::create_dir_all(pi_session.parent().unwrap()).unwrap();
@@ -107,24 +156,64 @@ fn copied_candidate_runs_full_adapt_flow_without_interpreters_or_checkout() {
             "--installation-id",
             "qual-machine",
             "--canonical-pool-sha256",
-            "pool-v1",
+            &canonical_pool,
             "--created-at",
             "2026-08-25T00:00:00Z",
         ],
     );
+    let changed_pool = Command::new(&candidate)
+        .args([
+            "adapt",
+            "review-taste",
+            "--input",
+            "mined.json",
+            "--installation-id",
+            "qual-machine",
+            "--canonical-pool-sha256",
+            &"f".repeat(64),
+            "--created-at",
+            "2026-08-25T00:00:00Z",
+        ])
+        .current_dir(temp.path())
+        .env("PATH", "/__membrane_no_interpreters__")
+        .env_remove("PYTHONPATH")
+        .output()
+        .unwrap();
+    assert!(!changed_pool.status.success());
+    assert!(String::from_utf8_lossy(&changed_pool.stderr).contains("CanonicalPoolMismatch"));
+    let laundered_pending = run_json(
+        &candidate,
+        temp.path(),
+        &[
+            "adapt", "review-taste", "--input", "laundered.json",
+            "--installation-id", "qual-machine", "--canonical-pool-sha256", &canonical_pool,
+            "--created-at", "2026-08-25T00:00:00Z",
+        ],
+    );
+    assert_eq!(laundered_pending, pending);
+    assert_ne!(pending["records"][0]["id"], "attacker-selected");
     write_json(&temp.path().join("pending.json"), &pending);
-    let decisions = json!({
+    let mut decisions: membrane_adapt::proposal::SemanticAdjudicationV1 = serde_json::from_value(json!({
+        "contract_version": membrane_adapt::proposal::SEMANTIC_ADJUDICATION_CONTRACT,
         "independent": true,
+        "issuer_id": "qual-validator",
+        "key_id": "key-1",
+        "installation_id": "qual-machine",
         "validator_receipt_id": "qual-validator",
-        "validator_receipt_sha256": "b".repeat(64),
-        "canonical_pool_sha256": "pool-v1",
+        "pending_manifest_sha256": pending["manifest_sha256"],
+        "canonical_pool_sha256": canonical_pool,
+        "validated_at": "2026-08-25T00:01:00Z",
         "decisions": pending["records"].as_array().unwrap().iter().map(|record| json!({
             "id": record["id"],
             "verdict": "valid",
             "reason": "explicit authenticated user preference"
-        })).collect::<Vec<_>>()
-    });
-    write_json(&temp.path().join("decisions.json"), &decisions);
+        })).collect::<Vec<_>>(),
+        "signature_hex": ""
+    })).unwrap();
+    decisions.signature_hex = hex::encode(adjudicator.sign(
+        &membrane_adapt::proposal::semantic_adjudication_signing_bytes(&decisions).unwrap()
+    ).as_ref());
+    write_json(&temp.path().join("decisions.json"), &serde_json::to_value(&decisions).unwrap());
 
     let accepted = run_json(
         &candidate,
@@ -141,6 +230,53 @@ fn copied_candidate_runs_full_adapt_flow_without_interpreters_or_checkout() {
         ],
     );
     write_json(&temp.path().join("accepted.json"), &accepted);
+
+    let mut forged_receipt = accepted.clone();
+    forged_receipt["semantic_adjudication"]["signature_hex"] = json!("b".repeat(128));
+    let mut forged_receipt_manifest: membrane_adapt::manifest::PreferenceManifestV1 =
+        serde_json::from_value(forged_receipt).unwrap();
+    forged_receipt_manifest.manifest_sha256 =
+        membrane_adapt::manifest::manifest_hash(&forged_receipt_manifest);
+    write_json(
+        &temp.path().join("forged-receipt.json"),
+        &serde_json::to_value(forged_receipt_manifest).unwrap(),
+    );
+    let refused_receipt = Command::new(&candidate)
+        .args(["adapt", "apply", "--manifest", "forged-receipt.json"])
+        .current_dir(temp.path())
+        .env("PATH", "/__membrane_no_interpreters__")
+        .env_remove("PYTHONPATH")
+        .output()
+        .unwrap();
+    assert!(!refused_receipt.status.success());
+    assert!(String::from_utf8_lossy(&refused_receipt.stderr).contains("ValidatorSignatureInvalid"));
+
+    // Even if a caller recomputes the outer record and manifest hashes, the
+    // installed CLI must refuse a changed meaning whose semantic seal was not
+    // re-issued by adjudication.
+    let mut forged: membrane_adapt::manifest::PreferenceManifestV1 =
+        serde_json::from_value(accepted.clone()).unwrap();
+    forged.records[0]
+        .semantic_payload
+        .as_mut()
+        .unwrap()
+        .canonical_text = "never run tests".into();
+    forged.records[0].payload_sha256 = membrane_adapt::manifest::payload_sha256(&forged.records[0]);
+    forged.manifest_sha256 = membrane_adapt::manifest::manifest_hash(&forged);
+    write_json(
+        &temp.path().join("forged.json"),
+        &serde_json::to_value(forged).unwrap(),
+    );
+    let refused = run_json(
+        &candidate,
+        temp.path(),
+        &["adapt", "apply", "--manifest", "forged.json"],
+    );
+    assert_eq!(refused["response"]["valid"], false);
+    assert!(refused["response"]["errors"][0]
+        .as_str()
+        .unwrap()
+        .contains("semantic seal"));
 
     let applied = run_json(
         &candidate,

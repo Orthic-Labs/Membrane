@@ -1308,7 +1308,7 @@ The canonical method is:
 
 Initial findings:
 
-- `unused_always_on_context`
+- `apparently_unused_always_on_context`
 - `oversized_instruction_file`
 - `mcp_tool_definitions_dominate`
 - `always_on_prefix_dominates`

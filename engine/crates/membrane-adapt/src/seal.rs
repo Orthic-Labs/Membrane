@@ -8,15 +8,18 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::canonical::{canonical_object, sha256_canonical};
 use crate::authority::{AuthorityEffect, PrecedenceTier};
+use crate::canonical::{canonical_object, sha256_canonical};
 use crate::record::{InfluenceClass, RecordClass};
 use crate::scope::ScopeDimensions;
 
 pub const SEAL_CONTRACT_VERSION: &str = "adapt.semantic-seal.v1";
+pub const ADMISSION_POLICY_VERSION: &str = "adapt.admission.v1";
+pub const REDACTION_CONTRACT_VERSION: &str = "membrane.redaction.v1";
+pub const PROVENANCE_CONTRACT_VERSION: &str = "adapt.provenance.v2";
 
 /// The immutable semantic payload. Hashing this produces the seal.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemanticPayloadV1 {
     /// Contract version of the sealing scheme itself.
     pub seal_contract_version: String,
@@ -45,6 +48,7 @@ pub struct SemanticPayloadV1 {
     pub validator_receipt_id: String,
     pub validator_receipt_sha256: String,
     pub redaction_contract_version: String,
+    pub provenance_contract_version: String,
 }
 
 impl SemanticPayloadV1 {
@@ -121,7 +125,10 @@ pub fn batch_seal(payloads: &[&SemanticPayloadV1]) -> String {
         .map(|p| serde_json::Value::String(p.seal_digest()))
         .collect();
     let value = canonical_object([
-        ("seal_contract_version", serde_json::Value::String(SEAL_CONTRACT_VERSION.into())),
+        (
+            "seal_contract_version",
+            serde_json::Value::String(SEAL_CONTRACT_VERSION.into()),
+        ),
         ("digests", serde_json::Value::Array(digests)),
     ]);
     sha256_canonical(&value)
@@ -151,6 +158,7 @@ mod tests {
             validator_receipt_id: "vr-1".into(),
             validator_receipt_sha256: "vrd-1".into(),
             redaction_contract_version: "r1".into(),
+            provenance_contract_version: "p1".into(),
         }
     }
 
@@ -159,13 +167,40 @@ mod tests {
         let p = payload("Always run focused tests");
         let digest = p.seal_digest();
         assert!(verify_seal(&p, &digest).is_ok());
-        let mut tampered = p.clone();
-        tampered.canonical_text = "never run focused tests".into();
-        assert!(verify_seal(&tampered, &digest).is_err());
-        // Scope broadening is also a semantic mutation.
-        let mut widened = p.clone();
-        widened.scope = "*".into();
-        assert!(verify_seal(&widened, &digest).is_err());
+        let mut mutations = Vec::new();
+        macro_rules! mutated {
+            ($field:ident, $value:expr) => {{
+                let mut item = p.clone();
+                item.$field = $value;
+                mutations.push((stringify!($field), item));
+            }};
+        }
+        mutated!(seal_contract_version, "other".into());
+        mutated!(record_kind, "insight".into());
+        mutated!(category, "style".into());
+        mutated!(canonical_text, "never run focused tests".into());
+        mutated!(scope, "*".into());
+        let mut dims = BTreeMap::new();
+        dims.insert("repo".into(), "other".into());
+        mutated!(scope_dimensions, ScopeDimensions::normalize(&dims).unwrap());
+        mutated!(authority_tier, PrecedenceTier::ExplicitGlobalUserPreference);
+        mutated!(authority_effect, AuthorityEffect::Restrictive);
+        mutated!(influence_class, InfluenceClass::BehavioralDirective);
+        mutated!(record_class, Some(RecordClass::ScopedPreference));
+        mutated!(machine_binding, Some("other-host".into()));
+        mutated!(source_evidence_digests, vec!["d2".into()]);
+        mutated!(canonical_pool_sha256, "other-pool".into());
+        mutated!(admission_policy_version, "other".into());
+        mutated!(validator_receipt_id, "vr-2".into());
+        mutated!(validator_receipt_sha256, "vrd-2".into());
+        mutated!(redaction_contract_version, "r2".into());
+        mutated!(provenance_contract_version, "p2".into());
+        for (field, tampered) in mutations {
+            assert!(
+                verify_seal(&tampered, &digest).is_err(),
+                "field {field} was not sealed"
+            );
+        }
     }
 
     #[test]
