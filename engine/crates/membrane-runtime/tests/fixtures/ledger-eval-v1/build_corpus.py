@@ -59,7 +59,7 @@ def T(document, heading=None, quote=None):
 # ---------------------------------------------------------------------------
 LEDGER_CANON = "docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md"
 LEDGER_REF = "docs/subsystems/ledger.md"
-GUIDE_EVAL = "docs/evaluation/guide.md"
+LEDGER_EVAL = "docs/evaluation/ledger.md"
 SYSTEM_MAP = "docs/subsystems/SYSTEM.md"
 PULL_REF = "docs/subsystems/pull.md"
 PUSH_REF = "docs/subsystems/push.md"
@@ -132,10 +132,10 @@ add("dev", "exact_document",
     tags=["exact_document"])
 
 add("dev", "exact_document",
-    "Guide qualification entrypoint document",
-    [T(GUIDE_EVAL, "Guide qualification entrypoint")],
+    "Ledger qualification entrypoint document",
+    [T(LEDGER_EVAL, "Ledger qualification entrypoint")],
     tags=["exact_document"],
-    notes="Doc title still uses the retired 'Guide' name; kept as-is because it is the real filename/title in this checkout.")
+    notes="Current qualification entrypoint under the canonical Ledger name.")
 
 add("dev", "exact_document",
     "checkpoint MCP workflow prompt documentation",
@@ -721,7 +721,7 @@ add("train", "identifier_camel_case",
 
 add("train", "identifier_camel_case",
     "LedgerDb",
-    [T(LEDGER_REF, "Owns", "`LedgerDb` at `cache_root()/guide-index.sqlite3`")],
+    [T(LEDGER_REF, "Owns", "`LedgerDb` at `cache_root()/ledger-index.sqlite3`")],
     tags=["identifier", "camel_case"])
 
 add("train", "identifier_camel_case",
@@ -764,8 +764,8 @@ add("heldout", "identifier_camel_case",
 # 14. identifier_path_fragment  (9: 3 / 3 / 3)
 # ===========================================================================
 add("train", "identifier_path_fragment",
-    "src/guide/doc_spine.rs",
-    [T(LEDGER_CANON, "8.2 Developer-identifier expansion", "src/guide/doc_spine.rs")],
+    "src/ledger/doc_spine.rs",
+    [T(LEDGER_CANON, "8.2 Developer-identifier expansion", "src/ledger/doc_spine.rs")],
     tags=["identifier", "path_fragment"])
 
 add("train", "identifier_path_fragment",
@@ -891,10 +891,10 @@ add("dev", "multi_section_synthesis",
     match_mode="all_of", tags=["multi_section_synthesis"])
 
 add("heldout", "multi_section_synthesis",
-    "According to both README.md and docs/product.md, what does the 'Guide' (now Ledger) axis do?",
+    "According to both README.md and docs/product.md, what does the Ledger axis do?",
     [T(ROOT_README, "Six axes"), T(PRODUCT, "Six axes")],
-    match_mode="all_of", tags=["multi_section_synthesis", "naming_drift"],
-    notes="Both generated/handwritten docs still say 'Guide' rather than 'Ledger' at the time of this corpus snapshot; a correct system should treat them as the same renamed subsystem per agent-rules.md.")
+    match_mode="all_of", tags=["multi_section_synthesis"],
+    notes="Cross-document agreement check for the canonical Ledger identity.")
 
 add("heldout", "multi_section_synthesis",
     "Combine Ledger canon invariant 9 with its production-reachability section: what must be true before Ledger FTS can be called 'active'?",
@@ -919,8 +919,8 @@ add("train", "stale_relocation",
     "What does README.md's six-axes table say the 'Guide' axis does?",
     [T(ROOT_README, "Six axes", "Navigates indexed document sections with hash-bound references"),
      T(LEDGER_REF, "Purpose", "Where in the documents is the relevant material?")],
-    match_mode="any_of", tags=["stale_relocation", "naming_drift"],
-    notes="README.md has not yet been through the Guide->Ledger rename cutover (agent-rules.md: 'Guide is retired; guide-named code/paths are pending rename, not a second name'). A correct system should recognize the still-live 'Guide' text as the same subsystem as ledger.md, not two separate concepts.")
+    status="relocation", match_mode="any_of", tags=["stale_relocation", "naming_drift"],
+    notes="Guide is a retired query term. Correct behavior relocates it to the canonical Ledger surfaces rather than inventing a live Guide axis.")
 
 add("dev", "stale_relocation",
     "What document did 04-GUIDE-MARKDOWN-INDEXING-REVIEW.md get superseded by?",
@@ -933,7 +933,7 @@ add("dev", "stale_relocation",
     "Where does the guide::ledger session module live now?",
     [T(LEDGER_CANON, "2.2 Existing session-ledger collision", "ledger::session_projection")],
     status="relocation", tags=["stale_relocation"],
-    notes="The canon documents a planned rename of guide::ledger to ledger::session_projection to avoid a ledger::ledger collision; a correct system must not fabricate a currently-shipping ledger::ledger module.")
+    notes="The completed rename moved guide::ledger to ledger::session_projection to avoid a ledger::ledger collision; a correct system must relocate the historical path rather than fabricate ledger::ledger.")
 
 add("heldout", "stale_relocation",
     "Can Ledger candidates already participate in the Membrane planner?",

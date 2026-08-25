@@ -159,7 +159,7 @@ and the task brief. Counts are `train / dev / heldout`.
 | `mixed_script` | 2 | 2 | 2 | 6 | Latin + non-Latin script mixed in one query |
 | `identifier_snake_case` | 3 | 3 | 3 | 9 | `snake_case` developer-identifier query (canon 8.2) |
 | `identifier_camel_case` | 3 | 3 | 3 | 9 | `camelCase`/`PascalCase` developer-identifier query |
-| `identifier_path_fragment` | 3 | 3 | 3 | 9 | Source-path-fragment query (e.g. `src/guide/doc_spine.rs`) |
+| `identifier_path_fragment` | 3 | 3 | 3 | 9 | Source-path-fragment query (e.g. `src/ledger/doc_spine.rs`) |
 | `short_query` | 3 | 3 | 3 | 9 | 1–2 term query (canon 8.3 lane policy) |
 | `multi_section_synthesis` | 3 | 3 | 3 | 9 | Requires combining 2+ sections/documents (`match_mode: all_of`) |
 | `stale_relocation` | 2 | 2 | 2 | 6 | Retired/renamed/not-yet-landed target — refusal or relocation, not best-effort text |
@@ -218,15 +218,10 @@ can group by `tags` instead of `case_type`.
   from the tree, its retirement recorded in `ledger.md`'s own Definition of
   Done), a superseded planning doc (`04-GUIDE-MARKDOWN-INDEXING-REVIEW.md`,
   also gone, superseded-by recorded in the canon's own header), an unchecked
-  Definition-of-Done checkbox, a documented-but-not-yet-executed module
-  rename, and the live `Guide` -> `Ledger` naming-migration window itself
-  (agent-rules.md: *"Guide is retired; `guide`-named code/paths are pending
-  rename, not a second name"* — yet `README.md` and `docs/product.md` both
-  still say `Guide` in their six-axes tables at the time of this snapshot).
-  That last pair of cases is intentionally reused for a `multi_section_synthesis`
-  case too (`LEDG-EVAL-0140`) because it is simultaneously the corpus's
-  clearest naming-drift example and its clearest cross-document synthesis
-  example.
+  Definition-of-Done checkbox, the completed `guide::ledger` ->
+  `ledger::session_projection` relocation, and a stale user query for the retired
+  `Guide` axis. The current README and generated product docs agree on Ledger;
+  the stale query remains a relocation case rather than executable current truth.
 - **`negative_no_answer` false-positive strength.** Cases were chosen to be
   *domain-plausible* (e.g. "Ledger's default BM25 k1/b values", not "what is
   the capital of France") specifically so a lexical matcher has something

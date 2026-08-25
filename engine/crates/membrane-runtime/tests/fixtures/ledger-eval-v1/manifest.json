@@ -97,8 +97,8 @@
   "documents": [
     {
       "path": "README.md",
-      "sha256": "23afdc4df30937bfa8aa8726495ecbc4351ae9dd31e150aba63c704b6e3456fc",
-      "bytes": 9792,
+      "sha256": "60a286a4a4e10a563e8d4db499ade4afeda06b6832def02cd6dd13da6f311215",
+      "bytes": 9794,
       "corpus": "membrane-docs-primary"
     },
     {
@@ -109,8 +109,8 @@
     },
     {
       "path": "docs/README.md",
-      "sha256": "f3050d4bdcd37e5eea2ca530ec19fd36a03fa34999f297a141f6998bc1725c16",
-      "bytes": 3259,
+      "sha256": "a6361b5712e47210d82e213bdc1144487d41448ae5a22c6d72c8784b9145007a",
+      "bytes": 3260,
       "corpus": "membrane-docs-primary"
     },
     {
@@ -120,9 +120,9 @@
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/evaluation/guide.md",
-      "sha256": "a1e78db1e56e93900ad994324b3c0c9fea4f86866a14bf31310a6357728c579a",
-      "bytes": 392,
+      "path": "docs/evaluation/ledger.md",
+      "sha256": "3454737fe9415bcac4f97ca71442393f81afc784ccea6ca450e328512f7484f3",
+      "bytes": 396,
       "corpus": "membrane-docs-primary"
     },
     {
@@ -163,8 +163,8 @@
     },
     {
       "path": "docs/product.md",
-      "sha256": "9a517e4ad64ab8ecdafab924e20608d3d97636b5baedb31714992d916b0af8d0",
-      "bytes": 2285,
+      "sha256": "c46619936ccae0ba1b5c70ef623de830f997e8bc958cc620e515d756376f7f55",
+      "bytes": 2286,
       "corpus": "membrane-docs-primary"
     },
     {
@@ -199,44 +199,44 @@
     },
     {
       "path": "docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md",
-      "sha256": "584bfef45b608af46dc308ccde4dc8c4d31a645101e4a5449c746fb553b1ef69",
-      "bytes": 76057,
+      "sha256": "bbc0f97fb72b9d1327f1b5d75b06dcf419e90219115b25082cb59c951d8ba6b9",
+      "bytes": 77443,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md",
-      "sha256": "d2faf40bc859cc84deffa8a53bf1a58e1ab29cc9ae69c0b194daa2fa56ede074",
-      "bytes": 24762,
+      "sha256": "c63ba514b222262eb21a2cef30edd81c39653fe3dbed51f17237ab3022bed948",
+      "bytes": 24766,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md",
-      "sha256": "9040ba0114b59521dc01811ef9e45136ccaf3d4001e8d153846aea700eb1fff1",
-      "bytes": 34812,
+      "sha256": "257f019c144a7af48207ae6c451adfab2a11f1a73db070c3fcfff6819246c269",
+      "bytes": 34818,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md",
-      "sha256": "bf713ac5845f795d10d04d51e4b9ab0347d85d7df53ea22432708594651cf1d7",
-      "bytes": 71727,
+      "sha256": "c5a765508c16cefea0e6dca7731dd1fa1bb755dda15174ddad326f215b290d45",
+      "bytes": 72589,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/SYSTEM.md",
-      "sha256": "fb23cf470559b20e7dcd90aaa52b2b167d66651b1b89201b87f16e22cc091c21",
-      "bytes": 5012,
+      "sha256": "8e5c65e3d7b80e3ed27a0ee750c279583fb9f19fd30bb19a744f259126ddf622",
+      "bytes": 5471,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/cortex.md",
-      "sha256": "e598646be486a2a648516fecbe4e281daa1f18139f4f54ca902ed72bb9ec420e",
-      "bytes": 3898,
+      "sha256": "5270a0ae44e420620e36d49fc46eea1842790e739dc4c88badf06a7c90553595",
+      "bytes": 4039,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/subsystems/ledger.md",
-      "sha256": "5d324be33a8a0a4d8c923f4cc7b68419abe0112bbe8359c7f6541b12a8cbe501",
-      "bytes": 4083,
+      "sha256": "68616bb7f4ec3fb01203f04753bd4c102e57f0a502370c858a3081f4a98833d3",
+      "bytes": 4282,
       "corpus": "membrane-docs-primary"
     },
     {
