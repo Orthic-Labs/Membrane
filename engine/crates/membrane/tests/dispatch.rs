@@ -7,7 +7,7 @@
 //! MBR-102: create one membrane executable with mode subcommands.
 
 use membrane::dispatch::{parse_mode, MembraneMode, ParsedInvocation};
-use membrane::modes::{dispatch, DispatchOutcome};
+use membrane::modes::DispatchOutcome;
 
 #[test]
 fn every_mode_round_trips_through_parse_mode() {
@@ -20,16 +20,6 @@ fn every_mode_round_trips_through_parse_mode() {
         (
             vec!["membrane", "stdio-mcp"],
             MembraneMode::StdioMcp,
-            Vec::<String>::new(),
-        ),
-        (
-            vec!["membrane", "loopback-api", "--port", "47900"],
-            MembraneMode::LoopbackApi,
-            Vec::<String>::new(),
-        ),
-        (
-            vec!["membrane", "supervisor-child"],
-            MembraneMode::SupervisorChild,
             Vec::<String>::new(),
         ),
     ];
@@ -60,17 +50,9 @@ fn exit_code_table_is_stable_across_modes() {
 }
 
 #[test]
-fn dispatch_never_panics_on_legitimate_invocation() {
-    // We don't have a real runtime in tests, so dispatch returns an Err-shaped outcome.
-    // What matters here is the boundary: it must never panic.
-    let inv = parse_mode(["membrane", "loopback-api"].iter().copied()).unwrap();
-    let _ = dispatch(&inv);
-}
-
-#[test]
-fn privileged_port_is_rejected_at_parse_time() {
-    let err = parse_mode(["membrane", "loopback-api", "--port", "22"].iter().copied()).unwrap_err();
-    assert!(err.contains("port 22 is privileged"));
+fn retired_resident_modes_are_rejected() {
+    assert!(parse_mode(["membrane", "loopback-api"].iter().copied()).is_err());
+    assert!(parse_mode(["membrane", "supervisor-child"].iter().copied()).is_err());
 }
 
 #[test]

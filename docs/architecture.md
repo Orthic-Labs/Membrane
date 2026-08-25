@@ -77,8 +77,8 @@ Adding a fourth plane is a breaking change to the contract.
 
 | Plane | Owns | Reads from | Writes to |
 |---|---|---|---|
-| Application | CLI subcommands, stdio MCP, loopback HTTP API, MCP routing | Data | — |
-| Control | supervisor-child, lifecycle frames, lockfile, heartbeat publication | Data | Data |
+| Application | Hub-side CLI/API handling and MCP routing; stateless client transports | Data | — |
+| Control | Hub-owned in-process lifecycle, admission, worker supervision, health | Data | Data |
 | Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |
 
 Rules:
@@ -95,9 +95,9 @@ Rules:
 Mode → plane mapping (single source of truth: `membrane::modes::plane_of`):
 
 - `membrane cli …` → Application
-- `membrane stdio` (stdio MCP) → Application
-- `membrane loopback-api` → Application
-- `membrane supervisor-child` → Control
+- active Hub runtime request handling → Application
+- `membrane stdio-mcp` stateless transport → Application
+- Hub in-process lifecycle owner → Control
 
 The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`
 (`Plane`, `PlaneBoundary`, `PLANE_BOUNDARIES`, `plane_for_path`). The golden

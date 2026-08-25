@@ -46,14 +46,15 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   assert.doesNotMatch(tauri, /cortex-service/);
   const supervisor = readFileSync(new URL("../src-tauri/src/supervisor.rs", import.meta.url), "utf8");
   const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-  assert.match(supervisor, /arg\("supervisor-child"\)/);
-  assert.match(supervisor, /args\(\["cli", "build-info"\]\)/);
-  assert.match(supervisor, /ResidentLeaseV1/);
-  assert.match(supervisor, /ResidentHelloV1/);
-  assert.match(supervisor, /MEMBRANE_LIFECYCLE_STDIO/);
+  assert.match(supervisor, /run_hub_runtime/);
+  assert.match(supervisor, /membrane-hub-runtime/);
+  assert.match(supervisor, /request_drain/);
+  assert.doesNotMatch(supervisor, /std::process::Command|supervisor-child|ResidentLeaseV1|ResidentHelloV1|MEMBRANE_LIFECYCLE_STDIO/);
   assert.doesNotMatch(supervisor, /MEMBRANE_OWNER_PIPE/);
   assert.doesNotMatch(readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8"), /membrane-supervisor/);
   assert.match(main, /bundled_binary\("membrane"\)/);
+  assert.match(main, /GET \/hub\/snapshot HTTP\/1\.1/);
+  assert.doesNotMatch(main, /args\(\["cli", "hub-snapshot"\]\)/);
   assert.match(main, /com\.membrane\.hub/);
   assert.match(main, /LaunchAgents/);
   assert.match(main, /current_app_bundle/);
@@ -72,10 +73,11 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   assert.doesNotMatch(adaptLaunch, /python3|PYTHONPATH/);
   assert.doesNotMatch(adaptLaunch, /run_incremental_multiwriter/);
   const probes = readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8");
-  assert.match(probes, /serviceId: "membrane-local-v1"/);
   assert.match(probes, /MEMBRANE_PORT/);
-  assert.match(probes, /MEMBRANE_LIFECYCLE_STDIO/);
-  assert.match(probes, /\["cli", "build-info"\]/);
+  assert.match(probes, /hubRuntimeInProcess/);
+  assert.match(probes, /membrane_unavailable/);
+  assert.match(probes, /hub_inactive/);
+  assert.doesNotMatch(probes, /MEMBRANE_LIFECYCLE_STDIO|supervisor-child|\["cli", "build-info"\]/);
   assert.doesNotMatch(probes, /MEMBRANE_OWNER_PIPE/);
   assert.doesNotMatch(probes, /CORTEX_(?:PORT|API_TOKEN_FILE|INSTALLATION_ID|SERVICE_INSTANCE_ID)/);
   assert.doesNotMatch(probes, /win32|windows|\.exe\b|blueprint\.cmd/);
@@ -120,20 +122,20 @@ test("runtime inventory hashes generated runtime, install manifest & rejects mis
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("unpacked artifact requires executable bootstrap, Membrane supervisor health, Blueprint & Hub probes", async () => {
+test("unpacked artifact requires executable bootstrap, in-process Hub runtime, Blueprint & Hub-off probes", async () => {
   const { root, make, runtime } = fixture(); const sidecars = join(root, "sidecars");
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "aarch64-apple-darwin" });
     for (const name of ["membrane", "cortex"]) make(join(sidecars, name));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
     const called = [];
-    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"].map((name) => [name, async () => { called.push(name); return true; }])) });
-    assert.deepEqual(called, ["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"]);
+    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["bootstrapImport", "hubRuntimeInProcess", "blueprintRecall", "hubInactive"].map((name) => [name, async () => { called.push(name); return true; }])) });
+    assert.deepEqual(called, ["bootstrapImport", "hubRuntimeInProcess", "blueprintRecall", "hubInactive"]);
     make(join(sidecars, "Membrane Hub"));
-    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } });
+    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, hubRuntimeInProcess: () => true, blueprintRecall: () => true, hubInactive: () => true } });
     make(join(sidecars, "cortex-debug"));
-    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /unexpected unpacked sidecar/);
+    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, hubRuntimeInProcess: () => true, blueprintRecall: () => true, hubInactive: () => true } }), /unexpected unpacked sidecar/);
     rmSync(join(sidecars, "cortex-debug"));
-    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /retired unpacked sidecar/);
+    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, hubRuntimeInProcess: () => true, blueprintRecall: () => true, hubInactive: () => true } }), /retired unpacked sidecar/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

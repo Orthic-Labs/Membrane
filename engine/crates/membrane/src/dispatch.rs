@@ -1,5 +1,4 @@
-//! Mode subcommand parsing. The binary exposes exactly four modes — one of them is what the
-//! user (or a launcher) wants — so the dispatcher can refuse everything else early.
+//! Stateless client and product-maintenance subcommand parsing.
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
@@ -39,7 +38,8 @@ const _: () = {
     ));
 };
 
-/// The four product-facing modes. Anything else is rejected before reaching the dispatcher.
+/// Product-facing modes. Resident runtime modes are intentionally absent: the
+/// runtime exists only inside the active Hub process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MembraneMode {
     /// One-shot CLI subcommands: doctor, smoke, ingest, query, etc. Returns when the work
@@ -47,10 +47,6 @@ pub enum MembraneMode {
     Cli,
     /// JSON-RPC over stdio. Used by Claude/Codex/Cursor/Windsurf MCP clients.
     StdioMcp,
-    /// Long-running HTTP service bound to 127.0.0.1 only. Loopback API for the Hub and CLI.
-    LoopbackApi,
-    /// Resident child: owns engine DB & exchanges lifecycle frames over inherited stdio.
-    SupervisorChild,
     /// MBR-203: transactional install. Runs an install plan against a scratch
     /// `MEMBRANE_ROOT` and only on `commit` renames the scratch root to the
     /// target root. See `crate::install_tx` for the contract.
@@ -68,8 +64,6 @@ impl MembraneMode {
         match self {
             MembraneMode::Cli => "cli",
             MembraneMode::StdioMcp => "stdio-mcp",
-            MembraneMode::LoopbackApi => "loopback-api",
-            MembraneMode::SupervisorChild => "supervisor-child",
             MembraneMode::Install => "install",
             MembraneMode::Uninstall => "uninstall",
             MembraneMode::MigrateLegacy => "migrate-legacy",
@@ -81,7 +75,7 @@ impl MembraneMode {
 #[command(
     name = "membrane",
     bin_name = "membrane",
-    about = "Membrane — one signed binary for CLI, stdio MCP, loopback API, and supervisor-child modes.",
+    about = "Membrane — stateless clients and product maintenance for the Hub-hosted runtime.",
     version,
     disable_help_subcommand = true
 )]
@@ -96,10 +90,6 @@ enum Command {
     Cli(CliArgs),
     /// JSON-RPC over stdio for MCP clients.
     StdioMcp(StdioArgs),
-    /// HTTP service bound to 127.0.0.1 only.
-    LoopbackApi(LoopbackArgs),
-    /// Resident child process owned by the per-user supervisor.
-    SupervisorChild(SupervisorArgs),
     /// MBR-203: transactional install against a scratch `MEMBRANE_ROOT`.
     Install(InstallArgs),
     /// MBR-205: ownership-safe uninstall. The default plan is to refuse
@@ -125,16 +115,6 @@ struct StdioArgs {
     #[arg(long, default_value = "jsonl")]
     framing: String,
 }
-
-#[derive(Debug, clap::Args)]
-struct LoopbackArgs {
-    /// Port for loopback API. Dispatcher validates range; runtime binds it.
-    #[arg(long, default_value_t = 47851)]
-    port: u16,
-}
-
-#[derive(Debug, clap::Args)]
-struct SupervisorArgs {}
 
 /// MBR-203: install subcommand arguments. The binary accepts an optional
 /// `--plan` JSON; when omitted, it executes a default plan with the five
@@ -200,7 +180,7 @@ pub struct ParsedInvocation {
     pub cli_tail: Vec<String>,
     /// For `StdioMcp`, the framing override (always "jsonl" today).
     pub framing: String,
-    /// For `LoopbackApi`, the port to bind.
+    /// Reserved transport port. Stateless modes resolve the active Hub endpoint.
     pub port: u16,
     /// MBR-203: for `Install` mode, the scratch root, target root, optional
     /// plan path, and dry-run flag. `None` for every other mode.
@@ -346,32 +326,6 @@ where
                 migration: None,
             }
         }
-        Command::LoopbackApi(args) => {
-            if args.port < 1024 {
-                return Err(format!(
-                    "loopback-api port {} is privileged; Membrane refuses ports < 1024",
-                    args.port
-                ));
-            }
-            ParsedInvocation {
-                mode: MembraneMode::LoopbackApi,
-                cli_tail: Vec::new(),
-                framing: String::new(),
-                port: args.port,
-                install: None,
-                uninstall: None,
-                migration: None,
-            }
-        }
-        Command::SupervisorChild(_args) => ParsedInvocation {
-            mode: MembraneMode::SupervisorChild,
-            cli_tail: Vec::new(),
-            framing: String::new(),
-            port: 0,
-            install: None,
-            uninstall: None,
-            migration: None,
-        },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,
             cli_tail: Vec::new(),
@@ -711,30 +665,9 @@ mod tests {
     }
 
     #[test]
-    fn loopback_api_defaults_to_supervisor_port() {
-        let inv = parse_mode(["membrane", "loopback-api"].iter().copied()).unwrap();
-        assert_eq!(inv.mode, MembraneMode::LoopbackApi);
-        assert_eq!(inv.port, 47851);
-    }
-
-    #[test]
-    fn loopback_api_rejects_privileged_port() {
-        let err =
-            parse_mode(["membrane", "loopback-api", "--port", "80"].iter().copied()).unwrap_err();
-        assert!(err.contains("port 80 is privileged"));
-    }
-
-    #[test]
-    fn supervisor_child_has_no_filesystem_lease_argument() {
-        let inv = parse_mode(["membrane", "supervisor-child"].iter().copied()).unwrap();
-        assert_eq!(inv.mode, MembraneMode::SupervisorChild);
-        assert!(parse_mode([
-            "membrane",
-            "supervisor-child",
-            "--retired-binding",
-            "/tmp/x"
-        ])
-        .is_err());
+    fn retired_resident_modes_are_rejected() {
+        assert!(parse_mode(["membrane", "loopback-api"].iter().copied()).is_err());
+        assert!(parse_mode(["membrane", "supervisor-child"].iter().copied()).is_err());
     }
 
     #[test]

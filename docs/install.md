@@ -7,8 +7,9 @@ updates, & install cleanup. Membrane's signed package supplies `membrane`,
 `cortex`, Blueprint/Cortex contracts, icons, legal files, & release
 evidence as one self-contained product.
 
-For headless use, run installed `membrane supervisor-child`. No external
-product manifest, add-on handoff, or retired installer lane is
+The installed Hub hosts the only Membrane runtime. Headless clients are
+stateless and do not create a resident service. No external product manifest,
+add-on handoff, or retired installer lane is
 active. Membrane Hub is the only desktop runtime/build/release/install
 authority; its native macOS DMG lane is enabled only by signed release
 evidence. Non-Mac targets are outside current implementation scope.

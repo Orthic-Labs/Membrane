@@ -1,21 +1,19 @@
-//! Membrane-native loopback API entry point.
+//! Compatibility refusal for the retired standalone loopback runtime.
 //!
-//! Thin wrapper over `membrane_runtime::serve::run_loopback_api` that
-//! lets library callers bind the loopback API without going through the
-//! binary's mode parser. Signature is identical to the underlying runtime
-//! function.
+//! Runtime residency is owned by the active Hub process. Library callers that
+//! still reference this former entrypoint receive explicit Hub unavailability;
+//! this function never binds a port or starts runtime logic.
 
-/// Bind the loopback API on the given port. Signature matches
-/// `membrane_runtime::serve::run_loopback_api` exactly.
-pub fn run_loopback_api(port: u16) -> Result<(), String> {
-    membrane_runtime::serve::run_loopback_api(port)
+pub fn run_loopback_api(_port: u16) -> Result<(), String> {
+    Err("membrane_unavailable: hub_inactive (retryable)".into())
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn run_loopback_api_signature_matches_runtime() {
-        let _runtime_fn: fn(u16) -> Result<(), String> = membrane_runtime::serve::run_loopback_api;
-        let _membrane_fn: fn(u16) -> Result<(), String> = crate::run_loopback_api;
+    fn retired_loopback_entrypoint_never_starts_a_runtime() {
+        let error = super::run_loopback_api(47_851).unwrap_err();
+        assert!(error.contains("hub_inactive"));
+        assert!(error.contains("retryable"));
     }
 }

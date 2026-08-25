@@ -83,7 +83,8 @@ pub use heartbeat::{
 };
 pub use hub::{
     HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HubSubsystemV1,
-    HubSubsystemsV1, SubsystemStateV1, HUB_SCHEMA_VERSION,
+    HubSubsystemsV1, MembraneUnavailableReasonV1, MembraneUnavailableV1, SubsystemStateV1,
+    HUB_SCHEMA_VERSION,
 };
 pub use membrane_status::{
     membrane_parent_state, membrane_parent_state_from_supervisor_str, MembraneParentState,

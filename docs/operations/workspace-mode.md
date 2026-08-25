@@ -7,8 +7,8 @@ boundary.
 
 ## Workspace mode (what actually runs today)
 
-Binaries: `membrane` / `cortex`. `membrane supervisor-child` is the sole
-resident-service artifact; `cortex` is Cortex's durable-memory CLI.
+Binaries: `membrane` / `cortex`. Both are stateless clients; the active Hub
+process hosts the sole runtime. `cortex` is Cortex's durable-memory CLI.
 
 Resolved by `deployed_runtime_from_exe()` in
 `engine/crates/membrane-runtime/src/cli.rs:242-278`, which recognizes
@@ -46,7 +46,7 @@ Treat both as open gaps, not silent no-ops.
 
 ## Product mode (real, in progress, not yet deployed)
 
-Binaries: `membrane`; its `supervisor-child` mode is Hub's resident service.
+Binaries: `membrane`; the Hub links and hosts the runtime in-process.
 
 Paths are OS-standard per-user locations, not a workspace tree:
 
@@ -60,8 +60,8 @@ resident lifecycle; no second product-service label or binary exists.
 This is **MBR-201 / MBR-203 / MBR-208** — active, not abandoned. Its install
 assets exist and ship, but product mode is not yet the deployed runtime
  anywhere; workspace mode is what machines actually run today. See
-[`docs/operations/resident-lifecycle.md`](resident-lifecycle.md) for inherited-stdio
-resident lifecycle frames, and
+[`docs/operations/resident-lifecycle.md`](resident-lifecycle.md) for the
+in-process resident lifecycle, and
 [`docs/installation/contract.md`](../installation/contract.md) for the
 per-mode installation manifest contract that both topologies must satisfy.
 

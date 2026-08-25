@@ -1,5 +1,5 @@
-//! Membrane — the single signed binary that services CLI, stdio MCP, loopback API, and
-//! supervisor-child modes. This crate owns the binary shape; every real work step is delegated
+//! Membrane — the single signed binary that services CLI and stdio MCP clients plus
+//! stateless client modes. This crate owns the binary shape; every real work step is delegated
 //! to `membrane_runtime` so the product surface has exactly one executable on a clean user
 //! machine.
 //!
