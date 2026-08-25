@@ -48,6 +48,7 @@ import { sliceTokens } from "../lib/token-budget.mjs";
 import { diffLedgerAgainstTree } from "./merkle-ledger.mjs";
 import { probeScip } from "./scip-provider.mjs";
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "./ignored-prefixes.mjs";
+import { withStoreLeaseSync } from "./store-lease.mjs";
 
 export { EDGE_CONFIDENCE_TIERS, EDGE_CONFIDENCE_TIER_ORDER, EDGE_CONFIDENCE_TIER_DESCRIPTIONS, tierConfidence };
 export { PRECISION_TIERS, PRECISION_TIER_ORDER };
@@ -1215,6 +1216,10 @@ function writeGeneration(outDir, generation) {
   const graphDir = join(outDir, "graph");
   mkdirSync(graphDir, { recursive: true });
   const dbPath = join(graphDir, "graph.db");
+  return withStoreLeaseSync(dbPath, { ownerKind: "one_shot" }, () => writeGenerationUnderLease(graphDir, dbPath, generation));
+}
+
+function writeGenerationUnderLease(graphDir, dbPath, generation) {
   // D51: a corrupt store ahead of a persist is typed, recoverable state. The
   // store is the BUILD's output and this write replaces it wholesale, so a
   // hostile/truncated prior store is removed (with its WAL/SHM sidecars)

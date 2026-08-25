@@ -93,6 +93,7 @@ import { checkScopeGrant, issueScopeGrant } from "../src/lib/receipt-store.mjs";
 import { incrementTelemetry, readTelemetry } from "../src/lib/telemetry.mjs";
 import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../src/graph/snapshots.mjs";
 import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
+import { acquireStoreLease, withStoreLease, withStoreLeaseSync } from "../src/graph/store-lease.mjs";
 import { DaemonClient } from "../src/service/client.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -278,14 +279,16 @@ async function queryFreshnessBarrier(root, outDir, args = {}, { observeOnly = fa
       };
     } finally { closeStore(db); }
   }
-  const db = openStore(dbPath);
-  try {
-    return await syncToCurrentSource(db, root, {
-      timeoutMs: Number(args["timeout-ms"] ?? 2000),
-      allowDegraded: Boolean(args["allow-stale"]),
-      outDir,
-    });
-  } finally { closeStore(db); }
+  return withStoreLease(dbPath, { ownerKind: "one_shot" }, async () => {
+    const db = openStore(dbPath);
+    try {
+      return await syncToCurrentSource(db, root, {
+        timeoutMs: Number(args["timeout-ms"] ?? 2000),
+        allowDegraded: Boolean(args["allow-stale"]),
+        outDir,
+      });
+    } finally { closeStore(db); }
+  });
 }
 
 function parseArgs(argv) {
@@ -353,6 +356,10 @@ function readJson(path, fallback) {
 function persistGenerationToStore(root, outDir, generation) {
   const dbPath = join(resolve(root, outDir), "graph", "graph.db");
   mkdirSync(dirname(dbPath), { recursive: true });
+  return withStoreLeaseSync(dbPath, { ownerKind: "one_shot" }, () => persistGenerationToStoreUnderLease(dbPath, generation));
+}
+
+function persistGenerationToStoreUnderLease(dbPath, generation) {
   const freshPath = `${dbPath}.rebuild-${process.pid}-${Date.now()}`;
   for (const suffix of ["", "-wal", "-shm"]) rmSync(freshPath + suffix, { force: true });
 
@@ -2099,8 +2106,10 @@ async function runGraphCommand(root, outDir, subcommand, args) {
     const dbPath = join(root, outDir, "graph", "graph.db");
     if (!existsSync(dbPath)) { console.error(JSON.stringify({ error: "graph_missing" })); return 2; }
     const action = subcommand === "changes-since" ? "changes-since" : String(args._[0] ?? args.action ?? "list");
-    const db = action === "create" ? openStore(dbPath) : openStoreReadOnly(dbPath);
+    const lease = action === "create" ? acquireStoreLease(dbPath, { ownerKind: "one_shot" }) : null;
+    let db;
     try {
+      db = action === "create" ? openStore(dbPath) : openStoreReadOnly(dbPath);
       let result;
       if (action === "create") result = createSnapshot(db, args.name ?? args._[1], root);
       else if (action === "get") result = getSnapshot(db, args.name ?? args._[1]);
@@ -2113,7 +2122,10 @@ async function runGraphCommand(root, outDir, subcommand, args) {
       const code = String(error?.code ?? "snapshot_error");
       console.error(JSON.stringify({ schemaVersion: 1, error: { code } }));
       return 2;
-    } finally { closeStore(db); }
+    } finally {
+      if (db) closeStore(db);
+      lease?.release();
+    }
   }
   if (subcommand === "build") {
     const generation = buildGraphGeneration(root, { outDir });
@@ -2530,6 +2542,10 @@ async function runDelta(root, outDir, args) {
   if (!existsSync(dbPath)) throw graphReadError("graph_missing", "Graph store is missing; run blueprint build");
   const paths = args._.map(normalizePath).filter(Boolean);
   if (paths.length === 0 && !args["resume-repair"]) throw new Error("blueprint delta requires at least one path");
+  return withStoreLease(dbPath, { ownerKind: "one_shot" }, () => runDeltaUnderLease(root, outDir, args, dbPath, paths));
+}
+
+async function runDeltaUnderLease(root, outDir, args, dbPath, paths) {
   const db = openStore(dbPath);
   try {
     const results = [];
@@ -2570,13 +2586,15 @@ async function runDelta(root, outDir, args) {
 async function runReconcile(root, outDir, args) {
   const dbPath = join(resolve(root, outDir), "graph", "graph.db");
   if (!existsSync(dbPath)) throw graphReadError("graph_missing", "Graph store is missing; run blueprint build");
-  const db = openStore(dbPath);
-  try {
-    const result = await reconcileGraph(db, root, { outDir });
-    if (args.json) console.log(JSON.stringify(result, null, 2));
-    else console.log(`reconciled changed=${result.changed.length} added=${result.added.length} removed=${result.removed.length} applied=${result.applied}`);
-    return 0;
-  } finally { closeStore(db); }
+  return withStoreLease(dbPath, { ownerKind: "one_shot" }, async () => {
+    const db = openStore(dbPath);
+    try {
+      const result = await reconcileGraph(db, root, { outDir });
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(`reconciled changed=${result.changed.length} added=${result.added.length} removed=${result.removed.length} applied=${result.applied}`);
+      return 0;
+    } finally { closeStore(db); }
+  });
 }
 
 async function runNeighborhood(root, outDir, args) {
@@ -3378,16 +3396,22 @@ function runPhase2Command(root, outDir, subcommand, args) {
       understanding: sealed.understanding,
     });
     if (plan.complete) {
-      const db = openStore(join(resolve(root, outDir), "graph", "graph.db"));
+      const dbPath = join(resolve(root, outDir), "graph", "graph.db");
+      const lease = acquireStoreLease(dbPath, { ownerKind: "one_shot" });
+      let db;
       try {
+        db = openStore(dbPath);
         db.exec("BEGIN IMMEDIATE");
         clearDomainPending(db, "doc");
         clearDomainPending(db, "semantic");
         db.exec("COMMIT");
       } catch (error) {
-        db.exec("ROLLBACK");
+        if (db) db.exec("ROLLBACK");
         throw error;
-      } finally { closeStore(db); }
+      } finally {
+        if (db) closeStore(db);
+        lease.release();
+      }
     }
     const result = {
       schemaVersion: 1,
@@ -3575,7 +3599,7 @@ if (isDirectInvocation()) {
     process.on("uncaughtException", e => { console.error("STACK:", e.stack); process.exit(1); });
     process.exitCode = await main();
   } catch (error) {
-    if (error?.code?.startsWith("graph_")) {
+    if (typeof error?.code === "string") {
       console.error(JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message, ...error.details } }));
     } else {
       console.error(`blueprint: ${error.message}`);
