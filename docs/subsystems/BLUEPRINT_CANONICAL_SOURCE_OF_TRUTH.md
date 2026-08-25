@@ -269,7 +269,8 @@ The primary end-state contract is:
 caller / Membrane / host
     → task-shaped Blueprint request
 
-Blueprint resident service
+Hub-hosted Blueprint query role, or bounded one-shot for an explicit direct
+Blueprint request while Hub is inactive
     → generation-bound RecallCircuit
     → truth findings
     → change/admission information when requested
@@ -1162,14 +1163,15 @@ Fresh judgment is executed by exactly one configured Phase 2 judgment provider f
 The execution owner is the Blueprint application/service layer. It is reachable through:
 
 ```text
-Blueprint service
+Blueprint application surface
     phase2 plan
     phase2 verify
     phase2 synthesize
     phase2 seal
 ```
 
-Operator CLI commands use the same integrated Blueprint implementation and do not provide a separate standalone fallback.
+Operator CLI commands use the same integrated Blueprint implementation and do
+not provide a separate independently resident fallback.
 
 Every invocation is bounded by:
 
@@ -1567,7 +1569,7 @@ Blueprint-owned wire schemas are canonical under `blueprint/schemas/**` after th
 
 `src/lib/application/service.mjs` is the canonical public application behavior.
 
-CLI, MCP, SDK and daemon call it.
+CLI, MCP, SDK, the Hub-hosted query role, and bounded one-shot operations call it.
 
 Business/query policy is not copied into transport adapters.
 
@@ -1587,12 +1589,17 @@ Membrane's primary Blueprint path is:
 
 ```text
 Membrane
-→ persistent Blueprint daemon client
+→ active Hub
+→ Hub-hosted Blueprint client
 → recall
 → RecallCircuit
 ```
 
-Membrane never spawns a new Node process for normal Blueprint queries.
+Membrane never spawns a new Node process for normal Blueprint queries and never
+uses Blueprint one-shot as a fallback. With Hub inactive, Membrane returns typed
+`membrane_unavailable { reason: hub_inactive, retryable: true }`. One-shot
+selection belongs only to Blueprint's stable client for an explicit direct
+Blueprint operation.
 
 The seam remains generation-pinned and fail-closed on mismatch.
 
@@ -1852,7 +1859,7 @@ Required metrics include:
 - incremental build time;
 - edit→truthful-query latency;
 - peak RSS;
-- steady daemon RSS;
+- steady Hub-hosted Blueprint RSS;
 - DB/index size;
 - CPU;
 - subprocess count;
@@ -1874,16 +1881,19 @@ The SLO file must cover at least:
 - 1-file edit;
 - 10-file edit;
 - 100-file edit;
-- warm resident recall;
-- daemon-unavailable typed failure with no subprocess fallback.
+- warm Hub-hosted recall;
+- Hub-unavailable typed Membrane failure with no one-shot fallback;
+- bounded one-shot latency for explicit direct Blueprint operations.
 
 Targets may tighten through normal changes.
 
 Weakening a target requires an explicit architectural/release decision with benchmark evidence.
 
-## 23.6 Resident-query product gate
+## 23.6 Hosting-mode product gate
 
-At equal RecallCircuit semantics, the resident daemon path must materially outperform the per-query subprocess path.
+At equal RecallCircuit semantics, the Hub-hosted path should materially
+outperform the bounded one-shot path while producing identical results,
+ordering, digests, and generation semantics.
 
 The release gate is:
 
@@ -1893,7 +1903,8 @@ The release gate is:
 - no increase in per-query process creation;
 - bounded steady-state RSS.
 
-The subprocess path is not accepted as the normal performance baseline after daemon adoption.
+The bounded one-shot path is a Hub-off access mode for explicit Blueprint
+operations, not Membrane's normal performance baseline or fallback.
 
 ## 23.7 Agent outcome gate
 
@@ -1977,7 +1988,8 @@ Those responsibilities must be separated per §6.3.
 
 ## 24.5 Recall service
 
-The daemon already exists and is the correct runtime substrate.
+The existing service/application code is the correct query substrate to host
+inside Hub. Its independently resident daemon lifecycle is not retained.
 
 Add `recall` to:
 
@@ -2040,7 +2052,7 @@ One semantic concern has one canonical owner.
 | freshness | barrier/freshness + source observation |
 | admission | `src/lib/admission.mjs` consuming application recall/truth |
 | public application API | `src/lib/application/service.mjs` |
-| daemon | `src/service/**` |
+| Hub-hosted service/protocol role | `src/service/**` |
 | watcher | watcher subsystem; no query policy |
 | CLI | `scripts/blueprint.mjs`, lean adapters |
 | MCP | MCP adapter only |
@@ -2134,23 +2146,28 @@ Exit:
 - no model performs graph traversal;
 - legacy candidate logic is no longer independent.
 
-## Train D — resident seam + admission
+## Train D — Hub-hosted seam + admission
 
 Deliver:
 
-- daemon protocol `recall`;
+- protocol `recall`;
 - server/client support;
-- persistent resident query path;
-- Membrane daemon-first seam;
-- typed daemon-unavailable failure with no subprocess fallback;
+- persistent Hub-hosted query path;
+- Membrane Hub-first seam;
+- typed Hub-unavailable failure with no one-shot fallback from Membrane;
+- bounded one-shot routing for explicit direct Blueprint operations while Hub
+  is inactive;
+- public `path`, defined `architecture` flow-view semantics, and complete
+  inventory pagination/audit projection required by §17.3;
 - candidate compatibility adapter;
 - admission consumes RecallCircuit + truth;
 - generation/freshness/claim boundaries in admission receipts.
 
 Exit:
 
-- normal machine-to-machine recall creates no per-query Node process;
-- resident path beats subprocess path;
+- normal Membrane recall creates no per-query Node process;
+- Hub-hosted and one-shot modes are semantically identical, and the Hub-hosted
+  path meets the repeated-query latency gate;
 - admission uses no independent ranking/candidate policy;
 - host-enforcement boundary is preserved.
 
@@ -2361,13 +2378,15 @@ Blueprint is complete only when every item below is true.
 
 ## 28.8 Runtime
 
-- [ ] Daemon is the primary machine-to-machine path.
+- [ ] Hub-hosted Blueprint is the primary machine-to-machine path while Hub is active.
 - [ ] `recall` exists in the service protocol.
-- [ ] Daemon read requests use generation-pinned sessions.
+- [ ] Hub-hosted read requests use generation-pinned sessions.
 - [ ] Deadlines/cancellation/queues are bounded.
 - [ ] Watcher is not the query server.
 - [ ] Normal Membrane recall does not spawn Node per query.
-- [ ] Daemon unavailability fails typed; no subprocess fallback runs.
+- [ ] Hub unavailability fails typed for Membrane; no Blueprint one-shot fallback runs.
+- [ ] Explicit direct Blueprint operations use a bounded one-shot that never daemonizes.
+- [ ] `path`, `flows`, and complete inventory/audit obligations in §17.3 are satisfied.
 - [ ] Provider crashes/hangs are isolated and typed.
 - [ ] Last-known-good survives failures.
 
@@ -2439,7 +2458,8 @@ Blueprint synthesizes components and flows only as evidence-backed derived under
 Blueprint understands diffs, failures, impact, tests, liveness and history
 because its consumer is an agent that changes code.
 
-Blueprint uses a resident service for repeated agent queries.
+Blueprint uses a Hub-hosted query role for repeated agent queries and a bounded
+one-shot only for explicit direct Blueprint operations while Hub is inactive.
 
 Blueprint makes admission decisions from the same recall and truth primitives,
 while the host owns enforcement.
