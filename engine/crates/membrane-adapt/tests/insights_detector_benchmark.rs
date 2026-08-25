@@ -39,7 +39,15 @@ struct RawCase {
     case_id: String,
     case_class: String,
     known_gap: bool,
+    /// Canonical ground truth: what a CORRECT detector run should produce.
+    /// Used for scoring on every case, including known_gap ones, so a
+    /// documented gap always shows up as a real FP/FN in the numbers.
     should_fire: BTreeSet<String>,
+    /// Only meaningful on known_gap cases: the measured (buggy) firing set,
+    /// used solely to detect drift (silent fix or silent worsening). Never
+    /// used for precision/recall scoring.
+    #[serde(default)]
+    documented_actual_fire: BTreeSet<String>,
     #[serde(default)]
     expected_severity: BTreeMap<String, String>,
     #[allow(dead_code)]
@@ -187,7 +195,7 @@ fn run_case(raw: &RawCase) -> CaseResult {
 #[test]
 fn corpus_loads_and_has_expected_shape() {
     let corpus = load_corpus();
-    assert_eq!(corpus.len(), 49, "case count drifted; update this test deliberately if the corpus grew/shrank on purpose");
+    assert_eq!(corpus.len(), 50, "case count drifted; update this test deliberately if the corpus grew/shrank on purpose");
     let mut seen = BTreeSet::new();
     for c in &corpus {
         assert!(seen.insert(c.case_id.clone()), "duplicate case_id {}", c.case_id);
@@ -264,14 +272,17 @@ fn non_gap_cases_match_ground_truth_exactly() {
     assert!(failures.is_empty(), "ground-truth mismatch on non-gap cases:\n{}", failures.join("\n"));
 }
 
-/// known_gap cases document a REAL, reproduced false positive (or, in
-/// principle, false negative) — the case text was authored as a minimal
-/// faithful adversarial construction, then whatever the code actually did
-/// was recorded here. This assertion is intentionally the mirror image of
-/// a normal regression test: it fails if the documented gap silently
-/// stops reproducing (someone fixed it — great, but the corpus/README
-/// need to be told) or if it silently gets worse (spreads to another
-/// family). It never fails because we tuned text to make it pass.
+/// known_gap cases document a REAL, reproduced false positive or false
+/// negative — the case text was authored as a minimal faithful adversarial
+/// construction, then whatever the code actually did was recorded in
+/// `documented_actual_fire` (NOT `should_fire`, which stays the canonical
+/// truth so the precision/recall table below still shows these as real
+/// misses). This assertion is the mirror image of a normal regression
+/// test: it fails if the documented gap silently stops reproducing
+/// (someone fixed it — great, but the corpus/README need to be told) or if
+/// it silently gets worse (spreads to another family). It never fails
+/// because we tuned text to make it pass, and it never hides a gap from
+/// the scored table.
 #[test]
 fn known_gap_cases_reproduce_exactly_as_documented() {
     let corpus = load_corpus();
@@ -279,11 +290,11 @@ fn known_gap_cases_reproduce_exactly_as_documented() {
     for raw in corpus.iter().filter(|c| c.known_gap) {
         let result = run_case(raw);
         for family in ALL_FAMILIES {
-            let documented = raw.should_fire.contains(*family);
+            let documented = raw.documented_actual_fire.contains(*family);
             let actual = result.fired.contains(*family);
             if documented != actual {
                 drift.push(format!(
-                    "case {} [{}]: family {family} documented_gap_outcome={documented} actual={actual} (gap status changed — update README/corpus, do not silence)",
+                    "case {} [{}]: family {family} documented_actual_fire={documented} actual={actual} (gap status changed — update README/corpus, do not silence)",
                     raw.case_id, raw.case_class
                 ));
             }
