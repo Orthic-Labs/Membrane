@@ -57,6 +57,7 @@ import {
 } from "../src/graph/static-provider.mjs";
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../src/graph/ignored-prefixes.mjs";
 import { leafDigestForFile } from "../src/graph/merkle-ledger.mjs";
+import { gitSourceObservation } from "../src/graph/git-source-observation.mjs";
 import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { generateDocs, generatedDocsGenerationId } from "../src/lib/generated-docs.mjs";
@@ -873,45 +874,10 @@ async function build(root, outDir, options = {}) {
 // machine entry point for downstream consumers. Repo-relative paths only;
 // no absolute Windows/Mac paths; safe to diff and digest.
 // `.blueprint/` is retired outright (Adrian, 2026-08-05): no compat shim.
-function gitBaseCommit(root) {
-  try {
-    const value = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 5000,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return /^[0-9a-f]{40,64}$/i.test(value) ? value.toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
-
-function gitSourceObservation(root) {
-  const head = gitBaseCommit(root);
-  if (!head) return null;
-  try {
-    const status = execFileSync("git", [
-      "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".",
-      ":(exclude).agent", ":(exclude).agent/**",
-      ":(exclude)docs/product.md", ":(exclude)docs/architecture.md",
-    ], {
-      cwd: root,
-      timeout: 5000,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    return {
-      head,
-      dirty: status.length > 0,
-      statusDigest: xxh3Hex(status),
-    };
-  } catch {
-    return null;
-  }
-}
+//
+// gitBaseCommit/gitSourceObservation live in ../src/graph/git-source-observation.mjs
+// — the same observer the freshness-receipt path uses to compare "what is on
+// disk now" against "what was indexed", so the two sides can never drift.
 
 function finalizedSourceEpoch(root, before) {
   const after = gitSourceObservation(root);
