@@ -44,7 +44,15 @@ A capability marked IN is not complete because a stub, schema, flag, or unused m
 
 ### 0.2 Physical co-location does not change ownership
 
-Blueprint is one of the six named subsystems within the Membrane system. That product/system hierarchy does not make Blueprint an in-process module: Blueprint remains independently runnable and retains its own package, process, protocol, storage, watcher/service, testing, and qualification boundaries.
+Blueprint is one of the six named subsystems within the Membrane system. That
+product/system hierarchy does not make Blueprint an in-process module: Blueprint
+retains its own package, protocol, storage, watcher, testing, and qualification
+boundaries, and is **independently usable**.
+
+Independently usable is not independently resident. Blueprint's continuous
+watcher/freshness role is resident **only under an active Hub**. With Hub
+inactive there is no Blueprint watcher and no Blueprint daemon; the persisted
+graph remains explicitly usable through bounded one-shot operations.
 
 Blueprint and Membrane share one repository so their seam can evolve atomically.
 
@@ -60,7 +68,10 @@ They retain separate:
 
 Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
 
-Final packaging uses Blueprint as a separately versioned external service. Membrane ships one typed native client, never opens Blueprint SQLite, and typed-degrades Blueprint-dependent requests when service is absent while unrelated Membrane functions continue.
+Final packaging ships Blueprint as a Hub-hosted subsystem, not a separately
+versioned resident external service. Membrane ships one typed native client,
+never opens Blueprint SQLite, and typed-degrades Blueprint-dependent requests
+when Blueprint capability is absent while unrelated Membrane functions continue.
 
 The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
 
@@ -142,7 +153,7 @@ The completed Blueprint system includes all of the following:
 18. Lower-authority co-change evidence for change reasoning.
 19. Explainable change risk composed from named evidence-backed factors.
 20. Task-scoped admission/orientation decisions that consume recall and truth.
-21. A resident Blueprint service daemon as the primary machine-to-machine query path.
+21. A Hub-hosted query path as the primary machine-to-machine route, plus bounded one-shot operations when Hub is inactive.
 22. CLI, SDK, MCP and legacy-candidate adapters over the same application behavior.
 23. A watcher/freshness subsystem owned by Blueprint but separate from query serving.
 24. Incremental builds proven semantically equivalent to full builds.
@@ -1376,11 +1387,21 @@ The host enforces it.
 
 # 17. Runtime architecture
 
-## 17.1 Resident service is primary
+## 17.1 Hub-hosted query path is primary
 
-The primary machine-to-machine Blueprint path is the resident service daemon.
+The primary machine-to-machine Blueprint path is Blueprint running under an
+active Hub. Blueprint MUST NOT run as an independently resident daemon, register
+an OS service, or be auto-started by a client or agent.
 
-The daemon owns:
+When Hub is inactive, an explicit user/agent request MAY run a **bounded one-shot
+Blueprint operation** — query, refresh, reindex, re-anchor, or a Blueprint-owned
+record update — which publishes transactionally, reports what it did, and exits.
+A one-shot operation MUST NOT daemonize, start a watcher, start Hub, register a
+service, detach a worker, or linger. It is an explicit Blueprint product surface,
+never a silent Membrane fallback: Membrane never routes a context request to a
+one-shot Blueprint process.
+
+The Hub-hosted query role owns:
 
 - IPC endpoint;
 - request/response envelopes;
@@ -1404,9 +1425,54 @@ The watcher owns:
 - rebuild triggering;
 - freshness progression.
 
-The daemon owns queries.
+The Hub-hosted query role owns queries.
 
-The watcher and daemon may share lifecycle under `blueprint service run`, but they remain separate responsibilities.
+Watcher and query roles may share lifecycle under Hub, but they remain separate
+responsibilities. The watcher exists only while Hub is active.
+
+## 17.2.1 Store ownership and leasing
+
+Only Blueprint code may open the Blueprint store. Membrane, CodeRight, agents,
+and generic CLIs MUST NOT open its SQLite directly.
+
+Exclusion uses an OS-level lock as the primary mechanism, with a metadata lease
+for diagnosis only:
+
+```text
+BlueprintStoreLeaseV1
+  owner_kind: hub | one_shot
+  owner_instance_id
+  pid
+  process_start_identity
+  acquired_at
+  heartbeat_at
+  lease_epoch
+```
+
+PID alone is insufficient because PIDs are reused; `process_start_identity`
+disambiguates. A crashed owner releases through OS lock semantics, so stale lease
+metadata is repairable rather than permanently blocking. A one-shot writer
+attempted while Hub holds the writer role MUST route through Hub or fail with
+typed `resident_owner_active` — never become a second writer.
+
+## 17.2.2 Freshness semantics
+
+A query receipt MUST distinguish what was indexed from what is on disk now.
+"Indexed 12 minutes ago" is not freshness.
+
+```text
+generation:
+  indexed_revision
+  indexed_worktree_fingerprint
+current:
+  vcs_revision
+  dirty
+  worktree_fingerprint | bounded change observation
+freshness: fresh | changed_since_generation | unknown | unavailable
+```
+
+A successful query is never by itself evidence that the graph describes the
+current worktree.
 
 ## 17.3 Required daemon methods
 
@@ -1709,9 +1775,10 @@ Required metrics include:
 
 Required metrics include:
 
-- warm daemon recall p50/p95;
+- warm Hub-hosted recall p50/p95;
 - cold command latency;
-- daemon IPC overhead;
+- Hub-hosted query IPC overhead;
+- bounded one-shot operation total latency, Hub inactive (process start to exit);
 - build time;
 - incremental build time;
 - edit→truthful-query latency;
