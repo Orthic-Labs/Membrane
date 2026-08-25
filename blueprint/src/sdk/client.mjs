@@ -34,6 +34,7 @@ export class BlueprintClient {
   async recall(input = {}) { return this.#call("recall", input); }
   async expand(input = {}) { return this.#call("expand", input); }
   async impact(input = {}) { return this.#call("impact", input); }
+  async path(input = {}) { return this.#call("path", input); }
   async architecture(input = {}) { return this.#call("architecture", input); }
   async documentTruth(input = {}) { return this.#call("documentTruth", input); }
 

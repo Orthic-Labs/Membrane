@@ -19,6 +19,14 @@ export interface AnchorInput extends BlueprintServiceInput {
   cursor?: string;
 }
 
+export interface PathInput extends BlueprintServiceInput {
+  from: string;
+  to: string;
+  maxDepth?: number;
+  budget?: number;
+  cursor?: string;
+}
+
 export interface BlueprintResult {
   schemaVersion: number;
   generationId?: string;
@@ -39,7 +47,8 @@ export class BlueprintClient {
   recall(input: BlueprintServiceInput & { task?: string; query?: string; limit?: number }): Promise<BlueprintResult>;
   expand(input: AnchorInput): Promise<BlueprintResult>;
   impact(input: AnchorInput): Promise<BlueprintResult>;
-  architecture(input: BlueprintServiceInput & { budget?: number }): Promise<BlueprintResult>;
+  path(input: PathInput): Promise<BlueprintResult>;
+  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows"; budget?: number; maxFlows?: number; cursor?: string }): Promise<BlueprintResult>;
   documentTruth(input: BlueprintServiceInput & { claimId?: string; limit?: number }): Promise<BlueprintResult>;
   close(): Promise<void>;
 }
@@ -48,6 +57,8 @@ export class EmbeddedBlueprintClient {
   constructor(options?: { allowEmbeddedRoot?: boolean; outDir?: string });
   search(input: SearchInput): Promise<BlueprintSearchResult>;
   status(input?: BlueprintServiceInput): Promise<BlueprintResult>;
+  path(input: PathInput): Promise<BlueprintResult>;
+  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows"; budget?: number; maxFlows?: number; cursor?: string }): Promise<BlueprintResult>;
   close(): Promise<void>;
 }
 

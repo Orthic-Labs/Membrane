@@ -59,7 +59,7 @@ test("protocol envelopes round-trip", () => {
 });
 
 test("METHODS covers the six-tool surface plus read verbs", () => {
-  for (const method of ["status", "search", "resolve", "recall", "expand", "impact", "architecture", "documentTruth"]) {
+  for (const method of ["status", "search", "resolve", "recall", "expand", "impact", "path", "architecture", "documentTruth"]) {
     assert.ok(METHODS.includes(method));
   }
 });
