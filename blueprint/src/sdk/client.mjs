@@ -32,6 +32,9 @@ export class BlueprintClient {
     if (!response.ok) {
       const error = new Error(response.error?.message ?? "blueprint request failed");
       error.code = response.error?.code ?? "internal_error";
+      // Retain typed application details from Hub IPC. Consumers use these to
+      // surface the exact normalized root plus enrollment remediation.
+      if (response.error?.details !== undefined) error.details = response.error.details;
       throw error;
     }
     return this.#validated(response.result);

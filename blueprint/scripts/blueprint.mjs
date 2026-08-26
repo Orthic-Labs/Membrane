@@ -62,6 +62,8 @@ import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { generateDocs, generatedDocsGenerationId } from "../src/lib/generated-docs.mjs";
 import { dispatchFacade } from "./cli/commands.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { readWatchConfig } from "../watchman/supervisor.mjs";
 import {
   buildIncrementalPhase2Plan,
   isReconciliationDecisionCurrent,
@@ -3469,9 +3471,21 @@ async function main() {
   if (command === "graph") {
     const [subcommand, ...graphRest] = rest;
     const graphArgs = parseArgs(graphRest);
+    // Legacy graph aliases remain direct CLI compatibility paths, but an
+    // explicit root query still crosses Blueprint's authorization boundary.
+    // Explicit build is deliberately exempt: enrollment/first-use owns graph
+    // construction, while this retained maintenance command must remain able
+    // to repair an already-authorized graph without pretending every query is
+    // an enrollment action.
+    if (graphArgs.root !== undefined && subcommand !== "build") {
+      new RootRegistry(readWatchConfig().repos).resolve({ repoRoot: root });
+    }
     return await runGraphCommand(root, outDir, subcommand, graphArgs);
   }
-  if (command === "candidates") return await runGraphCommand(root, outDir, "candidates", args);
+  if (command === "candidates") {
+    if (args.root !== undefined) new RootRegistry(readWatchConfig().repos).resolve({ repoRoot: root });
+    return await runGraphCommand(root, outDir, "candidates", args);
+  }
   if (command === "findings") {
     return await runFindingsCommand(root, outDir, args);
   }

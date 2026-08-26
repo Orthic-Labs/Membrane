@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-26T21:45:12.037Z",
+ "generatedAt": "2026-08-26T22:29:23.223Z",
  "enforcementMode": "sealed",
  "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
  "totals": {
@@ -286,7 +286,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "3125d98f8ce6b6c6dc928eb6f8e8f5275e83690164f8348fdf72e67a29950ec1"
+   "content_digest": "94b5d676c3e1e2274fa2678c752bc27b2bb72cbba2e5764c73901a59f892383b"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -464,7 +464,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "612ffa5a87240a74347a079ed94f8c99ed088fe74fc566c7cbe73bf7d2b86366"
+   "content_digest": "94449ebc8777b34fa4c7bbd32b76710a3580cc3223c68e5a667cfbaafc1623da"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -787,7 +787,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "6650357256c464d6db2c76ec2bb9708dbd64e4e99df42436189a86cf897e3196"
+   "content_digest": "c608f856b8aef11ad94addf01b6f6796ad2e7b9dd3f65d25f80066fecf18c202"
   },
   {
    "id": "continuity-runtime-continuity-runtime",

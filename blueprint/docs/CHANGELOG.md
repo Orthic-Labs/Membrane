@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Blueprint is the canonical CLI. README, SKILL, IMPLEMENTATION-STATUS, and package description use
+- Blueprint is the canonical CLI. README, IMPLEMENTATION-STATUS, and package description use
   Blueprint naming; prose brands nodes/edges/flows as Neurons/Synapses/Circuits. No unshipped
   executable alias is claimed.
 

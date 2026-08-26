@@ -20,6 +20,19 @@ function endpointError(code, message) {
   return Object.assign(new Error(message), { code });
 }
 
+// IPC is a transport boundary, not an error-normalization boundary. In
+// particular root_not_enrolled carries the normalized root plus an exact
+// enrollment command; dropping that information turns a recoverable client
+// action into an ambiguous transport failure.
+function transportError(error, fallbackCode = "internal_error") {
+  const payload = {
+    code: error?.code ?? fallbackCode,
+    message: String(error?.message ?? error ?? "Blueprint request failed"),
+  };
+  if (error?.details !== undefined) payload.details = error.details;
+  return payload;
+}
+
 async function removeStaleUnixEndpoint(socketPath) {
   if (!existsSync(socketPath)) return;
   if (!lstatSync(socketPath).isSocket()) throw endpointError("endpoint_invalid", `daemon endpoint is not a socket: ${socketPath}`);
@@ -200,7 +213,7 @@ export function createDaemonServer({ service = null, findingsService = null, end
     try {
       validateProtocolVersion(message.protocolVersion);
     } catch (error) {
-      socket.write(encodeResponse({ requestId, ok: false, generation: null, result: null, error: { code: error.code, message: error.message } }));
+      socket.write(encodeResponse({ requestId, ok: false, generation: null, result: null, error: transportError(error) }));
       return;
     }
     if (message.method === "cancel") {
@@ -213,7 +226,7 @@ export function createDaemonServer({ service = null, findingsService = null, end
     }
     let deadlineMs;
     try { deadlineMs = validateDeadlineMs(message.deadlineMs, message.method); } catch (error) {
-      socket.write(encodeResponse({ requestId, ok: false, generation: null, result: null, error: { code: error.code, message: error.message } }));
+      socket.write(encodeResponse({ requestId, ok: false, generation: null, result: null, error: transportError(error) }));
       return;
     }
     if (!METHODS.includes(message.method)) {
@@ -268,7 +281,7 @@ export function createDaemonServer({ service = null, findingsService = null, end
       const result = await entry.work;
       settle(entry, { requestId, ok: true, generation: result?.generationId ?? null, result, error: null });
     } catch (error) {
-      settle(entry, { requestId, ok: false, generation: null, result: null, error: { code: error.code ?? "internal_error", message: String(error.message ?? error) } });
+      settle(entry, { requestId, ok: false, generation: null, result: null, error: transportError(error) });
     } finally { complete(entry); }
   }
 

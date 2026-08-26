@@ -134,6 +134,26 @@ test("blueprint graph status exits distinctly when no generation exists", () => 
   }
 });
 
+test("explicit graph root query rejects an unenrolled normalized root", () => {
+  const repo = copyFixture();
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-graph-cli-home-"));
+  try {
+    const result = spawnSync(process.execPath, [CLI, "graph", "status", "--root", repo, "--out", ".agent"], {
+      cwd: repo,
+      encoding: "utf8",
+      env: { ...process.env, HOME: home, USERPROFILE: home, HOMEDRIVE: path.parse(home).root, HOMEPATH: path.relative(path.parse(home).root, home) },
+    });
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    const payload = JSON.parse(result.stderr.trim());
+    assert.equal(payload.error.code, "root_not_enrolled");
+    assert.equal(payload.error.normalizedRoot, path.resolve(repo));
+    assert.equal(payload.error.remediation.nextOperation, `blueprint init --root ${JSON.stringify(path.resolve(repo))}`);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("doctor reports 'corrupt' for a present-but-unparseable map (distinct from missing)", () => {
   const repo = copyFixture();
   try {

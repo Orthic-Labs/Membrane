@@ -57,6 +57,27 @@ test("daemon client talks to the resident daemon", async () => {
   }
 });
 
+test("resident IPC preserves root enrollment details for direct clients", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-sdk-unenrolled-"));
+  const endpoint = temporaryDaemonEndpoint("blueprint-sdk-unenrolled");
+  const service = createBlueprintApplicationService({ rootRegistry: new RootRegistry(), allowEmbeddedRoot: false });
+  const daemon = createDaemonServer({ service, endpoint });
+  try {
+    await daemon.listen();
+    const client = new BlueprintClient({ endpoint, allowOneShot: false });
+    await assert.rejects(
+      client.search({ repoRoot: repo, query: "placeOrder" }),
+      (error) => error.code === "root_not_enrolled"
+        && error.details?.normalizedRoot === repo
+        && error.details?.remediation?.nextOperation === `blueprint init --root ${JSON.stringify(repo)}`,
+    );
+    await client.close();
+  } finally {
+    await daemon.close().catch(() => {});
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("stable direct client uses bounded one-shot when Hub daemon is absent", async () => {
   const repo = mkdtempSync(join(tmpdir(), "blueprint-sdk-one-shot-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
