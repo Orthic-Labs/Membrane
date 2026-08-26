@@ -9,13 +9,16 @@
 use sha2::{Digest, Sha256};
 use std::{
     env, fs,
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{mpsc, Mutex},
     thread,
     time::Duration,
 };
+
+#[cfg(unix)]
+use std::io::Read;
 
 pub const RUNTIME_ROOT_ENV: &str = "BLUEPRINT_RUNTIME_ROOT";
 pub const DAEMON_ENDPOINT_ENV: &str = "BLUEPRINT_DAEMON_ENDPOINT";
@@ -354,6 +357,9 @@ fn startup_failure(line: &str) -> String {
 }
 
 fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(), String> {
+    if workspace_is_enrolled(workspace_root) {
+        return Ok(());
+    }
     let status = Command::new(&layout.node)
         .arg(&layout.watcher)
         .arg("enroll")
@@ -363,11 +369,42 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
         .stderr(Stdio::null())
         .status()
         .map_err(|_| "blueprint_enrollment_spawn_failed".to_string())?;
-    if status.success() {
+    if status.success() || workspace_is_enrolled(workspace_root) {
         Ok(())
     } else {
         Err("blueprint_enrollment_failed".into())
     }
+}
+
+fn workspace_is_enrolled(workspace_root: &Path) -> bool {
+    let Some(profile) = env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) else {
+        return false;
+    };
+    watch_config_enrolls(
+        &PathBuf::from(profile).join(".blueprint").join("watch.json"),
+        workspace_root,
+    )
+}
+
+fn watch_config_enrolls(config_path: &Path, workspace_root: &Path) -> bool {
+    let Ok(expected) = fs::canonicalize(workspace_root) else {
+        return false;
+    };
+    let Ok(contents) = fs::read(config_path) else {
+        return false;
+    };
+    let Ok(config) = serde_json::from_slice::<serde_json::Value>(&contents) else {
+        return false;
+    };
+    config
+        .get("repos")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|repo| repo.get("enabled").and_then(serde_json::Value::as_bool) != Some(false))
+        .filter_map(|repo| repo.get("root").and_then(serde_json::Value::as_str))
+        .filter_map(|root| fs::canonicalize(root).ok())
+        .any(|root| root == expected)
 }
 
 fn kill_tree(child: &mut Child) {
@@ -404,7 +441,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         assert_eq!(
             RuntimeLayout::from_root(root.path().into()),
-            Err("blueprint_runtime_root_invalid".into())
+            Err("blueprint_runtime_layout_invalid".into())
         );
         fs::create_dir_all(root.path().join("lib")).unwrap();
         fs::create_dir_all(root.path().join("app/package/scripts")).unwrap();
@@ -474,5 +511,27 @@ mod tests {
             startup_failure(r#"{"error":{"code":"resident_owner_active"}}"#),
             "resident_owner_active"
         );
+    }
+
+    #[test]
+    fn enrolled_workspace_is_recognized_from_watch_registry() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        fs::create_dir(&workspace).unwrap();
+        let config = temp.path().join("watch.json");
+        fs::write(
+            &config,
+            serde_json::json!({
+                "version": 1,
+                "repos": [
+                    { "root": workspace, "enabled": true },
+                    { "root": temp.path().join("disabled"), "enabled": false }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert!(watch_config_enrolls(&config, &workspace));
+        assert!(!watch_config_enrolls(&config, &temp.path().join("missing")));
     }
 }
