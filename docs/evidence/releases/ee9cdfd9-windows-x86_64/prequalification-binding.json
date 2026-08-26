@@ -1,0 +1,23 @@
+{
+  "schema": "membrane.release-evidence.v1",
+  "provisional": true,
+  "artifact": {
+    "path": "apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane Hub_0.1.12_x64-setup.exe",
+    "sha256": "355d30103a6afd38bfd3e104f6ac9af774fde53eeb79c448e6b03e1142a1b320"
+  },
+  "release": {
+    "tag": "v0.1.12",
+    "version": "0.1.12",
+    "commit": "ee9cdfd96b13d345ac568093fc3591671361abc1",
+    "tree": "5bbabcd2669bbce667d4fb9d2bbcb8c3ddc08b68",
+    "generation": "679479b4fc0395c68ee0b33f4749af4bb363b2ff1b8671358d084d8e47b4ad19",
+    "target": "windows-x86_64",
+    "artifact_sha256": "355d30103a6afd38bfd3e104f6ac9af774fde53eeb79c448e6b03e1142a1b320",
+    "provisional": true
+  },
+  "sbom": {
+    "path": "docs\\evidence\\releases\\ee9cdfd9-windows-x86_64\\sbom.json",
+    "schema": "membrane.sbom.v1",
+    "artifact_sha256": "355d30103a6afd38bfd3e104f6ac9af774fde53eeb79c448e6b03e1142a1b320"
+  }
+}
