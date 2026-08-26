@@ -109,8 +109,12 @@ impl RuntimeLayout {
             fs::canonicalize(root).map_err(|_| "blueprint_runtime_root_invalid".to_string())?;
         // Blueprint remains an explicit runtime boundary inside installation.
         let node_name = if cfg!(windows) { "node.exe" } else { "node" };
-        let node = root.join("lib").join(node_name);
-        let package = root.join("app").join("package");
+        // Windows canonicalization returns an extended-length path. Keep
+        // canonical `root` for inventory/identity, but pass ordinary paths to
+        // Node: its module resolver rejects `\\?\\C:` script arguments.
+        let child_root = child_path(&root);
+        let node = child_root.join("lib").join(node_name);
+        let package = child_root.join("app").join("package");
         let cli = package.join("scripts").join("blueprint.mjs");
         let watcher = package.join("scripts").join("blueprint-watch.mjs");
         if !root.is_dir()
