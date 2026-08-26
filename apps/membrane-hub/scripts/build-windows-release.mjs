@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 
@@ -21,6 +21,7 @@ const installerRelative = join("bundle", "nsis", `Membrane Hub_${packageJson.ver
 
 function mirror(source, destination, label) {
   if (!existsSync(source)) throw new Error(`${label} is missing: ${source}`);
+  if (resolve(source).toLowerCase() === resolve(destination).toLowerCase()) return;
   mkdirSync(dirname(destination), { recursive: true });
   cpSync(source, destination);
 }
