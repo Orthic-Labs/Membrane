@@ -51,6 +51,7 @@ test("Windows release is signed, sealed & stays local", () => {
     "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5Mzk1RjlGRjQ2NjI2MUQKUldRZEptYjBuMTg1S1VSUXlBdFM4WmtzaHArYko0U2hRMDVlSDJmSExVZG82Q0hoQ2srUlhqanAK",
   );
   assert.equal(windowsTauriConfig.bundle.windows.allowDowngrades, true);
+  assert.equal(windowsTauriConfig.bundle.createUpdaterArtifacts, false);
   assert.equal(windowsTauriConfig.bundle.windows.nsis.allowDowngrades, undefined);
   assert.equal(tauriConfig.app.security.freezePrototype, true);
   assert.deepEqual(tauriConfig.app.security.capabilities, ["hub-local-ui"]);
