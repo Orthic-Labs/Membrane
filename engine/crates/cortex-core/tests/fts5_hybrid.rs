@@ -5,10 +5,8 @@
 //! fixture in core makes fusion behavior testable without a second vector or
 //! database owner.
 
-use cortex_core::{
-    default_scope, MemoryEntry, MemoryRegistry, MemoryRetriever, MemoryTier,
-};
 use cortex_core::retriever::LexicalHit;
+use cortex_core::{default_scope, MemoryEntry, MemoryRegistry, MemoryRetriever, MemoryTier};
 
 fn entry(id: &str, content: &str, keywords: &[&str], score: f64) -> MemoryEntry {
     MemoryEntry {
@@ -42,7 +40,10 @@ fn update_and_delete_are_reflected_by_adapter_results() {
     let mut registry = MemoryRegistry::new();
     registry.insert(updated);
     assert!(MemoryRetriever::retrieve(&registry, "rust", 10).is_empty());
-    assert_eq!(MemoryRetriever::retrieve(&registry, "python", 10)[0].id, "first");
+    assert_eq!(
+        MemoryRetriever::retrieve(&registry, "python", 10)[0].id,
+        "first"
+    );
     registry.remove("first");
     assert!(MemoryRetriever::retrieve(&registry, "python", 10).is_empty());
     let _ = first;
@@ -78,6 +79,8 @@ fn fts_hits_fuse_with_semantic_signal_and_drop_stale_rows() {
         10,
         None,
     );
-    assert!(results.iter().all(|entry| entry.id != "stale-deleted-record"));
+    assert!(results
+        .iter()
+        .all(|entry| entry.id != "stale-deleted-record"));
     assert_eq!(results[0].id, "lexical");
 }

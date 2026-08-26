@@ -47,30 +47,90 @@ fn precision_gate_blocks_families_below_threshold() {
 #[test]
 fn ledger_reopens_only_on_same_signature_recurrence() {
     let mut ledger = OutcomeLedger::default();
-    let high_exposure = Exposure { opportunities: 9, baseline: 10 };
+    let high_exposure = Exposure {
+        opportunities: 9,
+        baseline: 10,
+    };
     ledger.record("i", "m", RawOutcome::NoRecurrence, high_exposure, "");
     assert!(!ledger.should_reopen("i"));
-    ledger.record("i", "m", RawOutcome::RecurredDifferentSignature, high_exposure, "");
+    ledger.record(
+        "i",
+        "m",
+        RawOutcome::RecurredDifferentSignature,
+        high_exposure,
+        "",
+    );
     assert!(!ledger.should_reopen("i"));
-    ledger.record("i", "m", RawOutcome::RecurredSameSignature, high_exposure, "");
+    ledger.record(
+        "i",
+        "m",
+        RawOutcome::RecurredSameSignature,
+        high_exposure,
+        "",
+    );
     assert!(ledger.should_reopen("i"));
 }
 
 #[test]
 fn exposure_adjusts_outcome_class() {
     let mut ledger = OutcomeLedger::default();
-    let strong = ledger.record("a", "m", RawOutcome::NoRecurrence, Exposure { opportunities: 10, baseline: 10 }, "");
+    let strong = ledger.record(
+        "a",
+        "m",
+        RawOutcome::NoRecurrence,
+        Exposure {
+            opportunities: 10,
+            baseline: 10,
+        },
+        "",
+    );
     assert_eq!(format!("{:?}", strong.adjusted), "Effective");
-    let weak = ledger.record("b", "m", RawOutcome::NoRecurrence, Exposure { opportunities: 3, baseline: 10 }, "");
+    let weak = ledger.record(
+        "b",
+        "m",
+        RawOutcome::NoRecurrence,
+        Exposure {
+            opportunities: 3,
+            baseline: 10,
+        },
+        "",
+    );
     assert_eq!(format!("{:?}", weak.adjusted), "ProbablyEffective");
 }
 
 #[test]
 fn cost_classes_are_reported_separately() {
     let mut report = ContextCostReportV1::new("inst");
-    report.attribute("r1", CostClass::Measured, CostAmount { bytes: 100, tokens: Some(20) }).unwrap();
-    report.attribute("r2", CostClass::Inferred, CostAmount { bytes: 50, tokens: None }).unwrap();
-    report.attribute("r3", CostClass::Unattributed, CostAmount { bytes: 25, tokens: None }).unwrap();
+    report
+        .attribute(
+            "r1",
+            CostClass::Measured,
+            CostAmount {
+                bytes: 100,
+                tokens: Some(20),
+            },
+        )
+        .unwrap();
+    report
+        .attribute(
+            "r2",
+            CostClass::Inferred,
+            CostAmount {
+                bytes: 50,
+                tokens: None,
+            },
+        )
+        .unwrap();
+    report
+        .attribute(
+            "r3",
+            CostClass::Unattributed,
+            CostAmount {
+                bytes: 25,
+                tokens: None,
+            },
+        )
+        .unwrap();
     assert_eq!(report.measured_bytes(), 100);
     assert_eq!(report.inferred_bytes(), 50);
     assert_eq!(report.unattributed_bytes(), 25);

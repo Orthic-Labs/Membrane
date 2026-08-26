@@ -1,18 +1,18 @@
 use membrane_federation::shadow::{
-    execute_shadow, execute_shadow_with_cancellation, DifferenceClassification, ShadowAdapter, ShadowComparisonPolicy,
-    ShadowEffects, ShadowEngineOutput, ShadowFuture, ShadowReceiptSink, ShadowReport,
-    ShadowSnapshot, ShadowSourceSnapshot, ShadowDeadline, ShadowExecutionContext,
-    ShadowCancellation, ShadowError, ShadowFixture, ShadowFixtureManifest,
+    execute_shadow, execute_shadow_with_cancellation, DifferenceClassification, ShadowAdapter,
+    ShadowCancellation, ShadowComparisonPolicy, ShadowDeadline, ShadowEffects, ShadowEngineOutput,
+    ShadowError, ShadowExecutionContext, ShadowFixture, ShadowFixtureManifest, ShadowFuture,
+    ShadowReceiptSink, ShadowReport, ShadowSnapshot, ShadowSourceSnapshot,
 };
 use membrane_protocol::{
-    FederationRequestV1, FederationResponseV1, FederationStatus,
-    FEDERATION_REQUEST_SCHEMA_VERSION, FEDERATION_RESPONSE_SCHEMA_VERSION,
+    FederationRequestV1, FederationResponseV1, FederationStatus, FEDERATION_REQUEST_SCHEMA_VERSION,
+    FEDERATION_RESPONSE_SCHEMA_VERSION,
 };
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::Duration;
 fn request() -> FederationRequestV1 {
     FederationRequestV1 {
@@ -54,18 +54,28 @@ struct Sink(Arc<Mutex<Vec<ShadowReport>>>);
 
 impl ShadowReceiptSink for Sink {
     fn store(&self, report: &ShadowReport) -> Result<(), String> {
-        self.0.lock().map_err(|_| "poisoned".to_owned())?.push(report.clone());
+        self.0
+            .lock()
+            .map_err(|_| "poisoned".to_owned())?
+            .push(report.clone());
         Ok(())
     }
 }
 fn adapter(response: FederationResponseV1) -> impl ShadowAdapter {
     move |_context: ShadowExecutionContext| -> ShadowFuture {
         let response = response.clone();
-        Box::pin(async move { Ok(ShadowEngineOutput { response, effects: ShadowEffects::default() }) })
+        Box::pin(async move {
+            Ok(ShadowEngineOutput {
+                response,
+                effects: ShadowEffects::default(),
+            })
+        })
     }
 }
 fn block_on<F: Future>(mut future: F) -> F::Output {
-    unsafe fn clone(_: *const ()) -> RawWaker { RawWaker::new(std::ptr::null(), &VTABLE) }
+    unsafe fn clone(_: *const ()) -> RawWaker {
+        RawWaker::new(std::ptr::null(), &VTABLE)
+    }
     unsafe fn wake(_: *const ()) {}
     unsafe fn wake_by_ref(_: *const ()) {}
     unsafe fn drop(_: *const ()) {}
@@ -85,21 +95,32 @@ fn shadow_returns_legacy_and_records_redacted_semantic_difference() {
     let snapshot = ShadowSnapshot::new(
         request(),
         vec![ShadowSourceSnapshot::new(
-            "fixture-cortex", "memory:fixture", "sha256:source", Some("sha256:generation".into()),
+            "fixture-cortex",
+            "memory:fixture",
+            "sha256:source",
+            Some("sha256:generation".into()),
         )],
-    ).unwrap();
+    )
+    .unwrap();
     let sink = Sink::default();
     let result = block_on(execute_shadow(
         &adapter(response(FederationStatus::Complete, "legacy")),
         &adapter(response(FederationStatus::Partial, "native")),
         snapshot,
         ShadowDeadline::after(Duration::from_secs(1)),
-        ShadowComparisonPolicy::default().expected("$.status", DifferenceClassification::IntentionalVersionChange),
+        ShadowComparisonPolicy::default().expected(
+            "$.status",
+            DifferenceClassification::IntentionalVersionChange,
+        ),
         &sink,
-    )).unwrap();
+    ))
+    .unwrap();
     assert_eq!(result.legacy_response.status, FederationStatus::Complete);
     assert_eq!(result.report.status, "differed");
-    assert_eq!(result.report.differences[0].classification, DifferenceClassification::IntentionalVersionChange);
+    assert_eq!(
+        result.report.differences[0].classification,
+        DifferenceClassification::IntentionalVersionChange
+    );
     assert_eq!(sink.0.lock().unwrap().len(), 1);
     assert!(result.report.legacy_output_digest.starts_with("sha256:"));
 }
@@ -114,7 +135,8 @@ fn shadow_normalizes_transport_identity_and_never_allows_effects() {
         ShadowDeadline::after(Duration::from_secs(1)),
         ShadowComparisonPolicy::default(),
         &sink,
-    )).unwrap();
+    ))
+    .unwrap();
     assert!(result.report.is_match());
     assert_eq!(result.report.legacy_effects.persistent_writes, 0);
     assert_eq!(result.report.native_effects.duplicate_effects, 0);
@@ -127,7 +149,10 @@ fn shadow_rejects_persistent_or_duplicate_effects() {
         Box::pin(async {
             Ok(ShadowEngineOutput {
                 response: response(FederationStatus::Complete, "native"),
-                effects: ShadowEffects { persistent_writes: 1, ..ShadowEffects::default() },
+                effects: ShadowEffects {
+                    persistent_writes: 1,
+                    ..ShadowEffects::default()
+                },
             })
         })
     };
@@ -150,12 +175,24 @@ fn shadow_capability_rejects_persistent_duplicate_and_native_effects() {
         let effects = context.effects();
         Box::pin(async move {
             effects.simulated_write("fixture:one").unwrap();
-            assert_eq!(effects.simulated_write("fixture:one"), Err(ShadowError::DuplicateEffect));
-            assert_eq!(effects.persistent_write("fixture:one"), Err(ShadowError::PersistentWriteForbidden));
-            assert_eq!(effects.native_output(), Err(ShadowError::NativeOutputForbidden));
+            assert_eq!(
+                effects.simulated_write("fixture:one"),
+                Err(ShadowError::DuplicateEffect)
+            );
+            assert_eq!(
+                effects.persistent_write("fixture:one"),
+                Err(ShadowError::PersistentWriteForbidden)
+            );
+            assert_eq!(
+                effects.native_output(),
+                Err(ShadowError::NativeOutputForbidden)
+            );
             Ok(ShadowEngineOutput {
                 response: response(FederationStatus::Complete, "legacy"),
-                effects: ShadowEffects { simulated_writes: 1, ..ShadowEffects::default() },
+                effects: ShadowEffects {
+                    simulated_writes: 1,
+                    ..ShadowEffects::default()
+                },
             })
         })
     };
@@ -166,7 +203,8 @@ fn shadow_capability_rejects_persistent_duplicate_and_native_effects() {
         ShadowDeadline::after(Duration::from_secs(1)),
         ShadowComparisonPolicy::default(),
         &sink,
-    )).unwrap();
+    ))
+    .unwrap();
     assert_eq!(result.legacy_response.request_id, "legacy");
     assert_eq!(sink.0.lock().unwrap().len(), 1);
 }
@@ -181,9 +219,13 @@ fn shadow_native_output_is_never_authoritative() {
         ShadowDeadline::after(Duration::from_secs(1)),
         ShadowComparisonPolicy::default(),
         &sink,
-    )).unwrap();
+    ))
+    .unwrap();
     assert_eq!(result.legacy_response.request_id, "legacy");
-    assert_ne!(result.report.legacy_output_digest, result.report.native_output_digest);
+    assert_ne!(
+        result.report.legacy_output_digest,
+        result.report.native_output_digest
+    );
 }
 #[test]
 fn shadow_common_cancellation_reaches_both_adapter_contexts() {
@@ -196,7 +238,12 @@ fn shadow_common_cancellation_reaches_both_adapter_contexts() {
     let adapter = move |context: ShadowExecutionContext| -> ShadowFuture {
         *called_ref.lock().unwrap() = true;
         assert!(context.cancellation().is_cancelled());
-        Box::pin(async { Ok(ShadowEngineOutput { response: response(FederationStatus::Complete, "cancelled"), effects: ShadowEffects::default() }) })
+        Box::pin(async {
+            Ok(ShadowEngineOutput {
+                response: response(FederationStatus::Complete, "cancelled"),
+                effects: ShadowEffects::default(),
+            })
+        })
     };
     let result = block_on(execute_shadow_with_cancellation(
         &adapter,
@@ -214,9 +261,8 @@ fn shadow_common_cancellation_reaches_both_adapter_contexts() {
 fn shadow_deadline_is_enforced_around_pending_adapter_future() {
     let snapshot = ShadowSnapshot::new(request(), Vec::new()).unwrap();
     let sink = Sink::default();
-    let pending = |_context: ShadowExecutionContext| -> ShadowFuture {
-        Box::pin(std::future::pending())
-    };
+    let pending =
+        |_context: ShadowExecutionContext| -> ShadowFuture { Box::pin(std::future::pending()) };
     let result = block_on(execute_shadow(
         &pending,
         &adapter(response(FederationStatus::Complete, "native")),
@@ -231,17 +277,32 @@ fn shadow_deadline_is_enforced_around_pending_adapter_future() {
 #[test]
 fn shadow_fixture_manifest_is_sealed_and_classification_is_stable() {
     let mut intentional = BTreeMap::new();
-    intentional.insert("$.status".to_owned(), DifferenceClassification::IntentionalVersionChange);
+    intentional.insert(
+        "$.status".to_owned(),
+        DifferenceClassification::IntentionalVersionChange,
+    );
     let mut regression = BTreeMap::new();
-    regression.insert("$.providers[0].trust".to_owned(), DifferenceClassification::Regression);
+    regression.insert(
+        "$.providers[0].trust".to_owned(),
+        DifferenceClassification::Regression,
+    );
     let manifest = ShadowFixtureManifest::sealed(vec![
         ShadowFixture::new("status-change", intentional).unwrap(),
         ShadowFixture::new("provider-trust", regression).unwrap(),
-    ]).unwrap();
+    ])
+    .unwrap();
     let seal = manifest.seal().to_owned();
     assert!(seal.starts_with("sha256:"));
     assert!(manifest.verify_seal(&seal));
     assert_eq!(manifest.fixtures()[0].name(), "provider-trust");
-    assert_eq!(manifest.fixtures()[0].policy().classify("$.providers[0].trust"), DifferenceClassification::Regression);
-    assert_eq!(manifest.fixtures()[1].policy().classify("$.status"), DifferenceClassification::IntentionalVersionChange);
+    assert_eq!(
+        manifest.fixtures()[0]
+            .policy()
+            .classify("$.providers[0].trust"),
+        DifferenceClassification::Regression
+    );
+    assert_eq!(
+        manifest.fixtures()[1].policy().classify("$.status"),
+        DifferenceClassification::IntentionalVersionChange
+    );
 }

@@ -5,9 +5,9 @@
 //! [`MemoryCandidateSource`] is backed and supplies it through `ProviderContext`.
 
 use membrane_protocol::{
-    sort_candidates, sort_omissions, sort_warnings, CandidateV1, ProviderDiagnosticsV1,
-    ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode,
-    WarningSeverity, FederationProviderStatusV1, PROVIDER_OUTPUT_SCHEMA_VERSION,
+    sort_candidates, sort_omissions, sort_warnings, CandidateV1, FederationProviderStatusV1,
+    ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1,
+    ReasonCode, WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
     CapabilityV1, MemoryCandidate, MemoryCandidateSource, Provider, ProviderContext, ProviderError,
@@ -164,12 +164,12 @@ fn output_with_gap(
     }
 }
 
-fn build_output(context: &ProviderContext, response: SourceResponse<Vec<MemoryCandidate>>) -> ProviderOutput {
-    let mut warnings: Vec<ProviderWarningV1> = response
-        .warnings
-        .iter()
-        .map(source_warning)
-        .collect();
+fn build_output(
+    context: &ProviderContext,
+    response: SourceResponse<Vec<MemoryCandidate>>,
+) -> ProviderOutput {
+    let mut warnings: Vec<ProviderWarningV1> =
+        response.warnings.iter().map(source_warning).collect();
     let mut omissions = Vec::new();
     let mut candidates = Vec::new();
 
@@ -269,7 +269,10 @@ pub fn normalize_memory_candidate(
     .any(|value| value.trim().is_empty())
         || !candidate.provider_score.is_finite()
         || !(0.0..=1.0).contains(&candidate.provider_score)
-        || candidate.score_components.values().any(|value| !value.is_finite())
+        || candidate
+            .score_components
+            .values()
+            .any(|value| !value.is_finite())
         || candidate.source_hash != record.source_hash
     {
         return Err(ReasonCode::ProviderMalformed);

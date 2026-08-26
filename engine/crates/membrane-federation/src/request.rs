@@ -1,11 +1,7 @@
 //! Strict federation ingress validation and immutable request normalization.
 
-use crate::root::{
-    normalize_anchor_path, resolve_canonical_root, RootError, RootPathSource,
-};
-use membrane_protocol::{
-    DeadlineBudget, FederationRequestV1, FEDERATION_REQUEST_SCHEMA_VERSION,
-};
+use crate::root::{normalize_anchor_path, resolve_canonical_root, RootError, RootPathSource};
+use membrane_protocol::{DeadlineBudget, FederationRequestV1, FEDERATION_REQUEST_SCHEMA_VERSION};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -222,10 +218,7 @@ pub fn normalize_request<S: RootPathSource>(
     })
 }
 
-fn required(
-    field: &'static str,
-    value: &str,
-) -> Result<String, RequestValidationError> {
+fn required(field: &'static str, value: &str) -> Result<String, RequestValidationError> {
     let value = value.trim();
     (!value.is_empty())
         .then(|| value.to_owned())

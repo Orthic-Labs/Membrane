@@ -29,12 +29,30 @@ impl BenchmarkConfig {
     pub fn full() -> Self {
         Self {
             cases: vec![
-                CaseSpec { records: 2_361, scope_filter_bps: 10_000 },
-                CaseSpec { records: 2_361, scope_filter_bps: 1_000 },
-                CaseSpec { records: 30_549, scope_filter_bps: 10_000 },
-                CaseSpec { records: 30_549, scope_filter_bps: 1_000 },
-                CaseSpec { records: 100_000, scope_filter_bps: 10_000 },
-                CaseSpec { records: 100_000, scope_filter_bps: 1_000 },
+                CaseSpec {
+                    records: 2_361,
+                    scope_filter_bps: 10_000,
+                },
+                CaseSpec {
+                    records: 2_361,
+                    scope_filter_bps: 1_000,
+                },
+                CaseSpec {
+                    records: 30_549,
+                    scope_filter_bps: 10_000,
+                },
+                CaseSpec {
+                    records: 30_549,
+                    scope_filter_bps: 1_000,
+                },
+                CaseSpec {
+                    records: 100_000,
+                    scope_filter_bps: 10_000,
+                },
+                CaseSpec {
+                    records: 100_000,
+                    scope_filter_bps: 1_000,
+                },
             ],
             warm_queries: WARM_QUERIES,
         }
@@ -43,9 +61,18 @@ impl BenchmarkConfig {
     pub fn quick() -> Self {
         Self {
             cases: vec![
-                CaseSpec { records: 256, scope_filter_bps: 10_000 },
-                CaseSpec { records: 256, scope_filter_bps: 1_000 },
-                CaseSpec { records: 2_361, scope_filter_bps: 10_000 },
+                CaseSpec {
+                    records: 256,
+                    scope_filter_bps: 10_000,
+                },
+                CaseSpec {
+                    records: 256,
+                    scope_filter_bps: 1_000,
+                },
+                CaseSpec {
+                    records: 2_361,
+                    scope_filter_bps: 10_000,
+                },
             ],
             warm_queries: 2,
         }
@@ -220,12 +247,10 @@ fn recall_at_k(reference: &[VectorCandidate], observed: &[VectorCandidate]) -> f
 
 fn checksum_candidates(candidates: &[VectorCandidate]) -> u64 {
     candidates.iter().fold(0_u64, |checksum, candidate| {
-        candidate
-            .id
-            .bytes()
-            .fold(checksum ^ u64::from(candidate.score.to_bits()), |value, byte| {
-                value.rotate_left(5) ^ u64::from(byte)
-            })
+        candidate.id.bytes().fold(
+            checksum ^ u64::from(candidate.score.to_bits()),
+            |value, byte| value.rotate_left(5) ^ u64::from(byte),
+        )
     })
 }
 

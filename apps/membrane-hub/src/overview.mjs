@@ -24,7 +24,7 @@ export function normalizeSnapshot(snapshot) {
 }
 const TYPED_REASON_STATES = Object.freeze({
   not_instrumented: "not_configured",
-  not_configured: "not_configured",
+  root_not_enrolled: "root_not_enrolled",
   stale: "stale",
   stale_generation: "stale",
   blueprint_stale: "stale",
@@ -35,7 +35,7 @@ const TYPED_REASON_STATES = Object.freeze({
 const typedReasonState = reason => TYPED_REASON_STATES[String(reason ?? "").toLowerCase()] || null;
 export const lifecycleReasonLabel = reason => ({
   not_instrumented: "Not configured",
-  not_configured: "Not configured",
+  root_not_enrolled: "Root not enrolled",
   stale: "Stale",
   stale_generation: "Stale generation",
   blueprint_stale: "Blueprint stale",
@@ -52,7 +52,7 @@ const firstItem = section => Array.isArray(section?.items) ? section.items[0] ||
 const number = value => value !== null && value !== undefined && Number.isFinite(Number(value)) ? new Intl.NumberFormat("en").format(Number(value)) : "—";
 const time = value => { const date = new Date(value); return value && !Number.isNaN(date.valueOf()) ? date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Unknown"; };
 const injected = adapter => Number(String(adapter?.delivering?.evidence || "").match(/([\d,]+) inject/i)?.[1]?.replaceAll(",", "") || 0);
-const stateLabel = state => ({ available: "Available", degraded: "Degraded", unavailable: "Unavailable", not_configured: "Not configured", stale: "Stale", transport_unavailable: "Transport unavailable", hub_inactive: "Hub inactive", resident_owner_active: "Resident owner active", running: "Running", offline: "Offline", unknown: "Unknown" }[state] || "Unknown");
+const stateLabel = state => ({ available: "Available", degraded: "Degraded", unavailable: "Unavailable", not_configured: "Not configured", root_not_enrolled: "Root not enrolled", stale: "Stale", transport_unavailable: "Transport unavailable", hub_inactive: "Hub inactive", resident_owner_active: "Resident owner active", running: "Running", offline: "Offline", unknown: "Unknown" }[state] || "Unknown");
 const serviceLabel = state => ({ running: "Running", degraded: "Degraded", offline: "Offline" }[state] || "Offline");
 const pill = state => `<span class="state-pill state-${esc(state || "unknown")}"><i aria-hidden="true"></i>${esc(stateLabel(state))}</span>`;
 const metric = (label, value, detail, state) => `<article class="metric state-${esc(state || "unknown")}"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(detail)}</small></article>`;

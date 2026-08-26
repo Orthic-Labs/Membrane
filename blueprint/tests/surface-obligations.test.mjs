@@ -7,6 +7,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { readFileSync } from "node:fs";
 
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 import { buildGraphGeneration, graphFlowInventory } from "../src/graph/static-provider.mjs";
 import { closeStore, listEdgeCore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { METHODS } from "../src/service/protocol.mjs";
@@ -49,7 +50,7 @@ test("path is a public protocol method and uses bounded application traversal", 
   const repo = builtRepo();
   try {
     assert.ok(METHODS.includes("path"));
-    const result = await createBlueprintApplicationService().path({
+    const result = await createBlueprintApplicationService({ allowEmbeddedRoot: true }).path({
       repoRoot: repo,
       ...connectedPair(repo),
       maxDepth: 2,
@@ -61,7 +62,7 @@ test("path is a public protocol method and uses bounded application traversal", 
     assert.ok(result.generationId);
     assert.equal(result.truncated, false);
     await assert.rejects(
-      createBlueprintApplicationService().path({ repoRoot: repo, from: result.from, to: result.to, maxDepth: 13 }),
+      createBlueprintApplicationService({ allowEmbeddedRoot: true }).path({ repoRoot: repo, from: result.from, to: result.to, maxDepth: 13 }),
       (error) => error.code === "path_bounds_invalid",
     );
   } finally {
@@ -72,7 +73,7 @@ test("path is a public protocol method and uses bounded application traversal", 
 test("path cursors fail closed and bind generation, endpoints, and traversal bounds", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const chain = connectedChain(repo);
     const input = { repoRoot: repo, from: chain.from, to: chain.to, maxDepth: 2, budget: 128 };
     const first = await service.path(input);
@@ -127,7 +128,7 @@ test("flow pages use canonical full-path order and unique full-path digest ids",
 test("architecture flows have deterministic bounded pages and generation-bound cursors", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const first = await service.architecture({ repoRoot: repo, view: "flows", maxFlows: 1 });
     assert.equal(first.schemaVersion, 2);
     assert.equal(first.kind, "architecture");
@@ -157,8 +158,9 @@ test("architecture flows have deterministic bounded pages and generation-bound c
 test("Hub-hosted and bounded one-shot surfaces agree and generation mismatch fails closed", async () => {
   const repo = builtRepo();
   try {
-    const direct = createBlueprintApplicationService({ freshnessOwnership: "one_shot" });
-    const hosted = createBlueprintApplicationService({ freshnessOwnership: "resident" });
+    const rootRegistry = new RootRegistry([{ root: repo }]);
+    const direct = createBlueprintApplicationService({ freshnessOwnership: "one_shot", rootRegistry });
+    const hosted = createBlueprintApplicationService({ freshnessOwnership: "resident", rootRegistry });
     // A copied fixture is not a VCS checkout, so the resident observer honestly
     // reports unavailable freshness. allowStale lets us compare the pinned
     // generation payload while preserving that receipt distinction.

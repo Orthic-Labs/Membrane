@@ -5,8 +5,8 @@
 //! Python modules or derives repository identity from a filesystem path.
 
 use membrane_protocol::{
-    CandidateV1, FederationProviderStatusV1, ProviderDiagnosticsV1, ProviderId,
-    ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
+    CandidateV1, FederationProviderStatusV1, ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1,
+    ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
     PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
@@ -105,25 +105,39 @@ pub async fn provide_from_source(
         .release_generation
         .as_deref()
         .or(context.freshness.generation.as_deref());
-    let observed_generation = response
-        .generation
-        .clone()
-        .or_else(|| response.value.first().map(|finding| finding.generation.clone()));
+    let observed_generation = response.generation.clone().or_else(|| {
+        response
+            .value
+            .first()
+            .map(|finding| finding.generation.clone())
+    });
 
     if let Some(expected) = expected_generation.filter(|value| !value.trim().is_empty()) {
         if observed_generation.as_deref() != Some(expected)
-            || response.value.iter().any(|finding| finding.generation != expected)
+            || response
+                .value
+                .iter()
+                .any(|finding| finding.generation != expected)
         {
-            return Ok(generation_gap(expected, observed_generation.as_deref().unwrap_or("")));
+            return Ok(generation_gap(
+                expected,
+                observed_generation.as_deref().unwrap_or(""),
+            ));
         }
     } else if let Some(observed) = observed_generation.as_deref() {
-        if response.value.iter().any(|finding| finding.generation != observed) {
+        if response
+            .value
+            .iter()
+            .any(|finding| finding.generation != observed)
+        {
             return Ok(generation_gap(observed, "mixed"));
         }
     }
 
     let mut output = empty_output(observed_generation.clone());
-    output.warnings.extend(response.warnings.iter().map(source_warning));
+    output
+        .warnings
+        .extend(response.warnings.iter().map(source_warning));
     for finding in response.value {
         match normalize_audit_finding(&finding, &context.repository_id, expected_generation) {
             Ok(candidate) => output.candidates.push(candidate),
@@ -162,14 +176,17 @@ pub async fn provide_from_source(
             message: None,
         });
     } else {
-        output.status = if response.complete && output.warnings.is_empty() && output.omissions.is_empty() {
-            FederationProviderStatusV1::Complete
-        } else {
-            FederationProviderStatusV1::Partial
-        };
+        output.status =
+            if response.complete && output.warnings.is_empty() && output.omissions.is_empty() {
+                FederationProviderStatusV1::Complete
+            } else {
+                FederationProviderStatusV1::Partial
+            };
     }
 
-    output.candidates.sort_by(|left, right| left.id.cmp(&right.id));
+    output
+        .candidates
+        .sort_by(|left, right| left.id.cmp(&right.id));
     output.warnings.sort_by(|left, right| {
         left.reason
             .as_str()
@@ -230,7 +247,10 @@ pub fn normalize_audit_finding(
     .any(|value| value.trim().is_empty())
         || !candidate.provider_score.is_finite()
         || !(0.0..=1.0).contains(&candidate.provider_score)
-        || candidate.score_components.values().any(|value| !value.is_finite())
+        || candidate
+            .score_components
+            .values()
+            .any(|value| !value.is_finite())
     {
         return Err(ReasonCode::ProviderMalformed);
     }
@@ -252,13 +272,20 @@ fn empty_output(generation: Option<String>) -> ProviderOutputV1 {
             provider: PROVIDER_ID,
             elapsed_ms: None,
             generation: None,
-            attributes: BTreeMap::from([(String::from("provenance"), String::from("audit-finding-source"))]),
+            attributes: BTreeMap::from([(
+                String::from("provenance"),
+                String::from("audit-finding-source"),
+            )]),
         }),
         extensions: BTreeMap::new(),
     }
 }
 
-fn gap_output(status: FederationProviderStatusV1, reason: ReasonCode, detail: &str) -> ProviderOutput {
+fn gap_output(
+    status: FederationProviderStatusV1,
+    reason: ReasonCode,
+    detail: &str,
+) -> ProviderOutput {
     ProviderOutputV1 {
         schema_version: PROVIDER_OUTPUT_SCHEMA_VERSION,
         provider: PROVIDER_ID,
@@ -298,7 +325,10 @@ fn source_warning(warning: &SourceWarning) -> ProviderWarningV1 {
         provider: PROVIDER_ID,
         reason: ReasonCode::parse(&warning.code).unwrap_or(ReasonCode::ProviderFailed),
         severity: WarningSeverity::Warning,
-        detail_id: warning.detail_id.clone().or_else(|| nonempty(&warning.code)),
+        detail_id: warning
+            .detail_id
+            .clone()
+            .or_else(|| nonempty(&warning.code)),
         stage: Some("source".into()),
         message: None,
     }
@@ -306,7 +336,9 @@ fn source_warning(warning: &SourceWarning) -> ProviderWarningV1 {
 
 fn reason_for_error(error: &ProviderError) -> ReasonCode {
     match error {
-        ProviderError::Unavailable(_) | ProviderError::MissingSource(_) => ReasonCode::ProviderUnavailable,
+        ProviderError::Unavailable(_) | ProviderError::MissingSource(_) => {
+            ReasonCode::ProviderUnavailable
+        }
         ProviderError::MalformedOutput(_) => ReasonCode::ProviderMalformed,
         ProviderError::IdentityMismatch(_) => ReasonCode::GenerationIncoherent,
         ProviderError::SourceFailure(_) => ReasonCode::ProviderFailed,

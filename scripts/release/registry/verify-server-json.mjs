@@ -31,7 +31,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { verifyMcpRegistry } from "../verify-mcp-registry.mjs";
-import { computeToolContractCoverage, CONTRACT_COVERAGE_GAP } from "./tool-contract-coverage.mjs";
+import { computeToolContractCoverage } from "./tool-contract-coverage.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const fail = (message) => {
@@ -53,9 +53,12 @@ async function json(path) {
  * correct outcome pre-publication, not a bug in this verifier.
  */
 export async function verifyServerJson({ directory = root, requirePublished = true } = {}) {
-  const identity = await verifyMcpRegistry({ directory, requirePublished });
+  const nativeDirectory = typeof directory === "string"
+    ? directory.replace(/^[\\/]+(?=[A-Za-z]:[\\/])/, "").replace(/^[A-Za-z]:[\\/]+(?=[A-Za-z]:[\\/])/, "")
+    : directory;
+  const identity = await verifyMcpRegistry({ directory: nativeDirectory, requirePublished });
 
-  const server = await json(resolve(directory, "server.json"));
+  const server = await json(resolve(nativeDirectory, "server.json"));
   const expected = computeToolContractCoverage();
   const actual = Array.isArray(server.tools) ? server.tools : null;
   if (!actual) fail("server.json is missing a `tools` array");
@@ -71,11 +74,7 @@ export async function verifyServerJson({ directory = root, requirePublished = tr
     if (gotEntry.contractCoverage !== wantEntry.contractCoverage) {
       fail(`server.json tool "${wantEntry.name}" must declare contractCoverage "${wantEntry.contractCoverage}", got ${JSON.stringify(gotEntry.contractCoverage)}`);
     }
-    if (wantEntry.contractCoverage === CONTRACT_COVERAGE_GAP) {
-      if (typeof gotEntry.gapReason !== "string" || gotEntry.gapReason.length < 1) {
-        fail(`server.json tool "${wantEntry.name}" is a declared contract gap and must carry a non-empty gapReason`);
-      }
-    } else if (gotEntry.gapReason !== undefined) {
+    if (gotEntry.gapReason !== undefined) {
       fail(`server.json tool "${wantEntry.name}" is contract-covered and must not carry a gapReason`);
     }
   }

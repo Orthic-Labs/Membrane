@@ -1,7 +1,10 @@
 #[path = "../src/absorbed.rs"]
 mod absorbed;
 
-use absorbed::{content_hash, event_range, validate_event_import, ProvenanceRef, SessionEvent, ABSORBED_SCHEMA_VERSION};
+use absorbed::{
+    content_hash, event_range, validate_event_import, ProvenanceRef, SessionEvent,
+    ABSORBED_SCHEMA_VERSION,
+};
 
 fn event(seq: u64, id: &str) -> SessionEvent {
     SessionEvent {
@@ -17,10 +20,10 @@ fn event(seq: u64, id: &str) -> SessionEvent {
         lifecycle: "active".into(),
         retention: "session".into(),
         provenance: vec![ProvenanceRef {
-                source: "fixture".into(),
-                source_event_ids: vec![id.into()],
-                producer: Some("test".into()),
-            }],
+            source: "fixture".into(),
+            source_event_ids: vec![id.into()],
+            producer: Some("test".into()),
+        }],
         occurred_at_ms: seq,
         recorded_at_ms: seq,
         content_hash: format!("hash-{seq}"),
@@ -39,10 +42,16 @@ fn imports_only_contiguous_ordered_events() {
 fn range_is_inclusive_exclusive_and_stable() {
     let events = vec![event(1, "e1"), event(2, "e2"), event(3, "e3")];
     let page = event_range(&events, 1, 3);
-    assert_eq!(page.iter().map(|item| item.seq).collect::<Vec<_>>(), vec![1, 2]);
+    assert_eq!(
+        page.iter().map(|item| item.seq).collect::<Vec<_>>(),
+        vec![1, 2]
+    );
 }
 
 #[test]
 fn content_hash_is_deterministic() {
-    assert_eq!(content_hash(&serde_json::json!({"a": 1})).unwrap(), content_hash(&serde_json::json!({"a": 1})).unwrap());
+    assert_eq!(
+        content_hash(&serde_json::json!({"a": 1})).unwrap(),
+        content_hash(&serde_json::json!({"a": 1})).unwrap()
+    );
 }

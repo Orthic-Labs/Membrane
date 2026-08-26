@@ -483,12 +483,14 @@ pub fn evaluate_gate(
         reason_codes: Vec::new(),
         omissions: snapshot.omissions.clone(),
     };
-    let finish =
-        |mut decision: DiagnosticGateDecisionV1, outcome, reasons: Vec<String>| -> DiagnosticGateDecisionV1 {
-            decision.outcome = outcome;
-            decision.reason_codes = reasons;
-            decision
-        };
+    let finish = |mut decision: DiagnosticGateDecisionV1,
+                  outcome,
+                  reasons: Vec<String>|
+     -> DiagnosticGateDecisionV1 {
+        decision.outcome = outcome;
+        decision.reason_codes = reasons;
+        decision
+    };
 
     // 1. Identity, supersession, and manifest conflict (§4, §5.3 step 1).
     let observed = &snapshot.workspace_epoch;
@@ -530,7 +532,10 @@ pub fn evaluate_gate(
         .iter()
         .filter(|observation| {
             (observation.severity_hint == SeverityHint::Blocking
-                || policy.blocking_codes.iter().any(|code| code == &observation.code))
+                || policy
+                    .blocking_codes
+                    .iter()
+                    .any(|code| code == &observation.code))
                 && observed_blocking_ids.insert(observation.observation_id.as_str())
         })
         .map(|observation| observation.observation_id.as_str())
@@ -548,8 +553,7 @@ pub fn evaluate_gate(
                 })
                 .map(|observation| observation.observation_id.clone())
                 .collect();
-            if !represented_for_issue.is_empty()
-                && emitted_issue_ids.insert(issue.issue_id.clone())
+            if !represented_for_issue.is_empty() && emitted_issue_ids.insert(issue.issue_id.clone())
             {
                 blocking_issue_ids.push(issue.issue_id.clone());
                 represented_observation_ids.extend(represented_for_issue);
@@ -570,9 +574,7 @@ pub fn evaluate_gate(
     }
 
     // Guard: empty policy + empty obligations + empty lanes must never be clean (rejected shape: empty arrays as clean).
-    if policy.required_capabilities.is_empty()
-        && snapshot.coverage_obligations.is_empty()
-    {
+    if policy.required_capabilities.is_empty() && snapshot.coverage_obligations.is_empty() {
         if snapshot.coverage_lanes.is_empty() {
             return finish(
                 decision,
@@ -775,11 +777,7 @@ mod tests {
         }
     }
 
-    fn observation(
-        observation_id: &str,
-        severity_hint: SeverityHint,
-        code: &str,
-    ) -> ObservationV1 {
+    fn observation(observation_id: &str, severity_hint: SeverityHint, code: &str) -> ObservationV1 {
         ObservationV1 {
             observation_id: observation_id.to_string(),
             provider_id: "typescript".to_string(),
@@ -806,7 +804,10 @@ mod tests {
         let encoded = serde_json::to_value(&value).unwrap();
         assert_eq!(encoded["schemaVersion"], json!("workspace-epoch.v1"));
         assert_eq!(encoded["sourceManifestDigest"], json!("sha256:manifest"));
-        assert_eq!(encoded["changedFileHashes"][0]["path"], json!("src/main.ts"));
+        assert_eq!(
+            encoded["changedFileHashes"][0]["path"],
+            json!("src/main.ts")
+        );
         assert_eq!(encoded["parentEpoch"], json!(3));
         assert_eq!(encoded["origin"], json!("transactional"));
         let decoded: WorkspaceEpochV1 = serde_json::from_value(encoded).unwrap();
@@ -837,7 +838,10 @@ mod tests {
             json!("sha256:main")
         );
         assert_eq!(encoded["requestMaxCost"], json!("interactive"));
-        assert_eq!(encoded["coverageObligations"][0]["languageDialect"], json!("typescript"));
+        assert_eq!(
+            encoded["coverageObligations"][0]["languageDialect"],
+            json!("typescript")
+        );
         assert_eq!(encoded["blueprintFreshness"], json!("current"));
         let decoded: DiagnosticEvidenceSnapshotV1 = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded, value);
@@ -852,10 +856,15 @@ mod tests {
             observations: vec![observation("obs-1", SeverityHint::Blocking, "TS2305")],
             classification: DeltaClassification::New,
         });
-        snapshot.observations.push(observation("obs-1", SeverityHint::Blocking, "TS2305"));
+        snapshot
+            .observations
+            .push(observation("obs-1", SeverityHint::Blocking, "TS2305"));
         let value = evaluate_gate(&snapshot, &epoch(5), &policy(&[]));
         let encoded = serde_json::to_value(&value).unwrap();
-        assert_eq!(encoded["schemaVersion"], json!("diagnostics-gate-decision.v1"));
+        assert_eq!(
+            encoded["schemaVersion"],
+            json!("diagnostics-gate-decision.v1")
+        );
         assert_eq!(encoded["blockingIssueIds"], json!(["issue-1"]));
         assert_eq!(encoded["reasonCodes"], json!(["exact_blocker"]));
         assert_eq!(encoded["policyDigest"], json!("sha256:policy"));
@@ -943,7 +952,13 @@ mod tests {
                 LaneState::Unsupported,
             ])
             .unwrap(),
-            json!(["complete", "partial", "unavailable", "timed_out", "unsupported"])
+            json!([
+                "complete",
+                "partial",
+                "unavailable",
+                "timed_out",
+                "unsupported"
+            ])
         );
         assert_eq!(
             serde_json::to_value(ObligationState::SatisfiedAdvisory).unwrap(),
@@ -977,7 +992,10 @@ mod tests {
             ObligationState::Unsatisfied
         );
         assert_eq!(WorkspaceEpochV1::default().epoch, 0);
-        assert_eq!(DiagnosticEvidenceSnapshotV1::default().request_max_cost, CostClass::Instant);
+        assert_eq!(
+            DiagnosticEvidenceSnapshotV1::default().request_max_cost,
+            CostClass::Instant
+        );
     }
 
     #[test]
@@ -1083,13 +1101,19 @@ mod tests {
     #[test]
     fn blocking_code_matches_even_when_severity_hint_is_advisory() {
         let mut snapshot = snapshot_at(epoch(5));
-        snapshot
-            .observations
-            .push(observation("obs-1", SeverityHint::Advisory, "no-explicit-any"));
+        snapshot.observations.push(observation(
+            "obs-1",
+            SeverityHint::Advisory,
+            "no-explicit-any",
+        ));
         snapshot.issues.push(DiagnosticIssueV1 {
             issue_id: "issue-1".to_string(),
             correlation_key: "repo-1|src/main.ts|no-explicit-any".to_string(),
-            observations: vec![observation("obs-1", SeverityHint::Advisory, "no-explicit-any")],
+            observations: vec![observation(
+                "obs-1",
+                SeverityHint::Advisory,
+                "no-explicit-any",
+            )],
             classification: DeltaClassification::Persistent,
         });
         let mut gate_policy = policy(&[]);
@@ -1169,7 +1193,11 @@ mod tests {
     #[test]
     fn empty_evidence_with_requirements_is_never_clean() {
         let snapshot = snapshot_at(epoch(5));
-        let decision = evaluate_gate(&snapshot, &epoch(5), &policy(&[CapabilityVocabulary::Syntax]));
+        let decision = evaluate_gate(
+            &snapshot,
+            &epoch(5),
+            &policy(&[CapabilityVocabulary::Syntax]),
+        );
         assert_ne!(decision.outcome, GateOutcome::CleanExact);
         assert_eq!(decision.outcome, GateOutcome::UnknownIncomplete);
     }

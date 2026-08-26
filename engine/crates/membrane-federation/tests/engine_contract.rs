@@ -19,7 +19,8 @@ fn output(provider: ProviderId, id: &str) -> ProviderOutputV1 {
             provider: None,
             source_kind: "fixture".into(),
             source_ref: format!("fixture://{id}"),
-            source_hash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
+            source_hash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .into(),
             trust_class: "agent_verified".into(),
             instruction_policy: "data_only".into(),
             provider_score: 0.5,

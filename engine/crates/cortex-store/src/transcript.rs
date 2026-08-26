@@ -100,7 +100,10 @@ impl TranscriptStore {
                 payload,
             ],
         )?;
-        tx.execute("DELETE FROM cortex_transcript_chunks_fts WHERE chunk_id=?1", [&chunk.chunk_id])?;
+        tx.execute(
+            "DELETE FROM cortex_transcript_chunks_fts WHERE chunk_id=?1",
+            [&chunk.chunk_id],
+        )?;
         tx.execute(
             "INSERT INTO cortex_transcript_chunks_fts(chunk_id,session_id,scope_id,content,keywords)
              VALUES (?1,?2,?3,?4,?5)",
@@ -114,7 +117,10 @@ impl TranscriptStore {
         self.put(chunk)
     }
 
-    pub fn get(&self, chunk_id: &str) -> Result<Option<TranscriptChunkRecord>, TranscriptStoreError> {
+    pub fn get(
+        &self,
+        chunk_id: &str,
+    ) -> Result<Option<TranscriptChunkRecord>, TranscriptStoreError> {
         let conn = self.db.lock();
         ensure_schema(&conn)?;
         let payload = conn
@@ -177,7 +183,13 @@ impl TranscriptStore {
              ORDER BY 2 DESC, chunks.chunk_id ASC LIMIT ?4 OFFSET ?5",
         )?;
         let rows = statement.query_map(
-            params![match_query, session_id, scope_id, limit as i64, offset as i64],
+            params![
+                match_query,
+                session_id,
+                scope_id,
+                limit as i64,
+                offset as i64
+            ],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?)),
         )?;
         let mut hits = Vec::new();
@@ -195,8 +207,14 @@ impl TranscriptStore {
         let conn = self.db.lock();
         ensure_schema(&conn)?;
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM cortex_transcript_chunks_fts WHERE chunk_id=?1", [chunk_id])?;
-        let changed = tx.execute("DELETE FROM cortex_transcript_chunks WHERE chunk_id=?1", [chunk_id])?;
+        tx.execute(
+            "DELETE FROM cortex_transcript_chunks_fts WHERE chunk_id=?1",
+            [chunk_id],
+        )?;
+        let changed = tx.execute(
+            "DELETE FROM cortex_transcript_chunks WHERE chunk_id=?1",
+            [chunk_id],
+        )?;
         tx.commit()?;
         Ok(changed != 0)
     }
@@ -205,8 +223,14 @@ impl TranscriptStore {
         let conn = self.db.lock();
         ensure_schema(&conn)?;
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM cortex_transcript_chunks_fts WHERE session_id=?1", [session_id])?;
-        let changed = tx.execute("DELETE FROM cortex_transcript_chunks WHERE session_id=?1", [session_id])?;
+        tx.execute(
+            "DELETE FROM cortex_transcript_chunks_fts WHERE session_id=?1",
+            [session_id],
+        )?;
+        let changed = tx.execute(
+            "DELETE FROM cortex_transcript_chunks WHERE session_id=?1",
+            [session_id],
+        )?;
         tx.commit()?;
         Ok(changed)
     }

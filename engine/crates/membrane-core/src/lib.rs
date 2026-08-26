@@ -49,8 +49,7 @@ pub use compaction::{
     CATEGORY_SESSION, CATEGORY_WORLD, COMPACTION_PROJECTION_SCHEMA_VERSION,
 };
 pub use compaction_receipt::{
-    CacheImpactV1, CompactionReceiptV1, CompactionSourceCursor,
-    COMPACTION_RECEIPT_SCHEMA_VERSION,
+    CacheImpactV1, CompactionReceiptV1, CompactionSourceCursor, COMPACTION_RECEIPT_SCHEMA_VERSION,
 };
 pub use fusion::{fuse, FusionBounds, FusionResult, DEFAULT_MAX_ITEMS, DEFAULT_RRF_K};
 pub use lane::{lane_from_block, LaneAccounting, LaneAllocation, BUDGET_LANE_KINDS};

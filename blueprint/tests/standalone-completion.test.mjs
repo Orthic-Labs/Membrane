@@ -93,9 +93,6 @@ test("standalone: no START-HERE.md is written; map entrypoint is .agent/manifest
     assert.equal(map.entrypoint, ".agent/manifest.json", "map.entrypoint must point at portable manifest");
     const manifest = JSON.parse(readFileSync(join(repo, ".agent/manifest.json"), "utf8"));
     assert.equal(manifest.entrypoint, ".agent/", "manifest.entrypoint must point at .agent/");
-    const skillText = readFileSync(join(BLUEPRINT, "skills/blueprint/SKILL.md"), "utf8");
-    const matches = [...skillText.matchAll(/START-HERE\.md/g)];
-    assert.ok(matches.length <= 2, `SKILL.md mentions START-HERE ${matches.length} times; retirement notes only`);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

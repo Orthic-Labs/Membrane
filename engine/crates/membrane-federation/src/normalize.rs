@@ -4,11 +4,11 @@
 //! candidate one owned, typed representation before merge.  It intentionally
 //! does not manufacture authority, freshness, or generation values.
 
-use membrane_protocol::{
-    CandidateV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1,
-    ReasonCode, FEDERATION_RESPONSE_SCHEMA_VERSION, PROVIDER_OUTPUT_SCHEMA_VERSION,
-};
 use membrane_protocol::canonical_json_of;
+use membrane_protocol::{
+    CandidateV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode,
+    FEDERATION_RESPONSE_SCHEMA_VERSION, PROVIDER_OUTPUT_SCHEMA_VERSION,
+};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -18,11 +18,7 @@ pub const NORMALIZED_PROVIDER_VERSION: u32 = PROVIDER_OUTPUT_SCHEMA_VERSION;
 /// Closed policy labels admitted by the existing federation/planner
 /// contract.  Unknown or executable-like labels must never be promoted by a
 /// normalizer into an authority-bearing default.
-pub const SUPPORTED_INSTRUCTION_POLICIES: [&str; 3] = [
-    "data_only",
-    "none",
-    "advisory",
-];
+pub const SUPPORTED_INSTRUCTION_POLICIES: [&str; 3] = ["data_only", "none", "advisory"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NormalizedCandidate {
@@ -91,7 +87,9 @@ pub enum CandidateNormalizationError {
 impl CandidateNormalizationError {
     pub const fn reason(&self) -> ReasonCode {
         match self {
-            Self::GenerationMismatch | Self::GenerationMalformed => ReasonCode::GenerationIncoherent,
+            Self::GenerationMismatch | Self::GenerationMalformed => {
+                ReasonCode::GenerationIncoherent
+            }
             _ => ReasonCode::ProviderMalformed,
         }
     }
@@ -180,7 +178,10 @@ pub fn admit_generation(
     output: &ProviderOutputV1,
     expected_generation: Option<&str>,
 ) -> Result<(), ProviderOmissionV1> {
-    let Some(expected) = expected_generation.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(expected) = expected_generation
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return Ok(());
     };
     if output.generation.as_deref() == Some(expected) {
@@ -214,7 +215,9 @@ pub fn generation_admission(
     admit_generation(&output, expected_generation)
 }
 
-fn normalize_generation(value: Option<&str>) -> Result<Option<String>, CandidateNormalizationError> {
+fn normalize_generation(
+    value: Option<&str>,
+) -> Result<Option<String>, CandidateNormalizationError> {
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
@@ -228,7 +231,10 @@ fn normalize_generation(value: Option<&str>) -> Result<Option<String>, Candidate
 }
 
 fn normalize_optional(value: Option<&str>) -> Option<String> {
-    value.map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 
 fn validate_candidate(candidate: &CandidateV1) -> Result<(), CandidateNormalizationError> {
@@ -254,7 +260,11 @@ fn validate_candidate(candidate: &CandidateV1) -> Result<(), CandidateNormalizat
     {
         return Err(CandidateNormalizationError::InvalidInstructionPolicy);
     }
-    if candidate.score_components.values().any(|value| !value.is_finite()) {
+    if candidate
+        .score_components
+        .values()
+        .any(|value| !value.is_finite())
+    {
         return Err(CandidateNormalizationError::InvalidScoreComponent);
     }
     Ok(())
@@ -266,7 +276,9 @@ fn validate_attribution(
     provider: ProviderId,
 ) -> Result<(), CandidateNormalizationError> {
     if warnings.iter().any(|warning| warning.provider != provider)
-        || omissions.iter().any(|omission| omission.provider != provider)
+        || omissions
+            .iter()
+            .any(|omission| omission.provider != provider)
     {
         return Err(CandidateNormalizationError::ProviderMismatch);
     }

@@ -889,10 +889,7 @@ mod tests {
     }
 
     fn hundred_line_command() -> String {
-        (0..100)
-            .map(|_| "echo l")
-            .collect::<Vec<_>>()
-            .join("; ")
+        (0..100).map(|_| "echo l").collect::<Vec<_>>().join("; ")
     }
 
     #[test]
@@ -985,7 +982,11 @@ mod tests {
             "expected exit 0; got {}: capped output:\n{}",
             r.exit_code, r.capped
         );
-        assert!(r.spill_path.is_some(), "expected spill; capped output:\n{}", r.capped);
+        assert!(
+            r.spill_path.is_some(),
+            "expected spill; capped output:\n{}",
+            r.capped
+        );
         let capped_lines: Vec<&str> = r.capped.lines().collect();
         assert_eq!(capped_lines.len(), 7, "capped:\n{}", r.capped);
         assert!(capped_lines[3].contains("lines elided"));

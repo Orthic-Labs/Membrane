@@ -5,9 +5,7 @@
 //! injected residual summarizer when deterministic retention cannot fit.  No
 //! default path calls a model, mutates history, or owns durable storage.
 
-use crate::compaction_receipt::{
-    CacheImpactV1, CompactionReceiptV1, CompactionSourceCursor,
-};
+use crate::compaction_receipt::{CacheImpactV1, CompactionReceiptV1, CompactionSourceCursor};
 use membrane_protocol::digest_str;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -37,7 +35,11 @@ pub struct CompactionItem {
 }
 
 impl CompactionItem {
-    pub fn new(id: impl Into<String>, category: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        category: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             category: category.into(),
@@ -49,17 +51,18 @@ impl CompactionItem {
     }
 
     fn must_retain(&self) -> bool {
-        self.protected || matches!(
-            self.category.as_str(),
-            CATEGORY_OBLIGATION
-                | CATEGORY_ACTIVE_TASK
-                | "protected_obligation"
-                | "id"
-                | "constraint"
-                | "error"
-                | "citation"
-                | "tool_pair"
-        )
+        self.protected
+            || matches!(
+                self.category.as_str(),
+                CATEGORY_OBLIGATION
+                    | CATEGORY_ACTIVE_TASK
+                    | "protected_obligation"
+                    | "id"
+                    | "constraint"
+                    | "error"
+                    | "citation"
+                    | "tool_pair"
+            )
     }
 }
 
@@ -198,7 +201,9 @@ pub fn assemble(
     let mut fallback_provider = None;
     let narrative_residual = all
         .iter()
-        .filter(|item| item.category == CATEGORY_NARRATIVE && !retained.iter().any(|r| r.id == item.id))
+        .filter(|item| {
+            item.category == CATEGORY_NARRATIVE && !retained.iter().any(|r| r.id == item.id)
+        })
         .cloned()
         .collect::<Vec<_>>();
     if !narrative_residual.is_empty() && output_tokens < config.budget_tokens as usize {
@@ -267,7 +272,10 @@ pub fn assemble(
         fallback_provider,
         cache_impact: config.cache_impact.clone(),
     };
-    Ok(CompactionResult { projection, receipt })
+    Ok(CompactionResult {
+        projection,
+        receipt,
+    })
 }
 
 fn ordered_items(input: &CompactionInput) -> Vec<CompactionItem> {
@@ -328,7 +336,10 @@ fn category_rank(category: &str) -> u8 {
 }
 
 fn item_tokens(item: &CompactionItem) -> usize {
-    estimate_tokens(&format!("[{}] {}: {}", item.category, item.id, item.content))
+    estimate_tokens(&format!(
+        "[{}] {}: {}",
+        item.category, item.id, item.content
+    ))
 }
 
 pub fn estimate_tokens(text: &str) -> usize {

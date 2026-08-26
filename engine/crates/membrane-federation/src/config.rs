@@ -46,7 +46,10 @@ impl FederationConfig {
     pub fn all_enabled() -> Self {
         Self {
             schema_version: FEDERATION_CONFIG_SCHEMA_VERSION,
-            providers: ProviderId::ALL.into_iter().map(ProviderConfig::enabled).collect(),
+            providers: ProviderId::ALL
+                .into_iter()
+                .map(ProviderConfig::enabled)
+                .collect(),
         }
     }
 
@@ -67,11 +70,17 @@ impl FederationConfig {
             return Err(ConfigError::Incomplete);
         }
         for (position, provider) in self.providers.iter().enumerate() {
-            if self.providers[..position].iter().any(|prior| prior.id == provider.id) {
+            if self.providers[..position]
+                .iter()
+                .any(|prior| prior.id == provider.id)
+            {
                 return Err(ConfigError::DuplicateProvider(provider.id));
             }
         }
-        if ProviderId::ALL.iter().any(|id| !self.providers.iter().any(|entry| entry.id == *id)) {
+        if ProviderId::ALL
+            .iter()
+            .any(|id| !self.providers.iter().any(|entry| entry.id == *id))
+        {
             return Err(ConfigError::Incomplete);
         }
         Ok(())

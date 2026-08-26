@@ -4,14 +4,21 @@
 import { DaemonClient } from "../service/client.mjs";
 import { validateContractResult } from "../lib/contracts/validate.mjs";
 import { createBlueprintApplicationService } from "../lib/application/service.mjs";
+import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { readWatchConfig } from "../../watchman/supervisor.mjs";
 
 const TRANSPORT_CODES = new Set(["connect_timeout", "socket_closed", "ECONNREFUSED", "ENOENT", "EPIPE", "ERROR_FILE_NOT_FOUND", "ERROR_PIPE_BUSY"]);
 
 export class BlueprintClient {
-  constructor({ endpoint = null, contract = null, allowOneShot = true, outDir = ".agent" } = {}) {
+  constructor({ endpoint = null, contract = null, allowOneShot = true, outDir = ".agent", rootRegistry = null } = {}) {
     this.client = new DaemonClient({ endpoint });
     this.contract = contract;
-    this.oneShot = allowOneShot ? createBlueprintApplicationService({ allowEmbeddedRoot: true, outDir, freshnessOwnership: "one_shot" }) : null;
+    this.oneShot = allowOneShot ? createBlueprintApplicationService({
+      rootRegistry: rootRegistry ?? new RootRegistry(readWatchConfig().repos),
+      allowEmbeddedRoot: false,
+      outDir,
+      freshnessOwnership: "one_shot",
+    }) : null;
   }
 
   async #call(method, input) {

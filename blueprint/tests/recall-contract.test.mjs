@@ -9,7 +9,7 @@ import { createAdmission } from "../src/lib/admission.mjs";
 test("Blueprint exposes recall as its sole context-admission operation", () => {
   assert.ok(METHODS.includes("recall"));
   assert.equal(METHODS.includes("orient"), false);
-  const service = createBlueprintApplicationService();
+  const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
   assert.equal(typeof service.recall, "function");
   assert.equal("orient" in service, false);
   const admission = createAdmission({ readGeneration: () => null, createContextCandidateSet: () => null });

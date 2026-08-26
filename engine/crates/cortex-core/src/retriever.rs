@@ -64,10 +64,7 @@ impl MemoryRetriever {
                 })
                 .collect::<Vec<_>>();
             ranked.sort_by(|left, right| {
-                right
-                    .1
-                    .total_cmp(&left.1)
-                    .then_with(|| left.0.cmp(right.0))
+                right.1.total_cmp(&left.1).then_with(|| left.0.cmp(right.0))
             });
             ranked
                 .into_iter()

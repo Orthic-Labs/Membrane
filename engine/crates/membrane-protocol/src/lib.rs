@@ -27,18 +27,18 @@ pub mod canonical;
 pub mod compatibility_policy;
 pub mod compression;
 pub mod diagnostics;
-pub mod fusion;
 pub mod federation;
+pub mod fusion;
 pub mod heartbeat;
 pub mod hub;
 pub mod installation;
 pub mod lease;
+pub mod membrane_status;
 pub mod observable_event;
 pub mod operations;
 pub mod portable_pack;
 pub mod provider_readiness;
 pub mod release_channel;
-pub mod membrane_status;
 pub mod source_resolution;
 pub mod status;
 pub mod team_policy;
@@ -58,26 +58,24 @@ pub use diagnostics::{
     CapabilityVocabulary, ChangedFileHashV1, ConvergenceClass, CostClass, CoverageLaneV1,
     CoverageObligationV1, DeltaClassification, DiagnosticEvidenceSnapshotV1,
     DiagnosticGateDecisionV1, DiagnosticIssueV1, ExactnessRequirement, GateOutcome,
-    GatePolicyProfileV1, LaneState, ObservationV1, ObligationState, RequiredScope, SeverityHint,
+    GatePolicyProfileV1, LaneState, ObligationState, ObservationV1, RequiredScope, SeverityHint,
     SourceClass, SourceRange, TypedOmission, WorkspaceEpochOrigin, WorkspaceEpochV1,
     DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION, DIAGNOSTIC_GATE_DECISION_SCHEMA_VERSION,
     WORKSPACE_EPOCH_SCHEMA_VERSION,
 };
-pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use federation::{
     sort_candidates, sort_omissions, sort_provider_ids, sort_provider_outputs, sort_warnings,
-    DeadlineBudget,
-    Candidate, FederationCandidate, FederationCandidateV1, FederationDiagnosticsV1,
+    Candidate, DeadlineBudget, FederationCandidate, FederationCandidateV1, FederationDiagnosticsV1,
     FederationError, FederationErrorV1, FederationOmission, FederationOmissionV1,
-    FederationRequest, FederationRequestV1, FederationResponse, FederationResponseV1,
-    FederationStatus, FederationValidationError, FreshnessSnapshotV1, ProviderContext,
-    ProviderContextV1, ProviderDiagnosticsV1, ProviderId, ProviderIdV1, ProviderKind,
-    ProviderKindV1, ProviderOmissionV1, ProviderOutput, ProviderOutputV1,
-    FederationProviderStatus, FederationProviderStatusV1, ProviderStatusV1, ProviderWarningV1,
-    ReasonCode, ReasonCodeV1, WarningSeverity,
-    FEDERATION_REQUEST_SCHEMA_VERSION, FEDERATION_RESPONSE_SCHEMA_VERSION,
-    PROVIDER_OUTPUT_SCHEMA_VERSION, PROVIDER_ORDER,
+    FederationProviderStatus, FederationProviderStatusV1, FederationRequest, FederationRequestV1,
+    FederationResponse, FederationResponseV1, FederationStatus, FederationValidationError,
+    FreshnessSnapshotV1, ProviderContext, ProviderContextV1, ProviderDiagnosticsV1, ProviderId,
+    ProviderIdV1, ProviderKind, ProviderKindV1, ProviderOmissionV1, ProviderOutput,
+    ProviderOutputV1, ProviderStatusV1, ProviderWarningV1, ReasonCode, ReasonCodeV1,
+    WarningSeverity, FEDERATION_REQUEST_SCHEMA_VERSION, FEDERATION_RESPONSE_SCHEMA_VERSION,
+    PROVIDER_ORDER, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
+pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };
@@ -86,10 +84,6 @@ pub use hub::{
     HubSubsystemsV1, MembraneUnavailableReasonV1, MembraneUnavailableV1, SubsystemStateV1,
     HUB_SCHEMA_VERSION,
 };
-pub use membrane_status::{
-    membrane_parent_state, membrane_parent_state_from_supervisor_str, MembraneParentState,
-    SUBSYSTEM_NAMES,
-};
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
@@ -97,6 +91,10 @@ pub use installation::{
 pub use lease::{
     ResidentEndpointV1, ResidentHelloV1, ResidentLeaseV1, ResidentLifecycleFrameV1,
     RESIDENT_LEASE_SCHEMA_VERSION,
+};
+pub use membrane_status::{
+    membrane_parent_state, membrane_parent_state_from_supervisor_str, MembraneParentState,
+    SUBSYSTEM_NAMES,
 };
 pub use observable_event::{
     ObservableEventKindV1, ObservableEventV1, OBSERVABLE_EVENT_SCHEMA_VERSION,

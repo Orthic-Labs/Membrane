@@ -197,12 +197,14 @@ fn gap_output(error: ProviderError) -> ProviderOutput {
         ProviderError::Unavailable(_) | ProviderError::MissingSource(_) => {
             (ReasonCode::ProviderUnavailable, "blueprint_unavailable")
         }
-        ProviderError::Typed { ref code, .. }
-            if matches!(
-                code.as_str(),
-                "not_configured" | "root_not_enrolled" | "graph_missing"
-            ) =>
-        {
+        ProviderError::Typed { ref code, .. } if code == "root_not_enrolled" => (
+            ReasonCode::ProviderUnavailable,
+            "blueprint_root_not_enrolled",
+        ),
+        ProviderError::Typed { ref code, .. } if code == "graph_missing" => {
+            (ReasonCode::ProviderUnavailable, "blueprint_graph_missing")
+        }
+        ProviderError::Typed { ref code, .. } if code == "not_configured" => {
             (ReasonCode::ProviderUnavailable, "blueprint_not_configured")
         }
         ProviderError::Typed { ref code, .. }

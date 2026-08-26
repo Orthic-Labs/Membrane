@@ -76,7 +76,7 @@ impl<'conn> Fts5Projection<'conn> {
         }
         self.conn
             .execute_batch(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS cortex_fts5 USING fts5(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS cortex_fts5 USING fts5(
                 record_id UNINDEXED,
                 record_type UNINDEXED,
                 session_id UNINDEXED,
@@ -116,7 +116,10 @@ impl<'conn> Fts5Projection<'conn> {
     pub fn upsert(&self, row: &Fts5Document) -> Result<(), Fts5Error> {
         self.ensure_schema()?;
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM cortex_fts5 WHERE record_id=?1", params![row.record_id])?;
+        tx.execute(
+            "DELETE FROM cortex_fts5 WHERE record_id=?1",
+            params![row.record_id],
+        )?;
         insert_document(&tx, row)?;
         tx.commit()?;
         Ok(())
@@ -124,8 +127,10 @@ impl<'conn> Fts5Projection<'conn> {
 
     pub fn delete(&self, record_id: &str) -> Result<(), Fts5Error> {
         self.ensure_schema()?;
-        self.conn
-            .execute("DELETE FROM cortex_fts5 WHERE record_id=?1", params![record_id])?;
+        self.conn.execute(
+            "DELETE FROM cortex_fts5 WHERE record_id=?1",
+            params![record_id],
+        )?;
         Ok(())
     }
 
@@ -144,8 +149,10 @@ impl<'conn> Fts5Projection<'conn> {
         let Some(match_query) = sanitize_match_query(query) else {
             return Ok(Vec::new());
         };
-        let mut stmt = self.conn.prepare(
-            "SELECT record_id, record_type, session_id, scope_id, lifecycle, authority,
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT record_id, record_type, session_id, scope_id, lifecycle, authority,
                     -bm25(cortex_fts5, 1.0, 2.0) AS relevance
              FROM cortex_fts5
              WHERE cortex_fts5 MATCH ?1
@@ -154,11 +161,18 @@ impl<'conn> Fts5Projection<'conn> {
                AND (?4 IS NULL OR authority = ?4)
              ORDER BY relevance DESC, record_id ASC
              LIMIT ?5 OFFSET ?6",
-        )
-        .map_err(|error| Fts5Error::Degraded(error.to_string()))?;
+            )
+            .map_err(|error| Fts5Error::Degraded(error.to_string()))?;
         let rows = stmt
             .query_map(
-                params![match_query, scope_id, lifecycle, authority, limit as i64, offset as i64],
+                params![
+                    match_query,
+                    scope_id,
+                    lifecycle,
+                    authority,
+                    limit as i64,
+                    offset as i64
+                ],
                 |row| {
                     Ok(Fts5Hit {
                         record_id: row.get(0)?,
@@ -232,7 +246,10 @@ mod tests {
 
     #[test]
     fn sanitizes_operators_and_empty_queries() {
-        assert_eq!(sanitize_match_query("rust OR async"), Some("\"rust\" AND \"OR\" AND \"async\"".into()));
+        assert_eq!(
+            sanitize_match_query("rust OR async"),
+            Some("\"rust\" AND \"OR\" AND \"async\"".into())
+        );
         assert_eq!(sanitize_match_query("***"), None);
     }
 }

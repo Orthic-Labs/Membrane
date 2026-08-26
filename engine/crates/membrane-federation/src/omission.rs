@@ -59,7 +59,10 @@ pub fn generation_omission(provider: ProviderId) -> ProviderOmissionV1 {
     }
 }
 
-pub fn conflict_omission(provider: ProviderId, candidate_id: impl Into<String>) -> ProviderOmissionV1 {
+pub fn conflict_omission(
+    provider: ProviderId,
+    candidate_id: impl Into<String>,
+) -> ProviderOmissionV1 {
     ProviderOmissionV1 {
         provider,
         reason: ReasonCode::CandidateIdentityConflict,
@@ -91,7 +94,10 @@ pub fn warnings_to_omissions(warnings: &[ProviderWarningV1]) -> Vec<ProviderOmis
             reason: warning.reason,
             candidate_id: None,
             detail_id: warning.detail_id.clone(),
-            stage: warning.stage.clone().or_else(|| Some("provider".to_owned())),
+            stage: warning
+                .stage
+                .clone()
+                .or_else(|| Some("provider".to_owned())),
         })
         .collect()
 }

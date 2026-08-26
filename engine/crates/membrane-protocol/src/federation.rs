@@ -47,7 +47,14 @@ where
 /// The only provider set admitted by federation V1.  Array order is the
 /// canonical merge order and is independent of completion order.
 pub const PROVIDER_ORDER: [&str; 9] = [
-    "anchors", "blueprint", "rules", "live_files", "git", "audit", "architect", "skills",
+    "anchors",
+    "blueprint",
+    "rules",
+    "live_files",
+    "git",
+    "audit",
+    "architect",
+    "skills",
     "cortex",
 ];
 
@@ -93,11 +100,16 @@ impl ProviderId {
     }
 
     pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|provider| provider.as_str() == value)
+        Self::ALL
+            .into_iter()
+            .find(|provider| provider.as_str() == value)
     }
 
     pub fn rank(self) -> usize {
-        Self::ALL.iter().position(|candidate| *candidate == self).unwrap_or(usize::MAX)
+        Self::ALL
+            .iter()
+            .position(|candidate| *candidate == self)
+            .unwrap_or(usize::MAX)
     }
 }
 
@@ -212,7 +224,9 @@ impl ReasonCode {
     }
 
     pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|reason| reason.as_str() == value)
+        Self::ALL
+            .into_iter()
+            .find(|reason| reason.as_str() == value)
     }
 }
 
@@ -308,11 +322,15 @@ impl FederationRequestV1 {
 
 fn is_absolute_root(value: &str) -> bool {
     let bytes = value.as_bytes();
-    value.starts_with('/') || value.starts_with('\\') || (bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'/' || bytes[2] == b'\\'))
+    value.starts_with('/')
+        || value.starts_with('\\')
+        || (bytes.len() >= 3 && bytes[1] == b':' && (bytes[2] == b'/' || bytes[2] == b'\\'))
 }
 
 fn valid_digest(value: &str) -> bool {
-    value.len() == 71 && value.starts_with("sha256:") && value[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..].bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -528,7 +546,10 @@ pub fn sort_provider_ids(values: &mut [ProviderId]) {
 }
 
 fn candidate_provider_rank(value: Option<&str>) -> usize {
-    value.and_then(ProviderId::parse).map(ProviderId::rank).unwrap_or(usize::MAX)
+    value
+        .and_then(ProviderId::parse)
+        .map(ProviderId::rank)
+        .unwrap_or(usize::MAX)
 }
 
 pub fn sort_provider_outputs(values: &mut [ProviderOutputV1]) {
@@ -542,7 +563,8 @@ pub fn sort_provider_outputs(values: &mut [ProviderOutputV1]) {
 
 pub fn sort_candidates(values: &mut [FederationCandidateV1]) {
     values.sort_by(|left, right| {
-        candidate_provider_rank(left.provider.as_deref()).cmp(&candidate_provider_rank(right.provider.as_deref()))
+        candidate_provider_rank(left.provider.as_deref())
+            .cmp(&candidate_provider_rank(right.provider.as_deref()))
             .then_with(|| right.provider_score.total_cmp(&left.provider_score))
             .then_with(|| right.protected.cmp(&left.protected))
             .then_with(|| right.exact.cmp(&left.exact))
@@ -550,7 +572,10 @@ pub fn sort_candidates(values: &mut [FederationCandidateV1]) {
             .then_with(|| left.source_hash.cmp(&right.source_hash))
             .then_with(|| left.source_ref.cmp(&right.source_ref))
             .then_with(|| left.text.cmp(&right.text))
-            .then_with(|| crate::canonical::canonical_json_of(left).cmp(&crate::canonical::canonical_json_of(right)))
+            .then_with(|| {
+                crate::canonical::canonical_json_of(left)
+                    .cmp(&crate::canonical::canonical_json_of(right))
+            })
     });
 }
 

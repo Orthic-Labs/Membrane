@@ -180,12 +180,14 @@ mod tests {
                 "retryable": true
             })
         );
-        assert!(serde_json::from_value::<MembraneUnavailableV1>(serde_json::json!({
-            "kind": "membrane_unavailable",
-            "reason": "hub_inactive",
-            "retryable": true,
-            "unexpected": true
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<MembraneUnavailableV1>(serde_json::json!({
+                "kind": "membrane_unavailable",
+                "reason": "hub_inactive",
+                "retryable": true,
+                "unexpected": true
+            }))
+            .is_err()
+        );
     }
 }

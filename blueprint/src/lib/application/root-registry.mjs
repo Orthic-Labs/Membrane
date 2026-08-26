@@ -8,6 +8,27 @@ function canonical(value) {
   return existsSync(absolute) ? realpathSync.native(absolute) : absolute;
 }
 
+function rootNotEnrolled(input = {}) {
+  const normalizedRoot = input.repoRoot === undefined ? null : canonical(input.repoRoot);
+  const nextOperation = normalizedRoot
+    ? `blueprint init --root ${JSON.stringify(normalizedRoot)}`
+    : "blueprint init --root <repository-root>";
+  return new BlueprintError(
+    "root_not_enrolled",
+    normalizedRoot
+      ? `Blueprint root is not enrolled: ${normalizedRoot}`
+      : "No enrolled Blueprint repository matches this request.",
+    {
+      ...(normalizedRoot ? { normalizedRoot } : {}),
+      remediation: {
+        summary: "Enroll the normalized Blueprint root before querying.",
+        nextOperation,
+        arguments: normalizedRoot ? { repoRoot: normalizedRoot } : {},
+      },
+    },
+  );
+}
+
 export class RootRegistry {
   #byRepoId = new Map();
   #byRoot = new Map();
@@ -39,14 +60,14 @@ export class RootRegistry {
     // even when a repoId also resolves (D06: resolve only an enrolled repoId or
     // an exact enrolled root).
     if (input.repoRoot !== undefined && !byPath) {
-      throw new BlueprintError("root_not_enrolled", "No enrolled Blueprint repository matches this request.");
+      throw rootNotEnrolled(input);
     }
     // The single-entry fallback applies only when the caller names no explicit
     // selector. An explicit repoRoot/repoId that is not enrolled must never
     // silently select a different repository (D06 root confinement).
     const entry = byId ?? byPath ?? (input.repoId === undefined && input.repoRoot === undefined && this.#byRepoId.size === 1 ? [...this.#byRepoId.values()][0] : null);
     if (!entry || !entry.enabled) {
-      throw new BlueprintError("root_not_enrolled", "No enrolled Blueprint repository matches this request.");
+      throw rootNotEnrolled(input);
     }
     if (byId && byPath && byId.repoId !== byPath.repoId) {
       throw new BlueprintError("root_escape", "Repository ID and root resolve to different enrollments.");

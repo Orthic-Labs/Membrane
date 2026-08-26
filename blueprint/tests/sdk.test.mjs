@@ -62,7 +62,10 @@ test("stable direct client uses bounded one-shot when Hub daemon is absent", asy
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   try {
-    const client = new BlueprintClient({ endpoint: temporaryDaemonEndpoint("blueprint-sdk-absent") });
+    const client = new BlueprintClient({
+      endpoint: temporaryDaemonEndpoint("blueprint-sdk-absent"),
+      rootRegistry: new RootRegistry([{ root: repo, repoId: "repo-one-shot" }]),
+    });
     const result = await client.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.ok(result.results.length > 0);
     await client.close();

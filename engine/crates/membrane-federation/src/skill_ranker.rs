@@ -23,11 +23,7 @@ pub struct RankedSkill {
 
 /// Rank one snapshot using exact ID terms, keyword tags/capabilities, and
 /// lexical title/keyword matches.  Equal scores always use canonical ID order.
-pub fn rank(
-    task: &str,
-    entries: &[SkillCatalogEntry],
-    limit: usize,
-) -> Vec<RankedSkill> {
+pub fn rank(task: &str, entries: &[SkillCatalogEntry], limit: usize) -> Vec<RankedSkill> {
     let query = tokens(task);
     let query_set: BTreeSet<String> = query.iter().cloned().collect();
     let mut ranked = entries
@@ -55,7 +51,11 @@ pub fn rank(
                 .count();
             let lexical_matches = query
                 .iter()
-                .filter(|term| lexical_terms.iter().any(|candidate| candidate.contains(*term)))
+                .filter(|term| {
+                    lexical_terms
+                        .iter()
+                        .any(|candidate| candidate.contains(*term))
+                })
                 .count();
             let denominator = query_set.len().max(1) as f64;
             let score = (EXACT_TERM_WEIGHT * exact_terms as f64 / denominator

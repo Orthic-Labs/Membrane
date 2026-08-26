@@ -4,7 +4,7 @@
 import { createBlueprintApplicationService } from "../lib/application/service.mjs";
 
 export class EmbeddedBlueprintClient {
-  constructor({ rootRegistry = null, allowEmbeddedRoot = true, outDir = ".agent" } = {}) {
+  constructor({ rootRegistry = null, allowEmbeddedRoot = false, outDir = ".agent" } = {}) {
     this.service = createBlueprintApplicationService({ rootRegistry, allowEmbeddedRoot, outDir });
   }
 

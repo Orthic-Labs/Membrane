@@ -89,7 +89,7 @@ test is not exact released-package qualification.
 | N2 | **PARTIAL** | Native `membrane-transcript` owner, raw host discovery/parsing, exact provenance, receipts, & conformance tests pass; all consumers use native seam & Python `continuity` is excluded from production graph. Final deletion/exclusion receipt & installed qualification remain open. |
 | N3 | **DONE** | Native deterministic Adapt core, authority/admission, scope/lifecycle, semantic sealing, manifests, multiwriter behavior, Insights report-only controls, and fail-closed tests pass. |
 | N4 | **DONE** | Native proposal/review/adjudication/apply path is receipt-bound. The explicit user-selected transcript workflow requires exact source hash/rebinding and required review; automatic implicit host-signal evaluation remains a separate optional lane. |
-| N5 | **PARTIAL** | Native Adapt source, CLI surfaces, persistence/delivery, & copied source-built-binary qualification have landed. Exact installed qualification & replacement or explicit dev-only demotion of `scripts/run-adapt-installed-current.mjs` remain pending receipts. |
+| N5 | **PARTIAL** | Native Adapt source, CLI surfaces, persistence/delivery, & copied source-built-binary qualification have landed. The Python-installed authority runner is deleted; exact installed native qualification remains pending receipts. |
 | N6 | **PARTIAL** | Native MCP/renderer/host-fence implementation has landed; installed conformance, Node-absent, & host-configuration receipts remain pending. |
 | N7 | **PARTIAL** | Federation Python/shadow deletion & configuration cutover implementation have landed; installed deletion & upgrade/rollback receipts remain pending. |
 | N8 | **PARTIAL** | Blueprint packaging/runtime-boundary implementation has landed; Hub-coupled watcher and bounded one-shot availability are defined, while installed receipts remain pending. |
@@ -1486,7 +1486,7 @@ builds, signs, installs, or runs tests.
 - [ ] Optional automatic implicit host-signal lane passes approved extraction/admission thresholds with interval reporting — current report: `23` TP / `97` FN, recall `0.1917`; this lane is not a release gate for selected-transcript use.
 - [x] A copied source-built `membrane` binary passes isolated Adapt qualification without interpreter tools or a checkout cwd.
 - [ ] The exact released package passes Adapt qualification without Python, Pi CLI, OpenCode CLI, or a source checkout.
-- [ ] `scripts/run-adapt-installed-current.mjs` is replaced as an authority test or explicitly proven release-excluded and dev-only.
+- [x] `scripts/run-adapt-installed-current.mjs` is deleted; only exact installed native qualification can close this gate.
 - [x] Manifest digest covers semantically active applicability/lifecycle fields.
 - [x] Malformed declared scope cannot broaden eligibility.
 - [x] Decision-making projections preserve lifecycle/scope/machine/current-policy controls.

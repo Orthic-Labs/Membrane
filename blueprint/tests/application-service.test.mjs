@@ -4,11 +4,14 @@
 
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, cpSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { createBuildSingleflight } from "../src/service/build-singleflight.mjs";
 import { seedStore, readEnvelope, writeEnvelope, mutateManifest } from "./_store-helpers.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { BlueprintError } from "../src/lib/application/errors.mjs";
@@ -42,7 +45,7 @@ async function expectBlueprintError(promise, code) {
 test("status works on a built graph and reports repository identity", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const result = await service.status({ repoRoot: repo });
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.repository);
@@ -56,11 +59,59 @@ test("status works on a built graph and reports repository identity", async () =
   }
 });
 
-test("missing graph raises graph_missing for search", async () => {
+test("missing graph initializes a sealed Phase 1 graph before search", async () => {
   const repo = tempRepo();
   try {
-    const service = createBlueprintApplicationService();
-    await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder" }), "graph_missing");
+    assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: repo }).status, 0);
+    assert.equal(spawnSync("git", ["add", "."], { cwd: repo }).status, 0);
+    const service = createBlueprintApplicationService({ rootRegistry: new RootRegistry([{ root: repo }]) });
+    const result = await service.search({ repoRoot: repo, query: "placeOrder" });
+    assert.ok(result.results.length > 0);
+    assert.ok(existsSync(join(repo, ".agent", "graph", "graph.db")));
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("direct application service rejects an unenrolled explicit root with remediation", async () => {
+  const repo = builtRepo();
+  try {
+    const error = await expectBlueprintError(
+      createBlueprintApplicationService().search({ repoRoot: repo, query: "placeOrder" }),
+      "root_not_enrolled",
+    );
+    assert.equal(error.details.normalizedRoot, repo);
+    assert.equal(error.details.remediation.nextOperation, `blueprint init --root ${JSON.stringify(repo)}`);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("enrolled concurrent first searches singleflight one initial graph build", async () => {
+  const repo = tempRepo();
+  try {
+    assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: repo }).status, 0);
+    assert.equal(spawnSync("git", ["add", "."], { cwd: repo }).status, 0);
+    let builds = 0;
+    const buildSingleflight = createBuildSingleflight({
+      runner: async ({ root, outDir }) => {
+        builds += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        buildGraphGeneration(root, { outDir, persist: true });
+        return { exitCode: 0 };
+      },
+    });
+    const service = createBlueprintApplicationService({
+      rootRegistry: new RootRegistry([{ root: repo }]),
+      buildSingleflight,
+    });
+    const [left, right] = await Promise.all([
+      service.search({ repoRoot: repo, query: "placeOrder" }),
+      service.search({ repoRoot: repo, query: "placeOrder" }),
+    ]);
+    assert.equal(builds, 1);
+    assert.ok(left.results.length > 0);
+    assert.ok(right.results.length > 0);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -69,7 +120,7 @@ test("missing graph raises graph_missing for search", async () => {
 test("search returns generation-pinned results on a fresh graph", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const result = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.kind, "search");
@@ -100,7 +151,7 @@ test("stale barrier rejection raises stale_blocked unless allowStale", async () 
     } finally {
       closeStore(db);
     }
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 80 }), "stale_blocked");
     // allowStale bypasses the barrier rejection.
     const result = await service.search({ repoRoot: repo, query: "placeOrder", allowStale: true, timeoutMs: 80, limit: 5 });
@@ -122,7 +173,7 @@ test("freshness work aborts with request_cancelled", async () => {
     } finally { closeStore(db); }
     const controller = new AbortController();
     controller.abort();
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 100 }, { signal: controller.signal }), "request_cancelled");
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -160,7 +211,7 @@ test("generation pin mismatch raises generation_mismatch", async () => {
   try {
     const manifest = readEnvelope(repo, "manifest");
     const current = manifest.generationId;
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", generation: "xxh128:not-the-current" }), "generation_mismatch");
     const ok = await service.search({ repoRoot: repo, query: "placeOrder", generation: current, limit: 5 });
     assert.ok(Array.isArray(ok.results));
@@ -172,7 +223,7 @@ test("generation pin mismatch raises generation_mismatch", async () => {
 test("resolve returns a node with generation and receipt", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0, "expected at least one result");
     const nodeId = search.results[0].id;
@@ -188,7 +239,7 @@ test("resolve returns a node with generation and receipt", async () => {
 test("resolve of an unknown node raises node_not_found", async () => {
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     await expectBlueprintError(service.resolve({ repoRoot: repo, nodeId: "symbol:does-not-exist" }), "node_not_found");
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -217,7 +268,7 @@ test("search on a seeded generation without building works read-only", async () 
       edges: [],
       anchors: [],
     });
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const result = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.ok(Array.isArray(result.results));
   } finally {

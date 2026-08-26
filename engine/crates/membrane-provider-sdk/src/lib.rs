@@ -77,8 +77,8 @@ pub mod batch;
 pub mod conformance;
 pub mod context;
 pub mod error;
-pub mod provider;
 pub mod output;
+pub mod provider;
 pub mod registry;
 pub mod source;
 

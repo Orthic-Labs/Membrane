@@ -33,7 +33,7 @@ test("cancelled service request is typed and leaves an independent reader usable
   const scenario = caseFor("cancelled-service-request-is-typed-and-isolated");
   const repo = builtRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(

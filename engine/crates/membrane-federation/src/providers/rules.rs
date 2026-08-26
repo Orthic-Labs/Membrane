@@ -4,10 +4,14 @@
 //! Rule text is data: trust and instruction policy are supplied as metadata,
 //! never inferred from document contents.
 
-use membrane_protocol::{digest_str, FederationProviderStatusV1, ProviderId, ProviderOmissionV1,
-    ProviderOutputV1, ProviderWarningV1, ProviderDiagnosticsV1, ReasonCode, WarningSeverity,
-    PROVIDER_OUTPUT_SCHEMA_VERSION};
-use membrane_provider_sdk::{CapabilityV1, Provider, ProviderContext, ProviderError, ProviderOutput, SourceQuery};
+use membrane_protocol::{
+    digest_str, FederationProviderStatusV1, ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1,
+    ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
+    PROVIDER_OUTPUT_SCHEMA_VERSION,
+};
+use membrane_provider_sdk::{
+    CapabilityV1, Provider, ProviderContext, ProviderError, ProviderOutput, SourceQuery,
+};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -63,8 +67,11 @@ impl std::error::Error for RuleSourceError {}
 
 /// Owner API receives only paths already authorized by the request grant.
 pub trait RuleSource: Send + Sync {
-    fn read_rules(&self, query: SourceQuery, authorized_paths: Vec<String>)
-        -> RuleFuture<RuleSourceResponse>;
+    fn read_rules(
+        &self,
+        query: SourceQuery,
+        authorized_paths: Vec<String>,
+    ) -> RuleFuture<RuleSourceResponse>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -147,17 +154,23 @@ impl RulesProvider {
         let mut output = empty_output(context.release_generation.clone());
         if context.is_cancelled() {
             output.status = FederationProviderStatusV1::Cancelled;
-            output.omissions.push(omission(ReasonCode::ProviderCancelled, "cancelled"));
+            output
+                .omissions
+                .push(omission(ReasonCode::ProviderCancelled, "cancelled"));
             return output;
         }
         if context.is_deadline_exhausted() {
             output.status = FederationProviderStatusV1::Failed;
-            output.omissions.push(omission(ReasonCode::ProviderTimeout, "deadline_exhausted"));
+            output
+                .omissions
+                .push(omission(ReasonCode::ProviderTimeout, "deadline_exhausted"));
             return output;
         }
         let Some(grant) = context.scope_grant.as_ref() else {
             output.status = FederationProviderStatusV1::Failed;
-            output.omissions.push(omission(ReasonCode::ScopeGrantMissing, "grant_required"));
+            output
+                .omissions
+                .push(omission(ReasonCode::ScopeGrantMissing, "grant_required"));
             return output;
         };
         if grant.repository_id != context.repository_id
@@ -165,7 +178,10 @@ impl RulesProvider {
             || grant.session_id != context.session_id
         {
             output.status = FederationProviderStatusV1::Failed;
-            output.omissions.push(omission(ReasonCode::ScopeGrantInvalid, "grant_binding_mismatch"));
+            output.omissions.push(omission(
+                ReasonCode::ScopeGrantInvalid,
+                "grant_binding_mismatch",
+            ));
             return output;
         }
         let authorized_paths = grant
@@ -175,10 +191,16 @@ impl RulesProvider {
             .collect::<Vec<_>>();
         if authorized_paths.is_empty() {
             output.status = FederationProviderStatusV1::Partial;
-            output.omissions.push(omission(ReasonCode::ScopeGrantInvalid, "no_rule_paths"));
+            output
+                .omissions
+                .push(omission(ReasonCode::ScopeGrantInvalid, "no_rule_paths"));
             return output;
         }
-        let response = match self.source.read_rules(context.query(), authorized_paths).await {
+        let response = match self
+            .source
+            .read_rules(context.query(), authorized_paths)
+            .await
+        {
             Ok(response) => response,
             Err(error) => {
                 let reason = match &error {
@@ -188,11 +210,15 @@ impl RulesProvider {
                 };
                 output.status = FederationProviderStatusV1::Partial;
                 output.warnings.push(warning(reason, "rules_source"));
-                output.omissions.push(omission(reason, "source_unavailable"));
+                output
+                    .omissions
+                    .push(omission(reason, "source_unavailable"));
                 return output;
             }
         };
-        output.generation = response.generation.or_else(|| context.release_generation.clone());
+        output.generation = response
+            .generation
+            .or_else(|| context.release_generation.clone());
         let mut documents = response.documents;
         documents.sort_by(|left, right| {
             left.normalized_path
@@ -205,45 +231,64 @@ impl RulesProvider {
         for document in documents {
             if context.is_cancelled() {
                 output.status = FederationProviderStatusV1::Cancelled;
-                output.omissions.push(omission(ReasonCode::ProviderCancelled, "cancelled"));
+                output
+                    .omissions
+                    .push(omission(ReasonCode::ProviderCancelled, "cancelled"));
                 break;
             }
             if context.is_deadline_exhausted() {
                 output.status = FederationProviderStatusV1::Partial;
-                output.omissions.push(omission(ReasonCode::ProviderTimeout, "deadline_exhausted"));
+                output
+                    .omissions
+                    .push(omission(ReasonCode::ProviderTimeout, "deadline_exhausted"));
                 break;
             }
             let normalized = match normalize_rule_path(&document.normalized_path) {
                 Ok(path) => path,
                 Err(detail) => {
-                    output.omissions.push(omission(ReasonCode::ProviderMalformed, detail));
+                    output
+                        .omissions
+                        .push(omission(ReasonCode::ProviderMalformed, detail));
                     continue;
                 }
             };
             if !authorized_paths_contains(grant, &normalized) {
-                output.omissions.push(omission(ReasonCode::ScopeGrantInvalid, "path_not_granted"));
+                output
+                    .omissions
+                    .push(omission(ReasonCode::ScopeGrantInvalid, "path_not_granted"));
                 continue;
             }
             if document.repository_id != context.repository_id {
-                output.omissions.push(omission(ReasonCode::ProviderMalformed, "repository_mismatch"));
+                output.omissions.push(omission(
+                    ReasonCode::ProviderMalformed,
+                    "repository_mismatch",
+                ));
                 continue;
             }
             if document.rule_identity.trim().is_empty()
                 || document.trust_class.trim().is_empty()
                 || document.instruction_policy.trim().is_empty()
             {
-                output.omissions.push(omission(ReasonCode::ProviderMalformed, "source_metadata_missing"));
+                output.omissions.push(omission(
+                    ReasonCode::ProviderMalformed,
+                    "source_metadata_missing",
+                ));
                 continue;
             }
             let bytes = document.content.as_bytes();
             if bytes.len() > MAX_RULE_BYTES {
-                output.omissions.push(omission(ReasonCode::ProviderMalformed, "content_limit"));
+                output
+                    .omissions
+                    .push(omission(ReasonCode::ProviderMalformed, "content_limit"));
                 continue;
             }
             let source_hash = digest_str(&document.content);
             if let Some(declared) = document.source_hash.as_deref() {
                 if declared != source_hash {
-                    output.omissions.push(omission(ReasonCode::ProviderMalformed, "source_hash_mismatch"));
+                    output.omissions.push(omission(
+                        ReasonCode::ProviderMalformed,
+                        "source_hash_mismatch",
+                    ));
                     continue;
                 }
             }
@@ -264,16 +309,31 @@ impl RulesProvider {
                     source_hash: source_hash.clone(),
                 };
                 match self.ledger.claim(key).await {
-                    Ok(receipt) => (receipt.mode, if receipt.mode == DeliveryMode::Inline { document.content.clone() } else { String::new() }, Some(receipt.receipt_id)),
+                    Ok(receipt) => (
+                        receipt.mode,
+                        if receipt.mode == DeliveryMode::Inline {
+                            document.content.clone()
+                        } else {
+                            String::new()
+                        },
+                        Some(receipt.receipt_id),
+                    ),
                     Err(_) => {
-                        output.warnings.push(warning(ReasonCode::ProviderUnavailable, "delivery_ledger"));
-                        output.omissions.push(omission(ReasonCode::ProviderUnavailable, "delivery_ledger_unavailable"));
+                        output
+                            .warnings
+                            .push(warning(ReasonCode::ProviderUnavailable, "delivery_ledger"));
+                        output.omissions.push(omission(
+                            ReasonCode::ProviderUnavailable,
+                            "delivery_ledger_unavailable",
+                        ));
                         continue;
                     }
                 }
             };
             modes.insert(candidate_id.clone(), mode.as_str().to_owned());
-            if let Some(receipt_id) = receipt_id { receipts.insert(candidate_id.clone(), receipt_id); }
+            if let Some(receipt_id) = receipt_id {
+                receipts.insert(candidate_id.clone(), receipt_id);
+            }
             output.candidates.push(candidate(
                 candidate_id,
                 normalized,
@@ -282,8 +342,12 @@ impl RulesProvider {
                 body,
             ));
         }
-        output.extensions.insert("deliveryModes".into(), json!(modes));
-        output.extensions.insert("deliveryReceipts".into(), json!(receipts));
+        output
+            .extensions
+            .insert("deliveryModes".into(), json!(modes));
+        output
+            .extensions
+            .insert("deliveryReceipts".into(), json!(receipts));
         if output.status != FederationProviderStatusV1::Cancelled {
             output.status = if output.omissions.is_empty() && response.complete {
                 FederationProviderStatusV1::Complete
@@ -365,8 +429,15 @@ fn candidate(
     }
 }
 
-pub fn stable_rule_candidate_id(repository_id: &str, path: &str, source_hash: &str, identity: &str) -> String {
-    digest_str(&format!("{repository_id}\0{path}\0{source_hash}\0{identity}"))
+pub fn stable_rule_candidate_id(
+    repository_id: &str,
+    path: &str,
+    source_hash: &str,
+    identity: &str,
+) -> String {
+    digest_str(&format!(
+        "{repository_id}\0{path}\0{source_hash}\0{identity}"
+    ))
 }
 
 pub fn normalize_rule_path(path: &str) -> Result<String, &'static str> {
@@ -376,7 +447,9 @@ pub fn normalize_rule_path(path: &str) -> Result<String, &'static str> {
     }
     let mut parts = Vec::new();
     for part in path.split('/') {
-        if part.is_empty() || part == "." || part == ".." { return Err("invalid_rule_path"); }
+        if part.is_empty() || part == "." || part == ".." {
+            return Err("invalid_rule_path");
+        }
         parts.push(part);
     }
     Ok(parts.join("/"))
@@ -387,16 +460,38 @@ fn normalize_grant_path(entry: &str) -> Option<String> {
     normalize_rule_path(path).ok()
 }
 
-fn authorized_paths_contains(grant: &membrane_provider_sdk::ValidatedScopeGrantView, path: &str) -> bool {
-    grant.read_paths.iter().filter_map(|entry| normalize_grant_path(entry)).any(|entry| entry == path)
+fn authorized_paths_contains(
+    grant: &membrane_provider_sdk::ValidatedScopeGrantView,
+    path: &str,
+) -> bool {
+    grant
+        .read_paths
+        .iter()
+        .filter_map(|entry| normalize_grant_path(entry))
+        .any(|entry| entry == path)
 }
 
-fn stable_detail(detail: &str) -> Option<String> { Some(detail.to_owned()) }
+fn stable_detail(detail: &str) -> Option<String> {
+    Some(detail.to_owned())
+}
 
 fn warning(reason: ReasonCode, detail: &str) -> ProviderWarningV1 {
-    ProviderWarningV1 { provider: ProviderId::Rules, reason, severity: WarningSeverity::Warning, detail_id: stable_detail(detail), stage: Some("rules".into()), message: None }
+    ProviderWarningV1 {
+        provider: ProviderId::Rules,
+        reason,
+        severity: WarningSeverity::Warning,
+        detail_id: stable_detail(detail),
+        stage: Some("rules".into()),
+        message: None,
+    }
 }
 
 fn omission(reason: ReasonCode, detail: &str) -> ProviderOmissionV1 {
-    ProviderOmissionV1 { provider: ProviderId::Rules, reason, candidate_id: None, detail_id: stable_detail(detail), stage: Some("rules".into()) }
+    ProviderOmissionV1 {
+        provider: ProviderId::Rules,
+        reason,
+        candidate_id: None,
+        detail_id: stable_detail(detail),
+        stage: Some("rules".into()),
+    }
 }

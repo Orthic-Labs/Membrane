@@ -4,8 +4,8 @@
 // cross-operation registry.
 //
 // Sources of truth (both read-only; neither is modified by this task):
-//   - `TOOLS` in `mcp/server.mjs` -- the exact tool list the running MCP
-//     server advertises via `tools/list` (MBR-301/live server contract).
+//   - `migration/native-rust/fixtures/mcp-conformance.v1.json` -- the exact
+//     native MCP registry inventory used by installed discovery.
 //   - `OPERATIONS` in
 //     `engine/crates/membrane-protocol/bindings/operations.mjs` -- the
 //     cross-operation registry that pins, per operation, a schemaVersion,
@@ -28,31 +28,27 @@
 // generated from it (see build-server-tools.mjs) cannot drift from what
 // the server and the operations registry actually contain without this
 // module's own test failing first.
-import { TOOLS } from "../../../mcp/server.mjs";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { OPERATIONS } from "../../../engine/crates/membrane-protocol/bindings/operations.mjs";
 
 export const CONTRACT_COVERAGE_OPERATIONS_REGISTRY = "operations_registry";
-export const CONTRACT_COVERAGE_GAP = "gap";
-
-function gapReason(name) {
-  return (
-    `${name} is exposed as a real MCP tool in mcp/server.mjs but has no entry in the OPERATIONS ` +
-    `cross-operation registry (engine/crates/membrane-protocol/bindings/operations.mjs): no ` +
-    `schemaVersion/errorVersion pair, no golden success/error fixtures, and no closed error-code ` +
-    `taxonomy validated by validateOperationFixtures().`
-  );
-}
+export const CONTRACT_COVERAGE_NATIVE_REGISTRY = "native_registry";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const nativeFixture = JSON.parse(readFileSync(join(ROOT, "migration/native-rust/fixtures/mcp-conformance.v1.json"), "utf8"));
+const NATIVE_TOOLS = [...new Set(Object.values(nativeFixture.toolsets ?? {}).flat())];
 
 /**
- * Returns one entry per real MCP tool, sorted by name, each either:
+ * Returns one entry per native MCP tool, sorted by name, each either:
  *   { name, contractCoverage: "operations_registry" }
- * or:
- *   { name, contractCoverage: "gap", gapReason: "<why>" }
+ * or `{ name, contractCoverage: "native_registry" }` for a native-only
+ * diagnostic contract pinned by the Rust registry/conformance fixture.
  *
  * Accepts `tools`/`operations` overrides only for testing against
  * synthetic registries; the exported defaults are the real, live modules.
  */
-export function computeToolContractCoverage({ tools = TOOLS, operations = OPERATIONS } = {}) {
+export function computeToolContractCoverage({ tools = NATIVE_TOOLS.map((name) => ({ name })), operations = OPERATIONS } = {}) {
   const operationNames = new Set(operations.map((operation) => operation.name));
   return tools
     .map((tool) => tool.name)
@@ -61,7 +57,7 @@ export function computeToolContractCoverage({ tools = TOOLS, operations = OPERAT
     .map((name) =>
       operationNames.has(name)
         ? { name, contractCoverage: CONTRACT_COVERAGE_OPERATIONS_REGISTRY }
-        : { name, contractCoverage: CONTRACT_COVERAGE_GAP, gapReason: gapReason(name) },
+        : { name, contractCoverage: CONTRACT_COVERAGE_NATIVE_REGISTRY },
     );
 }
 

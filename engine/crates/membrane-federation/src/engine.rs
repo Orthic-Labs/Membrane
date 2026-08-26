@@ -9,9 +9,9 @@ use crate::deadline::{Deadline, SystemClock};
 use crate::freshness::FreshnessBinding;
 use crate::merge::{merge_normalized, MergeError, MergeResult};
 use crate::normalize::{admit_generation, malformed_omission, normalize_provider_output};
-use crate::omission::{missing_lane, generation_omission, warning_from_omission};
-use crate::release::{ReleaseBinding, ReleaseError, ReleaseIdentity, ReleaseSource};
+use crate::omission::{generation_omission, missing_lane, warning_from_omission};
 use crate::registry::ProviderRegistry;
+use crate::release::{ReleaseBinding, ReleaseError, ReleaseIdentity, ReleaseSource};
 use crate::request::{NormalizedFederationRequest, RequestValidationError};
 use crate::root::{FilesystemRootSource, RootPathSource};
 use crate::scheduler::{schedule_providers, ProviderTask, ScheduleResult, SchedulerPolicy};
@@ -215,7 +215,11 @@ impl FederationEngine {
             normalized.task.clone(),
             normalized.session_id.clone(),
             normalized.client.clone(),
-            normalized.anchors.iter().map(|anchor| anchor.value.clone()).collect(),
+            normalized
+                .anchors
+                .iter()
+                .map(|anchor| anchor.value.clone())
+                .collect(),
             scope_grant,
             normalized.release_generation.clone(),
             freshness.snapshot.clone(),
@@ -232,13 +236,8 @@ impl FederationEngine {
             .collect();
         let fatal = CancellationToken::new();
         let tasks = self.provider_tasks(&active, fatal.clone());
-        let schedule = schedule_providers(
-            provider_context,
-            deadline,
-            tasks,
-            self.scheduler_policy,
-        )
-        .await;
+        let schedule =
+            schedule_providers(provider_context, deadline, tasks, self.scheduler_policy).await;
 
         // A provider panic or internal invariant is a composition failure,
         // not a lane-local omission.  Provider task wrappers cancel sibling
@@ -288,7 +287,9 @@ impl FederationEngine {
         release: ReleaseBinding,
     ) -> Result<FreshnessBinding, FederationEngineError> {
         let Some(source) = self.sources.freshness.as_deref() else {
-            return Err(FederationEngineError::Freshness("source_missing".to_owned()));
+            return Err(FederationEngineError::Freshness(
+                "source_missing".to_owned(),
+            ));
         };
         FreshnessBinding::acquire(source, query, Some(release))
             .await
@@ -329,11 +330,7 @@ impl FederationEngine {
         Ok(Some(grant))
     }
 
-    fn provider_tasks(
-        &self,
-        active: &[ProviderId],
-        fatal: CancellationToken,
-    ) -> Vec<ProviderTask> {
+    fn provider_tasks(&self, active: &[ProviderId], fatal: CancellationToken) -> Vec<ProviderTask> {
         active
             .iter()
             .filter_map(|provider| {
@@ -350,9 +347,8 @@ impl FederationEngine {
                             // polling become typed internal failures.  The
                             // abort handle prevents a sibling cancelled by
                             // `fatal` from becoming detached work.
-                            let task = tokio::spawn(async move {
-                                implementation.run(&context).await
-                            });
+                            let task =
+                                tokio::spawn(async move { implementation.run(&context).await });
                             let abort = task.abort_handle();
                             match fatal.clone().run_until_cancelled_owned(task).await {
                                 None => {
@@ -400,8 +396,15 @@ fn source_query(request: &NormalizedFederationRequest) -> SourceQuery {
         repository_root: request.repository_root.clone(),
         task: request.task.clone(),
         session_id: request.session_id.clone(),
-        generation: request.blueprint_generation.clone().or(request.release_generation.clone()),
-        anchors: request.anchors.iter().map(|anchor| anchor.value.clone()).collect(),
+        generation: request
+            .blueprint_generation
+            .clone()
+            .or(request.release_generation.clone()),
+        anchors: request
+            .anchors
+            .iter()
+            .map(|anchor| anchor.value.clone())
+            .collect(),
     }
 }
 
@@ -413,7 +416,9 @@ struct MissingReleaseSource;
 
 impl ReleaseSource for MissingReleaseSource {
     fn current_release(&self) -> Result<ReleaseIdentity, ReleaseError> {
-        Err(ReleaseError::Unavailable("release_source_missing".to_owned()))
+        Err(ReleaseError::Unavailable(
+            "release_source_missing".to_owned(),
+        ))
     }
 }
 
@@ -472,10 +477,10 @@ fn append_schedule_accounting(merged: &mut MergeResult, schedule: &ScheduleResul
         }) {
             continue;
         }
-        merged
-            .omissions
-            .retain(|existing| !(existing.provider == omission.provider
-                && existing.detail_id.as_deref() == Some("lane_missing")));
+        merged.omissions.retain(|existing| {
+            !(existing.provider == omission.provider
+                && existing.detail_id.as_deref() == Some("lane_missing"))
+        });
         merged.warnings.push(warning_from_omission(omission));
         merged.omissions.push(omission.clone());
     }
@@ -518,12 +523,24 @@ fn metrics(
 fn diagnostics(metrics: &FederationMetrics) -> membrane_protocol::FederationDiagnosticsV1 {
     let mut attributes = BTreeMap::new();
     attributes.insert("elapsed_ms".to_owned(), metrics.elapsed_ms.to_string());
-    attributes.insert("expected_lanes".to_owned(), metrics.expected_lanes.to_string());
+    attributes.insert(
+        "expected_lanes".to_owned(),
+        metrics.expected_lanes.to_string(),
+    );
     attributes.insert("active_lanes".to_owned(), metrics.active_lanes.to_string());
     attributes.insert("output_lanes".to_owned(), metrics.output_lanes.to_string());
-    attributes.insert("omission_lanes".to_owned(), metrics.omission_lanes.to_string());
-    attributes.insert("candidate_count".to_owned(), metrics.candidate_count.to_string());
-    attributes.insert("deadline_exhausted".to_owned(), metrics.deadline_exhausted.to_string());
+    attributes.insert(
+        "omission_lanes".to_owned(),
+        metrics.omission_lanes.to_string(),
+    );
+    attributes.insert(
+        "candidate_count".to_owned(),
+        metrics.candidate_count.to_string(),
+    );
+    attributes.insert(
+        "deadline_exhausted".to_owned(),
+        metrics.deadline_exhausted.to_string(),
+    );
     attributes.insert("cancelled".to_owned(), metrics.cancelled.to_string());
     membrane_protocol::FederationDiagnosticsV1 {
         providers: metrics.provider_timings.clone(),

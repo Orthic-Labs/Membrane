@@ -1,7 +1,7 @@
 # Blueprint — Document Lifecycle
 
 Supersession markers, structured lifecycle frontmatter, archive globs, and authority resolution.
-Extracted from `skills/blueprint/SKILL.md` to keep the operational contract readable. **This is normative**, not
+This reference is the canonical operational contract. **It is normative**, not
 background reading — Phase 1 and Phase 4 both depend on it.
 
 ## Historical-document lifecycle

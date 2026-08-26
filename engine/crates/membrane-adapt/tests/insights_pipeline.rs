@@ -1,11 +1,11 @@
 //! Scenarios 4: insights — detectors, guards, deterministic recurrence,
 //! hybrid merge proposals that never auto-admit.
 
-use membrane_adapt::insights::detectors::{run_all_detectors, repeated_ask_signature};
+use membrane_adapt::insights::detectors::{repeated_ask_signature, run_all_detectors};
+use membrane_adapt::insights::guards::{guard_user_span, has_positive_verification_claim};
 use membrane_adapt::insights::recurrence::{
     form_issues, mine_issues, transition_issue, HybridMergeProposal,
 };
-use membrane_adapt::insights::guards::{guard_user_span, has_positive_verification_claim};
 use membrane_adapt::insights::{EventKind, IssueState, TranscriptEventV1};
 use membrane_adapt::model_boundary::ModelProposalError;
 
@@ -37,12 +37,22 @@ fn guards_suppress_quoted_tool_hypothetical_spans() {
         guard_user_span(&quoted),
         membrane_adapt::insights::guards::SpanGuard::Suppress("quoted")
     ));
-    let tool = ev("t", "s", "tool", EventKind::ToolResult, "error: tests failed");
+    let tool = ev(
+        "t",
+        "s",
+        "tool",
+        EventKind::ToolResult,
+        "error: tests failed",
+    );
     assert!(matches!(
         guard_user_span(&tool),
         membrane_adapt::insights::guards::SpanGuard::Suppress("tool-carried")
     ));
-    let hypothetical = user("h", "s", "suppose you had verified everything and it works, what next");
+    let hypothetical = user(
+        "h",
+        "s",
+        "suppose you had verified everything and it works, what next",
+    );
     assert!(matches!(
         guard_user_span(&hypothetical),
         membrane_adapt::insights::guards::SpanGuard::Suppress("hypothetical")
@@ -60,8 +70,20 @@ fn ignored_tool_failure_is_detected() {
     let events = vec![
         user("a", "s", "run the tests"),
         ev("b", "s", "assistant", EventKind::ToolCall, "cargo test"),
-        ev("c", "s", "tool", EventKind::ToolResult, "error: test failed"),
-        ev("d", "s", "assistant", EventKind::AssistantMessage, "All done — I verified the fix works."),
+        ev(
+            "c",
+            "s",
+            "tool",
+            EventKind::ToolResult,
+            "error: test failed",
+        ),
+        ev(
+            "d",
+            "s",
+            "assistant",
+            EventKind::AssistantMessage,
+            "All done — I verified the fix works.",
+        ),
     ];
     let eps = run_all_detectors(&events);
     assert!(eps.iter().any(|e| e.family == "ignored_tool_failure"));
@@ -70,12 +92,27 @@ fn ignored_tool_failure_is_detected() {
 #[test]
 fn recurrence_is_deterministic_and_cross_session() {
     let events = vec![
-        user("a", "s1", "please run the full test suite before claiming done"),
-        user("b", "s2", "Please run the FULL test suite before claiming done."),
+        user(
+            "a",
+            "s1",
+            "please run the full test suite before claiming done",
+        ),
+        user(
+            "b",
+            "s2",
+            "Please run the FULL test suite before claiming done.",
+        ),
     ];
     let issues1 = mine_issues(&events, 2);
-    let issues2 = mine_issues(&events.clone().into_iter().rev().collect::<Vec<_>>().as_slice(), 2)
-        ;
+    let issues2 = mine_issues(
+        &events
+            .clone()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .as_slice(),
+        2,
+    );
     // Order-independent convergence of issue formation.
     let mut a: Vec<String> = issues1.iter().map(serialize).collect();
     let mut b: Vec<String> = issues2.iter().map(serialize).collect();
@@ -92,15 +129,27 @@ fn serialize(i: &membrane_adapt::insights::InsightIssueV1) -> String {
 
 #[test]
 fn single_episode_never_forms_an_issue() {
-    let events = vec![user("a", "s1", "please run the full test suite before claiming done")];
+    let events = vec![user(
+        "a",
+        "s1",
+        "please run the full test suite before claiming done",
+    )];
     assert!(mine_issues(&events, 2).is_empty());
 }
 
 #[test]
 fn hybrid_merge_proposals_verify_but_never_auto_admit() {
     let events = vec![
-        user("a", "s1", "please run the full test suite before claiming done"),
-        user("b", "s2", "Please run the FULL test suite before claiming done."),
+        user(
+            "a",
+            "s1",
+            "please run the full test suite before claiming done",
+        ),
+        user(
+            "b",
+            "s2",
+            "Please run the FULL test suite before claiming done.",
+        ),
     ];
     let eps = run_all_detectors(&events);
     let proposal = HybridMergeProposal {
@@ -126,8 +175,16 @@ fn hybrid_merge_proposals_verify_but_never_auto_admit() {
 #[test]
 fn illegal_issue_transitions_are_refused() {
     let events = vec![
-        user("a", "s1", "please run the full test suite before claiming done"),
-        user("b", "s2", "Please run the FULL test suite before claiming done."),
+        user(
+            "a",
+            "s1",
+            "please run the full test suite before claiming done",
+        ),
+        user(
+            "b",
+            "s2",
+            "Please run the FULL test suite before claiming done.",
+        ),
     ];
     let issues = form_issues(&run_all_detectors(&events), 2);
     let observed = &issues[0];

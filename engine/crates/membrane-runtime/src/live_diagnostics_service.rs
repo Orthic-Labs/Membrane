@@ -920,8 +920,13 @@ impl DiagnosticsService {
                     "blueprint findings service did not answer within {timeout_ms}ms: {error}"
                 ))
             }
-            Err(BlueprintFindingsError::NotConfigured(detail)) => BlueprintLaneInput::omitted(
-                "not_configured",
+            Err(BlueprintFindingsError::RootNotEnrolled(detail)) => BlueprintLaneInput::omitted(
+                "root_not_enrolled",
+                detail,
+                membrane_protocol::diagnostics::BlueprintFreshness::Unknown,
+            ),
+            Err(BlueprintFindingsError::GraphMissing(detail)) => BlueprintLaneInput::omitted(
+                "graph_missing",
                 detail,
                 membrane_protocol::diagnostics::BlueprintFreshness::Unknown,
             ),

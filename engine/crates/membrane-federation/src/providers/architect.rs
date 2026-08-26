@@ -6,14 +6,13 @@
 //! workspace, starts a process, or interprets decision text as instructions.
 
 use membrane_protocol::{
-    sort_candidates, sort_omissions, sort_warnings, CandidateV1,
-    FederationProviderStatusV1, ProviderDiagnosticsV1, ProviderId,
-    ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode,
-    WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
+    sort_candidates, sort_omissions, sort_warnings, CandidateV1, FederationProviderStatusV1,
+    ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1,
+    ReasonCode, WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
-    CapabilityV1, DecisionRecord, DecisionRecordSource, Provider, ProviderContext,
-    ProviderError, ProviderOutput, SourceResponse, SourceWarning,
+    CapabilityV1, DecisionRecord, DecisionRecordSource, Provider, ProviderContext, ProviderError,
+    ProviderOutput, SourceResponse, SourceWarning,
 };
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -32,13 +31,34 @@ pub const MAX_ESTIMATED_TOKENS: u32 = 8_000;
 pub struct ArchitectProvider;
 
 impl ArchitectProvider {
-    pub const fn new() -> Self { Self }
+    pub const fn new() -> Self {
+        Self
+    }
 
-    async fn provide_inner(&self, context: &ProviderContext) -> Result<ProviderOutput, ProviderError> {
-        if context.is_cancelled() { return Ok(gap(ProviderStatus::Cancelled, ReasonCode::ProviderCancelled, "request_cancelled")); }
-        if context.is_deadline_exhausted() { return Ok(gap(ProviderStatus::Cancelled, ReasonCode::DeadlineExhausted, "deadline_exhausted")); }
+    async fn provide_inner(
+        &self,
+        context: &ProviderContext,
+    ) -> Result<ProviderOutput, ProviderError> {
+        if context.is_cancelled() {
+            return Ok(gap(
+                ProviderStatus::Cancelled,
+                ReasonCode::ProviderCancelled,
+                "request_cancelled",
+            ));
+        }
+        if context.is_deadline_exhausted() {
+            return Ok(gap(
+                ProviderStatus::Cancelled,
+                ReasonCode::DeadlineExhausted,
+                "deadline_exhausted",
+            ));
+        }
         let Some(source) = context.sources.decisions.as_ref() else {
-            return Ok(gap(ProviderStatus::Failed, ReasonCode::ProviderUnavailable, "decision_source_missing"));
+            return Ok(gap(
+                ProviderStatus::Failed,
+                ReasonCode::ProviderUnavailable,
+                "decision_source_missing",
+            ));
         };
 
         let mut query = context.query();
@@ -54,18 +74,34 @@ impl ArchitectProvider {
             Ok(response) => response,
             Err(error) => return Ok(source_gap(error)),
         };
-        if context.is_cancelled() { return Ok(gap(ProviderStatus::Cancelled, ReasonCode::ProviderCancelled, "request_cancelled")); }
-        if context.is_deadline_exhausted() { return Ok(gap(ProviderStatus::Cancelled, ReasonCode::DeadlineExhausted, "deadline_exhausted")); }
+        if context.is_cancelled() {
+            return Ok(gap(
+                ProviderStatus::Cancelled,
+                ReasonCode::ProviderCancelled,
+                "request_cancelled",
+            ));
+        }
+        if context.is_deadline_exhausted() {
+            return Ok(gap(
+                ProviderStatus::Cancelled,
+                ReasonCode::DeadlineExhausted,
+                "deadline_exhausted",
+            ));
+        }
 
         let mut output = build_output(context, response, expected_generation.as_deref());
         sort_candidates(&mut output.candidates);
         if output.candidates.len() > MAX_CANDIDATES {
             let dropped = output.candidates.split_off(MAX_CANDIDATES);
-            output.omissions.extend(dropped.into_iter().map(|candidate| omission(
-                ReasonCode::ProviderMalformed,
-                Some(candidate.id),
-                "candidate_cap_exceeded",
-            )));
+            output
+                .omissions
+                .extend(dropped.into_iter().map(|candidate| {
+                    omission(
+                        ReasonCode::ProviderMalformed,
+                        Some(candidate.id),
+                        "candidate_cap_exceeded",
+                    )
+                }));
             output.status = ProviderStatus::Partial;
         }
         sort_warnings(&mut output.warnings);
@@ -89,7 +125,9 @@ impl Provider for ArchitectProvider {
         Box::pin(self.provide_inner(context))
     }
 
-    fn list_capabilities(&self) -> Vec<CapabilityV1> { Vec::new() }
+    fn list_capabilities(&self) -> Vec<CapabilityV1> {
+        Vec::new()
+    }
 }
 
 /// Normalize one source-owned record without changing its stable identity or
@@ -160,7 +198,10 @@ fn build_output(
     expected_generation: Option<&str>,
 ) -> ProviderOutput {
     let generation = response.generation.clone().or_else(|| {
-        response.value.first().map(|record| record.generation.clone())
+        response
+            .value
+            .first()
+            .map(|record| record.generation.clone())
     });
     let mut output = empty_output(generation);
     output.warnings = response.warnings.iter().map(source_warning).collect();
@@ -182,23 +223,37 @@ fn build_output(
             }
             Err(error) => {
                 let (reason, detail) = match error {
-                    DecisionNormalizationError::GenerationMismatch => (ReasonCode::GenerationIncoherent, "generation_incoherent"),
-                    DecisionNormalizationError::RepositoryMismatch => (ReasonCode::ProviderMalformed, "repository_mismatch"),
-                    DecisionNormalizationError::Missing(_) => (ReasonCode::ProviderMalformed, "decision_malformed"),
+                    DecisionNormalizationError::GenerationMismatch => {
+                        (ReasonCode::GenerationIncoherent, "generation_incoherent")
+                    }
+                    DecisionNormalizationError::RepositoryMismatch => {
+                        (ReasonCode::ProviderMalformed, "repository_mismatch")
+                    }
+                    DecisionNormalizationError::Missing(_) => {
+                        (ReasonCode::ProviderMalformed, "decision_malformed")
+                    }
                 };
-                output.omissions.push(omission(reason, Some(record.id), detail));
+                output
+                    .omissions
+                    .push(omission(reason, Some(record.id), detail));
             }
         }
     }
     if !response.complete {
-        output.warnings.push(warning(ReasonCode::ProviderFailed, "source_incomplete"));
+        output
+            .warnings
+            .push(warning(ReasonCode::ProviderFailed, "source_incomplete"));
     }
     let mut admitted_tokens = 0u32;
     let mut retained = Vec::with_capacity(output.candidates.len());
     for candidate in output.candidates.drain(..) {
         let next = admitted_tokens.saturating_add(candidate.estimated_tokens);
         if next > MAX_ESTIMATED_TOKENS {
-            output.omissions.push(omission(ReasonCode::ProviderMalformed, Some(candidate.id), "token_ceiling_exceeded"));
+            output.omissions.push(omission(
+                ReasonCode::ProviderMalformed,
+                Some(candidate.id),
+                "token_ceiling_exceeded",
+            ));
         } else {
             admitted_tokens = next;
             retained.push(candidate);
@@ -206,16 +261,22 @@ fn build_output(
     }
     output.candidates = retained;
     if output.candidates.is_empty() && output.warnings.is_empty() && output.omissions.is_empty() {
-        output.warnings.push(warning(ReasonCode::ProviderUnavailable, "source_complete_empty"));
+        output.warnings.push(warning(
+            ReasonCode::ProviderUnavailable,
+            "source_complete_empty",
+        ));
     }
-    output.extensions.insert("decisionEvidence".to_owned(), json!(evidence));
-    output.status = if response.complete && output.warnings.is_empty() && output.omissions.is_empty() {
-        ProviderStatus::Complete
-    } else if output.candidates.is_empty() {
-        ProviderStatus::Failed
-    } else {
-        ProviderStatus::Partial
-    };
+    output
+        .extensions
+        .insert("decisionEvidence".to_owned(), json!(evidence));
+    output.status =
+        if response.complete && output.warnings.is_empty() && output.omissions.is_empty() {
+            ProviderStatus::Complete
+        } else if output.candidates.is_empty() {
+            ProviderStatus::Failed
+        } else {
+            ProviderStatus::Partial
+        };
     output
 }
 
@@ -225,27 +286,43 @@ fn decision_text(record: &DecisionRecord) -> String {
         text.push_str(" alternatives=");
         text.push_str(&record.alternatives.join(" | "));
     }
-    let risks = record.risks.iter().filter(|risk| !risk.starts_with(REVISIT_MARKER) && !risk.starts_with(PROVENANCE_MARKER)).collect::<Vec<_>>();
+    let risks = record
+        .risks
+        .iter()
+        .filter(|risk| !risk.starts_with(REVISIT_MARKER) && !risk.starts_with(PROVENANCE_MARKER))
+        .collect::<Vec<_>>();
     if !risks.is_empty() {
         text.push_str(" risks=");
-        text.push_str(&risks.iter().map(|risk| risk.as_str()).collect::<Vec<_>>().join(" | "));
+        text.push_str(
+            &risks
+                .iter()
+                .map(|risk| risk.as_str())
+                .collect::<Vec<_>>()
+                .join(" | "),
+        );
     }
     text
 }
 
 fn revisit_triggers(record: &DecisionRecord) -> Vec<String> {
-    record.risks.iter()
+    record
+        .risks
+        .iter()
         .filter_map(|risk| risk.strip_prefix(REVISIT_MARKER).map(str::to_owned))
         .filter(|trigger| !trigger.trim().is_empty())
         .collect()
 }
 
 fn provenance(record: &DecisionRecord, candidate: &CandidateV1) -> Vec<String> {
-    let mut values = record.risks.iter()
+    let mut values = record
+        .risks
+        .iter()
         .filter_map(|risk| risk.strip_prefix(PROVENANCE_MARKER).map(str::to_owned))
         .filter(|value| !value.trim().is_empty())
         .collect::<Vec<_>>();
-    if values.is_empty() { values.push(candidate.source_ref.clone()); }
+    if values.is_empty() {
+        values.push(candidate.source_ref.clone());
+    }
     values
 }
 
@@ -262,7 +339,10 @@ fn empty_output(generation: Option<String>) -> ProviderOutput {
             provider: PROVIDER_ID,
             elapsed_ms: None,
             generation: None,
-            attributes: BTreeMap::from([("provenance".to_owned(), "architect-decision-source".to_owned())]),
+            attributes: BTreeMap::from([(
+                "provenance".to_owned(),
+                "architect-decision-source".to_owned(),
+            )]),
         }),
         extensions: BTreeMap::new(),
     }
@@ -270,9 +350,16 @@ fn empty_output(generation: Option<String>) -> ProviderOutput {
 
 fn source_gap(error: ProviderError) -> ProviderOutput {
     let (reason, detail) = match error {
-        ProviderError::MissingSource(_) | ProviderError::Unavailable(_) => (ReasonCode::ProviderUnavailable, "decision_source_unavailable"),
-        ProviderError::MalformedOutput(_) => (ReasonCode::ProviderMalformed, "decision_source_malformed"),
-        ProviderError::IdentityMismatch(_) => (ReasonCode::GenerationIncoherent, "generation_incoherent"),
+        ProviderError::MissingSource(_) | ProviderError::Unavailable(_) => (
+            ReasonCode::ProviderUnavailable,
+            "decision_source_unavailable",
+        ),
+        ProviderError::MalformedOutput(_) => {
+            (ReasonCode::ProviderMalformed, "decision_source_malformed")
+        }
+        ProviderError::IdentityMismatch(_) => {
+            (ReasonCode::GenerationIncoherent, "generation_incoherent")
+        }
         ProviderError::Cancelled => (ReasonCode::ProviderCancelled, "request_cancelled"),
         ProviderError::DeadlineExceeded => (ReasonCode::DeadlineExhausted, "deadline_exhausted"),
         _ => (ReasonCode::ProviderFailed, "decision_source_failed"),
@@ -289,13 +376,37 @@ fn gap(status: ProviderStatus, reason: ReasonCode, detail: &'static str) -> Prov
 }
 
 fn warning(reason: ReasonCode, detail: &'static str) -> ProviderWarningV1 {
-    ProviderWarningV1 { provider: PROVIDER_ID, reason, severity: WarningSeverity::Warning, detail_id: Some(detail.to_owned()), stage: Some("decision_source".to_owned()), message: None }
+    ProviderWarningV1 {
+        provider: PROVIDER_ID,
+        reason,
+        severity: WarningSeverity::Warning,
+        detail_id: Some(detail.to_owned()),
+        stage: Some("decision_source".to_owned()),
+        message: None,
+    }
 }
 
-fn omission(reason: ReasonCode, candidate_id: Option<String>, detail: &'static str) -> ProviderOmissionV1 {
-    ProviderOmissionV1 { provider: PROVIDER_ID, reason, candidate_id, detail_id: Some(detail.to_owned()), stage: Some("decision_normalization".to_owned()) }
+fn omission(
+    reason: ReasonCode,
+    candidate_id: Option<String>,
+    detail: &'static str,
+) -> ProviderOmissionV1 {
+    ProviderOmissionV1 {
+        provider: PROVIDER_ID,
+        reason,
+        candidate_id,
+        detail_id: Some(detail.to_owned()),
+        stage: Some("decision_normalization".to_owned()),
+    }
 }
 
 fn source_warning(source: &SourceWarning) -> ProviderWarningV1 {
-    ProviderWarningV1 { provider: PROVIDER_ID, reason: ReasonCode::parse(&source.code).unwrap_or(ReasonCode::ProviderFailed), severity: WarningSeverity::Warning, detail_id: source.detail_id.clone(), stage: Some("decision_source".to_owned()), message: None }
+    ProviderWarningV1 {
+        provider: PROVIDER_ID,
+        reason: ReasonCode::parse(&source.code).unwrap_or(ReasonCode::ProviderFailed),
+        severity: WarningSeverity::Warning,
+        detail_id: source.detail_id.clone(),
+        stage: Some("decision_source".to_owned()),
+        message: None,
+    }
 }

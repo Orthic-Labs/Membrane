@@ -26,6 +26,8 @@ import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/r
 import { assertGenerationCoherence, buildFreshnessReceipt } from "../../graph/freshness-receipt.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { serviceStatus } from "../../service/status.mjs";
+import { createBuildSingleflight } from "../../service/build-singleflight.mjs";
+import { RootRegistry } from "./root-registry.mjs";
 import { fail } from "./errors.mjs";
 
 function databasePath(root, outDir) {
@@ -98,15 +100,16 @@ function architectureFlowPage(db, meta, input, freshness) {
 export function createBlueprintApplicationService({
   outDir = ".agent",
   rootRegistry = null,
-  allowEmbeddedRoot = true,
+  allowEmbeddedRoot = false,
   freshnessOwnership = "one_shot",
+  buildSingleflight = createBuildSingleflight(),
 } = {}) {
   if (!["one_shot", "resident"].includes(freshnessOwnership)) {
     throw new TypeError("freshnessOwnership must be one_shot or resident");
   }
   const resolveRoot = (input = {}) => {
     if (rootRegistry) return rootRegistry.resolve(input);
-    if (!allowEmbeddedRoot) fail("root_not_enrolled", "No enrolled Blueprint repository matches this request.");
+    if (!allowEmbeddedRoot) return new RootRegistry().resolve(input);
     return resolve(input.repoRoot ?? process.cwd());
   };
 
@@ -114,10 +117,30 @@ export function createBlueprintApplicationService({
     throwIfAborted(signal);
     const root = resolveRoot(input);
     const dbPath = databasePath(root, outDir);
-    if (!existsSync(dbPath)) fail("graph_missing", `Graph store is missing for ${root}.`);
+    const initialized = !existsSync(dbPath);
+    if (initialized) {
+      const build = await buildSingleflight.build({
+        root,
+        outDir,
+        // Ordinary direct requests initialize Phase 1 graph state only. Phase
+        // 2 semantic synthesis remains an explicit workflow.
+        options: { noReadmeLink: true },
+      }, { signal });
+      if (build.exitCode !== 0 || !existsSync(dbPath)) {
+        fail("graph_initialization_failed", `Blueprint initial graph build failed for ${root}.`, {
+          root,
+          exitCode: build.exitCode,
+        });
+      }
+    }
     let receipt;
     try {
-      receipt = freshnessOwnership === "resident"
+      // Initial build is Phase 1 publication from this request's current root.
+      // Every concurrent first request joins its build, then reads its sealed
+      // result. Do not turn that retry into competing one-shot writer barriers.
+      receipt = initialized
+        ? { receiptId: `initial-build-${Date.now()}`, barrierResult: "caught_up", initialBuild: true }
+        : freshnessOwnership === "resident"
         ? observeCurrentSourceAtPath(root, { outDir })
         : await syncToCurrentSourceAtPath(root, { outDir, timeoutMs: Number(input.timeoutMs ?? 2000), signal });
     } catch (error) {

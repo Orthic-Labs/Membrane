@@ -85,9 +85,13 @@ impl ProviderRegistry {
             let mut dependencies = HashSet::new();
             for dependency in &registration.dependencies {
                 if !index.contains_key(dependency)
-                    && !registrations.iter().any(|candidate| candidate.id == *dependency)
+                    && !registrations
+                        .iter()
+                        .any(|candidate| candidate.id == *dependency)
                 {
-                    return Err(ProviderError::UnknownProvider(dependency.as_str().to_string()));
+                    return Err(ProviderError::UnknownProvider(
+                        dependency.as_str().to_string(),
+                    ));
                 }
                 if !dependencies.insert(*dependency) {
                     return Err(ProviderError::InvalidRegistry(format!(
@@ -145,7 +149,9 @@ impl ProviderRegistry {
     }
 
     pub fn get(&self, id: ProviderId) -> Option<&ProviderRegistration> {
-        self.index.get(&id).map(|position| &self.registrations[*position])
+        self.index
+            .get(&id)
+            .map(|position| &self.registrations[*position])
     }
 
     pub fn order(&self) -> Vec<ProviderId> {
@@ -158,7 +164,10 @@ impl ProviderRegistry {
     pub fn providers(&self) -> Vec<(ProviderId, Arc<dyn Provider>)> {
         self.order()
             .into_iter()
-            .filter_map(|id| self.get(id).map(|registration| (id, registration.provider.clone())))
+            .filter_map(|id| {
+                self.get(id)
+                    .map(|registration| (id, registration.provider.clone()))
+            })
             .collect()
     }
 }

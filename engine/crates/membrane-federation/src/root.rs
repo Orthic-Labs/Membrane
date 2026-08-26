@@ -95,7 +95,9 @@ impl RootPathSource for FilesystemRootSource {
         if !metadata.is_dir() {
             return Err(RootError::NotDirectory);
         }
-        let canonical = requested.canonicalize().map_err(|_| RootError::Unavailable)?;
+        let canonical = requested
+            .canonicalize()
+            .map_err(|_| RootError::Unavailable)?;
         let canonical_metadata = fs::metadata(&canonical).map_err(|_| RootError::Unavailable)?;
         if !canonical_metadata.is_dir() {
             return Err(RootError::NotDirectory);
@@ -250,7 +252,6 @@ fn normalize_absolute_text(value: &str) -> Result<String, RootError> {
 
 #[allow(dead_code)]
 fn _path_has_only_normal_components(path: &Path) -> bool {
-    path.components().all(|component| {
-        !matches!(component, Component::ParentDir | Component::RootDir)
-    })
+    path.components()
+        .all(|component| !matches!(component, Component::ParentDir | Component::RootDir))
 }

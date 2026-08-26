@@ -26,12 +26,12 @@ pub mod transcript;
 pub mod types;
 mod vector_index;
 
-pub use accounting::{estimate_tokens, ContextTokenAccounting};
 pub use absorbed::{
     content_hash, event_range, validate_event, validate_event_import, AbsorbedValidationError,
     ArtifactRecord, EventCursor, ProvenanceRef, RecordGovernance, SessionEvent, SessionRecord,
     TaskRecord, ABSORBED_SCHEMA_VERSION,
 };
+pub use accounting::{estimate_tokens, ContextTokenAccounting};
 pub use calibration::ConfidenceCalibrator;
 pub use dream::{
     consolidate_dream_memories, DreamAgentPolicy, DreamConsolidatedMemory, DreamPlan, DreamStatus,
@@ -55,7 +55,8 @@ pub use retriever::{LexicalHit, MemoryRetriever};
 pub use routing::{QueryFeatures, RetrievalTier, RoutingPolicy};
 pub use transcript::{
     build_transcript_chunks, retrieve_transcript_chunks, TranscriptChunk, TranscriptChunkBuilder,
-    TranscriptChunkConfig, TranscriptError, TranscriptRetrievalHit, TRANSCRIPT_CHUNK_SCHEMA_VERSION,
+    TranscriptChunkConfig, TranscriptError, TranscriptRetrievalHit,
+    TRANSCRIPT_CHUNK_SCHEMA_VERSION,
 };
 pub use types::{default_scope, MemoryEntry, MemoryTier};
 pub use vector_index::{

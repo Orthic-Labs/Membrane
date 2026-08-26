@@ -87,8 +87,7 @@ pub fn validate_output(
         FederationProviderStatusV1::Partial
             | FederationProviderStatusV1::Failed
             | FederationProviderStatusV1::Cancelled
-    )
-        && output.warnings.is_empty()
+    ) && output.warnings.is_empty()
         && output.omissions.is_empty()
     {
         return Err(ProviderError::Incomplete(

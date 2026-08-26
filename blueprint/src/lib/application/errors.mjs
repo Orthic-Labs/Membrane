@@ -155,9 +155,9 @@ export class BlueprintError extends Error {
     this.details = details;
     const meta = ERROR_METADATA[code];
     this.retryable = Boolean(meta?.retryable ?? false);
-    this.remediation = meta?.nextOperation
+    this.remediation = details?.remediation ?? (meta?.nextOperation
       ? { summary: meta.summary, nextOperation: meta.nextOperation, arguments: {} }
-      : null;
+      : null);
   }
 }
 

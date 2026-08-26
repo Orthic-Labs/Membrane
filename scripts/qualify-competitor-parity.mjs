@@ -193,11 +193,10 @@ function sourceSuites(ids) {
   if (ids.includes("C10")) add("capability", "node", ["--test", join(membraneRoot, "mcp", "capability-inventory.test.mjs")], root);
   if (ids.includes("C11")) add("rollout", "node", ["--test", join(membraneRoot, "mcp", "rollout.test.mjs")], root);
   if (ids.includes("C16")) add("sync", join(root, ".venv-tools", "bin", "python"), ["-m", "unittest", "tools.pipelines.memory.test_sync"], root);
-  if (ids.includes("C14")) add("adapt", "node", [join(membraneRoot, "scripts", "run-adapt-installed-current.mjs")], root);
   if (ids.some((id) => /^F1[5-8]$/.test(id))) add("forge", "pnpm", ["--dir", join(root, "forge"), "test"], root);
   if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C13"].includes(id))) add("engine", "cargo", ["check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
   if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("blueprint", "pnpm", ["--dir", join(membraneRoot, "blueprint"), "test:all"], root);
-  if (ids.some((id) => ["F05", "F12", "C14"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(membraneRoot, "adapt")], root);
+  if (ids.some((id) => ["F05", "F12"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(membraneRoot, "adapt")], root);
   return suites;
 }
 

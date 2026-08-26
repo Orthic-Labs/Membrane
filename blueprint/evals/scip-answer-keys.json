@@ -22,13 +22,13 @@
     "ts-symbol-definition": {
       "symbols": [
         "local 2",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
       ],
       "evidence": [
         {
@@ -39,13 +39,13 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
@@ -57,19 +57,19 @@
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
@@ -81,25 +81,25 @@
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
@@ -114,17 +114,17 @@
         "local 3",
         "local 4",
         "local 7",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
       ],
       "evidence": [
         {
@@ -135,31 +135,31 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
               "role": "reference",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
               "role": "reference",
               "startLine": 4,
               "endLine": 4
@@ -183,13 +183,13 @@
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
@@ -222,13 +222,13 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
@@ -240,19 +240,19 @@
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
@@ -264,25 +264,25 @@
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
@@ -293,11 +293,11 @@
     },
     "ts-import-path": {
       "symbols": [
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
       ],
       "evidence": [
         {
@@ -308,19 +308,19 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
               "role": "definition",
               "startLine": 1,
               "endLine": 1
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
               "role": "reference",
               "startLine": 1,
               "endLine": 1
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
               "role": "reference",
               "startLine": 1,
               "endLine": 1
@@ -335,19 +335,19 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
               "role": "definition",
               "startLine": 1,
               "endLine": 1
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
               "role": "reference",
               "startLine": 1,
               "endLine": 1
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
               "role": "reference",
               "startLine": 1,
               "endLine": 1
@@ -362,20 +362,20 @@
         "local 3",
         "local 4",
         "local 7",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
       ],
       "evidence": [
         {
@@ -386,31 +386,31 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
               "role": "definition",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
               "role": "reference",
               "startLine": 3,
               "endLine": 3
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
               "role": "reference",
               "startLine": 4,
               "endLine": 4
@@ -434,13 +434,13 @@
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
@@ -473,13 +473,13 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "definition",
               "startLine": 6,
               "endLine": 6
@@ -491,19 +491,19 @@
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
               "role": "reference",
               "startLine": 7,
               "endLine": 7
@@ -515,25 +515,25 @@
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
@@ -548,49 +548,49 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "definition",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "definition",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
               "role": "reference",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 12,
               "endLine": 12
@@ -602,16 +602,16 @@
     "ts-blast-radius": {
       "symbols": [
         "local 2",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
       ],
       "evidence": [
         {
@@ -622,49 +622,49 @@
           ],
           "occurrences": [
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "definition",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "definition",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
               "role": "reference",
               "startLine": 10,
               "endLine": 10
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 11,
               "endLine": 11
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
               "role": "reference",
               "startLine": 12,
               "endLine": 12
@@ -685,25 +685,25 @@
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
               "role": "reference",
               "startLine": 8,
               "endLine": 8
@@ -724,13 +724,13 @@
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
@@ -742,7 +742,7 @@
               "endLine": 6
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "reference",
               "startLine": 6,
               "endLine": 6
@@ -754,9 +754,9 @@
     "ts-test-coverage": {
       "symbols": [
         "local 2",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
-        "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
       ],
       "evidence": [
         {
@@ -773,13 +773,13 @@
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
               "role": "reference",
               "startLine": 5,
               "endLine": 5
@@ -791,7 +791,7 @@
               "endLine": 6
             },
             {
-              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 blueprint/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
               "role": "reference",
               "startLine": 6,
               "endLine": 6

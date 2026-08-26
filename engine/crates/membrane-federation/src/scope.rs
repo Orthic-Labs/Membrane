@@ -219,7 +219,11 @@ impl ValidatedScopeGrantView {
         {
             return Err(ScopeGrantError::Mismatch("request identity"));
         }
-        if !grant.repository_ids.iter().any(|id| id == &binding.repository_root) {
+        if !grant
+            .repository_ids
+            .iter()
+            .any(|id| id == &binding.repository_root)
+        {
             return Err(ScopeGrantError::Mismatch("repository root"));
         }
         if let Some(expected) = binding.manifest_digest.as_deref() {
@@ -282,7 +286,11 @@ fn validate_schema(grant: &ScopeGrantV1) -> Result<(), ScopeGrantError> {
     {
         return Err(ScopeGrantError::Malformed("digest"));
     }
-    if !grant.permitted_edge_types.iter().any(|edge| edge == "source_read") {
+    if !grant
+        .permitted_edge_types
+        .iter()
+        .any(|edge| edge == "source_read")
+    {
         return Err(ScopeGrantError::Malformed("source_read permission"));
     }
     if grant.repository_root.trim().is_empty()
@@ -313,7 +321,10 @@ fn valid_read_path(path: &ReadPathV1) -> bool {
     !path.path.is_empty()
         && !path.path.starts_with('/')
         && !path.path.contains('\\')
-        && !path.path.split('/').any(|part| part == ".." || part.is_empty())
+        && !path
+            .path
+            .split('/')
+            .any(|part| part == ".." || part.is_empty())
         && path.start_line > 0
         && path.end_line >= path.start_line
 }

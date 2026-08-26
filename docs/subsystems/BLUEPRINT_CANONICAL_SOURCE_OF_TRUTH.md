@@ -1437,6 +1437,36 @@ The Hub-hosted query role owns:
 
 The current Unix socket / Windows named-pipe architecture is the correct runtime shape.
 
+### 17.1.1 Canonical roots, first use, & typed availability
+
+Blueprint has exactly one graph SQLite database per canonical repository or
+worktree root: `<root>/.agent/graph/graph.db`. There is no workspace-wide,
+master, shared, or enrollment-owned graph database. `~/.blueprint/watch.json`
+is an enrollment/watch registry only; it never contains graph truth.
+
+Root canonicalization is authorization. An explicit root that is absent from
+that registry fails with typed `root_not_enrolled`, its exact normalized root,
+& an enrollment remediation. Path-spelling differences that normalize to one
+Windows root recognize one enrollment idempotently.
+
+The protocol distinguishes at minimum `product_unavailable`,
+`root_not_enrolled`, `graph_missing`, `stale`, `resident_owner_active`,
+`hub_inactive`, & `watcher_startup_failed`; adapters may add context but MUST
+not collapse these into generic transport or configuration failures.
+
+One stable direct Blueprint client/application service owns hosted-versus-
+one-shot routing. It routes an enrolled root through Hub when Hub is active;
+with Hub inactive it performs a bounded one-shot & exits. If an enrolled root
+has no graph and a graph-dependent direct request arrives, that service
+singleflights one transactional initial Phase 1 build of
+`<root>/.agent/graph/graph.db`, retries that request once after publication,
+then reuses the sealed generation. Later stale work is incremental when
+eligible; ordinary queries never rebuild a fresh graph unnecessarily.
+
+Phase 2 semantic/docs generation remains an explicit, receipt-bound operation.
+It is never an ordinary-query or first-use side effect. No Blueprint skill is
+an architecture, runtime, packaging, discovery, or consumer dependency.
+
 ## 17.2 Watcher is not the query server
 
 The watcher owns:
@@ -2383,6 +2413,13 @@ Blueprint is complete only when every item below is true.
 ## 28.8 Runtime
 
 - [ ] Hub-hosted Blueprint is the primary machine-to-machine path while Hub is active.
+- [ ] Every canonical repository/worktree root owns only `<root>/.agent/graph/graph.db`; no workspace/master graph DB exists.
+- [ ] `~/.blueprint/watch.json` is enrollment/watch registry only, never graph truth.
+- [ ] Root normalization is authorization: an un-enrolled explicit root returns typed `root_not_enrolled`, exact normalized root, & enrollment remediation.
+- [ ] Product unavailable, root-not-enrolled, graph-missing, stale, resident-owner-active, Hub-inactive, & watcher-startup-failed states remain typed & distinct.
+- [ ] One direct client/application service owns Hub routing, bounded Hub-off one-shot, enrolled graph-missing singleflight initial build, & one retry; consumers do not reimplement recovery.
+- [ ] Phase 2/docs generation is explicit & receipt-bound, never an ordinary-query side effect.
+- [ ] Blueprint skill surfaces are absent from production architecture, packaging, discovery, runtime, & consumer contracts.
 - [ ] `recall` exists in the service protocol.
 - [ ] Hub-hosted read requests use generation-pinned sessions.
 - [ ] Deadlines/cancellation/queues are bounded.

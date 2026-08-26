@@ -145,9 +145,10 @@ impl FreshnessBinding {
     ) -> Result<(), FreshnessError> {
         match requirement {
             FreshnessRequirement::Any => Ok(()),
-            FreshnessRequirement::Current => self.is_current().then_some(()).ok_or(
-                FreshnessError::RequirementUnsatisfied,
-            ),
+            FreshnessRequirement::Current => self
+                .is_current()
+                .then_some(())
+                .ok_or(FreshnessError::RequirementUnsatisfied),
             FreshnessRequirement::Exact => {
                 if !self.is_current() {
                     return Err(FreshnessError::RequirementUnsatisfied);
@@ -155,7 +156,9 @@ impl FreshnessBinding {
                 let expected = expected_generation
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
-                    .ok_or(FreshnessError::Malformed("exact freshness requires generation"))?;
+                    .ok_or(FreshnessError::Malformed(
+                        "exact freshness requires generation",
+                    ))?;
                 (self.snapshot.generation.as_deref() == Some(expected))
                     .then_some(())
                     .ok_or(FreshnessError::GenerationMismatch)

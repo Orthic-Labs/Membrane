@@ -8,16 +8,14 @@
 //! [`ShadowEffects`]; a non-zero persistent or duplicate effect is rejected
 //! before the legacy result is published.
 
-use membrane_protocol::{
-    canonical_json_of, digest_str, FederationRequestV1, FederationResponseV1,
-};
+use membrane_protocol::{canonical_json_of, digest_str, FederationRequestV1, FederationResponseV1};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 
@@ -48,10 +46,18 @@ impl ShadowSourceSnapshot {
         }
     }
 
-    pub fn name(&self) -> &str { &self.name }
-    pub fn identity(&self) -> &str { &self.identity }
-    pub fn hash(&self) -> &str { &self.hash }
-    pub fn generation(&self) -> Option<&str> { self.generation.as_deref() }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+    pub fn generation(&self) -> Option<&str> {
+        self.generation.as_deref()
+    }
 }
 
 /// Read-only effect budget made available to adapters.  A shadow adapter may
@@ -98,18 +104,32 @@ impl ShadowSnapshot {
             }
         }
         sources.sort_by(|left, right| left.name.cmp(&right.name));
-        Ok(Self { request, sources, effect_policy: ShadowEffectPolicy::default() })
+        Ok(Self {
+            request,
+            sources,
+            effect_policy: ShadowEffectPolicy::default(),
+        })
     }
 
-    pub fn request(&self) -> &FederationRequestV1 { &self.request }
-    pub fn sources(&self) -> &[ShadowSourceSnapshot] { &self.sources }
-    pub fn effect_policy(&self) -> ShadowEffectPolicy { self.effect_policy }
+    pub fn request(&self) -> &FederationRequestV1 {
+        &self.request
+    }
+    pub fn sources(&self) -> &[ShadowSourceSnapshot] {
+        &self.sources
+    }
+    pub fn effect_policy(&self) -> ShadowEffectPolicy {
+        self.effect_policy
+    }
 
     /// Digest only; request/source contents never enter a report directly.
     pub fn digest(&self) -> String {
         let material = ShadowSnapshotMaterial {
             request: canonical_json_of(&self.request),
-            sources: self.sources.iter().map(ShadowSourceMaterial::from).collect(),
+            sources: self
+                .sources
+                .iter()
+                .map(ShadowSourceMaterial::from)
+                .collect(),
         };
         digest_str(&canonical_json_of(&material))
     }
@@ -128,22 +148,42 @@ struct ShadowCancellationState {
 }
 
 impl ShadowCancellation {
-    pub fn new() -> Self { Self::default() }
-
-    pub fn cancel(&self) {
-        if self.0.cancelled.swap(true, Ordering::SeqCst) { return; }
-        let wakers = self.0.wakers.lock().map(|mut wakers| std::mem::take(&mut *wakers)).unwrap_or_default();
-        for waker in wakers { waker.wake(); }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn is_cancelled(&self) -> bool { self.0.cancelled.load(Ordering::SeqCst) }
+    pub fn cancel(&self) {
+        if self.0.cancelled.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let wakers = self
+            .0
+            .wakers
+            .lock()
+            .map(|mut wakers| std::mem::take(&mut *wakers))
+            .unwrap_or_default();
+        for waker in wakers {
+            waker.wake();
+        }
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.cancelled.load(Ordering::SeqCst)
+    }
 
     fn register(&self, waker: &Waker) {
-        if self.is_cancelled() { waker.wake_by_ref(); return; }
-        if let Ok(mut wakers) = self.0.wakers.lock() {
-            if !wakers.iter().any(|existing| existing.will_wake(waker)) { wakers.push(waker.clone()); }
+        if self.is_cancelled() {
+            waker.wake_by_ref();
+            return;
         }
-        if self.is_cancelled() { waker.wake_by_ref(); }
+        if let Ok(mut wakers) = self.0.wakers.lock() {
+            if !wakers.iter().any(|existing| existing.will_wake(waker)) {
+                wakers.push(waker.clone());
+            }
+        }
+        if self.is_cancelled() {
+            waker.wake_by_ref();
+        }
     }
 }
 
@@ -159,14 +199,31 @@ pub struct ShadowExecutionContext {
 }
 
 impl ShadowExecutionContext {
-    fn new(snapshot: ShadowSnapshot, deadline: ShadowDeadline, cancellation: ShadowCancellation) -> Self {
-        Self { snapshot, deadline, cancellation, effects: ShadowEffectRecorder::default() }
+    fn new(
+        snapshot: ShadowSnapshot,
+        deadline: ShadowDeadline,
+        cancellation: ShadowCancellation,
+    ) -> Self {
+        Self {
+            snapshot,
+            deadline,
+            cancellation,
+            effects: ShadowEffectRecorder::default(),
+        }
     }
 
-    pub fn snapshot(&self) -> &ShadowSnapshot { &self.snapshot }
-    pub fn deadline(&self) -> ShadowDeadline { self.deadline }
-    pub fn cancellation(&self) -> &ShadowCancellation { &self.cancellation }
-    pub fn effects(&self) -> ShadowEffectRecorder { self.effects.clone() }
+    pub fn snapshot(&self) -> &ShadowSnapshot {
+        &self.snapshot
+    }
+    pub fn deadline(&self) -> ShadowDeadline {
+        self.deadline
+    }
+    pub fn cancellation(&self) -> &ShadowCancellation {
+        &self.cancellation
+    }
+    pub fn effects(&self) -> ShadowEffectRecorder {
+        self.effects.clone()
+    }
 }
 
 /// In-memory, duplicate-aware effect capability for shadow adapters.
@@ -185,9 +242,16 @@ impl ShadowEffectRecorder {
     /// silently counted as a second persistent effect.
     pub fn simulated_write(&self, key: impl Into<String>) -> Result<(), ShadowError> {
         let key = key.into();
-        if key.trim().is_empty() { return Err(ShadowError::InvalidEffect("write key must not be empty")); }
-        let mut state = self.state.lock().map_err(|_| ShadowError::InvalidEffect("effect recorder poisoned"))?;
-        if !state.simulated_writes.insert(key) { return Err(ShadowError::DuplicateEffect); }
+        if key.trim().is_empty() {
+            return Err(ShadowError::InvalidEffect("write key must not be empty"));
+        }
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| ShadowError::InvalidEffect("effect recorder poisoned"))?;
+        if !state.simulated_writes.insert(key) {
+            return Err(ShadowError::DuplicateEffect);
+        }
         Ok(())
     }
 
@@ -203,8 +267,15 @@ impl ShadowEffectRecorder {
     }
 
     fn effects(&self) -> ShadowEffects {
-        let simulated_writes = self.state.lock().map(|state| state.simulated_writes.len() as u64).unwrap_or(u64::MAX);
-        ShadowEffects { simulated_writes, ..ShadowEffects::default() }
+        let simulated_writes = self
+            .state
+            .lock()
+            .map(|state| state.simulated_writes.len() as u64)
+            .unwrap_or(u64::MAX);
+        ShadowEffects {
+            simulated_writes,
+            ..ShadowEffects::default()
+        }
     }
 }
 
@@ -250,11 +321,21 @@ impl ShadowDeadline {
         }
     }
 
-    pub const fn at(at: Instant) -> Self { Self { at, budget_ms: 0 } }
-    pub const fn instant(self) -> Instant { self.at }
-    pub const fn budget_ms(self) -> u64 { self.budget_ms }
-    pub fn is_exhausted(self) -> bool { Instant::now() >= self.at }
-    pub fn remaining(self) -> Duration { self.at.saturating_duration_since(Instant::now()) }
+    pub const fn at(at: Instant) -> Self {
+        Self { at, budget_ms: 0 }
+    }
+    pub const fn instant(self) -> Instant {
+        self.at
+    }
+    pub const fn budget_ms(self) -> u64 {
+        self.budget_ms
+    }
+    pub fn is_exhausted(self) -> bool {
+        Instant::now() >= self.at
+    }
+    pub fn remaining(self) -> Duration {
+        self.at.saturating_duration_since(Instant::now())
+    }
     pub fn remaining_ms(self) -> u64 {
         self.remaining().as_millis().min(u128::from(u64::MAX)) as u64
     }
@@ -283,7 +364,8 @@ pub struct ShadowEngineOutput {
     pub effects: ShadowEffects,
 }
 
-pub type ShadowFuture = Pin<Box<dyn Future<Output = Result<ShadowEngineOutput, ShadowError>> + Send>>;
+pub type ShadowFuture =
+    Pin<Box<dyn Future<Output = Result<ShadowEngineOutput, ShadowError>> + Send>>;
 
 /// Adapter boundary for legacy and native qualification implementations.
 /// Both adapters receive a read-only context with one shared deadline and
@@ -332,7 +414,10 @@ impl ShadowComparisonPolicy {
     }
 
     pub fn classify(&self, path: &str) -> DifferenceClassification {
-        self.expected.get(path).copied().unwrap_or(DifferenceClassification::Unexplained)
+        self.expected
+            .get(path)
+            .copied()
+            .unwrap_or(DifferenceClassification::Unexplained)
     }
 }
 
@@ -346,17 +431,28 @@ pub struct ShadowFixture {
 }
 
 impl ShadowFixture {
-    pub fn new(name: impl Into<String>, expected: BTreeMap<String, DifferenceClassification>) -> Result<Self, ShadowError> {
+    pub fn new(
+        name: impl Into<String>,
+        expected: BTreeMap<String, DifferenceClassification>,
+    ) -> Result<Self, ShadowError> {
         let name = name.into();
-        if name.trim().is_empty() { return Err(ShadowError::InvalidSnapshot("fixture name must not be empty")); }
+        if name.trim().is_empty() {
+            return Err(ShadowError::InvalidSnapshot(
+                "fixture name must not be empty",
+            ));
+        }
         Ok(Self { name, expected })
     }
 
-    pub fn name(&self) -> &str { &self.name }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
     pub fn policy(&self) -> ShadowComparisonPolicy {
         let mut policy = ShadowComparisonPolicy::default();
-        for (path, class) in &self.expected { policy = policy.expected(path.clone(), *class); }
+        for (path, class) in &self.expected {
+            policy = policy.expected(path.clone(), *class);
+        }
         policy
     }
 }
@@ -373,16 +469,26 @@ impl ShadowFixtureManifest {
     pub fn sealed(mut fixtures: Vec<ShadowFixture>) -> Result<Self, ShadowError> {
         let mut names = BTreeSet::new();
         for fixture in &fixtures {
-            if !names.insert(fixture.name.clone()) { return Err(ShadowError::InvalidSnapshot("fixture names must be unique")); }
+            if !names.insert(fixture.name.clone()) {
+                return Err(ShadowError::InvalidSnapshot("fixture names must be unique"));
+            }
         }
         fixtures.sort_by(|left, right| left.name.cmp(&right.name));
-        let seal = digest_str(&canonical_json_of(&FixtureManifestMaterial { fixtures: &fixtures }));
+        let seal = digest_str(&canonical_json_of(&FixtureManifestMaterial {
+            fixtures: &fixtures,
+        }));
         Ok(Self { fixtures, seal })
     }
 
-    pub fn seal(&self) -> &str { &self.seal }
-    pub fn fixtures(&self) -> &[ShadowFixture] { &self.fixtures }
-    pub fn verify_seal(&self, expected: &str) -> bool { self.seal == expected }
+    pub fn seal(&self) -> &str {
+        &self.seal
+    }
+    pub fn fixtures(&self) -> &[ShadowFixture] {
+        &self.fixtures
+    }
+    pub fn verify_seal(&self, expected: &str) -> bool {
+        self.seal == expected
+    }
 }
 
 #[derive(Serialize)]
@@ -435,7 +541,9 @@ pub struct ShadowReport {
 }
 
 impl ShadowReport {
-    pub fn is_match(&self) -> bool { self.differences.is_empty() }
+    pub fn is_match(&self) -> bool {
+        self.differences.is_empty()
+    }
 }
 
 pub trait ShadowReceiptSink: Send + Sync {
@@ -486,7 +594,11 @@ struct GuardedAdapterFuture {
 }
 
 impl GuardedAdapterFuture {
-    fn new(inner: ShadowFuture, deadline: ShadowDeadline, cancellation: ShadowCancellation) -> Self {
+    fn new(
+        inner: ShadowFuture,
+        deadline: ShadowDeadline,
+        cancellation: ShadowCancellation,
+    ) -> Self {
         Self {
             inner,
             deadline,
@@ -497,14 +609,18 @@ impl GuardedAdapterFuture {
     }
 
     fn arm_timer(&mut self) {
-        if self.timer_started { return; }
+        if self.timer_started {
+            return;
+        }
         self.timer_started = true;
         let timer_waker = Arc::clone(&self.timer_waker);
         let duration = self.deadline.remaining();
         std::thread::spawn(move || {
             std::thread::sleep(duration);
             if let Ok(mut waker) = timer_waker.lock() {
-                if let Some(waker) = waker.take() { waker.wake(); }
+                if let Some(waker) = waker.take() {
+                    waker.wake();
+                }
             }
         });
     }
@@ -514,37 +630,54 @@ impl Future for GuardedAdapterFuture {
     type Output = Result<ShadowEngineOutput, ShadowError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.cancellation.is_cancelled() { return Poll::Ready(Err(ShadowError::Cancelled)); }
+        if self.cancellation.is_cancelled() {
+            return Poll::Ready(Err(ShadowError::Cancelled));
+        }
         if self.deadline.is_exhausted() {
             self.cancellation.cancel();
             return Poll::Ready(Err(ShadowError::DeadlineExhausted));
         }
         self.cancellation.register(cx.waker());
-        if let Ok(mut waker) = self.timer_waker.lock() { *waker = Some(cx.waker().clone()); }
+        if let Ok(mut waker) = self.timer_waker.lock() {
+            *waker = Some(cx.waker().clone());
+        }
         self.arm_timer();
         match self.inner.as_mut().poll(cx) {
             Poll::Ready(result) => Poll::Ready(result),
             Poll::Pending => {
-                if self.cancellation.is_cancelled() { Poll::Ready(Err(ShadowError::Cancelled)) }
-                else if self.deadline.is_exhausted() {
+                if self.cancellation.is_cancelled() {
+                    Poll::Ready(Err(ShadowError::Cancelled))
+                } else if self.deadline.is_exhausted() {
                     self.cancellation.cancel();
                     Poll::Ready(Err(ShadowError::DeadlineExhausted))
-                } else { Poll::Pending }
+                } else {
+                    Poll::Pending
+                }
             }
         }
     }
 }
 
-fn guarded_adapter(adapter: &impl ShadowAdapter, context: ShadowExecutionContext) -> GuardedAdapterFuture {
+fn guarded_adapter(
+    adapter: &impl ShadowAdapter,
+    context: ShadowExecutionContext,
+) -> GuardedAdapterFuture {
     let deadline = context.deadline();
     let cancellation = context.cancellation().clone();
     GuardedAdapterFuture::new(adapter.execute(context), deadline, cancellation)
 }
 
-fn check_boundary(deadline: ShadowDeadline, cancellation: &ShadowCancellation) -> Result<(), ShadowError> {
-    if cancellation.is_cancelled() { Err(ShadowError::Cancelled) }
-    else if deadline.is_exhausted() { Err(ShadowError::DeadlineExhausted) }
-    else { Ok(()) }
+fn check_boundary(
+    deadline: ShadowDeadline,
+    cancellation: &ShadowCancellation,
+) -> Result<(), ShadowError> {
+    if cancellation.is_cancelled() {
+        Err(ShadowError::Cancelled)
+    } else if deadline.is_exhausted() {
+        Err(ShadowError::DeadlineExhausted)
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_adapter_output(
@@ -553,8 +686,12 @@ fn validate_adapter_output(
     output: &ShadowEngineOutput,
     policy: ShadowEffectPolicy,
 ) -> Result<(), ShadowError> {
-    if output.effects != context.effects.effects() { return Err(ShadowError::EffectLedgerMismatch); }
-    if output.effects.violates_policy(policy) { return Err(ShadowError::EffectViolation { engine }); }
+    if output.effects != context.effects.effects() {
+        return Err(ShadowError::EffectLedgerMismatch);
+    }
+    if output.effects.violates_policy(policy) {
+        return Err(ShadowError::EffectViolation { engine });
+    }
     Ok(())
 }
 
@@ -593,7 +730,8 @@ where
         ShadowCancellation::new(),
         policy,
         sink,
-    ).await
+    )
+    .await
 }
 
 /// Execute shadow qualification with a caller-owned cancellation signal.
@@ -617,10 +755,13 @@ where
     let request_digest = digest_str(&canonical_json_of(snapshot.request()));
     let effect_policy = snapshot.effect_policy();
 
-    if !effect_policy.immutable_snapshot { return Err(ShadowError::InvalidSnapshot("mutable effect policy")); }
+    if !effect_policy.immutable_snapshot {
+        return Err(ShadowError::InvalidSnapshot("mutable effect policy"));
+    }
     check_boundary(deadline, &cancellation)?;
     let legacy_started = Instant::now();
-    let legacy_context = ShadowExecutionContext::new(snapshot.clone(), deadline, cancellation.clone());
+    let legacy_context =
+        ShadowExecutionContext::new(snapshot.clone(), deadline, cancellation.clone());
     let legacy_output = guarded_adapter(legacy, legacy_context.clone())
         .await
         .map_err(|error| adapter_error(error, "legacy"))?;
@@ -650,12 +791,23 @@ where
     let legacy_semantics = semantic_response(&legacy_output.response)?;
     let native_semantics = semantic_response(&native_output.response)?;
     let mut differences = Vec::new();
-    collect_differences("$", &legacy_semantics, &native_semantics, &policy, &mut differences);
+    collect_differences(
+        "$",
+        &legacy_semantics,
+        &native_semantics,
+        &policy,
+        &mut differences,
+    );
     differences.sort_by(|left, right| left.path.cmp(&right.path));
     let report = ShadowReport {
         schema_version: SHADOW_SCHEMA_VERSION,
         operation: SHADOW_OPERATION.to_owned(),
-        status: if differences.is_empty() { "matched" } else { "differed" }.to_owned(),
+        status: if differences.is_empty() {
+            "matched"
+        } else {
+            "differed"
+        }
+        .to_owned(),
         request_digest,
         snapshot_digest,
         legacy_output_digest: digest_str(&canonical_json_of(&legacy_semantics)),
@@ -670,7 +822,10 @@ where
         },
     };
     sink.store(&report).map_err(ShadowError::ReceiptSink)?;
-    Ok(ShadowResult { legacy_response: legacy_output.response, report })
+    Ok(ShadowResult {
+        legacy_response: legacy_output.response,
+        report,
+    })
 }
 
 fn elapsed_ms(started: Instant) -> u64 {
@@ -683,10 +838,19 @@ fn elapsed_ms(started: Instant) -> u64 {
 fn semantic_response(response: &FederationResponseV1) -> Result<Value, ShadowError> {
     let mut response = response.clone();
     response.canonicalize_collections();
-    let mut value = serde_json::to_value(&response).map_err(|error| ShadowError::Normalization(error.to_string()))?;
-    let object = value.as_object_mut().ok_or_else(|| ShadowError::Normalization("response is not an object".to_owned()))?;
-    object.insert("requestId".to_owned(), Value::String("fixture-request".to_owned()));
-    object.insert("traceId".to_owned(), Value::String("fixture-trace".to_owned()));
+    let mut value = serde_json::to_value(&response)
+        .map_err(|error| ShadowError::Normalization(error.to_string()))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| ShadowError::Normalization("response is not an object".to_owned()))?;
+    object.insert(
+        "requestId".to_owned(),
+        Value::String("fixture-request".to_owned()),
+    );
+    object.insert(
+        "traceId".to_owned(),
+        Value::String("fixture-trace".to_owned()),
+    );
     object.remove("diagnostics");
     strip_transport_keys(object);
     if let Some(providers) = object.get_mut("providers").and_then(Value::as_array_mut) {
@@ -706,17 +870,28 @@ fn semantic_response(response: &FederationResponseV1) -> Result<Value, ShadowErr
 }
 
 fn redact_warnings(value: Option<&mut Value>) {
-    let Some(Value::Array(warnings)) = value else { return };
+    let Some(Value::Array(warnings)) = value else {
+        return;
+    };
     for warning in warnings {
-        if let Some(warning) = warning.as_object_mut() { warning.remove("message"); }
+        if let Some(warning) = warning.as_object_mut() {
+            warning.remove("message");
+        }
     }
 }
 
 fn strip_transport_keys(object: &mut Map<String, Value>) {
     for key in [
-        "completionOrder", "schedulerCompletionOrder", "indexedAt", "elapsedMs",
-        "stageElapsedMs", "providerElapsedMs", "providerStageElapsedMs", "worker",
-        "transport", "mode",
+        "completionOrder",
+        "schedulerCompletionOrder",
+        "indexedAt",
+        "elapsedMs",
+        "stageElapsedMs",
+        "providerElapsedMs",
+        "providerStageElapsedMs",
+        "worker",
+        "transport",
+        "mode",
     ] {
         object.remove(key);
     }
@@ -731,11 +906,17 @@ fn collect_differences(
 ) {
     match (legacy, native) {
         (Value::Object(left), Value::Object(right)) => {
-            let keys = left.keys().chain(right.keys()).cloned().collect::<BTreeSet<_>>();
+            let keys = left
+                .keys()
+                .chain(right.keys())
+                .cloned()
+                .collect::<BTreeSet<_>>();
             for key in keys {
                 let child = format!("{path}.{}", key);
                 match (left.get(&key), right.get(&key)) {
-                    (Some(left), Some(right)) => collect_differences(&child, left, right, policy, differences),
+                    (Some(left), Some(right)) => {
+                        collect_differences(&child, left, right, policy, differences)
+                    }
                     (left, right) => push_difference(&child, left, right, policy, differences),
                 }
             }
@@ -743,10 +924,18 @@ fn collect_differences(
         (Value::Array(left), Value::Array(right)) => {
             for index in 0..left.len().max(right.len()) {
                 let child = format!("{path}[{index}]");
-                push_or_recurse(child, left.get(index), right.get(index), policy, differences);
+                push_or_recurse(
+                    child,
+                    left.get(index),
+                    right.get(index),
+                    policy,
+                    differences,
+                );
             }
         }
-        _ if legacy != native => push_difference(path, Some(legacy), Some(native), policy, differences),
+        _ if legacy != native => {
+            push_difference(path, Some(legacy), Some(native), policy, differences)
+        }
         _ => {}
     }
 }
@@ -771,7 +960,12 @@ fn push_difference(
     policy: &ShadowComparisonPolicy,
     differences: &mut Vec<ShadowDifference>,
 ) {
-    let hash = |value: Option<&Value>| value.map(|value| canonical_json_of(value)).map(|text| digest_str(&text)).unwrap_or_else(|| digest_str("<missing>"));
+    let hash = |value: Option<&Value>| {
+        value
+            .map(|value| canonical_json_of(value))
+            .map(|text| digest_str(&text))
+            .unwrap_or_else(|| digest_str("<missing>"))
+    };
     differences.push(ShadowDifference {
         path: path.to_owned(),
         classification: policy.classify(path),

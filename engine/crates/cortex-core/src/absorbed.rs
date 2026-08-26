@@ -166,7 +166,11 @@ pub fn validate_governance(value: &RecordGovernance) -> Result<(), AbsorbedValid
     {
         return Err(AbsorbedValidationError::EmptyGovernance);
     }
-    if value.provenance.iter().any(|item| item.source.trim().is_empty()) {
+    if value
+        .provenance
+        .iter()
+        .any(|item| item.source.trim().is_empty())
+    {
         return Err(AbsorbedValidationError::EmptyGovernance);
     }
     Ok(())

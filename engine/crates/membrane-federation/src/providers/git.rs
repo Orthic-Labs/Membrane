@@ -8,9 +8,8 @@
 
 use membrane_protocol::{
     CandidateV1, FederationProviderStatusV1, FreshnessClass, FreshnessSnapshotV1,
-    ProviderDiagnosticsV1, ProviderId,
-    ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode,
-    WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
+    ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1,
+    ReasonCode, WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{Provider, ProviderContext, ProviderError, ProviderOutput};
 use std::collections::BTreeMap;
@@ -74,9 +73,7 @@ impl RepositoryAdapter {
             .repository
             .head()
             .map_err(|error| GitProviderError::Repository(error.to_string()))?;
-        let branch = head
-            .referent_name()
-            .map(|name| name.shorten().to_string());
+        let branch = head.referent_name().map(|name| name.shorten().to_string());
         let revision = match head.id() {
             Some(id) => {
                 let value = id.to_string();
@@ -135,7 +132,11 @@ pub fn produce(root: impl AsRef<Path>) -> ProviderOutputV1 {
             0.5,
             "detached HEAD".to_owned(),
         ));
-        warning(&mut output, "head_detached", ReasonCode::ProviderUnavailable);
+        warning(
+            &mut output,
+            "head_detached",
+            ReasonCode::ProviderUnavailable,
+        );
     }
     if let Some(revision) = head.revision.as_deref() {
         output.candidates.push(metadata_candidate(
@@ -203,7 +204,11 @@ fn apply_freshness(output: &mut ProviderOutputV1, freshness: &FreshnessSnapshotV
         }
     }
     if freshness.graph_state == "dirty_overlay" && freshness.overlay_digest.is_none() {
-        warning(output, "dirty_overlay_digest_missing", ReasonCode::FreshnessUnavailable);
+        warning(
+            output,
+            "dirty_overlay_digest_missing",
+            ReasonCode::FreshnessUnavailable,
+        );
         output.omissions.push(ProviderOmissionV1 {
             provider: PROVIDER,
             reason: ReasonCode::FreshnessUnavailable,
@@ -296,7 +301,9 @@ fn fail_output(output: &mut ProviderOutputV1, error: &GitProviderError) {
     };
     let (reason, detail_id) = match error {
         GitProviderError::NotRepository => (ReasonCode::ProviderUnavailable, "not_a_repository"),
-        GitProviderError::MissingHeadObject => (ReasonCode::ProviderMalformed, "head_object_missing"),
+        GitProviderError::MissingHeadObject => {
+            (ReasonCode::ProviderMalformed, "head_object_missing")
+        }
         GitProviderError::Repository(_) => (ReasonCode::ProviderFailed, "repository_open_failed"),
     };
     output.warnings.push(ProviderWarningV1 {
@@ -334,6 +341,9 @@ impl Provider for GitProvider {
         if context.is_deadline_exhausted() {
             return Err(ProviderError::DeadlineExceeded);
         }
-        Ok(produce_with_freshness(&context.repository_root, &context.freshness))
+        Ok(produce_with_freshness(
+            &context.repository_root,
+            &context.freshness,
+        ))
     }
 }

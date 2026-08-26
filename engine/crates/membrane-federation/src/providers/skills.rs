@@ -12,10 +12,12 @@ use membrane_protocol::{
     ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
     PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
-use membrane_provider_sdk::{Provider, ProviderContext, ProviderError, ProviderOutput, SkillCatalogEntry};
+use membrane_provider_sdk::{
+    Provider, ProviderContext, ProviderError, ProviderOutput, SkillCatalogEntry,
+};
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub const PROVIDER_ID: ProviderId = ProviderId::Skills;
@@ -40,13 +42,19 @@ impl std::fmt::Debug for SkillsProvider {
 
 impl Clone for SkillsProvider {
     fn clone(&self) -> Self {
-        Self { source: Arc::clone(&self.source), result_limit: self.result_limit }
+        Self {
+            source: Arc::clone(&self.source),
+            result_limit: self.result_limit,
+        }
     }
 }
 
 impl SkillsProvider {
     pub fn new(source: Arc<dyn membrane_provider_sdk::SkillCatalogSource>) -> Self {
-        Self { source, result_limit: MAX_RESULTS }
+        Self {
+            source,
+            result_limit: MAX_RESULTS,
+        }
     }
 
     pub fn with_source<S>(source: S) -> Self
@@ -63,7 +71,10 @@ impl SkillsProvider {
 }
 
 impl SkillsProvider {
-    async fn provide_inner(&self, context: &ProviderContext) -> Result<ProviderOutput, ProviderError> {
+    async fn provide_inner(
+        &self,
+        context: &ProviderContext,
+    ) -> Result<ProviderOutput, ProviderError> {
         if context.is_cancelled() {
             return Err(ProviderError::Cancelled);
         }
@@ -74,7 +85,12 @@ impl SkillsProvider {
             Ok(response) => response,
             Err(ProviderError::Cancelled) => return Err(ProviderError::Cancelled),
             Err(ProviderError::DeadlineExceeded) => return Err(ProviderError::DeadlineExceeded),
-            Err(error) => return Ok(gap_output(ReasonCode::ProviderUnavailable, "source_unavailable")),
+            Err(error) => {
+                return Ok(gap_output(
+                    ReasonCode::ProviderUnavailable,
+                    "source_unavailable",
+                ))
+            }
         };
         if context.is_cancelled() {
             return Err(ProviderError::Cancelled);
@@ -83,8 +99,15 @@ impl SkillsProvider {
             return Err(ProviderError::DeadlineExceeded);
         }
 
-        let Some(generation) = response.generation.clone().filter(|value| !value.trim().is_empty()) else {
-            return Ok(gap_output(ReasonCode::ProviderMalformed, "generation_missing"));
+        let Some(generation) = response
+            .generation
+            .clone()
+            .filter(|value| !value.trim().is_empty())
+        else {
+            return Ok(gap_output(
+                ReasonCode::ProviderMalformed,
+                "generation_missing",
+            ));
         };
         let expected = context
             .release_generation
@@ -94,10 +117,19 @@ impl SkillsProvider {
             return Ok(generation_gap(expected.unwrap_or_default(), &generation));
         }
         if response.value.len() > MAX_SKILLS {
-            return Ok(gap_output(ReasonCode::ProviderMalformed, "snapshot_row_cap"));
+            return Ok(gap_output(
+                ReasonCode::ProviderMalformed,
+                "snapshot_row_cap",
+            ));
         }
-        if serde_json::to_vec(&response).map(|bytes| bytes.len() > MAX_SNAPSHOT_BYTES).unwrap_or(true) {
-            return Ok(gap_output(ReasonCode::ProviderMalformed, "snapshot_byte_cap"));
+        if serde_json::to_vec(&response)
+            .map(|bytes| bytes.len() > MAX_SNAPSHOT_BYTES)
+            .unwrap_or(true)
+        {
+            return Ok(gap_output(
+                ReasonCode::ProviderMalformed,
+                "snapshot_byte_cap",
+            ));
         }
 
         for entry in &response.value {
@@ -105,7 +137,10 @@ impl SkillsProvider {
                 return Ok(generation_gap(&generation, &entry.generation));
             }
             if !valid_entry(entry, context) {
-                return Ok(gap_output(ReasonCode::ProviderMalformed, "snapshot_provenance"));
+                return Ok(gap_output(
+                    ReasonCode::ProviderMalformed,
+                    "snapshot_provenance",
+                ));
             }
         }
 
@@ -113,25 +148,40 @@ impl SkillsProvider {
         let mut output = ProviderOutputV1 {
             schema_version: PROVIDER_OUTPUT_SCHEMA_VERSION,
             provider: PROVIDER_ID,
-            status: if response.complete { FederationProviderStatusV1::Complete } else { FederationProviderStatusV1::Partial },
+            status: if response.complete {
+                FederationProviderStatusV1::Complete
+            } else {
+                FederationProviderStatusV1::Partial
+            },
             generation: Some(generation.clone()),
-            candidates: ranked.into_iter().map(|skill| candidate(skill.entry, skill.score)).collect(),
+            candidates: ranked
+                .into_iter()
+                .map(|skill| candidate(skill.entry, skill.score))
+                .collect(),
             warnings: response.warnings.iter().map(source_warning).collect(),
             omissions: Vec::new(),
             diagnostics: Some(ProviderDiagnosticsV1 {
                 provider: PROVIDER_ID,
                 elapsed_ms: None,
                 generation: Some(generation),
-                attributes: BTreeMap::from([(String::from("representation"), String::from("index_only"))]),
+                attributes: BTreeMap::from([(
+                    String::from("representation"),
+                    String::from("index_only"),
+                )]),
             }),
             extensions: BTreeMap::new(),
         };
         if output.candidates.is_empty() && output.warnings.is_empty() {
             output.status = FederationProviderStatusV1::Partial;
-            output.warnings.push(warning(ReasonCode::ProviderUnavailable, "no_relevant_skill"));
+            output.warnings.push(warning(
+                ReasonCode::ProviderUnavailable,
+                "no_relevant_skill",
+            ));
         }
         if !response.complete {
-            output.warnings.push(warning(ReasonCode::ProviderFailed, "source_incomplete"));
+            output
+                .warnings
+                .push(warning(ReasonCode::ProviderFailed, "source_incomplete"));
         }
         Ok(output)
     }
@@ -156,7 +206,10 @@ fn valid_entry(entry: &SkillCatalogEntry, context: &ProviderContext) -> bool {
         && !entry.title.trim().is_empty()
         && entry.repository_id == context.repository_id
         && entry.source_hash.len() == 64
-        && entry.source_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && entry
+            .source_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn candidate(entry: SkillCatalogEntry, score: f64) -> membrane_protocol::CandidateV1 {
@@ -225,7 +278,10 @@ fn gap_output(reason: ReasonCode, detail: &str) -> ProviderOutput {
 }
 
 fn generation_gap(expected: &str, observed: &str) -> ProviderOutput {
-    let mut output = gap_output(ReasonCode::GenerationIncoherent, "skills_generation_changed");
+    let mut output = gap_output(
+        ReasonCode::GenerationIncoherent,
+        "skills_generation_changed",
+    );
     output.generation = (!observed.is_empty()).then(|| observed.to_owned());
     output.omissions[0].detail_id = Some(format!("expected:{expected}"));
     output

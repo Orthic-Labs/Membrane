@@ -10,7 +10,9 @@ pub mod memory_backend;
 pub mod records;
 pub use error::ClientError;
 pub use handshake::{CompatibilityRequirement, ServiceIdentity};
-pub use memory_backend::{CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport};
+pub use memory_backend::{
+    CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport,
+};
 pub use records::{FullRecord, MemoryEntry, MemoryListRow, MemoryTier};
 
 pub const ENVELOPE_VERSION: u64 = 1;

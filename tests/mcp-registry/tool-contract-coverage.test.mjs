@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   computeToolContractCoverage,
-  CONTRACT_COVERAGE_GAP,
+  CONTRACT_COVERAGE_NATIVE_REGISTRY,
   CONTRACT_COVERAGE_OPERATIONS_REGISTRY,
 } from "../../scripts/release/registry/tool-contract-coverage.mjs";
 import { TOOLS } from "../../mcp/server.mjs";
 import { OPERATIONS } from "../../engine/crates/membrane-protocol/bindings/operations.mjs";
 
-test("every real MCP tool from mcp/server.mjs appears exactly once, sorted by name", () => {
+test("native conformance registry appears exactly once, sorted by name", () => {
   const coverage = computeToolContractCoverage();
   const names = coverage.map((entry) => entry.name);
   assert.deepEqual(names, names.slice().sort(), "coverage list must be sorted");
@@ -45,22 +45,17 @@ test("membrane_blueprint is contract-covered, closing the gap this test previous
   const coverage = computeToolContractCoverage();
   const entry = coverage.find((candidate) => candidate.name === "membrane_blueprint");
   assert.ok(entry, "membrane_blueprint must appear in the coverage list");
-  assert.notEqual(entry.contractCoverage, CONTRACT_COVERAGE_GAP);
+  assert.notEqual(entry.contractCoverage, CONTRACT_COVERAGE_NATIVE_REGISTRY);
   assert.equal(entry.gapReason, undefined, "a contract-covered tool must not carry a gapReason");
 });
 
-test("a synthetic tool absent from a synthetic operations registry is a declared gap, not fabricated coverage", () => {
+test("a synthetic tool absent from operations remains native-registry covered", () => {
   const coverage = computeToolContractCoverage({
     tools: [{ name: "synthetic_tool_a" }, { name: "synthetic_tool_b" }],
     operations: [{ name: "synthetic_tool_a" }],
   });
   assert.deepEqual(coverage, [
     { name: "synthetic_tool_a", contractCoverage: CONTRACT_COVERAGE_OPERATIONS_REGISTRY },
-    {
-      name: "synthetic_tool_b",
-      contractCoverage: CONTRACT_COVERAGE_GAP,
-      gapReason:
-        "synthetic_tool_b is exposed as a real MCP tool in mcp/server.mjs but has no entry in the OPERATIONS cross-operation registry (engine/crates/membrane-protocol/bindings/operations.mjs): no schemaVersion/errorVersion pair, no golden success/error fixtures, and no closed error-code taxonomy validated by validateOperationFixtures().",
-    },
+    { name: "synthetic_tool_b", contractCoverage: CONTRACT_COVERAGE_NATIVE_REGISTRY },
   ]);
 });

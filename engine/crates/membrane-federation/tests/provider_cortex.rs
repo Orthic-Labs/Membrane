@@ -1,21 +1,24 @@
 use membrane_federation::providers::cortex::normalize_memory_candidate;
-use membrane_provider_sdk::MemoryCandidate;
 use membrane_protocol::CandidateV1;
+use membrane_provider_sdk::MemoryCandidate;
 use std::collections::BTreeMap;
 
 fn record() -> MemoryCandidate {
     MemoryCandidate {
         id: "memory::global/rule".into(),
         repository_id: "repo-a".into(),
-        generation: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-        source_hash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+        generation: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+        source_hash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .into(),
         candidate: CandidateV1 {
             id: "memory::global/rule".into(),
             layer: 7,
             provider: None,
             source_kind: "memory".into(),
             source_ref: "memory::global/rule".into(),
-            source_hash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
+            source_hash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .into(),
             trust_class: "agent_verified".into(),
             instruction_policy: "data_only".into(),
             provider_score: 0.8,
@@ -51,7 +54,8 @@ fn rejects_cross_repository_or_conflicting_source_identity() {
     assert!(normalize_memory_candidate(&record(), "other-repo").is_err());
 
     let mut mismatched_hash = record();
-    mismatched_hash.candidate.source_hash = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into();
+    mismatched_hash.candidate.source_hash =
+        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into();
     assert!(normalize_memory_candidate(&mismatched_hash, "repo-a").is_err());
 
     let mut mismatched_id = record();

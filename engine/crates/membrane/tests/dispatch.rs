@@ -78,7 +78,10 @@ fn installed_cli_cannot_start_a_resident() {
             if Instant::now() >= deadline {
                 child.kill().expect("stop unexpected resident process");
                 let _ = child.wait();
-                panic!("`membrane {}` started or blocked in resident mode", args.join(" "));
+                panic!(
+                    "`membrane {}` started or blocked in resident mode",
+                    args.join(" ")
+                );
             }
             thread::sleep(Duration::from_millis(10));
         };

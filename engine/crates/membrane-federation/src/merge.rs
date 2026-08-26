@@ -5,7 +5,9 @@
 //! fixed provider/security ordering.  Completion order never reaches output.
 
 use crate::normalize::{normalize_provider_output, NormalizedCandidate, NormalizedProviderOutput};
-use crate::omission::{canonical_omissions, canonical_warnings, conflict_omission, reconcile_lanes};
+use crate::omission::{
+    canonical_omissions, canonical_warnings, conflict_omission, reconcile_lanes,
+};
 use membrane_protocol::{
     canonical_json_of, FederationProviderStatusV1, FederationResponseV1, FederationStatus,
     ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode,
@@ -25,7 +27,8 @@ pub struct MergeResult {
 impl MergeResult {
     pub fn canonicalize(&mut self) {
         self.candidates.sort_by(candidate_order);
-        self.providers.sort_by_key(|provider| provider.provider.rank());
+        self.providers
+            .sort_by_key(|provider| provider.provider.rank());
         self.warnings = canonical_warnings(std::mem::take(&mut self.warnings));
         self.omissions = canonical_omissions(std::mem::take(&mut self.omissions));
     }
@@ -48,11 +51,7 @@ impl MergeResult {
             } else {
                 FederationStatus::Complete
             },
-            providers: self
-                .providers
-                .iter()
-                .map(provider_output)
-                .collect(),
+            providers: self.providers.iter().map(provider_output).collect(),
             candidates: self
                 .candidates
                 .iter()
@@ -102,7 +101,10 @@ pub fn merge_normalized(
     let mut by_id: BTreeMap<String, Vec<NormalizedCandidate>> = BTreeMap::new();
     for provider in &providers {
         for candidate in &provider.candidates {
-            by_id.entry(candidate.id().to_owned()).or_default().push(candidate.clone());
+            by_id
+                .entry(candidate.id().to_owned())
+                .or_default()
+                .push(candidate.clone());
         }
     }
 
@@ -110,7 +112,10 @@ pub fn merge_normalized(
     for (id, mut entries) in by_id {
         entries.sort_by(candidate_order);
         let first = entries.first().expect("group is never empty");
-        if entries.iter().all(|entry| equivalent_identity(first, entry)) {
+        if entries
+            .iter()
+            .all(|entry| equivalent_identity(first, entry))
+        {
             candidates.push(first.clone());
             continue;
         }
@@ -226,7 +231,11 @@ pub fn normalize_lane(
 
 /// Construct a provider-local warning without carrying message text into
 /// canonical merge decisions.
-pub fn merge_warning(provider: ProviderId, reason: ReasonCode, detail_id: Option<String>) -> ProviderWarningV1 {
+pub fn merge_warning(
+    provider: ProviderId,
+    reason: ReasonCode,
+    detail_id: Option<String>,
+) -> ProviderWarningV1 {
     ProviderWarningV1 {
         provider,
         reason,

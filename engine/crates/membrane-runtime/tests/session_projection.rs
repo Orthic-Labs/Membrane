@@ -33,15 +33,16 @@ fn event(session_id: &str, seq: u64, event_id: &str, content: &str) -> SessionEv
 #[test]
 fn transcript_boundaries_and_retrieval_are_deterministic() {
     let events = vec![event("s1", 1, "e1", "alpha"), event("s1", 2, "e2", "beta")];
-    let chunks = build_transcript_chunks(
-        "s1",
-        &events,
-        TranscriptChunkConfig { max_chars: 6 },
-    )
-    .unwrap();
+    let chunks =
+        build_transcript_chunks("s1", &events, TranscriptChunkConfig { max_chars: 6 }).unwrap();
     assert_eq!(chunks.len(), 2);
     assert_eq!(chunks[0].seq_end, 2);
-    assert_eq!(retrieve_transcript_chunks(&chunks, "beta", None, 1)[0].chunk.chunk_id, "s1:2:3");
+    assert_eq!(
+        retrieve_transcript_chunks(&chunks, "beta", None, 1)[0]
+            .chunk
+            .chunk_id,
+        "s1:2:3"
+    );
 }
 
 #[test]
@@ -77,7 +78,10 @@ fn session_projection_keeps_cursor_links_and_explicit_omissions() {
     };
     let document = build_session_projection(&input).unwrap();
     assert!(document.markdown.contains("Continue"));
-    assert!(document.omissions.iter().any(|value| value.contains("missing event sequence 2..4")));
+    assert!(document
+        .omissions
+        .iter()
+        .any(|value| value.contains("missing event sequence 2..4")));
     assert_eq!(document.links.len(), 2);
     assert!(!document.invalidated_by(&input.source_cursor, "sha256:source"));
     assert!(document.invalidated_by(

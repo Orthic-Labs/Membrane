@@ -7,13 +7,11 @@
 
 use crate::blueprint_client::ContextualBlueprintSource;
 use membrane_protocol::{
-    CandidateV1, FederationProviderStatusV1, ProviderId, ProviderOmissionV1,
-    ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
-    PROVIDER_OUTPUT_SCHEMA_VERSION,
+    CandidateV1, FederationProviderStatusV1, ProviderId, ProviderOmissionV1, ProviderOutputV1,
+    ProviderWarningV1, ReasonCode, WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
-    Provider, ProviderContext, ProviderError, ProviderOutput,
-    SourceResponse,
+    Provider, ProviderContext, ProviderError, ProviderOutput, SourceResponse,
 };
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -27,7 +25,11 @@ pub const MAX_ANCHOR_CANDIDATES: usize = 32;
 /// File bytes are supplied through this narrow adapter so composition can
 /// replace local reads with a grant-aware host implementation.
 pub trait AnchorFileSource: Send + Sync {
-    fn read_file(&self, canonical_path: &Path, max_bytes: usize) -> Result<Vec<u8>, AnchorFileError>;
+    fn read_file(
+        &self,
+        canonical_path: &Path,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, AnchorFileError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,9 +45,15 @@ pub enum AnchorFileError {
 pub struct FilesystemAnchorSource;
 
 impl AnchorFileSource for FilesystemAnchorSource {
-    fn read_file(&self, canonical_path: &Path, max_bytes: usize) -> Result<Vec<u8>, AnchorFileError> {
+    fn read_file(
+        &self,
+        canonical_path: &Path,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, AnchorFileError> {
         let file = File::open(canonical_path).map_err(|error| match error.kind() {
-            io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => AnchorFileError::Unavailable,
+            io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied => {
+                AnchorFileError::Unavailable
+            }
             _ => AnchorFileError::ReadFailed,
         })?;
         let mut bytes = Vec::new();
@@ -93,7 +101,10 @@ impl Default for AnchorsProvider {
 
 impl AnchorsProvider {
     pub fn new(source: Arc<dyn AnchorFileSource>) -> Self {
-        Self { source, blueprint: None }
+        Self {
+            source,
+            blueprint: None,
+        }
     }
 
     /// Attach the request-aware Blueprint adapter used for live symbol
@@ -148,7 +159,11 @@ async fn resolve_with_contextual(
         return Err(ProviderError::DeadlineExceeded);
     }
     if context.anchors.is_empty() {
-        omissions.push(anchor_omission("", "anchors_empty", ReasonCode::ProviderUnavailable));
+        omissions.push(anchor_omission(
+            "",
+            "anchors_empty",
+            ReasonCode::ProviderUnavailable,
+        ));
     }
 
     for anchor in context.anchors.iter().take(MAX_ANCHOR_CANDIDATES) {
@@ -159,7 +174,11 @@ async fn resolve_with_contextual(
             return Err(ProviderError::DeadlineExceeded);
         }
         if anchor.trim().is_empty() {
-            omissions.push(anchor_omission(anchor, "anchor_empty", ReasonCode::ProviderMalformed));
+            omissions.push(anchor_omission(
+                anchor,
+                "anchor_empty",
+                ReasonCode::ProviderMalformed,
+            ));
             continue;
         }
 
@@ -291,7 +310,10 @@ async fn resolve_with_contextual(
     })
 }
 
-fn append_source_warnings(warnings: &mut Vec<ProviderWarningV1>, response: &SourceResponse<membrane_provider_sdk::BlueprintResult>) {
+fn append_source_warnings(
+    warnings: &mut Vec<ProviderWarningV1>,
+    response: &SourceResponse<membrane_provider_sdk::BlueprintResult>,
+) {
     warnings.extend(response.warnings.iter().map(|warning| ProviderWarningV1 {
         provider: ProviderId::Anchors,
         reason: ReasonCode::ProviderUnavailable,
@@ -315,7 +337,11 @@ pub fn classify_path(repository_root: &str, anchor: &str) -> AnchorPath {
     let raw = anchor.strip_prefix("file:").unwrap_or(anchor);
     let symbol = anchor.strip_prefix("symbol:").unwrap_or(anchor).trim();
     if anchor.starts_with("symbol:") {
-        return if symbol.is_empty() { AnchorPath::Rejected } else { AnchorPath::Symbol(symbol.to_owned()) };
+        return if symbol.is_empty() {
+            AnchorPath::Rejected
+        } else {
+            AnchorPath::Symbol(symbol.to_owned())
+        };
     }
     if looks_windows_absolute(raw) {
         return AnchorPath::Rejected;
@@ -344,14 +370,13 @@ pub fn classify_path(repository_root: &str, anchor: &str) -> AnchorPath {
     let Ok(relative) = path.strip_prefix(&root).map(normalize_relative) else {
         return AnchorPath::Rejected;
     };
-    AnchorPath::File {
-        path,
-        relative,
-    }
+    AnchorPath::File { path, relative }
 }
 
 fn lexically_contained(root: &Path, requested: &Path) -> bool {
-    let Ok(relative) = requested.strip_prefix(root) else { return false };
+    let Ok(relative) = requested.strip_prefix(root) else {
+        return false;
+    };
     let mut depth = 0usize;
     for component in relative.components() {
         match component {
@@ -369,11 +394,16 @@ fn lexically_contained(root: &Path, requested: &Path) -> bool {
 }
 
 fn has_symlink_component(root: &Path, path: &Path) -> bool {
-    let Ok(relative) = path.strip_prefix(root) else { return true };
+    let Ok(relative) = path.strip_prefix(root) else {
+        return true;
+    };
     let mut current = root.to_path_buf();
     for component in relative.components() {
         current.push(component.as_os_str());
-        if fs::symlink_metadata(&current).map(|meta| meta.file_type().is_symlink()).unwrap_or(true) {
+        if fs::symlink_metadata(&current)
+            .map(|meta| meta.file_type().is_symlink())
+            .unwrap_or(true)
+        {
             return true;
         }
     }
@@ -392,7 +422,9 @@ fn looks_windows_absolute(value: &str) -> bool {
 }
 
 fn grant_allows(context: &ProviderContext, relative: &str) -> bool {
-    let Some(grant) = context.scope_grant.as_ref() else { return false };
+    let Some(grant) = context.scope_grant.as_ref() else {
+        return false;
+    };
     grant.read_paths.iter().any(|entry| {
         let (path, _) = entry.rsplit_once(':').unwrap_or((entry.as_str(), ""));
         normalize_relative(Path::new(path)) == relative
@@ -425,7 +457,10 @@ pub fn raw_candidate(anchor: &str) -> CandidateV1 {
 }
 
 fn file_candidate(anchor: &str, relative: &str, bytes: &[u8]) -> CandidateV1 {
-    let text: String = String::from_utf8_lossy(bytes).chars().take(MAX_ANCHOR_BYTES).collect();
+    let text: String = String::from_utf8_lossy(bytes)
+        .chars()
+        .take(MAX_ANCHOR_BYTES)
+        .collect();
     CandidateV1 {
         id: format!("anchor:file:{relative}"),
         layer: 3,

@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-26T15:18:23.852Z",
+ "generatedAt": "2026-08-26T21:45:12.037Z",
  "enforcementMode": "sealed",
  "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
  "totals": {
@@ -286,7 +286,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "e6332aa40ea893a2db92731473208ac388e5371b41d1ee6da09e5ce1c0aa003a"
+   "content_digest": "3125d98f8ce6b6c6dc928eb6f8e8f5275e83690164f8348fdf72e67a29950ec1"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -464,7 +464,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "6195a5dc052ded9048528f5fcd4f63169fb12ed526e81e2369c7e3cd15068952"
+   "content_digest": "612ffa5a87240a74347a079ed94f8c99ed088fe74fc566c7cbe73bf7d2b86366"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -787,7 +787,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "775f52b1e692601a2abde05618ca83d830f4adb45b3d8012b6c7da9be00c2928"
+   "content_digest": "6650357256c464d6db2c76ec2bb9708dbd64e4e99df42436189a86cf897e3196"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -996,7 +996,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "1e6ff5b531c0744a8ca36359dc3bdd747cfa5bf95971b2fd789be38e0ee5b8f7"
+   "content_digest": "6753362e5742097a4178bdea37ce6a45216731e020aa3a5af241329ae5162d9c"
   },
   {
    "id": "engine-crates-engine/crates/cortex-format",
@@ -1050,7 +1050,7 @@
     "engine/crates/cortex-store/src/time.rs",
     "engine/crates/cortex-store/src/transcript.rs"
    ],
-   "content_digest": "5d80e26405a5646e87efe0e1444d9626b09f6d5a60a6f5cc094788bcbf715f45"
+   "content_digest": "b0e4932242794e5c9d7c301b3c1f2587d1dabb73498f1f3c42a06a1497be71bf"
   },
   {
    "id": "engine-crates-engine/crates/membrane-core",
@@ -1077,7 +1077,7 @@
     "engine/crates/membrane-core/src/reconcile.rs",
     "engine/crates/membrane-core/tests/compaction.rs"
    ],
-   "content_digest": "26de970256dd8569077377aeecad857d28317a7d0d2b2b1dec0b84dd32c62ef9"
+   "content_digest": "38f0c6eab0de07efef503d3b34dad7ca49294490486cd038ff0809239af06c97"
   },
   {
    "id": "engine-crates-engine/crates/membrane-federation",
@@ -1136,7 +1136,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "33a4b4b39c01d3c140f90286c536ac42fbe2e36847cbed98cdfcd723998407e8"
+   "content_digest": "398a3c1efce3a5e90e77b6d5e15289b8a080bb787647c06774ce8c04d694da36"
   },
   {
    "id": "engine-crates-engine/crates/membrane-mcp",
@@ -1213,7 +1213,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "7b3351e5dee67f0eb1d9476ec6664abffe9d190d9bfa7056a2a1670a1a2229e2"
+   "content_digest": "49f017f34c8553096868c857401ffdb0b45a90e3ec0bb26b29feb5ce1803d87e"
   },
   {
    "id": "engine-crates-engine/crates/membrane-provider-sdk",
@@ -1243,7 +1243,7 @@
     "engine/crates/membrane-provider-sdk/tests/conformance.rs",
     "engine/crates/membrane-provider-sdk/tests/downstream_fixture.rs"
    ],
-   "content_digest": "bb807a7275a1a9c0dd60e8ad641e5409eff04b8a67e17ee8ac3bb14ea853c865"
+   "content_digest": "6fe8371ce2ddc5d4c4713c9a0516e51fa0c99238977ebd4feae24946f96fc65d"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",
@@ -1276,7 +1276,7 @@
     "engine/vector-bakeoff/sqlite-stable/src/main.rs",
     "engine/vector-bakeoff/tests/test_harness.py"
    ],
-   "content_digest": "39abcd9e25afef9df2302fadb1f015ba1486cce61d43cebfe651d40b699e2675"
+   "content_digest": "8ce308c364529b223e6f566a33c4e24f24881eecc163cf81bd20684a75b209f3"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",
@@ -1302,7 +1302,7 @@
     "engine/crates/membrane-client/tests/compat.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "63d970acfd0d3946b25a4b33327500820271b44431dd1484612d60e6eef4d825"
+   "content_digest": "3efd5a2c49d48c81edc7d486203fc5bc858ab429b5a1a257ebbae35d786aa6f0"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1360,7 +1360,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "654626ee32ea1e51172ab7d1b6db48d39e3628712b03bcb03cc8cc16b5579577"
+   "content_digest": "c449f93249591e93390826ec243e049937323ddee1c9df7b400f38674a628ddc"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1416,7 +1416,7 @@
     "engine/crates/membrane-adapt/tests/taste_contracts.rs",
     "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "3979b241354b197463e352c1ad5a4b4db2f7d3ebb5830121f20fc1a2385e2391"
+   "content_digest": "d75c452d9973762f6278e09eb95b995a0a44e4a5cf31641f6c59bc2de5435608"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-runtime",
@@ -1531,7 +1531,7 @@
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "7cd337194788ce677d5b310260afe3f62bf62532483b559d08f3ce8b01ea37ae"
+   "content_digest": "9d3db47d4ec57fedd6217b703060ab06df84a47101fc00179c55749c5b715929"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1633,7 +1633,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "7713993ad8240123b9261a2b30aa81bb99283198d437aba358a67be5456c3e78"
+   "content_digest": "ebc9318225e1bc5913adb4c4dda948c8ec702104ceab5ff853cce74093800389"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -1679,7 +1679,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "d5161db582e63e74d9bc998a067dedda3cada21edd52315a6cbcb5bb2ea9e755"
+   "content_digest": "2ceb3639fb6fb9aebded5e675e7ae9023176bd3c750c6194d37ecd12d68964be"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1705,6 +1705,7 @@
     "apps/membrane-hub/scripts/presentation-assets.mjs",
     "apps/membrane-hub/scripts/release-assets.mjs",
     "apps/membrane-hub/scripts/release-build-mac.mjs",
+    "apps/membrane-hub/scripts/release-build-windows.mjs",
     "apps/membrane-hub/scripts/release-identity.mjs",
     "apps/membrane-hub/scripts/runtime-inventory.mjs",
     "apps/membrane-hub/scripts/sign-macos-runtime.mjs",
@@ -1714,7 +1715,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "c79ee82d267fae163c0a07d2e3c77bc7488fc4195df53206719f9da411e47903"
+   "content_digest": "dd10fac04a435cf84b8cb89391fb70981faa4ba89c7af35941c7145ac7a83aa8"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2089,7 +2090,6 @@
     "scripts/release/verify-platform-artifacts.mjs",
     "scripts/release/verify-release-evidence.mjs",
     "scripts/release/verify-release-evidence.test.mjs",
-    "scripts/run-adapt-installed-current.mjs",
     "scripts/run-ccx-live.mjs",
     "scripts/run-m0-baseline-current.mjs",
     "scripts/run-m0-baseline-current.test.mjs",
@@ -2103,7 +2103,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "7c10e76d20d8a3e6a26dd2d5d2980862e7f9cb9d8576b046c4e4c5d6fed54897"
+   "content_digest": "25a2866c8020e5625869aa72bd2ca1c446833d5bc8b70f55fee8994c1317a24e"
   },
   {
    "id": "tests-root-tests-root",
@@ -2191,7 +2191,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "88b265cabce679b7a612603055572a3026e3a69d5cb747e465e14d998d9de01b"
+   "content_digest": "1786985eab5f408afd8531b7ade3b57ff73e45692e188a437b58215503be5239"
   }
  ]
 }

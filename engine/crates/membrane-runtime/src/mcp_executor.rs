@@ -64,7 +64,7 @@ fn blueprint_failure(operation: &str, failure: BlueprintClientError) -> Value {
                 "root_not_enrolled" | "graph_missing" | "not_configured"
             ) =>
         {
-            "not_configured"
+            code.as_str()
         }
         BlueprintClientError::Remote { code, .. }
             if matches!(code.as_str(), "stale_blocked" | "generation_mismatch") =>

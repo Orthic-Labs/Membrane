@@ -1,6 +1,6 @@
 use membrane_federation::providers::audit::normalize_audit_finding;
-use membrane_provider_sdk::AuditFinding;
 use membrane_protocol::CandidateV1;
+use membrane_provider_sdk::AuditFinding;
 use std::collections::BTreeMap;
 
 fn finding() -> AuditFinding {
@@ -37,9 +37,13 @@ fn finding() -> AuditFinding {
 
 #[test]
 fn preserves_identity_hash_trust_and_exactness() {
-    let candidate = normalize_audit_finding(&finding(), "repo-a", Some("audit-gen-1")).expect("valid finding");
+    let candidate =
+        normalize_audit_finding(&finding(), "repo-a", Some("audit-gen-1")).expect("valid finding");
     assert_eq!(candidate.id, "audit:one");
-    assert_eq!(candidate.source_hash, "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    assert_eq!(
+        candidate.source_hash,
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    );
     assert_eq!(candidate.trust_class, "agent_verified");
     assert!(candidate.exact);
     assert_eq!(candidate.provider.as_deref(), Some("audit"));
@@ -50,6 +54,7 @@ fn rejects_cross_repository_generation_and_hash_drift() {
     assert!(normalize_audit_finding(&finding(), "other-repo", Some("audit-gen-1")).is_err());
     assert!(normalize_audit_finding(&finding(), "repo-a", Some("audit-gen-2")).is_err());
     let mut invalid = finding();
-    invalid.candidate.source_hash = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into();
+    invalid.candidate.source_hash =
+        "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into();
     assert!(normalize_audit_finding(&invalid, "repo-a", Some("audit-gen-1")).is_err());
 }

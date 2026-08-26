@@ -4,15 +4,18 @@ use std::collections::BTreeSet;
 
 use membrane_adapt::canonical::sha256_hex;
 use membrane_adapt::gates::{
-    gate1_pass_implies_nothing, ContextAdmissionRecord, ContextDecision,
-    CortexAdmissionEnvelope, ProposalEligibilityDecision,
+    gate1_pass_implies_nothing, ContextAdmissionRecord, ContextDecision, CortexAdmissionEnvelope,
+    ProposalEligibilityDecision,
 };
 use membrane_adapt::model_boundary::{ModelExtractionProposal, ModelProposalError};
 use membrane_adapt::record::InfluenceClass;
 
 #[test]
 fn eligibility_pass_does_not_create_durable_or_delivered_state() {
-    let decision = ProposalEligibilityDecision { eligible: true, reason: "clean candidate".into() };
+    let decision = ProposalEligibilityDecision {
+        eligible: true,
+        reason: "clean candidate".into(),
+    };
     let (durable, delivered) = gate1_pass_implies_nothing(&decision);
     assert!(!durable && !delivered);
 }
@@ -72,7 +75,10 @@ fn unverified_evidence_bindings_are_rejected() {
     };
     // Wrong digest: the claimed binding does not check out.
     let wrong: Vec<(String, String)> = vec![("ev-1".into(), sha256_hex(b"other text"))];
-    assert_eq!(p.verify_bindings(&wrong), Err(ModelProposalError::UnboundEvidence));
+    assert_eq!(
+        p.verify_bindings(&wrong),
+        Err(ModelProposalError::UnboundEvidence)
+    );
     // Empty authenticated set: refused outright.
     assert_eq!(
         p.verify_bindings(&Vec::<(String, String)>::new()),

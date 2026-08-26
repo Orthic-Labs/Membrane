@@ -48,7 +48,7 @@ test("a tool list missing a real tool (understating the surface) is rejected", a
   const directory = await fixture((server) => {
     server.tools = server.tools.filter((tool) => tool.name !== "membrane_blueprint");
   });
-  await assert.rejects(() => verifyServerJson({ directory, requirePublished: false }), /declares 9 tool\(s\); the live server \+ operations registry has 10/);
+  await assert.rejects(() => verifyServerJson({ directory, requirePublished: false }), /declares 16 tool\(s\); the live server \+ operations registry has 17/);
 });
 
 test("fabricating a gap for a contract-covered tool is rejected", async () => {

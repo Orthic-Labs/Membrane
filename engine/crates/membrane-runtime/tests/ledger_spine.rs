@@ -2,7 +2,9 @@ use membrane_runtime::ledger::{doc_spine, LedgerDb};
 
 fn doc_rows(db: &LedgerDb) -> i64 {
     db.lock()
-        .query_row("SELECT COUNT(*) FROM ledger_doc_artifacts", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM ledger_doc_artifacts", [], |r| {
+            r.get(0)
+        })
         .unwrap()
 }
 

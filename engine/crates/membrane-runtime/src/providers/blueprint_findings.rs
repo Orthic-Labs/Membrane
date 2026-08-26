@@ -272,8 +272,10 @@ pub enum BlueprintFindingsError {
     Unavailable(String),
     /// The service did not answer within the bounded wait.
     DeadlineExceeded,
-    /// Blueprint is live, but requested repository has no enrolled graph.
-    NotConfigured(String),
+    /// Blueprint is live, but this explicit root is not enrolled.
+    RootNotEnrolled(String),
+    /// Blueprint is live, but its enrolled root has no sealed graph yet.
+    GraphMissing(String),
     /// Blueprint is live, but exact evidence is stale or generation-mismatched.
     Stale(String),
     /// The service answered but not in the expected envelope.
@@ -285,7 +287,8 @@ impl std::fmt::Display for BlueprintFindingsError {
         match self {
             Self::Unavailable(detail) => write!(f, "unavailable: {detail}"),
             Self::DeadlineExceeded => write!(f, "deadline exceeded"),
-            Self::NotConfigured(detail) => write!(f, "not configured: {detail}"),
+            Self::RootNotEnrolled(detail) => write!(f, "root_not_enrolled: {detail}"),
+            Self::GraphMissing(detail) => write!(f, "graph_missing: {detail}"),
             Self::Stale(detail) => write!(f, "stale: {detail}"),
             Self::Protocol(detail) => write!(f, "protocol violation: {detail}"),
         }
@@ -499,9 +502,9 @@ fn parse_envelope(line: &str) -> Result<BlueprintFindingsResult, BlueprintFindin
             .or_else(|| value["error"]["code"].as_str())
             .unwrap_or("findings service returned ok=false");
         return Err(match code {
-            "root_not_enrolled" | "graph_missing" | "not_configured" => {
-                BlueprintFindingsError::NotConfigured(detail.to_string())
-            }
+            "root_not_enrolled" => BlueprintFindingsError::RootNotEnrolled(detail.to_string()),
+            "graph_missing" => BlueprintFindingsError::GraphMissing(detail.to_string()),
+            "not_configured" => BlueprintFindingsError::Unavailable(detail.to_string()),
             "stale_blocked" | "generation_mismatch" => {
                 BlueprintFindingsError::Stale(detail.to_string())
             }
@@ -716,7 +719,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_envelope_preserves_not_configured_refusal() {
+    fn parse_envelope_preserves_graph_missing_refusal() {
         let line = serde_json::json!({
             "protocolVersion": 1,
             "requestId": "r2",
@@ -727,7 +730,7 @@ mod tests {
         })
         .to_string();
         let error = parse_envelope(&line).unwrap_err();
-        assert!(matches!(error, BlueprintFindingsError::NotConfigured(_)));
+        assert!(matches!(error, BlueprintFindingsError::GraphMissing(_)));
         assert!(error.to_string().contains("Graph store is missing."));
     }
 

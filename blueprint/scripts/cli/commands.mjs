@@ -3,6 +3,7 @@
 // Graph subcommands remain as aliases.
 
 import { createBlueprintApplicationService } from "../../src/lib/application/service.mjs";
+import { RootRegistry } from "../../src/lib/application/root-registry.mjs";
 import { applyInitPlan, uninstallInit } from "../../src/lib/init/apply.mjs";
 import { buildInitPlan } from "../../src/lib/init/plan.mjs";
 import { recoverPendingUpdate } from "../../src/lib/update/apply.mjs";
@@ -17,7 +18,8 @@ import { machineError, printResult, renderArchitecture, renderDocTruth, renderEx
 function serviceFor(args) {
   return createBlueprintApplicationService({
     outDir: String(args.out ?? ".agent"),
-    allowEmbeddedRoot: true,
+    rootRegistry: new RootRegistry(readWatchConfig().repos),
+    allowEmbeddedRoot: false,
   });
 }
 

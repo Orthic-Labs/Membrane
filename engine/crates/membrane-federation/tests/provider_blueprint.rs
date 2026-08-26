@@ -1,8 +1,15 @@
-use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintCacheKey, BlueprintQuery, DEFAULT_CANDIDATE_CAP, MAX_CANDIDATE_CAP};
+use membrane_federation::blueprint_client::{
+    BlueprintBounds, BlueprintCacheKey, BlueprintQuery, DEFAULT_CANDIDATE_CAP, MAX_CANDIDATE_CAP,
+};
 
 #[test]
 fn bounds_are_clamped_before_request_construction() {
-    let bounds = BlueprintBounds { max_candidates: usize::MAX, max_paths: 0, max_response_bytes: 0 }.bounded();
+    let bounds = BlueprintBounds {
+        max_candidates: usize::MAX,
+        max_paths: 0,
+        max_response_bytes: 0,
+    }
+    .bounded();
     assert_eq!(bounds.max_candidates, MAX_CANDIDATE_CAP);
     assert_eq!(bounds.max_paths, 1);
     assert!(bounds.max_response_bytes >= 1024);

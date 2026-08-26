@@ -3,8 +3,13 @@ use membrane_provider_sdk::SkillCatalogEntry;
 
 fn entry(id: &str, title: &str, keywords: &[&str], hash: char) -> SkillCatalogEntry {
     SkillCatalogEntry {
-        id: id.into(), repository_id: "repo".into(), generation: "sha256:1111111111111111111111111111111111111111111111111111111111111111".into(),
-        source_hash: hash.to_string().repeat(64), title: title.into(), keywords: keywords.iter().map(|v| (*v).into()).collect(),
+        id: id.into(),
+        repository_id: "repo".into(),
+        generation: "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            .into(),
+        source_hash: hash.to_string().repeat(64),
+        title: title.into(),
+        keywords: keywords.iter().map(|v| (*v).into()).collect(),
     }
 }
 
@@ -21,9 +26,18 @@ fn ranks_metadata_without_skill_bodies() {
 
 #[test]
 fn ties_use_canonical_skill_id() {
-    let entries = vec![entry("zeta", "Shared", &[], 'a'), entry("alpha", "Shared", &[], 'b')];
+    let entries = vec![
+        entry("zeta", "Shared", &[], 'a'),
+        entry("alpha", "Shared", &[], 'b'),
+    ];
     let ranked = skill_ranker::rank("unmatched", &entries, 5);
-    assert_eq!(ranked.iter().map(|item| item.entry.id.as_str()).collect::<Vec<_>>(), ["alpha", "zeta"]);
+    assert_eq!(
+        ranked
+            .iter()
+            .map(|item| item.entry.id.as_str())
+            .collect::<Vec<_>>(),
+        ["alpha", "zeta"]
+    );
 }
 
 #[test]

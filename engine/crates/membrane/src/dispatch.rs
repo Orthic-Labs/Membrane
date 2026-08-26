@@ -636,12 +636,7 @@ mod tests {
 
     #[test]
     fn diagnostics_is_first_class_cli_tail() {
-        let inv = parse_mode(
-            ["membrane", "diagnostics", "capabilities"]
-                .iter()
-                .copied(),
-        )
-        .unwrap();
+        let inv = parse_mode(["membrane", "diagnostics", "capabilities"].iter().copied()).unwrap();
         assert_eq!(inv.mode, MembraneMode::Cli);
         assert_eq!(inv.cli_tail, vec!["diagnostics", "capabilities"]);
     }

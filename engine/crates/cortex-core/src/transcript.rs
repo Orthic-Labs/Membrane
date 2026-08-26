@@ -90,9 +90,9 @@ impl TranscriptChunkBuilder {
                 return Err(TranscriptError::InvalidSequence);
             }
             let text = event_text(event);
-            let projected = current_len.saturating_add(text.len()).saturating_add(
-                if current.is_empty() { 0 } else { 1 },
-            );
+            let projected = current_len
+                .saturating_add(text.len())
+                .saturating_add(if current.is_empty() { 0 } else { 1 });
             if !current.is_empty() && projected > self.config.max_chars {
                 chunks.push(make_chunk(session_id, &current));
                 current.clear();
@@ -145,7 +145,11 @@ fn make_chunk(session_id: &str, events: &[&SessionEvent]) -> TranscriptChunk {
     for event in events {
         if let Some(previous) = previous {
             if event.seq != previous.saturating_add(1) {
-                omissions.push(format!("missing event sequence {}..{}", previous + 1, event.seq));
+                omissions.push(format!(
+                    "missing event sequence {}..{}",
+                    previous + 1,
+                    event.seq
+                ));
             }
         }
         previous = Some(event.seq);

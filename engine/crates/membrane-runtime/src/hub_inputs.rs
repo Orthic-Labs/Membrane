@@ -448,11 +448,13 @@ fn blueprint_error_reason(error: &str) -> &'static str {
     if value.contains("resident_owner_active") {
         return "resident_owner_active";
     }
-    if value.contains("root_not_enrolled")
-        || value.contains("graph_missing")
-        || value.contains("not_configured")
-        || value.contains("unconfigured")
-    {
+    if value.contains("root_not_enrolled") {
+        return "root_not_enrolled";
+    }
+    if value.contains("graph_missing") {
+        return "graph_missing";
+    }
+    if value.contains("not_configured") || value.contains("unconfigured") {
         return "not_configured";
     }
     if value.contains("stale")
@@ -640,7 +642,7 @@ fn blueprint_service_hub_read(status: Result<serde_json::Value, String>) -> HubR
             }
         }
         Err(error) => match blueprint_error_reason(&error) {
-            "not_configured" => HubReadV1::Available {
+            "root_not_enrolled" | "graph_missing" | "not_configured" => HubReadV1::Available {
                 items: vec![serde_json::json!({"mode": "hub_hosted", "typedRefusal": error})],
                 metadata: HubMetadataV1 {
                     resolver: Some("hub_inputs::blueprint_service_hub_read".into()),
@@ -864,7 +866,7 @@ mod tests {
             "Blueprint status failed: {\"code\":\"root_not_enrolled\"}".into(),
         ));
         assert!(
-            matches!(typed_unenrolled, HubReadV1::Unavailable { ref reason } if reason == "not_configured")
+            matches!(typed_unenrolled, HubReadV1::Unavailable { ref reason } if reason == "root_not_enrolled")
         );
         assert!(matches!(
             blueprint_service_hub_read(Err(

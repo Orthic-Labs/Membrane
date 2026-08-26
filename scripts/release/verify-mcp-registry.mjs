@@ -8,7 +8,13 @@ const fail = message => { throw new Error(`MCP registry contract: ${message}`); 
 const digest = value => typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
 const safeId = value => typeof value === "string" && /^[A-Za-z0-9._:-]{1,160}$/.test(value);
 
-const nativeDirectory = directory => typeof directory === "string" && /^\/[A-Za-z]:[\\/]/.test(directory) ? directory.slice(1) : directory;
+const nativeDirectory = directory => {
+  if (typeof directory !== "string") return directory;
+  const stripped = directory.replace(/^[\\/]+/, "");
+  const duplicatedDrive = stripped.match(/^[A-Za-z]:[\\/]+([A-Za-z]:[\\/].*)$/);
+  if (duplicatedDrive) return duplicatedDrive[1];
+  return /^[A-Za-z]:[\\/]/.test(stripped) ? stripped : directory;
+};
 async function json(path) { return JSON.parse(await readFile(path, "utf8")); }
 
 /** Validate source metadata. Published installation requires independent registry evidence. */

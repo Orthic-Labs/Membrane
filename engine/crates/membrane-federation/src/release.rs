@@ -100,7 +100,9 @@ impl ReleaseBinding {
     ) -> Result<Self, ReleaseError> {
         let identity = source.current_release()?;
         validate_generation(&identity.generation)?;
-        let observed = observed_generation.map(str::trim).filter(|value| !value.is_empty());
+        let observed = observed_generation
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if let Some(value) = observed {
             validate_generation(value)?;
         }
@@ -150,11 +152,15 @@ impl ReleaseBinding {
 }
 
 pub fn validate_generation(value: &str) -> Result<(), ReleaseError> {
-    let digest = value.strip_prefix(RELEASE_GENERATION_PREFIX).ok_or(
-        ReleaseError::Malformed("generation must use sha256:<64 hex>"),
-    )?;
+    let digest = value
+        .strip_prefix(RELEASE_GENERATION_PREFIX)
+        .ok_or(ReleaseError::Malformed(
+            "generation must use sha256:<64 hex>",
+        ))?;
     if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err(ReleaseError::Malformed("generation must use sha256:<64 hex>"));
+        return Err(ReleaseError::Malformed(
+            "generation must use sha256:<64 hex>",
+        ));
     }
     Ok(())
 }

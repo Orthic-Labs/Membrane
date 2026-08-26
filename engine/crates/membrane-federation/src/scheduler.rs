@@ -16,8 +16,14 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-pub type ProviderFuture = Pin<Box<dyn Future<Output = Result<ProviderOutput, ProviderError>> + Send>>;
-type JoinedProvider = (ProviderId, Instant, Instant, Result<ProviderOutput, ProviderError>);
+pub type ProviderFuture =
+    Pin<Box<dyn Future<Output = Result<ProviderOutput, ProviderError>> + Send>>;
+type JoinedProvider = (
+    ProviderId,
+    Instant,
+    Instant,
+    Result<ProviderOutput, ProviderError>,
+);
 
 /// Scheduling bounds that are independent from the request's absolute
 /// deadline.  `shutdown_grace` is only the bounded drain window after a
@@ -160,7 +166,9 @@ pub async fn schedule_providers(
             }
 
             let blocked = pending.iter().position(|task| {
-                task.prerequisites.iter().any(|dependency| failed.contains(dependency))
+                task.prerequisites
+                    .iter()
+                    .any(|dependency| failed.contains(dependency))
             });
             if let Some(index) = blocked {
                 let task = pending.remove(index);
@@ -174,13 +182,16 @@ pub async fn schedule_providers(
             }
 
             let Some(index) = pending.iter().position(|task| {
-                task.prerequisites.iter().all(|dependency| completed.contains(dependency))
+                task.prerequisites
+                    .iter()
+                    .all(|dependency| completed.contains(dependency))
             }) else {
                 break;
             };
             let task = pending.remove(index);
             let queue_ms = elapsed_ms(started_at, now);
-            let child_context = child_context(&context, deadline, request_cancellation.child_token());
+            let child_context =
+                child_context(&context, deadline, request_cancellation.child_token());
             let provider = task.provider;
             let run = task.invoke(child_context);
             let task_started = Instant::now();
@@ -229,7 +240,8 @@ pub async fn schedule_providers(
             break;
         }
 
-        let deadline_sleep = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.instant()));
+        let deadline_sleep =
+            tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.instant()));
         tokio::pin!(deadline_sleep);
         tokio::select! {
             joined = running.join_next_with_id() => {
@@ -264,7 +276,9 @@ pub async fn schedule_providers(
         ReasonCode::ProviderUnavailable
     };
     for task in pending {
-        result.omissions.push(omission(task.provider, reason, "not_started"));
+        result
+            .omissions
+            .push(omission(task.provider, reason, "not_started"));
     }
     finalize_unfinished(&mut result, reason);
     result.canonicalize();
@@ -316,7 +330,9 @@ fn consume_joined(
                 }
                 Err(error) => {
                     failed.insert(provider);
-                    result.omissions.push(omission(provider, reason_for(&error), "provider"));
+                    result
+                        .omissions
+                        .push(omission(provider, reason_for(&error), "provider"));
                 }
             }
         }
@@ -336,7 +352,9 @@ fn consume_joined(
                     ReasonCode::ProviderFailed
                 };
                 failed.insert(provider);
-                result.omissions.push(omission(provider, reason, "provider_task"));
+                result
+                    .omissions
+                    .push(omission(provider, reason, "provider_task"));
             }
         }
     }
@@ -394,8 +412,12 @@ fn reason_for(error: &ProviderError) -> ReasonCode {
     match error {
         ProviderError::Cancelled => ReasonCode::ProviderCancelled,
         ProviderError::DeadlineExceeded => ReasonCode::ProviderTimeout,
-        ProviderError::Unavailable(_) | ProviderError::MissingSource(_) => ReasonCode::ProviderUnavailable,
-        ProviderError::MalformedOutput(_) | ProviderError::Incomplete(_) | ProviderError::IdentityMismatch(_) => ReasonCode::ProviderMalformed,
+        ProviderError::Unavailable(_) | ProviderError::MissingSource(_) => {
+            ReasonCode::ProviderUnavailable
+        }
+        ProviderError::MalformedOutput(_)
+        | ProviderError::Incomplete(_)
+        | ProviderError::IdentityMismatch(_) => ReasonCode::ProviderMalformed,
         _ => ReasonCode::ProviderFailed,
     }
 }
@@ -427,5 +449,7 @@ fn finalize_unfinished(result: &mut ScheduleResult, reason: ReasonCode) {
 }
 
 fn elapsed_ms(start: Instant, end: Instant) -> u64 {
-    end.duration_since(start).as_millis().min(u128::from(u64::MAX)) as u64
+    end.duration_since(start)
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }

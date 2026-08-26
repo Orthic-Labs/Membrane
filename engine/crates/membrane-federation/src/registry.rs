@@ -68,7 +68,8 @@ impl ProviderRegistry {
             }
             ids.push(id);
         }
-        if ids.len() != ProviderId::ALL.len() || ProviderId::ALL.iter().any(|id| !ids.contains(id)) {
+        if ids.len() != ProviderId::ALL.len() || ProviderId::ALL.iter().any(|id| !ids.contains(id))
+        {
             return Err(RegistryError::Incomplete);
         }
         Ok(ids)
@@ -77,12 +78,18 @@ impl ProviderRegistry {
     pub fn ids(&self) -> Vec<ProviderId> {
         ProviderId::ALL
             .into_iter()
-            .filter(|id| self.registrations.iter().any(|registration| registration.id == *id))
+            .filter(|id| {
+                self.registrations
+                    .iter()
+                    .any(|registration| registration.id == *id)
+            })
             .collect()
     }
 
     pub fn get(&self, id: ProviderId) -> Option<&ProviderRegistration> {
-        self.registrations.iter().find(|registration| registration.id == id)
+        self.registrations
+            .iter()
+            .find(|registration| registration.id == id)
     }
 
     pub fn registrations(&self) -> &[ProviderRegistration] {
@@ -92,7 +99,10 @@ impl ProviderRegistry {
     pub fn providers(&self) -> Vec<(ProviderId, Arc<dyn Provider>)> {
         self.ids()
             .into_iter()
-            .filter_map(|id| self.get(id).map(|registration| (id, Arc::clone(&registration.provider))))
+            .filter_map(|id| {
+                self.get(id)
+                    .map(|registration| (id, Arc::clone(&registration.provider)))
+            })
             .collect()
     }
 }

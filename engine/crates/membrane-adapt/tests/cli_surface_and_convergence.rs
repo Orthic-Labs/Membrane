@@ -37,9 +37,27 @@ fn multiwriter_convergence_is_permutation_invariant() {
         precedence_tier: t,
     };
     let set = vec![
-        rec("w1", 1, "always run tests", "d1", PrecedenceTier::ExplicitGlobalUserPreference),
-        rec("w2", 2, "always run tests", "d2", PrecedenceTier::ExplicitGlobalUserPreference),
-        rec("w3", 3, "always run tests", "d3", PrecedenceTier::ProvisionalCandidate),
+        rec(
+            "w1",
+            1,
+            "always run tests",
+            "d1",
+            PrecedenceTier::ExplicitGlobalUserPreference,
+        ),
+        rec(
+            "w2",
+            2,
+            "always run tests",
+            "d2",
+            PrecedenceTier::ExplicitGlobalUserPreference,
+        ),
+        rec(
+            "w3",
+            3,
+            "always run tests",
+            "d3",
+            PrecedenceTier::ProvisionalCandidate,
+        ),
     ];
     let mut reversed = set.clone();
     reversed.reverse();
@@ -57,8 +75,16 @@ fn multiwriter_convergence_is_permutation_invariant() {
 fn cli_handlers_are_deterministic_and_versioned() {
     let req = MineRequest {
         events: vec![
-            ev("a", "s1", "please run the full test suite before claiming done"),
-            ev("b", "s2", "Please run the FULL test suite before claiming done."),
+            ev(
+                "a",
+                "s1",
+                "please run the full test suite before claiming done",
+            ),
+            ev(
+                "b",
+                "s2",
+                "Please run the FULL test suite before claiming done.",
+            ),
         ],
         min_recurrence: 2,
     };
@@ -75,17 +101,31 @@ fn cli_handlers_are_deterministic_and_versioned() {
 fn doctor_flags_corrupt_state() {
     let mined = handle_mine(&MineRequest {
         events: vec![
-            ev("a", "s1", "please run the full test suite before claiming done"),
-            ev("b", "s2", "Please run the FULL test suite before claiming done."),
+            ev(
+                "a",
+                "s1",
+                "please run the full test suite before claiming done",
+            ),
+            ev(
+                "b",
+                "s2",
+                "Please run the FULL test suite before claiming done.",
+            ),
         ],
         min_recurrence: 2,
     });
     // Tamper: drop the episode evidence to create a dangling reference.
     let mut broken = mined.issues.clone();
     broken[0].episode_ids.push("ghost".into());
-    let resp = handle_doctor(&DoctorRequest { issues: broken, episodes: mined.episodes });
+    let resp = handle_doctor(&DoctorRequest {
+        issues: broken,
+        episodes: mined.episodes,
+    });
     assert!(!resp.healthy);
-    assert!(resp.findings.iter().any(|f| f.code == "dangling_episode_ref"));
+    assert!(resp
+        .findings
+        .iter()
+        .any(|f| f.code == "dangling_episode_ref"));
 }
 
 #[test]
@@ -102,7 +142,10 @@ fn benchmark_digest_is_stable_and_scores_families() {
         }]
     };
     let report = run_benchmark(&mk_corpus());
-    assert_eq!(report.report_digest, run_benchmark(&mk_corpus()).report_digest);
+    assert_eq!(
+        report.report_digest,
+        run_benchmark(&mk_corpus()).report_digest
+    );
     let frustration = report.by_family.get("visible_frustration").unwrap();
     assert_eq!(frustration.true_positives, 1);
     assert!(frustration.precision() > 0.0);

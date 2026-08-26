@@ -36,7 +36,7 @@ function cliJson(repo, args) {
 test("recall service result matches CLI recall semantics", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const serviceResult = await service.recall({ repoRoot: repo, query: "placeOrder", limit: 10 });
     const cliResult = cliJson(repo, ["graph", "candidates", "--query", "placeOrder", "--limit", "10", "--json"]);
     assert.equal(serviceResult.schemaVersion, 1);
@@ -55,7 +55,7 @@ test("recall service result matches CLI recall semantics", async () => {
 test("search service result matches CLI graph search for the same generation", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const serviceResult = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     const cliResult = cliJson(repo, ["graph", "search", "--query", "placeOrder", "--limit", "5", "--json"]);
     assert.equal(serviceResult.generationId, cliResult.generationId ?? cliResult.manifest?.generationId ?? serviceResult.generationId);
@@ -77,7 +77,7 @@ test("search service result matches CLI graph search for the same generation", a
 test("expand service result matches CLI graph neighbors payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0, "no search results");
     const anchor = search.results[0].id;
@@ -94,7 +94,7 @@ test("expand service result matches CLI graph neighbors payload", async () => {
 test("impact service result matches CLI graph impact payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0);
     const anchor = search.results[0].id;
@@ -111,7 +111,7 @@ test("impact service result matches CLI graph impact payload", async () => {
 test("architecture service result matches CLI graph architecture payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const serviceResult = await service.architecture({ repoRoot: repo, budget: 2000 });
     const cliResult = cliJson(repo, ["graph", "architecture", "--budget", "2000", "--json"]);
     assert.ok(serviceResult);
@@ -126,7 +126,7 @@ test("architecture service result matches CLI graph architecture payload", async
 test("documentTruth service result lists claims with receipts", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const result = await service.documentTruth({ repoRoot: repo, limit: 200 });
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.generationId);
@@ -141,7 +141,7 @@ test("documentTruth service result lists claims with receipts", async () => {
 test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     // A name shared by exactly two symbols is ambiguous by contract.
     const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const dbPath = join(repo, ".agent", "graph", "graph.db");
@@ -169,7 +169,7 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
 test("expand with a nonexistent anchor raises anchor_not_found", async () => {
   const repo = buildRepo();
   try {
-    const service = createBlueprintApplicationService();
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     await assert.rejects(
       () => service.expand({ repoRoot: repo, anchor: "no-such-symbol-xyz", depth: 1 }),
       (error) => error.code === "anchor_not_found",

@@ -59,15 +59,22 @@ test("single enrolled repo resolves without explicit id", () => {
   }
 });
 
-test("unregistered root raises root_not_enrolled", () => {
+test("unregistered root returns root_not_enrolled with canonical enrollment remediation", () => {
   const root = makeRepo();
   const other = makeRepo("other");
   try {
     const registry = new RootRegistry([{ root }]);
-    assert.throws(
-      () => registry.resolve({ repoRoot: other }),
-      (error) => error instanceof BlueprintError && error.code === "root_not_enrolled",
-    );
+    assert.throws(() => registry.resolve({ repoRoot: other }), (error) => {
+      assert.ok(error instanceof BlueprintError);
+      assert.equal(error.code, "root_not_enrolled");
+      assert.equal(error.details.normalizedRoot, other);
+      assert.deepEqual(error.remediation, {
+        summary: "Enroll the normalized Blueprint root before querying.",
+        nextOperation: `blueprint init --root ${JSON.stringify(other)}`,
+        arguments: { repoRoot: other },
+      });
+      return true;
+    });
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(other, { recursive: true, force: true });

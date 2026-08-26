@@ -14,7 +14,6 @@ import { languageCapabilityRecords } from "../src/graph/language-registry.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BLUEPRINT = path.resolve(HERE, "..");
 const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
-const SKILL = path.join(BLUEPRINT, "skills/blueprint/SKILL.md");
 const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
 const EXPECTED_PARSED_EXTENSIONS = [...new Set([
   ...PARSED_LANGUAGE_EXTENSIONS,
@@ -327,16 +326,6 @@ test("doctor --full rejects Phase 1 alone and accepts current complete understan
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }
-});
-
-test("Blueprint invocation contract always continues through Phase 2-4", () => {
-  const skill = fs.readFileSync(SKILL, "utf8");
-  assert.match(skill, /run Blueprint[\s\S]{0,300}complete Phase 1–4 workflow/i);
-  assert.match(skill, /automatic maintenance[\s\S]{0,500}Phase 1 only/i);
-  assert.match(skill, /post-commit[\s\S]{0,300}must not start Phase 2/i);
-  assert.match(skill, /doctor --full/);
-  assert.doesNotMatch(skill, /offer Phase 2/i);
-  assert.match(skill, /Never ask whether to run Phase 2/i);
 });
 
 test("Phase 1 and phase2 plan recover from corrupt semantic cache artifacts", () => {

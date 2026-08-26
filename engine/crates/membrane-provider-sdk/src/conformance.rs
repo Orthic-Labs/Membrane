@@ -16,8 +16,8 @@
 //! NOT execute any `deferredCommands`. The book-gate runs the
 //! `cargo test --workspace` sweep separately.
 
-use crate::error::ProviderError;
 use crate::context::ProviderContext;
+use crate::error::ProviderError;
 use crate::output::validate_output;
 use crate::output::ProviderOutput;
 use crate::provider::{Provider, ProviderReadinessStateV1};
