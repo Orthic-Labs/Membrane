@@ -1,11 +1,11 @@
 use super::*;
 
 fn config(root: &std::path::Path) -> Vec<u8> {
-    format!(
-        r#"{{"schemaVersion":3,"workspaceRoot":"{}"}}"#,
-        root.display()
-    )
-    .into_bytes()
+    serde_json::to_vec(&serde_json::json!({
+        "schemaVersion": 3,
+        "workspaceRoot": root,
+    }))
+    .unwrap()
 }
 /// Full env-free matrix. Every case constructs the inputs by hand and never
 /// touches the process environment.
@@ -69,17 +69,18 @@ fn migration_is_atomic_idempotent_and_runtime_requires_it() {
     let path = dir.path().join("workspace.json");
     std::fs::write(
         &path,
-        format!(
-            r#"{{"schemaVersion":2,"workspaceRoot":"{}","pythonExecutable":"{}"}}"#,
-            dir.path().display(),
-            dir.path().join("removed-python").display()
-        ),
+        serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": dir.path(),
+            "pythonExecutable": dir.path().join("removed-python"),
+        }))
+        .unwrap(),
     )
     .unwrap();
-    assert_eq!(
+    assert!(matches!(
         resolve_from(None, None, Some(path.clone()), None),
-        Err("workspace_config_migration_required".into())
-    );
+        Err(error) if error == "workspace_config_migration_required"
+    ));
     let receipt = migrate_v2_to_v3(&path).unwrap();
     assert!(receipt.migrated);
     assert_eq!(
@@ -98,11 +99,12 @@ fn startup_migration_runs_before_root_override_and_skips_only_missing_config() {
     let path = dir.path().join("workspace.json");
     std::fs::write(
         &path,
-        format!(
-            r#"{{"schemaVersion":2,"workspaceRoot":"{}","pythonExecutable":"{}"}}"#,
-            dir.path().display(),
-            dir.path().join("removed-python").display()
-        ),
+        serde_json::to_vec(&serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": dir.path(),
+            "pythonExecutable": dir.path().join("removed-python"),
+        }))
+        .unwrap(),
     )
     .unwrap();
 

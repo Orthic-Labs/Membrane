@@ -3303,11 +3303,13 @@ dependencies = [
 name = "membrane-hub"
 version = "0.1.12"
 dependencies = [
+ "hex",
  "membrane-protocol",
  "membrane-runtime",
  "membrane-updater",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tauri",
  "tauri-build",
  "tauri-plugin-single-instance",

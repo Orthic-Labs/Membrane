@@ -135,10 +135,12 @@ fn migrate_startup_config_from(
     config: Option<PathBuf>,
     home: Option<PathBuf>,
 ) -> Result<Option<WorkspaceConfigMigrationReceipt>, String> {
-    let root_override = primary.as_deref().is_some_and(|value| !value.is_empty())
+    let root_override = primary
+        .as_deref()
+        .is_some_and(|value| !value.as_os_str().is_empty())
         || compatibility
             .as_deref()
-            .is_some_and(|value| !value.is_empty());
+            .is_some_and(|value| !value.as_os_str().is_empty());
 
     // A root override changes runtime selection, but must not strand an
     // existing installed config at v2. Migrate an existing absolute config;
@@ -214,10 +216,10 @@ mod tests {
     #[test]
     fn v3_config_requires_canonical_root_only() {
         let root = tempfile::tempdir().unwrap();
-        let parsed = serde_json::from_str(&format!(
-            r#"{{"schemaVersion":3,"workspaceRoot":"{}"}}"#,
-            root.path().display()
-        ))
+        let parsed = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 3,
+            "workspaceRoot": root.path(),
+        }))
         .unwrap();
         let workspace = from_config(parsed).unwrap();
         assert_eq!(workspace.root, std::fs::canonicalize(root.path()).unwrap());
