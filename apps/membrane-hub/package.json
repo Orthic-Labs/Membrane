@@ -16,7 +16,7 @@
     "release:doctor": "right-release doctor",
     "release:build:mac": "node scripts/release-build-mac.mjs",
     "release:prepare:sidecars:win": "pnpm run build && pnpm exec right-release sign-windows src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe && pnpm exec right-release sign-windows --verify-only src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe",
-    "release:build:win": "pnpm exec right-release build --platform win",
+    "release:build:win": "node scripts/release-build-windows.mjs",
     "release:qualify:win": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/qualification/install-release.ps1"
   },
   "dependencies": {
