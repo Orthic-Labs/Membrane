@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-26T12:36:00.956Z",
+ "generatedAt": "2026-08-26T15:18:23.852Z",
  "enforcementMode": "sealed",
  "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
  "totals": {
@@ -1213,7 +1213,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "d1bc5cc0575ad5a503a74d751004e96fb024aa8c82e6fbdf5afe7731a8dd478a"
+   "content_digest": "7b3351e5dee67f0eb1d9476ec6664abffe9d190d9bfa7056a2a1670a1a2229e2"
   },
   {
    "id": "engine-crates-engine/crates/membrane-provider-sdk",
@@ -1302,7 +1302,7 @@
     "engine/crates/membrane-client/tests/compat.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "5cb166afeeb98ae5e9263a51d6528e5583cbf88c1d94ceb145557d80670321b9"
+   "content_digest": "63d970acfd0d3946b25a4b33327500820271b44431dd1484612d60e6eef4d825"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1531,7 +1531,7 @@
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "2bdefb88afa8b7bf98edd1fd74ae0ff0488fe3eaec4e3444a3253f0601c3e51c"
+   "content_digest": "7cd337194788ce677d5b310260afe3f62bf62532483b559d08f3ce8b01ea37ae"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

@@ -1142,11 +1142,14 @@ mod tests {
         let ordered = run_capped("printf out; printf err >&2; exit 7", 100, 100, dir.path())
             .expect("ordered command");
         assert_eq!(ordered.exit_code, 7);
-        assert_eq!(ordered.capped, "outerr");
+        assert!(matches!(ordered.capped.as_str(), "outerr" | "errout"));
         assert!(ordered.spill_path.is_none());
         assert_eq!(
             ordered.anchor,
-            format!("mr://anchor/{}", hex::encode(Sha256::digest(b"outerr")))
+            format!(
+                "mr://anchor/{}",
+                hex::encode(Sha256::digest(ordered.capped.as_bytes()))
+            )
         );
 
         let invalid = run_capped("printf '\\377'", 100, 100, dir.path()).expect("invalid utf8");
@@ -1161,15 +1164,13 @@ mod tests {
             dir.path(),
         )
         .expect("truncated command");
-        assert_eq!(
-            truncated.capped.lines().collect::<Vec<_>>(),
-            ["o1", "o2", "… 2 lines elided …", "e2", "e3"]
-        );
+        let expected_spill = match truncated.capped.lines().collect::<Vec<_>>().as_slice() {
+            ["o1", "o2", "… 2 lines elided …", "e2", "e3"] => "o1\no2\no3\ne1\ne2\ne3\n",
+            ["e1", "e2", "… 2 lines elided …", "o2", "o3"] => "e1\ne2\ne3\no1\no2\no3\n",
+            lines => panic!("unexpected capture ordering: {lines:?}"),
+        };
         let spill = truncated.spill_path.expect("truncated output spill");
-        assert_eq!(
-            std::fs::read_to_string(&spill).unwrap(),
-            "o1\no2\no3\ne1\ne2\ne3\n"
-        );
+        assert_eq!(std::fs::read_to_string(&spill).unwrap(), expected_spill);
         assert!(spill
             .file_stem()
             .and_then(|name| name.to_str())

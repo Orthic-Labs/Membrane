@@ -825,6 +825,7 @@ mod tests {
                 .arg("-C")
                 .arg(dir)
                 .args(args)
+                .env_remove("GIT_DIR")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status()

@@ -481,7 +481,9 @@ mod tests {
         assert_eq!(
             canonical_data_root(Path::new("/workspace/alpha/./beta/../gamma")),
             PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
-                .join("workspace/alpha/gamma")
+                .join("workspace")
+                .join("alpha")
+                .join("gamma")
                 .to_string_lossy()
         );
         assert_eq!(

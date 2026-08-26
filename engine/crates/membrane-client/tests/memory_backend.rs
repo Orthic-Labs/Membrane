@@ -197,7 +197,10 @@ fn consolidated_write_returns_stable_service_id() {
 
 #[test]
 fn deadline_and_cancellation_are_checked_before_transport() {
-    let client = client().with_options(CallOptions::after(Duration::ZERO));
+    let client = client()
+        .bind(&CompatibilityRequirement::default())
+        .unwrap()
+        .with_options(CallOptions::after(Duration::ZERO));
     assert!(matches!(
         client.metrics_json(),
         Err(ClientError::Timeout { .. })

@@ -110,7 +110,9 @@ fn canonical_data_root_collapses_dot_segments() {
     assert_eq!(
         canonical,
         PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
-            .join("workspace/alpha/gamma")
+            .join("workspace")
+            .join("alpha")
+            .join("gamma")
             .to_string_lossy()
     );
 }
