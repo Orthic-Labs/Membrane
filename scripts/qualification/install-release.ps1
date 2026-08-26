@@ -132,7 +132,11 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
 
 function Invoke-Installer([string]$Path) {
   $resolved = Resolve-File $Path 'installer'
-  $process = Start-Process -FilePath $resolved -ArgumentList @('/S', "/D=`"$InstallRoot`"") -Wait -PassThru -WindowStyle Hidden
+  # NSIS requires /D=<path> as one final argument; embedding quotes after the
+  # equals sign makes NSIS silently fall back to its default install root.
+  # Start-Process preserves one array item, so paths without spaces remain
+  # exact while callers can still supply an explicit Membrane directory.
+  $process = Start-Process -FilePath $resolved -ArgumentList @('/S', "/D=$InstallRoot") -Wait -PassThru -WindowStyle Hidden
   Require ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $resolved"
   Start-Sleep -Milliseconds 750
 }
@@ -328,8 +332,9 @@ function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [stri
     $descendants = @($latest | Where-Object { [uint32]$_.ProcessId -ne [uint32]$ProcessId })
     $blueprintService = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint\.mjs.*\bservice\b.*\brun\b' })
     $blueprintWatcher = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint-watch\.mjs.*\bstart\b' })
-    Require ($blueprintService.Count -eq 1) 'Hub did not expose exactly one Blueprint service process'
-    Require ($blueprintWatcher.Count -eq 1) 'Hub did not expose exactly one Blueprint watcher process'
+    $processSummary = (@($descendants | ForEach-Object { "[$($_.Name)] $($_.CommandLine)" }) -join ' | ')
+    Require ($blueprintService.Count -eq 1) "Hub did not expose exactly one Blueprint service process (observed $($blueprintService.Count); descendants: $processSummary)"
+    Require ($blueprintWatcher.Count -eq 1) "Hub did not expose exactly one Blueprint watcher process (observed $($blueprintWatcher.Count); descendants: $processSummary)"
     $blueprintProcesses = @($blueprintService + $blueprintWatcher)
     foreach ($blueprintProcess in $blueprintProcesses) {
       Require ($blueprintProcess.ExecutablePath -and ([IO.Path]::GetFullPath($blueprintProcess.ExecutablePath) -ieq [IO.Path]::GetFullPath($BlueprintNode))) 'Blueprint process executable is not the inventory-bound node.exe'
@@ -485,7 +490,8 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
         default { throw "installed inventory has unknown external sidecar: $($entry.component)" }
       }
       $relative = $path.Substring($Root.TrimEnd('\').Length).TrimStart('\')
-       Require ($path -ieq (if ($entry.component -eq 'membrane-command') { $membrane } else { $cortex })) "installed sidecar path resolution failed: $($entry.component)"
+      $expectedPath = if ($entry.component -eq 'membrane-command') { $membrane } else { $cortex }
+      Require ($path -ieq $expectedPath) "installed sidecar path resolution failed: $($entry.component)"
     } else {
       $relative = ([string]$entry.installerPath).Replace('/', '\')
       $path = [IO.Path]::GetFullPath((Join-Path $runtimeRoot $relative))
@@ -767,6 +773,18 @@ function Assert-State([string]$MembraneExecutable, [string]$Phase) {
 }
 
 function Seed-WorkspaceV2Config([string]$Path, [string]$WorkspaceRoot) {
+  $runtimeDirectory = Join-Path $WorkspaceRoot 'tools\lib\memory'
+  New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
+  # Installed Hub resolves its in-process native runtime from this canonical
+  # workspace identity; qualification must seed the same contract a real
+  # workspace install provides before starting the signed package.
+  $runtime = [ordered]@{
+    schemaVersion = 1
+    serviceId = 'membrane-local-v1'
+    host = '127.0.0.1'
+    port = 47851
+  }
+  Write-NativeText (Join-Path $runtimeDirectory 'runtime.json') ($runtime | ConvertTo-Json -Compress)
   $legacy = [ordered]@{
     schemaVersion = 2
     workspaceRoot = [IO.Path]::GetFullPath($WorkspaceRoot)
@@ -899,15 +917,23 @@ function Assert-QualificationProcessTreeGone([int[]]$ProcessIds, [string]$Root) 
 
 function Stop-QualificationHub {
   if ($null -eq $script:HubProcess) { return }
-  $pid = $script:HubProcess.Id
-  $tree = @(Get-ProcessTree $pid)
-  $ids = @($tree.ProcessId | ForEach-Object { [int]$_ })
-  foreach ($id in @($ids | Sort-Object -Descending)) {
-    $process = Get-Process -Id $id -ErrorAction SilentlyContinue
-    if ($null -ne $process) {
-      try { $process.Kill($true) } catch { throw "could not terminate qualification process $($id): $($_.Exception.Message)" }
-    }
+  $hubPid = $script:HubProcess.Id
+  $rootProcess = Get-Process -Id $hubPid -ErrorAction SilentlyContinue
+  if ($null -eq $rootProcess -or $rootProcess.HasExited) {
+    Assert-QualificationProcessTreeGone @($hubPid) $InstallRoot
+    Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
+    $script:HubProcess = $null
+    return
   }
+  $tree = @(Get-ProcessTree $hubPid)
+  $ids = @($tree.ProcessId | ForEach-Object { [int]$_ })
+  # PowerShell's Process.Kill(bool) overload is unavailable on Windows
+  # PowerShell builds used by qualification; killing captured IDs one by one
+  # also risks PID reuse. taskkill's scoped tree operation is atomic for this
+  # exact Hub root, then process/path assertions prove no orphan remained.
+  $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
+  $killer = Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$hubPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden
+  Require ($killer.ExitCode -eq 0) "could not terminate qualification process tree $($ids -join ','): taskkill exit $($killer.ExitCode)"
   Assert-QualificationProcessTreeGone $ids $InstallRoot
   Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
   $script:HubProcess = $null

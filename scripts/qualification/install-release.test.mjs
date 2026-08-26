@@ -128,6 +128,9 @@ test("qualification proves startup workspace migration is native, strict, atomic
   ]) assert.ok(source.includes(term), term);
   assert.match(lower, /workspace config hash changed during \$phase/);
   assert.match(lower, /workspaceconfiginitialsha256/);
+  assert.match(lower, /tools\\lib\\memory/);
+  assert.match(lower, /serviceid = 'membrane-local-v1'/);
+  assert.match(lower, /runtime\.json/);
 });
 
 test("qualification binds Blueprint requests to Hub-enrolled workspace & typed one-shot states", () => {

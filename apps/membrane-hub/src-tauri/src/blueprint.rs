@@ -259,7 +259,7 @@ impl Supervisor {
             .arg("service")
             .arg("run")
             .arg("--root")
-            .arg(&self.workspace_root)
+            .arg(child_path(&self.workspace_root))
             .current_dir(&layout.package)
             .env(DAEMON_ENDPOINT_ENV, &endpoint)
             .env(SERVICE_CHILD_ENV, "1")
@@ -369,10 +369,11 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
     if workspace_is_enrolled(workspace_root) {
         return Ok(());
     }
+    let child_root = child_path(workspace_root);
     let status = Command::new(&layout.node)
         .arg(&layout.watcher)
         .arg("enroll")
-        .arg(workspace_root)
+        .arg(&child_root)
         .current_dir(&layout.package)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -383,6 +384,24 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
     } else {
         Err("blueprint_enrollment_failed".into())
     }
+}
+
+/// Rust canonicalization on Windows returns an extended-length `\\?\` path.
+/// Node's path resolver accepts ordinary absolute paths consistently across
+/// bundled/runtime versions, so strip only that transport prefix for child
+/// arguments; authorization checks continue using canonical filesystem paths.
+fn child_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let text = path.to_string_lossy();
+        if let Some(rest) = text.strip_prefix("\\\\?\\UNC\\") {
+            return PathBuf::from(format!(r"\\{}", rest));
+        }
+        if let Some(rest) = text.strip_prefix("\\\\?\\") {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
 }
 
 fn workspace_is_enrolled(workspace_root: &Path) -> bool {
@@ -546,5 +565,18 @@ mod tests {
         .unwrap();
         assert!(watch_config_enrolls(&config, &workspace));
         assert!(!watch_config_enrolls(&config, &temp.path().join("missing")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn child_path_strips_verbatim_windows_prefix_without_changing_identity() {
+        assert_eq!(
+            child_path(Path::new(r"\\?\C:\workspace")),
+            PathBuf::from(r"C:\workspace")
+        );
+        assert_eq!(
+            child_path(Path::new(r"\\?\UNC\server\share\workspace")),
+            PathBuf::from(r"\\server\share\workspace")
+        );
     }
 }
