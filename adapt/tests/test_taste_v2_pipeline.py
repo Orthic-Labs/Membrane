@@ -95,7 +95,7 @@ def test_pipeline_source_hash_delegates_streaming_helper(
     assert calls == [path]
 
 
-def test_scope_for_event_preserves_canonical_unix_root_case(tmp_path: Path) -> None:
+def test_scope_for_event_preserves_canonical_native_root_case(tmp_path: Path) -> None:
     transcript = tmp_path / "session.jsonl"
     transcript.write_text("{}\n", encoding="utf-8")
     stat = transcript.stat()
@@ -109,7 +109,8 @@ def test_scope_for_event_preserves_canonical_unix_root_case(tmp_path: Path) -> N
 
     scope = taste_v2_pipeline.scope_for_event(source, {"rowIndex": 1})
 
-    assert scope.startswith("Volumes-D-")
+    expected = "".join(char if char.isalnum() else "-" for char in cwd).strip("-")
+    assert scope == expected
 
 
 def test_cli_manifest_validation_failure_abandons_journal_without_artifact(

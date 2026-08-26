@@ -306,7 +306,10 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 0, "fresh Ledger generation starts empty, not carrying stale rows");
+        assert_eq!(
+            count, 0,
+            "fresh Ledger generation starts empty, not carrying stale rows"
+        );
     }
 
     /// A second retirement (e.g. a second machine boot against the same cache root after
@@ -328,9 +331,9 @@ mod tests {
         let first = dir
             .path()
             .join(format!("{LEGACY_GUIDE_INDEX_FILE_NAME}.pre-ledger-rename"));
-        let second = dir
-            .path()
-            .join(format!("{LEGACY_GUIDE_INDEX_FILE_NAME}.pre-ledger-rename.1"));
+        let second = dir.path().join(format!(
+            "{LEGACY_GUIDE_INDEX_FILE_NAME}.pre-ledger-rename.1"
+        ));
         assert_eq!(std::fs::read(&first).unwrap(), b"first");
         assert_eq!(std::fs::read(&second).unwrap(), b"second");
     }
@@ -347,7 +350,10 @@ mod tests {
 
         retire_legacy_guide_index(dir.path()).unwrap();
 
-        assert!(legacy_path.exists(), "already-migrated installs do not need retirement");
+        assert!(
+            legacy_path.exists(),
+            "already-migrated installs do not need retirement"
+        );
         assert_eq!(std::fs::read(&legacy_path).unwrap(), b"legacy");
     }
 }

@@ -64,7 +64,9 @@ pub struct BenchmarkReportV1 {
 /// event IDs never carry semantic meaning.
 pub fn portable_case_from_value(value: &serde_json::Value) -> Result<LabelledCase, String> {
     let object = value.as_object().ok_or("portable case must be an object")?;
-    let payload = object.get("payload").ok_or("portable case payload missing")?;
+    let payload = object
+        .get("payload")
+        .ok_or("portable case payload missing")?;
     let digest = object
         .get("payload_sha256")
         .and_then(serde_json::Value::as_str)
@@ -126,7 +128,10 @@ pub fn portable_case_from_value(value: &serde_json::Value) -> Result<LabelledCas
         let provenance = match (kind, role) {
             (crate::insights::EventKind::UserMessage, "user") => "external_user",
             (crate::insights::EventKind::AssistantMessage, "assistant") => "assistant",
-            (crate::insights::EventKind::ToolCall | crate::insights::EventKind::ToolResult, "tool") => "tool",
+            (
+                crate::insights::EventKind::ToolCall | crate::insights::EventKind::ToolResult,
+                "tool",
+            ) => "tool",
             _ => return Err("portable event kind/role mismatch".into()),
         };
         let byte_start = event
@@ -177,9 +182,14 @@ pub fn run_benchmark(corpus: &[LabelledCase]) -> BenchmarkReportV1 {
     for case in corpus {
         // Score only against families named in the case; unnamed families
         // firing on this case count as false positives for that family.
-        let fired: BTreeSet<String> =
-            run_all_detectors(&case.events).into_iter().map(|e| e.family).collect();
-        let all_families: BTreeSet<&String> = case.expected_families.union(&case.forbidden_families).collect();
+        let fired: BTreeSet<String> = run_all_detectors(&case.events)
+            .into_iter()
+            .map(|e| e.family)
+            .collect();
+        let all_families: BTreeSet<&String> = case
+            .expected_families
+            .union(&case.forbidden_families)
+            .collect();
         for family in all_families {
             let entry = scores.entry(family.clone()).or_default();
             let expected = case.expected_families.contains(family);
@@ -266,6 +276,9 @@ mod tests {
                 forbidden_families: BTreeSet::new(),
             }]
         };
-        assert_eq!(run_benchmark(&mk()).report_digest, run_benchmark(&mk()).report_digest);
+        assert_eq!(
+            run_benchmark(&mk()).report_digest,
+            run_benchmark(&mk()).report_digest
+        );
     }
 }

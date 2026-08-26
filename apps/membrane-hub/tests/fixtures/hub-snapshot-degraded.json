@@ -58,7 +58,7 @@
     },
     "repositories": {
       "state": "unavailable",
-      "reason": "blueprint_unavailable",
+      "reason": "transport_unavailable",
       "observedAtUnixMs": 42
     },
     "sentinel": {
@@ -92,7 +92,7 @@
     },
     "blueprint": {
       "state": "unavailable",
-      "reason": "blueprint_unavailable",
+      "reason": "transport_unavailable",
       "observedAtUnixMs": 42
     },
     "ledger": {

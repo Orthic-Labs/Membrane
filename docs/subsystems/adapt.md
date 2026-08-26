@@ -44,7 +44,7 @@ Passing one gate grants no authority at another.
 
 ## Invariants
 
-1. Taste authority requires qualifying authenticated user evidence.
+1. Taste authority requires an explicit user-selected transcript, exact source hash/span binding, external-user attribution, & required review.
 2. Silent acceptance alone never activates Taste.
 3. Insights cannot create Taste authority.
 4. Authored policy and explicit current instruction outrank learned preference.

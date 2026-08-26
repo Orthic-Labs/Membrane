@@ -83,21 +83,14 @@ test("catalog enrollment binds every repository to one digest without implicit c
 // catalog must surface the full federation. From a clean checkout of Membrane
 // alone the parent holds only this repo, so the assertion degrades to
 // membrane-alone — proving the runtime never hard-requires a sibling source
-// tree (MBR-015). The real workspace now has 21 repos; MBR-009 set this
-// ambient integration count.
+// tree (MBR-015). Ambient workspaces may gain independent repos over time, so
+// this integration asserts self-consistency rather than freezing machine state.
 test("ambient workspace discovery is sibling-independent and reports the real count when present", async () => {
   const ambient = await realpath(new URL("../../", import.meta.url));
   const catalog = await buildRepositoryCatalog(ambient);
   const childCount = catalog.repositories.filter((entry) => entry.repoId !== catalog.workspace_id).length;
   assert.equal(catalog.repositories.filter((entry) => entry.repoId === catalog.workspace_id).length, 1);
-  if (childCount >= 20) {
-    // Full workspace present: 21 repos total (20 children + workspace root).
-    assert.equal(catalog.repositories.length, 21);
-    assert.equal(childCount, 20);
-  } else {
-    // Clean checkout of Membrane alone: only this repo is discoverable, and the
-    // catalog must still be self-consistent (stable digest, unique identities).
-    assert.equal(catalog.catalog_digest, catalogDigest(catalog));
-    assert.equal(new Set(catalog.repositories.map((entry) => entry.repoId)).size, catalog.repositories.length);
-  }
+  assert.equal(catalog.repositories.length, childCount + 1);
+  assert.equal(catalog.catalog_digest, catalogDigest(catalog));
+  assert.equal(new Set(catalog.repositories.map((entry) => entry.repoId)).size, catalog.repositories.length);
 });

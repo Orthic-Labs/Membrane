@@ -6,8 +6,8 @@ use crate::{
         ProjectionKind, ProjectionProvenanceV1,
     },
     ledger::index::{
-        advance_unchanged_generation_tx, document_index_is_current_tx,
-        replace_document_index_tx, IndexDocumentInput,
+        advance_unchanged_generation_tx, document_index_is_current_tx, replace_document_index_tx,
+        IndexDocumentInput,
     },
     ledger::LedgerDb,
 };
@@ -217,11 +217,7 @@ pub struct LedgerShadowRecallV1 {
 
 /// Execute both lanes for qualification/debugging while leaving caller-visible production
 /// behavior on the legacy result. This remains available before FTS activation is trusted.
-pub fn recall_shadow(
-    db: &LedgerDb,
-    query: &str,
-    k: usize,
-) -> Result<LedgerShadowRecallV1, String> {
+pub fn recall_shadow(db: &LedgerDb, query: &str, k: usize) -> Result<LedgerShadowRecallV1, String> {
     let legacy_hits = recall_legacy(db, query, k)?;
     let fts_hits = recall_fts(db, query, k)?;
     Ok(LedgerShadowRecallV1 {

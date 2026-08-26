@@ -5,8 +5,8 @@
 //! derivation metadata.
 
 use super::doc_projection::{
-    replace_doc_projections, DocumentProjectionStoreInputV1, DocumentProjectionV1,
-    ProjectionKind, ProjectionProvenanceV1,
+    replace_doc_projections, DocumentProjectionStoreInputV1, DocumentProjectionV1, ProjectionKind,
+    ProjectionProvenanceV1,
 };
 use super::LedgerDb;
 use serde::{Deserialize, Serialize};
@@ -254,7 +254,11 @@ pub fn build_session_projection(
 }
 
 impl SessionDocumentProjectionV1 {
-    pub fn invalidated_by(&self, cursor: &SessionProjectionSourceCursor, source_hash: &str) -> bool {
+    pub fn invalidated_by(
+        &self,
+        cursor: &SessionProjectionSourceCursor,
+        source_hash: &str,
+    ) -> bool {
         self.session_id != cursor.session_id
             || cursor.last_seq > self.source_cursor.last_seq
             || source_hash != self.source_content_hash
@@ -283,7 +287,8 @@ pub fn index_session_projection(
             },
         }],
     };
-    replace_doc_projections(db, &input).map_err(|error| SessionProjectionError::Projection(error.to_string()))
+    replace_doc_projections(db, &input)
+        .map_err(|error| SessionProjectionError::Projection(error.to_string()))
 }
 
 fn links(input: &SessionDocumentProjectionInputV1) -> Vec<SessionProjectionLinkV1> {
@@ -292,7 +297,10 @@ fn links(input: &SessionDocumentProjectionInputV1) -> Vec<SessionProjectionLinkV
         links.push(SessionProjectionLinkV1 {
             kind: "task".to_owned(),
             id: task.task_id.clone(),
-            target: task.link.clone().unwrap_or_else(|| format!("task://{}", task.task_id)),
+            target: task
+                .link
+                .clone()
+                .unwrap_or_else(|| format!("task://{}", task.task_id)),
         });
     }
     for artifact in &input.artifacts {
@@ -325,7 +333,10 @@ fn links(input: &SessionDocumentProjectionInputV1) -> Vec<SessionProjectionLinkV
 }
 
 fn markdown_text(value: &str) -> String {
-    value.replace('\n', " ").replace('\r', " ").replace('`', "'")
+    value
+        .replace('\n', " ")
+        .replace('\r', " ")
+        .replace('`', "'")
 }
 
 fn link_suffix(link: Option<&str>) -> String {

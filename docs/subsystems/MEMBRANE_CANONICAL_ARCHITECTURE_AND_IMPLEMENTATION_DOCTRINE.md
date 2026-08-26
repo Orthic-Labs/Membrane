@@ -106,8 +106,9 @@ installation, update, and release authority for Membrane runtime. Blueprint
 retains an independently versioned package and protocol, but its continuous
 runtime role is hosted inside Hub and reached through one typed native client.
 
-The current supported target is macOS. Other targets are not current supported
-targets until separately qualified and added to canonical capability truth.
+The current release-qualified target is Windows x86_64. Other targets are not
+current supported targets until separately qualified and added to canonical
+capability truth.
 
 ---
 
@@ -260,7 +261,7 @@ Breaking an invariant requires an explicit architecture decision, migration/comp
 
    Product renaming alone is not a sufficient reason to mutate V1 field names or serialized reason tokens. Frozen legacy names are recorded in the rename ledger and retain their historical meaning until an independently justified protocol version replaces them.
 
-   `TranscriptEventV1`, `UserActEvidenceV1`, `FailureEpisodeV1`, and `InsightIssueV1` are versioned internal subsystem/domain contracts, not additions to these five public Membrane V1 shapes. They remain outside `membrane-protocol` public client/MCP surfaces unless a real external consumer triggers an explicit protocol-version decision.
+   `TranscriptEventV1`, `FailureEpisodeV1`, and `InsightIssueV1` are versioned internal subsystem/domain contracts, not additions to these five public Membrane V1 shapes. They remain outside `membrane-protocol` public client/MCP surfaces unless a real external consumer triggers an explicit protocol-version decision.
 
 3. **Use a richer internal IR instead of casually expanding the public protocol.**
 
@@ -1870,7 +1871,7 @@ Gate:
 
 ## Phase 9 — Installed-product qualification
 
-Qualify the sole current target, macOS, using current artifacts. Other targets
+Qualify the sole current target, Windows x86_64, using current artifacts. Other targets
 remain outside supported-product truth until separately qualified and declared.
 
 Require:
@@ -1887,7 +1888,7 @@ Require:
 - restart/degradation;
 - upgrade;
 - uninstall;
-- macOS resource and latency evidence;
+- Windows resource and latency evidence;
 - whole-task comparison against frozen control.
 
 No public capability is called shipped without installed-path proof.
@@ -2227,7 +2228,7 @@ Every durable item can answer:
 - [ ] Authority/scope safety is non-inferior.
 - [ ] Receipt integrity is exact.
 - [ ] At least one meaningful attention/retrieval/latency/resource cost improves for every material adaptive feature.
-- [ ] macOS supported installed path qualifies against current artifacts.
+- [ ] Windows x86_64 supported installed path qualifies against current artifacts.
 
 ---
 

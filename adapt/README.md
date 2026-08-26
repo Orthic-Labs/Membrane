@@ -24,11 +24,11 @@ flowchart LR
     W --> R[scoped recall<br/>in future sessions]
 ```
 
-Mining never writes rules directly. It emits a review manifest; only an adjudicated manifest can be applied; and apply is one authenticated, atomic Cortex batch.
+Mining never writes rules directly. It emits a review manifest; only required review and adjudication can authorize apply; and apply is one atomic Cortex batch.
 
 ## What gets refused
 
-Only authenticated **user-origin** evidence can create durable preference authority. Admission deterministically quarantines:
+Only an explicitly user-selected transcript with exact source binding/hash and required review can create durable preference authority. Adapt does not infer authority from login state, host trust, or ambient activity; admission deterministically quarantines:
 
 - assistant-authored narration and echoed tool/repository output (a prompt-injection lexical scan backs up the origin tags)
 - permission or approval expansion, and anything that weakens security
@@ -63,7 +63,7 @@ Run journals checkpoint every stage; safe resume reuses cached stages only while
 
 | Surface | Role | Status |
 |---|---|---|
-| **Taste** | reviewed preferences → Cortex | native source path and synthetic conformance gate pass; real-world held-out, implicit-evidence, and exact package qualification remain open |
+| **Taste** | reviewed preferences → Cortex | selected-transcript source path and synthetic conformance gate pass; exact package qualification remains open |
 | **Insights** | failure/waste episodes, issues, remediation proposals & outcomes | native detection and portable benchmark ship with documented detector gaps; automated effect remains blocked |
 | **Adaptive evaluation** | delivery/effectiveness, counterfactuals, retirement suggestions & privacy-bounded aggregates | native contracts ship; only production-integrated, persisted receipts count as runtime evidence |
 
@@ -87,7 +87,7 @@ membrane adapt doctor
 
 ### Persistent-context cost
 
-`membrane adapt context-cost --input …` analyzes trusted host observations supplied
+`membrane adapt context-cost --input …` analyzes caller-selected host observations supplied
 as JSON. Provider-billed input, cache-read, cache-write, and output counts remain
 measured. Allocation to persistent sources is deterministic and bounded but is
 labelled inferred; any remainder stays unattributed. Findings include
@@ -128,13 +128,12 @@ ledger.
 
 Model-assisted semantic discovery still produces proposals only; independent
 adjudication remains mandatory before apply. Lexical contradiction checks cover direct
-polarity conflicts, while semantic conflicts require adjudication. Host UI signals
-remain capability-specific and unavailable signals are reported explicitly. The Taste
+polarity conflicts, while semantic conflicts require adjudication. Transcript source
+selection remains explicit and unavailable services are reported explicitly. The Taste
 quality corpus is synthetic conformance evidence, with one recorded product-fact modal
-false positive; real-world held-out and exact released-package qualification remain
-open. CodeRight user-act signing/trust provisioning, semantic-adjudicator trust
-provisioning, and installed reviewed-merge delivery are external integration gaps and
-fail closed when absent.
+false positive. Installed reviewed-merge delivery and exact released-package qualification
+remain separate from explicit selected-transcript workflow; assistant, tool, model, and
+repository text never gains user authority.
 
 ---
 

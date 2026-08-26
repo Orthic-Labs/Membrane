@@ -18,18 +18,18 @@
 //! work is synchronous: std threads plus channels internally, never tokio.
 
 use crate::live_diagnostics::{
-    AbsoluteDeadline, CapabilityKind, ConvergenceProof, DiagnosticsProvider,
-    ProviderCapabilities, ProviderError, ProviderOutput, RequestId, SideEffectClass,
+    AbsoluteDeadline, CapabilityKind, ConvergenceProof, DiagnosticsProvider, ProviderCapabilities,
+    ProviderError, ProviderOutput, RequestId, SideEffectClass,
 };
-use crate::providers::identity;
 use crate::providers::child_process::{
     default_search_path, drain_frames_until, lsp_frame_bytes, probe_search_path,
     recv_with_deadline, recv_within, sanitized_child_env, spawn_bounded_reader, spawn_sanitized,
     spawn_stderr_drainer, tsserver_line_bytes, FrameOutcome, LineFrameDecoder, LspDecoder,
     SanitizedProcess,
 };
+use crate::providers::identity;
 use membrane_protocol::diagnostics::{
-    CapabilityVocabulary, ConvergenceClass, CoverageLaneV1, CostClass, LaneState, ObservationV1,
+    CapabilityVocabulary, ConvergenceClass, CostClass, CoverageLaneV1, LaneState, ObservationV1,
     SeverityHint, SourceClass, SourceRange, TypedOmission, WorkspaceEpochV1,
 };
 use serde_json::{json, Value};
@@ -91,10 +91,7 @@ pub struct ProviderIdentityInputs {
 /// Config files that define this adapter's project semantics.
 const TS_CONFIG_FILES: [&str; 3] = ["tsconfig.json", "jsconfig.json", "package.json"];
 
-pub fn identity_inputs(
-    project_root: &Path,
-    binary_path: &Path,
-) -> ProviderIdentityInputs {
+pub fn identity_inputs(project_root: &Path, binary_path: &Path) -> ProviderIdentityInputs {
     ProviderIdentityInputs {
         binary: identity::binary_digest(binary_path),
         toolchain: identity::toolchain_digest(binary_path),
@@ -259,32 +256,24 @@ fn start_session(
         ProviderError::Unavailable(format!("failed to spawn {}: {error}", binary.display()))
     })?;
     let stdin = process.child.stdin.take();
-    let stdout = process
-        .child
-        .stdout
-        .take()
-        .ok_or_else(|| {
-            ProviderError::Crashed(format!(
-                "{} stdout was not piped",
-                match protocol {
-                    EngineProtocol::Lsp => "ts lsp",
-                    EngineProtocol::Tsserver => "tsserver",
-                }
-            ))
-        })?;
-    let stderr = process
-        .child
-        .stderr
-        .take()
-        .ok_or_else(|| {
-            ProviderError::Crashed(format!(
-                "{} stderr was not piped",
-                match protocol {
-                    EngineProtocol::Lsp => "ts lsp",
-                    EngineProtocol::Tsserver => "tsserver",
-                }
-            ))
-        })?;
+    let stdout = process.child.stdout.take().ok_or_else(|| {
+        ProviderError::Crashed(format!(
+            "{} stdout was not piped",
+            match protocol {
+                EngineProtocol::Lsp => "ts lsp",
+                EngineProtocol::Tsserver => "tsserver",
+            }
+        ))
+    })?;
+    let stderr = process.child.stderr.take().ok_or_else(|| {
+        ProviderError::Crashed(format!(
+            "{} stderr was not piped",
+            match protocol {
+                EngineProtocol::Lsp => "ts lsp",
+                EngineProtocol::Tsserver => "tsserver",
+            }
+        ))
+    })?;
     let overflow_dropped = Arc::new(AtomicUsize::new(0));
     let pump = match protocol {
         EngineProtocol::Lsp => spawn_bounded_reader(
@@ -312,7 +301,10 @@ fn start_session(
     })
 }
 
-fn await_lsp_initialize_response(session: &TsSession, request_id: i64) -> Result<(), ProviderError> {
+fn await_lsp_initialize_response(
+    session: &TsSession,
+    request_id: i64,
+) -> Result<(), ProviderError> {
     let started = Instant::now();
     loop {
         let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -496,7 +488,10 @@ fn observation_from_lsp_ts_diagnostic(
         code: normalize_ts_code(&code_raw),
         path: relative_path.to_string(),
         range: lsp_ts_range_to_source_range(diagnostic),
-        message: diagnostic["message"].as_str().unwrap_or_default().to_string(),
+        message: diagnostic["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         semantic_anchor: None,
         source_class: SourceClass::NativeLanguageService,
         cost_class: CostClass::Interactive,
@@ -584,7 +579,9 @@ fn lane_omissions(sync_omissions: &[TypedOmission], overflow_delta: usize) -> Ve
     if overflow_delta > 0 {
         omissions.push(TypedOmission {
             code: "event_queue_overflow".to_string(),
-            detail: format!("{overflow_delta} tsserver events dropped because the bounded queue was full"),
+            detail: format!(
+                "{overflow_delta} tsserver events dropped because the bounded queue was full"
+            ),
         });
     }
     omissions
@@ -882,7 +879,8 @@ impl DiagnosticsProvider for TypeScriptProvider {
             }
             EngineProtocol::Lsp => {
                 let version = i64::try_from(epoch.epoch).unwrap_or(i64::MAX);
-                let stale_uris: Vec<String> = self.sync_targets.values().map(|t| t.uri.clone()).collect();
+                let stale_uris: Vec<String> =
+                    self.sync_targets.values().map(|t| t.uri.clone()).collect();
                 for uri in &stale_uris {
                     session.write_json(&json!({
                         "jsonrpc": "2.0",
@@ -945,20 +943,24 @@ impl DiagnosticsProvider for TypeScriptProvider {
         // Hash verification gates exactness for both protocols.
         let pre_hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         let has_pre_mismatch = !pre_hash_mismatches.is_empty()
-            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+            || self
+                .sync_omissions
+                .iter()
+                .any(|o| o.code == "hash_mismatch");
         if self.sync_targets.is_empty() {
             // Even empty scope must not claim exact if hashes mismatched.
             let exact = !has_pre_mismatch;
-            self.last_completed = if exact {
-                Some((epoch.epoch, 0))
-            } else {
-                None
-            };
+            self.last_completed = if exact { Some((epoch.epoch, 0)) } else { None };
             self.lsp_ack_received = exact;
             return Ok(self.build_output(epoch, Vec::new(), 0));
         }
 
-        match self.session.as_mut().expect("session checked above").protocol {
+        match self
+            .session
+            .as_mut()
+            .expect("session checked above")
+            .protocol
+        {
             EngineProtocol::Tsserver => {
                 let request_seq = self.next_seq;
                 self.next_seq += 1;
@@ -1000,7 +1002,9 @@ impl DiagnosticsProvider for TypeScriptProvider {
                                 continue;
                             }
                             match parse_server_message(&line) {
-                                ServerEvent::RequestCompleted(completed) if completed == request_seq => {
+                                ServerEvent::RequestCompleted(completed)
+                                    if completed == request_seq =>
+                                {
                                     break;
                                 }
                                 ServerEvent::Diagnostics { kind, file, spans } => {
@@ -1037,7 +1041,11 @@ impl DiagnosticsProvider for TypeScriptProvider {
                     .unwrap()
                     .overflow_dropped
                     .load(Ordering::Relaxed);
-                Ok(self.build_output(epoch, observations, overflow_after.saturating_sub(overflow_before)))
+                Ok(self.build_output(
+                    epoch,
+                    observations,
+                    overflow_after.saturating_sub(overflow_before),
+                ))
             }
             EngineProtocol::Lsp => {
                 let request_id = self.next_id;
@@ -1114,15 +1122,13 @@ impl DiagnosticsProvider for TypeScriptProvider {
                                 let mut observations = Vec::new();
                                 if let Some(diagnostics) = params["diagnostics"].as_array() {
                                     for (index, diagnostic) in diagnostics.iter().enumerate() {
-                                        observations.push(
-                                            observation_from_lsp_ts_diagnostic(
-                                                &self.declared_version,
-                                                request_id as u64,
-                                                &relative,
-                                                index,
-                                                diagnostic,
-                                            ),
-                                        );
+                                        observations.push(observation_from_lsp_ts_diagnostic(
+                                            &self.declared_version,
+                                            request_id as u64,
+                                            &relative,
+                                            index,
+                                            diagnostic,
+                                        ));
                                     }
                                 }
                                 let version = params.get("version").and_then(Value::as_i64);
@@ -1146,7 +1152,9 @@ impl DiagnosticsProvider for TypeScriptProvider {
                 let overflow_delta = overflow_after.saturating_sub(overflow_before);
                 let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
                 let has_hash_mismatch = !hash_mismatches.is_empty() || has_pre_mismatch;
-                let all_versioned = published.values().all(|(v, _)| *v == Some(expected_version));
+                let all_versioned = published
+                    .values()
+                    .all(|(v, _)| *v == Some(expected_version));
                 let exact = !has_hash_mismatch && ack_received && all_versioned;
                 self.lsp_ack_received = ack_received;
                 self.lsp_published_versions = published
@@ -1159,10 +1167,8 @@ impl DiagnosticsProvider for TypeScriptProvider {
                     self.last_completed = None;
                 }
                 // Flatten observations for output
-                let observations: Vec<ObservationV1> = published
-                    .into_values()
-                    .flat_map(|(_, obs)| obs)
-                    .collect();
+                let observations: Vec<ObservationV1> =
+                    published.into_values().flat_map(|(_, obs)| obs).collect();
                 Ok(self.build_output(epoch, observations, overflow_delta))
             }
         }
@@ -1200,7 +1206,10 @@ impl DiagnosticsProvider for TypeScriptProvider {
     fn prove_convergence(&mut self, epoch: &WorkspaceEpochV1) -> ConvergenceProof {
         let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         let has_hash_mismatch = !hash_mismatches.is_empty()
-            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+            || self
+                .sync_omissions
+                .iter()
+                .any(|o| o.code == "hash_mismatch");
         if has_hash_mismatch {
             return ConvergenceProof {
                 converged: false,
@@ -1345,7 +1354,10 @@ mod tests {
     fn error_category_maps_blocking_and_everything_else_advisory() {
         assert_eq!(category_to_severity_hint("error"), SeverityHint::Blocking);
         assert_eq!(category_to_severity_hint("warning"), SeverityHint::Advisory);
-        assert_eq!(category_to_severity_hint("suggestion"), SeverityHint::Advisory);
+        assert_eq!(
+            category_to_severity_hint("suggestion"),
+            SeverityHint::Advisory
+        );
         assert_eq!(category_to_severity_hint("message"), SeverityHint::Advisory);
         assert_eq!(category_to_severity_hint(""), SeverityHint::Advisory);
     }
@@ -1446,7 +1458,10 @@ mod tests {
                 let advisory =
                     observation_from_span(ADAPTER_VERSION, 4, &kind, "src/main.ts", 1, &spans[1]);
                 assert_eq!(advisory.severity_hint, SeverityHint::Advisory);
-                assert_eq!(advisory.observation_id, format!("{PROVIDER_ID}:4:semanticDiag:src/main.ts:1"));
+                assert_eq!(
+                    advisory.observation_id,
+                    format!("{PROVIDER_ID}:4:semanticDiag:src/main.ts:1")
+                );
             }
             other => panic!("expected diagnostics event, got {other:?}"),
         }
@@ -1489,8 +1504,13 @@ mod tests {
     fn qualified_capabilities_declare_interactive_pure_analysis_d1() {
         let capabilities = qualified_capabilities();
         assert_eq!(capabilities.provider_id, PROVIDER_ID);
-        assert!(capabilities.capabilities.contains(&CapabilityKind::NativeLanguageService));
-        assert_eq!(capabilities.side_effect_class, SideEffectClass::PureAnalysis);
+        assert!(capabilities
+            .capabilities
+            .contains(&CapabilityKind::NativeLanguageService));
+        assert_eq!(
+            capabilities.side_effect_class,
+            SideEffectClass::PureAnalysis
+        );
         assert_eq!(capabilities.cost_class, CostClass::Interactive);
         assert_eq!(
             capabilities.convergence_class,
@@ -1504,7 +1524,8 @@ mod tests {
         let (absolute, relative) = resolve_under_root(root, "src/main.ts");
         assert_eq!(absolute, PathBuf::from("/repo/src/main.ts"));
         assert_eq!(relative, "src/main.ts");
-        let (absolute_nested, _) = resolve_under_root(Path::new("/repo/nested"), "/repo/nested/a.ts");
+        let (absolute_nested, _) =
+            resolve_under_root(Path::new("/repo/nested"), "/repo/nested/a.ts");
         assert_eq!(absolute_nested, PathBuf::from("/repo/nested/a.ts"));
     }
 }

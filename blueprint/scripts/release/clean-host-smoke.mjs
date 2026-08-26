@@ -9,7 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { verifyCandidate } from "./check-release.mjs";
 import { deriveUpdateKeyId } from "./generate-update-keys.mjs";
-import { npmCliArgs } from "./npm-cli.mjs";
+import { npmCliArgs, pnpmCliArgs } from "./npm-cli.mjs";
 import { signUpdateManifest } from "./sign-update-manifest.mjs";
 import { loadTrustedUpdateKeys } from "../../src/lib/update/manifest.mjs";
 import { verifyMcpInitialize } from "./mcp-client-smoke.mjs";
@@ -113,7 +113,11 @@ export async function runCleanHostSmoke({ candidate } = {}) {
   try {
     const prefix = join(temp, "prefix");
     const tarball = join(candidateDir, tarballs[0].name);
-    run(process.execPath, npmCliArgs(["install", "--prefix", prefix, "--omit=dev", "--no-audit", "--no-fund", tarball]));
+    mkdirSync(prefix, { recursive: true });
+    const installArgs = process.platform === "win32"
+      ? pnpmCliArgs(["--dir", prefix, "add", "--prod", "--ignore-scripts", tarball])
+      : npmCliArgs(["install", "--prefix", prefix, "--omit=dev", "--no-audit", "--no-fund", tarball]);
+    run(process.execPath, installArgs);
     const packageRoot = join(prefix, "node_modules", ...verified.compatibility.packageName.split("/"));
     if (!existsSync(packageRoot)) throw new Error("local tarball was not installed");
     // The packaged trust root is authoritative. When it carries at least one

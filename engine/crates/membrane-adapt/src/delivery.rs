@@ -97,7 +97,7 @@ fn base_omission_reason(
     }
 }
 
-/// Signed host-act scopes are content-addressed from their narrowing
+/// Selected-transcript scopes are content-addressed from their narrowing
 /// dimensions. Callers cannot know that opaque id in advance, so delivery is
 /// governed by the sealed dimensions themselves. Recomputing the id here
 /// prevents a hand-authored `dimensions:*` scope from bypassing ordinary

@@ -36,7 +36,6 @@ pub struct CanonicalTasteRecordV1 {
     pub authority_manifest_sha256: String,
     pub validator_receipt_id: String,
     pub validator_receipt_sha256: String,
-    pub verified_user_act_receipt_sha256: Option<String>,
     pub current_authority: String,
     pub current_influence_class: String,
 }
@@ -157,7 +156,10 @@ impl Gate1ReviewContextV1 {
 pub enum ProposalError {
     InvalidCandidate(String),
     InvalidReviewContext,
-    EligibilityRefused { candidate_id: String, reason: String },
+    EligibilityRefused {
+        candidate_id: String,
+        reason: String,
+    },
     SourceDigestConflict(String),
     InvalidValidatorReceipt,
     UntrustedValidator,
@@ -201,6 +203,10 @@ pub struct SemanticAdjudicationV1 {
 }
 
 pub const SEMANTIC_ADJUDICATION_CONTRACT: &str = "adapt.semantic-adjudication.v1";
+/// Local, explicit transcript review. This intentionally carries no issuer,
+/// key, or signature: caller selection plus an independent human review is
+/// the authority boundary for the local workflow.
+pub const USER_TASTE_REVIEW_CONTRACT: &str = "adapt.user-taste-review.v1";
 pub const SEMANTIC_ADJUDICATOR_TRUST_CONTRACT: &str = "adapt.semantic-adjudicator-trust.v1";
 const ADJUDICATION_SIGNATURE_DOMAIN: &[u8] = b"Membrane Adapt semantic adjudication v1\0";
 
@@ -322,6 +328,59 @@ pub fn verify_semantic_adjudication(
     })
 }
 
+/// Verify an explicitly selected local transcript review.
+///
+/// Local review is deliberately not authenticated as an enterprise
+/// adjudicator. Its binding is instead the exact pending manifest,
+/// installation, canonical pool, complete decision set, and a non-empty
+/// human review receipt. The returned capability is the same sealed type used
+/// by the signed validator path, so downstream admission cannot distinguish
+/// an unverified model/operator object from a completed review.
+pub fn verify_user_taste_review(
+    pending: &PreferenceManifestV1,
+    value: SemanticAdjudicationV1,
+) -> Result<VerifiedSemanticAdjudication, ProposalError> {
+    if value.contract_version != USER_TASTE_REVIEW_CONTRACT
+        || !value.independent
+        || !value.issuer_id.is_empty()
+        || !value.key_id.is_empty()
+        || !value.signature_hex.is_empty()
+        || value.installation_id.trim().is_empty()
+        || value.installation_id != pending.installation_id
+        || value.pending_manifest_sha256 != pending.manifest_sha256
+        || value.canonical_pool_sha256 != pending.canonical_pool_sha256
+        || value.validator_receipt_id.trim().is_empty()
+        || value.validated_at.trim().is_empty()
+    {
+        return Err(ProposalError::InvalidValidatorReceipt);
+    }
+    let mut decisions = BTreeMap::new();
+    for decision in &value.decisions {
+        if !matches!(decision.verdict.as_str(), "valid" | "invalid")
+            || decision.reason.trim().is_empty()
+            || decisions.insert(decision.id.clone(), decision).is_some()
+        {
+            return Err(ProposalError::DecisionCoverageMismatch);
+        }
+    }
+    let expected: BTreeSet<&str> = pending
+        .records
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect();
+    let found: BTreeSet<&str> = decisions.keys().map(String::as_str).collect();
+    if expected != found {
+        return Err(ProposalError::DecisionCoverageMismatch);
+    }
+    let receipt_sha256 = sha256_hex(
+        &serde_json::to_vec(&value).map_err(|_| ProposalError::InvalidValidatorReceipt)?,
+    );
+    Ok(VerifiedSemanticAdjudication {
+        adjudication: value,
+        receipt_sha256,
+    })
+}
+
 fn authority_effect(candidate: &TasteCandidateV1) -> String {
     serde_json::to_value(candidate.authority_effect)
         .ok()
@@ -390,8 +449,11 @@ pub fn build_pending_manifest(
     if canonical_pool_sha256 != gate1.canonical_pool_sha256() {
         return Err(ProposalError::CanonicalPoolMismatch);
     }
+    // This builder is reached only from explicit transcript review. The
+    // selected source digest plus external-user source event bind authority.
+    let candidates: Vec<&TasteCandidateV1> = candidates.iter().collect();
     let mut source_digests: BTreeMap<String, String> = BTreeMap::new();
-    for candidate in candidates {
+    for candidate in &candidates {
         let digest = candidate
             .source_transcript_sha256
             .trim_start_matches("sha256:")
@@ -402,14 +464,32 @@ pub fn build_pending_manifest(
             || candidate.evidence_text_sha256 != sha256_hex(candidate.evidence_text.as_bytes())
             || digest.len() != 64
             || !digest.chars().all(|c| c.is_ascii_hexdigit())
+            || candidate
+                .context_events
+                .iter()
+                .filter(|event| event.is_source)
+                .count()
+                != 1
+            || candidate.context_events.iter().any(|event| {
+                event.is_source
+                    && (event.kind != "user_message"
+                        || event.role.as_deref() != Some("user")
+                        || event.synthetic
+                        || event.meta
+                        || event.redacted
+                        || event.text != candidate.evidence_text
+                        || event.event_id != candidate.source_event_id
+                        || event.byte_start != candidate.source_byte_start
+                        || event.byte_end != candidate.source_byte_end)
+            })
         {
             return Err(ProposalError::InvalidCandidate(
                 candidate.candidate_id.clone(),
             ));
         }
         let declared_effect = authority_effect(candidate);
-        let eligibility = crate::admission::evaluate_eligibility(
-            &crate::admission::EligibilityInput {
+        let eligibility =
+            crate::admission::evaluate_eligibility(&crate::admission::EligibilityInput {
                 operation: "add",
                 rule: &candidate.rule,
                 category: &candidate.category,
@@ -422,8 +502,7 @@ pub fn build_pending_manifest(
                 policy_bans: &gate1.policy_bans,
                 index: &gate1.index,
                 stored_rules: &gate1.stored_rules,
-            },
-        );
+            });
         if let crate::admission::EligibilityDecision::Refused { reason } = eligibility {
             return Err(ProposalError::EligibilityRefused {
                 candidate_id: candidate.candidate_id.clone(),
@@ -461,25 +540,10 @@ pub fn build_pending_manifest(
         ),
     ]));
     let mut records = Vec::new();
-    for candidate in candidates {
+    for candidate in &candidates {
         let eid = evidence_id(candidate);
         let mut context_events: Vec<ContextEvent> =
             candidate.context_events.iter().map(context_event).collect();
-        if context_events.is_empty() && candidate.verified_user_act_receipt_sha256.is_some() {
-            context_events.push(ContextEvent {
-                event_id: candidate.source_event_id.clone(),
-                kind: "user_act".into(),
-                role: "user".into(),
-                classification: "verified_user_act".into(),
-                flags: vec![],
-                byte_start: 0,
-                byte_end: 0,
-                text: candidate.evidence_text.clone(),
-                provenance: "verified_user_act".into(),
-                is_source: true,
-            });
-        }
-        let structured_act = candidate.verified_user_act_receipt_sha256.is_some();
         let mut record = ManifestRecord {
             id: candidate.candidate_id.clone(),
             rule: candidate.rule.clone(),
@@ -521,16 +585,11 @@ pub fn build_pending_manifest(
             authority_manifest_sha256: authority_manifest_sha256.clone(),
             validator_receipt_id: String::new(),
             validator_receipt_sha256: String::new(),
-            verified_user_act_receipt_sha256: candidate.verified_user_act_receipt_sha256.clone(),
             semantic_payload: None,
             semantic_digest: String::new(),
             evidence_contexts: vec![EvidenceContext {
                 source_event_id: candidate.source_event_id.clone(),
-                source_kind: if structured_act {
-                    "user_act".into()
-                } else {
-                    "user_message".into()
-                },
+                source_kind: "user_message".into(),
                 source_role: "user".into(),
                 source_classification: context_events
                     .iter()
@@ -737,21 +796,72 @@ pub fn verify_final_manifest_adjudication(
     finalised: &PreferenceManifestV1,
     trust: &SemanticAdjudicatorTrustStoreV1,
 ) -> Result<(), ProposalError> {
-    let value = finalised.semantic_adjudication.clone()
+    verify_final_manifest_adjudication_with_verified(
+        finalised,
+        &verify_semantic_adjudication(
+            &reconstruct_pending_manifest(finalised),
+            finalised
+                .semantic_adjudication
+                .clone()
+                .ok_or(ProposalError::InvalidValidatorReceipt)?,
+            trust,
+        )?,
+    )
+}
+
+/// Verify a final manifest produced by either enterprise signed adjudication
+/// or explicit local user review. Pass `None` for local-only verification; a
+/// signed adjudication still requires its trust store.
+pub fn verify_final_manifest_adjudication_or_local(
+    finalised: &PreferenceManifestV1,
+    trust: Option<&SemanticAdjudicatorTrustStoreV1>,
+) -> Result<(), ProposalError> {
+    let value = finalised
+        .semantic_adjudication
+        .clone()
         .ok_or(ProposalError::InvalidValidatorReceipt)?;
     let pending = reconstruct_pending_manifest(finalised);
-    let verified = verify_semantic_adjudication(&pending, value, trust)?;
-    let expected: BTreeMap<&str, &str> = verified.adjudication.decisions.iter()
-        .map(|decision| (decision.id.as_str(), decision.verdict.as_str())).collect();
+    let verified = if value.contract_version == USER_TASTE_REVIEW_CONTRACT {
+        verify_user_taste_review(&pending, value)?
+    } else {
+        verify_semantic_adjudication(
+            &pending,
+            value,
+            trust.ok_or(ProposalError::UntrustedValidator)?,
+        )?
+    };
+    verify_final_manifest_adjudication_with_verified(finalised, &verified)
+}
+
+fn verify_final_manifest_adjudication_with_verified(
+    finalised: &PreferenceManifestV1,
+    verified: &VerifiedSemanticAdjudication,
+) -> Result<(), ProposalError> {
+    let expected: BTreeMap<&str, &str> = verified
+        .adjudication
+        .decisions
+        .iter()
+        .map(|decision| (decision.id.as_str(), decision.verdict.as_str()))
+        .collect();
     if expected.len() != finalised.records.len() {
         return Err(ProposalError::DecisionCoverageMismatch);
     }
     for record in &finalised.records {
-        let verdict = expected.get(record.id.as_str())
+        let verdict = expected
+            .get(record.id.as_str())
             .ok_or(ProposalError::DecisionCoverageMismatch)?;
-        let unsafe_effect = matches!(record.authority_effect.as_str(), "permission_expanding" | "security_weakening");
-        let expected_status = if *verdict == "valid" && !unsafe_effect { "accepted" } else { "rejected" };
-        if record.status != expected_status || record.validator_receipt_sha256 != verified.receipt_sha256 {
+        let unsafe_effect = matches!(
+            record.authority_effect.as_str(),
+            "permission_expanding" | "security_weakening"
+        );
+        let expected_status = if *verdict == "valid" && !unsafe_effect {
+            "accepted"
+        } else {
+            "rejected"
+        };
+        if record.status != expected_status
+            || record.validator_receipt_sha256 != verified.receipt_sha256
+        {
             return Err(ProposalError::InvalidValidatorReceipt);
         }
     }
@@ -772,43 +882,57 @@ mod tests {
         Gate1ReviewContextV1::from_verified_canonical_inventory(vec![])
     }
 
-    fn verified_adjudication(pending: &PreferenceManifestV1, decisions: Vec<SemanticDecisionV1>) -> VerifiedSemanticAdjudication {
+    fn verified_adjudication(
+        pending: &PreferenceManifestV1,
+        decisions: Vec<SemanticDecisionV1>,
+    ) -> VerifiedSemanticAdjudication {
         let key = Ed25519KeyPair::from_seed_unchecked(&[41; 32]).unwrap();
         let trust = SemanticAdjudicatorTrustStoreV1 {
             contract_version: SEMANTIC_ADJUDICATOR_TRUST_CONTRACT.into(),
             installation_id: pending.installation_id.clone(),
-            issuers: vec![TrustedSemanticAdjudicatorV1 { issuer_id: "validator".into(), key_id: "key-1".into(),
-                public_key_hex: hex::encode(key.public_key().as_ref()), revoked: false }],
+            issuers: vec![TrustedSemanticAdjudicatorV1 {
+                issuer_id: "validator".into(),
+                key_id: "key-1".into(),
+                public_key_hex: hex::encode(key.public_key().as_ref()),
+                revoked: false,
+            }],
         };
         let mut value = SemanticAdjudicationV1 {
-            contract_version: SEMANTIC_ADJUDICATION_CONTRACT.into(), independent: true,
-            issuer_id: "validator".into(), key_id: "key-1".into(), installation_id: pending.installation_id.clone(),
-            validator_receipt_id: "validator-1".into(), pending_manifest_sha256: pending.manifest_sha256.clone(),
-            canonical_pool_sha256: pending.canonical_pool_sha256.clone(), validated_at: "t2".into(),
-            decisions, signature_hex: String::new(),
+            contract_version: SEMANTIC_ADJUDICATION_CONTRACT.into(),
+            independent: true,
+            issuer_id: "validator".into(),
+            key_id: "key-1".into(),
+            installation_id: pending.installation_id.clone(),
+            validator_receipt_id: "validator-1".into(),
+            pending_manifest_sha256: pending.manifest_sha256.clone(),
+            canonical_pool_sha256: pending.canonical_pool_sha256.clone(),
+            validated_at: "t2".into(),
+            decisions,
+            signature_hex: String::new(),
         };
-        value.signature_hex = hex::encode(key.sign(&semantic_adjudication_signing_bytes(&value).unwrap()).as_ref());
+        value.signature_hex = hex::encode(
+            key.sign(&semantic_adjudication_signing_bytes(&value).unwrap())
+                .as_ref(),
+        );
         verify_semantic_adjudication(pending, value, &trust).unwrap()
     }
 
     fn adjudicate(candidates: &[TasteCandidateV1]) -> PreferenceManifestV1 {
         let gate1 = gate1();
-        let pending = build_pending_manifest(
-            candidates,
-            "i",
-            gate1.canonical_pool_sha256(),
-            "t",
-            &gate1,
-        )
-        .unwrap();
-        let verified = verified_adjudication(&pending, candidates
-                    .iter()
-                    .map(|candidate| SemanticDecisionV1 {
-                        id: candidate.candidate_id.clone(),
-                        verdict: "valid".into(),
-                        reason: "direct".into(),
-                    })
-                    .collect());
+        let pending =
+            build_pending_manifest(candidates, "i", gate1.canonical_pool_sha256(), "t", &gate1)
+                .unwrap();
+        let verified = verified_adjudication(
+            &pending,
+            candidates
+                .iter()
+                .map(|candidate| SemanticDecisionV1 {
+                    id: candidate.candidate_id.clone(),
+                    verdict: "valid".into(),
+                    reason: "direct".into(),
+                })
+                .collect(),
+        );
         adjudicate_manifest(&pending, &verified).unwrap()
     }
 
@@ -823,7 +947,6 @@ mod tests {
             authority_manifest_sha256: record.authority_manifest_sha256.clone(),
             validator_receipt_id: record.validator_receipt_id.clone(),
             validator_receipt_sha256: record.validator_receipt_sha256.clone(),
-            verified_user_act_receipt_sha256: record.verified_user_act_receipt_sha256.clone(),
             current_authority: "A2".into(),
             current_influence_class: "behavioral_directive".into(),
         }
@@ -847,13 +970,59 @@ mod tests {
         )
         .unwrap();
         assert_eq!(pending.records[0].status, "pending");
-        let verified = verified_adjudication(&pending, vec![SemanticDecisionV1 {
-                    id: "taste_x".into(),
-                    verdict: "valid".into(),
-                    reason: "direct".into(),
-                }]);
+        let verified = verified_adjudication(
+            &pending,
+            vec![SemanticDecisionV1 {
+                id: "taste_x".into(),
+                verdict: "valid".into(),
+                reason: "direct".into(),
+            }],
+        );
         let finalised = adjudicate_manifest(&pending, &verified).unwrap();
         assert_eq!(manifest::apply_plan(&finalised).unwrap(), vec!["taste_x"]);
+    }
+
+    #[test]
+    fn explicit_user_taste_review_is_bound_without_login_or_trust_store() {
+        let gate1 = gate1();
+        let pending = build_pending_manifest(
+            &[candidate(
+                "Always run focused tests",
+                AuthorityEffect::Neutral,
+            )],
+            "installation-1",
+            gate1.canonical_pool_sha256(),
+            "2026-08-26T00:00:00Z",
+            &gate1,
+        )
+        .unwrap();
+        let review = SemanticAdjudicationV1 {
+            contract_version: USER_TASTE_REVIEW_CONTRACT.into(),
+            independent: true,
+            issuer_id: String::new(),
+            key_id: String::new(),
+            installation_id: pending.installation_id.clone(),
+            validator_receipt_id: "local-review-1".into(),
+            pending_manifest_sha256: pending.manifest_sha256.clone(),
+            canonical_pool_sha256: pending.canonical_pool_sha256.clone(),
+            validated_at: "2026-08-26T00:01:00Z".into(),
+            decisions: vec![SemanticDecisionV1 {
+                id: pending.records[0].id.clone(),
+                verdict: "valid".into(),
+                reason: "Explicitly reviewed by user".into(),
+            }],
+            signature_hex: String::new(),
+        };
+        let verified = verify_user_taste_review(&pending, review.clone()).unwrap();
+        let finalised = adjudicate_manifest(&pending, &verified).unwrap();
+        verify_final_manifest_adjudication_or_local(&finalised, None).unwrap();
+
+        let mut incomplete = review;
+        incomplete.decisions.clear();
+        assert!(matches!(
+            verify_user_taste_review(&pending, incomplete),
+            Err(ProposalError::DecisionCoverageMismatch)
+        ));
     }
 
     #[test]
@@ -964,11 +1133,12 @@ mod tests {
 
         let mut authority = base.clone();
         authority.semantic_payload.authority_tier =
-            crate::authority::PrecedenceTier::InferredScopedUserPreference;
+            crate::authority::PrecedenceTier::ProvisionalCandidate;
         mutations.push(("authority_tier", authority));
 
         let mut influence = base.clone();
-        influence.semantic_payload.influence_class = crate::record::InfluenceClass::Provisional;
+        influence.semantic_payload.influence_class =
+            crate::record::InfluenceClass::BehavioralDirective;
         mutations.push(("influence_class", influence));
 
         let mut digest = base.clone();
@@ -1075,32 +1245,30 @@ mod tests {
         b.candidate_id = "b".into();
         b.reseal_for_test();
         let gate1 = gate1();
-        let mut pending = build_pending_manifest(
-            &[a, b],
-            "i",
-            gate1.canonical_pool_sha256(),
-            "t",
-            &gate1,
-        )
-        .unwrap();
+        let mut pending =
+            build_pending_manifest(&[a, b], "i", gate1.canonical_pool_sha256(), "t", &gate1)
+                .unwrap();
         pending.records[1]
             .scope_dimensions
             .0
             .insert("repo".into(), "other".into());
         pending.records[1].payload_sha256 = manifest::payload_sha256(&pending.records[1]);
         pending.manifest_sha256 = manifest::manifest_hash(&pending);
-        let verified = verified_adjudication(&pending, vec![
-                    SemanticDecisionV1 {
-                        id: "a".into(),
-                        verdict: "valid".into(),
-                        reason: String::new(),
-                    },
-                    SemanticDecisionV1 {
-                        id: "b".into(),
-                        verdict: "valid".into(),
-                        reason: String::new(),
-                    },
-                ]);
+        let verified = verified_adjudication(
+            &pending,
+            vec![
+                SemanticDecisionV1 {
+                    id: "a".into(),
+                    verdict: "valid".into(),
+                    reason: String::new(),
+                },
+                SemanticDecisionV1 {
+                    id: "b".into(),
+                    verdict: "valid".into(),
+                    reason: String::new(),
+                },
+            ],
+        );
         let cross_dimensions = adjudicate_manifest(&pending, &verified).unwrap();
         assert!(cross_dimensions.duplicate_groups.is_empty());
     }

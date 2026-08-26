@@ -15,20 +15,22 @@ struct GuardPatterns {
     hypothetical: Regex,
     negation_prefixes: Regex,
     clause_boundary: Regex,
-    quoted: Regex,
+    tool_relay: Regex,
 }
 
 fn patterns() -> &'static GuardPatterns {
     static P: OnceLock<GuardPatterns> = OnceLock::new();
     P.get_or_init(|| GuardPatterns {
         hypothetical: re(
-            r"(?im)\b(?:hypothetically|hypothetical|suppose|supposing|imagine|for example|e\.g\.,?|what if|if we (?:were to|had)|if it (?:were|had)|in theory)\b",
+            r"(?im)\b(?:hypothetically|hypothetical|suppose|supposing|imagine|for example|e\.g\.,?|what if|if we (?:were to|had)|if it (?:were|had)|in theory)\b|(?:^|[.!?;:\n]\s*)if\b",
         ),
         negation_prefixes: re(
             r"(?im)\b(?:not|never|no|without|cannot|can't|couldn't|isn't|aren't|wasn't|weren't|hasn't|haven't|hadn't|unverified|unvalidated|untested)\b",
         ),
         clause_boundary: re(r"[.!?;\n]|\b(?:but|however|although|yet)\b"),
-        quoted: re(r#"["'`“”‘’][^"'`“”‘’]{4,}["'`“”‘’]"#),
+        tool_relay: re(
+            r"(?im)\b(?:log|output|result|tool|command|test(?:s)?)\s+(?:says?|reports?|reported|returned|shows?)\b|\baccording\s+to\s+(?:the\s+)?(?:log|output|result|tool|command|test(?:s)?)\b|\b(?:based|per)\s+on\s+(?:the\s+)?(?:log|output|result|tool|command|test(?:s)?)\b",
+        ),
     })
 }
 
@@ -42,43 +44,47 @@ pub fn is_tool_carried(event: &TranscriptEventV1) -> bool {
 /// True when the dominant content of the span is quoted material (a quote of
 /// someone else's words, a pasted log line, or echoed code).
 pub fn is_mostly_quoted(text: &str) -> bool {
-    let p = patterns();
-    if !p.quoted.is_match(text) {
-        return false;
-    }
-    // If every alphabetic run of length >= 8 sits inside quotes, treat the
-    // span as quoted material. Approximation is fine for a guard: it errs
-    // toward suppression, which is precision-first.
+    // Any balanced quotation-bearing span is non-authoritative. Suppressing
+    // its whole diagnostic event is intentionally precision-first: quoted
+    // text must never seed detector state through framing-length tricks.
     let mut inside = false;
-    let mut run = 0usize;
-    let mut longest_outside = 0usize;
-    for c in text.chars() {
-        if matches!(c, '"' | '\'' | '`' | '\u{201C}' | '\u{201D}' | '\u{2018}' | '\u{2019}') {
+    let mut delimiters = 0usize;
+    let mut inside_alnum = 0usize;
+    for (index, c) in text.char_indices() {
+        if is_quote_delimiter(text, index, c) {
+            delimiters += 1;
             inside = !inside;
-            longest_outside = longest_outside.max(run);
-            run = 0;
             continue;
         }
-        let alpha = c.is_alphanumeric();
-        match (inside, alpha) {
-            (true, true) => {}
-            (false, true) => run += 1,
-            (_, false) => {
-                longest_outside = if inside { longest_outside } else { longest_outside.max(run) };
-                run = 0;
+        if c.is_alphanumeric() {
+            if inside {
+                inside_alnum += 1;
             }
         }
     }
-    if !inside {
-        longest_outside = longest_outside.max(run);
+    delimiters >= 2 && !inside && inside_alnum > 0
+}
+
+fn is_quote_delimiter(text: &str, index: usize, c: char) -> bool {
+    if !matches!(c, '\'' | '\u{2018}' | '\u{2019}') {
+        return matches!(c, '"' | '`' | '\u{201C}' | '\u{201D}');
     }
-    longest_outside < 12
+    let previous = text[..index].chars().next_back();
+    let next = text[index + c.len_utf8()..].chars().next();
+    !(previous.is_some_and(char::is_alphanumeric) && next.is_some_and(char::is_alphanumeric))
 }
 
 /// Hypothetical narration: the speaker is imagining or exemplifying, not
 /// reporting an actual failure.
 pub fn contains_hypothetical_narration(text: &str) -> bool {
     patterns().hypothetical.is_match(text)
+}
+
+/// True when assistant text explicitly attributes a verification claim to an
+/// observable tool/log result. This only prevents an unsupported-claim
+/// Insight; tool text never becomes durable authority or a Taste candidate.
+pub fn is_tool_relayed_verification(text: &str) -> bool {
+    patterns().tool_relay.is_match(text)
 }
 
 /// Locally-negated completion/verification phrases are NOT positive claims:
@@ -100,12 +106,30 @@ fn lazy_static_verification_matches(text: &str) -> Vec<(usize, usize)> {
     let p = patterns();
     verification_word_at(text)
         .filter(|(start, _)| {
-            let prefix_start = start.saturating_sub(80);
-            let prefix = &text[prefix_start..*start];
+            let prefix = bounded_prefix(text, *start, 80);
             let last_clause = p.clause_boundary.split(prefix).last().unwrap_or("");
             !p.negation_prefixes.is_match(last_clause)
         })
         .collect()
+}
+
+/// Return at most `max_bytes` of the text immediately preceding `end`.
+///
+/// Byte bounds are used to keep guard work bounded, but slicing must still
+/// happen on UTF-8 scalar boundaries. Moving the start forward (rather than
+/// backward) preserves the byte cap when the requested bound falls inside a
+/// multibyte character.
+fn bounded_prefix(text: &str, end: usize, max_bytes: usize) -> &str {
+    let mut end = end.min(text.len());
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    let mut start = end.saturating_sub(max_bytes);
+    while start < end && !text.is_char_boundary(start) {
+        start += 1;
+    }
+    &text[start..end]
 }
 
 /// Standard pre-flight for user-utterance-driven detection.
@@ -168,7 +192,10 @@ mod tests {
             occurrence: 0,
             evidence_eligible: true,
         };
-        assert!(matches!(guard_user_span(&ev), SpanGuard::Suppress("tool-carried")));
+        assert!(matches!(
+            guard_user_span(&ev),
+            SpanGuard::Suppress("tool-carried")
+        ));
     }
 
     #[test]
@@ -187,7 +214,10 @@ mod tests {
             occurrence: 0,
             evidence_eligible: true,
         };
-        assert!(matches!(guard_user_span(&ev), SpanGuard::Suppress("quoted")));
+        assert!(matches!(
+            guard_user_span(&ev),
+            SpanGuard::Suppress("quoted")
+        ));
     }
 
     #[test]
@@ -206,7 +236,22 @@ mod tests {
             occurrence: 0,
             evidence_eligible: true,
         };
-        assert!(matches!(guard_user_span(&ev), SpanGuard::Suppress("hypothetical")));
+        assert!(matches!(
+            guard_user_span(&ev),
+            SpanGuard::Suppress("hypothetical")
+        ));
+        assert!(contains_hypothetical_narration(
+            "If the deploy had gone smoothly, I would call it done."
+        ));
+        assert!(contains_hypothetical_narration(
+            "If everything had gone right, all tests would pass."
+        ));
+        assert!(contains_hypothetical_narration(
+            "If deployment passes, I'll call it verified."
+        ));
+        assert!(contains_hypothetical_narration(
+            "Context: If deployment passes, I'll call it verified."
+        ));
     }
 
     #[test]
@@ -215,5 +260,43 @@ mod tests {
         assert!(has_positive_verification_claim("It is not verified yet").is_empty());
         assert!(has_positive_verification_claim("couldn't confirm; untested").is_empty());
         assert!(!has_positive_verification_claim("it failed but now verified").is_empty());
+    }
+
+    #[test]
+    fn apostrophes_in_contractions_are_not_quote_delimiters() {
+        assert!(!is_mostly_quoted(
+            "Actually it's still broken, that's not right."
+        ));
+        assert!(is_mostly_quoted(
+            r#"the log said "verified and confirmed passing green done""#
+        ));
+        assert!(is_mostly_quoted(
+            r#"The documentation says "this is bullshit and still broken"."#
+        ));
+        assert!(is_mostly_quoted(
+            r#"They told me "this is such bullshit, fix it now" but that is not how I would put it."#
+        ));
+        assert!(is_mostly_quoted(
+            r#"The ticket says "you forgot to add the rate limiter" but I am just quoting it for context."#
+        ));
+        assert!(is_mostly_quoted(
+            r#"I told you "verified and passing" in the earlier note."#
+        ));
+    }
+
+    #[test]
+    fn tool_relay_framing_is_detected_without_authorizing_tool_text() {
+        assert!(is_tool_relayed_verification(
+            "The log says the deploy is verified and all set."
+        ));
+        assert!(!is_tool_relayed_verification(
+            "I verified the deploy and fixed it."
+        ));
+    }
+
+    #[test]
+    fn verification_prefix_bound_is_utf8_safe() {
+        let text = format!("{}—{}verified", "a".repeat(15), " ".repeat(78));
+        assert_eq!(has_positive_verification_claim(&text), vec![(96, 104)]);
     }
 }

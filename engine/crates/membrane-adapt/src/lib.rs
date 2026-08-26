@@ -8,8 +8,8 @@
 //!
 //! * Model output is an untrusted [`model_boundary`] proposal; it can never
 //!   set authority class, source identity, signal strength, or permissions.
-//! * Taste authority derives only from qualifying user evidence
-//!   ([`evidence::UserActEvidenceV1`]).
+//! * Taste candidates derive only from caller-selected, external-user
+//!   transcript events; exact source digests bind review to those files.
 //! * Insights records are diagnostic/reference-only; they never create user
 //!   preference authority ([`insights`], [`remediation`]).
 //! * Durable outputs cross exactly one typed Cortex admission boundary,
@@ -19,26 +19,26 @@
 //!   admission, Membrane context admission) are distinct types that never
 //!   collapse into each other ([`gates`]).
 
-pub mod canonical;
-pub mod evidence;
-pub mod authority;
 pub mod adaptive;
-pub mod scope;
-pub mod record;
-pub mod seal;
-pub mod taste;
-pub mod manifest;
 pub mod admission;
-pub mod model_boundary;
-pub mod gates;
-pub mod insights;
-pub mod remediation;
-pub mod outcomes;
+pub mod authority;
+pub mod benchmark;
+pub mod canonical;
+pub mod cli_api;
 pub mod context_cost;
 pub mod delivery;
 pub mod duplicate_groups;
+pub mod evidence;
+pub mod gates;
+pub mod insights;
+pub mod manifest;
+pub mod model_boundary;
 pub mod multiwriter;
+pub mod outcomes;
 pub mod portable;
 pub mod proposal;
-pub mod benchmark;
-pub mod cli_api;
+pub mod record;
+pub mod remediation;
+pub mod scope;
+pub mod seal;
+pub mod taste;

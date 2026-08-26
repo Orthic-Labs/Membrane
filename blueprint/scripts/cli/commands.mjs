@@ -6,7 +6,8 @@ import { createBlueprintApplicationService } from "../../src/lib/application/ser
 import { applyInitPlan, uninstallInit } from "../../src/lib/init/apply.mjs";
 import { buildInitPlan } from "../../src/lib/init/plan.mjs";
 import { recoverPendingUpdate } from "../../src/lib/update/apply.mjs";
-import { join } from "node:path";
+import { timingSafeEqual } from "node:crypto";
+import { join, resolve } from "node:path";
 import { createDaemonServer } from "../../src/service/server.mjs";
 import { readWatchConfig } from "../../watchman/supervisor.mjs";
 import { startBlueprintMcpServer } from "../blueprint-mcp.mjs";
@@ -18,6 +19,64 @@ function serviceFor(args) {
     outDir: String(args.out ?? ".agent"),
     allowEmbeddedRoot: true,
   });
+}
+
+const HUB_PARENT_PID_ENV = "MEMBRANE_HUB_PARENT_PID";
+const HUB_LAUNCH_TOKEN_ENV = "MEMBRANE_HUB_LAUNCH_TOKEN";
+const HUB_LAUNCH_HANDSHAKE_TIMEOUT_MS = 2000;
+const WATCHER_DRAIN_TIMEOUT_MS = 2000;
+
+function launchTokenMatches(received, expected) {
+  const left = Buffer.from(String(received).trim());
+  const right = Buffer.from(String(expected));
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+function readHubLaunchToken(expected) {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    let buffer = "";
+    let settled = false;
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      stdin.off("data", onData);
+      stdin.off("end", onEnd);
+      stdin.off("error", onError);
+    };
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ok);
+    };
+    const onData = (chunk) => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf("\n");
+      if (newline < 0) return;
+      finish(launchTokenMatches(buffer.slice(0, newline), expected));
+    };
+    const onEnd = () => finish(false);
+    const onError = () => finish(false);
+    stdin.setEncoding("utf8");
+    stdin.on("data", onData);
+    stdin.once("end", onEnd);
+    stdin.once("error", onError);
+    stdin.resume();
+    timer = setTimeout(() => finish(false), HUB_LAUNCH_HANDSHAKE_TIMEOUT_MS);
+  });
+}
+
+async function authorizeResidentLaunch() {
+  if (process.env.MEMBRANE_HUB_CHILD !== "1") return { ok: false, code: "hub_inactive" };
+  const parentPid = Number(process.env[HUB_PARENT_PID_ENV]);
+  const expected = process.env[HUB_LAUNCH_TOKEN_ENV];
+  if (!Number.isSafeInteger(parentPid) || parentPid <= 0 || parentPid !== process.ppid) {
+    return { ok: false, code: "hub_inactive" };
+  }
+  if (!/^[0-9a-f]{64}$/.test(expected ?? "")) return { ok: false, code: "hub_inactive" };
+  if (!(await readHubLaunchToken(expected))) return { ok: false, code: "hub_inactive" };
+  return { ok: true };
 }
 
 async function runFacadeCommand(command, args, { root, outDir }) {
@@ -143,51 +202,99 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         return EXIT.INTERNAL;
       }
       if (subcommand === "run") {
-        // D-S04 headless carve-out — foreground mode, Hub spawns as child (D-S03)
+        // D-S04 headless carve-out — only an active Hub may create resident
+        // Blueprint service/watcher processes. Direct Blueprint consumers use
+        // BlueprintClient's bounded one-shot path instead.
+        const launch = await authorizeResidentLaunch();
+        if (!launch.ok) {
+          const payload = machineError("hub_inactive", "Blueprint service residency requires an active Membrane Hub; use a direct bounded Blueprint operation");
+          printResult(payload, args);
+          printResult(payload, args, { stderr: true });
+          return EXIT.INTERNAL;
+        }
         const { spawn } = await import("node:child_process");
-        const { resolve } = await import("node:path");
         const { startSnapshotServer } = await import("../../src/lib/snapshot.mjs");
         let endpoint;
         let daemon;
         let daemonAddress;
         let watcher;
+        let watcherError = "";
+        let watcherOutput = "";
+        let watcherSpawnError = null;
         try {
           endpoint = await startSnapshotServer({ root, authToken: process.env.BLUEPRINT_SNAPSHOT_TOKEN });
           daemon = createDaemonServer({ registryEntries: readWatchConfig().repos });
           daemonAddress = await daemon.listen();
           // Blueprint, not any peer, owns its watcher. Keep it attached to this
           // foreground service so Hub termination also stops the watcher.
-          watcher = spawn(process.execPath, [resolve(root, "scripts", "blueprint-watch.mjs"), "start"], {
+          const watcherScript = resolve(import.meta.dirname, "../blueprint-watch.mjs");
+          watcher = spawn(process.execPath, [watcherScript, "start"], {
             cwd: root,
             env: { ...process.env, BLUEPRINT_SERVICE_CHILD: "1" },
-            stdio: ["pipe", "ignore", "pipe"],
+            stdio: ["pipe", "pipe", "pipe"],
           });
-          watcher.once("error", () => {});
+          watcher.stdout?.setEncoding("utf8");
+          watcher.stdout?.on("data", (chunk) => { watcherOutput += chunk; });
+          watcher.stderr?.setEncoding("utf8");
+          watcher.stderr?.on("data", (chunk) => { watcherError += chunk; });
+          watcher.once("error", (error) => { watcherSpawnError = error; });
           await new Promise((resolve) => setTimeout(resolve, 150));
-          if (watcher.exitCode !== null) throw new Error("blueprint_watcher_unavailable");
+          if (watcherSpawnError || watcher.exitCode !== null) {
+            const detail = `${watcherOutput}\n${watcherError}`.toLowerCase();
+            const lifecycle = ["resident_owner_active", "hub_inactive", "not_configured", "stale", "transport_unavailable"]
+              .find((code) => detail.includes(code));
+            const error = new Error(lifecycle ?? "blueprint_watcher_unavailable");
+            error.code = lifecycle ?? (watcherSpawnError?.code ?? "blueprint_watcher_unavailable");
+            throw error;
+          }
         } catch (error) {
           watcher?.kill("SIGTERM");
           await daemon?.close().catch(() => {});
           await endpoint?.close().catch(() => {});
-          printResult(machineError("snapshot_server_failed", String(error?.message ?? error)), args, { stderr: true });
+          const code = error?.code ?? "snapshot_server_failed";
+          const payload = machineError(code, String(error?.message ?? error));
+          printResult(payload, args);
+          printResult(payload, args, { stderr: true });
           return EXIT.INTERNAL;
         }
-        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/blueprint.mjs", "service", "run"], daemonEndpoint: daemonAddress.endpoint, statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", owner: "hub", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/blueprint.mjs", "service", "run"], daemonEndpoint: daemonAddress.endpoint, statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
         console.log(JSON.stringify(payload));
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
         await new Promise((resolve) => {
-          const shutdown = () => {
-            clearInterval(keepAlive);
-            watcher?.kill("SIGTERM");
-            Promise.allSettled([daemon.close(), endpoint.close()]).finally(resolve);
+          let shuttingDown = false;
+          const stopWatcher = async () => {
+            if (!watcher || watcher.exitCode !== null) return;
+            watcher.kill("SIGTERM");
+            const exited = await Promise.race([
+              new Promise((settle) => watcher.once("exit", () => settle(true))),
+              new Promise((settle) => setTimeout(() => settle(false), WATCHER_DRAIN_TIMEOUT_MS)),
+            ]);
+            if (!exited && watcher.exitCode === null) watcher.kill("SIGKILL");
           };
-          process.once("SIGTERM", shutdown);
-          process.once("SIGINT", shutdown);
+          const shutdown = (failure = false) => {
+            if (shuttingDown) return;
+            shuttingDown = true;
+            if (failure) process.exitCode = EXIT.INTERNAL;
+            clearInterval(keepAlive);
+            Promise.allSettled([stopWatcher(), daemon.close(), endpoint.close()]).finally(resolve);
+          };
+          const watcherExit = (code) => {
+            if (shuttingDown) return;
+            // A resident watcher disappearing makes service readiness false;
+            // let Hub observe a typed failure instead of a false running loop.
+            if (code !== 0) process.exitCode = EXIT.INTERNAL;
+            shutdown(true);
+          };
+          watcher.once("exit", watcherExit);
+          if (watcher.exitCode !== null) watcherExit(watcher.exitCode);
+          process.once("SIGTERM", () => shutdown(false));
+          process.once("SIGINT", () => shutdown(false));
           if (process.env.MEMBRANE_HUB_CHILD === "1") {
             process.stdin.resume();
-            process.stdin.once("end", shutdown);
-            process.stdin.once("error", shutdown);
+            process.stdin.once("end", () => shutdown(false));
+            process.stdin.once("close", () => shutdown(false));
+            process.stdin.once("error", () => shutdown(false));
           }
         });
         return EXIT.OK;

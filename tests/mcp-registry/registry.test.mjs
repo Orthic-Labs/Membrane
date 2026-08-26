@@ -26,7 +26,7 @@ test("unverified namespace or artifacts fail closed for installation", async () 
 });
 
 test("identity and native artifact tampering are rejected", async () => {
-  const directory = await fixture(server => { server.nativeArtifacts["darwin-x64"].package = "@membrane/other"; });
+  const directory = await fixture(server => { server.nativeArtifacts["win32-x64"].package = "@membrane/other"; });
   await assert.rejects(() => verifyMcpRegistry({ directory, requirePublished: false }), /native package map mismatch/);
 });
 

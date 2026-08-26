@@ -20,8 +20,8 @@ Guarantees:
   open root OpenCode/Cursor sessions;
 - no Python or Node runtime.
 
-`membrane adapt mine --discover-open` mines discovered sources while recording
-typed source omissions instead of converting failures into empty success.
+`discover_open(home)` supports parser conformance & evaluation only. Installed
+`membrane adapt mine` requires caller-selected transcript paths.
 
 Test only with RightKit:
 

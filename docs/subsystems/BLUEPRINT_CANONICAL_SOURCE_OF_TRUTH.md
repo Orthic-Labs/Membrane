@@ -68,10 +68,14 @@ They retain separate:
 
 Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
 
-Final packaging ships Blueprint as a Hub-hosted subsystem, not a separately
-versioned resident external service. Membrane ships one typed native client,
-never opens Blueprint SQLite, and typed-degrades Blueprint-dependent requests
-when Blueprint capability is absent while unrelated Membrane functions continue.
+Final Membrane packaging includes one pinned Blueprint runtime component inside
+the installer. That component remains separately versioned, hash-addressed, and
+reusable by Blueprint's later standalone package channels, but it is never
+externally provisioned for Membrane qualification and never registers its own
+resident service. Hub owns its resident service/watcher lifetime; Membrane ships
+one typed native client, never opens Blueprint SQLite, and typed-degrades
+Blueprint-dependent requests when Blueprint capability is absent while unrelated
+Membrane functions continue.
 
 The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
 

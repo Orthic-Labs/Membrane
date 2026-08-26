@@ -1,8 +1,4 @@
-//! User-act evidence is owned by native transcript normalization & consumed
-//! by Adapt without redefining its wire shape or validation rules.
+//! Evidence taxonomy is owned by native transcript normalization & consumed
+//! by Adapt without a second authority or authentication layer.
 
-pub use membrane_transcript::evidence::{
-    ActKind, EvidenceClass, EvidenceError, SourceSpan, UserActEvidenceV1,
-    VerifiedUserActEvidence,
-    USER_ACT_EVIDENCE_SCHEMA,
-};
+pub use membrane_transcript::evidence::{ActKind, EvidenceClass};

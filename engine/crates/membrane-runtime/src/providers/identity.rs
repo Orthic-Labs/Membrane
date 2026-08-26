@@ -89,8 +89,7 @@ pub fn directory_listing_digest(directory: &Path) -> Option<String> {
 /// toolchain contents rather than its path alone.
 pub fn toolchain_digest(binary_path: &Path) -> Option<String> {
     let parent = binary_path.parent()?;
-    directory_listing_digest(parent)
-        .or_else(|| parent.parent().and_then(directory_listing_digest))
+    directory_listing_digest(parent).or_else(|| parent.parent().and_then(directory_listing_digest))
 }
 
 /// Project configuration identity: chained `relpath \0 bytes \0` digests over
@@ -181,7 +180,10 @@ mod tests {
         write(&bin_dir.join("version"), b"1.0.0");
         let digest = toolchain_digest(&bin_dir.join("engine")).unwrap();
         // Same directory → same digest regardless of binary name.
-        assert_eq!(toolchain_digest(&bin_dir.join("other")), Some(digest.clone()));
+        assert_eq!(
+            toolchain_digest(&bin_dir.join("other")),
+            Some(digest.clone())
+        );
         write(&bin_dir.join("version"), b"1.0.1");
         assert_ne!(digest, toolchain_digest(&bin_dir.join("engine")).unwrap());
     }

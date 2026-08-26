@@ -1,5 +1,6 @@
-//! Resident HTTP service — `GET /health|/metrics|/activity`, `POST /recall|/use|/get|/put|
-//! /delete|/list|/quarantine/*|/compress|/plan_context|/scope_grants` on the configured loopback port
+//! Resident HTTP service — `GET /health|/metrics|/activity`, `POST /activity|/recall|/use|/get|/put|
+//! /remember|/remember_consolidated|/delete|/list|/scopes|/search|/quarantine/*|/compress|
+//! /plan_context|/scope_grants` on the configured loopback port
 //! (canonical workspace: 47851), the contract the workspace hooks speak. Wraps the real
 //! `MemoryStore`; the workspace runs THIS, not the CR product. No `/runc` by design — the resident
 //! service must not exec commands. `/skel` and `/prep` were removed 2026-07-05 (consumer-less
@@ -682,8 +683,9 @@ struct IdempotencyRegistryState {
     order: VecDeque<[u8; 32]>,
 }
 
-/// Process-local, bounded replay window for keyed `/put` calls. It prevents duplicate effects while
-/// an entry is retained, but eviction or restart forgets old keys; this is not global exactly-once.
+/// Process-local, bounded replay window for keyed native memory mutations. It prevents duplicate
+/// effects while an entry is retained, but eviction or restart forgets old keys; this is not global
+/// exactly-once.
 struct IdempotencyRegistry {
     capacity: usize,
     state: std::sync::Mutex<IdempotencyRegistryState>,
@@ -1339,6 +1341,39 @@ fn authorized(headers: &HeaderMap, expected: Option<&str>) -> bool {
     secure_eq(actual.as_bytes(), expected.as_bytes())
 }
 
+/// Validate CodeRight's native binding fence before dispatching any resident
+/// operation. Requests without this opt-in fence remain compatible with the
+/// public API; fenced requests must name this exact Hub installation, store,
+/// and release generation.
+fn native_identity_fence_valid(
+    headers: &HeaderMap,
+    store: &MemoryStore,
+) -> Result<(), &'static str> {
+    let names = [
+        "x-membrane-installation-id",
+        "x-membrane-cortex-store-id",
+        "x-membrane-release-generation",
+    ];
+    let values = names.map(|name| headers.get(name).and_then(|value| value.to_str().ok()));
+    if values.iter().all(Option::is_none) {
+        return Ok(());
+    }
+    let expected = [
+        store.installation_id().to_string(),
+        store.cortex_store_id(),
+        crate::release_identity::release_generation(),
+    ];
+    if values
+        .iter()
+        .zip(expected.iter())
+        .all(|(actual, expected)| actual.is_some_and(|value| value == expected.as_str()))
+    {
+        Ok(())
+    } else {
+        Err("native Membrane identity fence mismatch")
+    }
+}
+
 fn membrane_capability_authorized(headers: &HeaderMap) -> bool {
     crate::service::lifecycle_control().snapshot_authorized(
         headers
@@ -1372,6 +1407,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("GET", "/index.html", HttpWorkClass::General),
     ("GET", "/metrics", HttpWorkClass::General),
     ("GET", "/activity", HttpWorkClass::General),
+    ("POST", "/activity", HttpWorkClass::General),
     ("GET", "/graph", HttpWorkClass::General),
     ("GET", "/analysis", HttpWorkClass::General),
     ("GET", "/health", HttpWorkClass::General),
@@ -1406,10 +1442,14 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/scratchpad", HttpWorkClass::General),
     ("POST", "/scratchpad/session-close", HttpWorkClass::General),
     ("POST", "/put", HttpWorkClass::Model),
+    ("POST", "/remember", HttpWorkClass::Model),
+    ("POST", "/remember_consolidated", HttpWorkClass::Model),
     ("POST", "/delete", HttpWorkClass::General),
     ("POST", "/list", HttpWorkClass::General),
+    ("POST", "/scopes", HttpWorkClass::General),
     ("POST", "/get", HttpWorkClass::General),
     ("POST", "/recall", HttpWorkClass::Model),
+    ("POST", "/search", HttpWorkClass::Model),
     ("POST", "/policy/assign", HttpWorkClass::General),
     ("POST", "/curate", HttpWorkClass::Model),
     ("POST", "/quarantine/list", HttpWorkClass::General),
@@ -1580,6 +1620,11 @@ async fn dispatch(
     if !is_public_path(path) && !authorized(&headers, state.api_token.as_deref()) {
         return reject(StatusCode::UNAUTHORIZED, "valid bearer token required");
     }
+    if !is_public_path(path) {
+        if let Err(detail) = native_identity_fence_valid(&headers, &state.store) {
+            return reject(StatusCode::CONFLICT, detail);
+        }
+    }
     if method == Method::POST && !is_json_content_type(&headers) {
         if record_http_rejection(&state.store, path, "failed", "invalid_content_type").is_err() {
             return reject(
@@ -1719,7 +1764,12 @@ async fn dispatch(
                 );
             }
         };
-        if method != Method::POST || path != "/put" {
+        if method != Method::POST
+            || !matches!(
+                path,
+                "/put" | "/remember" | "/remember_consolidated" | "/delete" | "/use"
+            )
+        {
             if record_http_rejection(&state.store, path, "failed", "unsupported_idempotency_key")
                 .is_err()
             {
@@ -1824,8 +1874,8 @@ async fn dispatch(
     let method = method.to_string();
     let url = uri.to_string();
     // Timeout drops the async waiter, not blocking SQLite/embedding work already running. A valid
-    // Idempotency-Key makes `/put` retries share/replay that work; keyless `/put` and every other
-    // mutating route retain their legacy at-least-once, ambiguous-after-timeout semantics.
+    // Idempotency-Key makes every native memory mutation retryable; keyless mutations retain their
+    // legacy at-least-once, ambiguous-after-timeout semantics.
     // Acquire the scarcer model lane first. FastEmbedder serializes internally;
     // rejecting here prevents 31 Tokio blocking threads from piling up on its
     // mutex after a native inference stalls.
@@ -2143,6 +2193,18 @@ fn build_router_inner(
             Arc::clone(&state.workers),
             workload_ingress,
         ));
+    let diagnostics_health_identity = json!({
+        "serviceId": "membrane-hub",
+        "installationId": state.store.installation_id(),
+        "cortexStoreId": state.store.cortex_store_id(),
+        "releaseGeneration": crate::release_identity::release_generation(),
+        "serviceGeneration": crate::release_identity::service_generation(),
+        "protocolVersion": 1,
+        "schemaVersion": 1,
+        "nativeOnly": true,
+        "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
+        "capabilities": ["memory", "diagnostics"],
+    });
     let app = Router::new()
         .route("/livez", get(livez))
         .route("/health", get(detailed_health))
@@ -2154,7 +2216,10 @@ fn build_router_inner(
     // from the same API token. Construction cannot fail under the default
     // configuration; if it ever does, the surface stays absent and the
     // fallback answers 404 instead of half-serving it.
-    let app = match crate::live_diagnostics_service::resident_diagnostics_routes(api_token) {
+    let app = match crate::live_diagnostics_service::resident_diagnostics_routes(
+        api_token,
+        diagnostics_health_identity,
+    ) {
         Some(diagnostics) => app.merge(diagnostics),
         None => app,
     };
@@ -2484,153 +2549,7 @@ fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool
             && item.lifecycle.influence_class.as_deref() == Some("behavioral_directive"))
 }
 
-/// Process-wide resident federation worker (plan 2026-07-26, Tasks 4+5,
-/// amendments A2/A3). The `Mutex` doubles as the one-slot orchestration
-/// admission: `try_lock` contention returns 503 immediately so the hook falls
-/// back to the CLI fast instead of queueing behind another prompt's fan-out.
-/// Service shutdown closes the worker's stdin pipe, so the worker exits on
-/// EOF even though a `static` never runs `Drop`.
-static RESIDENT_GATEWAY: std::sync::OnceLock<
-    std::sync::Mutex<
-        Option<(
-            std::path::PathBuf,
-            crate::pull::federation_worker::ResidentGateway,
-        )>,
-    >,
-> = std::sync::OnceLock::new();
-
-const FEDERATE_DEFAULT_WAIT_MS: u64 = 2_000;
-const FEDERATE_MAX_WAIT_MS: u64 = 2_000;
-const FEDERATE_MIN_WAIT_MS: u64 = 100;
-
-fn resolve_federation_script() -> Option<std::path::PathBuf> {
-    let configured = std::env::var("MEMBRANE_FEDERATION_SCRIPT").unwrap_or_default();
-    if !configured.trim().is_empty() {
-        let path = std::path::PathBuf::from(configured.trim());
-        return path.is_file().then_some(path);
-    }
-    crate::pull::federation::find_federation_gateway(&configured_workspace_root())
-}
-
-fn legacy_federate_route_response(body: &str) -> (u16, String) {
-    let value = match json_body(body) {
-        Ok(value) => value,
-        Err(resp) => return resp,
-    };
-    let Some(task) = value.get("task").and_then(Value::as_str) else {
-        return (400, "{\"error\":\"task required\"}".to_string());
-    };
-    let Some(repo) = value
-        .get("repo")
-        .and_then(Value::as_str)
-        .filter(|repo| !repo.trim().is_empty())
-    else {
-        return (400, "{\"error\":\"repo required\"}".to_string());
-    };
-    let max_tokens = value
-        .get("maxTokens")
-        .and_then(Value::as_u64)
-        .map_or(4096, |n| n.clamp(1, 1_000_000) as usize);
-    // A2: the caller passes its REMAINING deadline; there is exactly one
-    // budget across hook → route → worker.
-    let wait_ms = value
-        .get("maxWaitMs")
-        .and_then(Value::as_u64)
-        .unwrap_or(FEDERATE_DEFAULT_WAIT_MS)
-        .clamp(FEDERATE_MIN_WAIT_MS, FEDERATE_MAX_WAIT_MS);
-    let scope_grant_id = value.get("scopeGrantId").and_then(Value::as_str);
-    let worker_request = serde_json::json!({
-        "task": task,
-        "repo": repo,
-        "maxTokens": max_tokens,
-        "client": value.get("client").and_then(Value::as_str).unwrap_or("claude"),
-        "session": value.get("session").and_then(Value::as_str),
-        "anchors": value.get("anchors").and_then(Value::as_str).unwrap_or(""),
-        "scopeGrantId": scope_grant_id,
-    })
-    .to_string();
-
-    let Some(script) = resolve_federation_script() else {
-        return (
-            503,
-            "{\"error\":\"federation gateway script unavailable\"}".to_string(),
-        );
-    };
-    let slot = RESIDENT_GATEWAY.get_or_init(|| std::sync::Mutex::new(None));
-    let Ok(mut guard) = slot.try_lock() else {
-        return (503, "{\"error\":\"federate_busy\"}".to_string());
-    };
-    let stale = guard
-        .as_ref()
-        .is_none_or(|(current_script, _)| current_script != &script);
-    if stale {
-        *guard = Some((
-            script.clone(),
-            crate::pull::federation_worker::ResidentGateway::new(script),
-        ));
-    }
-    let (_, gateway) = guard.as_mut().expect("gateway just initialized");
-    if !gateway.is_healthy() {
-        return (503, "{\"error\":\"federate_circuit_open\"}".to_string());
-    }
-    let started = std::time::Instant::now();
-    let line = match gateway.request(&worker_request, Duration::from_millis(wait_ms)) {
-        Ok(line) => line,
-        Err(error) if error.contains("circuit open") => {
-            return (503, "{\"error\":\"federate_circuit_open\"}".to_string());
-        }
-        Err(error) => {
-            return (
-                502,
-                serde_json::json!({ "error": format!("resident federation failed: {error}") })
-                    .to_string(),
-            );
-        }
-    };
-    let gateway_process_ms = started.elapsed().as_secs_f64() * 1000.0;
-    let restarts = gateway.worker_restarts;
-    let envelope = crate::pull::federation::envelope_from_ccs(
-        &line,
-        crate::pull::federation::EnvelopeInput {
-            max_tokens,
-            packet_char_budget_override: value
-                .get("packetCharBudget")
-                .and_then(Value::as_u64)
-                .map(|n| n as usize),
-            packet_char_budget_model: value
-                .get("packetCharBudgetModel")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            accepted_receipt_versions: vec![2],
-            scope_grant_present: scope_grant_id.is_some(),
-            gateway_process_ms,
-        },
-    );
-    match envelope {
-        Ok(mut payload) => {
-            if let Some(fields) = payload.as_object_mut() {
-                // Task 7: content-free transport telemetry — counters only.
-                fields.insert("transport".to_string(), "resident".into());
-                fields.insert("workerRestarts".to_string(), restarts.into());
-            }
-            match serde_json::to_string(&payload) {
-                Ok(serialized) => (200, serialized),
-                Err(_) => (
-                    500,
-                    "{\"error\":\"federation envelope serialization failed\"}".to_string(),
-                ),
-            }
-        }
-        Err(error) => (
-            502,
-            serde_json::json!({ "error": format!("resident federation failed: {error}") })
-                .to_string(),
-        ),
-    }
-}
-
-/// Production federation route is native and same-process. The resident
-/// Python worker remains available only to the shadow qualification adapter.
+/// Production federation route is native and same-process.
 fn federate_route_response(body: &str) -> (u16, String) {
     crate::pull::federation::native_route_response(body)
 }
@@ -3390,6 +3309,78 @@ fn route_with_context_ingest_lease(
             }
         };
     }
+    if method == "POST" && path == "/remember" {
+        let v = match json_body(body) {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+        let content = v
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if content.is_empty() {
+            return (400, "{\"error\":\"content required\"}".into());
+        }
+        if content.chars().count() > MAX_CONTENT_CHARS {
+            return (413, "{\"error\":\"content too large\"}".into());
+        }
+        let keywords = v
+            .get("keywords")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let entry = store.remember(content, keywords);
+        return (
+            200,
+            serde_json::to_string(&entry).unwrap_or_else(|_| "{}".into()),
+        );
+    }
+    if method == "POST" && path == "/remember_consolidated" {
+        let v = match json_body(body) {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
+        let name = v.get("name").and_then(Value::as_str).unwrap_or("").trim();
+        let content = v
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        if name.is_empty() || content.is_empty() {
+            return (400, "{\"error\":\"name and content required\"}".into());
+        }
+        if content.chars().count() > MAX_CONTENT_CHARS {
+            return (413, "{\"error\":\"content too large\"}".into());
+        }
+        let keywords = v
+            .get("keywords")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let threshold = v.get("threshold").and_then(Value::as_f64).unwrap_or(0.0);
+        let entry = store.remember_consolidated(name, content, keywords, threshold);
+        let response = match entry {
+            Some(entry) => {
+                let id = entry.id.clone();
+                serde_json::json!({"id": id, "consolidated": true, "entry": entry})
+            }
+            None => serde_json::json!({"id": null, "consolidated": false}),
+        };
+        return (200, response.to_string());
+    }
     if method == "POST" && path == "/delete" {
         let v = match json_body(body) {
             Ok(v) => v,
@@ -3550,6 +3541,12 @@ fn route_with_context_ingest_lease(
             return response;
         }
         return (200, serde_json::Value::Array(rows).to_string());
+    }
+    if method == "POST" && path == "/scopes" {
+        return (
+            200,
+            serde_json::to_string(&store.scopes()).unwrap_or_else(|_| "[]".into()),
+        );
     }
     if method == "POST" && path == "/get" {
         let v = match json_body(body) {
@@ -4083,6 +4080,93 @@ fn route_with_context_ingest_lease(
                 serde_json::to_string(&hits).unwrap_or_else(|_| "[]".into()),
             )
         }
+    } else if method == "POST" && path == "/search" {
+        let query = v.get("query").and_then(Value::as_str).unwrap_or("").trim();
+        if query.is_empty() {
+            return (400, "{\"error\":\"query required\"}".to_string());
+        }
+        if query.chars().count() > MAX_QUERY_CHARS {
+            return (413, "{\"error\":\"query too large\"}".to_string());
+        }
+        let limit = v
+            .get("limit")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(6);
+        let rows = store.search(query, limit);
+        (
+            200,
+            serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string()),
+        )
+    } else if method == "POST" && path == "/activity" {
+        let timestamp = v
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(crate::time::now_iso);
+        let scope = v.get("scope").and_then(Value::as_str);
+        let query_chars = v
+            .get("query_chars")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let hit_count = v
+            .get("hit_count")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let full_chars = v
+            .get("full_chars")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let injected_chars = v
+            .get("injected_chars")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        let source = v.get("source").and_then(Value::as_str).unwrap_or("http");
+        let query_excerpt = v.get("query_excerpt").and_then(Value::as_str);
+        let client = v.get("client").and_then(Value::as_str);
+        let model = v.get("model").and_then(Value::as_str);
+        let session = v.get("session").and_then(Value::as_str);
+        let task = v.get("task").and_then(Value::as_str);
+        let turn = v.get("turn").and_then(Value::as_str);
+        let actor = v.get("actor").and_then(Value::as_str);
+        let traffic_class = v
+            .get("mode")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("production");
+        let replay_hits = v.get("replay_hits").and_then(Value::as_str).unwrap_or("[]");
+        let replay_context = v
+            .get("replay_context")
+            .and_then(Value::as_str)
+            .unwrap_or(replay_hits);
+        match store.log_recall_with_replay_to(
+            crate::memdb::RecallLogSink::Production,
+            &timestamp,
+            scope,
+            query_chars,
+            hit_count,
+            full_chars,
+            injected_chars,
+            source,
+            query_excerpt,
+            client,
+            session,
+            task,
+            turn,
+            actor,
+            model.or(actor),
+            traffic_class,
+            replay_hits,
+            replay_context,
+        ) {
+            Ok(()) => (200, "{\"ok\":true}".to_string()),
+            Err(error) => (500, serde_json::json!({"error": error}).to_string()),
+        }
     } else if method == "POST" && path == "/policy/assign" {
         let session = v
             .get("session")
@@ -4461,6 +4545,16 @@ fn health_response_with_workers(
         Ok(v) => v,
         Err(_) => json!({"ok": false, "error": "store health serialization failed"}),
     };
+    // Native Hub identity is part of the binding contract. Keep these fields
+    // exact and content-free so old/embedded health payloads cannot bind.
+    payload["serviceId"] = json!("membrane-hub");
+    payload["installationId"] = json!(store.installation_id());
+    payload["cortexStoreId"] = json!(store.cortex_store_id());
+    payload["protocolVersion"] = json!(1);
+    payload["schemaVersion"] = json!(1);
+    payload["nativeOnly"] = json!(true);
+    payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
+    payload["capabilities"] = json!(["memory", "diagnostics"]);
     let store_healthy = payload.get("ok").and_then(Value::as_bool) == Some(true);
     let (count, p50, p95) = planner_latency.snapshot();
     let last_fb = planner_last_fallback.snapshot();
@@ -5077,6 +5171,18 @@ pub(crate) fn run(
     );
     let api_token = Some(configured_api_token(db_path)?);
 
+    // Active Hub owns native MCP execution. The stdio binary is only a
+    // transport client back to this authenticated in-process route.
+    crate::mcp_executor::install_native_mcp_executor_for_hub(store.clone())?;
+    let mcp_host = format!("127.0.0.1:{port}");
+    let mcp_policy = membrane_mcp::http_security::HttpAdmissionPolicy::local(
+        identity.installation_id.clone(),
+        mcp_host.clone(),
+        format!("http://{mcp_host}"),
+        api_token.clone().unwrap_or_default(),
+        claim.service_instance_id.clone(),
+    );
+
     let app = build_router(
         store,
         Some(catalog),
@@ -5085,7 +5191,8 @@ pub(crate) fn run(
         api_token,
         REQUEST_TIMEOUT,
         MAX_CONCURRENT_REQUESTS,
-    );
+    )
+    .merge(crate::mcp_http::build_mcp_http_router(mcp_policy));
     let lifecycle = crate::service::lifecycle_control().clone();
     let server_result = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -5143,64 +5250,46 @@ pub(crate) fn run(
 /// response per line) so any MCP client can talk to it without buffering. The
 /// function blocks until the client closes its end of the pipe.
 pub fn run_stdio_mcp() -> Result<(), String> {
-    use std::io::{self, BufRead, Write};
-    let stdin = io::stdin();
-    let stdout = io::stdout();
-    let mut input = stdin.lock();
-    let mut output = stdout.lock();
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let read = input
-            .read_line(&mut line)
-            .map_err(|error| format!("read stdio request: {error}"))?;
-        if read == 0 {
-            return Ok(());
-        }
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let response = stdio_dispatch_request(trimmed)?;
-        writeln!(output, "{response}").map_err(|error| format!("write stdio response: {error}"))?;
-        output
-            .flush()
-            .map_err(|error| format!("flush stdio response: {error}"))?;
-    }
-}
-
-fn stdio_dispatch_request(request: &str) -> Result<String, String> {
-    let value: serde_json::Value = serde_json::from_str(request)
-        .map_err(|error| format!("parse JSON-RPC request: {error}"))?;
-    let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
-    if value.get("method").and_then(|m| m.as_str()) != Some("dispatch") {
-        let response = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "error": {
-                "code": -32601,
-                "message": "membrane stdio-mcp only accepts method=dispatch in this transport"
-            }
-        });
-        return serde_json::to_string(&response).map_err(|error| error.to_string());
-    }
-    // The transport shim deliberately keeps the body small: the real work
-    // happens via the loopback API. stdio is for clients that cannot open a
-    // loopback socket (Claude Desktop, Cursor MCP, etc.).
-    let response = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": {
-            "transport": "stdio-jsonl",
-            "hint": "use loopback-api for full operation surface"
-        }
-    });
-    serde_json::to_string(&response).map_err(|error| error.to_string())
+    crate::mcp_executor::install_native_mcp_transport()?;
+    membrane_mcp::serve_stdio().map_err(|error| format!("serve native stdio MCP: {error}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_identity_fence_requires_exact_hub_identity() {
+        let store = MemoryStore::new();
+        let mut headers = HeaderMap::new();
+        assert!(native_identity_fence_valid(&headers, &store).is_ok());
+        headers.insert(
+            "x-membrane-installation-id",
+            store.installation_id().parse().unwrap(),
+        );
+        headers.insert(
+            "x-membrane-cortex-store-id",
+            store.cortex_store_id().parse().unwrap(),
+        );
+        headers.insert(
+            "x-membrane-release-generation",
+            crate::release_identity::release_generation()
+                .parse()
+                .unwrap(),
+        );
+        assert!(native_identity_fence_valid(&headers, &store).is_ok());
+        headers.insert(
+            "x-membrane-release-generation",
+            "stale-generation".parse().unwrap(),
+        );
+        assert!(native_identity_fence_valid(&headers, &store).is_err());
+        headers.insert(
+            "x-membrane-release-generation",
+            crate::release_identity::release_generation()
+                .parse()
+                .unwrap(),
+        );
+    }
 
     fn opaque_taste_scope(dimensions: &[(&str, &str)]) -> String {
         let dimensions = dimensions
@@ -5280,7 +5369,6 @@ mod tests {
             authority_manifest_sha256: "authority".into(),
             validator_receipt_id: "validator".into(),
             validator_receipt_sha256: "validator-sha".into(),
-            verified_user_act_receipt_sha256: Some("a".repeat(64)),
             semantic_payload: None,
             semantic_digest: String::new(),
             evidence_contexts: Vec::new(),
@@ -5674,7 +5762,10 @@ mod tests {
             vec![
                 ("POST", "/v1/memories:batch"),
                 ("POST", "/put"),
+                ("POST", "/remember"),
+                ("POST", "/remember_consolidated"),
                 ("POST", "/recall"),
+                ("POST", "/search"),
                 ("POST", "/curate"),
                 ("POST", "/memory-candidates"),
                 ("POST", "/compress"),
@@ -5814,6 +5905,18 @@ mod tests {
         );
         assert_ne!(payload["serviceGeneration"], payload["releaseGeneration"]);
         assert!(payload.get("runtimeReceipt").is_some());
+        assert_eq!(payload["serviceId"], "membrane-hub");
+        assert_eq!(payload["protocolVersion"], 1);
+        assert_eq!(payload["schemaVersion"], 1);
+        assert!(payload["installationId"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!(payload["cortexStoreId"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("sha256:")));
+        assert_eq!(payload["nativeOnly"], true);
+        assert_eq!(payload["subsystems"].as_array().map(Vec::len), Some(6));
+        assert_eq!(payload["capabilities"], json!(["memory", "diagnostics"]));
     }
 
     #[test]
@@ -7423,6 +7526,49 @@ mod tests {
             "recall: {}",
             rec.1
         );
+    }
+
+    #[test]
+    fn legacy_memory_operations_have_native_route_shapes() {
+        let store = MemoryStore::new();
+        let remembered = route(
+            &store,
+            "POST",
+            "/remember",
+            r#"{"content":"manual note","keywords":["manual"]}"#,
+        );
+        assert_eq!(remembered.0, 200, "{}", remembered.1);
+        let remembered: Value = serde_json::from_str(&remembered.1).unwrap();
+        assert_eq!(remembered["content"], "manual note");
+        assert_eq!(remembered["keywords"][0], "manual");
+
+        let consolidated = route(
+            &store,
+            "POST",
+            "/remember_consolidated",
+            r#"{"name":"daily","content":"daily note","keywords":["daily"],"threshold":0.8}"#,
+        );
+        assert_eq!(consolidated.0, 200, "{}", consolidated.1);
+        let consolidated: Value = serde_json::from_str(&consolidated.1).unwrap();
+        assert_eq!(consolidated["consolidated"], true);
+        assert!(consolidated["id"].as_str().is_some());
+
+        let scopes = route(&store, "POST", "/scopes", "{}");
+        assert_eq!(scopes.0, 200, "{}", scopes.1);
+        assert_eq!(
+            serde_json::from_str::<Value>(&scopes.1).unwrap(),
+            json!(["global"])
+        );
+
+        let search = route(
+            &store,
+            "POST",
+            "/search",
+            r#"{"query":"manual note","limit":2}"#,
+        );
+        assert_eq!(search.0, 200, "{}", search.1);
+        let hits: Value = serde_json::from_str(&search.1).unwrap();
+        assert!(hits.as_array().is_some_and(|hits| !hits.is_empty()));
     }
 
     #[test]

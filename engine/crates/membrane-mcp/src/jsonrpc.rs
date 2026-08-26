@@ -45,7 +45,12 @@ impl McpServer {
             }
             "ping" => json!({}),
             "tools/call" => {
-                json!({"content": [{"type": "text", "text": "native_tool_execution_unsupported"}], "isError": true})
+                let name = request
+                    .pointer("/params/name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let arguments = request.pointer("/params/arguments").unwrap_or(&Value::Null);
+                crate::tools::call(name, arguments)
             }
             _ => {
                 return Some(

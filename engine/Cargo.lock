@@ -2411,6 +2411,7 @@ dependencies = [
  "membrane-mcp",
  "membrane-protocol",
  "membrane-runtime",
+ "membrane-transcript",
  "ring",
  "serde",
  "serde_json",
@@ -2438,6 +2439,7 @@ name = "membrane-client"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2557,7 +2559,6 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "regex",
- "ring",
  "rusqlite",
  "serde",
  "serde_json",

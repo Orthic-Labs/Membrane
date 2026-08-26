@@ -266,27 +266,18 @@ For CodeRight these should be emitted directly from the runtime event conduit.
 
 Do not serialize a textual transcript only to parse it back.
 
-## 4.2 Lane B — authenticated user acts
+## 4.2 Lane B — explicit selected-transcript evidence
 
-Emit `UserActEvidenceV1`-equivalent events for:
+Membrane accepts only transcripts the user explicitly selects for Adapt. Each selected source binds:
 
-- explicit preference;
-- correction;
-- accept;
-- reject;
-- post-accept edit;
-- repeated edit;
-- named choice.
-
-UI controls must bind:
-
-- authenticated actor;
-- before/after digest where relevant;
-- session/task;
-- event/artifact refs;
+- exact transcript digest;
+- exact source span;
+- external-user role;
+- session/source identity;
 - scope context;
-- timestamp;
-- provenance receipt.
+- required review decision before apply.
+
+Login, host signing, or implicit runtime capture do not grant Taste authority. CodeRight may expose a transcript reference for selection, but it does not mint an Adapt authority receipt.
 
 Silent acceptance remains support-only and cannot independently establish Taste authority.
 
@@ -669,7 +660,7 @@ Use observable behavior such as:
 Flow:
 
 ```text
-authenticated user acts
+explicit user-selected transcript evidence
    ↓
 Adapt Taste proposal
    ↓
@@ -796,7 +787,7 @@ Actions:
 | generic scores/annotations | CodeRight |
 | raw external transcript before admission | source host |
 | normalized transcript/event | Membrane transcript/event layer |
-| authenticated user act | Membrane user-act contract / source host evidence |
+| selected transcript source/hash/span & review | Membrane Adapt selection/review boundary |
 | structured CodeRight execution observation | CodeRight→Membrane integration contract |
 | durable memory | Cortex |
 | durable Taste preference | Adapt semantics → Cortex |
@@ -889,9 +880,9 @@ Every model-call span references the exact Membrane context receipt.
 
 Wire CodeRight runtime events directly to the native transcript/event adapter.
 
-## C4 — Authenticated user-act emission
+## C4 — Selected-transcript handoff
 
-Wire CodeRight UI actions to `UserActEvidenceV1`-equivalent events.
+Expose exact transcript references that a user may explicitly select in Membrane Adapt; do not treat login, UI presence, or host events as Taste authority.
 
 ## C5 — ExecutionObservationV1
 
@@ -1062,4 +1053,4 @@ Do not:
 
 # 20. Final canonical integration statement
 
-> **CodeRight is the execution and evaluation harness. Membrane is mandatory context, durable-knowledge, document-navigation, repository-evidence, reduction, and behavioral-learning infrastructure. CodeRight emits exact runtime events, authenticated user acts, execution observations, and evaluation outcomes. Adapt turns behaviorally relevant evidence into Taste preferences and Insights issues; Cortex governs durable admission and retrieval; Ledger indexes and resolves registered documents; Blueprint owns repository truth; Pull decides task attention; Push faithfully reduces selected evidence. CodeRight then consumes those outputs to route models, build context, run guards/evaluators, and improve the harness, while measured outcomes flow back into Adapt and the subsystem-specific evaluation loops.**
+> **CodeRight is the execution and evaluation harness. Membrane is mandatory context, durable-knowledge, document-navigation, repository-evidence, reduction, and behavioral-learning infrastructure. CodeRight emits exact runtime events, transcript references, execution observations, and evaluation outcomes. Users explicitly select transcripts for Adapt; exact source/hash/span binding plus required review governs Taste proposals. Cortex governs durable admission and retrieval; Ledger indexes and resolves registered documents; Blueprint owns repository truth; Pull decides task attention; Push faithfully reduces selected evidence. CodeRight then consumes those outputs to route models, build context, run guards/evaluators, and improve the harness, while measured outcomes flow back into Adapt and the subsystem-specific evaluation loops.**

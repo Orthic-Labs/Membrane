@@ -5,15 +5,15 @@ const version = packageJson.version;
 const buildInputs = {
   include: [
     "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
-    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/src/**",
+    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/tauri.windows.conf.json", "src-tauri/windows/**", "src-tauri/src/**",
     "../../engine/Cargo.toml", "../../engine/Cargo.lock", "../../engine/crates/**",
-    // Blueprint's own canonical stager derives runtime from this complete
-    // source tree; no raw Blueprint or Adapt source is a Tauri resource.
-    "../../blueprint/**", "../../schemas/**", "../../mcp/host/**", "../../dist/install/workspace/**", "../../dist/install/workspace-manifest.json",
+    // Blueprint runtime is staged into Tauri resources before packaging.
+    "../../schemas/**", "../../blueprint/package.json", "../../blueprint/pnpm-lock.yaml", "../../blueprint/scripts/**", "../../blueprint/src/**", "../../blueprint/release/**", "../../blueprint/LICENSE",
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
-const macDmg = `Membrane Hub_${version}_aarch64.dmg`;
+const winInstaller = `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Membrane Hub_${version}_x64-setup.exe`;
+const winRawExe = "src-tauri/target/x86_64-pc-windows-msvc/release/membrane-hub.exe";
 
 export default {
   schema: 1,
@@ -23,12 +23,22 @@ export default {
   checks: ["test"],
   buildInputs,
   targets: {
-    mac: {
+    // RightKit owns Azure Authenticode + updater signing.  This target only
+    // supplies its native Windows package command & exact files to seal.
+    win: {
       signed: true,
-      package: { cmd: "pnpm", args: ["run", "rightkit:package:mac"] },
-      artifacts: [macDmg],
-      hardening: [macDmg],
-      installer: { artifacts: [{ file: macDmg, key: "membrane/installers/mac/current/Membrane_Hub.dmg" }] },
+      cargoTarget: "x86_64-pc-windows-msvc",
+      // RightKit patches Tauri's bundle marker & signs this raw EXE before the
+      // package phase.  `tauri bundle` then embeds those immutable signed bytes.
+      signingContract: "windows-raw-exe-authenticode-before-nsis-v1",
+      prePackage: { cmd: "pnpm", args: ["run", "rightkit:package:win", "--", "raw"] },
+      package: { cmd: "pnpm", args: ["run", "rightkit:package:win", "--", "package"] },
+      artifacts: [winInstaller],
+      sign: { prePackageFiles: [winRawExe], files: [winInstaller] },
+      hardening: [winInstaller],
+      installer: { artifacts: [{ file: winInstaller, key: "membrane/installers/windows/current/Membrane_x64-setup.exe" }] },
+      updater: { artifacts: [{ file: winInstaller, signature: `${winInstaller}.sig`, platform: "windows-x86_64", key: "membrane/updates/windows/current/Membrane_x64-setup.exe" }] },
+      nsisUpgradeContract: { windowsTauriConfig: "src-tauri/tauri.windows.conf.json" },
     },
   },
 };

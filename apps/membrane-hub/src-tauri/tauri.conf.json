@@ -5,6 +5,7 @@
   "identifier": "com.membrane.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
+    "publisher": "Adrian D'souza",
     "externalBin": ["binaries/cortex", "binaries/membrane"],
     "resources": ["runtime"],
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
@@ -19,6 +20,11 @@
   "app": {
     "macOSPrivateApi": true,
     "withGlobalTauri": false,
+    "security": {
+      "csp": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; script-src 'self'",
+      "freezePrototype": true,
+      "capabilities": ["hub-local-ui"]
+    },
     "windows": [
       {
         "label": "hub",

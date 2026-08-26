@@ -4,10 +4,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pnpmCliArgs } from "../blueprint/scripts/release/npm-cli.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const membraneRoot = resolve(HERE, "..");
 const workspaceRoot = resolve(membraneRoot, "..");
+const pnpmCommand = process.platform === "win32" ? process.execPath : "pnpm";
+const pythonCommand = process.platform === "win32"
+  ? join(workspaceRoot, ".venv-tools", "Scripts", "python.exe")
+  : join(workspaceRoot, ".venv-tools", "bin", "python");
 // Keep qualification evidence inside Membrane so a standalone checkout runs identically in CI.
 const fixturePath = join(membraneRoot, "scripts", "fixtures", "fable-m0-false-success-fixtures.json");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -86,14 +91,16 @@ const suites = {
   // explicit root grant"), not project-registry.mjs — the original suite list omitted it, so
   // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
-  blueprint: ["pnpm", ["--dir", join(membraneRoot, "blueprint"), "test:all"], workspaceRoot],
+  blueprint: process.platform === "win32"
+    ? [pnpmCommand, pnpmCliArgs(["--dir", join(membraneRoot, "blueprint"), "test:all"]), workspaceRoot]
+    : [pnpmCommand, ["--dir", join(membraneRoot, "blueprint"), "test:all"], workspaceRoot],
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",
     join(workspaceRoot, "legion/src/packages/arcane/tests/s04-host-event.test.mjs"),
     join(workspaceRoot, "legion/src/packages/arcane/tests/s01-bridge.test.mjs"),
   ], workspaceRoot],
-  adapt: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(membraneRoot, "adapt/tests")], workspaceRoot],
+  adapt: [pythonCommand, ["-m", "pytest", join(membraneRoot, "adapt/tests")], workspaceRoot],
 };
 
 function runSuite(owner) {
@@ -111,8 +118,8 @@ function runSuite(owner) {
       ...(membraneTestBin ? { MEMBRANE_TEST_BIN: membraneTestBin } : {}),
     },
   });
-  const output = `${result.stdout || ""}${result.stderr || ""}`;
-  return { owner, status: result.status, signal: result.signal || null, output_sha256: `sha256:${sha(output)}`, output_tail: output.slice(-1200) };
+  const output = `${result.stdout || ""}${result.stderr || ""}${result.error ? `\nspawn_error: ${result.error.message}` : ""}`;
+  return { owner, status: result.status, signal: result.signal || null, error: result.error?.message || null, output_sha256: `sha256:${sha(output)}`, output_tail: output.slice(-1200) };
 }
 
 export { fixturePath, probes };

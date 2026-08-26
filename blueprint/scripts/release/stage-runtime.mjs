@@ -2,7 +2,7 @@
 // D14: stage a portable runtime bundle. Builds from the tested npm tarball,
 // installs production dependencies into a staging directory, copies the
 // runner Node LTS executable, app files, schemas, grammars, and
-// macOS watcher assets. The launcher computes its own install
+// platform watcher assets. The launcher computes its own install
 // root and invokes the bundled runtime — never global Node/npm/cwd.
 
 import { execFileSync } from "node:child_process";
@@ -10,7 +10,6 @@ import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, readd
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { npmCliArgs } from "./npm-cli.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -21,8 +20,14 @@ function nodeBinary() {
   return process.execPath;
 }
 
+function runPnpm(args, options) {
+  if (process.platform === "win32") {
+    execFileSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "pnpm.CMD", ...args], options);
+  } else execFileSync("pnpm", args, options);
+}
+
 export function stageRuntime({ out = null } = {}) {
-  if (process.platform !== "darwin") throw new Error("Blueprint release packaging currently targets macOS only");
+  if (!["darwin", "win32"].includes(process.platform)) throw new Error("Blueprint release packaging targets macOS & Windows only");
   const outDir = resolve(out ?? join(ROOT, "release", "runtime", `${process.platform}-${process.arch}`));
   if (existsSync(outDir) && (!statSync(outDir).isDirectory() || readdirSync(outDir).length)) {
     throw new Error(`output must be an empty directory: ${outDir}`);
@@ -37,23 +42,29 @@ export function stageRuntime({ out = null } = {}) {
   // 1. Build the npm tarball and extract it as the app payload.
   const temp = mkdtempSync(join(tmpdir(), "blueprint-runtime-stage-"));
   try {
-  execFileSync(process.execPath, npmCliArgs(["pack", "--pack-destination", temp]), { cwd: ROOT, stdio: "ignore" });
+  runPnpm(["pack", "--pack-destination", temp], { cwd: ROOT, stdio: "ignore" });
   const tarball = readdirSync(temp).find((name) => name.endsWith(".tgz"));
   if (!tarball) throw new Error("npm pack produced no tarball");
-  execFileSync("tar", ["-xzf", join(temp, tarball), "-C", temp], { stdio: "ignore" });
+  // GNU tar on Windows parses drive-letter archive paths as remote hosts.
+  execFileSync("tar", ["-xzf", tarball], { cwd: temp, stdio: "ignore" });
   const packageDir = join(temp, "package");
   if (!existsSync(packageDir)) throw new Error("tarball has no package/");
 
   // 2. Production install inside the extracted package (grammars + watcher
   // assets resolve from the staged production install, not the source checkout).
   writeFileSync(join(packageDir, ".npmrc"), "package-lock=false\n");
-  execFileSync(process.execPath, npmCliArgs(["install", "--omit=dev", "--no-audit", "--no-fund"]), { cwd: packageDir, stdio: "ignore", timeout: 240000 });
+  copyFileSync(join(ROOT, "pnpm-lock.yaml"), join(packageDir, "pnpm-lock.yaml"));
+  writeFileSync(join(packageDir, "pnpm-workspace.yaml"), "packages:\n  - .\nallowBuilds:\n  '@parcel/watcher': true\n");
+  runPnpm(["install", "--prod", "--frozen-lockfile"], { cwd: packageDir, stdio: "ignore", timeout: 240000 });
+  rmSync(join(packageDir, "pnpm-workspace.yaml"), { force: true });
 
   // 3. Copy app files into app/package per the S-12 layout; schemas and
   // grammars live at app/schemas and app/grammars, resolved from the staged
   // production install (never the source checkout).
   const appPackageDir = join(appDir, "package");
-  cpSync(packageDir, appPackageDir, { recursive: true });
+  // pnpm deploy materializes portable dependencies instead of retaining
+  // links into staging temp or machine-local content-addressable store.
+  runPnpm(["--filter", ".", "deploy", "--prod", "--legacy", appPackageDir], { cwd: packageDir, stdio: "ignore", timeout: 240000 });
   // Runtime imports packages directly; npm command shims are not used.
   // Removing `.bin` prevents links into the temporary install root from
   // surviving after that root is deleted in `finally` below.
@@ -67,14 +78,16 @@ export function stageRuntime({ out = null } = {}) {
 
   // 4. Bundled Node runtime.
   const nodeSrc = nodeBinary();
-  const nodeDst = join(libDir, "node");
+  const nodeName = process.platform === "win32" ? "node.exe" : "node";
+  const nodeDst = join(libDir, nodeName);
   copyFileSync(nodeSrc, nodeDst);
 
   // 5. Launchers.
   const launcherSrc = join(ROOT, "release", "launchers");
-  for (const name of ["blueprint", "blueprint-mcp"]) {
+  const launchers = process.platform === "win32" ? ["blueprint.cmd", "blueprint-mcp.cmd"] : ["blueprint", "blueprint-mcp"];
+  for (const name of launchers) {
     copyFileSync(join(launcherSrc, name), join(binDir, name));
-    chmodSync(join(binDir, name), 0o755);
+    if (process.platform !== "win32") chmodSync(join(binDir, name), 0o755);
   }
 
   // 6. License + notices + readme.
@@ -86,7 +99,7 @@ export function stageRuntime({ out = null } = {}) {
 
   return {
     root: outDir,
-    layout: ["bin/blueprint", "bin/blueprint-mcp", "lib/node", "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
+    layout: [...launchers.map((name) => `bin/${name}`), `lib/${nodeName}`, "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
     version: pkg.version,
     platform: `${process.platform}-${process.arch}`,
   };

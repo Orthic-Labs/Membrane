@@ -32,6 +32,8 @@ struct RawEvent {
     byte_start: i64,
     byte_end: i64,
     event_id: String,
+    #[serde(default)]
+    call_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -126,7 +128,7 @@ fn to_events(raw: &[RawEvent]) -> Vec<TranscriptEventV1> {
                 timestamp: None,
                 byte_start: e.byte_start,
                 byte_end: e.byte_end,
-                call_id: None,
+                call_id: e.call_id.clone(),
                 occurrence: 0,
                 evidence_eligible: true,
             }
@@ -141,7 +143,9 @@ fn load_corpus() -> Vec<RawCase> {
         .unwrap_or_else(|e| panic!("honest corpus must be checked in at {path:?}: {e}"));
     body.lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("invalid corpus line: {e}\n{l}")))
+        .map(|l| {
+            serde_json::from_str(l).unwrap_or_else(|e| panic!("invalid corpus line: {e}\n{l}"))
+        })
         .collect()
 }
 
@@ -155,11 +159,19 @@ struct Score {
 impl Score {
     fn precision(&self) -> Option<f64> {
         let d = self.tp + self.fp;
-        if d == 0 { None } else { Some(self.tp as f64 / d as f64) }
+        if d == 0 {
+            None
+        } else {
+            Some(self.tp as f64 / d as f64)
+        }
     }
     fn recall(&self) -> Option<f64> {
         let d = self.tp + self.fn_;
-        if d == 0 { None } else { Some(self.tp as f64 / d as f64) }
+        if d == 0 {
+            None
+        } else {
+            Some(self.tp as f64 / d as f64)
+        }
     }
 }
 
@@ -195,10 +207,18 @@ fn run_case(raw: &RawCase) -> CaseResult {
 #[test]
 fn corpus_loads_and_has_expected_shape() {
     let corpus = load_corpus();
-    assert_eq!(corpus.len(), 50, "case count drifted; update this test deliberately if the corpus grew/shrank on purpose");
+    assert_eq!(
+        corpus.len(),
+        50,
+        "case count drifted; update this test deliberately if the corpus grew/shrank on purpose"
+    );
     let mut seen = BTreeSet::new();
     for c in &corpus {
-        assert!(seen.insert(c.case_id.clone()), "duplicate case_id {}", c.case_id);
+        assert!(
+            seen.insert(c.case_id.clone()),
+            "duplicate case_id {}",
+            c.case_id
+        );
         assert!(!c.events.is_empty(), "case {} has no events", c.case_id);
         for family in &c.should_fire {
             assert!(
@@ -216,7 +236,10 @@ fn corpus_loads_and_has_expected_shape() {
         .collect();
     let all: BTreeSet<&str> = ALL_FAMILIES.iter().copied().collect();
     let missing: Vec<&str> = all.difference(&tp_families).copied().collect();
-    assert!(missing.is_empty(), "no true-positive case constructed for: {missing:?}");
+    assert!(
+        missing.is_empty(),
+        "no true-positive case constructed for: {missing:?}"
+    );
 }
 
 /// Severity is a hardcoded per-family contract, not something the detector
@@ -231,10 +254,12 @@ fn severity_matches_documented_contract_on_true_positives() {
         }
         let result = run_case(raw);
         for (family, expected) in &raw.expected_severity {
-            let actual = result
-                .severities
-                .get(family)
-                .unwrap_or_else(|| panic!("case {} expected {family} to fire (for severity check) but it did not", raw.case_id));
+            let actual = result.severities.get(family).unwrap_or_else(|| {
+                panic!(
+                    "case {} expected {family} to fire (for severity check) but it did not",
+                    raw.case_id
+                )
+            });
             assert_eq!(
                 severity_slug(*actual),
                 expected,
@@ -269,7 +294,11 @@ fn non_gap_cases_match_ground_truth_exactly() {
             }
         }
     }
-    assert!(failures.is_empty(), "ground-truth mismatch on non-gap cases:\n{}", failures.join("\n"));
+    assert!(
+        failures.is_empty(),
+        "ground-truth mismatch on non-gap cases:\n{}",
+        failures.join("\n")
+    );
 }
 
 /// known_gap cases document a REAL, reproduced false positive or false
@@ -300,7 +329,11 @@ fn known_gap_cases_reproduce_exactly_as_documented() {
             }
         }
     }
-    assert!(drift.is_empty(), "known-gap reproduction drifted:\n{}", drift.join("\n"));
+    assert!(
+        drift.is_empty(),
+        "known-gap reproduction drifted:\n{}",
+        drift.join("\n")
+    );
 }
 
 /// Prints the full per-family precision/recall table. Run with
@@ -311,7 +344,10 @@ fn known_gap_cases_reproduce_exactly_as_documented() {
 #[test]
 fn report_measured_precision_recall_table() {
     let corpus = load_corpus();
-    let mut scores: BTreeMap<&str, Score> = ALL_FAMILIES.iter().map(|f| (*f, Score::default())).collect();
+    let mut scores: BTreeMap<&str, Score> = ALL_FAMILIES
+        .iter()
+        .map(|f| (*f, Score::default()))
+        .collect();
     let mut gap_notes: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
 
     for raw in &corpus {
@@ -326,7 +362,10 @@ fn report_measured_precision_recall_table() {
                 (false, true) => {
                     entry.fp += 1;
                     if raw.known_gap {
-                        gap_notes.entry(family).or_default().push(raw.case_id.as_str());
+                        gap_notes
+                            .entry(family)
+                            .or_default()
+                            .push(raw.case_id.as_str());
                     }
                 }
                 (false, false) => {}
@@ -335,13 +374,25 @@ fn report_measured_precision_recall_table() {
     }
 
     println!();
-    println!("{:<45} {:>4} {:>4} {:>4} {:>10} {:>10}", "family", "TP", "FP", "FN", "precision", "recall");
+    println!(
+        "{:<45} {:>4} {:>4} {:>4} {:>10} {:>10}",
+        "family", "TP", "FP", "FN", "precision", "recall"
+    );
     println!("{}", "-".repeat(90));
     for family in ALL_FAMILIES {
         let s = scores[family];
-        let p = s.precision().map(|v| format!("{v:.2}")).unwrap_or_else(|| "n/a".into());
-        let r = s.recall().map(|v| format!("{v:.2}")).unwrap_or_else(|| "n/a".into());
-        let mut line = format!("{family:<45} {:>4} {:>4} {:>4} {p:>10} {r:>10}", s.tp, s.fp, s.fn_);
+        let p = s
+            .precision()
+            .map(|v| format!("{v:.2}"))
+            .unwrap_or_else(|| "n/a".into());
+        let r = s
+            .recall()
+            .map(|v| format!("{v:.2}"))
+            .unwrap_or_else(|| "n/a".into());
+        let mut line = format!(
+            "{family:<45} {:>4} {:>4} {:>4} {p:>10} {r:>10}",
+            s.tp, s.fp, s.fn_
+        );
         if let Some(cases) = gap_notes.get(family) {
             line.push_str(&format!("  <- known open gap, see {cases:?}"));
         }

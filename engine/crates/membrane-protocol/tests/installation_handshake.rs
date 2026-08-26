@@ -9,7 +9,7 @@ use membrane_protocol::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const SCHEMA: &str = include_str!("../../../../schemas/installation-manifest.v1.schema.json");
 
@@ -107,13 +107,23 @@ fn manifest_envelope_versions_are_pinned() {
 #[test]
 fn canonical_data_root_collapses_dot_segments() {
     let canonical = canonical_data_root(Path::new("/workspace/alpha/./beta/../gamma"));
-    assert_eq!(canonical, "/workspace/alpha/gamma");
+    assert_eq!(
+        canonical,
+        PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+            .join("workspace/alpha/gamma")
+            .to_string_lossy()
+    );
 }
 
 #[test]
 fn canonical_data_root_preserves_parent_at_root() {
     let canonical = canonical_data_root(Path::new("/../escape"));
-    assert_eq!(canonical, "/escape");
+    assert_eq!(
+        canonical,
+        PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+            .join("escape")
+            .to_string_lossy()
+    );
 }
 
 #[test]

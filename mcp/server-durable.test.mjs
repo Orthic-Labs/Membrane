@@ -10,32 +10,20 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
-const membraneRoot = fileURLToPath(new URL("../", import.meta.url));
 const engineRoot = fileURLToPath(new URL("../engine/", import.meta.url));
 
 async function currentMembrane() {
   if (process.env.MEMBRANE_TEST_BIN) return process.env.MEMBRANE_TEST_BIN;
-  const cargo = spawn("rightkit", ["cargo", "build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--package", "membrane", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
-    cwd: membraneRoot,
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  let stdout = "";
-  let stderr = "";
-  cargo.stdout.on("data", (chunk) => { stdout += chunk; });
-  cargo.stderr.on("data", (chunk) => { stderr += chunk; });
-  const [code] = await once(cargo, "close");
-  let builtMembrane = null;
-  for (const line of stdout.split(/\r?\n/)) {
-    try {
-      const message = JSON.parse(line);
-      if (message.reason === "compiler-artifact" && message.target?.name === "membrane" && typeof message.executable === "string") builtMembrane = message.executable;
-    } catch { /* non-JSON Cargo output is irrelevant */ }
-  }
-  if (code !== 0 || !builtMembrane || !existsSync(builtMembrane)) {
-    throw new Error(`current Membrane build failed: ${stderr}`);
-  }
-  return builtMembrane;
+  const builtMembrane = join(engineRoot, "target", "debug", process.platform === "win32" ? "membrane.exe" : "membrane");
+  if (existsSync(builtMembrane)) return builtMembrane;
+  throw new Error(`MEMBRANE_TEST_BIN is unset and ${builtMembrane} is absent; prebuild it through RightKit before running this suite`);
+}
+
+async function currentHubRuntimeTestHost() {
+  if (process.env.MEMBRANE_TEST_HUB_RUNTIME_BIN) return process.env.MEMBRANE_TEST_HUB_RUNTIME_BIN;
+  const builtHost = join(engineRoot, "target", "debug", "examples", process.platform === "win32" ? "hub_runtime_test_host.exe" : "hub_runtime_test_host");
+  if (existsSync(builtHost)) return builtHost;
+  throw new Error(`MEMBRANE_TEST_HUB_RUNTIME_BIN is unset and ${builtHost} is absent; prebuild it through RightKit: rightkit cargo build -p membrane-runtime --example hub_runtime_test_host`);
 }
 
 async function rpc(messages, env) {
@@ -95,8 +83,8 @@ async function freePort() {
   });
 }
 
-async function startMembrane(binary, root, port, env) {
-  const child = spawn(binary, ["supervisor-child"], {
+async function startMembrane(hostBinary, root, port, env) {
+  const child = spawn(hostBinary, [root], {
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
     env: {
@@ -161,10 +149,11 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     WORKSPACE_ROOT: root,
   };
   const binary = await currentMembrane();
+  const hubRuntimeTestHost = await currentHubRuntimeTestHost();
   await symlink(binary, join(tools, "bin", process.platform === "win32" ? "membrane.exe" : "membrane"));
   env.MEMBRANE_BIN = binary;
   env.MEMBRANE_PORT = String(port);
-  const resident = await startMembrane(binary, root, port, env);
+  const resident = await startMembrane(hubRuntimeTestHost, root, port, env);
   let active = resident;
   const request = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const common = { repository: enrolled, caller: { root: enrolled, repositoryId: "repo-a", scopeId: "scope-a" } };
@@ -187,7 +176,7 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(JSON.parse(lifecycleById[3].result.content[0].text).fact.fact_id, "fact-a");
     assert.equal(JSON.parse(lifecycleById[4].result.content[0].text).scratchpad.items[0].note, "ephemeral");
     await stopMembrane(resident);
-    const restarted = await startMembrane(binary, root, port, env);
+    const restarted = await startMembrane(hubRuntimeTestHost, root, port, env);
     active = restarted;
     const second = await rpc([
       request(6, "membrane_working_context", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),

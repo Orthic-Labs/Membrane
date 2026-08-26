@@ -85,7 +85,7 @@ pub struct PlatformAcceptanceArtifact {
 
 const RECEIPT_SCHEMA: &str = "membrane.platform-acceptance.v1";
 const MACOS_TRUST_FIELDS: [&str; 4] = ["codesign", "notarization", "staple", "gatekeeper"];
-const WINDOWS_TRUST_FIELDS: [&str; 3] = ["authenticode", "publicTrust", "rfc3161"];
+const WINDOWS_TRUST_FIELDS: [&str; 2] = ["authenticode", "timestamp"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EvidenceError {
@@ -122,7 +122,13 @@ fn platform_trust_evidence(
     let all_passed = required_fields
         .iter()
         .all(|field| receipt.trust.get(*field).and_then(Value::as_str) == Some("pass"));
-    if !all_passed {
+    let publisher_valid = expected_platform != Platform::Windows
+        || receipt
+            .trust
+            .get("publisher")
+            .and_then(Value::as_str)
+            .is_some_and(|publisher| !publisher.is_empty());
+    if !all_passed || !publisher_valid {
         return Err(EvidenceError::ReceiptTrustIncomplete);
     }
     Ok(PlatformTrustEvidence {
@@ -251,12 +257,8 @@ pub fn may_handoff(result: &Result<VerifiedUpdate, BlockedUpdate>) -> bool {
     result.is_ok()
 }
 
-// --- Deterministic, unexecuted-at-task-time source tests -------------------
-//
-// Not run by this task (no `cargo test`, per this task's hard rules); left
-// for the Book 3 final phased gate's
-// `cargo check --manifest-path apps/membrane-hub/src-tauri/Cargo.toml`.
-// These exercise the RightKit-shape parsing this module adds on top of the
+// These deterministic tests exercise the RightKit-shape parsing this module
+// adds on top of the
 // exhaustively-tested pure gate in `engine/crates/membrane-updater`.
 #[cfg(test)]
 mod tests {
@@ -282,6 +284,10 @@ mod tests {
         for field in WINDOWS_TRUST_FIELDS {
             trust.insert(field.to_string(), Value::String("pass".to_string()));
         }
+        trust.insert(
+            "publisher".to_string(),
+            Value::String("Damned_Ventures_LLC".to_string()),
+        );
         for (field, value) in trust_overrides {
             trust.insert((*field).to_string(), Value::String((*value).to_string()));
         }
@@ -308,15 +314,15 @@ mod tests {
         let json = r#"{
             "schema": "membrane.platform-acceptance.v1",
             "receiptId": "r-1",
-            "mode": "clean-vm",
+            "mode": "installed-local",
             "commit": "0000000000000000000000000000000000000a",
             "releaseGeneration": "00000000000000000000000000000000000000000000000000000000000a",
             "version": "0.1.6",
             "platform": "windows",
             "artifact": {"name": "Membrane_0.1.6_x64-setup.exe", "sha256": "00000000000000000000000000000000000000000000000000000000000000ab"},
-            "trust": {"authenticode": "pass", "publicTrust": "pass", "rfc3161": "pass"},
+            "trust": {"authenticode": "pass", "timestamp": "pass", "publisher": "Damned_Ventures_LLC"},
             "lifecycle": {"install": "pass", "startup": "pass", "update": "pass", "uninstall": "pass"},
-            "environment": {"clean": true, "machineDigest": "0000000000000000000000000000000000000000000000000000000000ac", "bypassWarnings": false}
+            "environment": {"host": "windows-laptop", "bypassWarnings": false}
         }"#;
         let receipt: PlatformAcceptanceReceipt = serde_json::from_str(json).unwrap();
         assert_eq!(receipt.platform, "windows");
@@ -358,7 +364,7 @@ mod tests {
 
     #[test]
     fn assess_blocks_on_incomplete_platform_trust() {
-        let receipt = real_windows_platform_receipt(&[("rfc3161", "fail")]);
+        let receipt = real_windows_platform_receipt(&[("timestamp", "fail")]);
         let outcome = assess(
             "0.1.5",
             "0.1.6",

@@ -73,16 +73,33 @@ async function start() {
     return;
   }
   const supervisor = new WatchSupervisor({ configPath });
-  await supervisor.start();
-  const stop = async () => { await supervisor.stop(); try { unlinkSync(pidPath); } catch {} process.exit(0); };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  let stopping = false;
+  const removePidfile = () => { try { unlinkSync(pidPath); } catch {} };
+  const stop = async (exitCode = 0) => {
+    if (stopping) return;
+    stopping = true;
+    try { await supervisor.stop(); }
+    catch (error) { console.error(error.stack ?? error); exitCode ||= 1; }
+    finally { removePidfile(); process.exit(exitCode); }
+  };
+  process.once("SIGINT", () => { void stop(0); });
+  process.once("SIGTERM", () => { void stop(0); });
   if (process.env.BLUEPRINT_SERVICE_CHILD === "1") {
     process.stdin.resume();
-    process.stdin.once("end", stop);
-    process.stdin.once("error", stop);
+    process.stdin.once("end", () => { void stop(0); });
+    process.stdin.once("close", () => { void stop(0); });
+    process.stdin.once("error", () => { void stop(0); });
   }
-  json(supervisor.status());
+  try {
+    // Initial actor startup is strict: a resident service is not ready when
+    // any enrolled actor failed. Cold reconcile may take minutes, while the
+    // Hub-owned parent publishes its own bounded running envelope promptly.
+    await supervisor.start({ failOnStart: true });
+    if (!stopping) json(supervisor.status());
+  } catch (error) {
+    console.error(error.stack ?? error);
+    await stop(1);
+  }
 }
 
 async function stop() {

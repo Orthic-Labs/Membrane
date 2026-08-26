@@ -5680,7 +5680,6 @@ impl MemoryStore {
                 authority_manifest_sha256: record.authority_manifest_sha256,
                 validator_receipt_id: record.validator_receipt_id,
                 validator_receipt_sha256: record.validator_receipt_sha256,
-                verified_user_act_receipt_sha256: record.verified_user_act_receipt_sha256,
                 current_authority: authority,
                 current_influence_class: influence_class,
             });
@@ -5798,6 +5797,27 @@ impl MemoryStore {
     /// the higher-level public methods (`entries`, `scopes`).
     pub fn db(&self) -> &crate::memdb::MemDb {
         &self.db
+    }
+
+    /// Stable identity advertised by the resident Hub handshake.
+    pub fn installation_id(&self) -> &str {
+        &self.operation_attribution.installation_id
+    }
+
+    /// Opaque identity for the bound Cortex store. The path is only used to
+    /// derive an identity; it is never exposed on a health response.
+    pub fn cortex_store_id(&self) -> String {
+        let binding = self
+            .db_path
+            .as_deref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_else(|| {
+                format!(
+                    "memory:{}",
+                    self.operation_attribution.workspace_id.as_str()
+                )
+            });
+        crate::digest::digest_str(&binding)
     }
 
     /// Apply one typed lifecycle event as one SQLite transaction. Replaying the
@@ -6552,15 +6572,14 @@ impl MemoryStore {
     pub(crate) fn try_put_verified_adapt_taste_manifest(
         &self,
         manifest: &membrane_adapt::manifest::PreferenceManifestV1,
-        trust: &membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1,
+        trust: Option<&membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1>,
     ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
-        membrane_adapt::proposal::verify_final_manifest_adjudication(manifest, trust).map_err(
-            |error| {
+        membrane_adapt::proposal::verify_final_manifest_adjudication_or_local(manifest, trust)
+            .map_err(|error| {
                 MemoryBatchError::Invalid(format!(
                     "verified Adapt Taste adjudication is invalid: {error}"
                 ))
-            },
-        )?;
+            })?;
         let accepted = membrane_adapt::manifest::apply_plan(manifest)
             .map_err(|error| MemoryBatchError::Invalid(error.to_string()))?
             .into_iter()
@@ -8078,7 +8097,6 @@ mod tests {
             authority_manifest_sha256: "authority-manifest".into(),
             validator_receipt_id: "validator-receipt".into(),
             validator_receipt_sha256: "validator-sha".into(),
-            verified_user_act_receipt_sha256: Some("a".repeat(64)),
             semantic_payload: None,
             semantic_digest: String::new(),
             evidence_contexts: Vec::new(),

@@ -18,7 +18,7 @@ def golden(name):
     (engine/crates/membrane-client/tests/compat.rs) compatibility suites
     read, so all three SDKs are proven against identical fixture bytes
     rather than independently authored equivalents."""
-    with open(REPO_ROOT / "schemas/operations/operations" / name, encoding="utf-8") as handle:
+    with open(REPO_ROOT / "schemas/registry/operations" / name, encoding="utf-8") as handle:
         return json.load(handle)
 
 

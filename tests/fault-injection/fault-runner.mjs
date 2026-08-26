@@ -9,7 +9,6 @@ const codes = new Map(matrix.scenarios.map((s) => [s.fault, s.expected]));
 const digest = (value) => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
 
 const crateRoot = dirname(fileURLToPath(import.meta.url));
-const manifest = resolve(crateRoot, 'Cargo.toml');
 const canonicalBinary = resolve(crateRoot, 'target', 'debug', process.platform === 'win32' ? 'membrane-fault-injection.exe' : 'membrane-fault-injection');
 // This crate depends on membrane-protocol, membrane-runtime, and cortex-store (see Cargo.toml) --
 // only those crates (plus this crate's own src) can affect the built binary's behavior.
@@ -39,23 +38,12 @@ function newestSourceMtimeMs(dirs) {
 }
 
 // Resolves the membrane-fault-injection binary to exercise. Reuses an already-fresh build when
-// possible (the common case, and the only path that works when the guarded `cargo` on this host
-// requires RIGHT_RELEASE_CACHE_ROOT -- see docs/rules/paid-compute.md). Otherwise attempts a real
-// build and locates the produced binary via cargo's own `--message-format=json` artifact report.
-// Deliberately does NOT fall back to a stale existing binary on build failure -- an outdated
-// binary could silently diverge from what the current matrix/test expects, masking a real
-// regression instead of surfacing "the build is unavailable." Returns null when nothing fresh is
-// available, letting the caller convert that into a skip instead of a hard crash.
+// possible. Test orchestration never starts Cargo implicitly: callers prebuild this target with
+// direct Cargo under the workspace's long-running-command heartbeat discipline.
 function resolveBinary() {
   if (process.env.MEMBRANE_FAULT_TEST_BIN) return process.env.MEMBRANE_FAULT_TEST_BIN;
   if (existsSync(canonicalBinary) && statSync(canonicalBinary).mtimeMs >= newestSourceMtimeMs([crateRoot, ...dependencyCrateRoots])) return canonicalBinary;
-  const build = spawnSync('rightkit', ['cargo', 'build', '--quiet', '--message-format=json', '--manifest-path', manifest], { encoding: 'utf8', timeout: 300_000 });
-  if (build.status !== 0) return null;
-  const artifact = (build.stdout || '').trim().split('\n').filter(Boolean)
-    .map((line) => { try { return JSON.parse(line); } catch { return null; } })
-    .reverse().find((message) => message && message.reason === 'compiler-artifact' && message.executable);
-  if (artifact?.executable && existsSync(artifact.executable)) return artifact.executable;
-  return existsSync(canonicalBinary) ? canonicalBinary : null;
+  return null;
 }
 
 export function runFault(scenario, { now = 1_000, deadlineMs = 1_000, cleanupOk = true } = {}) {
@@ -80,7 +68,7 @@ function receipt(scenarioId, status, code, timestamp) {
 export function runMatrix(options) { return matrix.scenarios.map((scenario) => runFault(scenario, options)); }
 export function runRealMatrix() {
   const binary = resolveBinary();
-  if (!binary) throw new Error('membrane-fault-injection binary unavailable: cargo build failed and no fresh prebuilt binary exists (set RIGHT_RELEASE_CACHE_ROOT on macOS, or pre-build tests/fault-injection/target/debug/membrane-fault-injection)');
+  if (!binary) throw new Error('membrane-fault-injection binary unavailable: prebuild tests/fault-injection with direct Cargo or set MEMBRANE_FAULT_TEST_BIN');
   const result = spawnSync(binary, [], { encoding: 'utf8', timeout: 120_000 });
   if (result.status !== 0) throw new Error(result.stderr || 'fault harness failed');
   return JSON.parse(result.stdout.trim());

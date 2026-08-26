@@ -52,7 +52,7 @@ function writeFixtureGeneration(repoRoot, targets) {
   return file;
 }
 
-test("non-Mac npm platform keys are rejected before release lookup", () => {
+test("non-Windows npm platform keys are rejected before release lookup", () => {
   assert.throws(
     () => resolveNpmPlatformArtifact({ repoRoot: tempRepoRoot(), releaseId: RELEASE_ID, npmPlatformKey: "freebsd-x64" }),
     /unknown npm platform key/,
@@ -70,7 +70,7 @@ test("no release-generation recorded yet is a declared gap, never a fabricated a
   const repoRoot = tempRepoRoot();
   assert.equal(readReleaseGeneration({ repoRoot, releaseId: RELEASE_ID }), null);
   assert.throws(
-    () => resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "darwin-arm64" }),
+    () => resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "win32-x64" }),
     ArtifactNotVerifiedError,
   );
 });
@@ -78,18 +78,17 @@ test("no release-generation recorded yet is a declared gap, never a fabricated a
 test("a verified pipeline target resolves to its real, recorded artifact", () => {
   const repoRoot = tempRepoRoot();
   writeFixtureGeneration(repoRoot, [
-    { target: "mac-arm64", status: "verified", artifact: { name: "Membrane Hub_0.1.1_aarch64.dmg", sha256: "d".repeat(64) } },
-    { target: "mac-x64", status: "not-buildable", reason: "no distinct mac-x64 RightKit build exists" },
+    { target: "windows-x86_64", status: "verified", artifact: { name: "Membrane Hub_0.1.1_x64-setup.exe", sha256: "d".repeat(64) } },
   ]);
 
-  const resolved = resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "darwin-arm64" });
+  const resolved = resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "win32-x64" });
   assert.deepEqual(resolved, {
-    npmPlatformKey: "darwin-arm64",
-    pipelineTarget: "mac-arm64",
+    npmPlatformKey: "win32-x64",
+    pipelineTarget: "windows-x86_64",
     version: VERSION,
     commit: COMMIT,
     releaseGeneration: "c".repeat(64),
-    artifactName: "Membrane Hub_0.1.1_aarch64.dmg",
+    artifactName: "Membrane Hub_0.1.1_x64-setup.exe",
     artifactSha256: "d".repeat(64),
   });
 });
@@ -97,40 +96,36 @@ test("a verified pipeline target resolves to its real, recorded artifact", () =>
 test("a pending or not-buildable pipeline target never fabricates a verified artifact", () => {
   const repoRoot = tempRepoRoot();
   writeFixtureGeneration(repoRoot, [
-    { target: "mac-arm64", status: "verified", artifact: { name: "x.dmg", sha256: "e".repeat(64) } },
-    { target: "mac-x64", status: "not-buildable", reason: "no distinct mac-x64 RightKit build exists" },
+    { target: "windows-x86_64", status: "pending", reason: "awaiting signed artifact" },
   ]);
 
   assert.throws(
-    () => resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "darwin-x64" }),
-    (error) => error instanceof ArtifactNotVerifiedError && /"not-buildable"/.test(error.message),
+    () => resolveNpmPlatformArtifact({ repoRoot, releaseId: RELEASE_ID, npmPlatformKey: "win32-x64" }),
+    (error) => error instanceof ArtifactNotVerifiedError && /"pending"/.test(error.message),
   );
 });
 
 test("resolveAllNpmPlatformArtifacts aggregates every platform's real state without throwing", () => {
   const repoRoot = tempRepoRoot();
   writeFixtureGeneration(repoRoot, [
-    { target: "mac-arm64", status: "verified", artifact: { name: "x.dmg", sha256: "f".repeat(64) } },
-    { target: "mac-x64", status: "not-buildable", reason: "no distinct mac-x64 RightKit build exists" },
+    { target: "windows-x86_64", status: "verified", artifact: { name: "x.exe", sha256: "f".repeat(64) } },
   ]);
 
   const { releaseId, results } = resolveAllNpmPlatformArtifacts({ repoRoot, app: APP, version: VERSION, commit: COMMIT });
   assert.equal(releaseId, RELEASE_ID);
-  assert.equal(results["darwin-arm64"].ok, true);
-  assert.equal(results["darwin-arm64"].artifactSha256, "f".repeat(64));
-  assert.equal(results["darwin-x64"].ok, false);
-  assert.equal(results["darwin-x64"].errorType, "ArtifactNotVerifiedError");
+  assert.equal(results["win32-x64"].ok, true);
+  assert.equal(results["win32-x64"].artifactSha256, "f".repeat(64));
 });
 
 test("today's real Membrane checkout has no release-generation recorded for a plausible release: nothing is invented", () => {
   // Proves this resolver does not fabricate an artifact against the actual
   // repository: no docs/evidence/releases/<releaseId>/release-generation.json
-  // exists for this releaseId in the real checkout (only mac releases are
+  // exists for this releaseId in the real checkout (no Windows release is
   // sealed under .right-release/sealed/ today; MBR-903's write-once
   // evidence layer has not been run with --write on this checkout).
   assert.equal(readReleaseGeneration({ repoRoot: REAL_REPO_ROOT, releaseId: RELEASE_ID }), null);
   assert.throws(
-    () => resolveNpmPlatformArtifact({ repoRoot: REAL_REPO_ROOT, releaseId: RELEASE_ID, npmPlatformKey: "darwin-arm64" }),
+    () => resolveNpmPlatformArtifact({ repoRoot: REAL_REPO_ROOT, releaseId: RELEASE_ID, npmPlatformKey: "win32-x64" }),
     ArtifactNotVerifiedError,
   );
 });

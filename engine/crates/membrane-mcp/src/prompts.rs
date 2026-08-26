@@ -1,7 +1,7 @@
 //! Canonical Membrane MCP prompts.
 //!
-//! Every prompt definition lives in `schemas/registry/prompts/*.json` so the native
-//! (Rust) MCP server and the legacy JS MCP server serve the exact same payload.
+//! Every prompt definition lives in `schemas/registry/prompts/*.json` as the
+//! canonical native MCP payload.
 //! This module embeds those JSON files at compile time via `include_str!` and
 //! exposes a tiny façade so `prompts/list` and `prompts/get` JSON-RPC methods
 //! can answer from a single canonical registry.

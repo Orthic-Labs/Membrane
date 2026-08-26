@@ -16,7 +16,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { SCHEMA_VERSION } from "../../src/graph/store-sqlite.mjs";
-import { npmCliArgs } from "./npm-cli.mjs";
+import { npmCliArgs, pnpmCliArgs } from "./npm-cli.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -54,11 +54,11 @@ function grammarManifestDigest() {
 }
 
 export function buildCandidate({ out = null, platform = null, version = null, allowDirty = false, gitRoot = ROOT } = {}) {
-  if (process.platform !== "darwin") throw new Error("Blueprint release qualification currently targets macOS only");
+  if (!new Set(["darwin", "win32"]).has(process.platform)) throw new Error("Blueprint release qualification requires macOS or Windows");
   if (!allowDirty && isDirty(gitRoot)) throw new Error("release candidate requires a clean working tree (or pass --allow-dirty for dispatch verification)");
   if (version && version.replace(/^v/, "") !== pkg.version) throw new Error(`workflow version ${version} does not match package.json ${pkg.version}`);
   const targetPlatform = !platform || platform === "current" ? `${process.platform}-${process.arch}` : platform;
-  if (!targetPlatform.startsWith("darwin-")) throw new Error("Blueprint release candidates currently target macOS only");
+  if (!targetPlatform.startsWith(`${process.platform}-`)) throw new Error(`Blueprint release candidates must target current native platform ${process.platform}`);
   const outDir = out ?? join(ROOT, "release", "candidates", targetPlatform);
   let ancestor = resolve(outDir);
   while (!existsSync(ancestor)) { const parent = dirname(ancestor); if (parent === ancestor) throw new Error("unsafe candidate output"); ancestor = parent; }
@@ -101,7 +101,15 @@ export function buildCandidate({ out = null, platform = null, version = null, al
   // via --pack-destination (npm is Node-based and tolerates absolute paths),
   // then read back by its relative filename below — never handed to MSYS tar
   // as a drive-letter path.
-  execFileSync(process.execPath, npmCliArgs(["pack", "--ignore-scripts", "--pack-destination", outDir]), { cwd: ROOT, stdio: "ignore" });
+  if (process.platform === "win32") {
+    execFileSync(process.execPath, pnpmCliArgs(["pack", "--pack-destination", outDir]), {
+      cwd: ROOT,
+      encoding: "utf8",
+      env: { ...process.env, npm_config_ignore_scripts: "true" },
+    });
+  } else {
+    execFileSync(process.execPath, npmCliArgs(["pack", "--ignore-scripts", "--pack-destination", outDir]), { cwd: ROOT, stdio: "ignore" });
+  }
   const expectedTarball = `${pkg.name.replace(/^@/, "").replaceAll("/", "-")}-${pkg.version}.tgz`;
   const tarballs = readdirSync(outDir).filter((name) => name.endsWith(".tgz"));
   if (tarballs.length !== 1 || tarballs[0] !== expectedTarball) throw new Error(`npm pack did not produce ${expectedTarball}`);

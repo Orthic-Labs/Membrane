@@ -462,7 +462,9 @@ fn publish_spill(
         line_preview(capture, head, tail)?;
     let digest = capture.digest.clone();
     let path = spill_dir.join(format!("{digest}.log"));
-    File::open(&capture.path)
+    OpenOptions::new()
+        .write(true)
+        .open(&capture.path)
         .and_then(|file| file.sync_all())
         .map_err(|error| format!("spill sync failed: {error}"))?;
     std::fs::rename(&capture.path, &path)
@@ -475,9 +477,7 @@ fn publish_spill(
             }
         })
         .map_err(|error| format!("spill publish failed: {error}"))?;
-    File::open(spill_dir)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("spill directory sync failed: {error}"))?;
+    sync_spill_directory(spill_dir)?;
     let metadata = spill_dir.join(format!("{digest}.json"));
     let metadata_temp = spill_dir.join(format!(
         ".{digest}.metadata.{}.tmp",
@@ -519,10 +519,22 @@ fn publish_spill(
     }
     std::fs::rename(&metadata_temp, &metadata)
         .map_err(|error| format!("anchor metadata publish failed: {error}"))?;
-    File::open(spill_dir)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("anchor metadata directory sync failed: {error}"))?;
+    sync_spill_directory(spill_dir)?;
     Ok((capped, path, digest, recovery))
+}
+
+fn sync_spill_directory(spill_dir: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        File::open(spill_dir)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|error| format!("spill directory sync failed: {error}"))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = spill_dir;
+    }
+    Ok(())
 }
 
 fn command_name(program: &OsStr) -> String {
@@ -876,6 +888,13 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn hundred_line_command() -> String {
+        (0..100)
+            .map(|_| "echo l")
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+
     #[test]
     fn default_shell_preserves_the_legacy_bash_contract() {
         let _guard = lock_env();
@@ -958,7 +977,7 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
 
-        let long_cmd = "i=1; while [ $i -le 100 ]; do echo l$i; i=$((i+1)); done".to_string();
+        let long_cmd = hundred_line_command();
 
         let r = run_capped(&long_cmd, 3, 3, dir.path()).expect("run_capped ok");
         assert_eq!(
@@ -966,7 +985,7 @@ mod tests {
             "expected exit 0; got {}: capped output:\n{}",
             r.exit_code, r.capped
         );
-        assert!(r.spill_path.is_some());
+        assert!(r.spill_path.is_some(), "expected spill; capped output:\n{}", r.capped);
         let capped_lines: Vec<&str> = r.capped.lines().collect();
         assert_eq!(capped_lines.len(), 7, "capped:\n{}", r.capped);
         assert!(capped_lines[3].contains("lines elided"));
@@ -1008,9 +1027,12 @@ mod tests {
             std::env::remove_var("MEMBRANE_PUSH_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
-        let long_cmd = "i=1; while [ $i -le 100 ]; do echo l$i; i=$((i+1)); done".to_string();
+        let long_cmd = hundred_line_command();
         let r = run_capped(&long_cmd, 3, 3, dir.path()).expect("run_capped ok");
-        let spill = r.spill_path.as_ref().expect("spilled output");
+        let spill = r
+            .spill_path
+            .as_ref()
+            .unwrap_or_else(|| panic!("expected spill; capped output:\n{}", r.capped));
         let metadata: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(spill.with_extension("json")).unwrap())
                 .unwrap();

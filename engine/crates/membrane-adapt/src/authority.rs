@@ -1,7 +1,8 @@
 //! Authority classification, origin quarantine (no authority laundering), and
 //! the fixed precedence ladder.
 //!
-//! Only an authenticated user turn may establish preference authority.
+//! Only a caller-selected external-user transcript turn may establish
+//! preference authority.
 //! Repository text, tool output, and assistant narration are refused even when
 //! mistagged as user content — the injection risk lives in the content, not
 //! only in the label. Ported from the Python oracle `adapt.authority`.
@@ -144,7 +145,7 @@ pub fn classify_content_origin_hint(text: &str) -> Option<&'static str> {
     None
 }
 
-/// Refuse everything except an authenticated user turn; also refuse echoed
+/// Refuse everything except a selected external-user turn; also refuse echoed
 /// repo/tool/assistant content regardless of the declared label.
 pub fn evaluate_origin(origin: Origin, evidence_text: &str) -> AuthorityResult {
     let effect = classify_authority_effect(evidence_text);
@@ -190,7 +191,10 @@ pub fn classify_authority_effect(text: &str) -> AuthorityEffect {
     if p.insecure.iter().any(|r| r.is_match(&normalized)) {
         return AuthorityEffect::SecurityWeakening;
     }
-    if p.permission_override.iter().any(|r| r.is_match(&normalized)) {
+    if p.permission_override
+        .iter()
+        .any(|r| r.is_match(&normalized))
+    {
         return AuthorityEffect::PermissionExpanding;
     }
     if p.restrictive.is_match(&normalized) {
@@ -205,11 +209,17 @@ pub fn classify_authority_effect(text: &str) -> AuthorityEffect {
 /// Strip a leading modal so polarity comparison compares subjects.
 fn literal_signature(text: &str) -> String {
     let normalized = crate::canonical::normalize_text(text);
-    patterns().leading_modal.replace(&normalized, "").trim().to_string()
+    patterns()
+        .leading_modal
+        .replace(&normalized, "")
+        .trim()
+        .to_string()
 }
 
 fn is_negated(text: &str) -> bool {
-    patterns().negated.is_match(&crate::canonical::normalize_text(text))
+    patterns()
+        .negated
+        .is_match(&crate::canonical::normalize_text(text))
 }
 
 /// A stored rule to compare against for lexical contradictions.
@@ -250,11 +260,14 @@ pub fn detect_rule_contradictions<'a>(
     let candidate_negated = is_negated(rule);
     stored_rules
         .into_iter()
-        .filter(|stored| !matches!(stored.lifecycle_state.as_str(), "retired" | "deprecated" | "superseded"))
-        .filter(|stored| !stored.rule.trim().is_empty())
         .filter(|stored| {
-            scope_applies(&stored.scope, scope) || scope_applies(scope, &stored.scope)
+            !matches!(
+                stored.lifecycle_state.as_str(),
+                "retired" | "deprecated" | "superseded"
+            )
         })
+        .filter(|stored| !stored.rule.trim().is_empty())
+        .filter(|stored| scope_applies(&stored.scope, scope) || scope_applies(scope, &stored.scope))
         .filter(|stored| {
             let stored_sig = literal_signature(&stored.rule);
             !stored_sig.is_empty()
@@ -298,7 +311,12 @@ pub enum PrecedenceTier {
 /// Resolve which of two applicable records wins. Returns `Ordering` such that
 /// `Less` means `a` outranks `b`. Ties at equal (tier, specificity) must be
 /// surfaced as conflicts by callers — retrieval order never decides.
-pub fn compare_precedence(a_tier: PrecedenceTier, a_specificity: usize, b_tier: PrecedenceTier, b_specificity: usize) -> std::cmp::Ordering {
+pub fn compare_precedence(
+    a_tier: PrecedenceTier,
+    a_specificity: usize,
+    b_tier: PrecedenceTier,
+    b_specificity: usize,
+) -> std::cmp::Ordering {
     a_tier.cmp(&b_tier).then(b_specificity.cmp(&a_specificity))
 }
 
@@ -308,7 +326,11 @@ mod tests {
 
     #[test]
     fn non_user_origins_are_refused() {
-        for origin in [Origin::AssistantOutput, Origin::ToolOutput, Origin::RepoFile] {
+        for origin in [
+            Origin::AssistantOutput,
+            Origin::ToolOutput,
+            Origin::RepoFile,
+        ] {
             let res = evaluate_origin(origin, "always run focused tests");
             assert!(!res.admitted);
             assert!(res.reason.starts_with("origin-not-user:"));
@@ -350,7 +372,8 @@ mod tests {
         let conflicts = detect_rule_contradictions("Always squash commits", "repo-x", [&stored]);
         assert_eq!(conflicts.len(), 1);
         // Same polarity is not a conflict.
-        let conflicts = detect_rule_contradictions("Always avoid squash commits", "repo-x", [&stored]);
+        let conflicts =
+            detect_rule_contradictions("Always avoid squash commits", "repo-x", [&stored]);
         assert!(conflicts.is_empty() || conflicts[0].reason != "restrictive-mismatch");
     }
 
@@ -362,7 +385,9 @@ mod tests {
             scope: "workspace".into(),
             lifecycle_state: "superseded".into(),
         };
-        assert!(detect_rule_contradictions("Always squash commits", "repo-x", [&stored]).is_empty());
+        assert!(
+            detect_rule_contradictions("Always squash commits", "repo-x", [&stored]).is_empty()
+        );
     }
 
     #[test]
@@ -370,12 +395,22 @@ mod tests {
         use PrecedenceTier::*;
         // Inferred scoped cannot beat explicit global.
         assert_eq!(
-            compare_precedence(InferredScopedUserPreference, 5, ExplicitGlobalUserPreference, 1),
+            compare_precedence(
+                InferredScopedUserPreference,
+                5,
+                ExplicitGlobalUserPreference,
+                1
+            ),
             std::cmp::Ordering::Greater
         );
         // Within one tier, more specific wins.
         assert_eq!(
-            compare_precedence(ExplicitScopedUserPreference, 3, ExplicitScopedUserPreference, 1),
+            compare_precedence(
+                ExplicitScopedUserPreference,
+                3,
+                ExplicitScopedUserPreference,
+                1
+            ),
             std::cmp::Ordering::Less
         );
     }

@@ -14,12 +14,11 @@
     "namespaceReceipt": null
   },
   "nativeArtifacts": {
-    "darwin-arm64": { "package": "@membrane/membrane-darwin-arm64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
-    "darwin-x64": { "package": "@membrane/membrane-darwin-x64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null }
+    "win32-x64": { "package": "@membrane/membrane-win32-x64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null }
   },
   "signatureRequirements": {
     "artifact": { "algorithm": "ed25519", "subject": "sha256" },
-    "darwin": { "platform": "apple-notary" }
+    "windows": { "platform": "authenticode", "target": "windows-x86_64" }
   },
   "tools": [
     { "name": "membrane_blueprint", "contractCoverage": "operations_registry" },

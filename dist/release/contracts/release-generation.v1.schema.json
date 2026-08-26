@@ -30,7 +30,7 @@
         "type": "object",
         "required": ["target", "status"],
         "properties": {
-          "target": { "enum": ["mac-arm64", "mac-x64"] },
+          "target": { "const": "windows-x86_64" },
           "status": { "enum": ["not-buildable", "pending", "verified"] },
           "reason": { "type": "string" },
           "sealedDir": { "type": "string" },

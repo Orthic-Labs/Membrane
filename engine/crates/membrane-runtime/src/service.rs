@@ -387,10 +387,7 @@ fn runtime_from_workspace_root(workspace_root: &Path) -> Result<Runtime, String>
 /// Run the sole resident Membrane runtime inside the active Hub process.
 /// The process-wide claim rejects a second runtime before it can bind storage
 /// or a port, preserving one active Hub/runtime authority.
-pub fn run_hub_runtime(
-    workspace_root: &Path,
-    lifecycle: LifecycleControl,
-) -> Result<(), String> {
+pub fn run_hub_runtime(workspace_root: &Path, lifecycle: LifecycleControl) -> Result<(), String> {
     let _claim = HubRuntimeClaim::acquire()?;
     install_lifecycle_control(lifecycle)?;
     let runtime = runtime_from_workspace_root(workspace_root)?;
@@ -527,7 +524,10 @@ mod tests {
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
-            temp.path().join("tools/.cache/memory/cortex-engine.db")
+            temp.path()
+                .canonicalize()
+                .unwrap()
+                .join("tools/.cache/memory/cortex-engine.db")
         );
     }
 

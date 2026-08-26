@@ -11,12 +11,12 @@ lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOC
 
 | Component | Source of truth | Role |
 |---|---|---|
-| MCP server | `mcp/server.mjs` | 17 tools over stdio; dual-era MCP discovery |
+| MCP server | `engine/crates/membrane-mcp/` | 17 native tools over stdio and authenticated Hub loopback transport |
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
 | Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |
 | Membrane Hub | `apps/membrane-hub/` | sole resident service, process-lifecycle, install, update, and release authority |
-| Cross-provider budget | `mcp/context-renderer-lib.cjs` + `engine/crates/membrane-core/` | one attention budget with explicit lanes; every receipt carries a reconciliation |
+| Cross-provider budget | `engine/crates/membrane-core/` | one native attention budget with explicit lanes; every receipt carries a reconciliation |
 
 ## Interfaces
 
@@ -51,22 +51,21 @@ deterministic order:
 - `selected_without_delivered` — a rendered lane selected more tokens than
   it delivered (visible failure like MBR-011's alert).
 
-The source of truth is `mcp/context-renderer-lib.cjs` (the only renderer the
-Membrane-owned surface and the Forge hook share). The Rust mirror lives at
-`engine/crates/membrane-core/src/reconcile.rs` and the typed contract lives
+Native source of truth is `engine/crates/membrane-core/src/reconcile.rs`;
+the typed contract lives
 at `engine/crates/membrane-protocol/src/types.rs` (`BudgetLaneKind`,
 `BudgetReconciliationV1`, `BudgetReconciliationRowV1`).
 
 ## Platform status
 
-The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
+The sole supported current target is **Windows** (tier 1). Other targets are not current supported targets.
 
 ## Derived from
 
-- `mcp/context-renderer-lib.cjs`
 - `engine/crates/membrane-core/`
 - `engine/crates/membrane-protocol/src/types.rs`
-- `mcp/server.mjs`
+- `engine/crates/membrane-mcp/src/tools.rs`
+- `migration/native-rust/fixtures/mcp-conformance.v1.json`
 - `docs/membrane/capability-matrix.v1.json`
 
 ## Process plane separation (MBR-108)

@@ -223,7 +223,10 @@ mod tests {
             "00000000-0000-4000-8000-000000000001"
         );
         assert_eq!(manifest.startup_generation, 7);
-        assert_eq!(manifest.data_root, "/workspace/alpha");
+        assert_eq!(
+            manifest.data_root,
+            canonical_data_root(Path::new("/workspace/alpha/./beta/.."))
+        );
         assert_eq!(
             manifest.data_root_digest,
             crate::digest::digest_str(&manifest.data_root)

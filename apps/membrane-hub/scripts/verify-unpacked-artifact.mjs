@@ -1,4 +1,4 @@
-// Native-host artifact proof consumes only packaged Mac runtime bytes/sidecars.
+// Native-host artifact proof consumes packaged runtime bytes & native sidecars.
 import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

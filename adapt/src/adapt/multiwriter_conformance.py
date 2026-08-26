@@ -308,7 +308,9 @@ def _normalized_os() -> str:
     value = platform.system()
     if value == "Darwin":
         return "macos"
-    raise ConformanceError(f"Adapt conformance requires macOS: {value}")
+    if value == "Windows":
+        return "windows"
+    raise ConformanceError(f"unsupported Adapt conformance operating system: {value}")
 
 
 def _normalized_arch() -> str:
@@ -337,7 +339,8 @@ def resident_evidence(
         raise ConformanceError("Membrane release manifest is unavailable or invalid") from exc
     if not isinstance(release, dict):
         raise ConformanceError("Membrane release manifest is unavailable or invalid")
-    if binary.name != "membrane":
+    expected_binary = "membrane.exe" if os_name == "windows" else "membrane"
+    if binary.name.lower() != expected_binary.lower():
         raise ConformanceError("Membrane resident command is unavailable")
     role = "membrane"
     assets = release.get("assets")
@@ -865,7 +868,7 @@ def validate_receipt_payload(
 def _defaults(repo_root: Path) -> dict[str, Path]:
     root = Path(repo_root).resolve()
     _normalized_os()
-    binary_name = "membrane"
+    binary_name = "membrane.exe" if _normalized_os() == "windows" else "membrane"
     db = Path(os.environ.get(
         "CORTEX_DB", str(root / "tools/.cache/memory/cortex-engine.db")
     ))

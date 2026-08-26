@@ -124,7 +124,10 @@ fn state_name(state: IssueState) -> &'static str {
 }
 
 fn receipt_id(material: &str) -> String {
-    format!("rcpt_{}", &crate::canonical::sha256_hex(material.as_bytes())[..32])
+    format!(
+        "rcpt_{}",
+        &crate::canonical::sha256_hex(material.as_bytes())[..32]
+    )
 }
 
 impl SealedInsightIssueV1 {
@@ -144,7 +147,9 @@ impl SealedInsightIssueV1 {
             return Err(SealedIssueError::InvalidRecurrence);
         }
         if let Some(receipt) = validator_receipt_id {
-            let suffix = receipt.strip_prefix("rcpt_").ok_or(SealedIssueError::InvalidValidatorReceipt)?;
+            let suffix = receipt
+                .strip_prefix("rcpt_")
+                .ok_or(SealedIssueError::InvalidValidatorReceipt)?;
             if suffix.len() != 32 || !suffix.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err(SealedIssueError::InvalidValidatorReceipt);
             }
@@ -154,10 +159,18 @@ impl SealedInsightIssueV1 {
         {
             return Err(SealedIssueError::IdentityMismatch);
         }
-        let first_seen = issue.first_seen.clone().ok_or(SealedIssueError::MissingTimestamp)?;
-        let last_seen = issue.last_seen.clone().ok_or(SealedIssueError::MissingTimestamp)?;
-        let by_id: BTreeMap<&str, &FailureEpisodeV1> =
-            episodes.iter().map(|episode| (episode.episode_id.as_str(), episode)).collect();
+        let first_seen = issue
+            .first_seen
+            .clone()
+            .ok_or(SealedIssueError::MissingTimestamp)?;
+        let last_seen = issue
+            .last_seen
+            .clone()
+            .ok_or(SealedIssueError::MissingTimestamp)?;
+        let by_id: BTreeMap<&str, &FailureEpisodeV1> = episodes
+            .iter()
+            .map(|episode| (episode.episode_id.as_str(), episode))
+            .collect();
         let mut seen = BTreeSet::new();
         let mut episode_refs = Vec::new();
         let mut evidence_digests = BTreeSet::new();
@@ -195,7 +208,10 @@ impl SealedInsightIssueV1 {
                 "repo" => "repos",
                 other => return Err(SealedIssueError::InvalidApplicability(other.into())),
             };
-            applicability.entry(plural.into()).or_default().push(value.clone());
+            applicability
+                .entry(plural.into())
+                .or_default()
+                .push(value.clone());
         }
         if episode_refs.is_empty() || evidence_digests.is_empty() {
             return Err(SealedIssueError::EmptyEvidence);
@@ -344,7 +360,15 @@ mod tests {
             occurrence: 0,
             evidence_eligible: true,
         };
-        FailureEpisodeV1::new("f", super::super::Severity::High, 0.9, "sig", "failure", "", &[&event])
+        FailureEpisodeV1::new(
+            "f",
+            super::super::Severity::High,
+            0.9,
+            "sig",
+            "failure",
+            "",
+            &[&event],
+        )
     }
 
     fn sealed() -> SealedInsightIssueV1 {
@@ -395,7 +419,13 @@ mod tests {
         let mut issue = sealed();
         let digest = issue.payload_sha256.clone();
         issue
-            .transition(IssueState::Recurring, "reviewer", "receipt-2", "t2", "recurs")
+            .transition(
+                IssueState::Recurring,
+                "reviewer",
+                "receipt-2",
+                "t2",
+                "recurs",
+            )
             .unwrap();
         assert_eq!(issue.payload_sha256, digest);
         assert_eq!(issue.state.receipts.len(), 2);

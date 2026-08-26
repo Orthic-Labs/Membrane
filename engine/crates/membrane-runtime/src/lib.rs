@@ -23,15 +23,17 @@ pub mod installation_manifest;
 pub mod ledger;
 pub mod live_diagnostics;
 pub mod live_diagnostics_service;
-pub mod providers;
+pub mod mcp_executor;
 pub mod mcp_http;
 pub mod memory_provider;
 pub mod memory_sentinel_producer;
 pub mod memory_sentinel_view;
+pub mod native_diagnostics_pipe;
 pub mod notifications;
 pub mod paths;
 pub mod planes;
 pub mod provenance;
+pub mod providers;
 pub mod pull;
 pub mod receipt;
 pub mod release_identity;
@@ -70,6 +72,11 @@ pub use cortex_store::MemDb;
 pub use cortex_store::{
     TemporalFact, TemporalFactQuery, TemporalFactReceipt, TemporalFactStore, TemporalTransition,
 };
+pub use live_diagnostics_service::{
+    diagnostics_native_dispatch, diagnostics_router, resident_diagnostics_routes,
+    static_capabilities, DiagnosticsService, FenceEvaluateRequest, LiveDiagnosticsServiceError,
+    NativeDiagnosticsRequest, NativeDiagnosticsResponse, SnapshotAwaitRequest,
+};
 pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};
 pub use planes::{plane_for_path, Plane, PlaneBoundary, PLANE_BOUNDARIES};
 pub use receipt::{
@@ -88,8 +95,4 @@ pub use store::{
 pub use team_policy::{
     admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
     TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
-};
-pub use live_diagnostics_service::{
-    diagnostics_router, resident_diagnostics_routes, static_capabilities, DiagnosticsService,
-    FenceEvaluateRequest, LiveDiagnosticsServiceError, SnapshotAwaitRequest,
 };

@@ -45,7 +45,11 @@ pub fn live_snapshot_parts_from_local_service() -> Option<LiveSnapshotParts> {
     let workspace_root = configured_workspace_root();
     let delivery = read_delivery_health_json(&workspace_root);
     let blueprint = crate::freshness::read_blueprint_status(&workspace_root);
-    Some(snapshot_parts_from_health(&health, delivery.as_ref(), blueprint))
+    Some(snapshot_parts_from_health(
+        &health,
+        delivery.as_ref(),
+        blueprint,
+    ))
 }
 
 /// Canonical Hub snapshot composition from observed parts.
@@ -92,8 +96,9 @@ pub fn snapshot_parts_from_health(
     // Live snapshot is available when we reached /health and parsed it.
     let live_available = true;
     let parent = membrane_protocol::membrane_parent_state(true, health_ok, live_available);
-    let subsystems = subsystem_inputs_from_health(health, blueprint, &inputs.memory, &inputs.sentinel)
-        .subsystems();
+    let subsystems =
+        subsystem_inputs_from_health(health, blueprint, &inputs.memory, &inputs.sentinel)
+            .subsystems();
     LiveSnapshotParts {
         inputs,
         membrane_state: parent,
@@ -103,8 +108,14 @@ pub fn snapshot_parts_from_health(
 
 /// Snapshot parts for the offline fallback (health unreachable).
 pub fn offline_snapshot_parts() -> LiveSnapshotParts {
-    let inputs = HubInputsV1::unavailable("source_not_connected");
-    let subsystems = HubSubsystemInputsV1::unavailable("source_not_connected").subsystems();
+    let mut inputs = HubInputsV1::unavailable("hub_inactive");
+    // Offline means no resident Hub exists. Keep that diagnosis distinct from
+    // a live Hub whose Blueprint transport or repository is unavailable.
+    inputs.repositories = HubReadV1::Unavailable {
+        reason: "hub_inactive".into(),
+    };
+    let subsystem_inputs = HubSubsystemInputsV1::unavailable("hub_inactive");
+    let subsystems = subsystem_inputs.subsystems();
     LiveSnapshotParts {
         inputs,
         membrane_state: membrane_protocol::MembraneParentState::Offline,
@@ -135,7 +146,7 @@ fn subsystem_inputs_from_health(
     let not_instrumented = HubReadV1::Unavailable {
         reason: "not_instrumented".into(),
     };
-    let blueprint_hub = blueprint_hub_read(blueprint);
+    let blueprint_hub = blueprint_service_hub_read(blueprint);
     let cortex = cortex_hub_read(memory, sentinel);
     HubSubsystemInputsV1 {
         pull: not_instrumented.clone(),
@@ -177,7 +188,7 @@ fn cortex_hub_read(memory: &HubReadV1, sentinel: &HubReadV1) -> HubReadV1 {
                 _ => "cortex_unavailable".into(),
             };
             HubReadV1::Unavailable { reason }
-        },
+        }
     }
 }
 
@@ -426,17 +437,42 @@ fn inputs_from_health_with_blueprint(
 
 /// Map the Blueprint status seam to the repositories card only. Blueprint
 /// failures never alter resident health or any sibling Hub section.
+fn blueprint_error_reason(error: &str) -> &'static str {
+    let value = error.to_ascii_lowercase();
+    if value.contains("hub_inactive")
+        || value.contains("membrane_not_running")
+        || value.contains("hub is inactive")
+    {
+        return "hub_inactive";
+    }
+    if value.contains("resident_owner_active") {
+        return "resident_owner_active";
+    }
+    if value.contains("root_not_enrolled")
+        || value.contains("graph_missing")
+        || value.contains("not_configured")
+        || value.contains("unconfigured")
+    {
+        return "not_configured";
+    }
+    if value.contains("stale")
+        || value.contains("generation_mismatch")
+        || value.contains("watcher_unhealthy")
+    {
+        return "stale";
+    }
+    "transport_unavailable"
+}
+
 fn blueprint_hub_read(status: Result<serde_json::Value, String>) -> HubReadV1 {
     let envelope = match status {
         Ok(status) => status,
         Err(error) => {
-            return HubReadV1::Unavailable {
-                reason: if error.contains("stale_blocked") {
-                    "stale_blocked"
-                } else {
-                    "blueprint_unavailable"
-                }
-                .into(),
+            return match blueprint_error_reason(&error) {
+                "stale" => degraded_blueprint("stale", serde_json::Value::Null),
+                reason => HubReadV1::Unavailable {
+                    reason: reason.into(),
+                },
             };
         }
     };
@@ -491,34 +527,28 @@ fn blueprint_hub_read(status: Result<serde_json::Value, String>) -> HubReadV1 {
     if matches!(state, Some("stale" | "incomplete" | "indeterminate"))
         || matches!(graph_state, Some("stale" | "incomplete" | "indeterminate"))
     {
-        return HubReadV1::Unavailable {
-            reason: "stale_blocked".into(),
-        };
+        return degraded_blueprint("stale", result.clone());
     }
 
     // A successful IPC response proves only that the daemon accepted this
     // request. Require explicit watcher liveness + enrollment evidence before
     // exposing repository readiness; absent evidence stays local unavailable.
-    if daemon_running == Some(false)
-        || enrolled_count.is_none()
-        || enrolled_count == Some(0)
-        || watcher_running.is_none()
-    {
+    if daemon_running == Some(false) {
         return HubReadV1::Unavailable {
-            reason: "blueprint_unavailable".into(),
+            reason: "transport_unavailable".into(),
         };
     }
+    if enrolled_count == Some(0) {
+        return HubReadV1::Unavailable {
+            reason: "not_configured".into(),
+        };
+    }
+    if enrolled_count.is_none() || watcher_running.is_none() {
+        return degraded_blueprint("transport_unavailable", result.clone());
+    }
     if watcher_running == Some(false) {
-        return HubReadV1::Degraded {
-            reason: "blueprint_watcher_unhealthy".into(),
-            items: vec![serde_json::json!({"runtime": runtime})],
-            metadata: HubMetadataV1 {
-                resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
-                source: Some("blueprint_daemon".into()),
-                evidence: Some("Blueprint status IPC".into()),
-                observed_at_unix_ms: now_unix_ms(),
-                cache_age_ms: 0,
-            },
+        return HubReadV1::Unavailable {
+            reason: "transport_unavailable".into(),
         };
     }
 
@@ -553,8 +583,78 @@ fn blueprint_hub_read(status: Result<serde_json::Value, String>) -> HubReadV1 {
         };
     }
 
-    HubReadV1::Unavailable {
-        reason: "blueprint_unavailable".into(),
+    if matches!(state, Some("missing" | "unconfigured")) || graph_state == Some("missing") {
+        HubReadV1::Unavailable {
+            reason: "not_configured".into(),
+        }
+    } else {
+        degraded_blueprint("stale", result.clone())
+    }
+}
+
+fn degraded_blueprint(reason: &str, status: serde_json::Value) -> HubReadV1 {
+    HubReadV1::Degraded {
+        reason: reason.into(),
+        items: vec![status],
+        metadata: HubMetadataV1 {
+            resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
+            source: Some("blueprint_daemon".into()),
+            evidence: Some("Blueprint status IPC".into()),
+            observed_at_unix_ms: now_unix_ms(),
+            cache_age_ms: 0,
+        },
+    }
+}
+
+/// Blueprint service availability is distinct from repository configuration.
+/// A typed not-configured refusal still proves daemon liveness; transport and
+/// Hub lifecycle failures do not.
+fn blueprint_service_hub_read(status: Result<serde_json::Value, String>) -> HubReadV1 {
+    match status {
+        Ok(value) => {
+            let result = value.get("result").unwrap_or(&value);
+            let runtime = result
+                .get("runtime")
+                .or_else(|| result.get("serviceStatus"));
+            let watcher_running = runtime
+                .and_then(|runtime| {
+                    runtime
+                        .get("watcherRunning")
+                        .or_else(|| runtime.get("watcherAlive"))
+                })
+                .and_then(serde_json::Value::as_bool);
+            if watcher_running == Some(false) {
+                return HubReadV1::Unavailable {
+                    reason: "transport_unavailable".into(),
+                };
+            }
+            HubReadV1::Available {
+                items: vec![serde_json::json!({"mode": "hub_hosted", "status": value})],
+                metadata: HubMetadataV1 {
+                    resolver: Some("hub_inputs::blueprint_service_hub_read".into()),
+                    source: Some("blueprint_daemon".into()),
+                    evidence: Some("typed Blueprint IPC response".into()),
+                    observed_at_unix_ms: now_unix_ms(),
+                    cache_age_ms: 0,
+                },
+            }
+        }
+        Err(error) => match blueprint_error_reason(&error) {
+            "not_configured" => HubReadV1::Available {
+                items: vec![serde_json::json!({"mode": "hub_hosted", "typedRefusal": error})],
+                metadata: HubMetadataV1 {
+                    resolver: Some("hub_inputs::blueprint_service_hub_read".into()),
+                    source: Some("blueprint_daemon".into()),
+                    evidence: Some("typed Blueprint IPC refusal".into()),
+                    observed_at_unix_ms: now_unix_ms(),
+                    cache_age_ms: 0,
+                },
+            },
+            "stale" => degraded_blueprint("stale", serde_json::json!({"error": error})),
+            reason => HubReadV1::Unavailable {
+                reason: reason.into(),
+            },
+        },
     }
 }
 
@@ -629,7 +729,7 @@ mod tests {
         ));
         assert!(matches!(
             inputs.repositories,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+            HubReadV1::Unavailable { ref reason } if reason == "transport_unavailable"
         ));
         assert!(matches!(
             inputs.adapters,
@@ -661,14 +761,11 @@ mod tests {
         let absent = blueprint_hub_read(Err("connect: no such file".into()));
         assert!(matches!(
             absent,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+            HubReadV1::Unavailable { ref reason } if reason == "transport_unavailable"
         ));
 
         let stale_error = blueprint_hub_read(Err("Blueprint status failed: stale_blocked".into()));
-        assert!(matches!(
-            stale_error,
-            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
-        ));
+        assert!(matches!(stale_error, HubReadV1::Degraded { ref reason, .. } if reason == "stale"));
 
         let stale = blueprint_hub_read(Ok(serde_json::json!({
             "protocolVersion": 1,
@@ -678,20 +775,14 @@ mod tests {
                 "artifacts": {"graphState": "stale"}
             }
         })));
-        assert!(matches!(
-            stale,
-            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
-        ));
+        assert!(matches!(stale, HubReadV1::Degraded { ref reason, .. } if reason == "stale"));
 
         let incomplete = blueprint_hub_read(Ok(serde_json::json!({
             "protocolVersion": 1,
             "ok": true,
             "result": {"state": "incomplete"}
         })));
-        assert!(matches!(
-            incomplete,
-            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
-        ));
+        assert!(matches!(incomplete, HubReadV1::Degraded { ref reason, .. } if reason == "stale"));
 
         let fresh = blueprint_hub_read(Ok(serde_json::json!({
             "protocolVersion": 1,
@@ -717,10 +808,9 @@ mod tests {
                 "manifest": {"complete": true}
             }
         })));
-        assert!(matches!(
-            missing_runtime,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
-        ));
+        assert!(
+            matches!(missing_runtime, HubReadV1::Degraded { ref reason, .. } if reason == "transport_unavailable")
+        );
 
         let daemon_status = blueprint_hub_read(Ok(serde_json::json!({
             "protocolVersion": 1,
@@ -751,7 +841,7 @@ mod tests {
         })));
         assert!(matches!(
             unwatched,
-            HubReadV1::Degraded { ref reason, .. } if reason == "blueprint_watcher_unhealthy"
+            HubReadV1::Unavailable { ref reason } if reason == "transport_unavailable"
         ));
 
         let unenrolled = blueprint_hub_read(Ok(serde_json::json!({
@@ -766,9 +856,21 @@ mod tests {
                 }
             }
         })));
+        assert!(
+            matches!(unenrolled, HubReadV1::Unavailable { ref reason } if reason == "not_configured")
+        );
+
+        let typed_unenrolled = blueprint_hub_read(Err(
+            "Blueprint status failed: {\"code\":\"root_not_enrolled\"}".into(),
+        ));
+        assert!(
+            matches!(typed_unenrolled, HubReadV1::Unavailable { ref reason } if reason == "not_configured")
+        );
         assert!(matches!(
-            unenrolled,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+            blueprint_service_hub_read(Err(
+                "Blueprint status failed: {\"code\":\"root_not_enrolled\"}".into()
+            )),
+            HubReadV1::Available { .. }
         ));
     }
 
@@ -960,7 +1062,7 @@ mod tests {
 
         assert!(matches!(
             inputs.repositories,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+            HubReadV1::Unavailable { ref reason } if reason == "transport_unavailable"
         ));
         assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
         assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));
@@ -974,7 +1076,10 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
+        assert_eq!(
+            parts.membrane_state,
+            membrane_protocol::MembraneParentState::Running
+        );
         // Also prove via protocol helper directly
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, Some(true), true),
@@ -989,14 +1094,20 @@ mod tests {
             r#"{"ok": false, "catalog": {"status": "error"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
-        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Degraded);
+        assert_eq!(
+            parts.membrane_state,
+            membrane_protocol::MembraneParentState::Degraded
+        );
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, Some(false), true),
             membrane_protocol::MembraneParentState::Degraded
         );
         // Even with all children healthy, parent degraded when health is false
         let healthy_child_input = inputs_from_health(&health, None);
-        assert!(matches!(healthy_child_input.providers, HubReadV1::Available { .. }));
+        assert!(matches!(
+            healthy_child_input.providers,
+            HubReadV1::Available { .. }
+        ));
     }
 
     #[test]
@@ -1010,7 +1121,10 @@ mod tests {
     #[test]
     fn parent_unreachable_resident_is_offline() {
         let offline = offline_snapshot_parts();
-        assert_eq!(offline.membrane_state, membrane_protocol::MembraneParentState::Offline);
+        assert_eq!(
+            offline.membrane_state,
+            membrane_protocol::MembraneParentState::Offline
+        );
         assert_eq!(
             membrane_protocol::membrane_parent_state(true, None, true),
             membrane_protocol::MembraneParentState::Offline
@@ -1027,11 +1141,21 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         // Force all child resources to unavailable (no DB, no delivery, blueprint missing)
-        let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
-        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
+        let parts =
+            with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
+        assert_eq!(
+            parts.membrane_state,
+            membrane_protocol::MembraneParentState::Running
+        );
         // Children are unavailable/degraded but parent is Running
-        assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
-        assert!(matches!(parts.inputs.repositories, HubReadV1::Unavailable { .. }));
+        assert!(matches!(
+            parts.inputs.deliveries,
+            HubReadV1::Unavailable { .. }
+        ));
+        assert!(matches!(
+            parts.inputs.repositories,
+            HubReadV1::Unavailable { .. }
+        ));
     }
 
     #[test]
@@ -1043,15 +1167,32 @@ mod tests {
         // The wire shape is a closed six-field struct — no unnamed or missing
         // subsystem is representable.
         let encoded = serde_json::to_value(&parts.subsystems).unwrap();
-        let mut keys: Vec<&str> = encoded.as_object().unwrap().keys().map(String::as_str).collect();
+        let mut keys: Vec<&str> = encoded
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["adapt", "blueprint", "cortex", "ledger", "pull", "push"]);
+        assert_eq!(
+            keys,
+            ["adapt", "blueprint", "cortex", "ledger", "pull", "push"]
+        );
         for name in membrane_protocol::SUBSYSTEM_NAMES {
-            assert!(encoded.get(name).is_some_and(|value| value.is_object()), "missing subsystem {name}");
+            assert!(
+                encoded.get(name).is_some_and(|value| value.is_object()),
+                "missing subsystem {name}"
+            );
         }
         // Operational resources are 8 and distinct from subsystems
-        assert!(matches!(parts.inputs.deliveries, HubReadV1::Unavailable { .. }));
-        assert!(serde_json::to_value(&parts.subsystems).unwrap().get("deliveries").is_none());
+        assert!(matches!(
+            parts.inputs.deliveries,
+            HubReadV1::Unavailable { .. }
+        ));
+        assert!(serde_json::to_value(&parts.subsystems)
+            .unwrap()
+            .get("deliveries")
+            .is_none());
     }
 
     #[test]
@@ -1062,7 +1203,10 @@ mod tests {
         let parts = snapshot_parts_from_health(&health, None, Err("no socket".into()));
         for name in ["pull", "push", "ledger", "adapt"] {
             let section = subsystem_section(&parts.subsystems, name);
-            assert_eq!(section.state, membrane_protocol::SubsystemStateV1::NotConfigured);
+            assert_eq!(
+                section.state,
+                membrane_protocol::SubsystemStateV1::NotConfigured
+            );
             assert_eq!(section.reason, "not_instrumented");
         }
     }
@@ -1073,12 +1217,15 @@ mod tests {
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
         let parts = snapshot_parts_from_health(&health, None, Err("connect refused".into()));
-        assert_eq!(parts.membrane_state, membrane_protocol::MembraneParentState::Running);
+        assert_eq!(
+            parts.membrane_state,
+            membrane_protocol::MembraneParentState::Running
+        );
         assert_eq!(
             parts.subsystems.blueprint.state,
             membrane_protocol::SubsystemStateV1::Unavailable
         );
-        assert_eq!(parts.subsystems.blueprint.reason, "blueprint_unavailable");
+        assert_eq!(parts.subsystems.blueprint.reason, "transport_unavailable");
         // Parent remains Running even though Blueprint subsystem is Unavailable
     }
 
@@ -1087,9 +1234,13 @@ mod tests {
         let health: serde_json::Value = serde_json::from_str(
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
         ).unwrap();
-        let parts = with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
+        let parts =
+            with_missing_db(|| snapshot_parts_from_health(&health, None, Err("no socket".into())));
         // Operational sentinel should NOT be presented as Ledger
-        assert_eq!(parts.subsystems.ledger.state, membrane_protocol::SubsystemStateV1::NotConfigured);
+        assert_eq!(
+            parts.subsystems.ledger.state,
+            membrane_protocol::SubsystemStateV1::NotConfigured
+        );
         assert_eq!(parts.subsystems.ledger.reason, "not_instrumented");
         // Cortex owns sentinel/memory, not Ledger
         assert_ne!(

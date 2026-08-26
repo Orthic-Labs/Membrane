@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "allowDowngrades": true,
+      "nsis": {
+        "template": "windows/installer.nsi"
+      }
+    }
+  }
+}

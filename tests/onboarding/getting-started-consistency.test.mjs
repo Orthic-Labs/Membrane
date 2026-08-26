@@ -1,104 +1,62 @@
-// MBR-1002 — mechanical anti-drift check for docs/getting-started.md.
-//
-// The doc is prose; nothing forces it to stay true as the CLIs it documents
-// change. This file reads the real source (mcp/install.mjs, mcp/client.mjs,
-// mcp/server.mjs, mcp/project-registry.mjs, mcp/installation-binding.mjs,
-// package.json, README.md, docs/support-matrix.json) as text and asserts the
-// doc's literal commands, env vars, field names, and support-tier claim are
-// still consistent with it. No cargo/pnpm build, no network, no service —
-// pure fs reads and string/regex checks, so `node --test` alone proves it.
+// Native installed-path anti-drift checks for docs/getting-started.md.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
-const read = (relPath) => readFileSync(join(root, relPath), "utf8");
-
+const read = (path) => readFileSync(join(root, path), "utf8");
 const doc = read("docs/getting-started.md");
-const installSrc = read("mcp/install.mjs");
-const clientSrc = read("mcp/client.mjs");
-const serverSrc = read("mcp/server.mjs");
-const projectRegistrySrc = read("mcp/project-registry.mjs");
-const installationBindingSrc = read("mcp/installation-binding.mjs");
-const pkg = JSON.parse(read("package.json"));
-const readme = read("README.md");
-const supportMatrix = JSON.parse(read("docs/support-matrix.json"));
+const mcp = JSON.parse(read("mcp.json"));
+const tools = read("engine/crates/membrane-mcp/src/tools.rs");
+const hub = read("engine/crates/membrane-protocol/src/hub.rs");
+const product = read("docs/product.md");
 
-test("doc's Node/pnpm claim matches package.json engines and packageManager", () => {
-  assert.match(doc, /Node 20\+ & pnpm 11/);
-  assert.equal(pkg.engines.node, ">=20");
-  assert.match(pkg.packageManager, /^pnpm@11\./);
+test("quickstart matches canonical native MCP entrypoint", () => {
+  assert.equal(mcp.mcpServers.membrane.command, "membrane");
+  assert.deepEqual(mcp.mcpServers.membrane.args, ["stdio-mcp"]);
+  assert.match(doc, /"command": "membrane"/);
+  assert.match(doc, /"args": \["stdio-mcp"\]/);
+  assert.doesNotMatch(doc, /node mcp\/server\.mjs/);
 });
 
-test("doc's enrollment command matches mcp/install.mjs's real init usage", () => {
-  assert.match(doc, /node mcp\/install\.mjs init "\$PWD" --repository demo-repo --scope demo-scope/);
-  assert.match(installSrc, /membrane init <root> --repository <id> --scope <id>/);
+test("quickstart states native Windows runtime authority", () => {
+  assert.match(product, /Current supported target is \*\*Windows\*\*/);
+  assert.match(product, /Membrane Hub.*sole resident service authority/);
+  assert.match(doc, /signed Windows install/);
+  assert.match(doc, /Membrane Hub owns the resident/);
+  assert.match(doc, /Node & Python are development\/test tooling/);
 });
 
-test("doc's activation command matches mcp/install.mjs's real install usage and client set", () => {
-  assert.match(doc, /node mcp\/install\.mjs install "\$PWD" --client codex/);
-  assert.match(doc, /--client claude --claude-scope project/);
-  assert.match(installSrc, /membrane install <root> \[--client codex\|claude\]/);
-  assert.match(installSrc, /CLIENTS = new Set\(\["codex", "claude"\]\)/);
+test("membrane_context example matches native schema", () => {
+  assert.match(doc, /"task":"orient me"/);
+  assert.match(doc, /"repositoryId":"demo-repo"/);
+  assert.match(doc, /"scopeId":"demo-scope"/);
+  assert.match(tools, /"membrane_context" =>/);
+  assert.match(tools, /vec!\["task", "repository", "caller"\]/);
+  assert.match(tools, /required":\["root","repositoryId","scopeId"\]/);
 });
 
-test("doc's enrollment env var is the one project-registry.mjs actually reads", () => {
-  assert.match(doc, /MEMBRANE_PROJECT_REGISTRY/);
-  assert.match(projectRegistrySrc, /process\.env\.MEMBRANE_PROJECT_REGISTRY/);
+test("Hub-off expectation matches native typed contract", () => {
+  assert.match(doc, /"kind":"membrane_unavailable","reason":"hub_inactive","retryable":true/);
+  assert.match(hub, /kind: "membrane_unavailable"/);
+  assert.match(hub, /reason: MembraneUnavailableReasonV1::HubInactive/);
+  assert.match(hub, /retryable: true/);
 });
 
-test("doc's forced-degradation env var is the one client.mjs actually reads, with its real valid range", () => {
-  assert.match(doc, /MEMBRANE_PORT=59991/);
-  assert.match(clientSrc, /process\.env\.MEMBRANE_PORT/);
-  assert.match(clientSrc, /n >= 1024 && n <= 65535/);
+test("Blueprint lifecycle language preserves installed runtime contract", () => {
+  assert.match(doc, /runtime\s+shipped by Membrane installer/);
+  assert.match(doc, /Watcher freshness is Hub-coupled/);
+  assert.match(doc, /`not_configured`/);
+  assert.match(doc, /`degraded`/);
+  assert.match(doc, /`blueprint_unavailable`/);
+  assert.match(doc, /bounded one-shot/);
 });
 
-test("doc's forced-degradation expectation matches client.mjs's real transport-failure envelope", () => {
-  assert.match(doc, /providerStatus: "unavailable"/);
-  assert.match(doc, /degradationReason: "planner_unavailable"/);
-  assert.match(doc, /packet: null/);
-  assert.match(clientSrc, /providerStatus: "unavailable"/);
-  assert.match(clientSrc, /degradationReason: "planner_unavailable"/);
-});
-
-test("doc's membrane_context payload shape matches the live tool's required schema", () => {
-  assert.match(doc, /"task":"orient me","repository":"\$PWD","caller":\{"root":"\$PWD","repositoryId":"demo-repo","scopeId":"demo-scope"\}/);
-  assert.match(serverSrc, /name: "membrane_context"[\s\S]{0,400}?required: \["task", "repository", "caller"\]/);
-  assert.match(serverSrc, /required: \["root", "repositoryId", "scopeId"\]/);
-});
-
-test("doc's parent-workspace prerequisite matches installation-binding.mjs's real runtime-file walk", () => {
-  assert.match(doc, /tools\/lib\/memory\/runtime\.json/);
-  assert.match(installationBindingSrc, /RUNTIME_FILE = join\("tools", "lib", "memory", "runtime\.json"\)/);
-});
-
-test("doc's README cross-reference anchor exists", () => {
-  assert.match(readme, /^## Repository posture$/m);
-});
-
-test("doc's support-tier claim matches the generated support-matrix exactly (fails if the matrix changes and the doc doesn't)", () => {
-  const match = doc.match(/(\d+)\s+of\s+(\d+)\s+platform\/client\s+pairs\s+qualified/);
-  assert.ok(match, "doc must state its support-tier claim as \"N of M platform/client pairs qualified\"");
-  const [, claimedQualified, claimedTotal] = match.map(Number);
-  const actualTotal = supportMatrix.rows.length;
-  const actualQualified = supportMatrix.rows.filter((row) => row.tier === "qualified").length;
-  assert.equal(claimedTotal, actualTotal, "doc's total platform/client pair count is stale");
-  assert.equal(claimedQualified, actualQualified, "doc claims a qualified count the support matrix does not currently back");
-  // MBR-808 contract: this doc must never claim more than the matrix backs.
-  assert.ok(claimedQualified <= actualQualified);
-});
-
-test("doc's offline fixture commands point at files that exist", () => {
+test("offline fixture remains explicitly synthetic", () => {
   assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs/);
   assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs --degraded/);
-  // Resolvable without throwing — proves the path is real, not aspirational.
-  read("docs/examples/quickstart/run.mjs");
-});
-
-test("doc's live-path MCP server dependency claim matches package.json", () => {
-  assert.match(doc, /@modelcontextprotocol\/server/);
-  assert.ok(Object.prototype.hasOwnProperty.call(pkg.dependencies || {}, "@modelcontextprotocol/server"));
-  assert.match(serverSrc, /from "@modelcontextprotocol\/server"/);
+  assert.ok(existsSync(join(root, "docs/examples/quickstart/run.mjs")));
+  assert.match(doc, /evidenceAuthority: synthetic/);
 });

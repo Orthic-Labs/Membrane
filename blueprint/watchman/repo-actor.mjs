@@ -255,7 +255,11 @@ export class RepositoryActor extends EventEmitter {
     // actor's own subscription: today, an enrolled sibling repo nested under
     // this actor's root. Own `.agent` output is already excluded by the base
     // ignore set in adapter.mjs, at every actor, not just this one.
-    const configuredIgnore = normalizeIgnoredPrefixes(loadConfig(this.root, outDir)?.ignoredPrefixes);
+    // Do not let configuration discovery create an enrolled root that does not
+    // exist. A missing root must fail startup & remain honestly unwatched.
+    const configuredIgnore = existsSync(this.root)
+      ? normalizeIgnoredPrefixes(loadConfig(this.root, outDir)?.ignoredPrefixes)
+      : [];
     this.ignore = [...new Set([...ignore, ...configuredIgnore])];
     this.subscription = null;
     this.timer = null;

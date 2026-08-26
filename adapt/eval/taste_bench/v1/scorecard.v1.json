@@ -4,7 +4,7 @@
   "corpus_sha256": "92151855419dfd7f4826f7f6a08fd932844a7cc8aea231602a838e7e285e7f11",
   "corpus_kind": "synthetic_conformance",
   "implementation": "membrane_adapt::{taste::extract_candidates_with_source,admission::evaluate_eligibility}",
-  "source_digest": "f1c93aa760a4a9bd9e13ca385d1260f230dddb98ef8bfb514d8e21cd9328fe6d",
+  "source_digest": "4b179b32bcf14bccaff5fd7cdecd25b2fd8ebb2df100c91667856866b6fc3abb",
   "thresholds": {
     "extraction_precision_min": 0.95,
     "extraction_recall_min": 0.75,
@@ -16,19 +16,19 @@
   "metrics": {
     "extraction": {
       "true_positive": 29,
-      "false_positive": 1,
+      "false_positive": 0,
       "false_negative": 0,
-      "true_negative": 12
+      "true_negative": 13
     },
-    "extraction_precision": 0.9666666666666667,
+    "extraction_precision": 1.0,
     "extraction_recall": 1.0,
     "admission": {
       "true_positive": 20,
-      "false_positive": 1,
+      "false_positive": 0,
       "false_negative": 0,
-      "true_negative": 21
+      "true_negative": 22
     },
-    "admission_precision": 0.9523809523809523,
+    "admission_precision": 1.0,
     "admission_recall": 1.0,
     "semantic_projection_correct": 29,
     "semantic_projection_total": 29,
@@ -50,8 +50,5 @@
     "An interval report for extraction and admission metrics on that corpus.",
     "Installed-artifact qualification using the released package path."
   ],
-  "case_failures": [
-    "neg-product-fact-modal: extraction expected false, observed true",
-    "neg-product-fact-modal: admission expected false, observed true (Some(Admitted))"
-  ]
+  "case_failures": []
 }

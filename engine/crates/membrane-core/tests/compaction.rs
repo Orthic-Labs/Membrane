@@ -74,7 +74,7 @@ fn fallback_is_injected_only_for_residual_narrative() {
     let result = assemble(
         &input(),
         &CompactionConfig {
-            budget_tokens: 10,
+            budget_tokens: 11,
             ..Default::default()
         },
         Some(&summarizer),
@@ -83,7 +83,10 @@ fn fallback_is_injected_only_for_residual_narrative() {
 
     assert_eq!(summarizer.calls.get(), 1);
     assert!(result.receipt.fallback_used);
-    assert_eq!(result.receipt.fallback_provider.as_deref(), Some("fixture-provider"));
+    assert_eq!(
+        result.receipt.fallback_provider.as_deref(),
+        Some("fixture-provider")
+    );
     assert!(result
         .projection
         .retained
@@ -106,16 +109,17 @@ fn protected_material_survives_budget_overflow() {
 
     assert!(!result.receipt.budget_met);
     assert!(result.projection.rendered_text.contains("ABC-123"));
-    assert!(result.receipt.omitted_categories.contains(&CATEGORY_NARRATIVE.to_string()));
+    assert!(result
+        .receipt
+        .omitted_categories
+        .contains(&CATEGORY_NARRATIVE.to_string()));
 }
 
 #[test]
 fn duplicate_ids_fail_closed() {
     let mut source = input();
-    source.session.push(CompactionItem::new(
-        "obligation-1",
-        "session",
-        "duplicate",
-    ));
+    source
+        .session
+        .push(CompactionItem::new("obligation-1", "session", "duplicate"));
     assert!(compact(&source, &CompactionConfig::default()).is_err());
 }

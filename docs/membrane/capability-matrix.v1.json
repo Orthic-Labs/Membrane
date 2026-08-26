@@ -73,11 +73,11 @@
       "description": "Mines experience into governed proposals and never writes durable truth directly."
     }
   ],
-  "current_target": "macOS",
+  "current_target": "Windows",
   "cortex_scope": "durable-memory-only",
   "resident_service_authority": "hub",
   "support_tiers": {
-    "tier_1": ["macOS"],
+    "tier_1": ["Windows"],
     "tier_2_best_effort": []
   },
   "states": ["fully_enforced", "context_enforced", "advisory", "degraded", "blocked"]

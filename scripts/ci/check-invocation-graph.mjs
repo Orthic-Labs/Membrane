@@ -31,6 +31,97 @@ import {
 
 export const SEAL_REL = "migration/native-rust/native-only-seal.json";
 
+const FRESH_BUILD_VOLATILE_FIELDS = new Set(["baselineCommit", "generatedAt"]);
+
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize).sort((a, b) => {
+      const left = JSON.stringify(a);
+      const right = JSON.stringify(b);
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
+function comparableGraph(graph) {
+  return Object.fromEntries(
+    Object.entries(graph ?? {}).filter(([key]) => !FRESH_BUILD_VOLATILE_FIELDS.has(key)),
+  );
+}
+
+function edgeSignature(edge) {
+  const { id: _id, ...withoutId } = edge;
+  return JSON.stringify(canonicalize(withoutId));
+}
+
+function edgeDescription(edge) {
+  return `${edge.from} -> ${edge.to} (${edge.operation}, ${edge.boundary}, ${edge.origin})`;
+}
+
+export function compareFreshBuild(graph, freshGraph) {
+  const errors = [];
+  const add = (code, message, path) => errors.push({ code, message, ...(path ? { path } : {}) });
+
+  if (!freshGraph) return errors;
+
+  const checkedEdges = new Map();
+  for (const edge of graph?.edges ?? []) {
+    const signature = edgeSignature(edge);
+    const entries = checkedEdges.get(signature) ?? [];
+    entries.push(edge);
+    checkedEdges.set(signature, entries);
+  }
+  const freshEdges = new Map();
+  for (const edge of freshGraph.edges ?? []) {
+    const signature = edgeSignature(edge);
+    const entries = freshEdges.get(signature) ?? [];
+    entries.push(edge);
+    freshEdges.set(signature, entries);
+  }
+
+  for (const [signature, edges] of freshEdges) {
+    const checked = checkedEdges.get(signature) ?? [];
+    for (const edge of edges.slice(checked.length)) {
+      add(
+        "STALE_GRAPH_EDGE_DRIFT",
+        `checked-in invocation graph is missing fresh-build edge: ${edgeDescription(edge)}`,
+        edge.from,
+      );
+    }
+  }
+  for (const [signature, edges] of checkedEdges) {
+    const fresh = freshEdges.get(signature) ?? [];
+    for (const edge of edges.slice(fresh.length)) {
+      add(
+        "STALE_GRAPH_EDGE_DRIFT",
+        `checked-in invocation graph contains edge absent from fresh build: ${edgeDescription(edge)}`,
+        edge.from,
+      );
+    }
+  }
+
+  const checkedWithoutEdges = { ...comparableGraph(graph) };
+  const freshWithoutEdges = { ...comparableGraph(freshGraph) };
+  delete checkedWithoutEdges.edges;
+  delete freshWithoutEdges.edges;
+  if (JSON.stringify(canonicalize(checkedWithoutEdges)) !== JSON.stringify(canonicalize(freshWithoutEdges))) {
+    add(
+      "STALE_GRAPH_FRESH_BUILD_MISMATCH",
+      "checked-in invocation graph differs from fresh build output outside edge records",
+      GRAPH_REL,
+    );
+  }
+  return errors;
+}
+
 export function deriveReachability(graph) {
   const adjacency = new Map();
   for (const e of graph.edges ?? []) {
@@ -66,7 +157,11 @@ export function rowAgreement(manifestRow, reachableSet) {
   return { agrees: expected === !!manifestRow.production_reachable, expected };
 }
 
-export function validateInvocationGraph({ root, graph, manifest, reconciliation, trackedFiles }) {
+export function productionUnresolvedReferences(graph, reachableSet) {
+  return (graph.unresolvedReferences ?? []).filter((reference) => reachableSet.has(reference.from));
+}
+
+export function validateInvocationGraph({ root, graph, manifest, reconciliation, trackedFiles, freshGraph }) {
   const errors = [];
   const warnings = [];
   const add = (code, message, path) => errors.push({ code, message, ...(path ? { path } : {}) });
@@ -75,6 +170,10 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
     add("GRAPH_SCHEMA_MISMATCH", "invocation-graph artifact/schemaVersion mismatch — regenerate with build-invocation-graph.mjs --write");
     return { errors, warnings };
   }
+
+  // Compare semantic graph output against a fresh scan. Generated timestamp
+  // and baseline commit are intentionally excluded; edge IDs are local labels.
+  errors.push(...compareFreshBuild(graph, freshGraph));
 
   // 1. Node freshness against current tracked executables.
   const nodeIds = new Set((graph.nodes ?? []).map((n) => n.id));
@@ -185,11 +284,11 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
     for (const row of manifest?.rows ?? []) {
       if (row.production_reachable && ["python", "node"].includes(row.runtime)) prodInterpreters++;
     }
-    const unresolved = (graph.unresolvedReferences ?? []).length;
+    const unresolved = productionUnresolvedReferences(graph, reachableSet).length;
     if (prodInterpreters > 0 || unresolved > 0) {
       add(
         "NATIVE_ONLY_SEAL_PREMATURE",
-        `native-only-seal.json exists while ${prodInterpreters} production interpreter row(s) and ${unresolved} unresolved reference(s) remain`,
+        `native-only-seal.json exists while ${prodInterpreters} production interpreter row(s) and ${unresolved} production-reachable unresolved reference(s) remain`,
         SEAL_REL,
       );
     }
@@ -222,7 +321,14 @@ function main(argv) {
   }
 
   const trackedFiles = loadTrackedFiles(root);
-  const { errors, warnings } = validateInvocationGraph({ root, graph, manifest, reconciliation, trackedFiles });
+  let freshGraph;
+  try {
+    freshGraph = buildGraph({ root, trackedFiles });
+  } catch (error) {
+    process.stderr.write(`invocation graph fresh build failed: ${error.message}\n`);
+    return 2;
+  }
+  const { errors, warnings } = validateInvocationGraph({ root, graph, manifest, reconciliation, trackedFiles, freshGraph });
 
   if (jsonOut) {
     process.stdout.write(`${JSON.stringify({ ok: errors.length === 0, errors, warnings }, null, 2)}\n`);

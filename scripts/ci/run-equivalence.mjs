@@ -14,10 +14,7 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-const python = process.platform === "win32" ? "py" : "python3";
-const pythonPrefix = process.platform === "win32" ? ["-3.11"] : [];
-run("rightkit", [
-  "cargo",
+run("cargo", [
   "build",
   "--manifest-path",
   "engine/Cargo.toml",
@@ -27,26 +24,13 @@ run("rightkit", [
   "cortex",
   "--locked",
 ]);
-run(python, [
-  ...pythonPrefix,
-  "-m",
-  "pytest",
-  "-q",
-  "engine/federation/test_equivalence_net.py",
-  "engine/federation/test_warm_receipts.py",
-  "engine/federation/test_gateway_merge_order.py",
-  "engine/federation/test_gateway_failure_taxonomy.py",
-  "engine/federation/test_gateway_freshness.py",
-  "engine/federation/test_gateway_stdio.py",
-]);
 run("node", [
   "--test",
   "mcp/scope-grant-v1.test.mjs",
   "mcp/deadline.test.mjs",
   "mcp/delivery-serialization.test.mjs",
 ]);
-run("rightkit", [
-  "cargo",
+run("cargo", [
   "test",
   "--manifest-path",
   "engine/Cargo.toml",
@@ -58,13 +42,12 @@ run("rightkit", [
   "doc_spine_equivalence",
   "--locked",
 ]);
-run("rightkit", [
-  "cargo",
+run("cargo", [
   "test",
   "--manifest-path",
   "engine/Cargo.toml",
   "-p",
   "membrane-runtime",
-  "runc::tests::",
+  "pull::",
   "--locked",
 ]);

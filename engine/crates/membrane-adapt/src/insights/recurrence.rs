@@ -8,9 +8,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::model_boundary::ModelProposalError;
 use super::{InsightIssueV1, IssueState, TranscriptEventV1};
 use crate::insights::detectors::run_all_detectors;
+use crate::model_boundary::ModelProposalError;
 
 /// Grouping key: family + signature. Deterministic and order-independent.
 pub fn grouping_key(family: &str, signature: &str) -> String {
@@ -81,9 +81,7 @@ pub fn form_issues(
     out
 }
 
-fn applicability_of(
-    members: &[&crate::insights::FailureEpisodeV1],
-) -> BTreeMap<String, String> {
+fn applicability_of(members: &[&crate::insights::FailureEpisodeV1]) -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
     let hosts: Vec<String> = members
         .iter()
@@ -122,8 +120,10 @@ impl HybridMergeProposal {
         episodes: &[crate::insights::FailureEpisodeV1],
         issues: &[InsightIssueV1],
     ) -> Result<Vec<String>, ModelProposalError> {
-        let by_id: BTreeMap<&str, &crate::insights::FailureEpisodeV1> =
-            episodes.iter().map(|e| (e.episode_id.as_str(), e)).collect();
+        let by_id: BTreeMap<&str, &crate::insights::FailureEpisodeV1> = episodes
+            .iter()
+            .map(|e| (e.episode_id.as_str(), e))
+            .collect();
         if self.episode_ids.is_empty() {
             return Err(ModelProposalError::UnboundEvidence);
         }
@@ -154,9 +154,15 @@ impl HybridMergeProposal {
 
 /// Apply a validated issue-state transition. Returns the updated issue or an
 /// error naming the illegal transition. Never bypasses `can_transition_to`.
-pub fn transition_issue(issue: &InsightIssueV1, target: IssueState) -> Result<InsightIssueV1, String> {
+pub fn transition_issue(
+    issue: &InsightIssueV1,
+    target: IssueState,
+) -> Result<InsightIssueV1, String> {
     if !issue.state.can_transition_to(target) {
-        return Err(format!("illegal issue transition {:?} -> {:?}", issue.state, target));
+        return Err(format!(
+            "illegal issue transition {:?} -> {:?}",
+            issue.state, target
+        ));
     }
     let mut next = issue.clone();
     next.state = target;
@@ -164,7 +170,9 @@ pub fn transition_issue(issue: &InsightIssueV1, target: IssueState) -> Result<In
 }
 
 /// Record recurrence after mitigation; drives reopen logic in `outcomes`.
-pub fn record_post_mitigation_recurrence(mut issue: InsightIssueV1) -> Result<InsightIssueV1, String> {
+pub fn record_post_mitigation_recurrence(
+    mut issue: InsightIssueV1,
+) -> Result<InsightIssueV1, String> {
     if issue.state != IssueState::Mitigated {
         return Err("recurrence-after-mitigation requires Mitigated state".into());
     }
@@ -197,8 +205,16 @@ mod tests {
     #[test]
     fn repeated_ask_forms_issue() {
         let events = vec![
-            ev("a", "s1", "please run the full test suite before claiming done"),
-            ev("b", "s2", "Please run the FULL test suite before claiming done."),
+            ev(
+                "a",
+                "s1",
+                "please run the full test suite before claiming done",
+            ),
+            ev(
+                "b",
+                "s2",
+                "Please run the FULL test suite before claiming done.",
+            ),
         ];
         let issues = mine_issues(&events, 2);
         assert!(issues.iter().any(|i| i.family == "repeated_ask"));
@@ -206,15 +222,27 @@ mod tests {
 
     #[test]
     fn single_episode_does_not_form_issue() {
-        let events = vec![ev("a", "s1", "please run the full test suite before claiming done")];
+        let events = vec![ev(
+            "a",
+            "s1",
+            "please run the full test suite before claiming done",
+        )];
         assert!(mine_issues(&events, 2).is_empty());
     }
 
     #[test]
     fn hybrid_merge_verifies_but_never_admits() {
         let events = vec![
-            ev("a", "s1", "please run the full test suite before claiming done"),
-            ev("b", "s2", "Please run the FULL test suite before claiming done."),
+            ev(
+                "a",
+                "s1",
+                "please run the full test suite before claiming done",
+            ),
+            ev(
+                "b",
+                "s2",
+                "Please run the FULL test suite before claiming done.",
+            ),
         ];
         let eps = run_all_detectors(&events);
         assert!(!eps.is_empty());
@@ -261,7 +289,9 @@ mod tests {
         };
         assert!(transition_issue(&issue, IssueState::Mitigated).is_err());
         assert_eq!(
-            transition_issue(&issue, IssueState::Recurring).unwrap().state,
+            transition_issue(&issue, IssueState::Recurring)
+                .unwrap()
+                .state,
             IssueState::Recurring
         );
     }

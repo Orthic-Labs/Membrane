@@ -10,7 +10,10 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
-use super::guards::{guard_user_span, has_positive_verification_claim};
+use super::guards::{
+    contains_hypothetical_narration, guard_user_span, has_positive_verification_claim,
+    is_mostly_quoted, is_tool_relayed_verification,
+};
 use super::{EventKind, FailureEpisodeV1, Severity, TranscriptEventV1, UserDisposition};
 
 fn re(pattern: &str) -> Regex {
@@ -158,6 +161,17 @@ fn user_events<'a>(events: &'a [TranscriptEventV1]) -> Vec<(usize, &'a Transcrip
         .collect()
 }
 
+fn observable(event: &TranscriptEventV1) -> bool {
+    event.evidence_eligible
+}
+
+fn allowed_assistant_claim(event: &TranscriptEventV1) -> bool {
+    observable(event)
+        && event.kind == EventKind::AssistantMessage
+        && !is_mostly_quoted(&event.text)
+        && !contains_hypothetical_narration(&event.text)
+}
+
 fn episode_from(
     detector: &str,
     severity: Severity,
@@ -193,13 +207,16 @@ pub fn repeated_ask_signature(text: &str) -> String {
 
 pub fn detect_repeated_ask(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
     let mut out = Vec::new();
-    let mut seen: std::collections::BTreeMap<String, Vec<usize>> = std::collections::BTreeMap::new();
+    let mut seen: std::collections::BTreeMap<String, Vec<usize>> =
+        std::collections::BTreeMap::new();
     for (idx, ev) in user_events(events) {
         let len = ev.text.chars().count();
         if !(8..=300).contains(&len) {
             continue;
         }
-        seen.entry(repeated_ask_signature(&ev.text)).or_default().push(idx);
+        seen.entry(repeated_ask_signature(&ev.text))
+            .or_default()
+            .push(idx);
     }
     for (signature, indexes) in seen {
         if indexes.len() < 2 {
@@ -227,19 +244,31 @@ pub fn detect_repeated_ask(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1
 // ---- frustration / swearing -------------------------------------------------
 
 pub fn detect_visible_frustration(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
-    collect_signal(events, "visible_frustration", Severity::Medium, 0.7, &patterns().frustration)
-        .into_iter()
-        .filter(|episode| {
-            !episode.evidence.iter().any(|span| {
-                let text = span.text.to_lowercase();
-                text.contains("not frustrated") || text.contains("not frustrating")
-            })
+    collect_signal(
+        events,
+        "visible_frustration",
+        Severity::Medium,
+        0.7,
+        &patterns().frustration,
+    )
+    .into_iter()
+    .filter(|episode| {
+        !episode.evidence.iter().any(|span| {
+            let text = span.text.to_lowercase();
+            text.contains("not frustrated") || text.contains("not frustrating")
         })
-        .collect()
+    })
+    .collect()
 }
 
 pub fn detect_user_swearing(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
-    collect_signal(events, "user_swearing", Severity::High, 0.9, &patterns().profanity)
+    collect_signal(
+        events,
+        "user_swearing",
+        Severity::High,
+        0.9,
+        &patterns().profanity,
+    )
 }
 
 fn collect_signal(
@@ -252,23 +281,41 @@ fn collect_signal(
     user_events(events)
         .into_iter()
         .filter(|(_, ev)| pattern.is_match(&ev.text))
-        .map(|(idx, _)| episode_from(detector, severity, confidence, detector, "frustration signal in user message", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                detector,
+                severity,
+                confidence,
+                detector,
+                "frustration signal in user message",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
 // ---- claimed_verified_then_corrected ---------------------------------------
 
-pub fn detect_claimed_verified_then_corrected(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
+pub fn detect_claimed_verified_then_corrected(
+    events: &[TranscriptEventV1],
+) -> Vec<FailureEpisodeV1> {
     let p = patterns();
     let mut out = Vec::new();
     let assistant_claims: Vec<usize> = events
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.kind == EventKind::AssistantMessage && !has_positive_verification_claim(&e.text).is_empty())
+        .filter(|(_, e)| {
+            allowed_assistant_claim(e) && !has_positive_verification_claim(&e.text).is_empty()
+        })
         .map(|(i, _)| i)
         .collect();
     for cidx in assistant_claims {
-        if let Some(uev) = events.iter().skip(cidx + 1).find(|e| e.is_user()) {
+        if let Some(uev) = events
+            .iter()
+            .skip(cidx + 1)
+            .find(|e| guard_user_span(e).is_pass())
+        {
             if guard_user_span(uev).is_pass() && p.correction.is_match(&uev.text) {
                 let mut ep = FailureEpisodeV1::new(
                     "claimed_verified_then_corrected",
@@ -295,14 +342,23 @@ pub fn detect_ignored_tool_failure(events: &[TranscriptEventV1]) -> Vec<FailureE
     let mut out = Vec::new();
     let mut last_failed: Option<usize> = None;
     for idx in 0..events.len() {
+        if !observable(&events[idx]) {
+            continue;
+        }
         match events[idx].kind {
             EventKind::ToolResult => {
-                last_failed = if looks_like_failure(&events[idx].text) { Some(idx) } else { None };
+                last_failed = if looks_like_failure(&events[idx].text) {
+                    Some(idx)
+                } else {
+                    None
+                };
             }
             EventKind::ToolCall => last_failed = None,
             EventKind::AssistantMessage => {
                 if let Some(f) = last_failed {
-                    if !has_positive_verification_claim(&events[idx].text).is_empty() {
+                    if allowed_assistant_claim(&events[idx])
+                        && !has_positive_verification_claim(&events[idx].text).is_empty()
+                    {
                         let mut ep = FailureEpisodeV1::new(
                             "ignored_tool_failure",
                             Severity::Critical,
@@ -337,15 +393,20 @@ fn looks_like_failure(text: &str) -> bool {
 
 // ---- degraded_provider_treated_as_success ----------------------------------
 
-pub fn detect_degraded_provider_treated_as_success(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
+pub fn detect_degraded_provider_treated_as_success(
+    events: &[TranscriptEventV1],
+) -> Vec<FailureEpisodeV1> {
     let p = patterns();
     let mut out = Vec::new();
     for idx in 1..events.len() {
         let prev = &events[idx - 1];
         let cur = &events[idx];
-        if prev.kind == EventKind::ToolResult
+        if observable(prev)
+            && observable(cur)
+            && prev.kind == EventKind::ToolResult
             && p.degraded.is_match(&prev.text)
             && cur.kind == EventKind::AssistantMessage
+            && allowed_assistant_claim(cur)
             && patterns().assistant_success.is_match(&cur.text)
             && !Regex::new(r"(?im)\b(?:stale|fallback|unverified|pending|unavailable)\b")
                 .expect("static pattern compiles")
@@ -372,6 +433,9 @@ pub fn detect_false_not_found_after_search(events: &[TranscriptEventV1]) -> Vec<
     let mut out = Vec::new();
     let mut pending: Option<usize> = None;
     for idx in 0..events.len() {
+        if !observable(&events[idx]) {
+            continue;
+        }
         match events[idx].kind {
             EventKind::ToolResult => {
                 if p.not_found.is_match(&events[idx].text) {
@@ -392,9 +456,15 @@ pub fn detect_false_not_found_after_search(events: &[TranscriptEventV1]) -> Vec<
                 }
             }
             EventKind::UserMessage => {
+                if !guard_user_span(&events[idx]).is_pass() {
+                    continue;
+                }
                 if let Some(nf) = pending {
                     let lower = events[idx].text.to_lowercase();
-                    if lower.contains("exists") || lower.contains("it is there") || lower.contains("it's there") {
+                    if lower.contains("exists")
+                        || lower.contains("it is there")
+                        || lower.contains("it's there")
+                    {
                         out.push(FailureEpisodeV1::new(
                             "false_not_found",
                             Severity::Medium,
@@ -431,15 +501,37 @@ macro_rules! user_signal_detector {
     };
 }
 
-user_signal_detector!(detect_wrong_repo_or_subsystem, "wrong_repo_or_subsystem", Severity::Medium, 0.75, wrong_target, "wrong target surface");
-user_signal_detector!(detect_omitted_requirement, "omitted_requirement", Severity::High, 0.85, omitted_req, "omitted requirement");
-user_signal_detector!(detect_planning_instead_of_executing, "planning_instead_of_executing", Severity::Medium, 0.7, planning_loop, "planning instead of executing");
+user_signal_detector!(
+    detect_wrong_repo_or_subsystem,
+    "wrong_repo_or_subsystem",
+    Severity::Medium,
+    0.75,
+    wrong_target,
+    "wrong target surface"
+);
+user_signal_detector!(
+    detect_omitted_requirement,
+    "omitted_requirement",
+    Severity::High,
+    0.85,
+    omitted_req,
+    "omitted requirement"
+);
+user_signal_detector!(
+    detect_planning_instead_of_executing,
+    "planning_instead_of_executing",
+    Severity::Medium,
+    0.7,
+    planning_loop,
+    "planning instead of executing"
+);
 
-fn assistant_events(events: &[TranscriptEventV1]) -> impl Iterator<Item = (usize, &TranscriptEventV1)> {
-    events
-        .iter()
-        .enumerate()
-        .filter(|(_, event)| event.kind == EventKind::AssistantMessage && event.evidence_eligible)
+fn assistant_events(
+    events: &[TranscriptEventV1],
+) -> impl Iterator<Item = (usize, &TranscriptEventV1)> {
+    events.iter().enumerate().filter(|(_, event)| {
+        allowed_assistant_claim(event) && !is_tool_relayed_verification(&event.text)
+    })
 }
 
 fn is_historical_or_negated(text: &str) -> bool {
@@ -460,7 +552,11 @@ pub fn detect_unproductive_broad_searching(events: &[TranscriptEventV1]) -> Vec<
     let matches: Vec<usize> = events
         .iter()
         .enumerate()
-        .filter(|(_, event)| event.kind == EventKind::ToolCall && patterns().broad_search.is_match(&event.text))
+        .filter(|(_, event)| {
+            observable(event)
+                && event.kind == EventKind::ToolCall
+                && patterns().broad_search.is_match(&event.text)
+        })
         .map(|(idx, _)| idx)
         .collect();
     if matches.len() < 2 {
@@ -486,7 +582,17 @@ pub fn detect_silent_scope_narrowing(events: &[TranscriptEventV1]) -> Vec<Failur
                     .expect("static pattern compiles")
                     .is_match(&event.text)
         })
-        .map(|(idx, _)| episode_from("silent_scope_narrowing", Severity::Medium, 0.8, "silent-scope-narrowing", "assistant silently narrowed requested scope", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "silent_scope_narrowing",
+                Severity::Medium,
+                0.8,
+                "silent-scope-narrowing",
+                "assistant silently narrowed requested scope",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -501,7 +607,7 @@ pub fn detect_unaccepted_plan_change(events: &[TranscriptEventV1]) -> Vec<Failur
             .enumerate()
             .skip(idx + 1)
             .find(|(_, candidate)| {
-                candidate.is_user()
+                guard_user_span(candidate).is_pass()
                     && Regex::new(r"(?im)\b(?:why\s+did\s+you\s+change|i\s+asked[^.!?\n]{0,50}\bnot\s+a|not\s+(?:a\s+)?rewrite)\b")
                         .expect("static pattern compiles")
                         .is_match(&candidate.text)
@@ -525,9 +631,23 @@ pub fn detect_tests_that_cannot_fail(events: &[TranscriptEventV1]) -> Vec<Failur
     events
         .iter()
         .enumerate()
-        .filter(|(_, event)| event.kind == EventKind::ToolResult && patterns().tautological_test.is_match(&event.text))
+        .filter(|(_, event)| {
+            observable(event)
+                && event.kind == EventKind::ToolResult
+                && patterns().tautological_test.is_match(&event.text)
+        })
         .filter(|(_, event)| !event.text.contains("skipIf"))
-        .map(|(idx, _)| episode_from("tests_that_cannot_fail", Severity::High, 0.95, "tautological-test", "test passes by construction", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "tests_that_cannot_fail",
+                Severity::High,
+                0.95,
+                "tautological-test",
+                "test passes by construction",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -535,8 +655,22 @@ pub fn detect_guard_firings(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV
     events
         .iter()
         .enumerate()
-        .filter(|(_, event)| event.kind == EventKind::ToolResult && patterns().guard_fire.is_match(&event.text))
-        .map(|(idx, _)| episode_from("guard_firings", Severity::Low, 0.9, "guard-firing", "runtime guard refused an operation", events, idx))
+        .filter(|(_, event)| {
+            observable(event)
+                && event.kind == EventKind::ToolResult
+                && patterns().guard_fire.is_match(&event.text)
+        })
+        .map(|(idx, _)| {
+            episode_from(
+                "guard_firings",
+                Severity::Low,
+                0.9,
+                "guard-firing",
+                "runtime guard refused an operation",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -544,7 +678,17 @@ pub fn detect_postmortem_ask(events: &[TranscriptEventV1]) -> Vec<FailureEpisode
     user_events(events)
         .into_iter()
         .filter(|(_, event)| patterns().postmortem.is_match(&event.text))
-        .map(|(idx, _)| episode_from("user_asks_why_missed_or_postmortem", Severity::Medium, 0.85, "postmortem-request", "user requested explanation for a miss", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "user_asks_why_missed_or_postmortem",
+                Severity::Medium,
+                0.85,
+                "postmortem-request",
+                "user requested explanation for a miss",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -555,22 +699,56 @@ pub fn detect_overengineering_family(events: &[TranscriptEventV1]) -> Vec<Failur
                 || patterns().assistant_overengineering.is_match(&event.text))
                 && !is_historical_or_negated(&event.text)
         })
-        .map(|(idx, _)| episode_from("overengineering", Severity::Medium, 0.8, "overengineering", "solution introduced disproportionate machinery", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "overengineering",
+                Severity::Medium,
+                0.8,
+                "overengineering",
+                "solution introduced disproportionate machinery",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
 pub fn detect_architecture_churn_core(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
     user_events(events)
         .into_iter()
-        .filter(|(_, event)| patterns().churn.is_match(&event.text) && !is_historical_or_negated(&event.text))
-        .map(|(idx, _)| episode_from("architecture_churn", Severity::High, 0.85, "architecture-churn", "architecture changed repeatedly without new evidence", events, idx))
+        .filter(|(_, event)| {
+            patterns().churn.is_match(&event.text) && !is_historical_or_negated(&event.text)
+        })
+        .map(|(idx, _)| {
+            episode_from(
+                "architecture_churn",
+                Severity::High,
+                0.85,
+                "architecture-churn",
+                "architecture changed repeatedly without new evidence",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
-pub fn detect_scope_expansion_without_request(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
+pub fn detect_scope_expansion_without_request(
+    events: &[TranscriptEventV1],
+) -> Vec<FailureEpisodeV1> {
     assistant_events(events)
         .filter(|(_, event)| patterns().assistant_scope_expansion.is_match(&event.text))
-        .map(|(idx, _)| episode_from("scope_expansion_without_request", Severity::High, 0.9, "unrequested-scope-expansion", "assistant added unrelated work", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "scope_expansion_without_request",
+                Severity::High,
+                0.9,
+                "unrequested-scope-expansion",
+                "assistant added unrelated work",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -597,11 +775,17 @@ pub fn detect_repeated_scope_expansion(events: &[TranscriptEventV1]) -> Vec<Fail
 pub fn detect_verification_theatre(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
     let mut weak_call: Option<usize> = None;
     for (idx, event) in events.iter().enumerate() {
-        if event.kind == EventKind::ToolCall && patterns().weak_verification_tool.is_match(&event.text) {
+        if observable(event)
+            && event.kind == EventKind::ToolCall
+            && patterns().weak_verification_tool.is_match(&event.text)
+        {
             weak_call = Some(idx);
-        } else if event.kind == EventKind::ToolResult && patterns().actual_test_result.is_match(&event.text) {
+        } else if observable(event)
+            && event.kind == EventKind::ToolResult
+            && patterns().actual_test_result.is_match(&event.text)
+        {
             weak_call = None;
-        } else if event.kind == EventKind::AssistantMessage
+        } else if allowed_assistant_claim(event)
             && patterns().assistant_success.is_match(&event.text)
             && weak_call.is_some()
         {
@@ -623,9 +807,13 @@ pub fn detect_false_completion_claim(events: &[TranscriptEventV1]) -> Vec<Failur
     let mut claim: Option<usize> = None;
     let mut out = Vec::new();
     for (idx, event) in events.iter().enumerate() {
-        if event.kind == EventKind::AssistantMessage && patterns().assistant_success.is_match(&event.text) {
+        if allowed_assistant_claim(event) && patterns().assistant_success.is_match(&event.text) {
             claim = Some(idx);
-        } else if event.is_user() && patterns().post_completion_contradiction.is_match(&event.text) {
+        } else if guard_user_span(event).is_pass()
+            && patterns()
+                .post_completion_contradiction
+                .is_match(&event.text)
+        {
             if let Some(claim_idx) = claim.take() {
                 out.push(FailureEpisodeV1::new(
                     "false_completion_claim",
@@ -645,7 +833,7 @@ pub fn detect_false_completion_claim(events: &[TranscriptEventV1]) -> Vec<Failur
 pub fn detect_instruction_noncompliance(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
     let mut prohibition: Option<(usize, String)> = None;
     for (idx, event) in events.iter().enumerate() {
-        if event.is_user() {
+        if guard_user_span(event).is_pass() {
             let lower = event.text.to_lowercase();
             if lower.contains("do not touch") || lower.contains("don't touch") {
                 prohibition = Some((idx, lower));
@@ -665,7 +853,7 @@ pub fn detect_instruction_noncompliance(events: &[TranscriptEventV1]) -> Vec<Fai
                 )];
             }
         }
-        if event.kind == EventKind::ToolCall {
+        if observable(event) && event.kind == EventKind::ToolCall {
             if let Some((prohibition_idx, text)) = &prohibition {
                 if text.contains("migrations/") && event.text.contains("migrations/") {
                     return vec![FailureEpisodeV1::new(
@@ -699,7 +887,17 @@ pub fn detect_repeated_redesign(events: &[TranscriptEventV1]) -> Vec<FailureEpis
             patterns().repeated_redesign.is_match(&event.text)
                 && !is_historical_or_negated(&event.text)
         })
-        .map(|(idx, _)| episode_from("repeated_redesign", Severity::Critical, 0.9, "repeated-redesign", "design was replaced repeatedly without measurement", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "repeated_redesign",
+                Severity::Critical,
+                0.9,
+                "repeated-redesign",
+                "design was replaced repeatedly without measurement",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -711,7 +909,15 @@ pub fn detect_unnecessary_abstraction(events: &[TranscriptEventV1]) -> Vec<Failu
                 && !is_historical_or_negated(&ev.text)
         })
         .map(|(idx, _)| {
-            let mut ep = episode_from("unnecessary_abstraction", Severity::Medium, 0.7, "unnecessary-abstraction", "unnecessary abstraction", events, idx);
+            let mut ep = episode_from(
+                "unnecessary_abstraction",
+                Severity::Medium,
+                0.7,
+                "unnecessary-abstraction",
+                "unnecessary abstraction",
+                events,
+                idx,
+            );
             ep.likely_mechanism = "candidate: abstraction added without demonstrated need".into();
             ep
         })
@@ -731,65 +937,105 @@ pub fn detect_unnecessary_dependency(events: &[TranscriptEventV1]) -> Vec<Failur
                     .expect("static pattern compiles")
                     .is_match(&ev.text)
         })
-        .map(|(idx, _)| episode_from("unnecessary_dependency", Severity::Medium, 0.7, "unnecessary-dependency", "unnecessary dependency added", events, idx))
+        .map(|(idx, _)| {
+            episode_from(
+                "unnecessary_dependency",
+                Severity::Medium,
+                0.7,
+                "unnecessary-dependency",
+                "unnecessary dependency added",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
 /// Model- vs client/tool-specific gotcha attribution: the same normalized
 /// complaint text is classified by which surface the user names.
-pub fn detect_model_or_client_specific_gotcha(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
+pub fn detect_model_or_client_specific_gotcha(
+    events: &[TranscriptEventV1],
+) -> Vec<FailureEpisodeV1> {
     let p = patterns();
     static CLIENT: OnceLock<Regex> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| re(r"(?im)\b(?:vscode|vim|jetbrains|terminal(?:-client)?|iterm|warp|xcode|pi|cli)\b"));
+    let client = CLIENT.get_or_init(|| {
+        re(r"(?im)\b(?:vscode|vim|jetbrains|terminal(?:-client)?|iterm|warp|xcode|pi|cli)\b")
+    });
     assistant_events(events)
         .filter(|(_, ev)| p.model_gotcha.is_match(&ev.text) && !is_historical_or_negated(&ev.text))
         .map(|(idx, ev)| {
-            let slug = if client.is_match(&ev.text) { "client_or_tool_specific_gotcha" } else { "model_specific_gotcha" };
-            episode_from(slug, Severity::Low, 0.6, slug, "surface-specific gotcha signal", events, idx)
+            let slug = if client.is_match(&ev.text) {
+                "client_or_tool_specific_gotcha"
+            } else {
+                "model_specific_gotcha"
+            };
+            episode_from(
+                slug,
+                Severity::Low,
+                0.6,
+                slug,
+                "surface-specific gotcha signal",
+                events,
+                idx,
+            )
         })
         .collect()
 }
 
 /// Repeated user correction on the same theme: corrections sharing a 3-word
 /// normalized prefix recur into a longitudinal signal.
-pub fn detect_repeated_user_correction_same_theme(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
+pub fn detect_repeated_user_correction_same_theme(
+    events: &[TranscriptEventV1],
+) -> Vec<FailureEpisodeV1> {
     user_events(events)
         .into_iter()
         .filter(|(_, event)| patterns().repeated_correction.is_match(&event.text))
-        .map(|(idx, _)| episode_from(
-            "repeated_user_correction_same_theme",
-            Severity::High,
-            0.9,
-            "repeated-user-correction",
-            "user explicitly marked a correction as repeated",
-            events,
-            idx,
-        ))
+        .map(|(idx, _)| {
+            episode_from(
+                "repeated_user_correction_same_theme",
+                Severity::High,
+                0.9,
+                "repeated-user-correction",
+                "user explicitly marked a correction as repeated",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
 pub fn detect_verification_claim_without_tool_evidence(
     events: &[TranscriptEventV1],
 ) -> Vec<FailureEpisodeV1> {
-    assistant_events(events)
+    events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| allowed_assistant_claim(event))
         .filter(|(idx, event)| {
             !has_positive_verification_claim(&event.text).is_empty()
                 && !is_historical_or_negated(&event.text)
                 && !events[..*idx].iter().any(|prior| {
-                    prior.session_id == event.session_id
+                    observable(prior)
+                        && prior.session_id == event.session_id
                         && prior.kind == EventKind::ToolResult
-                        && patterns().actual_test_result.is_match(&prior.text)
+                        && event.call_id.is_some()
+                        && prior.call_id == event.call_id
+                        && (patterns().actual_test_result.is_match(&prior.text)
+                            || (is_tool_relayed_verification(&event.text)
+                                && !has_positive_verification_claim(&prior.text).is_empty()))
                 })
         })
-        .map(|(idx, _)| episode_from(
-            "verification_claim_without_tool_evidence",
-            Severity::High,
-            0.9,
-            "unsupported-verification-claim",
-            "assistant claimed verification without tool evidence",
-            events,
-            idx,
-        ))
+        .map(|(idx, _)| {
+            episode_from(
+                "verification_claim_without_tool_evidence",
+                Severity::High,
+                0.9,
+                "unsupported-verification-claim",
+                "assistant claimed verification without tool evidence",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -827,15 +1073,17 @@ pub fn detect_stale_terminology_surfacing(events: &[TranscriptEventV1]) -> Vec<F
                 && !is_historical_or_negated(&event.text)
                 && !event.text.to_lowercase().contains("retired")
         })
-        .map(|(idx, _)| episode_from(
-            "stale_terminology_surfacing",
-            Severity::Low,
-            0.95,
-            "stale-terminology",
-            "retired product terminology surfaced as current guidance",
-            events,
-            idx,
-        ))
+        .map(|(idx, _)| {
+            episode_from(
+                "stale_terminology_surfacing",
+                Severity::Low,
+                0.95,
+                "stale-terminology",
+                "retired product terminology surfaced as current guidance",
+                events,
+                idx,
+            )
+        })
         .collect()
 }
 
@@ -843,15 +1091,24 @@ pub fn detect_stale_terminology_surfacing(events: &[TranscriptEventV1]) -> Vec<F
 
 pub fn detect_forge_opened_never_closed(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> {
     let p = patterns();
-    let mut opened: Option<usize> = None;
+    let mut opened = std::collections::BTreeMap::<&str, usize>::new();
     for (idx, ev) in events.iter().enumerate() {
-        if p.forge_open.is_match(&ev.text) && opened.is_none() {
-            opened = Some(idx);
-        } else if p.forge_close.is_match(&ev.text) {
-            opened = None;
+        if allowed_assistant_claim(ev)
+            && !is_tool_relayed_verification(&ev.text)
+            && p.forge_open.is_match(&ev.text)
+        {
+            opened.entry(&ev.session_id).or_insert(idx);
+        } else if allowed_assistant_claim(ev)
+            && !is_tool_relayed_verification(&ev.text)
+            && p.forge_close.is_match(&ev.text)
+        {
+            opened.remove(ev.session_id.as_str());
         }
     }
-    opened
+    let mut open_indices: Vec<usize> = opened.values().copied().collect();
+    open_indices.sort_unstable();
+    open_indices
+        .into_iter()
         .map(|o| {
             episode_from(
                 "forge_opened_never_closed",
@@ -863,7 +1120,6 @@ pub fn detect_forge_opened_never_closed(events: &[TranscriptEventV1]) -> Vec<Fai
                 o,
             )
         })
-        .into_iter()
         .collect()
 }
 
@@ -905,6 +1161,208 @@ pub fn run_all_detectors(events: &[TranscriptEventV1]) -> Vec<FailureEpisodeV1> 
     out.extend(detect_cross_agent_repeats(events));
     out.extend(detect_repeated_user_correction_same_theme(events));
     out.extend(detect_forge_opened_never_closed(events));
-    out.sort_by(|a, b| b.severity.cmp(&a.severity).then_with(|| a.episode_id.cmp(&b.episode_id)));
+    out.sort_by(|a, b| {
+        b.severity
+            .cmp(&a.severity)
+            .then_with(|| a.episode_id.cmp(&b.episode_id))
+    });
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(
+        kind: EventKind,
+        provenance: &str,
+        text: &str,
+        evidence_eligible: bool,
+    ) -> TranscriptEventV1 {
+        TranscriptEventV1 {
+            event_id: format!("{}-{}", provenance, text.len()),
+            session_id: "s1".into(),
+            host: "test".into(),
+            provenance: provenance.into(),
+            kind,
+            text: text.into(),
+            timestamp: Some("2026-08-26T00:00:00Z".into()),
+            byte_start: 0,
+            byte_end: text.len() as i64,
+            call_id: None,
+            occurrence: 0,
+            evidence_eligible,
+        }
+    }
+
+    #[test]
+    fn quoted_and_hypothetical_assistant_claims_are_suppressed() {
+        for text in [
+            r#"the log says "verified and fixed all tests""#,
+            "hypothetically, I verified and fixed all tests",
+            "If the deploy had gone smoothly, it would be verified.",
+            "If everything had gone right, all tests would be passing.",
+            r#"The report says "I also updated the changelog while I was at it.""#,
+        ] {
+            let events = vec![
+                event(EventKind::AssistantMessage, "assistant", text, true),
+                event(
+                    EventKind::UserMessage,
+                    "external_user",
+                    "it is still broken and missing",
+                    true,
+                ),
+            ];
+            assert!(detect_claimed_verified_then_corrected(&events).is_empty());
+            assert!(detect_verification_claim_without_tool_evidence(&events).is_empty());
+            assert!(detect_false_completion_claim(&events).is_empty());
+            assert!(detect_scope_expansion_without_request(&events).is_empty());
+        }
+    }
+
+    #[test]
+    fn forge_state_requires_unquoted_assistant_observation() {
+        for mut ev in [
+            event(EventKind::ToolResult, "tool", "Opened the rubric.", true),
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                r#"The report says "Opened the rubric.""#,
+                true,
+            ),
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                "If we had opened the rubric, it would remain active.",
+                true,
+            ),
+        ] {
+            ev.call_id = Some("call-forge".into());
+            assert!(detect_forge_opened_never_closed(&[ev]).is_empty());
+        }
+
+        let cross_session = vec![
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                "Opened the rubric for session one.",
+                true,
+            ),
+            {
+                let mut close = event(
+                    EventKind::AssistantMessage,
+                    "assistant",
+                    "Closed the rubric for session two.",
+                    true,
+                );
+                close.session_id = "s2".into();
+                close
+            },
+        ];
+        assert_eq!(detect_forge_opened_never_closed(&cross_session).len(), 1);
+    }
+
+    #[test]
+    fn ineligible_events_cannot_seed_or_advance_detector_state() {
+        let events = vec![
+            event(EventKind::ToolResult, "tool", "error: tests failed", false),
+            event(EventKind::AssistantMessage, "assistant", "done", true),
+        ];
+        assert!(detect_ignored_tool_failure(&events).is_empty());
+
+        let events = vec![
+            event(
+                EventKind::ToolResult,
+                "tool",
+                "degraded fallback provider",
+                false,
+            ),
+            event(EventKind::AssistantMessage, "assistant", "done", true),
+        ];
+        assert!(detect_degraded_provider_treated_as_success(&events).is_empty());
+
+        let events = vec![
+            event(EventKind::ToolCall, "tool", "echo tests pass", false),
+            event(EventKind::AssistantMessage, "assistant", "done", true),
+        ];
+        assert!(detect_verification_theatre(&events).is_empty());
+    }
+
+    #[test]
+    fn false_not_found_ignores_quoted_and_hypothetical_user_text() {
+        for text in [
+            r#"the report says "it exists""#,
+            "hypothetically, if it exists, it is there",
+        ] {
+            let events = vec![
+                event(EventKind::ToolResult, "tool", "ENOENT: not found", true),
+                event(EventKind::UserMessage, "external_user", text, true),
+            ];
+            assert!(detect_false_not_found_after_search(&events).is_empty());
+        }
+    }
+
+    #[test]
+    fn eligible_tool_relay_supports_claim_without_granting_authority() {
+        let mut events = vec![
+            event(
+                EventKind::ToolResult,
+                "tool",
+                "Deployment log: verified and all set, tests passing.",
+                true,
+            ),
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                "The log says the deploy is verified and all set.",
+                true,
+            ),
+        ];
+        events[0].call_id = Some("call-deploy".into());
+        events[1].call_id = Some("call-deploy".into());
+        assert!(detect_verification_claim_without_tool_evidence(&events).is_empty());
+
+        let mut ineligible = vec![
+            event(
+                EventKind::ToolResult,
+                "tool",
+                "Deployment log: verified and all set, tests passing.",
+                false,
+            ),
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                "The log says the deploy is verified and all set.",
+                true,
+            ),
+        ];
+        ineligible[0].call_id = Some("call-deploy".into());
+        ineligible[1].call_id = Some("call-deploy".into());
+        assert!(!detect_verification_claim_without_tool_evidence(&ineligible).is_empty());
+
+        let mut unrelated = events.clone();
+        unrelated[0].call_id = Some("call-unrelated".into());
+        assert!(!detect_verification_claim_without_tool_evidence(&unrelated).is_empty());
+    }
+
+    #[test]
+    fn all_ineligible_rows_are_ignored_by_every_detector_family() {
+        let events = vec![
+            event(
+                EventKind::UserMessage,
+                "external_user",
+                "please run tests again, this is frustrating",
+                false,
+            ),
+            event(
+                EventKind::AssistantMessage,
+                "assistant",
+                "done, I verified the fix",
+                false,
+            ),
+            event(EventKind::ToolCall, "tool", "rg --hidden .", false),
+            event(EventKind::ToolResult, "tool", "error: not found", false),
+        ];
+        assert!(run_all_detectors(&events).is_empty());
+    }
 }

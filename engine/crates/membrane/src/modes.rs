@@ -106,7 +106,8 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         // this path. The command never starts a runtime; Hub absence is the
         // typed `membrane_unavailable { hub_inactive }` response below.
         if tail[0] == "hub-snapshot" {
-            let Some(parts) = membrane_runtime::hub_inputs::live_snapshot_parts_from_local_service()
+            let Some(parts) =
+                membrane_runtime::hub_inputs::live_snapshot_parts_from_local_service()
             else {
                 return hub_inactive();
             };
@@ -118,9 +119,7 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
                     println!("{json}");
                     DispatchOutcome::Ok
                 }
-                Err(error) => {
-                    DispatchOutcome::InternalError(format!("hub.snapshot: {error}"))
-                }
+                Err(error) => DispatchOutcome::InternalError(format!("hub.snapshot: {error}")),
             };
         }
         // MBR: read live state from local Membrane resident's /health endpoint
@@ -156,9 +155,9 @@ fn hub_inactive() -> DispatchOutcome {
             println!("{json}");
             DispatchOutcome::UserError("hub inactive".into())
         }
-        Err(error) => DispatchOutcome::InternalError(format!(
-            "serialize membrane_unavailable: {error}"
-        )),
+        Err(error) => {
+            DispatchOutcome::InternalError(format!("serialize membrane_unavailable: {error}"))
+        }
     }
 }
 
@@ -349,9 +348,7 @@ fn dispatch_diagnostics(args: &[String]) -> DispatchOutcome {
 fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
     use membrane_runtime::live_diagnostics_service::{static_capabilities, DiagnosticsService};
     match command {
-        DiagnosticsCommand::Capabilities => {
-            print_diagnostics_json(&static_capabilities())
-        }
+        DiagnosticsCommand::Capabilities => print_diagnostics_json(&static_capabilities()),
         DiagnosticsCommand::FenceEvaluate { file } => {
             let request: Result<
                 membrane_runtime::live_diagnostics_service::FenceEvaluateRequest,
@@ -380,23 +377,36 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 None,
             )
         }
-        DiagnosticsCommand::WorkspaceOpen { repo, worktree, project_root, port } => {
-            run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
-                "POST",
-                "/diagnostics/workspace/open",
-                Some(diagnostics_workspace_body_with_root(&repo, &worktree, Some(&project_root))),
-            )
-        }
-        DiagnosticsCommand::WorkspaceClose { repo, worktree, port } => {
-            run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
-                "POST",
-                "/diagnostics/workspace/close",
-                Some(diagnostics_workspace_body(&repo, &worktree)),
-            )
-        }
-        DiagnosticsCommand::WorkspaceStatus { repo, worktree, port } => {
+        DiagnosticsCommand::WorkspaceOpen {
+            repo,
+            worktree,
+            project_root,
+            port,
+        } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/workspace/open",
+            Some(diagnostics_workspace_body_with_root(
+                &repo,
+                &worktree,
+                Some(&project_root),
+            )),
+        ),
+        DiagnosticsCommand::WorkspaceClose {
+            repo,
+            worktree,
+            port,
+        } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/workspace/close",
+            Some(diagnostics_workspace_body(&repo, &worktree)),
+        ),
+        DiagnosticsCommand::WorkspaceStatus {
+            repo,
+            worktree,
+            port,
+        } => {
             let query = format!(
                 "/diagnostics/workspace/status?repoId={}&worktreeId={}",
                 percent_encode_component(&repo),
@@ -404,37 +414,50 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             );
             run_diagnostics_service_call(diagnostics_loopback_port(port), "GET", &query, None)
         }
-        DiagnosticsCommand::MutationBegin { repo, worktree, port } => {
-            run_diagnostics_service_call(
+        DiagnosticsCommand::MutationBegin {
+            repo,
+            worktree,
+            port,
+        } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/mutation/begin",
+            Some(diagnostics_workspace_body(&repo, &worktree)),
+        ),
+        DiagnosticsCommand::MutationSeal {
+            repo,
+            worktree,
+            file,
+            port,
+        } => match epoch_request_body(&repo, &worktree, &file) {
+            Ok(body) => run_diagnostics_service_call(
                 diagnostics_loopback_port(port),
                 "POST",
-                "/diagnostics/mutation/begin",
-                Some(diagnostics_workspace_body(&repo, &worktree)),
-            )
-        }
-        DiagnosticsCommand::MutationSeal { repo, worktree, file, port } => {
-            match epoch_request_body(&repo, &worktree, &file) {
-                Ok(body) => run_diagnostics_service_call(
-                    diagnostics_loopback_port(port),
-                    "POST",
-                    "/diagnostics/mutation/seal",
-                    Some(body),
-                ),
-                Err(outcome) => outcome,
-            }
-        }
-        DiagnosticsCommand::MutationRegisterObserved { repo, worktree, file, port } => {
-            match epoch_request_body(&repo, &worktree, &file) {
-                Ok(body) => run_diagnostics_service_call(
-                    diagnostics_loopback_port(port),
-                    "POST",
-                    "/diagnostics/mutation/registerObserved",
-                    Some(body),
-                ),
-                Err(outcome) => outcome,
-            }
-        }
-        DiagnosticsCommand::Reconcile { repo, worktree, file, port } => {
+                "/diagnostics/mutation/seal",
+                Some(body),
+            ),
+            Err(outcome) => outcome,
+        },
+        DiagnosticsCommand::MutationRegisterObserved {
+            repo,
+            worktree,
+            file,
+            port,
+        } => match epoch_request_body(&repo, &worktree, &file) {
+            Ok(body) => run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/mutation/registerObserved",
+                Some(body),
+            ),
+            Err(outcome) => outcome,
+        },
+        DiagnosticsCommand::Reconcile {
+            repo,
+            worktree,
+            file,
+            port,
+        } => {
             match object_request_body(&file, &mut |object| {
                 if !object
                     .get("manifestDigest")
@@ -442,7 +465,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                     .unwrap_or(false)
                 {
                     return Err(
-                        "reconcile input JSON requires a string manifestDigest field".to_string()
+                        "reconcile input JSON requires a string manifestDigest field".to_string(),
                     );
                 }
                 object.insert("repoId".to_string(), serde_json::json!(repo));
@@ -458,7 +481,13 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 Err(outcome) => outcome,
             }
         }
-        DiagnosticsCommand::SnapshotAwait { repo, worktree, profile, file, port } => {
+        DiagnosticsCommand::SnapshotAwait {
+            repo,
+            worktree,
+            profile,
+            file,
+            port,
+        } => {
             match object_request_body(&file, &mut |object| {
                 object.insert("repoId".to_string(), serde_json::json!(repo));
                 object.insert("worktreeId".to_string(), serde_json::json!(worktree));
@@ -476,30 +505,34 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 Err(outcome) => outcome,
             }
         }
-        DiagnosticsCommand::BaselineCapture { repo, worktree, name, port } => {
-            run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
-                "POST",
-                "/diagnostics/baseline/capture",
-                Some(diagnostics_named_body(&repo, &worktree, &name)),
-            )
-        }
-        DiagnosticsCommand::BaselineUpdate { repo, worktree, name, port } => {
-            run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
-                "POST",
-                "/diagnostics/baseline/update",
-                Some(diagnostics_named_body(&repo, &worktree, &name)),
-            )
-        }
-        DiagnosticsCommand::ProviderRestart { key_digest, port } => {
-            run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
-                "POST",
-                "/diagnostics/provider/restart",
-                Some(serde_json::json!({ "keyDigest": key_digest }).to_string()),
-            )
-        }
+        DiagnosticsCommand::BaselineCapture {
+            repo,
+            worktree,
+            name,
+            port,
+        } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/baseline/capture",
+            Some(diagnostics_named_body(&repo, &worktree, &name)),
+        ),
+        DiagnosticsCommand::BaselineUpdate {
+            repo,
+            worktree,
+            name,
+            port,
+        } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/baseline/update",
+            Some(diagnostics_named_body(&repo, &worktree, &name)),
+        ),
+        DiagnosticsCommand::ProviderRestart { key_digest, port } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port),
+            "POST",
+            "/diagnostics/provider/restart",
+            Some(serde_json::json!({ "keyDigest": key_digest }).to_string()),
+        ),
     }
 }
 
@@ -544,7 +577,10 @@ fn diagnostics_api_token() -> Result<Option<String>, String> {
             .trim()
             .to_string();
         if token.is_empty() {
-            return Err(format!("MEMBRANE_API_TOKEN_FILE {} is empty", path.display()));
+            return Err(format!(
+                "MEMBRANE_API_TOKEN_FILE {} is empty",
+                path.display()
+            ));
         }
         if token.contains(['\r', '\n']) {
             return Err("MEMBRANE_API_TOKEN_FILE contains a newline".to_string());
@@ -558,7 +594,11 @@ fn diagnostics_workspace_body(repo: &str, worktree: &str) -> String {
     serde_json::json!({ "repoId": repo, "worktreeId": worktree }).to_string()
 }
 
-fn diagnostics_workspace_body_with_root(repo: &str, worktree: &str, project_root: Option<&str>) -> String {
+fn diagnostics_workspace_body_with_root(
+    repo: &str,
+    worktree: &str,
+    project_root: Option<&str>,
+) -> String {
     let mut body = serde_json::json!({ "repoId": repo, "worktreeId": worktree });
     if let Some(root) = project_root {
         body["projectRoot"] = serde_json::Value::String(root.to_string());
@@ -628,13 +668,11 @@ fn epoch_request_body(
 /// fields into it, and return the serialized request body.
 fn object_request_body(
     file: &Option<std::path::PathBuf>,
-    inject: &mut dyn FnMut(
-        &mut serde_json::Map<String, serde_json::Value>,
-    ) -> Result<(), String>,
+    inject: &mut dyn FnMut(&mut serde_json::Map<String, serde_json::Value>) -> Result<(), String>,
 ) -> Result<String, DispatchOutcome> {
     let input = read_diagnostics_input(file, false)?;
-    let mut object: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(&input).map_err(|error| {
+    let mut object: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&input)
+        .map_err(|error| {
             DispatchOutcome::UserError(format!(
                 "diagnostics: request input must be a JSON object: {error}"
             ))
@@ -693,12 +731,12 @@ fn diagnostics_http_request(
 ) -> Result<Option<(u16, String)>, String> {
     use std::io::{Read as _, Write as _};
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let mut stream = match std::net::TcpStream::connect_timeout(&address, DIAGNOSTICS_CONNECT_TIMEOUT)
-    {
-        Ok(stream) => stream,
-        Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => return Ok(None),
-        Err(error) => return Err(format!("connect to resident failed: {error}")),
-    };
+    let mut stream =
+        match std::net::TcpStream::connect_timeout(&address, DIAGNOSTICS_CONNECT_TIMEOUT) {
+            Ok(stream) => stream,
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => return Ok(None),
+            Err(error) => return Err(format!("connect to resident failed: {error}")),
+        };
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(30)))
         .map_err(|error| format!("set read timeout: {error}"))?;
@@ -788,7 +826,7 @@ fn run_doctor_paths(args: &[String]) -> DispatchOutcome {
 }
 
 fn dispatch_stdio_mcp() -> DispatchOutcome {
-    match membrane_mcp::serve_stdio() {
+    match membrane_runtime::serve::run_stdio_mcp() {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => DispatchOutcome::InternalError(error.to_string()),
     }

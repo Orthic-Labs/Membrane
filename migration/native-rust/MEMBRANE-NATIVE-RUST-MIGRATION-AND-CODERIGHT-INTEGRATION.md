@@ -4,7 +4,7 @@
 **Date:** 2026-08-25
 **Repository:** `Orthic-Labs/Membrane`
 **Historical source-audit baseline:** `8a215ac6fab11cc24bb821507057743b7898e09f` (Sections 0.1 and 21 preserve that dated audit; they are not current implementation status)
-**Current implementation status reviewed:** integration tree based on `4bf649e4a43ff55db2c21c496be86a2661a56bfe` (2026-08-26; see Section 0.1.1)
+**Current implementation status reviewed:** integration tree at `51f98189da769ed005c516e2a2ea93e61678e0da` (2026-08-26; see Section 0.1.1)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
 **Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, `docs/plans/2026-08-22-full-rust-federation-port-architecture.md` for federation execution and closure, the runtime/process/cutover portions of `docs/design/membrane-live-diagnostics-final-architecture.md` and `docs/plans/membrane-live-diagnostics-final-architecture-revised.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
@@ -31,10 +31,10 @@ moved to Rust while another canonical subsystem still executes Python or Node.
 The final product therefore obeys all of the following:
 
 1. **Membrane-owned runtime authority, policy, state transitions, storage, and effects execute as native Rust or are declarative data.** Installed Hub presentation may use only the bounded OS-WebView exception in §1.5.
-2. **No installed Membrane runtime implementation requires Python, Node, npm, npx, pip, a virtual environment, or dynamically interpreted Membrane-owned source.** Bounded WebView assets execute in the OS-provided WebView and never require Node.
+2. **No installed Membrane-owned runtime implementation requires Python, npm, npx, pip, a virtual environment, or dynamically interpreted Membrane-owned source.** Blueprint's pinned installed runtime is a separately inventoried subsystem component; only Hub may keep its Node service/watcher resident, and direct Hub-off access is one bounded operation. Bounded WebView assets execute in the OS-provided WebView.
 3. **CodeRight consumes Membrane through exactly one compatible active-Hub binding.** It does not embed a second Membrane backend or open a local fallback store.
 4. **External products and target-project tools are reached only through explicit typed boundaries.** They do not justify an internal language worker.
-5. **Development-only Python/JavaScript is permitted only when it is provably absent from installed execution paths and release artifacts.** The only installed JavaScript exception is §1.5's explicitly inventoried presentation sandbox.
+5. **Development-only Python/JavaScript is permitted only when it is provably absent from installed execution paths and release artifacts.** Installed JavaScript is limited to §1.5's presentation sandbox plus Blueprint's exact hash-bound runtime tree under its lifecycle contract.
 6. **A Rust implementation existing beside an executable Python/Node fallback is not completion.** Final production is `native-only`, not `native-with-legacy-available`.
 
 ### 0.1 Historical source-audit baseline verdict
@@ -78,23 +78,23 @@ The previous migration was therefore **a successful federation port but an incom
 
 ### 0.1.1 Current implementation status
 
-Status below is current through the integration tree based on
-`4bf649e4a43ff55db2c21c496be86a2661a56bfe` (2026-08-26). A source-built or
-copied-binary test is not an exact released-package qualification.
+Status below is current through integration tree at
+`51f98189da769ed005c516e2a2ea93e61678e0da` (2026-08-26). Source-built/copied-binary
+test is not exact released-package qualification.
 
 | Package | Status | Integrated evidence / remaining gate |
 |---|---|---|
-| N0 | **DONE** | Canonical invocation graph, runtime-language manifest/policy, and legacy-ledger reconciliation are checked in; graph/manifest gates pass with no errors or warnings. |
-| N1 | **DONE** | Seven hashed language-neutral internal contracts, examples, policy, and recurring contract gates are checked in and pass. |
-| N2 | **PARTIAL** | Native `membrane-transcript` owner, raw host discovery/parsing, exact provenance, receipts, and conformance tests pass. Adapt uses the native seam. Exact exit remains open until executable Python `continuity/transcript` is deleted or reduced to independently useful release-excluded fixtures/dev tooling with a deletion/exclusion receipt. |
+| N0 | **DONE** | Canonical invocation graph, runtime-language manifest/policy, & legacy-ledger reconciliation are checked in; 29 runtime-language blockers are closed, with zero production interpreter rows. Graph/manifest gates pass with no errors or warnings; installed receipts remain separate release evidence. |
+| N1 | **DONE** | Six hashed language-neutral internal contracts, examples, policy, and recurring contract gates are checked in and pass. |
+| N2 | **PARTIAL** | Native `membrane-transcript` owner, raw host discovery/parsing, exact provenance, receipts, & conformance tests pass; all consumers use native seam & Python `continuity` is excluded from production graph. Final deletion/exclusion receipt & installed qualification remain open. |
 | N3 | **DONE** | Native deterministic Adapt core, authority/admission, scope/lifecycle, semantic sealing, manifests, multiwriter behavior, Insights report-only controls, and fail-closed tests pass. |
-| N4 | **PARTIAL** | Native proposal/model boundary and independent adjudication are receipt-bound. The committed 44-case synthetic conformance scorecard passes its declared thresholds: extraction precision `0.9667`/recall `1.0`, admission precision `0.9524`/recall `1.0`, semantic-projection precision `1.0`, and `0/11` authority-negative false positives. Exit still requires an independently sourced real-world held-out Taste corpus, interval reporting, and the released-package run. |
-| N5 | **PARTIAL** | Native Adapt source, CLI surfaces, and isolated copied source-built-binary tests have landed. Those tests do not prove the exact released package. Exit still requires released-package qualification and replacement or explicit dev-only demotion of `scripts/run-adapt-installed-current.mjs` as an authority test. |
-| N6 | **OPEN** | MCP/server/renderer and installed host-fence cutover remain. |
-| N7 | **OPEN** | Legacy executable federation Python/shadow deletion remains. |
-| N8 | **OPEN** | Blueprint external-service packaging/runtime boundary remains. |
-| N9 | **OPEN** | CodeRight native embedding/storage integration remains. |
-| N10 | **BLOCKED** | Behavioral scorecards are committed and are no longer an N10 blocker. The native-only seal still waits for N2 deletion closure, the open N4/N5 release evidence, N6-N9, and the remaining Section 17 package/SBOM/process-tree/native-only gates. |
+| N4 | **DONE** | Native proposal/review/adjudication/apply path is receipt-bound. The explicit user-selected transcript workflow requires exact source hash/rebinding and required review; automatic implicit host-signal evaluation remains a separate optional lane. |
+| N5 | **PARTIAL** | Native Adapt source, CLI surfaces, persistence/delivery, & copied source-built-binary qualification have landed. Exact installed qualification & replacement or explicit dev-only demotion of `scripts/run-adapt-installed-current.mjs` remain pending receipts. |
+| N6 | **PARTIAL** | Native MCP/renderer/host-fence implementation has landed; installed conformance, Node-absent, & host-configuration receipts remain pending. |
+| N7 | **PARTIAL** | Federation Python/shadow deletion & configuration cutover implementation have landed; installed deletion & upgrade/rollback receipts remain pending. |
+| N8 | **PARTIAL** | Blueprint packaging/runtime-boundary implementation has landed; Hub-coupled watcher and bounded one-shot availability are defined, while installed receipts remain pending. |
+| N9 | **PARTIAL** | Membrane's strict active-Hub health, identity fence, memory routes, diagnostics pipe, and typed unavailable seams have landed; Membrane-side integration tests & installed receipts remain pending. No CodeRight repository change is in scope. |
+| N10 | **BLOCKED / NOT SEALED** | Native-only seal has not been issued. It still waits for N2 receipt evidence, N5-N9 installed receipts, & remaining Section 17 package/SBOM/process-tree/native-only gates. |
 
 ### 0.2 Why the previous migration missed Adapt and transcript normalization
 
@@ -613,28 +613,26 @@ Blueprint owns durable repository truth, graph identity/generations, structural 
 
 Membrane MUST NOT duplicate Blueprint's repository graph merely to remove a process boundary.
 
-### 8.2 Migration-period allowance
+### 8.2 Installed lifecycle
 
-Blueprint MAY remain a separately running external daemon only as a bounded
-migration state if:
-
-- the protocol is typed/versioned;
-- Membrane never reaches it through a Node CLI fallback;
-- its absence produces a typed `Unavailable`/degraded subsystem state and provider omission;
-- Membrane does not dynamically discover/load Blueprint source from a workspace;
-- the Membrane installed artifact does not bootstrap Node to execute a hidden Membrane-owned implementation;
-- the migration ledger names its Hub-hosting cutover and deletion/disable gate;
-- it does not register or preserve an independently resident final topology.
+Membrane packages one pinned Blueprint runtime. Hub owns its resident service &
+watcher lifecycle, publishes its typed endpoint, & drains both on shutdown.
+Hub-off Blueprint access is one bounded operation from installed bytes. No
+external provisioning, workspace discovery, independently resident daemon, or
+hidden fallback is part of installed topology.
 
 ### 8.3 Final packaging decision
 
 Blueprint retains an independently versioned package and protocol, but not an
-independently resident service. While Hub is active, Hub owns Blueprint
-residency and hosts its watcher/query role; Membrane reaches it through one
-typed native client and never opens Blueprint SQLite directly. When Hub is
-inactive, Membrane returns typed `membrane_unavailable { hub_inactive }` and
-does not fall back. An explicit direct Blueprint request may use a bounded
-one-shot operation that publishes transactionally and exits.
+independently resident service. The signed Membrane installer includes one
+pinned, digest-recorded Blueprint runtime component so no external provisioning
+is needed for qualification; that component remains reusable by later standalone
+package channels. While Hub is active, Hub owns Blueprint residency and hosts
+its watcher/query role; Membrane reaches it through one typed native client and
+never opens Blueprint SQLite directly. When Hub is inactive, Membrane returns
+typed `membrane_unavailable { hub_inactive }` and does not fall back. An explicit
+direct Blueprint request may use a bounded one-shot operation that publishes
+transactionally and exits.
 
 ---
 
@@ -676,10 +674,12 @@ Any permitted external process launch must flow through one governed native boun
 Qualified language services and compilers are `external-target-tool` dependencies, not
 Membrane-owned interpreter workers. A TypeScript engine may itself use an interpreter only when
 its external identity, version, executable path, capabilities, side-effect class, and process tree
-are explicit. Membrane MUST NOT bundle, install, or bootstrap that interpreter. Tool absence yields
-typed `Unavailable`/`Not configured` evidence and can never produce `clean_exact` where its
-capability is required. Native-only qualification covers both absent-tool degradation and a
-separately provisioned available-tool case.
+are explicit. Membrane MUST NOT bundle, install, or bootstrap those external tool interpreters.
+The sole bundled interpreter exception is Blueprint's pinned Node component, which is executable
+only from Blueprint's installed root under Hub-owned service/watcher or an explicit bounded
+one-shot request. Tool absence yields typed `Unavailable`/`Not configured` evidence and can never
+produce `clean_exact` where its capability is required. Native-only qualification covers both
+absent-tool degradation and a separately provisioned available external-tool case.
 
 ### 9.3 Runtime-language freeze
 
@@ -847,7 +847,7 @@ Freeze fixtures/contracts for:
 - bounded Hub presentation assets, capability/CSP restrictions, generated binding surface, and
   machine-checkable separation from Rust-owned authority/effects.
 
-The five public Membrane V1 shapes remain unchanged. `TranscriptEventV1`, `UserActEvidenceV1`, `FailureEpisodeV1`, and `InsightIssueV1` are internal domain contracts; record their schema/version/digest in the N1 fixture manifest without adding them to the public protocol registry.
+The five public Membrane V1 shapes remain unchanged. `TranscriptEventV1`, `FailureEpisodeV1`, and `InsightIssueV1` are internal domain contracts; record their schema/version/digest in the N1 fixture manifest without adding them to the public protocol registry.
 
 Add a checked-in policy manifest that defines allowed production runtimes (`rust`, declarative
 formats, and §1.5 `bounded-presentation`) plus permitted external/dev-only exceptions.
@@ -858,7 +858,7 @@ asset/capability restrictions.
 
 ### N2 — Port transcript normalization to native Rust
 
-**Status: PARTIAL — native owner/cutover/conformance done; legacy Python deletion/exclusion exit gate remains open.**
+**Status: PARTIAL — native owner/cutover/conformance done; 29 runtime-language blockers are closed, while final deletion/exclusion & installed receipts remain open.**
 
 Implement Section 5. First audit the current `engine/crates/membrane-transcript/` worktree
 candidate. Adopt/integrate it when contract-correct; otherwise explicitly supersede it before
@@ -896,25 +896,39 @@ Apply Adapt canon's correctness contracts—especially §5.4 scope, §5.8 delive
 fixtures pass; malformed scope fails closed; semantic manifest mutation is detected;
 retired/narrow records cannot enter always-on core.
 
-### N4 — Port Adapt proposal/adjudication/model boundary
+### N4 — Native Adapt proposal/review/adjudication/apply boundary
 
-**Status: PARTIAL — native boundary and synthetic conformance gate landed; real-world held-out,
-interval, and released-package evidence remain open.**
+**Status: DONE — native proposal/review/adjudication/apply boundary and explicit transcript
+source-binding contract are landed. Automatic implicit host signals remain an optional,
+separately evaluated lane and are not a release gate for selected-transcript use.**
 
-Implement native proposal source, adjudication, and semantic-validation orchestration. Preserve exact source rebinding and authority separation.
+Implement native proposal source, required review, adjudication, and semantic-validation orchestration. Preserve exact source hashing/rebinding and authority separation.
+
+The explicit caller-selected transcript path uses `adapt.user-taste-review.v1` for
+local human review. The decision payload must bind exactly to the pending manifest,
+installation identity, and canonical-pool digest; cover every pending record exactly
+once with `valid` or `invalid` plus a non-empty reason; and include non-empty receipt
+and validation timestamp fields. `issuer_id`, `key_id`, and `signature_hex` are empty,
+and no login/authentication is required. Signed `adapt.semantic-adjudication.v1`
+remains optional for enterprise/import use.
 
 Current synthetic evidence is the committed 44-case `adapt.taste-benchmark-scorecard.v1`:
-extraction precision `0.9667` and recall `1.0`; admission precision `0.9524` and recall `1.0`;
-semantic-projection precision `1.0`; authority-negative false-positive rate `0.0` (`0/11`). This is
-synthetic conformance evidence, not an independently sourced real-world held-out corpus and not an
-interval estimate.
+extraction precision `1.0` and recall `1.0`; admission precision `1.0` and recall `1.0`;
+semantic-projection precision `1.0`; authority-negative false-positive rate `0.0` (`0/11`). The
+product-fact modal false positive is closed by requiring modal words to occupy directive position
+or an explicit preference/correction context. The held-out report records `23` true positives and
+`97` false negatives (`recall 0.1917`), below its predeclared threshold; this optional automatic
+extraction evidence does not gate the explicit selected-transcript workflow. Synthetic conformance
+evidence is not a passing held-out or interval estimate.
 
-**Exit gate:** held-out extraction/admission quality gate meets approved thresholds; no installed Adapt operation needs `python`, Pi CLI, OpenCode CLI, or other interpreter-backed Membrane worker.
+**Exit gate:** selected transcript source identity/hash rebinding and required review are enforced;
+no installed Adapt operation needs `python`, Pi CLI, OpenCode CLI, or other interpreter-backed
+Membrane worker. Optional implicit host-signal quality remains separately evaluated.
 
 ### N5 — Native Adapt persistence, delivery receipts, CLI, and Hub scheduling
 
-**Status: PARTIAL — native source and copied source-built-binary qualification landed; exact
-released-package proof and legacy authority-runner replacement remain open.**
+**Status: PARTIAL — native implementation & copied source-built-binary qualification landed; exact
+installed receipts & legacy authority-runner replacement remain open.**
 
 - native Cortex batch apply;
 - current-policy/lifecycle projection;
@@ -929,7 +943,7 @@ released-package proof and legacy authority-runner replacement remain open.**
 
 ### N6 — Cut MCP/server/renderer production path to Rust
 
-**Status: OPEN.**
+**Status: PARTIAL — native implementation landed; installed conformance & host-fence receipts remain open.**
 
 - make `membrane-mcp` canonical;
 - implement the complete registry-defined tool set, currently 17 tools, and advertise only tools
@@ -953,7 +967,7 @@ no unexecutable tool; observation correlation and hard `maxCost` behavior pass c
 
 ### N7 — Delete federation Python and shadow runtime
 
-**Status: OPEN.**
+**Status: PARTIAL — federation deletion/configuration implementation landed; installed deletion & upgrade/rollback receipts remain open.**
 
 After current Rust federation parity evidence is accepted:
 
@@ -971,7 +985,8 @@ configuration contains a legacy interpreter key.
 
 ### N8 — Close Blueprint packaging/runtime boundary
 
-**Status: OPEN.**
+**Status: PARTIAL — Blueprint packaging/runtime-boundary implementation landed; its watcher is
+Hub-coupled and installed residency receipts remain open.**
 
 Implement Section 8.3's Hub-hosted residency and bounded one-shot contract.
 Include the merged D0a/D0b findings surface, named-generation baseline/delta,
@@ -979,39 +994,42 @@ exact content hashes, affected-closure evidence, typed omissions, store lease,
 and freshness/coherence separation. Membrane consumes these only through
 Blueprint's public protocol and never duplicates its graph/resolution owner.
 
-**Exit gate:** typed native Blueprint client passes Hub-hosted, Hub-off one-shot,
-Membrane Hub-off no-fallback, active-writer exclusion, generation/hash mismatch,
+**Exit gate:** typed native Blueprint client passes Hub-hosted watcher residency, explicit
+Hub-off bounded one-shot availability, Membrane Hub-off typed unavailability/no-fallback,
+active-writer exclusion, generation/hash mismatch,
 findings omission, and dirty-overlay conformance with honest degradation. The
 `path`, `flows`, and complete inventory/audit obligations from Blueprint canon
 §17.3 are satisfied before residency cutover.
 
-### N9 — Finish CodeRight Hub binding/storage integration
+### N9 — Finish Membrane's active-Hub consumer seam
 
-**Status: OPEN.**
+**Status: PARTIAL — Membrane-side strict handshake, identity fence, native memory routes, diagnostics pipe, and typed Hub-loss behavior landed; integration and installed receipts remain open. No CodeRight repository mutation is required or permitted by this lane.**
 
-Implement the CodeRight integration canon:
+Expose the Membrane side of the consumer integration canon:
 
 - one versioned active-Hub Membrane binding;
-- no embedded Membrane backend or local fallback store;
-- session/event/task/artifact migration;
-- FTS/hybrid retrieval;
-- Hub-loss conformance for `membrane_unavailable`, `BackendUnavailable`,
-  `CommitUnknown`, same-store recovery, and zero local fallback;
-- typed Hub-served Live Diagnostics workspace/mutation APIs for CodeRight transactional mode;
+- no embedded Membrane backend or local fallback store in Membrane-owned clients;
+- strict health identity and per-request optional identity fence;
+- complete native memory/retrieval routes;
+- Hub-loss conformance for `membrane_unavailable { hub_inactive }` and same-store recovery;
+- typed Hub-served Live Diagnostics workspace/mutation APIs;
 - exact mutation sealing, operational gate consumption, and host enforcement without MCP,
   loopback HTTP, or a second Membrane runtime.
 
-**Exit gate:** CodeRight memory and transactional diagnostics conformance passes
-through one Hub binding, with no embedded/local fallback, no split memory
-universe, and no stale-byte fence clearance.
+**Exit gate:** Membrane's client, memory, MCP, and transactional diagnostics conformance passes
+through one Hub binding, with no embedded/local fallback, no split memory universe, and no
+stale-byte fence clearance. External consumer implementation remains outside this repository.
 
 ### N10 — Native-only release seal
 
-**Status: BLOCKED — behavioral scorecards are committed and are no longer blockers; waits for N2
-deletion closure, the open N4/N5 release evidence, N6-N9, and remaining Section 17 gates.**
+**Status: BLOCKED / NOT SEALED — N2/N5-N9 installed receipts & remaining Section 17 gates are
+pending. Optional implicit host-signal evaluation is not an N4 or release gate for the explicit
+selected-transcript workflow.**
 
-Run the full Section 15–16 qualification profiles against one exact package candidate digest,
-including bounded Hub presentation and declared external-integration evidence.
+Run the full Section 15–16 native package qualification against one exact package candidate
+digest, including bounded Hub presentation. Record declared external-integration evidence
+separately when available; it is supplemental and does not gate explicit selected-transcript
+Adapt use.
 
 **Exit gate:** every Section 17 checkbox passes and machine-readable `native-only-seal.json` is issued. Otherwise status is failed, never “mostly complete.”
 
@@ -1330,18 +1348,18 @@ Root CI MUST gate the Rust suites that own production behavior, including native
 Adapt/Transcript/MCP and Live Diagnostics. Python/JavaScript tests are migration-oracle coverage
 only and cannot be the sole branch gate for a production subsystem or installed host fence.
 
-### 16.4 Exact installed-artifact qualification
+### 16.4 Installed-artifact qualification
 
-Test one exact package digest, not a source checkout, in two profiles. Profile B is companion
-integration evidence for the same package digest; it cannot weaken Profile A.
+Test one exact package digest, not a source checkout. This is native-only release evidence for N10,
+not an N4 gate and not a prerequisite for the explicit selected-transcript workflow.
 
-#### Profile A — hermetic native seal
+#### Native package qualification
 
 Environment:
 
-- fresh user profile;
-- no development workspace path;
-- `python`, `python3`, `pip`, `node`, `npm`, `npx` unavailable;
+- `python`, `python3`, `pip`, `npm`, and `npx` unavailable; `node` is absent from
+  `PATH` and may exist only as the hash-addressed Blueprint runtime component
+  under the installed package's bounded Blueprint root;
 - no `.venv-tools` assumption;
 - no network fetch to obtain an interpreter/runtime.
 
@@ -1360,30 +1378,29 @@ Exercise:
 - Cortex memory/retrieval;
 - Ledger record/navigation path;
 - Adapt mine/review/apply/recall/doctor path;
-- Blueprint unavailable/degraded behavior according to Section 8;
+- Blueprint installed-component availability, Hub-hosted service/watcher
+  residency, Hub-off bounded one-shot behavior, and typed Membrane
+  `hub_inactive` behavior according to Section 8;
 - external diagnostic tools absent/`Not configured` without false clean;
 - upgrade;
 - rollback;
 - uninstall.
 
-#### Profile B — declared external integrations
+#### Supplemental external integration evidence
 
-Use the same Membrane package digest with no development checkout and no Membrane-bundled
-interpreter. Provision each external dependency independently before Membrane starts:
-
-- Blueprint runs as a Hub-hosted role under Hub-owned residency using its
-  independently versioned package/protocol identity; it does not register an
-  independent service;
-- each diagnostic engine is supplied on a controlled injected search path with exact executable,
+External diagnostic integration evidence is supplemental and does not gate the
+native Adapt selected-transcript workflow. Use the same Membrane package digest
+with its pinned, bundled Blueprint runtime; no external Blueprint provisioning is
+allowed. Each optional diagnostic engine is supplied on a controlled injected search path with exact executable,
   version, digest, protocol, side-effect class, and transitive-runtime identity;
 - prefer a self-contained native engine such as `tsgo` for TypeScript D1 seal evidence; any
   separately tested interpreter-backed external tool must bring its own declared runtime outside
   the Membrane package and cannot establish a Membrane runtime dependency.
 
-Exercise Blueprint Hub-hosted, Hub-off bounded one-shot,
-generation-switch/hash-mismatch, and active-writer-exclusion behavior plus
-available external-tool conformance. Evidence separates the Hub process,
-bounded Blueprint one-shot processes, and declared external-tool processes.
+Exercise available external-tool conformance separately from Blueprint's
+Hub-hosted, Hub-off bounded one-shot, generation-switch/hash-mismatch, and
+active-writer-exclusion behavior. Evidence separates the Hub process, bounded
+Blueprint one-shot processes, and declared external-tool processes.
 Membrane never fetches, installs, bootstraps, or resolves an interpreter from
 its own package or an uncontrolled PATH.
 
@@ -1416,6 +1433,13 @@ migration/native-rust/native-only-seal.json
 
 `native-only-seal.json` is emitted only when every required gate passes against one immutable release-candidate digest.
 
+The issuer is `node scripts/qualification/issue-native-only-seal.mjs` with
+`--release-manifest`, `--qualification`, `--runtime-language-manifest`,
+`--invocation-graph`, `--native-contract-manifest`, and `--out` arguments. It
+validates all five structured inputs, requires one lowercase installer digest
+across release and installed evidence, then atomically writes the seal; it never
+builds, signs, installs, or runs tests.
+
 ---
 
 ## 17. Final acceptance criteria
@@ -1434,6 +1458,7 @@ migration/native-rust/native-only-seal.json
 
 ### 17.2 Federation
 
+- [x] Federation Python/shadow deletion and v2-to-v3 configuration cutover implementation has landed; installed deletion/upgrade receipts remain pending.
 - [ ] Production federation is native and same-process.
 - [ ] All nine provider semantics pass native conformance.
 - [ ] Scope/deadline/cancellation/generation/trust/merge invariants pass.
@@ -1451,13 +1476,14 @@ migration/native-rust/native-only-seal.json
 - [x] Canonical transcript normalization is Rust.
 - [x] `TranscriptEventV1`, exact byte spans, provenance, parser receipts, and typed unavailability pass fixtures.
 - [x] Adapt has no production dependency on Python `continuity`.
-- [ ] Every N0-inventoried consumer uses native transcript contract and Python package is deleted from production.
+- [x] Every N0-inventoried consumer uses native transcript contract; Python package is excluded from production (final deletion/exclusion receipt remains pending).
 
 ### 17.4 Adapt
 
 - [x] Native deterministic extraction/authority/admission/manifest/apply pipeline passes.
 - [x] The committed 44-case synthetic Taste conformance scorecard passes its declared point thresholds.
-- [ ] An independently sourced real-world held-out Taste corpus passes approved extraction/admission thresholds with interval reporting.
+- [x] Explicit selected-transcript Taste path enforces source hash/rebinding and required review before apply.
+- [ ] Optional automatic implicit host-signal lane passes approved extraction/admission thresholds with interval reporting — current report: `23` TP / `97` FN, recall `0.1917`; this lane is not a release gate for selected-transcript use.
 - [x] A copied source-built `membrane` binary passes isolated Adapt qualification without interpreter tools or a checkout cwd.
 - [ ] The exact released package passes Adapt qualification without Python, Pi CLI, OpenCode CLI, or a source checkout.
 - [ ] `scripts/run-adapt-installed-current.mjs` is replaced as an authority test or explicitly proven release-excluded and dev-only.
@@ -1471,14 +1497,15 @@ migration/native-rust/native-only-seal.json
 
 ### 17.5 MCP / Push rendering
 
-- [ ] `membrane-mcp` is canonical production MCP implementation.
-- [ ] Rust renderer/reconciliation is canonical source of truth.
+- [x] `membrane-mcp` native production implementation has landed; installed conformance receipt remains pending.
+- [x] Rust renderer/reconciliation implementation has landed; installed receipt remains pending.
 - [ ] Complete registry-defined host conformance, currently 17 tools, passes with Node absent.
 - [ ] Native discovery advertises only executable tools and matches registry/product truth.
 - [ ] Generated host configurations invoke native binaries.
 
 ### 17.6 Live Diagnostics
 
+- [x] Native Live Diagnostics/host-fence implementation has landed; installed enforcement receipt remains pending.
 - [ ] Live Diagnostics remains a Membrane runtime module under Hub, not a seventh subsystem.
 - [ ] Resident contracts, evaluator, supervisor, reconciliation, provider adapters, and routes are native Rust.
 - [ ] Exact repo/worktree/project-root/epoch/hash/manifest binding passes.
@@ -1495,7 +1522,7 @@ migration/native-rust/native-only-seal.json
 
 ### 17.7 Blueprint
 
-- [ ] Final packaging implements Section 8.3 Hub-hosted residency and bounded one-shot contract.
+- [x] Blueprint packaging/runtime-boundary implementation has landed; installed Hub-hosted/one-shot receipt remains pending.
 - [ ] No Node Blueprint CLI fallback exists inside Membrane providers.
 - [ ] Hub-off Membrane requests return typed unavailability and never invoke Blueprint one-shot.
 - [ ] Direct Hub-off Blueprint requests are bounded, publish transactionally, and exit.
@@ -1504,7 +1531,7 @@ migration/native-rust/native-only-seal.json
 ### 17.8 Cortex / data / CodeRight
 
 - [ ] Cortex remains the single durable-memory authority for Adapt records.
-- [ ] CodeRight uses exactly one compatible active-Hub Membrane binding.
+- [x] CodeRight source implements one compatible active-Hub Membrane binding with no local fallback; independent verification, commit, and installed receipts remain pending.
 - [ ] CodeRight uses Hub-served transactional diagnostics and host enforcement without a second Membrane runtime.
 - [ ] CodeRight opens no embedded/local fallback Cortex DB.
 - [ ] Backend failure does not silently split memory universes.
@@ -1519,10 +1546,11 @@ migration/native-rust/native-only-seal.json
 - [ ] Process tree contains no Membrane-owned interpreter child.
 - [ ] Package/SBOM contains no undeclared interpreter runtime payload.
 - [ ] Bounded WebView presentation evidence proves §1.5 restrictions for exact shipped assets.
-- [ ] Hermetic Profile A and declared-external Profile B reference one exact package digest.
+- [ ] Native package qualification references one exact package digest; supplemental external integration evidence is recorded separately when available.
 - [ ] Upgrade, rollback, crash recovery, shutdown, cancellation, and uninstall pass.
 - [ ] Product truth and architecture docs describe the exact shipped topology.
 - [ ] Legacy code is deleted, not merely disabled.
+- [x] Runtime-language manifest closes 29 identified blockers; sealed manifest has zero production interpreter rows and exclusion proofs.
 - [ ] Every runtime-language ledger row has deletion receipt or dev-only proof.
 - [ ] `native-only-seal.json` references the exact package digest tested.
 

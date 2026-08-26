@@ -10,7 +10,6 @@
   "engines": { "node": ">=20" },
   "files": ["index.mjs", "bin/membrane.mjs", "package.json"],
   "optionalDependencies": {
-    "@membrane/membrane-darwin-arm64": "0.0.0-source",
-    "@membrane/membrane-darwin-x64": "0.0.0-source"
+    "@membrane/membrane-win32-x64": "0.0.0-source"
   }
 }

@@ -2,9 +2,9 @@
 //!
 //! The Membrane adapter consumes Blueprint exclusively through its public
 //! resident findings service: the daemon IPC surface that serves
-//! `findings.get` (newline-delimited JSON envelopes over a per-user Unix
-//! domain socket; see `blueprint/src/service/protocol.mjs`). This module is
-//! the one production seam for that consumption.
+//! `findings.get` (newline-delimited JSON envelopes over Hub-owned IPC; see
+//! `blueprint/src/service/protocol.mjs`). This module is the one production
+//! seam for that consumption.
 //!
 //! Freshness honesty: whatever the service answers is carried verbatim —
 //! `current` yields an exact `snapshot_checker_exact` lane, `stale` yields no
@@ -38,8 +38,12 @@
 //! (`live_diagnostics.rs` / `live_diagnostics_service.rs`) can perform that
 //! comparison. It does NOT itself decide lane completeness.
 
-use membrane_protocol::diagnostics::{ObservationV1, SeverityHint, SourceClass, TypedOmission, WorkspaceEpochV1};
+use membrane_protocol::diagnostics::{
+    ObservationV1, SeverityHint, SourceClass, TypedOmission, WorkspaceEpochV1,
+};
 use serde_json::Value;
+#[cfg(windows)]
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -204,8 +208,8 @@ impl BlueprintFindingsResult {
         required_paths: Option<&[String]>,
     ) -> Vec<TypedOmission> {
         let mut issues = Vec::new();
-        let required_set: Option<std::collections::HashSet<&str>> = required_paths
-            .map(|paths| paths.iter().map(|s| s.as_str()).collect());
+        let required_set: Option<std::collections::HashSet<&str>> =
+            required_paths.map(|paths| paths.iter().map(|s| s.as_str()).collect());
         for changed in &epoch.changed_file_hashes {
             if let Some(filter) = &required_set {
                 if !filter.contains(changed.path.as_str()) {
@@ -243,7 +247,8 @@ impl BlueprintFindingsResult {
         if !self.freshness_is_current() {
             return false;
         }
-        self.verify_hashes_against_epoch(epoch, required_paths).is_empty()
+        self.verify_hashes_against_epoch(epoch, required_paths)
+            .is_empty()
     }
 
     /// Returns true if this result may contribute an exact D0 lane. Conditions:
@@ -267,6 +272,10 @@ pub enum BlueprintFindingsError {
     Unavailable(String),
     /// The service did not answer within the bounded wait.
     DeadlineExceeded,
+    /// Blueprint is live, but requested repository has no enrolled graph.
+    NotConfigured(String),
+    /// Blueprint is live, but exact evidence is stale or generation-mismatched.
+    Stale(String),
     /// The service answered but not in the expected envelope.
     Protocol(String),
 }
@@ -276,6 +285,8 @@ impl std::fmt::Display for BlueprintFindingsError {
         match self {
             Self::Unavailable(detail) => write!(f, "unavailable: {detail}"),
             Self::DeadlineExceeded => write!(f, "deadline exceeded"),
+            Self::NotConfigured(detail) => write!(f, "not configured: {detail}"),
+            Self::Stale(detail) => write!(f, "stale: {detail}"),
             Self::Protocol(detail) => write!(f, "protocol violation: {detail}"),
         }
     }
@@ -292,27 +303,36 @@ pub trait BlueprintFindingsClient: Send {
     ) -> Result<BlueprintFindingsResult, BlueprintFindingsError>;
 }
 
-/// Default endpoint resolution mirroring `blueprint/src/service/paths.mjs`:
-/// `BLUEPRINT_DAEMON_ENDPOINT` first, then `~/.blueprint/blueprint.sock`.
+/// Default endpoint resolution mirroring `blueprint/src/service/paths.mjs`.
+/// Windows uses Hub's per-user named pipe; Membrane never starts a daemon or
+/// falls back to an embedded/one-shot provider.
 pub fn daemon_endpoint_from_environment() -> PathBuf {
     if let Ok(value) = std::env::var("BLUEPRINT_DAEMON_ENDPOINT") {
         if !value.trim().is_empty() {
             return PathBuf::from(value);
         }
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        let mut path = PathBuf::from(home);
-        path.push(".blueprint");
-        path.push("blueprint.sock");
-        return path;
+    #[cfg(windows)]
+    {
+        let profile = std::env::var("USERPROFILE").unwrap_or_else(|_| "".to_owned());
+        let suffix = hex::encode(Sha256::digest(profile.as_bytes()));
+        return PathBuf::from(format!(r"\\.\pipe\membrane-blueprint-{}", &suffix[..16]));
     }
-    PathBuf::from(".blueprint/blueprint.sock")
+    #[cfg(not(windows))]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            let mut path = PathBuf::from(home);
+            path.push(".blueprint");
+            path.push("blueprint.sock");
+            return path;
+        }
+        PathBuf::from(".blueprint/blueprint.sock")
+    }
 }
 
-/// Production client speaking the daemon newline-delimited JSON protocol over
-/// a Unix domain socket. Windows named-pipe IPC degrades to typed
-/// unavailability until the pipe transport lands; the degradation is visible
-/// in every snapshot as `blueprint_unavailable`, never hidden.
+/// Production client speaking daemon newline-delimited JSON over Hub-owned
+/// Unix socket or Windows named pipe. Membrane never launches Blueprint or
+/// substitutes an embedded provider.
 pub struct DaemonFindingsClient {
     endpoint: PathBuf,
 }
@@ -386,12 +406,12 @@ fn fetch_over_socket(
         });
         let mut line = request.to_string();
         line.push('\n');
-        stream
-            .write_all(line.as_bytes())
-            .map_err(|error| BlueprintFindingsError::Unavailable(format!("write failed: {error}")))?;
-        stream
-            .flush()
-            .map_err(|error| BlueprintFindingsError::Unavailable(format!("flush failed: {error}")))?;
+        stream.write_all(line.as_bytes()).map_err(|error| {
+            BlueprintFindingsError::Unavailable(format!("write failed: {error}"))
+        })?;
+        stream.flush().map_err(|error| {
+            BlueprintFindingsError::Unavailable(format!("flush failed: {error}"))
+        })?;
         let mut reader = BufReader::new(stream);
         let mut response = String::new();
         match reader.read_line(&mut response) {
@@ -412,24 +432,81 @@ fn fetch_over_socket(
     }
     #[cfg(not(unix))]
     {
-        let _ = (endpoint, repo_root, timeout_ms, paths);
-        Err(BlueprintFindingsError::Unavailable(
-            "blueprint daemon IPC requires a unix-domain socket transport".into(),
-        ))
+        #[cfg(windows)]
+        {
+            let timeout = std::time::Duration::from_millis(timeout_ms.clamp(10, 30_000));
+            let request_id = format!(
+                "membrane-diag-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_millis())
+                    .unwrap_or(0)
+            );
+            let mut input = serde_json::json!({ "repoRoot": repo_root.to_string_lossy() });
+            if !paths.is_empty() {
+                input["paths"] = serde_json::json!(paths);
+            }
+            let mut request = serde_json::json!({
+                "protocolVersion": PROTOCOL_VERSION,
+                "requestId": request_id,
+                "repoId": null,
+                "generation": null,
+                "method": "findings.get",
+                "deadlineMs": timeout_ms.clamp(10, 30_000),
+                "input": input,
+            })
+            .to_string()
+            .into_bytes();
+            request.push(b'\n');
+            let response = membrane_federation::blueprint_client::exchange_windows_named_pipe(
+                endpoint,
+                &request,
+                16 * 1024,
+                timeout,
+            )
+            .map_err(|error| {
+                if error == "__blueprint_pipe_timeout__" {
+                    BlueprintFindingsError::DeadlineExceeded
+                } else {
+                    BlueprintFindingsError::Unavailable(error)
+                }
+            })?;
+            let line = std::str::from_utf8(&response).map_err(|error| {
+                BlueprintFindingsError::Protocol(format!("response is not UTF-8: {error}"))
+            })?;
+            return parse_envelope(line);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (endpoint, repo_root, timeout_ms, paths);
+            Err(BlueprintFindingsError::Unavailable(
+                "Blueprint daemon IPC is unavailable on this host".into(),
+            ))
+        }
     }
 }
 
 fn parse_envelope(line: &str) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
-    let value: Value = serde_json::from_str(line.trim())
-        .map_err(|error| BlueprintFindingsError::Protocol(format!("invalid JSON envelope: {error}")))?;
+    let value: Value = serde_json::from_str(line.trim()).map_err(|error| {
+        BlueprintFindingsError::Protocol(format!("invalid JSON envelope: {error}"))
+    })?;
     if value["ok"].as_bool() != Some(true) {
+        let code = value["error"]["code"]
+            .as_str()
+            .unwrap_or("blueprint_failed");
         let detail = value["error"]["detail"]
             .as_str()
             .or_else(|| value["error"]["code"].as_str())
             .unwrap_or("findings service returned ok=false");
-        // A typed refusal (unknown root, stale-blocked) still proves the
-        // service exists; classify as unavailable with its own words.
-        return Err(BlueprintFindingsError::Unavailable(detail.to_string()));
+        return Err(match code {
+            "root_not_enrolled" | "graph_missing" | "not_configured" => {
+                BlueprintFindingsError::NotConfigured(detail.to_string())
+            }
+            "stale_blocked" | "generation_mismatch" => {
+                BlueprintFindingsError::Stale(detail.to_string())
+            }
+            _ => BlueprintFindingsError::Protocol(format!("{code}: {detail}")),
+        });
     }
     let result = &value["result"];
     let generation_id = result["generationId"]
@@ -451,15 +528,14 @@ fn parse_envelope(line: &str) -> Result<BlueprintFindingsResult, BlueprintFindin
             findings.push(BlueprintFinding {
                 rule_id: rule_id.to_string(),
                 path: path.to_string(),
-                start_line: item["startLine"].as_u64().and_then(|v| u32::try_from(v).ok()),
+                start_line: item["startLine"]
+                    .as_u64()
+                    .and_then(|v| u32::try_from(v).ok()),
                 end_line: item["endLine"].as_u64().and_then(|v| u32::try_from(v).ok()),
                 name: item["name"].as_str().map(str::to_string),
                 specifier: item["specifier"].as_str().map(str::to_string),
                 severity: item["severity"].as_str().map(str::to_string),
-                fingerprint: item["fingerprint"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_string(),
+                fingerprint: item["fingerprint"].as_str().unwrap_or_default().to_string(),
             });
         }
     }
@@ -598,8 +674,14 @@ mod tests {
         .to_string();
         let parsed = parse_envelope(&line).unwrap();
         assert_eq!(parsed.per_file_hashes.len(), 2);
-        assert_eq!(parsed.per_file_hashes.get("src/a.ts").unwrap(), "sha256:aaa");
-        assert_eq!(parsed.per_file_hashes.get("src/b.ts").unwrap(), "sha256:bbb");
+        assert_eq!(
+            parsed.per_file_hashes.get("src/a.ts").unwrap(),
+            "sha256:aaa"
+        );
+        assert_eq!(
+            parsed.per_file_hashes.get("src/b.ts").unwrap(),
+            "sha256:bbb"
+        );
         assert_eq!(parsed.hash_for("src/a.ts"), Some("sha256:aaa"));
         // Missing file returns None.
         assert_eq!(parsed.hash_for("src/missing.ts"), None);
@@ -634,7 +716,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_envelope_refuses_error_envelopes_as_unavailable() {
+    fn parse_envelope_preserves_not_configured_refusal() {
         let line = serde_json::json!({
             "protocolVersion": 1,
             "requestId": "r2",
@@ -645,7 +727,7 @@ mod tests {
         })
         .to_string();
         let error = parse_envelope(&line).unwrap_err();
-        assert!(matches!(error, BlueprintFindingsError::Unavailable(_)));
+        assert!(matches!(error, BlueprintFindingsError::NotConfigured(_)));
         assert!(error.to_string().contains("Graph store is missing."));
     }
 
@@ -835,7 +917,9 @@ mod tests {
         assert!(is_coverage_affecting_omission("open_export_surface"));
         assert!(is_coverage_affecting_omission("stale_generation"));
         assert!(is_coverage_affecting_omission("hash_mismatch"));
-        assert!(is_coverage_affecting_omission("missing_required_content_hash"));
+        assert!(is_coverage_affecting_omission(
+            "missing_required_content_hash"
+        ));
         // Advisory: package_specifier is NOT in the minimal coverage-affecting set.
         // (It indicates a bare specifier outside repo scope, not a gap in required scope.)
         assert!(!is_coverage_affecting_omission("package_specifier"));
@@ -868,7 +952,10 @@ mod tests {
         let parsed = parse_envelope(&line).unwrap();
         assert!(parsed.has_coverage_affecting_omissions());
         assert_eq!(parsed.coverage_affecting_omissions().len(), 1);
-        assert_eq!(parsed.coverage_affecting_omissions()[0].code, "resolution_ambiguous");
+        assert_eq!(
+            parsed.coverage_affecting_omissions()[0].code,
+            "resolution_ambiguous"
+        );
         let epoch = epoch_with_hashes(&[("src/a.ts", "sha256:aaa")]);
         assert!(!parsed.may_produce_exact_lane(&epoch, None));
         // But a non-coverage omission does NOT block.

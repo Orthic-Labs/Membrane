@@ -8,14 +8,14 @@
 // plausible-looking placeholder.
 //
 // These are the exact resolved dependency graphs for the portable Membrane
-// add-on: root JS checks plus its locked engine workspace. Fixture lockfiles
-// do not participate in a shipped add-on.
+// add-on: root JS checks, the pinned Blueprint runtime package, plus its locked
+// engine workspace. Fixture lockfiles do not participate in a shipped add-on.
 //
 // This module never runs cargo, pnpm, or any other command: it only reads
 // and parses text files already on disk.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const SCHEMA = "membrane.sbom.v1";
@@ -24,6 +24,7 @@ const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 
 export const DEFAULT_LOCKFILES = [
   { ecosystem: "npm", path: "pnpm-lock.yaml" },
+  { ecosystem: "npm", path: "blueprint/pnpm-lock.yaml" },
   { ecosystem: "cargo", path: "engine/Cargo.lock" },
 ];
 
@@ -142,9 +143,25 @@ function compareComponents(a, b) {
  * regenerated SBOM against changed lockfiles is provably different, and an
  * unchanged one is provably identical.
  */
-export function generateSbom({ repoRoot, lockfiles = DEFAULT_LOCKFILES } = {}) {
+function bindArtifact(repoRoot, artifact) {
+  if (typeof artifact !== "string" || !artifact) fail("artifact is required");
+  const abs = resolve(repoRoot, artifact);
+  if (!existsSync(abs)) fail(`artifact not found: ${artifact}`);
+  const stat = lstatSync(abs);
+  if (stat.isSymbolicLink() || !stat.isFile()) fail(`artifact must be a regular file: ${artifact}`);
+  const bytes = readFileSync(abs);
+  const path = relative(repoRoot, abs);
+  return {
+    path: path && !path.startsWith(`..${sep}`) && path !== ".." ? path.replaceAll("\\", "/") : abs,
+    size: bytes.length,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
+export function generateSbom({ repoRoot, artifact, lockfiles = DEFAULT_LOCKFILES } = {}) {
   if (!repoRoot) fail("repoRoot is required");
   if (!Array.isArray(lockfiles) || lockfiles.length === 0) fail("lockfiles must be a non-empty array");
+  const artifactReceipt = bindArtifact(repoRoot, artifact);
   const components = [];
   const gaps = [];
   const generatedFrom = [];
@@ -159,7 +176,7 @@ export function generateSbom({ repoRoot, lockfiles = DEFAULT_LOCKFILES } = {}) {
     generatedFrom.push({ path: entry.path, ecosystem: entry.ecosystem, sha256: createHash("sha256").update(text).digest("hex") });
   }
   components.sort(compareComponents);
-  return { schema: SCHEMA, generatedFrom, componentCount: components.length, components, gaps };
+  return { schema: SCHEMA, artifact: artifactReceipt, generatedFrom, componentCount: components.length, components, gaps };
 }
 
 function parseArgs(argv) {
@@ -167,6 +184,7 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--repo-root") args.repoRoot = argv[++i];
+    else if (arg === "--artifact") args.artifact = argv[++i];
     else if (arg === "--out") args.out = argv[++i];
     else if (arg === "-h" || arg === "--help") args.help = true;
     else fail(`unknown argument: ${arg}`);
@@ -176,9 +194,9 @@ function parseArgs(argv) {
 
 function usage() {
   console.log(
-    "usage: sbom.mjs [--repo-root PATH] [--out FILE]\n\n" +
+    "usage: sbom.mjs --artifact INSTALLER [--repo-root PATH] [--out FILE]\n\n" +
     "Prints (or, with --out, also writes) the real SBOM derived from\n" +
-    "pnpm-lock.yaml and engine/Cargo.lock.\n" +
+    "pnpm-lock.yaml, blueprint/pnpm-lock.yaml, and engine/Cargo.lock, bound to exact installer bytes.\n" +
     "Never runs cargo, pnpm, or any other command; reads committed lockfiles only.",
   );
 }
@@ -188,7 +206,7 @@ function cli() {
   if (args.help) { usage(); process.exit(0); }
   try {
     const repoRoot = resolve(args.repoRoot);
-    const sbom = generateSbom({ repoRoot });
+    const sbom = generateSbom({ repoRoot, artifact: args.artifact });
     const json = `${JSON.stringify(sbom, null, 2)}\n`;
     if (args.out) writeFileSync(resolve(repoRoot, args.out), json);
     process.stdout.write(json);

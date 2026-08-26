@@ -1,16 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_LOCKFILES, generateSbom, parseCargoLock, parsePnpmLock, SCHEMA } from "./sbom.mjs";
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../../..");
+const FIXTURE_ARTIFACT = "scripts/release/evidence/sbom.mjs";
 
 test("generateSbom against this repo's real add-on lockfiles produces only resolved, hash-bound components and no gaps", () => {
-  const sbom = generateSbom({ repoRoot: REPO_ROOT });
+  const sbom = generateSbom({ repoRoot: REPO_ROOT, artifact: FIXTURE_ARTIFACT });
   assert.equal(sbom.schema, SCHEMA);
+  assert.equal(sbom.artifact.path, FIXTURE_ARTIFACT);
+  assert.equal(sbom.artifact.size, readFileSync(resolve(REPO_ROOT, FIXTURE_ARTIFACT)).length);
+  assert.equal(sbom.artifact.sha256, createHash("sha256").update(readFileSync(resolve(REPO_ROOT, FIXTURE_ARTIFACT))).digest("hex"));
   assert.equal(sbom.generatedFrom.length, DEFAULT_LOCKFILES.length);
   assert.ok(sbom.componentCount > 100, `expected >100 real components from the add-on lockfiles, got ${sbom.componentCount}`);
   assert.equal(sbom.components.length, sbom.componentCount);
@@ -34,15 +40,15 @@ test("generateSbom against this repo's real add-on lockfiles produces only resol
 });
 
 test("generateSbom is deterministic and hash-binds the exact lockfile bytes it read", () => {
-  const first = generateSbom({ repoRoot: REPO_ROOT });
-  const second = generateSbom({ repoRoot: REPO_ROOT });
+  const first = generateSbom({ repoRoot: REPO_ROOT, artifact: FIXTURE_ARTIFACT });
+  const second = generateSbom({ repoRoot: REPO_ROOT, artifact: FIXTURE_ARTIFACT });
   assert.deepEqual(first, second);
   for (const entry of first.generatedFrom) assert.match(entry.sha256, /^[0-9a-f]{64}$/);
 });
 
 test("generateSbom fails closed on a missing lockfile instead of silently skipping it", () => {
   assert.throws(
-    () => generateSbom({ repoRoot: REPO_ROOT, lockfiles: [{ ecosystem: "npm", path: "does/not/exist.yaml" }] }),
+    () => generateSbom({ repoRoot: REPO_ROOT, artifact: FIXTURE_ARTIFACT, lockfiles: [{ ecosystem: "npm", path: "does/not/exist.yaml" }] }),
     /FAIL CLOSED: lockfile not found/,
   );
 });
@@ -114,11 +120,52 @@ test("a generated SBOM round-trips through JSON to a temp file unchanged", () =>
   const dir = mkdtempSync(join(tmpdir(), "membrane-sbom-cli-"));
   try {
     const outPath = join(dir, "sbom.json");
-    const sbom = generateSbom({ repoRoot: REPO_ROOT });
+    const sbom = generateSbom({ repoRoot: REPO_ROOT, artifact: FIXTURE_ARTIFACT });
     writeFileSync(outPath, `${JSON.stringify(sbom, null, 2)}\n`);
     const reread = JSON.parse(readFileSync(outPath, "utf8"));
     assert.deepEqual(reread, sbom);
     assert.equal(reread.schema, SCHEMA);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("artifact binding requires a regular file and changes when its exact bytes change", () => {
+  const dir = mkdtempSync(join(tmpdir(), "membrane-sbom-artifact-"));
+  try {
+    writeFileSync(join(dir, "pnpm-lock.yaml"), "packages:\n");
+    writeFileSync(join(dir, "Cargo.lock"), "version = 4\n");
+    const artifact = join(dir, "MembraneHub_1.0.0_x64-setup.exe");
+    writeFileSync(artifact, "first installer bytes");
+    const lockfiles = [{ ecosystem: "npm", path: "pnpm-lock.yaml" }, { ecosystem: "cargo", path: "Cargo.lock" }];
+    const first = generateSbom({ repoRoot: dir, artifact: "MembraneHub_1.0.0_x64-setup.exe", lockfiles });
+    writeFileSync(artifact, "changed installer bytes");
+    const second = generateSbom({ repoRoot: dir, artifact: "MembraneHub_1.0.0_x64-setup.exe", lockfiles });
+    assert.notEqual(first.artifact.sha256, second.artifact.sha256);
+    assert.equal(second.artifact.size, Buffer.byteLength("changed installer bytes"));
+    assert.throws(() => generateSbom({ repoRoot: dir, lockfiles }), /FAIL CLOSED: artifact is required/);
+    assert.throws(() => generateSbom({ repoRoot: dir, artifact: "missing.exe", lockfiles }), /FAIL CLOSED: artifact not found/);
+    assert.throws(() => generateSbom({ repoRoot: dir, artifact: ".", lockfiles }), /FAIL CLOSED: artifact must be a regular file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI requires --artifact and binds a fixture installer's exact bytes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "membrane-sbom-cli-"));
+  try {
+    const artifact = join(dir, "MembraneHub_1.0.0_x64-setup.exe");
+    writeFileSync(artifact, "fixture installer bytes");
+    const cli = resolve(REPO_ROOT, "scripts/release/evidence/sbom.mjs");
+    const missing = spawnSync(process.execPath, [cli, "--repo-root", REPO_ROOT], { encoding: "utf8" });
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /FAIL CLOSED: artifact is required/);
+    const result = spawnSync(process.execPath, [cli, "--repo-root", REPO_ROOT, "--artifact", artifact], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const sbom = JSON.parse(result.stdout);
+    assert.equal(sbom.artifact.path, artifact.replaceAll("\\", "/"));
+    assert.equal(sbom.artifact.size, Buffer.byteLength("fixture installer bytes"));
+    assert.equal(sbom.artifact.sha256, createHash("sha256").update("fixture installer bytes").digest("hex"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

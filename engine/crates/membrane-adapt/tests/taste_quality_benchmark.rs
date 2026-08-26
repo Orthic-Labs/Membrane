@@ -21,7 +21,7 @@ const CASE_SCHEMA: &str = "adapt.taste-benchmark-case.v1";
 const MANIFEST_SCHEMA: &str = "adapt.taste-benchmark-manifest.v1";
 const SCORECARD_SCHEMA: &str = "adapt.taste-benchmark-scorecard.v1";
 const FROZEN_SOURCE_DIGEST: &str =
-    "f1c93aa760a4a9bd9e13ca385d1260f230dddb98ef8bfb514d8e21cd9328fe6d";
+    "4b179b32bcf14bccaff5fd7cdecd25b2fd8ebb2df100c91667856866b6fc3abb";
 
 #[derive(Debug, Deserialize)]
 struct Manifest {

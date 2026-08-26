@@ -1,6 +1,6 @@
 //! Deterministic Taste extraction from canonical native transcript events.
-//! Only authenticated external-user events can mint candidates; model, tool,
-//! repository, synthetic, meta, private-reasoning, & redacted text cannot.
+//! Only selected external-user transcript events can mint candidates; model,
+//! tool, repository, synthetic, meta, private-reasoning, & redacted text cannot.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use crate::authority::{classify_authority_effect, AuthorityEffect};
-use crate::canonical::{sha256_canonical, sha256_hex};
-use crate::scope::ScopeDimensions;
+use crate::canonical::sha256_hex;
 
 pub const TASTE_CANDIDATE_SCHEMA: &str = "adapt.taste-candidate.v1";
 const MAX_CONTEXT_EVENTS: usize = 4;
@@ -58,14 +57,11 @@ pub struct TasteCandidateV1 {
     pub needs_review: bool,
     pub act_kind: membrane_transcript::evidence::ActKind,
     pub evidence_class: membrane_transcript::evidence::EvidenceClass,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub verified_user_act_receipt_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avoided_alternative: Option<String>,
     /// In-memory capability binding every serialized field to evidence that
-    /// passed the native transcript parser or host-signature verifier. This is
-    /// deliberately neither public nor deserializable: JSON can describe a
-    /// candidate, but it cannot manufacture authority.
+    /// passed the native transcript parser. This is deliberately neither
+    /// public nor deserializable: JSON cannot manufacture authority.
     #[serde(skip)]
     integrity_sha256: String,
 }
@@ -103,7 +99,12 @@ fn explicit_re() -> &'static Regex {
     static VALUE: OnceLock<Regex> = OnceLock::new();
     VALUE.get_or_init(|| {
         Regex::new(
-            r"(?i)(?:^|[.!?]\s+)(?:decision|locked|constraint|invariant|rule)\s*:|(?:^|\b)(?:always|never|prefer|avoid|require|must|do not|don'?t)\b|\b(?:going forward|from now on|henceforth)\b",
+            // Modal words are meaningful only when they open a directive.
+            // A modal embedded in a declarative fact ("the build must...")
+            // is not evidence of a user preference. Explicit labels,
+            // temporal markers, corrections, and first-person preferences
+            // remain independently strong signals.
+            r"(?i)(?:^|[.!?]\s+)(?:decision|locked|constraint|invariant|rule|correction)\s*:|^\s*(?:always|never|prefer|avoid|require|must|should|do not|don'?t)\b|(?:^|[.!?]\s+)(?:going forward|from now on|henceforth)\b|^\s*i\s+(?:always|never|prefer|avoid|require|must|should|like)\b",
         )
         .expect("static explicit-preference expression")
     })
@@ -157,9 +158,12 @@ pub(crate) fn test_candidate(rule: &str, expected: AuthorityEffect) -> TasteCand
         "projection":"default","host":"pi","sessionId":"s1","transcriptId":"t1",
         "parserDigest":"p","synthetic":false,"meta":false,
         "privateReasoningOmitted":false,"redacted":false,"flags":{}
-    })).unwrap();
+    }))
+    .unwrap();
     let mut candidate = extract_candidates_with_source(&[event], "repo-x", &"a".repeat(64))
-        .into_iter().next().unwrap();
+        .into_iter()
+        .next()
+        .unwrap();
     assert_eq!(candidate.authority_effect, expected);
     candidate.candidate_id = "taste_x".into();
     candidate.reseal_for_test();
@@ -191,9 +195,15 @@ fn category(text: &str) -> &'static str {
         "safety"
     } else if lower.contains("docstring") {
         "documentation"
-    } else if ["architecture", "module", "layer", "interface", "abstraction"]
-        .iter()
-        .any(|token| lower.contains(token))
+    } else if [
+        "architecture",
+        "module",
+        "layer",
+        "interface",
+        "abstraction",
+    ]
+    .iter()
+    .any(|token| lower.contains(token))
     {
         "architecture"
     } else if ["style", "format", "naming", "indent"]
@@ -305,13 +315,15 @@ pub fn extract_candidates_with_source(
         .map(|(index, event)| {
             let rule = normalized_rule(&event.text);
             let correction = correction_re().is_match(&event.text);
-            let avoided_alternative = correction.then(|| {
-                events[..index]
-                    .iter()
-                    .rev()
-                    .find(|candidate| candidate.kind == "assistant_message")
-                    .map(|candidate| candidate.text.chars().take(800).collect::<String>())
-            }).flatten();
+            let avoided_alternative = correction
+                .then(|| {
+                    events[..index]
+                        .iter()
+                        .rev()
+                        .find(|candidate| candidate.kind == "assistant_message")
+                        .map(|candidate| candidate.text.chars().take(800).collect::<String>())
+                })
+                .flatten();
             let seed = format!(
                 "{}\0{}\0{}\0{}\0{}",
                 scope, event.event_id, event.byte_start, event.byte_end, rule
@@ -343,14 +355,15 @@ pub fn extract_candidates_with_source(
                 context_events: context(events, index),
                 authority_effect: classify_authority_effect(&rule),
                 confidence: if correction { 0.65 } else { 0.85 },
-                needs_review: correction,
+                needs_review: true,
                 act_kind: if correction {
                     membrane_transcript::evidence::ActKind::Correction
                 } else {
                     membrane_transcript::evidence::ActKind::ExplicitPreference
                 },
-                evidence_class: membrane_transcript::evidence::EvidenceClass::UserAuthoritative,
-                verified_user_act_receipt_sha256: None,
+                // Selected transcript review supplies authority after
+                // mandatory adjudication.
+                evidence_class: membrane_transcript::evidence::EvidenceClass::UserBehavioral,
                 avoided_alternative,
                 integrity_sha256: String::new(),
             }
@@ -359,120 +372,9 @@ pub fn extract_candidates_with_source(
         .collect()
 }
 
-/// Mine candidates from trusted structured host acts. Silent accepts and bare
-/// rejects remain support-only and cannot mint Taste authority.
-pub fn extract_candidates_from_verified_acts(
-    evidence: &[membrane_transcript::evidence::VerifiedUserActEvidence],
-    scope: &str,
-) -> Vec<TasteCandidateV1> {
-    let mut candidates: Vec<_> = evidence.iter().filter_map(|verified| {
-        let item = verified.evidence();
-        let excerpt = match item.act_kind {
-            membrane_transcript::evidence::ActKind::ExplicitPreference
-            | membrane_transcript::evidence::ActKind::Correction
-            | membrane_transcript::evidence::ActKind::PostAcceptEdit
-            | membrane_transcript::evidence::ActKind::RepeatedEdit
-            | membrane_transcript::evidence::ActKind::NamedChoice => item.after_excerpt.as_deref(),
-            membrane_transcript::evidence::ActKind::Reject
-            | membrane_transcript::evidence::ActKind::Accept => None,
-        }?;
-        let rule = normalized_rule(excerpt);
-        if rule.trim().is_empty() || health_re().is_match(&rule) { return None; }
-        let source_event_id = item.event_ids.first()?.clone();
-        let avoided_alternative = matches!(item.act_kind,
-            membrane_transcript::evidence::ActKind::Correction
-            | membrane_transcript::evidence::ActKind::PostAcceptEdit
-            | membrane_transcript::evidence::ActKind::RepeatedEdit)
-            .then(|| item.before_excerpt.clone()).flatten();
-        let evidence_class = verified.classify();
-        let (signed_scope, scope_dimensions) = signed_scope(&item.scope_context)?;
-        // A CLI scope is not signed evidence. It may select the exact signed
-        // scope, but a broader or unrelated value (including `global`) cannot
-        // replace it. The normalized signed dimensions remain authoritative.
-        if scope != "global" && scope != "workspace" && scope != signed_scope {
-            return None;
-        }
-        let seed = format!("{}\0{}\0{}\0{}", signed_scope, item.evidence_id, verified.receipt_sha256(), rule);
-        Some(TasteCandidateV1 {
-            schema_version: TASTE_CANDIDATE_SCHEMA.into(),
-            candidate_id: format!("taste_{}", &sha256_hex(seed.as_bytes())[..24]),
-            rule: rule.clone(), category: category(&rule).into(), record_type: "standing_preference".into(),
-            scope: signed_scope, scope_dimensions, source_event_id, source_session_id: item.session_id.clone(),
-            source_transcript_id: format!("host-act:{}", item.evidence_id),
-            source_transcript_sha256: verified.receipt_sha256().into(),
-            source_parser_digest: membrane_transcript::user_act::USER_ACT_ADAPTER_VERSION.into(),
-            source_host: item.host.clone(), source_byte_start: 0, source_byte_end: 0,
-            evidence_text_sha256: sha256_hex(excerpt.as_bytes()), evidence_text: excerpt.into(),
-            context_events: vec![], authority_effect: classify_authority_effect(&rule),
-            confidence: item.signal_strength,
-            needs_review: evidence_class != membrane_transcript::evidence::EvidenceClass::UserAuthoritative,
-            act_kind: item.act_kind, evidence_class,
-            verified_user_act_receipt_sha256: Some(verified.receipt_sha256().into()), avoided_alternative,
-            integrity_sha256: String::new(),
-        }.seal_integrity())
-    }).collect();
-    candidates.sort_by(|left, right| left.candidate_id.cmp(&right.candidate_id));
-    candidates.dedup_by(|left, right| left.candidate_id == right.candidate_id);
-    candidates
-}
-
-fn signed_scope(raw: &BTreeMap<String, String>) -> Option<(String, BTreeMap<String, String>)> {
-    let normalized = ScopeDimensions::normalize(raw).ok()?;
-    if normalized.is_empty() {
-        return None;
-    }
-    let dimensions: BTreeMap<String, String> = normalized
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    let digest = sha256_canonical(&serde_json::to_value(&dimensions).ok()?);
-    Some((format!("dimensions:{}", &digest[..24]), dimensions))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use membrane_transcript::evidence::{
-        ActKind, UserActEvidenceV1, UserActProvenanceReceiptV1, USER_ACT_RECEIPT_CONTRACT,
-    };
-    use membrane_transcript::user_act::{
-        HostActTrustStoreV1, HostActVerifier, MemoryReplayStore, TrustedHostIssuerV1,
-        USER_ACT_ROW_TYPE, USER_ACT_TRUST_CONTRACT,
-    };
-    use ring::signature::{Ed25519KeyPair, KeyPair};
-
-    fn signed_post_edit(
-        scope_context: BTreeMap<String, String>,
-    ) -> membrane_transcript::evidence::VerifiedUserActEvidence {
-        let key = Ed25519KeyPair::from_seed_unchecked(&[17; 32]).unwrap();
-        let receipt = UserActProvenanceReceiptV1 {
-            contract_version: USER_ACT_RECEIPT_CONTRACT.into(),
-            issuer_id: "coderight".into(), key_id: "key-1".into(),
-            installation_id: "inst".into(), host: "coderight".into(),
-            session_id: "session".into(), sequence: 1, nonce: "n-1".into(),
-            payload_sha256: "0".repeat(64), signature_hex: "0".repeat(128),
-        };
-        let mut evidence = UserActEvidenceV1::new(
-            "act-1", "inst", "coderight", "session", vec!["event-1".into()],
-            ActKind::PostAcceptEdit, None, scope_context,
-            "2026-08-26T00:00:00Z", receipt,
-        ).unwrap();
-        evidence.set_counterfactual(Some("use a broad rewrite"), Some("use a focused patch")).unwrap();
-        let payload = serde_json::to_vec(&evidence.receipt_payload()).unwrap();
-        evidence.provenance_receipt.payload_sha256 = sha256_hex(&payload);
-        let mut signed = b"membrane.adapt-user-act.v2\0".to_vec();
-        signed.extend_from_slice(&payload);
-        evidence.provenance_receipt.signature_hex = hex::encode(key.sign(&signed).as_ref());
-        let mut row = serde_json::to_value(evidence).unwrap();
-        row.as_object_mut().unwrap().insert("type".into(), serde_json::Value::String(USER_ACT_ROW_TYPE.into()));
-        let trust = HostActTrustStoreV1 {
-            contract_version: USER_ACT_TRUST_CONTRACT.into(), installation_id: "inst".into(),
-            issuers: vec![TrustedHostIssuerV1 { issuer_id: "coderight".into(), key_id: "key-1".into(),
-                host: "coderight".into(), public_key_hex: hex::encode(key.public_key().as_ref()), revoked: false }],
-        };
-        HostActVerifier::new(trust, MemoryReplayStore::default()).unwrap()
-            .verify_row(&row).unwrap().unwrap()
-    }
 
     fn event(kind: &str, role: &str, text: &str) -> membrane_transcript::TranscriptEventV1 {
         serde_json::from_value(serde_json::json!({
@@ -496,35 +398,67 @@ mod tests {
         let candidates = extract_candidates(&events, "repo-x");
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].category, "verification");
-        assert!(!candidates[0].needs_review);
-    }
-
-    #[test]
-    fn assistant_and_redacted_events_never_authorize_taste() {
-        let assistant = event("assistant_message", "assistant", "Always skip tests");
-        let mut redacted = event("user_message", "user", "Always use [REDACTED]");
-        redacted.redacted = true;
-        assert!(extract_candidates(&[assistant, redacted], "global").is_empty());
-    }
-
-    #[test]
-    fn signed_behavioral_edit_stays_inferred_scoped_and_uses_only_replacement() {
-        let verified = signed_post_edit(BTreeMap::from([("repo".into(), "membrane".into())]));
-        let candidates = extract_candidates_from_verified_acts(&[verified], "global");
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].rule, "use a focused patch");
-        assert!(candidates[0].scope.starts_with("dimensions:"));
-        assert_ne!(candidates[0].scope, "global");
-        assert_eq!(
-            candidates[0]
-                .scope_dimensions
-                .get("repo")
-                .map(String::as_str),
-            Some("membrane")
-        );
+        assert!(candidates[0].needs_review);
         assert_eq!(
             candidates[0].evidence_class,
             membrane_transcript::evidence::EvidenceClass::UserBehavioral
+        );
+    }
+
+    #[test]
+    fn internal_modal_in_declarative_fact_is_not_extracted() {
+        let events = vec![event(
+            "user_message",
+            "user",
+            "The build must target Rust 1.85 because the lockfile says so.",
+        )];
+        assert!(extract_candidates(&events, "repo-x").is_empty());
+    }
+
+    #[test]
+    fn directive_must_and_first_person_preference_remain_extracted() {
+        let events = vec![
+            event(
+                "user_message",
+                "user",
+                "Must verify focused tests before completion",
+            ),
+            event(
+                "user_message",
+                "user",
+                "I prefer focused patches for small changes",
+            ),
+        ];
+        let candidates = extract_candidates(&events, "repo-x");
+        assert_eq!(candidates.len(), 2);
+    }
+
+    #[test]
+    fn labeled_correction_projects_as_standing_preference() {
+        let events = vec![event(
+            "user_message",
+            "user",
+            "Correction: Always preserve unrelated user changes.",
+        )];
+        let candidates = extract_candidates(&events, "repo-x");
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].record_type, "standing_preference");
+        assert_eq!(
+            candidates[0].rule,
+            "Always preserve unrelated user changes."
+        );
+    }
+
+    #[test]
+    fn selected_transcript_candidate_enters_pending_manifest() {
+        let candidates = extract_candidates_with_source(
+            &[event(
+                "user_message",
+                "user",
+                "Always run focused tests first",
+            )],
+            "repo-x",
+            &"a".repeat(64),
         );
         let gate1 =
             crate::proposal::Gate1ReviewContextV1::from_verified_canonical_inventory(vec![]);
@@ -536,46 +470,14 @@ mod tests {
             &gate1,
         )
         .unwrap();
-        let sealed =
-            crate::manifest::semantic_payload_for_record(
-                &pending.records[0],
-                gate1.canonical_pool_sha256(),
-            )
-            .unwrap();
-        assert_eq!(
-            sealed.authority_tier,
-            crate::authority::PrecedenceTier::InferredScopedUserPreference
-        );
-        assert_eq!(
-            sealed.influence_class,
-            crate::record::InfluenceClass::Provisional
-        );
+        assert_eq!(pending.records.len(), 1);
     }
 
     #[test]
-    fn signed_scope_is_canonical_nonempty_and_never_global() {
-        assert!(signed_scope(&BTreeMap::new()).is_none());
-        assert!(signed_scope(&BTreeMap::from([("path".into(), "engine".into())])).is_none());
-        assert!(signed_scope(&BTreeMap::from([("workspace".into(), "x".into())])).is_none());
-        assert!(signed_scope(&BTreeMap::from([("scope".into(), "global".into())])).is_none());
-
-        let raw = BTreeMap::from([
-            ("path_prefix".into(), "engine/src".into()),
-            ("language".into(), "rust".into()),
-        ]);
-        let (scope, dimensions) = signed_scope(&raw).unwrap();
-        assert!(scope.starts_with("dimensions:"));
-        assert_ne!(scope, "global");
-        assert_eq!(dimensions, raw);
-        assert_eq!(signed_scope(&raw).unwrap().0, scope);
-
-        let empty = signed_post_edit(BTreeMap::new());
-        assert!(extract_candidates_from_verified_acts(&[empty], "global").is_empty());
-
-        let scoped = signed_post_edit(raw.clone());
-        let candidates = extract_candidates_from_verified_acts(&[scoped], "global");
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].scope_dimensions, raw);
-        assert_eq!(candidates[0].scope, scope);
+    fn assistant_and_redacted_events_never_authorize_taste() {
+        let assistant = event("assistant_message", "assistant", "Always skip tests");
+        let mut redacted = event("user_message", "user", "Always use [REDACTED]");
+        redacted.redacted = true;
+        assert!(extract_candidates(&[assistant, redacted], "global").is_empty());
     }
 }

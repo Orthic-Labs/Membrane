@@ -98,7 +98,9 @@ pub enum LiveDiagnosticsServiceError {
         repo_id: String,
         worktree_id: String,
     },
-    #[error("workspace {repo_id}/{worktree_id} already bound to {existing} but requested {requested}")]
+    #[error(
+        "workspace {repo_id}/{worktree_id} already bound to {existing} but requested {requested}"
+    )]
     WorkspaceProjectRootConflict {
         repo_id: String,
         worktree_id: String,
@@ -308,10 +310,7 @@ impl DiagnosticsService {
 
     /// Install the production Blueprint findings client (daemon IPC). Called
     /// by `production_service`; tests inject fakes or leave `None`.
-    pub fn with_blueprint_client(
-        mut self,
-        client: Box<dyn BlueprintFindingsClient>,
-    ) -> Self {
+    pub fn with_blueprint_client(mut self, client: Box<dyn BlueprintFindingsClient>) -> Self {
         self.blueprint_client = Some(client);
         self
     }
@@ -463,6 +462,32 @@ impl DiagnosticsService {
         }))
     }
 
+    /// Abort one begun mutation that failed or produced no changed bytes.
+    /// No epoch is admitted & prior fence clearance remains untouched.
+    pub fn mutation_abort(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        let entry = self
+            .sessions
+            .get_mut(&session_key(repo_id, worktree_id))
+            .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
+        entry.session.abort_mutation()?;
+        entry.open_mutation = false;
+        self.audit.record(
+            "mutation_aborted",
+            json!({"repoId":repo_id,"worktreeId":worktree_id}),
+        );
+        Ok(json!({
+            "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
+            "repoId": repo_id,
+            "worktreeId": worktree_id,
+            "openMutation": false,
+            "aborted": true,
+        }))
+    }
+
     /// Seal the open mutation with its resulting workspace epoch. The epoch
     /// must identify the addressed workspace; sealing persists the sealed
     /// epoch to the audit and invalidates prior fence clearance. Obvious
@@ -608,12 +633,11 @@ impl DiagnosticsService {
         required_capabilities: &[CapabilityVocabulary],
         touched_paths: &[String],
     ) -> Result<GatePolicyProfileV1, LiveDiagnosticsServiceError> {
-        let stored = self
-            .policies
-            .get(profile_name)
-            .ok_or_else(|| LiveDiagnosticsServiceError::PolicyUnknown {
+        let stored = self.policies.get(profile_name).ok_or_else(|| {
+            LiveDiagnosticsServiceError::PolicyUnknown {
                 profile_name: profile_name.to_string(),
-            })?;
+            }
+        })?;
         let mut effective = stored.clone();
         if !required_capabilities.is_empty() {
             effective.required_capabilities = required_capabilities.to_vec();
@@ -659,15 +683,10 @@ impl DiagnosticsService {
         let search_path = crate::providers::default_search_path();
         let sandbox_digest = sandbox_policy_digest(&search_path);
 
-        if let Some((_engine_name, ts_binary)) =
-            typescript_provider::resolve_engine(&search_path)
-        {
+        if let Some((_engine_name, ts_binary)) = typescript_provider::resolve_engine(&search_path) {
             let identity = typescript_provider::identity_inputs(project_root, &ts_binary);
-            if let (
-                Some(binary),
-                Some(toolchain),
-                Some(config),
-            ) = (identity.binary, identity.toolchain, identity.config)
+            if let (Some(binary), Some(toolchain), Some(config)) =
+                (identity.binary, identity.toolchain, identity.config)
             {
                 let key = WorkspaceEngineKey {
                     repo_id: repo_id.to_string(),
@@ -697,7 +716,8 @@ impl DiagnosticsService {
         }
 
         if let Some(ra_binary) = rust_analyzer_provider::resolve_engine(&search_path) {
-            let config_files: Vec<&str> = vec!["Cargo.toml", "rust-toolchain.toml", "rust-toolchain"];
+            let config_files: Vec<&str> =
+                vec!["Cargo.toml", "rust-toolchain.toml", "rust-toolchain"];
             let binary = binary_digest(&ra_binary);
             let toolchain = toolchain_digest(&ra_binary);
             let config = project_config_digest(project_root, &config_files);
@@ -720,10 +740,12 @@ impl DiagnosticsService {
                     key,
                     rust_analyzer_provider::qualified_capabilities(),
                     Box::new(move || {
-                        Box::new(rust_analyzer_provider::RustAnalyzerProvider::with_search_path(
-                            ra_root.clone(),
-                            ra_search.clone(),
-                        )) as Box<dyn DiagnosticsProvider>
+                        Box::new(
+                            rust_analyzer_provider::RustAnalyzerProvider::with_search_path(
+                                ra_root.clone(),
+                                ra_search.clone(),
+                            ),
+                        ) as Box<dyn DiagnosticsProvider>
                     }),
                 );
             }
@@ -734,9 +756,7 @@ impl DiagnosticsService {
     /// client (daemon IPC) and registers providers lazily per opened
     /// workspace against each workspace's exact bound root.
     pub fn production_service() -> Result<Self, LiveDiagnosticsServiceError> {
-        Ok(Self::new()?.with_blueprint_client(Box::new(
-            DaemonFindingsClient::from_environment(),
-        )))
+        Ok(Self::new()?.with_blueprint_client(Box::new(DaemonFindingsClient::from_environment())))
     }
 
     /// Fetch Blueprint D0a/D0b evidence through the public resident findings
@@ -784,8 +804,7 @@ impl DiagnosticsService {
                     // typed omission, freshness Stale, no exact lane.
                     return BlueprintLaneInput {
                         generation: None,
-                        freshness:
-                            membrane_protocol::diagnostics::BlueprintFreshness::Stale,
+                        freshness: membrane_protocol::diagnostics::BlueprintFreshness::Stale,
                         observations: Vec::new(),
                         lane: None,
                         delta: None,
@@ -858,7 +877,11 @@ impl DiagnosticsService {
                 // sealed epoch's changed_file_hashes for the touched scope only.
                 let hash_issues = result.verify_hashes_against_epoch(
                     sealed,
-                    if touched.is_empty() { None } else { Some(&touched) },
+                    if touched.is_empty() {
+                        None
+                    } else {
+                        Some(&touched)
+                    },
                 );
                 let has_hash_block = !hash_issues.is_empty() || !epoch_missing_issues.is_empty();
                 let generation = result.generation_id.clone();
@@ -884,16 +907,37 @@ impl DiagnosticsService {
                         omissions,
                     };
                 }
-                BlueprintLaneInput::current(generation, observations, sealed.epoch, touched.clone(), result.omissions)
+                BlueprintLaneInput::current(
+                    generation,
+                    observations,
+                    sealed.epoch,
+                    touched.clone(),
+                    result.omissions,
+                )
             }
             Err(error @ BlueprintFindingsError::DeadlineExceeded) => {
                 BlueprintLaneInput::unavailable(format!(
                     "blueprint findings service did not answer within {timeout_ms}ms: {error}"
                 ))
             }
-            Err(error) => BlueprintLaneInput::unavailable(format!(
-                "blueprint findings service unavailable: {error}"
-            )),
+            Err(BlueprintFindingsError::NotConfigured(detail)) => BlueprintLaneInput::omitted(
+                "not_configured",
+                detail,
+                membrane_protocol::diagnostics::BlueprintFreshness::Unknown,
+            ),
+            Err(BlueprintFindingsError::Stale(detail)) => BlueprintLaneInput::omitted(
+                "blueprint_stale",
+                detail,
+                membrane_protocol::diagnostics::BlueprintFreshness::Stale,
+            ),
+            Err(BlueprintFindingsError::Protocol(error)) => BlueprintLaneInput::omitted(
+                "blueprint_malformed",
+                error,
+                membrane_protocol::diagnostics::BlueprintFreshness::Unknown,
+            ),
+            Err(BlueprintFindingsError::Unavailable(error)) => BlueprintLaneInput::unavailable(
+                format!("blueprint findings service unavailable: {error}"),
+            ),
         }
     }
 
@@ -927,7 +971,10 @@ impl DiagnosticsService {
         };
         // Planner policy resolution derives obligations from the touched
         // scope when neither request nor profile supplies them (design §8).
-        let touched_paths = sealed.changed_file_hashes.iter().map(|h| h.path.clone())
+        let touched_paths = sealed
+            .changed_file_hashes
+            .iter()
+            .map(|h| h.path.clone())
             .chain(sealed.changed_paths.iter().cloned())
             .collect::<Vec<_>>();
         let policy = self.resolve_policy(
@@ -949,8 +996,7 @@ impl DiagnosticsService {
         let mut blueprint =
             self.blueprint_lane_input(&project_root, deadline_ms.max(1_000), &sealed);
         if let BlueprintLaneInput {
-            lane: Some(lane),
-            ..
+            lane: Some(lane), ..
         } = &mut blueprint
         {
             lane.bound_workspace_epoch = sealed.epoch;
@@ -1213,23 +1259,23 @@ impl DiagnosticsService {
     }
 
     /// Status for a single provider by digest, or typed provider_error if unknown (§12 provider.status).
-    pub fn provider_status(
-        &self,
-        key_digest: &str,
-    ) -> Result<Value, LiveDiagnosticsServiceError> {
+    pub fn provider_status(&self, key_digest: &str) -> Result<Value, LiveDiagnosticsServiceError> {
         let key = self
             .supervisor
             .registered_keys()
             .into_iter()
             .find(|key| key.digest() == key_digest)
             .cloned()
-            .ok_or_else(|| LiveDiagnosticsServiceError::Provider(
-                format!("no registered provider key matches digest {key_digest}")
-            ))?;
-        let caps = self.supervisor.registry_capabilities(&key)
-            .ok_or_else(|| LiveDiagnosticsServiceError::Provider(
-                format!("no capabilities for key digest {key_digest}")
-            ))?;
+            .ok_or_else(|| {
+                LiveDiagnosticsServiceError::Provider(format!(
+                    "no registered provider key matches digest {key_digest}"
+                ))
+            })?;
+        let caps = self.supervisor.registry_capabilities(&key).ok_or_else(|| {
+            LiveDiagnosticsServiceError::Provider(format!(
+                "no capabilities for key digest {key_digest}"
+            ))
+        })?;
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "keyDigest": key.digest(),
@@ -1432,9 +1478,11 @@ fn validate_epoch_paths_within_root(
     epoch: &WorkspaceEpochV1,
     project_root: &Path,
 ) -> Result<(), LiveDiagnosticsServiceError> {
-    for path in epoch.changed_paths.iter().chain(
-        epoch.changed_file_hashes.iter().map(|h| &h.path),
-    ) {
+    for path in epoch
+        .changed_paths
+        .iter()
+        .chain(epoch.changed_file_hashes.iter().map(|h| &h.path))
+    {
         if path_escapes_bound_root(path, project_root) {
             return Err(LiveDiagnosticsServiceError::MutationBoundary(format!(
                 "path escapes bound projectRoot {}: {}",
@@ -1631,6 +1679,39 @@ pub struct ProviderRestartRequest {
     pub key_digest: String,
 }
 
+/// Framed native-pipe request. `method`, `path`, `query`, and `body` preserve
+/// the diagnostics HTTP operation semantics without opening a loopback socket.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeDiagnosticsRequest {
+    pub schema_version: u32,
+    pub id: String,
+    pub method: String,
+    pub path: String,
+    #[serde(default)]
+    pub query: Value,
+    #[serde(default)]
+    pub body: Value,
+    #[serde(default)]
+    pub installation_id: String,
+    #[serde(default)]
+    pub cortex_store_id: String,
+    #[serde(default)]
+    pub release_generation: String,
+    #[serde(default)]
+    pub service_generation: String,
+}
+
+/// Framed native-pipe response. Errors retain the existing typed omission body.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeDiagnosticsResponse {
+    pub schema_version: u32,
+    pub id: String,
+    pub status: u16,
+    pub body: Value,
+}
+
 /// Typed omission envelope returned by every failing diagnostics route.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1677,10 +1758,17 @@ pub fn diagnostics_router(service: Arc<Mutex<DiagnosticsService>>) -> Router {
 /// token, and returns the ready-to-merge router. Returns `None` only if the
 /// service could not be constructed, which cannot happen under the default
 /// configuration.
-pub fn resident_diagnostics_routes(expected_bearer: Option<String>) -> Option<Router> {
+pub fn resident_diagnostics_routes(
+    expected_bearer: Option<String>,
+    health_identity: Value,
+) -> Option<Router> {
     let service = DiagnosticsService::production_service().ok()?;
+    let service = Arc::new(Mutex::new(service));
+    // Native-only host transport. It owns no policy or runtime: every frame
+    // dispatches into this exact resident DiagnosticsService instance.
+    crate::native_diagnostics_pipe::start_resident(Arc::clone(&service), health_identity);
     Some(diagnostics_router_with_state(DiagnosticsRouteState {
-        service: Arc::new(Mutex::new(service)),
+        service,
         bearer: expected_bearer.map(Arc::<str>::from),
     }))
 }
@@ -1694,6 +1782,7 @@ fn diagnostics_router_with_state(state: DiagnosticsRouteState) -> Router {
         .route("/diagnostics/workspace/status", get(get_workspace_status))
         .route("/diagnostics/reconcile", post(post_reconcile))
         .route("/diagnostics/mutation/begin", post(post_mutation_begin))
+        .route("/diagnostics/mutation/abort", post(post_mutation_abort))
         .route("/diagnostics/mutation/seal", post(post_mutation_seal))
         .route(
             "/diagnostics/mutation/registerObserved",
@@ -1716,10 +1805,7 @@ fn diagnostics_router_with_state(state: DiagnosticsRouteState) -> Router {
             StatusCode::REQUEST_TIMEOUT,
             DIAGNOSTICS_REQUEST_TIMEOUT,
         ))
-        .layer(axum::middleware::from_fn_with_state(
-            state,
-            require_bearer,
-        ))
+        .layer(axum::middleware::from_fn_with_state(state, require_bearer))
 }
 
 /// Bearer gate mirroring the resident `dispatch` authorization so explicit
@@ -1760,8 +1846,8 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
 }
 
 fn json_ok(payload: Value) -> Response {
-    let body =
-        serde_json::to_string(&payload).unwrap_or_else(|_| fallback_envelope("serialization_failed"));
+    let body = serde_json::to_string(&payload)
+        .unwrap_or_else(|_| fallback_envelope("serialization_failed"));
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
@@ -1846,10 +1932,7 @@ async fn get_workspace_status(
     respond(service.workspace_status(&query.repo_id, &query.worktree_id))
 }
 
-async fn post_workspace_open(
-    State(state): State<DiagnosticsRouteState>,
-    body: String,
-) -> Response {
+async fn post_workspace_open(State(state): State<DiagnosticsRouteState>, body: String) -> Response {
     let request: WorkspaceRequest = match parse_body(&body) {
         Ok(request) => request,
         Err(response) => return response,
@@ -1874,10 +1957,7 @@ async fn post_workspace_close(
     respond(service.workspace_close(&request.repo_id, &request.worktree_id))
 }
 
-async fn post_mutation_begin(
-    State(state): State<DiagnosticsRouteState>,
-    body: String,
-) -> Response {
+async fn post_mutation_begin(State(state): State<DiagnosticsRouteState>, body: String) -> Response {
     let request: WorkspaceRequest = match parse_body(&body) {
         Ok(request) => request,
         Err(response) => return response,
@@ -1886,20 +1966,22 @@ async fn post_mutation_begin(
     respond(service.mutation_begin(&request.repo_id, &request.worktree_id))
 }
 
-async fn post_mutation_seal(
-    State(state): State<DiagnosticsRouteState>,
-    body: String,
-) -> Response {
+async fn post_mutation_abort(State(state): State<DiagnosticsRouteState>, body: String) -> Response {
+    let request = match parse_body::<WorkspaceRequest>(&body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let mut service = lock_service(&state.service);
+    respond(service.mutation_abort(&request.repo_id, &request.worktree_id))
+}
+
+async fn post_mutation_seal(State(state): State<DiagnosticsRouteState>, body: String) -> Response {
     let request: MutationEpochRequest = match parse_body(&body) {
         Ok(request) => request,
         Err(response) => return response,
     };
     let mut service = lock_service(&state.service);
-    respond(service.mutation_seal(
-        &request.repo_id,
-        &request.worktree_id,
-        request.epoch,
-    ))
+    respond(service.mutation_seal(&request.repo_id, &request.worktree_id, request.epoch))
 }
 
 async fn post_mutation_register_observed(
@@ -1940,10 +2022,7 @@ async fn post_reconcile(State(state): State<DiagnosticsRouteState>, body: String
     }
 }
 
-async fn post_snapshot_await(
-    State(state): State<DiagnosticsRouteState>,
-    body: String,
-) -> Response {
+async fn post_snapshot_await(State(state): State<DiagnosticsRouteState>, body: String) -> Response {
     let request: SnapshotAwaitRequest = match parse_body(&body) {
         Ok(request) => request,
         Err(response) => return response,
@@ -1980,11 +2059,7 @@ async fn post_baseline_capture(
         Err(response) => return response,
     };
     let mut service = lock_service(&state.service);
-    respond(service.baseline_capture(
-        &request.repo_id,
-        &request.worktree_id,
-        &request.name,
-    ))
+    respond(service.baseline_capture(&request.repo_id, &request.worktree_id, &request.name))
 }
 
 async fn post_baseline_update(
@@ -1996,11 +2071,7 @@ async fn post_baseline_update(
         Err(response) => return response,
     };
     let mut service = lock_service(&state.service);
-    respond(service.baseline_update(
-        &request.repo_id,
-        &request.worktree_id,
-        &request.name,
-    ))
+    respond(service.baseline_update(&request.repo_id, &request.worktree_id, &request.name))
 }
 
 async fn post_provider_restart(
@@ -2061,6 +2132,214 @@ async fn get_subscribe(State(state): State<DiagnosticsRouteState>) -> Response {
     json_ok(lock_service(&state.service).subscribe())
 }
 
+/// Dispatch one authenticated local named-pipe frame through the resident
+/// diagnostics authority. This deliberately mirrors every supported HTTP
+/// operation, but never constructs an HTTP client or permits a second service.
+pub fn diagnostics_native_dispatch(
+    service: &Arc<Mutex<DiagnosticsService>>,
+    request: NativeDiagnosticsRequest,
+) -> NativeDiagnosticsResponse {
+    fn malformed(id: String, detail: impl Into<String>) -> NativeDiagnosticsResponse {
+        NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 400,
+            body: json!({"error":{"code":"invalid_request","detail":detail.into()}}),
+        }
+    }
+    fn result(
+        id: String,
+        output: Result<Value, LiveDiagnosticsServiceError>,
+    ) -> NativeDiagnosticsResponse {
+        match output {
+            Ok(body) => NativeDiagnosticsResponse {
+                schema_version:
+                    crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+                id,
+                status: 200,
+                body,
+            },
+            Err(error) => NativeDiagnosticsResponse {
+                schema_version:
+                    crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+                id,
+                status: error_http_status(error.code()).as_u16(),
+                body: json!({"error":{"code":error.code(),"detail":error.to_string()}}),
+            },
+        }
+    }
+    fn decode<T: serde::de::DeserializeOwned>(body: Value) -> Result<T, String> {
+        serde_json::from_value(body).map_err(|error| error.to_string())
+    }
+    fn scope(query: Value) -> Result<WorkspaceScopeQuery, String> {
+        decode(query)
+    }
+
+    let id = request.id.clone();
+    if request.schema_version
+        != crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION
+    {
+        return malformed(id, "native diagnostics schemaVersion must equal 1");
+    }
+    let operation = (request.method.as_str(), request.path.as_str());
+    match operation {
+        ("GET", "/diagnostics/capabilities") => NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 200,
+            body: lock_service(service).capabilities(),
+        },
+        ("GET", "/diagnostics/status") => NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 200,
+            body: lock_service(service).status(),
+        },
+        ("GET", "/diagnostics/subscribe") => NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 200,
+            body: lock_service(service).subscribe(),
+        },
+        ("GET", "/diagnostics/provider/list") => NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 200,
+            body: lock_service(service).provider_list(),
+        },
+        ("GET", "/diagnostics/workspace/status")
+        | ("GET", "/diagnostics/snapshot/get")
+        | ("GET", "/diagnostics/snapshot/explain")
+        | ("GET", "/diagnostics/snapshot/delta") => {
+            let query = match scope(request.query) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let service = lock_service(service);
+            let output = match operation.1 {
+                "/diagnostics/workspace/status" => {
+                    service.workspace_status(&query.repo_id, &query.worktree_id)
+                }
+                "/diagnostics/snapshot/get" => {
+                    service.snapshot_get(&query.repo_id, &query.worktree_id)
+                }
+                "/diagnostics/snapshot/explain" => {
+                    service.snapshot_explain(&query.repo_id, &query.worktree_id)
+                }
+                _ => service.snapshot_delta(&query.repo_id, &query.worktree_id),
+            };
+            result(id, output)
+        }
+        ("GET", "/diagnostics/provider/status") => {
+            let query = match decode::<ProviderStatusQuery>(request.query) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            result(id, lock_service(service).provider_status(&query.key_digest))
+        }
+        ("POST", "/diagnostics/workspace/open")
+        | ("POST", "/diagnostics/workspace/close")
+        | ("POST", "/diagnostics/mutation/begin")
+        | ("POST", "/diagnostics/mutation/abort") => {
+            let body = match decode::<WorkspaceRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let mut service = lock_service(service);
+            let output = match operation.1 {
+                "/diagnostics/workspace/open" => service.workspace_open(
+                    &body.repo_id,
+                    &body.worktree_id,
+                    body.project_root.as_deref(),
+                ),
+                "/diagnostics/workspace/close" => {
+                    service.workspace_close(&body.repo_id, &body.worktree_id)
+                }
+                "/diagnostics/mutation/begin" => {
+                    service.mutation_begin(&body.repo_id, &body.worktree_id)
+                }
+                _ => service.mutation_abort(&body.repo_id, &body.worktree_id),
+            };
+            result(id, output)
+        }
+        ("POST", "/diagnostics/mutation/seal")
+        | ("POST", "/diagnostics/mutation/registerObserved") => {
+            let body = match decode::<MutationEpochRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let mut service = lock_service(service);
+            let output = if operation.1.ends_with("registerObserved") {
+                service.mutation_register_observed(&body.repo_id, &body.worktree_id, body.epoch)
+            } else {
+                service.mutation_seal(&body.repo_id, &body.worktree_id, body.epoch)
+            };
+            result(id, output)
+        }
+        ("POST", "/diagnostics/reconcile") => {
+            let body = match decode::<ReconcileRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let mut service = lock_service(service);
+            let output = service.workspace_reconcile(&body.repo_id, &body.worktree_id, &body.manifest_digest, &body.hashes)
+                .map(|classification| json!({"schemaVersion":DIAGNOSTICS_SERVICE_SCHEMA_VERSION,"repoId":body.repo_id,"worktreeId":body.worktree_id,"classification":classification}));
+            result(id, output)
+        }
+        ("POST", "/diagnostics/snapshot/await") => {
+            let body = match decode::<SnapshotAwaitRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let output = lock_service(service).snapshot_await(&body).map(|decision| json!({"fenceCleared":matches!(decision.outcome, GateOutcome::CleanExact),"decision":decision}));
+            result(id, output)
+        }
+        ("POST", "/diagnostics/fence/evaluate") => {
+            let body = match decode::<FenceEvaluateRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            NativeDiagnosticsResponse {
+                schema_version:
+                    crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+                id,
+                status: 200,
+                body: serde_json::to_value(DiagnosticsService::evaluate_fence(
+                    &body.snapshot,
+                    &body.expected_epoch,
+                    &body.policy,
+                ))
+                .unwrap_or(Value::Null),
+            }
+        }
+        ("POST", "/diagnostics/baseline/capture") | ("POST", "/diagnostics/baseline/update") => {
+            let body = match decode::<BaselineRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            let output = if operation.1.ends_with("capture") {
+                lock_service(service).baseline_capture(&body.repo_id, &body.worktree_id, &body.name)
+            } else {
+                lock_service(service).baseline_update(&body.repo_id, &body.worktree_id, &body.name)
+            };
+            result(id, output)
+        }
+        ("POST", "/diagnostics/provider/restart") => {
+            let body = match decode::<ProviderRestartRequest>(request.body) {
+                Ok(value) => value,
+                Err(error) => return malformed(id, error),
+            };
+            result(id, lock_service(service).provider_restart(&body.key_digest))
+        }
+        _ => NativeDiagnosticsResponse {
+            schema_version: crate::native_diagnostics_pipe::NATIVE_DIAGNOSTICS_PIPE_SCHEMA_VERSION,
+            id,
+            status: 404,
+            body: json!({"error":{"code":"not_found","detail":"diagnostics operation is not exposed on native pipe"}}),
+        },
+    }
+}
+
 /// Static support description served to offline consumers such as the CLI
 /// `membrane diagnostics capabilities` path. Contains no live state.
 pub fn static_capabilities() -> Value {
@@ -2083,6 +2362,7 @@ pub fn static_capabilities() -> Value {
             "GET /diagnostics/workspace/status",
             "POST /diagnostics/reconcile",
             "POST /diagnostics/mutation/begin",
+            "POST /diagnostics/mutation/abort",
             "POST /diagnostics/mutation/seal",
             "POST /diagnostics/mutation/registerObserved",
             "POST /diagnostics/snapshot/await",
@@ -2168,6 +2448,26 @@ mod tests {
     }
 
     #[test]
+    fn mutation_abort_closes_empty_batch_without_admitting_epoch() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_dir = tempfile::tempdir().unwrap();
+        let mut service = service_at(&dir);
+        service
+            .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
+            .unwrap();
+        service.mutation_begin("repo-1", "wt-1").unwrap();
+        let result = service.mutation_abort("repo-1", "wt-1").unwrap();
+        assert_eq!(result["aborted"], json!(true));
+        let status = service.workspace_status("repo-1", "wt-1").unwrap();
+        assert_eq!(status["openMutation"], json!(false));
+        assert_eq!(status["latestSealedEpoch"], Value::Null);
+        assert_eq!(
+            service.mutation_abort("repo-1", "wt-1").unwrap_err().code(),
+            "mutation_boundary"
+        );
+    }
+
+    #[test]
     fn session_lifecycle_reconcile_and_fence_transitions() {
         let dir = tempfile::tempdir().unwrap();
         let repo_dir = tempfile::tempdir().unwrap();
@@ -2175,7 +2475,10 @@ mod tests {
 
         // Unknown workspaces are typed errors before anything else.
         assert_eq!(
-            service.workspace_status("repo-1", "wt-1").unwrap_err().code(),
+            service
+                .workspace_status("repo-1", "wt-1")
+                .unwrap_err()
+                .code(),
             "workspace_not_open"
         );
         assert!(service
@@ -2217,7 +2520,9 @@ mod tests {
             "mutation_boundary"
         );
 
-        service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
+        service
+            .mutation_seal("repo-1", "wt-1", test_epoch(1))
+            .unwrap();
         assert_eq!(
             service.workspace_status("repo-1", "wt-1").unwrap()["latestSealedEpoch"],
             json!(1)
@@ -2238,9 +2543,7 @@ mod tests {
         // carry an Unsatisfied coverage obligation, so with no exact lane they
         // cannot clear the fence (empty-ensemble fix). Reconciliation reports
         // unknown_conflict when no cleared decision exists.
-        let empty_decision = service
-            .snapshot_await(&snapshot_request(&[]))
-            .unwrap();
+        let empty_decision = service.snapshot_await(&snapshot_request(&[])).unwrap();
         assert_eq!(empty_decision.outcome, GateOutcome::UnknownIncomplete);
         assert_eq!(
             service.workspace_status("repo-1", "wt-1").unwrap()["fenceCleared"],
@@ -2281,9 +2584,7 @@ mod tests {
                 LiveDiagnosticsError::EpochNotMonotonic(_)
             ))
         ));
-        let empty_decision2 = service
-            .snapshot_await(&snapshot_request(&[]))
-            .unwrap();
+        let empty_decision2 = service.snapshot_await(&snapshot_request(&[])).unwrap();
         assert_eq!(empty_decision2.outcome, GateOutcome::UnknownIncomplete);
         assert_eq!(
             service
@@ -2311,9 +2612,7 @@ mod tests {
                 .code(),
             "fence_not_cleared"
         );
-        let empty_decision3 = service
-            .snapshot_await(&snapshot_request(&[]))
-            .unwrap();
+        let empty_decision3 = service.snapshot_await(&snapshot_request(&[])).unwrap();
         assert_eq!(empty_decision3.outcome, GateOutcome::UnknownIncomplete);
         assert_eq!(
             service
@@ -2326,7 +2625,10 @@ mod tests {
         // Closing removes the session; further queries fail closed.
         service.workspace_close("repo-1", "wt-1").unwrap();
         assert_eq!(
-            service.workspace_status("repo-1", "wt-1").unwrap_err().code(),
+            service
+                .workspace_status("repo-1", "wt-1")
+                .unwrap_err()
+                .code(),
             "workspace_not_open"
         );
 
@@ -2357,15 +2659,17 @@ mod tests {
             &[CapabilityVocabulary::Syntax],
             &[],
         );
-        assert_eq!(with_syntax.unwrap().policy_digest, again.unwrap().policy_digest);
+        assert_eq!(
+            with_syntax.unwrap().policy_digest,
+            again.unwrap().policy_digest
+        );
 
         // Empty request + empty stored profile derives from the touched scope
         // (design §8): a TS mutation requires the full D0+D1 obligation set,
         // never a blanket single default.
-        let derived =
-            service
-                .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
-                .unwrap();
+        let derived = service
+            .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
+            .unwrap();
         assert_eq!(
             derived.required_capabilities,
             vec![
@@ -2375,10 +2679,9 @@ mod tests {
                 CapabilityVocabulary::TypeSemantics,
             ]
         );
-        let derived_again =
-            service
-                .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
-                .unwrap();
+        let derived_again = service
+            .resolve_policy(DEFAULT_POLICY_PROFILE_NAME, &[], &ts_scope)
+            .unwrap();
         assert_eq!(derived.policy_digest, derived_again.policy_digest);
 
         let with_type = service
@@ -2413,11 +2716,7 @@ mod tests {
         let mut service = service_at(&dir);
 
         let status = service
-            .workspace_open(
-                "repo-1",
-                "wt-a",
-                Some(repo_dir.path().to_str().unwrap()),
-            )
+            .workspace_open("repo-1", "wt-a", Some(repo_dir.path().to_str().unwrap()))
             .unwrap();
         let bound_a = status["projectRoot"].as_str().unwrap().to_string();
         assert!(!bound_a.is_empty());
@@ -2433,14 +2732,13 @@ mod tests {
         // A second worktree of the same repo binds its own root.
         let other_dir = tempfile::tempdir().unwrap();
         let status_b = service
-            .workspace_open(
-                "repo-1",
-                "wt-b",
-                Some(other_dir.path().to_str().unwrap()),
-            )
+            .workspace_open("repo-1", "wt-b", Some(other_dir.path().to_str().unwrap()))
             .unwrap();
         let bound_b = status_b["projectRoot"].as_str().unwrap().to_string();
-        assert_ne!(bound_a, bound_b, "distinct worktrees must bind distinct roots");
+        assert_ne!(
+            bound_a, bound_b,
+            "distinct worktrees must bind distinct roots"
+        );
     }
 
     #[test]
@@ -2449,9 +2747,13 @@ mod tests {
         let repo_dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
         let root_str = repo_dir.path().to_str().unwrap();
-        let first = service.workspace_open("repo-1", "wt-1", Some(root_str)).unwrap();
+        let first = service
+            .workspace_open("repo-1", "wt-1", Some(root_str))
+            .unwrap();
         assert_eq!(first["created"], serde_json::json!(true));
-        let second = service.workspace_open("repo-1", "wt-1", Some(root_str)).unwrap();
+        let second = service
+            .workspace_open("repo-1", "wt-1", Some(root_str))
+            .unwrap();
         assert_eq!(second["created"], serde_json::json!(false));
         assert_eq!(first["projectRoot"], second["projectRoot"]);
     }
@@ -2476,7 +2778,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut service = service_at(&dir);
         let err = service
-            .workspace_open("repo-1", "wt-1", Some("/nonexistent/path/that/does/not/exist/xyz123"))
+            .workspace_open(
+                "repo-1",
+                "wt-1",
+                Some("/nonexistent/path/that/does/not/exist/xyz123"),
+            )
             .unwrap_err();
         assert_eq!(err.code(), "project_root_invalid");
     }
@@ -2571,13 +2877,14 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let repo_dir = tempfile::tempdir().unwrap();
-        let mut service =
-            service_at(&dir).with_blueprint_client(Box::new(FailingClient));
+        let mut service = service_at(&dir).with_blueprint_client(Box::new(FailingClient));
         service
             .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
             .unwrap();
         service.mutation_begin("repo-1", "wt-1").unwrap();
-        service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
+        service
+            .mutation_seal("repo-1", "wt-1", test_epoch(1))
+            .unwrap();
 
         let decision = service.snapshot_await(&snapshot_request(&[])).unwrap();
         let snapshot = service.snapshot_get("repo-1", "wt-1").unwrap();
@@ -2607,7 +2914,9 @@ mod tests {
             .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
             .unwrap();
         service.mutation_begin("repo-1", "wt-1").unwrap();
-        service.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
+        service
+            .mutation_seal("repo-1", "wt-1", test_epoch(1))
+            .unwrap();
 
         let epoch = test_epoch(1);
         let snapshot = DiagnosticEvidenceSnapshotV1 {
@@ -2700,7 +3009,7 @@ mod tests {
     #[test]
     fn blueprint_unrelated_omission_outside_touched_does_not_block_exact() {
         use crate::providers::blueprint_findings::{
-            BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
+            BlueprintFindingsClient, BlueprintFindingsError, BlueprintFindingsResult,
         };
         struct UnrelatedOmissionClient {
             a_ts_hash: String,
@@ -2737,11 +3046,10 @@ mod tests {
         std::fs::write(repo_dir.path().join("src/a.ts"), "export const x=1;").unwrap();
         let bytes = std::fs::read(repo_dir.path().join("src/a.ts")).unwrap();
         let hash = format!("sha256:{}", hex::encode(sha2::Sha256::digest(&bytes)));
-        let mut service = service_at(&dir).with_blueprint_client(Box::new(
-            UnrelatedOmissionClient {
+        let mut service =
+            service_at(&dir).with_blueprint_client(Box::new(UnrelatedOmissionClient {
                 a_ts_hash: hash.clone(),
-            },
-        ));
+            }));
         service
             .workspace_open("repo-1", "wt-1", Some(repo_dir.path().to_str().unwrap()))
             .unwrap();
@@ -2765,13 +3073,17 @@ mod tests {
             })
             .unwrap();
         // Should be clean_exact because omission is outside touched scope and hashes match
-        assert_eq!(decision.outcome, GateOutcome::CleanExact, "unrelated omission should not block touched exact D0: {decision:?}");
+        assert_eq!(
+            decision.outcome,
+            GateOutcome::CleanExact,
+            "unrelated omission should not block touched exact D0: {decision:?}"
+        );
     }
 
     #[test]
     fn epoch_missing_hash_blocks_even_when_blueprint_has_hash() {
         use crate::providers::blueprint_findings::{
-            BlueprintFindingsResult, BlueprintFindingsClient, BlueprintFindingsError,
+            BlueprintFindingsClient, BlueprintFindingsError, BlueprintFindingsResult,
         };
         struct HasHashClient;
         impl BlueprintFindingsClient for HasHashClient {
@@ -2817,9 +3129,16 @@ mod tests {
                 deadline_ms: Some(5_000),
             })
             .unwrap();
-        assert_ne!(decision.outcome, GateOutcome::CleanExact, "missing epoch hash must deny exact D0 even though Blueprint has hash");
+        assert_ne!(
+            decision.outcome,
+            GateOutcome::CleanExact,
+            "missing epoch hash must deny exact D0 even though Blueprint has hash"
+        );
         assert!(
-            decision.omissions.iter().any(|o| o.code == "missing_required_content_hash")
+            decision
+                .omissions
+                .iter()
+                .any(|o| o.code == "missing_required_content_hash")
                 || decision.reason_codes.iter().any(|c| c.contains("syntax")),
             "should surface missing_required_content_hash or uncovered syntax: {decision:?}"
         );

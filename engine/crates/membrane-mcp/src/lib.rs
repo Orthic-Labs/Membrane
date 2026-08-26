@@ -15,3 +15,4 @@ pub use resources::{
     list_payload as list_resources_payload, read_payload, read_payload_by_name,
     read_result_payload, ReadOutcome, NAMES as RESOURCE_NAMES, URIS as RESOURCE_URIS,
 };
+pub use tools::{install_executor, NativeMcpExecutor};

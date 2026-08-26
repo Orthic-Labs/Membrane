@@ -15,11 +15,73 @@ use std::collections::BTreeMap;
 
 /// Minimal imperative-starter set for durable sentence shape.
 const IMPERATIVE_STARTERS: &[&str] = &[
-    "always", "never", "use", "prefer", "run", "avoid", "stop", "do", "ensure",
-    "require", "must", "keep", "check", "verify", "commit", "write", "read",
-    "apply", "follow", "skip", "limit", "default",
+    "always", "never", "use", "prefer", "run", "avoid", "stop", "do", "ensure", "require", "must",
+    "should", "keep", "check", "verify", "commit", "write", "read", "apply", "follow", "skip",
+    "limit", "default",
 ];
 const MIN_RULE_CHARS: usize = 15;
+
+fn explicit_label_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static VALUE: OnceLock<regex::Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^\s*(?:decision|locked|constraint|invariant|rule)\s*:")
+            .expect("static Gate 1 label expression")
+    })
+}
+
+fn explicit_temporal_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static VALUE: OnceLock<regex::Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^\s*(?:going forward|from now on|henceforth)\b[\s,:.!-]*")
+            .expect("static Gate 1 temporal expression")
+    })
+}
+
+fn explicit_correction_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static VALUE: OnceLock<regex::Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        regex::Regex::new(
+            r"(?i)^\s*(?:no,?\s+that's\s+(?:wrong|not right|not what|not how)|wrong|incorrect|correction\s*:)[\s,:.!-]*",
+        )
+        .expect("static Gate 1 correction expression")
+    })
+}
+
+fn polite_correction_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static VALUE: OnceLock<regex::Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^\s*please\s+stop\b")
+            .expect("static Gate 1 polite correction expression")
+    })
+}
+
+fn explicit_label_body_matches(body: &str, evidence: &str) -> bool {
+    let normalized_body = normalize_text(body);
+    if normalized_body.chars().count() < MIN_RULE_CHARS {
+        return false;
+    }
+    let normalized_evidence = normalize_text(evidence);
+    if !explicit_label_re().is_match(&normalized_evidence) {
+        return false;
+    }
+    let remainder = explicit_label_re()
+        .replace(&normalized_evidence, "")
+        .to_string();
+    !remainder.trim().is_empty() && normalized_body == normalize_text(&remainder)
+}
+
+fn first_person_preference_re() -> &'static regex::Regex {
+    use std::sync::OnceLock;
+    static VALUE: OnceLock<regex::Regex> = OnceLock::new();
+    VALUE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^\s*i\s+(?:always|never|prefer|avoid|require|must|should|like)\b")
+            .expect("static Gate 1 first-person preference expression")
+    })
+}
 
 pub const GATE1_POLICY_CONTRACT: &str = "adapt.gate1-policy.v1";
 pub const GATE1_EXECUTABLE_POLICY_FINGERPRINT_CONTRACT: &str =
@@ -143,15 +205,50 @@ pub fn rule_shape_valid(body: &str) -> bool {
     if IMPERATIVE_STARTERS.contains(&first_word.as_str()) {
         return true;
     }
-    if format!(" {normalized} ").contains(" should ")
-        || format!(" {normalized} ").contains(" must ")
-    {
+    if first_person_preference_re().is_match(&normalized) {
         return true;
     }
-    if normalized.starts_with("when ") {
-        return true;
+
+    // Labels, temporal markers, and corrections make the directive explicit;
+    // validate the text following their prefix so a modal in a factual clause
+    // cannot satisfy Gate 1 by itself.
+    let remainder = if explicit_label_re().is_match(&normalized) {
+        explicit_label_re().replace(&normalized, "").to_string()
+    } else if explicit_temporal_re().is_match(&normalized) {
+        explicit_temporal_re().replace(&normalized, "").to_string()
+    } else if explicit_correction_re().is_match(&normalized) {
+        explicit_correction_re()
+            .replace(&normalized, "")
+            .to_string()
+    } else {
+        String::new()
+    };
+    if !remainder.is_empty() {
+        let remainder_first_word = remainder
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim_end_matches("'t");
+        if IMPERATIVE_STARTERS.contains(&remainder_first_word)
+            || first_person_preference_re().is_match(remainder.trim())
+        {
+            return true;
+        }
     }
-    body.trim().ends_with(['.', '!', '?'])
+
+    // Conditional directives are durable only when their action is itself a
+    // directive; a modal inside the condition remains ordinary factual text.
+    if let Some((condition, action)) = normalized.split_once(",") {
+        if condition.starts_with("when ") {
+            let action_first_word = action.trim().split_whitespace().next().unwrap_or("");
+            if IMPERATIVE_STARTERS.contains(&action_first_word)
+                || first_person_preference_re().is_match(action.trim())
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Scoped identity index over canonical rules.
@@ -163,7 +260,10 @@ pub struct RuleIndex {
 
 impl RuleIndex {
     pub fn insert(&mut self, key: RuleKey) {
-        self.by_id.entry(key.record_id.clone()).or_default().push(key.clone());
+        self.by_id
+            .entry(key.record_id.clone())
+            .or_default()
+            .push(key.clone());
         self.by_key.insert(key, ());
     }
 
@@ -245,8 +345,9 @@ pub fn evaluate_eligibility(input: &EligibilityInput<'_>) -> EligibilityDecision
         }
     }
 
-    let AuthorityResult { admitted, reason, .. } =
-        authority::evaluate_origin(input.origin, input.evidence_text);
+    let AuthorityResult {
+        admitted, reason, ..
+    } = authority::evaluate_origin(input.origin, input.evidence_text);
     if !admitted {
         return refused(reason);
     }
@@ -277,7 +378,7 @@ pub fn evaluate_eligibility(input: &EligibilityInput<'_>) -> EligibilityDecision
         AuthorityEffect::Neutral | AuthorityEffect::Restrictive => {}
     }
 
-    if !rule_shape_valid(body) {
+    if !rule_shape_valid(body) && !explicit_label_body_matches(body, input.evidence_text) {
         return refused("rule-invalid-shape".into());
     }
 
@@ -299,16 +400,34 @@ fn refused(reason: String) -> EligibilityDecision {
 /// deterministic gate passes.
 pub fn evaluate_model_proposal(
     proposal: &ModelExtractionProposal,
-    evidence: &[membrane_transcript::evidence::VerifiedUserActEvidence],
+    evidence: &[membrane_transcript::TranscriptEventV1],
     index: &RuleIndex,
     stored_rules: &[StoredRule],
 ) -> Result<EligibilityDecision, ModelProposalError> {
+    // The excerpt proves origin, not semantics. Require model text to be the
+    // excerpt itself or the deterministic body after one supported prefix;
+    // otherwise selected transcript evidence would launder an unrelated rule.
+    if !model_rule_matches_bound_excerpt(&proposal.rule_text, &proposal.bound_evidence_excerpt) {
+        return Err(ModelProposalError::UnboundEvidence);
+    }
     let expected = crate::canonical::sha256_hex(proposal.bound_evidence_excerpt.as_bytes());
-    let all_bound = !proposal.bound_evidence_ids.is_empty() && proposal.bound_evidence_ids.iter().all(|id| {
-        evidence.iter().any(|verified| verified.evidence().evidence_id == *id
-            && membrane_transcript::user_act::authoritative_excerpt(verified)
-                .is_some_and(|excerpt| crate::canonical::sha256_hex(excerpt.as_bytes()) == expected))
-    });
+    let all_bound = !proposal.bound_evidence_ids.is_empty()
+        && proposal.bound_evidence_ids.iter().all(|id| {
+            evidence.iter().any(|event| {
+                event.event_id == *id
+                    && event.kind == "user_message"
+                    && event.role.as_deref() == Some("user")
+                    && !event.synthetic
+                    && !event.meta
+                    && !event.private_reasoning_omitted
+                    && !event.redacted
+                    && !event.flags.synthetic
+                    && !event.flags.meta
+                    && !event.flags.private_reasoning_omitted
+                    && !event.flags.redacted
+                    && crate::canonical::sha256_hex(event.text.as_bytes()) == expected
+            })
+        });
     if !all_bound {
         return Err(ModelProposalError::UnboundEvidence);
     }
@@ -330,6 +449,34 @@ pub fn evaluate_model_proposal(
     }))
 }
 
+fn model_rule_matches_bound_excerpt(rule: &str, excerpt: &str) -> bool {
+    let normalized_rule = normalize_text(rule);
+    let normalized_excerpt = normalize_text(excerpt);
+    if normalized_rule == normalized_excerpt {
+        return true;
+    }
+    let remainder = if polite_correction_re().is_match(&normalized_excerpt) {
+        polite_correction_re()
+            .replace(&normalized_excerpt, "stop")
+            .to_string()
+    } else if explicit_label_re().is_match(&normalized_excerpt) {
+        explicit_label_re()
+            .replace(&normalized_excerpt, "")
+            .to_string()
+    } else if explicit_temporal_re().is_match(&normalized_excerpt) {
+        explicit_temporal_re()
+            .replace(&normalized_excerpt, "")
+            .to_string()
+    } else if explicit_correction_re().is_match(&normalized_excerpt) {
+        explicit_correction_re()
+            .replace(&normalized_excerpt, "")
+            .to_string()
+    } else {
+        return false;
+    };
+    normalized_rule == normalize_text(&remainder)
+}
+
 /// Build a candidate record from an admitted proposal. This is the ONLY
 /// constructor path out of gate 1, and it stamps provisional influence +
 /// candidate lifecycle; nothing admitted here is durably authoritative yet.
@@ -343,7 +490,16 @@ pub fn build_candidate(
     evidence_ids: Vec<String>,
     now: &str,
 ) -> Result<PreferenceRecordV1, crate::record::RecordError> {
-    PreferenceRecordV1::new_candidate(rule, category, class, scope, dims, confidence, evidence_ids, now)
+    PreferenceRecordV1::new_candidate(
+        rule,
+        category,
+        class,
+        scope,
+        dims,
+        confidence,
+        evidence_ids,
+        now,
+    )
 }
 
 #[cfg(test)]
@@ -484,12 +640,167 @@ mod tests {
     fn refuses_unknown_categories_and_bad_shapes() {
         let idx = RuleIndex::default();
         assert_eq!(
-            evaluate_eligibility(&base_input("add", "Always do the thing properly ok", "branding", "s", authority::Origin::UserTurn, "ev", &idx, &[])),
-            EligibilityDecision::Refused { reason: "category-not-allowed".into() }
+            evaluate_eligibility(&base_input(
+                "add",
+                "Always do the thing properly ok",
+                "branding",
+                "s",
+                authority::Origin::UserTurn,
+                "ev",
+                &idx,
+                &[]
+            )),
+            EligibilityDecision::Refused {
+                reason: "category-not-allowed".into()
+            }
         );
         assert_eq!(
-            evaluate_eligibility(&base_input("add", "hi", "workflow", "s", authority::Origin::UserTurn, "ev", &idx, &[])),
-            EligibilityDecision::Refused { reason: "rule-invalid-shape".into() }
+            evaluate_eligibility(&base_input(
+                "add",
+                "hi",
+                "workflow",
+                "s",
+                authority::Origin::UserTurn,
+                "ev",
+                &idx,
+                &[]
+            )),
+            EligibilityDecision::Refused {
+                reason: "rule-invalid-shape".into()
+            }
+        );
+    }
+
+    #[test]
+    fn rule_shape_rejects_internal_modal_in_declarative_fact() {
+        assert!(!rule_shape_valid(
+            "The build must target Rust 1.85 because the lockfile says so."
+        ));
+        assert!(!rule_shape_valid(
+            "When the build must target Rust 1.85, the lockfile records that fact."
+        ));
+        assert!(rule_shape_valid(
+            "Must target the supported Rust toolchain."
+        ));
+        assert!(rule_shape_valid(
+            "I prefer focused patches for small changes."
+        ));
+        assert!(rule_shape_valid(
+            "Constraint: keep the protocol boundary stable."
+        ));
+        assert!(rule_shape_valid(
+            "From now on, use focused patches for small changes."
+        ));
+        assert!(rule_shape_valid(
+            "Correction: use the shared target directory."
+        ));
+
+        let index = RuleIndex::default();
+        let labeled = base_input(
+            "add",
+            "model routing must use the reviewed fallback order",
+            "model-routing",
+            "repo-x",
+            authority::Origin::UserTurn,
+            "Locked: model routing must use the reviewed fallback order.",
+            &index,
+            &[],
+        );
+        assert!(evaluate_eligibility(&labeled).is_admitted());
+        let factual = base_input(
+            "add",
+            "the build must target Rust 1.85 because the lockfile says so",
+            "workflow",
+            "repo-x",
+            authority::Origin::UserTurn,
+            "The build must target Rust 1.85 because the lockfile says so.",
+            &index,
+            &[],
+        );
+        assert_eq!(
+            evaluate_eligibility(&factual),
+            EligibilityDecision::Refused {
+                reason: "rule-invalid-shape".into()
+            }
+        );
+    }
+
+    #[test]
+    fn explicit_labels_authorize_bound_body_but_other_context_does_not() {
+        let index = RuleIndex::default();
+        for (rule, category, evidence, admitted) in [
+            (
+                "model routing must use the reviewed fallback order",
+                "model-routing",
+                "Locked: model routing must use the reviewed fallback order.",
+                true,
+            ),
+            (
+                "naming should remain consistent across public types",
+                "code-style",
+                "Invariant: naming should remain consistent across public types.",
+                true,
+            ),
+            (
+                "the build must target Rust 1.85 because the lockfile says so",
+                "workflow",
+                "Correction: The build must target Rust 1.85 because the lockfile says so.",
+                false,
+            ),
+            (
+                "the build must target Rust 1.85 because the lockfile says so",
+                "workflow",
+                "Please note that the build must target Rust 1.85 because the lockfile says so.",
+                false,
+            ),
+        ] {
+            let input = base_input(
+                "add",
+                rule,
+                category,
+                "repo-x",
+                authority::Origin::UserTurn,
+                evidence,
+                &index,
+                &[],
+            );
+            assert_eq!(
+                evaluate_eligibility(&input).is_admitted(),
+                admitted,
+                "explicit context admission mismatch: {evidence}"
+            );
+        }
+        assert!(!rule_shape_valid(
+            "Please use focused patches for small changes."
+        ));
+    }
+
+    #[test]
+    fn model_rule_must_match_bound_excerpt_semantically() {
+        assert!(model_rule_matches_bound_excerpt(
+            "use focused patches for small changes",
+            "Locked: use focused patches for small changes."
+        ));
+        assert!(model_rule_matches_bound_excerpt(
+            "stop skipping the focused test suite",
+            "Please stop skipping the focused test suite."
+        ));
+        assert!(!model_rule_matches_bound_excerpt(
+            "Always run focused tests before claiming completion",
+            "Locked: use focused patches for small changes."
+        ));
+
+        let proposal = ModelExtractionProposal {
+            proposer_id: "model-1".into(),
+            rule_text: "Always run focused tests before claiming completion".into(),
+            category_hint: "verification".into(),
+            scope_hint: "repo-x".into(),
+            bound_evidence_ids: vec!["evidence-1".into()],
+            bound_evidence_excerpt: "Locked: use focused patches for small changes.".into(),
+        };
+        assert_eq!(
+            evaluate_model_proposal(&proposal, &[], &RuleIndex::default(), &[]),
+            Err(ModelProposalError::UnboundEvidence)
         );
     }
 
@@ -498,8 +809,19 @@ mod tests {
         let mut idx = RuleIndex::default();
         idx.insert(RuleKey::new("repo-x", "duplicate-id"));
         assert_eq!(
-            evaluate_eligibility(&base_input("add", "duplicate-id", "workflow", "repo-x", authority::Origin::UserTurn, "ev text here", &idx, &[])),
-            EligibilityDecision::Refused { reason: "rule-duplicate".into() }
+            evaluate_eligibility(&base_input(
+                "add",
+                "duplicate-id",
+                "workflow",
+                "repo-x",
+                authority::Origin::UserTurn,
+                "ev text here",
+                &idx,
+                &[]
+            )),
+            EligibilityDecision::Refused {
+                reason: "rule-duplicate".into()
+            }
         );
     }
 
@@ -518,7 +840,9 @@ mod tests {
         ));
         assert_eq!(
             d,
-            EligibilityDecision::Refused { reason: "origin-not-user:assistant_output".into() }
+            EligibilityDecision::Refused {
+                reason: "origin-not-user:assistant_output".into()
+            }
         );
     }
 
@@ -551,11 +875,22 @@ mod tests {
         let stored: Vec<StoredRule> = vec![];
         let input = EligibilityInput {
             scope_dimensions_raw: &dims,
-            ..base_input("add", "Always run focused tests first ok", "verification", "repo-x", authority::Origin::UserTurn, "user said", &index, &stored)
+            ..base_input(
+                "add",
+                "Always run focused tests first ok",
+                "verification",
+                "repo-x",
+                authority::Origin::UserTurn,
+                "user said",
+                &index,
+                &stored,
+            )
         };
         assert_eq!(
             evaluate_eligibility(&input),
-            EligibilityDecision::Refused { reason: "scope-malformed".into() }
+            EligibilityDecision::Refused {
+                reason: "scope-malformed".into()
+            }
         );
     }
 
@@ -580,7 +915,9 @@ mod tests {
         ));
         assert_eq!(
             d,
-            EligibilityDecision::Refused { reason: "rule-conflict-needs-review".into() }
+            EligibilityDecision::Refused {
+                reason: "rule-conflict-needs-review".into()
+            }
         );
     }
 

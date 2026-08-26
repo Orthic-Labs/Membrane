@@ -264,6 +264,46 @@ test("sealed mode forbids any interpreter production row outright", () => {
   assert.ok(out.errors.some((e) => e.code === "SEALED_MODE_INTERPRETER_PRODUCTION"));
 });
 
+test("sealed mode permits only an exact packaged external-component interpreter row", () => {
+  const rules = basePolicy().classificationRules.map(rule => rule.id === "legacy-py" ? {
+    ...rule,
+    runtime: "node",
+    packaged: true,
+    target_disposition: "external-typed-service",
+    exception: null,
+  } : rule);
+  const fx = happyFixture(test, {
+    enforcementMode: "sealed",
+    sealedExternalInterpreterRows: ["legacy-py-legacy-py"],
+    classificationRules: rules,
+  });
+  const discovered = fx.manifest.rows.flatMap(row => row.files).sort();
+  const accepted = validateManifest({
+    policy: fx.policy,
+    policyDigestActual: fx.manifest.policyDigest,
+    manifest: fx.manifest,
+    discovered,
+    truthTexts: [],
+    today: TODAY,
+    root: fx.root,
+  });
+  assert.equal(fx.manifest.totals.productionInterpreterRows, 0);
+  assert.equal(fx.manifest.totals.boundedExternalInterpreterRows, 1);
+  assert.deepEqual(accepted.errors, []);
+
+  const rejected = validateManifest({
+    policy: { ...fx.policy, sealedExternalInterpreterRows: ["some-other-row"] },
+    policyDigestActual: fx.manifest.policyDigest,
+    manifest: fx.manifest,
+    discovered,
+    truthTexts: [],
+    today: TODAY,
+    root: fx.root,
+  });
+  assert.ok(rejected.errors.some(error => error.code === "SEALED_MODE_INTERPRETER_PRODUCTION"));
+  assert.ok(rejected.errors.some(error => error.code === "INVALID_SEALED_EXTERNAL_INTERPRETER"));
+});
+
 test("invalid disposition/runtime rejected; duplicate coverage rejected", () => {
   const fx = happyFixture(test);
   fx.manifest.rows[0].target_disposition = "native-magic";

@@ -74,7 +74,7 @@ The permanent ontology is:
 | Concept | Source / author | Semantic object | Primary question |
 |---|---|---|---|
 | **Agent memory** | agent / host | facts, state, summaries, notes, contextual recall | What should I remember? |
-| **Taste** | authenticated user acts and user-backed behavioral evidence | preferences and behavioral constraints | How does this user want me to behave or make choices? |
+| **Taste** | explicitly user-selected, source-bound transcript evidence and reviewed behavioral evidence | preferences and behavioral constraints | How does this user want me to behave or make choices? |
 | **Insights** | observed agent/model/tool trajectories and outcomes | failures, gotchas, recurring bad patterns, waste | What do agents repeatedly get wrong, and what should be prevented or measured? |
 | **Cortex** | shared Membrane infrastructure | admitted durable records of many semantic kinds | How are durable records admitted, stored, versioned, retrieved, and delivered? |
 
@@ -103,7 +103,7 @@ The following are settled and MUST NOT be weakened without an explicit architect
 Adapt is product-complete only when all of the following are true:
 
 - Taste and Insights are both documented and shipped as first-class surfaces.
-- Taste accepts explicit and selected implicit user signals without authority laundering.
+- Taste accepts explicitly selected transcript evidence without authority laundering; automatic implicit host signals are optional and separately evaluated.
 - Insights has measured detector precision/recall and a longitudinal issue model.
 - every durable Adapt output crosses one typed Cortex admission boundary;
 - applicable Taste can be delivered through a bounded core plus cheap scoped selection;
@@ -326,7 +326,7 @@ membrane-transcript
     canonical transcript/event normalization
     provenance
     source binding
-    authenticated user-act adaptation
+    selected-transcript/user-act adaptation
 
 membrane-adapt
     Taste
@@ -359,7 +359,7 @@ All model-generated outputs are proposals. Deterministic code must bind them to 
 No model output can manufacture:
 
 - a user source span;
-- an authenticated user act;
+- a user act or explicit transcript selection;
 - a user preference;
 - a permission grant;
 - a verification receipt;
@@ -380,7 +380,7 @@ Passing one grants nothing at the next.
 
 ## 3.6 Internal contract namespace
 
-`TranscriptEventV1`, `UserActEvidenceV1`, `ExecutionObservationV1`, `EvaluationOutcomeV1`, `FailureEpisodeV1`, `InsightIssueV1`, and Adapt proposal/effectiveness records are versioned internal/domain contracts. Their suffixes version their own schemas; they do not silently expand Membrane's five public V1 context protocol shapes.
+`TranscriptEventV1`, `ExecutionObservationV1`, `EvaluationOutcomeV1`, `FailureEpisodeV1`, `InsightIssueV1`, and Adapt proposal/effectiveness records are versioned internal/domain contracts. Their suffixes version their own schemas; they do not silently expand Membrane's five public V1 context protocol shapes.
 
 A contract that must cross the CodeRight repository boundary MUST have an explicit CodeRight↔Membrane integration owner, schema/version/digest, compatibility policy, and fixture set. It need not become a generic MCP/public-client shape merely because CodeRight consumes it.
 
@@ -462,7 +462,6 @@ An Adapt Insight may propose a new evaluator. CodeRight executes it. The result 
 CodeRight / external host execution
         |
         +--> TranscriptEventV1
-        +--> UserActEvidenceV1
         +--> ExecutionObservationV1
         +--> EvaluationOutcomeV1
                     |
@@ -562,35 +561,57 @@ The historical design's signal ladder remains useful as a **weighting default**,
 
 Strength affects confidence and review policy. It does not permit a lower-authority source to masquerade as a higher-authority source.
 
-## 4.3 UserActEvidenceV1 target contract
+## 4.3 Selected-transcript source-binding contract
 
-Implicit Taste requires a first-class evidence object. An equivalent contract should include:
+Explicitly user-selected transcript evidence is the qualifying default workflow. It requires a
+first-class candidate binding carrying exact source identity, digest, span, and review context. Automatic implicit
+host signals are an optional, separately evaluated lane and are not required for release.
 
 ```text
-UserActEvidenceV1
-  evidence_id
-  installation_id
+TasteCandidateV1
+  candidate_id
   host
   session_id
-  event_id(s)
+  transcript_id
+  transcript_sha256
+  parser_digest
+  event_id
+  byte_start / byte_end
+  evidence_text_sha256
   act_kind
     explicit_preference
     correction
-    reject
-    accept
-    post_accept_edit
-    repeated_edit
-    named_choice
-  before_digest? / before_excerpt?
-  after_digest? / after_excerpt?
-  user_source_span?
-  scope_context
-  timestamp
-  signal_strength
-  provenance_receipt
+  scope / scope_dimensions
+  needs_review = true
 ```
 
 The object records what happened. It does not itself state the final preference.
+
+### 4.3.1 Local caller-selected review contract
+
+`adapt.user-taste-review.v1` is the explicit local review contract for caller-selected
+transcripts. It requires the review payload to bind exactly to the pending manifest,
+installation identity, and canonical-pool digest:
+
+```text
+contract_version = "adapt.user-taste-review.v1"
+independent = true
+installation_id == pending.installation_id
+pending_manifest_sha256 == pending.manifest_sha256
+canonical_pool_sha256 == pending.canonical_pool_sha256
+decisions = exactly one decision for every pending record id
+  verdict = "valid" | "invalid"
+  reason = non-empty
+validator_receipt_id = non-empty
+validated_at = non-empty
+issuer_id = ""
+key_id = ""
+signature_hex = ""
+```
+
+This is a local caller-selected human review boundary; it requires no login or
+authentication. A signed `adapt.semantic-adjudication.v1` remains an optional
+enterprise/import lane, not a prerequisite for local review.
 
 ## 4.4 No-authority-laundering invariant
 
@@ -1051,7 +1072,7 @@ Current repository evidence demonstrates these mechanisms exist in the native ta
 - Taste/Insights semantic separation;
 - three distinct admission types/boundaries;
 - immutable semantic/applicability sealing plus receipted mutable state;
-- authenticated user-act evidence contract;
+- explicitly selected transcript/user-act evidence contract with exact source binding;
 - structured scope selection;
 - native Taste delivery/effectiveness receipts;
 - signed Taste export/import;
@@ -1084,7 +1105,10 @@ Pending work is:
 
 The native transcript owner supports direct discovery/parsing across the supported external-host set. Before implementation, regenerate the host capability matrix from the native source and tests rather than copying a stale table.
 
-Parser coverage alone does not establish user-act authority. UI acts remain authoritative only through authenticated host events that satisfy `UserActEvidenceV1`.
+Parser coverage alone does not establish user-act authority. Explicit transcript selection,
+exact source hash/rebinding, and required review establish authority for the selected-transcript
+workflow; assistant, tool, model, and repository text remain non-authoritative. Automatic implicit
+UI/host signals remain optional and separately evaluated.
 
 For CodeRight, structured direct emission is preferred to file scraping.
 
@@ -1141,7 +1165,9 @@ Implementation agents MUST fix status drift before using §10 as work-dispatch a
 
 ## 11.1 Taste evaluation
 
-Taste must be evaluated separately for explicit and implicit evidence.
+Taste may be evaluated separately for explicit selected-transcript evidence and optional implicit
+host signals. The explicit workflow does not require a held-out corpus; held-out
+evaluation remains evidence for optional automatic extraction and broader quality claims.
 
 Minimum dimensions:
 
@@ -1368,7 +1394,7 @@ Automatic remediation remains blocked for families that do not meet the real-cor
 CodeRight should emit:
 
 - transcript/event facts;
-- authenticated user acts;
+- explicitly selected transcript/user-act evidence with exact source binding;
 - execution observations;
 - evaluation outcomes;
 - Membrane context/retrieval receipts.
@@ -1483,7 +1509,8 @@ For CodeRight and every supported host that can expose the signals, qualify:
 - named choice;
 - explicit correction.
 
-Unavailable signals must remain explicitly unavailable; do not infer authenticated UI acts from assistant text.
+Unavailable signals must remain explicitly unavailable; do not infer user acts from assistant,
+tool, model, or repository text.
 
 ### P1.7 Deterministic completion/evidence integrity
 

@@ -8,11 +8,10 @@
 //!
 //! Invariants enforced here:
 //!
-//! * The only launch program is the installed Membrane binary this Hub
-//!   bundles (`membrane adapt`). No interpreter, no environment-injected module path, and no
-//!   development checkout is ever resolved or consulted.
-//! * Lifecycle/status stay typed: every launch ends in a parsed
-//!   `adapt.cli.v1` envelope or a stable error code; the scheduler records
+//! * Mining executes in-process through membrane-runtime. Hub never spawns a
+//!   second Membrane authority process, interpreter, or checkout command.
+//! * Lifecycle/status stay typed: every run ends in a native
+//!   `adapt.cli.v1` envelope or stable error code; scheduler records
 //!   `ran` / `skipped` / `failed` statuses and never falls back silently.
 //! * The installed `~/bin/adapt` launcher is Hub-owned and always execs the
 //!   bundled binary's native `adapt` subcommand (the retired Python shim is
@@ -22,20 +21,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     fs,
-    io::Read,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 /// Frozen CLI API version emitted by every native Adapt response (the
 /// membrane-adapt crate's cli_api surface).
 pub const ADAPT_CLI_API_VERSION: &str = "adapt.cli.v1";
-/// Upper bound on accepted response size; anything larger is invalid output.
-const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
-/// Wall-clock budget for one native verb invocation.
-const LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// Scheduled Adapt cycle cadence. The previous external daily-sync schedule
 /// ran once per day; the Hub binds the same production cadence to the
 /// resident lifecycle instead of a shell scheduler.
@@ -63,11 +55,7 @@ impl AdaptVerb {
 /// are recorded verbatim in Hub telemetry and must never be reinterpreted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdaptErrorCode {
-    ProgramMissing,
-    SpawnFailed,
-    StdinUnavailable,
-    Timeout,
-    NonZeroExit,
+    NativeMineFailed,
     OutputInvalid,
     ApiVersionMismatch,
     ScheduleMissing,
@@ -78,11 +66,7 @@ pub enum AdaptErrorCode {
 impl AdaptErrorCode {
     pub fn as_str(self) -> &'static str {
         match self {
-            AdaptErrorCode::ProgramMissing => "adapt_program_missing",
-            AdaptErrorCode::SpawnFailed => "adapt_spawn_failed",
-            AdaptErrorCode::StdinUnavailable => "adapt_stdin_unavailable",
-            AdaptErrorCode::Timeout => "adapt_launch_timeout",
-            AdaptErrorCode::NonZeroExit => "adapt_nonzero_exit",
+            AdaptErrorCode::NativeMineFailed => "adapt_native_mine_failed",
             AdaptErrorCode::OutputInvalid => "adapt_output_invalid",
             AdaptErrorCode::ApiVersionMismatch => "adapt_api_version_mismatch",
             AdaptErrorCode::ScheduleMissing => "adapt_schedule_missing",
@@ -113,104 +97,46 @@ impl AdaptLaunchError {
         if self.detail.is_empty() {
             self.code.as_str().to_string()
         } else {
-            format!("{}:{}", self.code.as_str(), truncate_tail(&self.detail, 160))
+            format!(
+                "{}:{}",
+                self.code.as_str(),
+                truncate_tail(&self.detail, 160)
+            )
         }
     }
 }
 
-/// Typed launch authority over installed Membrane binary's native
-/// `membrane adapt` subcommand.
+/// Typed in-process authority over native Adapt mining.
 pub struct AdaptLauncher {
-    program: PathBuf,
+    _workspace_root: PathBuf,
 }
 
 impl AdaptLauncher {
-    pub fn new(program: PathBuf) -> Self {
-        Self { program }
+    pub fn new(workspace_root: PathBuf) -> Self {
+        Self {
+            _workspace_root: workspace_root,
+        }
     }
 
-    /// Run one native CLI verb with explicit arguments. Fails closed with a
-    /// typed error; there is no stdin protocol or fallback path.
-    pub fn launch(
-        &self,
-        verb: AdaptVerb,
-        args: &[String],
-        timeout: Duration,
-    ) -> Result<Value, AdaptLaunchError> {
-        if !self.program.is_file() {
-            return Err(AdaptLaunchError::new(
-                AdaptErrorCode::ProgramMissing,
-                self.program.display().to_string(),
-            ));
-        }
-        let mut child = Command::new(&self.program)
-            .args(["adapt", verb.as_str()])
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|error| {
-                AdaptLaunchError::new(AdaptErrorCode::SpawnFailed, error.to_string())
-            })?;
-        let piped = (|| {
-            let stdout = child.stdout.take().ok_or_else(|| {
-                AdaptLaunchError::new(AdaptErrorCode::StdinUnavailable, "stdout")
-            })?;
-            let stderr = child.stderr.take().ok_or_else(|| {
-                AdaptLaunchError::new(AdaptErrorCode::StdinUnavailable, "stderr")
-            })?;
-            Ok::<_, AdaptLaunchError>((stdout, stderr))
-        })();
-        let (stdout, stderr) = match piped {
-            Ok(pipes) => pipes,
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(error);
-            }
-        };
-        // Reader threads keep both pipes drained while the bounded wait loop
-        // polls exit status, so a chatty child can never deadlock the Hub.
-        let stdout_text = read_all_async(stdout);
-        let stderr_text = read_all_async(stderr);
-        let deadline = Instant::now() + timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break Some(status),
-                Ok(None) if Instant::now() >= deadline => break None,
-                Ok(None) => thread::sleep(Duration::from_millis(20)),
-                Err(error) => {
-                    return Err(AdaptLaunchError::new(
-                        AdaptErrorCode::SpawnFailed,
-                        error.to_string(),
-                    ))
-                }
-            }
-        };
-        let Some(status) = status else {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(AdaptLaunchError::new(AdaptErrorCode::Timeout, ""));
-        };
-        let stdout = stdout_text.join().unwrap_or_default();
-        let stderr = stderr_text.join().unwrap_or_default();
-        if !status.success() {
-            return Err(AdaptLaunchError {
-                code: AdaptErrorCode::NonZeroExit,
-                exit_code: status.code(),
-                detail: stderr,
+    /// Run one native mining cycle inside Hub over caller-selected transcripts.
+    pub fn launch_mine(&self, schedule: &AdaptScheduleV1) -> Result<Value, AdaptLaunchError> {
+        let response = membrane_runtime::cli::run_native_adapt_mine(
+            membrane_runtime::cli::NativeAdaptMineRequest {
+                transcripts: schedule.transcripts.clone(),
+                host: schedule.host.clone(),
+                scope: schedule.scope.clone(),
+                min_recurrence: schedule.min_recurrence,
+            },
+        )
+        .map_err(|error| AdaptLaunchError::new(AdaptErrorCode::NativeMineFailed, error))?;
+        let api_version = response
+            .get("api_version")
+            .and_then(Value::as_str)
+            .or_else(|| {
+                response
+                    .pointer("/response/api_version")
+                    .and_then(Value::as_str)
             });
-        }
-        if stdout.len() > MAX_RESPONSE_BYTES {
-            return Err(AdaptLaunchError::new(AdaptErrorCode::OutputInvalid, "oversized"));
-        }
-        let response: Value = serde_json::from_str(stdout.trim()).map_err(|error| {
-            AdaptLaunchError::new(AdaptErrorCode::OutputInvalid, error.to_string())
-        })?;
-        let api_version = response.get("api_version").and_then(Value::as_str).or_else(|| {
-            response.pointer("/response/api_version").and_then(Value::as_str)
-        });
         if api_version != Some(ADAPT_CLI_API_VERSION) {
             return Err(AdaptLaunchError::new(
                 AdaptErrorCode::ApiVersionMismatch,
@@ -277,7 +203,10 @@ pub fn host_home() -> Result<PathBuf, String> {
 }
 
 pub fn default_schedule_path() -> Result<PathBuf, String> {
-    Ok(host_home()?.join(".membrane").join("adapt").join("schedule.v1.json"))
+    Ok(host_home()?
+        .join(".membrane")
+        .join("adapt")
+        .join("schedule.v1.json"))
 }
 
 /// Current Unix epoch milliseconds, saturating on clock prehistory.
@@ -312,8 +241,12 @@ pub struct AdaptScheduleV1 {
     pub output: PathBuf,
 }
 
-fn default_scope() -> String { "workspace".into() }
-fn default_min_recurrence() -> u32 { 2 }
+fn default_scope() -> String {
+    "workspace".into()
+}
+fn default_min_recurrence() -> u32 {
+    2
+}
 
 /// Hub-owned native mining schedule bound to resident lifecycle: cycles fire at
 /// most once per interval and only while the resident service reports
@@ -354,7 +287,10 @@ impl AdaptScheduler {
             || schedule.scope.trim().is_empty()
             || schedule.min_recurrence < 1
         {
-            return Err(AdaptLaunchError::new(AdaptErrorCode::ScheduleInvalid, "contract"));
+            return Err(AdaptLaunchError::new(
+                AdaptErrorCode::ScheduleInvalid,
+                "contract",
+            ));
         }
         Ok(schedule)
     }
@@ -380,39 +316,57 @@ impl AdaptScheduler {
         }
         let schedule = match self.load_schedule() {
             Ok(schedule) => schedule,
-            Err(error) if error.code == AdaptErrorCode::ScheduleMissing => return Some(AdaptCycleStatus {
-                state: "skipped", verb: None, reason: Some(error.reason()),
-            }),
-            Err(error) => return Some(AdaptCycleStatus {
-                state: "failed", verb: Some(AdaptVerb::Mine), reason: Some(error.reason()),
-            }),
+            Err(error) if error.code == AdaptErrorCode::ScheduleMissing => {
+                return Some(AdaptCycleStatus {
+                    state: "skipped",
+                    verb: None,
+                    reason: Some(error.reason()),
+                })
+            }
+            Err(error) => {
+                return Some(AdaptCycleStatus {
+                    state: "failed",
+                    verb: Some(AdaptVerb::Mine),
+                    reason: Some(error.reason()),
+                })
+            }
         };
-        let mut args = vec![
-            "--scope".into(), schedule.scope,
-            "--min-recurrence".into(), schedule.min_recurrence.to_string(),
-        ];
-        if let Some(host) = schedule.host { args.extend(["--host".into(), host]); }
-        args.extend(schedule.transcripts.iter().map(|path| path.to_string_lossy().into_owned()));
-        let response = match launcher.launch(AdaptVerb::Mine, &args, LAUNCH_TIMEOUT) {
+        let response = match launcher.launch_mine(&schedule) {
             Ok(response) => response,
-            Err(error) => return Some(AdaptCycleStatus {
-                state: "failed", verb: Some(AdaptVerb::Mine), reason: Some(error.reason()),
-            }),
+            Err(error) => {
+                return Some(AdaptCycleStatus {
+                    state: "failed",
+                    verb: Some(AdaptVerb::Mine),
+                    reason: Some(error.reason()),
+                })
+            }
         };
         if let Some(parent) = schedule.output.parent() {
             if let Err(error) = fs::create_dir_all(parent) {
-                return Some(AdaptCycleStatus { state: "failed", verb: Some(AdaptVerb::Mine), reason: Some(
-                    AdaptLaunchError::new(AdaptErrorCode::OutputWriteFailed, error.to_string()).reason()
-                ) });
+                return Some(AdaptCycleStatus {
+                    state: "failed",
+                    verb: Some(AdaptVerb::Mine),
+                    reason: Some(
+                        AdaptLaunchError::new(AdaptErrorCode::OutputWriteFailed, error.to_string())
+                            .reason(),
+                    ),
+                });
             }
         }
         let temporary = schedule.output.with_extension("json.tmp");
         let encoded = serde_json::to_vec_pretty(&response).expect("Adapt response serializes");
-        if let Err(error) = fs::write(&temporary, encoded).and_then(|_| fs::rename(&temporary, &schedule.output)) {
+        if let Err(error) =
+            fs::write(&temporary, encoded).and_then(|_| fs::rename(&temporary, &schedule.output))
+        {
             let _ = fs::remove_file(&temporary);
-            return Some(AdaptCycleStatus { state: "failed", verb: Some(AdaptVerb::Mine), reason: Some(
-                AdaptLaunchError::new(AdaptErrorCode::OutputWriteFailed, error.to_string()).reason()
-            ) });
+            return Some(AdaptCycleStatus {
+                state: "failed",
+                verb: Some(AdaptVerb::Mine),
+                reason: Some(
+                    AdaptLaunchError::new(AdaptErrorCode::OutputWriteFailed, error.to_string())
+                        .reason(),
+                ),
+            });
         }
         Some(AdaptCycleStatus {
             state: "ran",
@@ -420,15 +374,6 @@ impl AdaptScheduler {
             reason: None,
         })
     }
-}
-
-fn read_all_async(pipe: impl Read + Send + 'static) -> thread::JoinHandle<String> {
-    thread::spawn(move || {
-        let mut text = String::new();
-        let mut pipe = pipe;
-        let _ = pipe.read_to_string(&mut text);
-        text
-    })
 }
 
 fn truncate_tail(value: &str, max: usize) -> String {
@@ -450,111 +395,11 @@ fn truncate_tail(value: &str, max: usize) -> String {
 mod tests {
     use super::*;
 
-    fn envelope_literal(api_version: &str) -> String {
-        format!("{{\"api_version\":\"{api_version}\",\"verbs\":[]}}")
-    }
-
     #[test]
     fn verbs_map_to_canonical_argv() {
-        assert_eq!(
-            AdaptVerb::Mine.as_str(),
-            "mine"
-        );
+        assert_eq!(AdaptVerb::Mine.as_str(), "mine");
         assert_eq!(AdaptVerb::Review.as_str(), "review");
         assert_eq!(AdaptVerb::Apply.as_str(), "apply");
-    }
-
-    #[test]
-    fn missing_program_fails_closed_with_typed_code() {
-        let launcher = AdaptLauncher::new(PathBuf::from("/nonexistent/membrane-binary"));
-        let error = launcher
-            .launch(AdaptVerb::Mine, &[], Duration::from_secs(1))
-            .unwrap_err();
-        assert_eq!(error.code, AdaptErrorCode::ProgramMissing);
-    }
-
-    #[cfg(unix)]
-    fn fake_program(dir: &Path, name: &str, body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-        let path = dir.join(name);
-        fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-        path
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn successful_launch_parses_nested_envelope_and_forwards_argv() {
-        let dir = tempfile::tempdir().unwrap();
-        let program = fake_program(
-            dir.path(),
-            "membrane-ok",
-            "printf '{\"response\":{\"api_version\":\"adapt.cli.v1\"},\"argv\":\"%s\"}' \"$*\"",
-        );
-        let launcher = AdaptLauncher::new(program);
-        let args = vec!["--scope".into(), "repo".into(), "one.jsonl".into()];
-        let response = launcher
-            .launch(AdaptVerb::Mine, &args, Duration::from_secs(10))
-            .unwrap();
-        assert_eq!(response["response"]["api_version"], ADAPT_CLI_API_VERSION);
-        assert_eq!(response["argv"], "adapt mine --scope repo one.jsonl");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn wrong_api_version_is_a_typed_mismatch_not_a_parse_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let program = fake_program(
-            dir.path(),
-            "membrane-old",
-            &format!("printf '{}'", envelope_literal("adapt.cli.v0")),
-        );
-        let error = AdaptLauncher::new(program)
-            .launch(AdaptVerb::Mine, &[], Duration::from_secs(10))
-            .unwrap_err();
-        assert_eq!(error.code, AdaptErrorCode::ApiVersionMismatch);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn non_json_stdout_is_invalid_output() {
-        let dir = tempfile::tempdir().unwrap();
-        let program = fake_program(dir.path(), "membrane-noise", "printf 'not json'");
-        let error = AdaptLauncher::new(program)
-            .launch(AdaptVerb::Apply, &[], Duration::from_secs(10))
-            .unwrap_err();
-        assert_eq!(error.code, AdaptErrorCode::OutputInvalid);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn nonzero_exit_carries_exit_code_and_stderr_detail() {
-        let dir = tempfile::tempdir().unwrap();
-        let program = fake_program(
-            dir.path(),
-            "membrane-fail",
-            "echo unsupported subcommand >&2; exit 2",
-        );
-        let error = AdaptLauncher::new(program)
-            .launch(AdaptVerb::Mine, &[], Duration::from_secs(10))
-            .unwrap_err();
-        assert_eq!(error.code, AdaptErrorCode::NonZeroExit);
-        assert_eq!(error.exit_code, Some(2));
-        assert!(error.reason().contains("adapt_nonzero_exit"));
-        assert!(error.reason().contains("unsupported subcommand"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn hanging_child_times_out_and_is_killed() {
-        let dir = tempfile::tempdir().unwrap();
-        let program = fake_program(dir.path(), "membrane-hang", "sleep 30");
-        let started = Instant::now();
-        let error = AdaptLauncher::new(program)
-            .launch(AdaptVerb::Mine, &[], Duration::from_millis(300))
-            .unwrap_err();
-        assert_eq!(error.code, AdaptErrorCode::Timeout);
-        assert!(started.elapsed() < Duration::from_secs(10));
     }
 
     #[test]
@@ -568,7 +413,10 @@ mod tests {
             "#!/bin/sh\nexec \"/Applications/Membrane Hub.app/Contents/MacOS/membrane\" adapt \"$@\"\n"
         );
         let lowered = rendered.to_lowercase();
-        assert!(!lowered.contains("python"), "retired interpreter referenced");
+        assert!(
+            !lowered.contains("python"),
+            "retired interpreter referenced"
+        );
         assert!(!rendered.contains("adapt/src"), "checkout path referenced");
         assert!(rendered.contains("\" adapt "));
     }
@@ -578,7 +426,8 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let program = home.path().join("bundle").join("membrane");
         let installed = install_native_adapt_launcher(home.path(), &program).unwrap();
-        assert_eq!(installed, home.path().join("bin").join("adapt"));
+        let expected_name = if cfg!(windows) { "adapt.cmd" } else { "adapt" };
+        assert_eq!(installed, home.path().join("bin").join(expected_name));
         let content = fs::read_to_string(&installed).unwrap();
         assert_eq!(content, render_native_adapt_launcher(&program));
         #[cfg(unix)]
@@ -604,7 +453,8 @@ mod tests {
     fn scheduler_skips_without_resident_and_gates_on_interval() {
         let launcher = AdaptLauncher::new(PathBuf::from("/nonexistent/membrane-binary"));
         let temp = tempfile::tempdir().unwrap();
-        let mut scheduler = AdaptScheduler::new(Duration::from_secs(3600), temp.path().join("missing.json"));
+        let mut scheduler =
+            AdaptScheduler::new(Duration::from_secs(3600), temp.path().join("missing.json"));
         let skipped = scheduler
             .tick(1_000, false, &launcher)
             .expect("first tick due immediately");
@@ -617,10 +467,13 @@ mod tests {
             .tick(1_000 + 3_600_000, true, &launcher)
             .expect("due after interval");
         assert_eq!(skipped.state, "skipped");
-        assert!(skipped.reason.as_deref().unwrap().starts_with("adapt_schedule_missing:"));
+        assert!(skipped
+            .reason
+            .as_deref()
+            .unwrap()
+            .starts_with("adapt_schedule_missing:"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn configured_native_mine_cycle_writes_review_input() {
         let dir = tempfile::tempdir().unwrap();
@@ -628,26 +481,31 @@ mod tests {
         fs::write(&transcript, "{}\n").unwrap();
         let output = dir.path().join("out").join("mine.json");
         let schedule_path = dir.path().join("schedule.json");
-        fs::write(&schedule_path, serde_json::to_vec(&AdaptScheduleV1 {
-            schema_version: "adapt.schedule.v1".into(),
-            transcripts: vec![transcript],
-            host: Some("pi".into()),
-            scope: "repo".into(),
-            min_recurrence: 2,
-            output: output.clone(),
-        }).unwrap()).unwrap();
-        let program = fake_program(
-            dir.path(),
-            "membrane-cycle",
-            "printf '{\"response\":{\"api_version\":\"adapt.cli.v1\"},\"taste_candidates\":[]}'",
-        );
+        fs::write(
+            &schedule_path,
+            serde_json::to_vec(&AdaptScheduleV1 {
+                schema_version: "adapt.schedule.v1".into(),
+                transcripts: vec![transcript],
+                host: Some("pi".into()),
+                scope: "repo".into(),
+                min_recurrence: 2,
+                output: output.clone(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let mut scheduler = AdaptScheduler::new(Duration::from_secs(3600), schedule_path);
         let status = scheduler
-            .tick(unix_now_ms(), true, &AdaptLauncher::new(program))
+            .tick(unix_now_ms(), true, &AdaptLauncher::new(dir.path().into()))
             .expect("first tick due");
         assert_eq!(status.state, "ran");
         assert_eq!(status.reason, None);
         let saved: Value = serde_json::from_slice(&fs::read(output).unwrap()).unwrap();
-        assert_eq!(saved.pointer("/response/api_version").and_then(Value::as_str), Some(ADAPT_CLI_API_VERSION));
+        assert_eq!(
+            saved
+                .pointer("/response/api_version")
+                .and_then(Value::as_str),
+            Some(ADAPT_CLI_API_VERSION)
+        );
     }
 }

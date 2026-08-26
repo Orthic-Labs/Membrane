@@ -57,6 +57,20 @@ test("daemon client talks to the resident daemon", async () => {
   }
 });
 
+test("stable direct client uses bounded one-shot when Hub daemon is absent", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-sdk-one-shot-"));
+  cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
+  buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+  try {
+    const client = new BlueprintClient({ endpoint: temporaryDaemonEndpoint("blueprint-sdk-absent") });
+    const result = await client.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
+    assert.ok(result.results.length > 0);
+    await client.close();
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("plugin types are constrained", () => {
   assert.ok(PLUGIN_TYPES.includes("language-table"));
   assert.ok(PLUGIN_TYPES.includes("compiler-provider"));

@@ -276,10 +276,20 @@ fn macos_logs_root() -> PathBuf {
 
 #[allow(dead_code)]
 fn windows_appdata_root() -> PathBuf {
-    PathBuf::from(std::env::var_os("APPDATA").expect("APPDATA"))
+    std::env::var_os("APPDATA")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 #[allow(dead_code)]
 fn windows_local_appdata_root() -> PathBuf {
-    PathBuf::from(std::env::var_os("LOCALAPPDATA").expect("LOCALAPPDATA"))
+    std::env::var_os("LOCALAPPDATA")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
+        .unwrap_or_else(|| PathBuf::from("."))
 }

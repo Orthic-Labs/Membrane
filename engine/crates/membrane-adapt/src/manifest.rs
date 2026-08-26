@@ -4,9 +4,9 @@
 //! The manifest is the only path from mined candidates to durable apply. The
 //! loader refuses: unknown schema versions, records whose `payload_sha256`
 //! mismatches content, any `pending` record at apply time, missing batch
-//! identity, evidence contexts without exactly one authority-eligible
-/// external-user source event, and semantic-validation receipts that do not
-/// exactly cover the manifest's records.
+//! identity, evidence contexts without exactly one eligible external-user
+//! source event, and semantic-validation receipts that do
+//! not exactly cover the manifest's records.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -167,8 +167,6 @@ pub struct ManifestRecord {
     /// records at apply time.
     pub validator_receipt_id: String,
     pub validator_receipt_sha256: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub verified_user_act_receipt_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub semantic_payload: Option<SemanticPayloadV1>,
     #[serde(default)]
@@ -337,10 +335,6 @@ pub fn candidate_payload(rec: &ManifestRecord) -> Value {
             Value::String(rec.validator_receipt_sha256.clone()),
         ),
         (
-            "verified_user_act_receipt_sha256",
-            serde_json::to_value(&rec.verified_user_act_receipt_sha256).unwrap(),
-        ),
-        (
             "semantic_payload",
             serde_json::to_value(&rec.semantic_payload).unwrap(),
         ),
@@ -399,9 +393,6 @@ pub fn semantic_payload_for_record(
     evidence.push(crate::canonical::sha256_hex(
         rec.evidence_excerpt.as_bytes(),
     ));
-    if let Some(receipt) = &rec.verified_user_act_receipt_sha256 {
-        evidence.push(receipt.clone());
-    }
     evidence.sort();
     evidence.dedup();
     let user_authoritative = rec.evidence_class == "user_authoritative";
@@ -581,18 +572,6 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
         ));
     }
     for rec in &manifest.records {
-        if let Some(receipt) = &rec.verified_user_act_receipt_sha256 {
-            if receipt.len() != 64
-                || !receipt
-                    .bytes()
-                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-            {
-                return Err(ManifestError::SemanticSeal {
-                    record_id: rec.id.clone(),
-                    reason: "invalid verified user-act receipt digest".into(),
-                });
-            }
-        }
         if rec.semantic_payload.is_some() || !rec.semantic_digest.is_empty() {
             verify_manifest_record_seal(rec, &manifest.canonical_pool_sha256)?;
         }
@@ -638,15 +617,10 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
             let s = sources[0];
             let transcript_user =
                 s.provenance == "external_user" && s.kind == "user_message" && s.role == "user";
-            let verified_act = rec.verified_user_act_receipt_sha256.is_some()
-                && s.provenance == "verified_user_act"
-                && s.kind == "user_act"
-                && s.role == "user";
-            if !transcript_user && !verified_act {
+            if !transcript_user {
                 return Err(ManifestError::EvidenceContextInvalid {
                     record_id: rec.id.clone(),
-                    reason: "source event must be an external user message or verified host act"
-                        .into(),
+                    reason: "source event must be an eligible external user message".into(),
                 });
             }
             if ctx.evidence_text != s.text

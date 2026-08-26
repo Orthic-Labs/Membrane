@@ -19,10 +19,10 @@ function loadJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-test("catalog contains exactly the fifteen frozen contracts", () => {
-  assert.equal(CONTRACT_CATALOG.length, 15);
+test("catalog contains exactly the sixteen frozen contracts", () => {
+  assert.equal(CONTRACT_CATALOG.length, 16);
   const names = CONTRACT_CATALOG.map((entry) => entry.name);
-  assert.equal(new Set(names).size, 15, "duplicate catalog name");
+  assert.equal(new Set(names).size, 16, "duplicate catalog name");
   for (const entry of CONTRACT_CATALOG) {
     assert.ok(entry.version === 1, `${entry.name} must be version 1`);
     assert.ok(entry.file.endsWith(".schema.json"), `${entry.name} file is a schema`);

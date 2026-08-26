@@ -6,10 +6,10 @@ An operator creates a named immutable snapshot with Blueprint CLI after a clean,
 blueprint graph snapshot create --name base --json
 ```
 
-Agents use read-only `membrane_blueprint` operations against Blueprint commit `96dc3e6`:
+Agents use read-only `membrane_blueprint` operations through Hub-hosted Blueprint:
 
 - `snapshot_get` with `name` reads one identity and exact file leaves.
 - `snapshot_list` lists named identities.
 - `changes_since` with `name` and bounded `limit` returns ordered changes plus a truncation receipt.
 
-Membrane invokes fixed `node blueprint/scripts/blueprint.mjs graph ... --json` argv, never a shell. It accepts only generation IDs, manifest/content hashes, clean Git identities, safe paths, change kinds, and bounded receipts. Missing, dirty, stale, malformed, mismatched, or non-JSON output becomes `blueprint_unavailable`; CLI stderr is not returned.
+While Hub is active, Membrane uses Blueprint's typed named-pipe service; Hub owns watcher lifecycle. An unenrolled repository is `not_configured`, stale or incomplete evidence is `degraded`, and only a transport/service failure is `blueprint_unavailable`. With Hub inactive, Membrane remains unavailable, while an explicit direct Blueprint request routes to its bounded one-shot client, never starts a watcher, and exits. Generation/hash mismatches remain typed fail-closed omissions.

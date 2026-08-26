@@ -185,15 +185,15 @@ mod tests {
         let a = json!({"b": 1, "a": [2, {"z": true, "y": null}]});
         let b = json!({"a": [2, {"y": null, "z": true}], "b": 1});
         assert_eq!(to_canonical_json(&a), to_canonical_json(&b));
-        assert_eq!(to_canonical_json(&a), r#"{"a":[2,{"y":null,"z":true}],"b":1}"#);
+        assert_eq!(
+            to_canonical_json(&a),
+            r#"{"a":[2,{"y":null,"z":true}],"b":1}"#
+        );
     }
 
     #[test]
     fn digest_is_sha256_of_canonical_form() {
-        assert_eq!(
-            sha256_canonical(&json!({"a":1})),
-            sha256_hex(br#"{"a":1}"#)
-        );
+        assert_eq!(sha256_canonical(&json!({"a":1})), sha256_hex(br#"{"a":1}"#));
     }
 
     #[test]

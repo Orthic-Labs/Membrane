@@ -14,11 +14,10 @@
 //! fence; only the snapshot-plus-evaluate path does (design §12).
 
 use membrane_protocol::diagnostics::{
-    evaluate_gate, AggregateDeltaV1, AggregateIssueDelta, BlueprintFreshness,
-    CapabilityVocabulary, ConvergenceClass, CostClass, CoverageLaneV1, DeltaClassification,
-    DiagnosticEvidenceSnapshotV1, DiagnosticGateDecisionV1,
-    DiagnosticIssueV1, GateOutcome, GatePolicyProfileV1, LaneState, ObservationV1,
-    SourceClass, TypedOmission, WorkspaceEpochV1,
+    evaluate_gate, AggregateDeltaV1, AggregateIssueDelta, BlueprintFreshness, CapabilityVocabulary,
+    ConvergenceClass, CostClass, CoverageLaneV1, DeltaClassification, DiagnosticEvidenceSnapshotV1,
+    DiagnosticGateDecisionV1, DiagnosticIssueV1, GateOutcome, GatePolicyProfileV1, LaneState,
+    ObservationV1, SourceClass, TypedOmission, WorkspaceEpochV1,
     DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION,
 };
 use sha2::{Digest as _, Sha256};
@@ -255,10 +254,7 @@ pub fn classify_aggregate_delta(
         if let Some(prev_issue) = prev_by_key.get(key) {
             let path_moved = extract_path(prev_issue.correlation_key.as_str())
                 != extract_path(cur_issue.correlation_key.as_str())
-                || prev_issue
-                    .observations
-                    .first()
-                    .map(|o| o.path.as_str())
+                || prev_issue.observations.first().map(|o| o.path.as_str())
                     != cur_issue.observations.first().map(|o| o.path.as_str());
             let classification = if path_moved {
                 DeltaClassification::Moved
@@ -550,20 +546,24 @@ impl Default for BlueprintLaneInput {
 }
 
 impl BlueprintLaneInput {
-    /// Typed unavailability: no fabricated generation, no exact lane, one
-    /// recorded omission explaining why Blueprint evidence is absent.
-    pub fn unavailable(detail: String) -> Self {
+    pub fn omitted(code: &str, detail: String, freshness: BlueprintFreshness) -> Self {
         Self {
             generation: None,
-            freshness: BlueprintFreshness::Unknown,
+            freshness,
             observations: Vec::new(),
             lane: None,
             delta: None,
             omissions: vec![TypedOmission {
-                code: "blueprint_unavailable".to_string(),
+                code: code.to_string(),
                 detail,
             }],
         }
+    }
+
+    /// Typed unavailability: no fabricated generation, no exact lane, one
+    /// recorded omission explaining why Blueprint evidence is absent.
+    pub fn unavailable(detail: String) -> Self {
+        Self::omitted("blueprint_unavailable", detail, BlueprintFreshness::Unknown)
     }
 
     /// Real evidence: current findings plus an exact D0 lane bound to
@@ -607,8 +607,7 @@ impl BlueprintLaneInput {
         if lane_scope.is_empty() {
             return false;
         }
-        let set: std::collections::HashSet<&str> =
-            lane_scope.iter().map(|s| s.as_str()).collect();
+        let set: std::collections::HashSet<&str> = lane_scope.iter().map(|s| s.as_str()).collect();
         required.iter().all(|p| set.contains(p.as_str()))
     }
 }
@@ -858,7 +857,9 @@ impl DiagnosticsSupervisor {
 
     /// Declared capabilities of the registered instance behind `key`.
     pub fn registry_capabilities(&self, key: &WorkspaceEngineKey) -> Option<&ProviderCapabilities> {
-        self.registry.get(key).map(|registered| &registered.capabilities)
+        self.registry
+            .get(key)
+            .map(|registered| &registered.capabilities)
     }
 
     /// Whether the registered instance behind `key` covers `capability` within
@@ -895,7 +896,11 @@ impl DiagnosticsSupervisor {
                 continue;
             };
             let caps = &registered.capabilities;
-            let candidate = (cost_rank(&caps.cost_class), caps.provider_id.clone(), key.clone());
+            let candidate = (
+                cost_rank(&caps.cost_class),
+                caps.provider_id.clone(),
+                key.clone(),
+            );
             let replace = match &best {
                 Some(current) => (candidate.0, &candidate.1) < (current.0, &current.1),
                 None => true,
@@ -1252,6 +1257,18 @@ impl DiagnosticsSession {
         self.open_mutation = true;
     }
 
+    /// Close a begun mutation that produced no workspace bytes. Existing
+    /// clearance remains valid because abort carries no new epoch.
+    pub fn abort_mutation(&mut self) -> Result<(), LiveDiagnosticsError> {
+        if !self.open_mutation {
+            return Err(LiveDiagnosticsError::MutationBoundary(
+                "abort_mutation called without begin_mutation".into(),
+            ));
+        }
+        self.open_mutation = false;
+        Ok(())
+    }
+
     /// Seal the open mutation with its resulting workspace epoch, validating
     /// monotonicity and the parent chain, and invalidate prior clearance:
     /// newly sealed bytes are not the bytes any prior decision described.
@@ -1411,8 +1428,12 @@ impl DiagnosticsSession {
         // carried verbatim from the caller's real findings-service response —
         // absent evidence stays absent (`Unknown` + typed omission), it is
         // never fabricated.
-        let coverage_obligations =
-            build_coverage_obligations(&sealed, &policy.required_capabilities, &coverage_lanes, max_cost);
+        let coverage_obligations = build_coverage_obligations(
+            &sealed,
+            &policy.required_capabilities,
+            &coverage_lanes,
+            max_cost,
+        );
         let mut snapshot = assemble_snapshot(
             &sealed,
             observations,
@@ -1447,10 +1468,7 @@ impl DiagnosticsSession {
         Ok(decision)
     }
 
-    fn accept_sealed_epoch(
-        &mut self,
-        epoch: WorkspaceEpochV1,
-    ) -> Result<(), LiveDiagnosticsError> {
+    fn accept_sealed_epoch(&mut self, epoch: WorkspaceEpochV1) -> Result<(), LiveDiagnosticsError> {
         if let Some(previous) = &self.latest_sealed {
             if epoch_number(&epoch) <= epoch_number(previous) {
                 return Err(LiveDiagnosticsError::EpochNotMonotonic(format!(
@@ -1490,10 +1508,7 @@ fn wall_clock_ms() -> u64 {
 /// (design §8: the planner derives obligations from language/dialect and
 /// touched scope — a static per-capability dialect table would lie about
 /// mixed-language mutations).
-fn language_dialect_for(
-    capability: &CapabilityVocabulary,
-    touched: &TouchedLanguages,
-) -> String {
+fn language_dialect_for(capability: &CapabilityVocabulary, touched: &TouchedLanguages) -> String {
     match capability {
         CapabilityVocabulary::Syntax => "universal".to_string(),
         CapabilityVocabulary::RepositoryModuleResolution
@@ -1506,7 +1521,8 @@ fn language_dialect_for(
                 "universal".to_string()
             }
         }
-        CapabilityVocabulary::NameResolution | CapabilityVocabulary::TypeSemantics
+        CapabilityVocabulary::NameResolution
+        | CapabilityVocabulary::TypeSemantics
         | CapabilityVocabulary::CompilerProjectSemantics => {
             if touched.rust {
                 "rust".to_string()
@@ -1841,7 +1857,12 @@ mod tests {
         }
     }
 
-    fn advisory_observation(id: &str, code: &str, path: &str, anchor: Option<&str>) -> ObservationV1 {
+    fn advisory_observation(
+        id: &str,
+        code: &str,
+        path: &str,
+        anchor: Option<&str>,
+    ) -> ObservationV1 {
         ObservationV1 {
             observation_id: id.to_string(),
             provider_id: "test-provider".to_string(),
@@ -1877,7 +1898,10 @@ mod tests {
 
     impl FakeProvider {
         fn record(&self, event: &str) {
-            self.log.lock().unwrap().push(format!("{}:{event}", self.id));
+            self.log
+                .lock()
+                .unwrap()
+                .push(format!("{}:{event}", self.id));
         }
 
         fn queue(&self, result: Result<ProviderOutput, ProviderError>) {
@@ -2009,10 +2033,8 @@ mod tests {
     fn lazy_start_happens_once_per_key_and_is_reused() {
         let now: SharedNow = Arc::new(Mutex::new(1_000));
         let log = Arc::new(Mutex::new(Vec::new()));
-        let mut supervisor = DiagnosticsSupervisor::with_clock(
-            LiveDiagnosticsConfig::default(),
-            test_clock(&now),
-        );
+        let mut supervisor =
+            DiagnosticsSupervisor::with_clock(LiveDiagnosticsConfig::default(), test_clock(&now));
         let key = test_key("parser");
         supervisor.register(
             key.clone(),
@@ -2035,13 +2057,19 @@ mod tests {
         );
 
         let epoch = test_epoch(1);
-        assert!(supervisor.acquire(&key, &epoch, AbsoluteDeadline::after(0, 5_000)).is_ok());
-        assert!(supervisor.acquire(&key, &epoch, AbsoluteDeadline::after(0, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, AbsoluteDeadline::after(0, 5_000))
+            .is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, AbsoluteDeadline::after(0, 5_000))
+            .is_ok());
         assert_eq!(FakeProvider::events(&log, "parser", "init"), 1);
 
         // A different epoch re-synchronizes but does not restart.
         let next = test_epoch(2);
-        assert!(supervisor.acquire(&key, &next, AbsoluteDeadline::after(0, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &next, AbsoluteDeadline::after(0, 5_000))
+            .is_ok());
         assert_eq!(FakeProvider::events(&log, "parser", "init"), 1);
         assert_eq!(FakeProvider::events(&log, "parser", "sync"), 2);
 
@@ -2089,7 +2117,10 @@ mod tests {
         let deadline = AbsoluteDeadline::after(0, 10);
         let failure = supervisor.acquire(&key, &epoch, deadline).unwrap_err();
         match failure {
-            AcquisitionFailure::TimedOut { request_id, partial } => {
+            AcquisitionFailure::TimedOut {
+                request_id,
+                partial,
+            } => {
                 assert_eq!(request_id.0, 1);
                 let partial =
                     partial.expect("overrun after provider output carries the partial lane");
@@ -2122,19 +2153,25 @@ mod tests {
             },
         );
         let epoch = test_epoch(1);
-        assert!(supervisor.acquire(&key, &epoch, deadline_from(&now, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, deadline_from(&now, 5_000))
+            .is_ok());
 
         // Still warm below the threshold: no eviction, no re-initialization.
         advance(&now, 59_999);
         assert!(supervisor.evict_idle().is_empty());
-        assert!(supervisor.acquire(&key, &epoch, deadline_from(&now, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, deadline_from(&now, 5_000))
+            .is_ok());
         assert_eq!(FakeProvider::events(&log, "idle", "init"), 1);
 
         // Past the threshold the instance is shut down; next use re-initializes.
         advance(&now, 60_001);
         assert_eq!(supervisor.evict_idle(), vec![key.clone()]);
         assert_eq!(FakeProvider::events(&log, "idle", "shutdown"), 1);
-        assert!(supervisor.acquire(&key, &epoch, deadline_from(&now, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, deadline_from(&now, 5_000))
+            .is_ok());
         assert_eq!(FakeProvider::events(&log, "idle", "init"), 2);
         supervisor.shutdown_all().unwrap();
     }
@@ -2169,7 +2206,9 @@ mod tests {
         ));
         drop(held_slot);
         assert_eq!(supervisor.active_acquire_count(), 0);
-        assert!(supervisor.acquire(&key, &epoch, AbsoluteDeadline::after(0, 1_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, AbsoluteDeadline::after(0, 1_000))
+            .is_ok());
         assert_eq!(supervisor.active_acquire_count(), 0);
         supervisor.shutdown_all().unwrap();
     }
@@ -2198,21 +2237,33 @@ mod tests {
         );
         supervisor.register(
             cheap_first.clone(),
-            caps("alpha", CostClass::Instant, &[CapabilityKind::CompilerCheck]),
+            caps(
+                "alpha",
+                CostClass::Instant,
+                &[CapabilityKind::CompilerCheck],
+            ),
             Box::new(|| unreachable_box()),
         );
         let candidates = vec![expensive.clone(), cheap_second.clone(), cheap_first.clone()];
 
         // Within max_cost the cheapest class wins; ties break lexicographically.
         let chosen = supervisor
-            .choose_qualified(&CapabilityKind::CompilerCheck, CostClass::Instant, &candidates)
+            .choose_qualified(
+                &CapabilityKind::CompilerCheck,
+                CostClass::Instant,
+                &candidates,
+            )
             .unwrap();
         assert_eq!(chosen, cheap_first);
 
         // A tighter ceiling that excludes instant providers yields nothing here,
         // while raising it admits the verification-tier provider as fallback.
         assert!(supervisor
-            .choose_qualified(&CapabilityKind::NativeLanguageService, CostClass::Test, &candidates)
+            .choose_qualified(
+                &CapabilityKind::NativeLanguageService,
+                CostClass::Test,
+                &candidates
+            )
             .is_none());
         let raised = supervisor.choose_qualified(
             &CapabilityKind::CompilerCheck,
@@ -2280,7 +2331,7 @@ mod tests {
         session.seal_mutation(test_epoch(1)).unwrap();
 
         let policy = GatePolicyProfileV1::default();
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2296,7 +2347,10 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         // One exact blocker proves dirty; the unavailable second capability must
         // remain a typed omission, never a silent narrowing.
         assert!(!decision.omissions.is_empty());
-        assert!(decision.omissions.iter().any(|o| o.code == "provider_unavailable"));
+        assert!(decision
+            .omissions
+            .iter()
+            .any(|o| o.code == "provider_unavailable"));
         // dirty_exact blocks completion: the fence is not cleared.
         assert!(session.cleared_decision().is_none());
         supervisor.shutdown_all().unwrap();
@@ -2326,7 +2380,9 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
                         VecDeque::from([Ok(FakeProvider::lane_output(
                             Vec::new(),
                             "tsgo",
-                            vec![membrane_protocol::diagnostics::CapabilityVocabulary::TypeSemantics],
+                            vec![
+                                membrane_protocol::diagnostics::CapabilityVocabulary::TypeSemantics,
+                            ],
                             1,
                         ))]),
                         0,
@@ -2343,7 +2399,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         policy.required_capabilities =
             vec![membrane_protocol::diagnostics::CapabilityVocabulary::TypeSemantics];
 
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2381,7 +2437,11 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let expensive = test_key("expensive");
         supervisor.register(
             expensive.clone(),
-            caps("expensive", CostClass::Verification, &[CapabilityKind::Parser]),
+            caps(
+                "expensive",
+                CostClass::Verification,
+                &[CapabilityKind::Parser],
+            ),
             {
                 let log = Arc::clone(&log);
                 let now = Arc::clone(&now);
@@ -2395,7 +2455,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
 
         // expensive exceeds max_cost → typed omission code
         let policy = GatePolicyProfileV1::default();
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2408,7 +2468,10 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             )
             .unwrap();
         // At least one omission with stable snake_case code
-        assert!(decision.omissions.iter().any(|o| o.code == "provider_exceeds_max_cost"));
+        assert!(decision
+            .omissions
+            .iter()
+            .any(|o| o.code == "provider_exceeds_max_cost"));
         for omission in &decision.omissions {
             // Codes are stable snake_case: no uppercase, no spaces
             assert_eq!(omission.code, omission.code.to_lowercase());
@@ -2517,14 +2580,19 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let cur_obs_moved = advisory_observation("obs-3", "BP001", "src/b.ts", Some("symbol:Foo"));
         let cur_issues_moved = correlate_observations("repo-1", vec![cur_obs_moved]);
         let deltas_moved = classify_aggregate_delta(&prev_issues, &cur_issues_moved);
-        assert!(deltas_moved.iter().any(|d| d.classification == DeltaClassification::Moved));
+        assert!(deltas_moved
+            .iter()
+            .any(|d| d.classification == DeltaClassification::Moved));
 
         // Current only (new) and previous only (resolved)
         let empty: Vec<DiagnosticIssueV1> = Vec::new();
         let new_deltas = classify_aggregate_delta(&empty, &cur_issues_same);
         assert_eq!(new_deltas[0].classification, DeltaClassification::New);
         let resolved_deltas = classify_aggregate_delta(&prev_issues, &empty);
-        assert_eq!(resolved_deltas[0].classification, DeltaClassification::Resolved);
+        assert_eq!(
+            resolved_deltas[0].classification,
+            DeltaClassification::Resolved
+        );
 
         // Session baseline wiring: acquire_snapshot sets aggregate_delta
         let now: SharedNow = Arc::new(Mutex::new(0));
@@ -2547,7 +2615,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         session.set_baseline(prev_issues.clone());
         assert!(session.baseline().is_some());
         let policy = GatePolicyProfileV1::default();
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2600,7 +2668,9 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
 
         // Start it
         let epoch = test_epoch(1);
-        assert!(supervisor.acquire(&key, &epoch, deadline_from(&now, 5_000)).is_ok());
+        assert!(supervisor
+            .acquire(&key, &epoch, deadline_from(&now, 5_000))
+            .is_ok());
         assert_eq!(FakeProvider::events(&log, "to-shutdown", "init"), 1);
 
         // Live → true and factory kept (next acquire can restart, may re-init
@@ -2654,7 +2724,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             required_capabilities: vec![CapabilityVocabulary::Syntax],
             ..GatePolicyProfileV1::default()
         };
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2670,8 +2740,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         assert!(session.cleared_decision().is_some());
 
         // External write: manifest digest drift invalidates prior clearance.
-        let classification =
-            session.reconcile("manifest-1-externally-modified", &[]);
+        let classification = session.reconcile("manifest-1-externally-modified", &[]);
         assert_eq!(classification, ReconcileClassification::UnknownConflict);
         assert!(session.cleared_decision().is_none());
         supervisor.shutdown_all().unwrap();
@@ -2715,7 +2784,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             required_capabilities: vec![CapabilityVocabulary::Syntax],
             ..GatePolicyProfileV1::default()
         };
-let sealed_epoch = session.latest_sealed().cloned().unwrap();
+        let sealed_epoch = session.latest_sealed().cloned().unwrap();
         let decision = session
             .acquire_snapshot(
                 &mut supervisor,
@@ -2808,8 +2877,14 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             .omissions
             .iter()
             .any(|omission| omission.code == "blueprint_unavailable"));
-        assert!(!snapshot.coverage_lanes.iter().any(|lane| lane.provider_id == "blueprint-d0"));
-        assert!(decision.reason_codes.iter().any(|reason| reason.contains("import_export_binding")));
+        assert!(!snapshot
+            .coverage_lanes
+            .iter()
+            .any(|lane| lane.provider_id == "blueprint-d0"));
+        assert!(decision
+            .reason_codes
+            .iter()
+            .any(|reason| reason.contains("import_export_binding")));
         assert!(session.cleared_decision().is_none());
     }
 
@@ -2819,8 +2894,10 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         session.begin_mutation();
         session.seal_mutation(test_epoch(2)).unwrap();
         let sealed_epoch = session.latest_sealed().cloned().unwrap();
-        let mut supervisor =
-            DiagnosticsSupervisor::with_clock(LiveDiagnosticsConfig::default(), test_clock(&Arc::new(Mutex::new(0))));
+        let mut supervisor = DiagnosticsSupervisor::with_clock(
+            LiveDiagnosticsConfig::default(),
+            test_clock(&Arc::new(Mutex::new(0))),
+        );
 
         // Real D0 finding: BP001 blocking observation from the findings service.
         let mut finding = blocking_observation();
@@ -2852,14 +2929,20 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
         // The exact blocker proves dirty; the lane itself was exact+complete.
         assert_eq!(decision.outcome, GateOutcome::DirtyExact);
         let snapshot = session.latest_snapshot().unwrap();
-        assert_eq!(snapshot.blueprint_generation.as_deref(), Some("gen-real-42"));
+        assert_eq!(
+            snapshot.blueprint_generation.as_deref(),
+            Some("gen-real-42")
+        );
         assert_eq!(snapshot.blueprint_freshness, BlueprintFreshness::Current);
         let lane = snapshot
             .coverage_lanes
             .iter()
             .find(|lane| lane.provider_id == "blueprint-d0")
             .expect("current blueprint evidence carries an exact D0 lane");
-        assert_eq!(lane.convergence_class, ConvergenceClass::SnapshotCheckerExact);
+        assert_eq!(
+            lane.convergence_class,
+            ConvergenceClass::SnapshotCheckerExact
+        );
         assert_eq!(lane.state, LaneState::Complete);
         assert_eq!(lane.bound_workspace_epoch, sealed_epoch.epoch);
     }
@@ -2878,10 +2961,7 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             ]
         );
         let rust = derive_required_capabilities(&["crates/x/src/lib.rs".to_string()]);
-        assert_eq!(
-            rust,
-            vec![C::Syntax, C::NameResolution, C::TypeSemantics]
-        );
+        assert_eq!(rust, vec![C::Syntax, C::NameResolution, C::TypeSemantics]);
         // CompilerProjectSemantics is V1 escalation only; it is not derived
         // from ordinary Rust touched scope. It must be explicitly requested.
         assert!(
@@ -2901,14 +2981,20 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             C::TypeSemantics,
             C::NameResolution,
         ] {
-            assert!(mixed.contains(&expected), "{expected:?} missing from {mixed:?}");
+            assert!(
+                mixed.contains(&expected),
+                "{expected:?} missing from {mixed:?}"
+            );
         }
         assert!(
             !mixed.contains(&C::CompilerProjectSemantics),
             "mixed scope must not auto-require CompilerProjectSemantics"
         );
         // Non-source-only scope still demands syntax: no empty requirements.
-        assert_eq!(derive_required_capabilities(&["docs/x.md".to_string()]), vec![C::Syntax]);
+        assert_eq!(
+            derive_required_capabilities(&["docs/x.md".to_string()]),
+            vec![C::Syntax]
+        );
     }
 
     #[test]
@@ -2935,10 +3021,17 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             state: LaneState::Complete,
             omissions: Vec::new(),
         };
-        let obligations_partial = build_coverage_obligations(&epoch, &required, &[lane_partial], CostClass::Instant);
+        let obligations_partial =
+            build_coverage_obligations(&epoch, &required, &[lane_partial], CostClass::Instant);
         assert_eq!(obligations_partial[0].required_scope.paths.len(), 2);
-        assert!(obligations_partial[0].required_scope.paths.contains(&"a.rs".to_string()));
-        assert!(obligations_partial[0].required_scope.paths.contains(&"b.rs".to_string()));
+        assert!(obligations_partial[0]
+            .required_scope
+            .paths
+            .contains(&"a.rs".to_string()));
+        assert!(obligations_partial[0]
+            .required_scope
+            .paths
+            .contains(&"b.rs".to_string()));
         assert_eq!(
             obligations_partial[0].state,
             membrane_protocol::diagnostics::ObligationState::Unsatisfied,
@@ -2954,7 +3047,8 @@ let sealed_epoch = session.latest_sealed().cloned().unwrap();
             state: LaneState::Complete,
             omissions: Vec::new(),
         };
-        let obligations_full = build_coverage_obligations(&epoch, &required, &[lane_full], CostClass::Instant);
+        let obligations_full =
+            build_coverage_obligations(&epoch, &required, &[lane_full], CostClass::Instant);
         assert_eq!(
             obligations_full[0].state,
             membrane_protocol::diagnostics::ObligationState::SatisfiedExact

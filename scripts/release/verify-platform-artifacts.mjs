@@ -16,17 +16,15 @@ export function validateReceipt(receipt) {
   if (!safeId(receipt.receiptId) || !commit(receipt.commit) || !digest(receipt.releaseGeneration) || typeof receipt.version !== "string" || !/^v?\d+\.\d+\.\d+$/.test(receipt.version)) fail("receipt identity invalid");
   closed(receipt.artifact, ["name", "sha256"], "artifact");
   if (!digest(receipt.artifact?.sha256) || typeof receipt.artifact?.name !== "string" || !receipt.artifact.name) fail("artifact identity invalid");
-  if (receipt.platform !== "macos") fail("platform invalid: current release target is macos");
-  if (!['source-ready', 'clean-vm'].includes(receipt.mode)) fail("mode invalid");
-  if (receipt.platform === "macos") {
-    closed(receipt.trust, ["codesign", "notarization", "staple", "gatekeeper"], "macOS trust");
-    const { codesign, notarization, staple, gatekeeper } = receipt.trust ?? {};
-    if (![codesign, notarization, staple, gatekeeper].every(passed)) fail("macOS trust receipt incomplete");
-  }
+  if (receipt.platform !== "windows") fail("platform invalid: current release target is windows");
+  if (receipt.mode !== "installed-local") fail("mode invalid");
+  closed(receipt.trust, ["authenticode", "timestamp", "publisher"], "Windows trust");
+  const { authenticode, timestamp, publisher } = receipt.trust ?? {};
+  if (![authenticode, timestamp].every(passed) || !safeId(publisher)) fail("Windows trust receipt incomplete");
   closed(receipt.lifecycle, ["install", "startup", "update", "uninstall"], "lifecycle");
   for (const gate of ["install", "startup", "update", "uninstall"]) if (!passed(receipt.lifecycle?.[gate])) fail(`lifecycle receipt incomplete: ${gate}`);
-  closed(receipt.environment, ["clean", "machineDigest", "bypassWarnings"], "environment");
-  if (receipt.mode === "clean-vm" && (!receipt.environment.clean || !digest(receipt.environment.machineDigest) || receipt.environment.bypassWarnings !== false)) fail("clean-vm receipt needs isolated no-bypass evidence");
+  closed(receipt.environment, ["host", "bypassWarnings"], "environment");
+  if (receipt.environment?.host !== "windows-laptop" || receipt.environment.bypassWarnings !== false) fail("installed-local receipt needs Windows laptop no-bypass evidence");
   return receipt;
 }
 
@@ -35,7 +33,6 @@ export function verifyPair(contract, receipt) {
   validateReceipt(receipt);
   for (const key of ["commit", "releaseGeneration", "version", "platform"]) if (contract[key] !== receipt[key]) fail(`contract mismatch: ${key}`);
   if (contract.artifact?.sha256 !== receipt.artifact.sha256 || contract.artifact?.name !== receipt.artifact.name) fail("contract mismatch: artifact");
-  if (receipt.mode !== "clean-vm") fail("source-ready receipt is not clean-VM acceptance");
   return { status: "accepted", commit: receipt.commit, platform: receipt.platform, artifactSha256: receipt.artifact.sha256 };
 }
 

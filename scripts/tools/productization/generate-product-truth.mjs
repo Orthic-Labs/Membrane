@@ -9,15 +9,13 @@
 //
 // `--check` is the manually invoked book-gate product-truth check (the no-CI
 // override replaces "CI fails" with this local command). It exits non-zero when
-// the generated artifacts are stale, when the README's claimed tool count
-// disagrees with the source (e.g. README says "six tools" while the source
-// exposes nine), or when a generated doc the README links to is absent.
+// generated artifacts are stale, when README tool claims disagree with native
+// registry fixture, or when a linked generated doc is absent.
 
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TOOLS } from "../../../mcp/server.mjs";
 import {
   platformStatus,
   renderArchitectureDoc,
@@ -33,6 +31,7 @@ const TRUTH_DOC = join(REPO_ROOT, "docs", "product-truth.md");
 const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
 const MANIFEST = join(REPO_ROOT, "docs", "design", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
+const MCP_FIXTURE = join(REPO_ROOT, "migration", "native-rust", "fixtures", "mcp-conformance.v1.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
 const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "ledger", "adapt"];
@@ -63,8 +62,8 @@ function capabilityDeclarations(matrix) {
       throw new Error(`capability matrix axis ${axis?.id ?? "unknown"} is incomplete`);
     }
   }
-  if (matrix.current_target !== "macOS") {
-    throw new Error("capability matrix current_target must be macOS");
+  if (matrix.current_target !== "Windows") {
+    throw new Error("capability matrix current_target must be Windows");
   }
   if (matrix.cortex_scope !== "durable-memory-only") {
     throw new Error("capability matrix cortex_scope must be durable-memory-only");
@@ -83,7 +82,8 @@ function capabilityDeclarations(matrix) {
 
 /** Compute the product truth from live source. Deterministic — no timestamps. */
 export async function computeProductTruth() {
-  const tools = TOOLS.map((tool) => tool.name).sort();
+  const fixture = JSON.parse(await readFile(MCP_FIXTURE, "utf8"));
+  const tools = [...new Set(Object.values(fixture.toolsets ?? {}).flat())].sort();
   const matrix = JSON.parse(await readFile(MATRIX, "utf8"));
   const adapters = Object.keys(matrix.hosts || {}).sort();
   const declarations = capabilityDeclarations(matrix);
@@ -94,7 +94,7 @@ export async function computeProductTruth() {
     tools,
     adapterCount: adapters.length,
     adapters,
-    generatedFrom: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json"],
+    generatedFrom: ["engine/crates/membrane-mcp/src/tools.rs", "migration/native-rust/fixtures/mcp-conformance.v1.json", "docs/membrane/capability-matrix.v1.json"],
   };
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // U61: SEAM-CONTRACT §8 conformance for blueprint — vendor-neutral naming, snapshot shape, watcher single-ownership
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
@@ -10,6 +10,29 @@ import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKey
 import { classifyMutablePath, assertSafeMutableStorePath } from "../../src/graph/store-sqlite.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+function textFiles(paths) {
+  const files = [];
+  const visit = (path) => {
+    const stat = statSync(path);
+    if (stat.isDirectory()) for (const name of readdirSync(path)) visit(join(path, name));
+    else files.push(path);
+  };
+  for (const path of paths) visit(resolve(ROOT, path));
+  return files;
+}
+
+function occurrences(needle, paths, ignored = () => false) {
+  const rows = [];
+  for (const file of textFiles(paths)) {
+    if (ignored(file)) continue;
+    const source = readFileSync(file, "utf8");
+    source.split(/\r?\n/).forEach((line, index) => {
+      if (line.includes(needle)) rows.push(`${file.slice(ROOT.length + 1)}:${index + 1}:${line}`);
+    });
+  }
+  return rows;
+}
 
 function run(cmd, args, opts = {}) {
   return execFileSync(cmd, args, { encoding: "utf8", cwd: ROOT, ...opts });
@@ -28,14 +51,9 @@ function check(name, fn) {
 }
 
 const MEMBRANE = "_mem" + "brane";
-try {
-  const out = execFileSync("grep", ["-rn", MEMBRANE, "scripts/", "src/lib/", "src/service/"], { encoding: "utf8", cwd: ROOT });
-  const filtered = out.split("\n").filter((l) => !l.includes("check-seam-conformance.mjs")).join("\n").trim();
-  if (filtered) { console.error(`✗ grep-gate ${MEMBRANE}: found\n${filtered.slice(0, 500)}`); failed = true; } else console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ src/lib/ src/service/`);
-} catch (e) {
-  if (e.status === 1) console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ src/lib/ src/service/`);
-  else { console.error(`✗ grep-gate ${MEMBRANE} error: ${e.message}`); failed = true; }
-}
+const membraneOccurrences = occurrences(MEMBRANE, ["scripts", "src/lib", "src/service"], (file) => file.endsWith("check-seam-conformance.mjs"));
+if (membraneOccurrences.length) { console.error(`✗ grep-gate ${MEMBRANE}: found\n${membraneOccurrences.join("\n").slice(0, 500)}`); failed = true; }
+else console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ src/lib/ src/service/`);
 
 check("grep-gate: no hardcoded cortex outside config-default in scripts/blueprint.mjs", () => {
   const src = readFileSync(join(ROOT, "scripts/blueprint.mjs"), "utf8");
@@ -70,14 +88,9 @@ check("snapshot shape validates", () => {
 
 const MEM_WORD = "mem" + "brane";
 check(`watcher single-ownership: no ${MEM_WORD} in blueprint-watch.mjs / watchman/`, () => {
-  try {
-    const out = execFileSync("grep", ["-rn", MEM_WORD, "scripts/blueprint-watch.mjs", "watchman/"], { encoding: "utf8", cwd: ROOT });
-    if (out.trim()) throw new Error(`found ${MEM_WORD} in watcher:\n${out.slice(0, 300)}`);
-    console.log(`✓ watcher single-ownership: zero ${MEM_WORD}`);
-  } catch (e) {
-    if (e.status === 1) console.log(`✓ watcher single-ownership: zero ${MEM_WORD}`);
-    else throw e;
-  }
+  const found = occurrences(MEM_WORD, ["scripts/blueprint-watch.mjs", "watchman"]);
+  if (found.length) throw new Error(`found ${MEM_WORD} in watcher:\n${found.join("\n").slice(0, 300)}`);
+  console.log(`✓ watcher single-ownership: zero ${MEM_WORD}`);
 });
 
 check("blueprint graph manifest --json shape (if graph exists)", () => {

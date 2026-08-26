@@ -7,7 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { npmCliArgs } from "./release/npm-cli.mjs";
+import { npmCliArgs, pnpmCliArgs } from "./release/npm-cli.mjs";
 import { verifyMcpInitialize } from "./release/mcp-client-smoke.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,10 +23,15 @@ function fail(message) {
   process.exit(1);
 }
 
+function packageManagerArgs(args) {
+  return process.platform === "win32" ? pnpmCliArgs(args) : npmCliArgs(args);
+}
+
 // 1. Dry-run pack: file list must be a subset of the explicit `files` allowlist.
-const dryRun = spawnSync(process.execPath, npmCliArgs(["pack", "--json", "--dry-run"]), { cwd: ROOT, encoding: "utf8" });
-if (dryRun.status !== 0) fail(`npm pack --dry-run failed: ${dryRun.stderr}`);
-const packResult = JSON.parse(dryRun.stdout);
+const dryRun = spawnSync(process.execPath, packageManagerArgs(["pack", "--json", "--dry-run"]), { cwd: ROOT, encoding: "utf8" });
+if (dryRun.status !== 0) fail(`package pack --dry-run failed: ${dryRun.stderr}`);
+const parsedPackResult = JSON.parse(dryRun.stdout);
+const packResult = Array.isArray(parsedPackResult) ? parsedPackResult : [parsedPackResult];
 const entry = packResult.find((item) => item.filename);
 if (!entry) fail("no tarball entry in pack output");
 const allowlist = new Set(pkg.files ?? []);
@@ -44,7 +49,7 @@ if (unexpected.length) fail(`tarball contains files outside the allowlist: ${une
 // 2. Extract a real tarball into a temp dir and install production deps.
 const temp = mkdtempSync(join(tmpdir(), "blueprint-test-package-"));
 try {
-  execFileSync(process.execPath, npmCliArgs(["pack", "--pack-destination", temp]), { cwd: ROOT, stdio: "ignore" });
+  execFileSync(process.execPath, packageManagerArgs(["pack", "--pack-destination", temp]), { cwd: ROOT, stdio: "ignore" });
   const tarball = join(temp, entry.filename);
   if (!existsSync(tarball)) fail(`tarball not produced: ${tarball}`);
   const extractDir = join(temp, "extract");
@@ -56,7 +61,10 @@ try {
 
   // 3. Install production dependencies inside the extracted package.
   writeFileSync(join(packageDir, ".npmrc"), "package-lock=false\n");
-  const install = spawnSync(process.execPath, npmCliArgs(["install", "--omit=dev", "--no-audit", "--no-fund"]), { cwd: packageDir, encoding: "utf8", timeout: 180000 });
+  const installArgs = process.platform === "win32"
+    ? pnpmCliArgs(["install", "--prod", "--ignore-scripts", "--no-frozen-lockfile"])
+    : npmCliArgs(["install", "--omit=dev", "--no-audit", "--no-fund"]);
+  const install = spawnSync(process.execPath, installArgs, { cwd: packageDir, encoding: "utf8", timeout: 180000 });
   if (install.status !== 0) fail(`prod install failed: ${install.stderr || install.stdout}`);
 
   // 4. Help, status, and MCP handshake from the extracted package.

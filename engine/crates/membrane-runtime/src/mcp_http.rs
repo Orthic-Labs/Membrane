@@ -203,6 +203,7 @@ async fn handle_mcp_request(
 /// process exits or the bind fails. This is an explicit opt-in entrypoint: no
 /// default resident startup path calls it.
 pub fn run_mcp_streamable_http(port: u16, policy: HttpAdmissionPolicy) -> Result<(), String> {
+    crate::mcp_executor::install_native_mcp_transport()?;
     let app = build_mcp_http_router(policy);
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -233,6 +234,10 @@ pub fn run_mcp_streamable_http(port: u16, policy: HttpAdmissionPolicy) -> Result
 pub fn run_mcp_streamable_http_for_resident(port: u16) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|error| format!("resolve binary: {error}"))?;
     let runtime = crate::service::runtime_from_exe(&exe)?;
+    // This transport may be invoked after the Hub has established its runtime
+    // identity, but before a caller has copied its database location into the
+    // process environment. Bind the native executor to that exact Hub store.
+    crate::mcp_executor::install_native_mcp_transport()?;
     let (identity, claim) = crate::service::prepare_runtime_identity(&runtime)?;
     let bind_port = if port >= 1024 { port } else { runtime.port };
     let bearer_token = crate::serve::configured_api_token(&runtime.db)?;

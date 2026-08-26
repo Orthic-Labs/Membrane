@@ -8,7 +8,7 @@
 //! - [`detect_host`] — host detection from transcript bytes;
 //! - [`resolve_session`] — exact-match session resolver (substring rejected);
 //! - [`TranscriptEventV1`], [`EventFlags`], [`PrefixReceipt`] — V1 shapes;
-//! - [`evidence::UserActEvidenceV1`] — user-act evidence contract;
+//! - [`evidence::ActKind`] / [`evidence::EvidenceClass`] — Adapt evidence taxonomy;
 //! - [`TranscriptError`] — typed fail-closed omission/degradation errors.
 //!
 //! This is an internal Adapt/continuity domain contract, not one of Membrane's
@@ -23,7 +23,6 @@ pub mod evidence;
 pub mod parser;
 pub mod redact;
 pub mod source;
-pub mod user_act;
 
 pub use adapters::{detect_host, GENERIC_HOSTS};
 pub use error::{Result, TranscriptError};

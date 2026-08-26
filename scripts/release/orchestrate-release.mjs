@@ -18,14 +18,14 @@ export function validateRelease(input) {
   const tree = required(input, "tree"); if (!HEX40.test(tree) && !HEX64.test(tree)) fail("tree must be a lowercase git SHA");
   const generation = required(input, "release_generation"); if (!HEX40.test(generation) && !HEX64.test(generation)) fail("release_generation must be a lowercase hash");
   if (input.vector_dispatch !== contract.vector_dispatch) fail(`vector_dispatch must be ${contract.vector_dispatch}`);
-  const target = required(input, "target"); if (!contract.targets.includes(target) || !platforms.platforms[target]) fail(`unsupported Mac target: ${target}`);
+  const target = required(input, "target"); if (!contract.targets.includes(target) || !platforms.platforms[target]) fail(`unsupported Windows target: ${target}`);
   const artifact = required(input, "artifact_sha256"); if (!HEX64.test(artifact)) fail("artifact_sha256 must be SHA-256");
   const evidence = required(input, "evidence_sha256"); if (!HEX64.test(evidence)) fail("evidence_sha256 must be SHA-256");
   if (input.publish !== false) fail("publish must be false");
   if (!Array.isArray(input.stages) || JSON.stringify(input.stages) !== JSON.stringify(contract.stages)) fail("stages must be provenance,sbom,sign,platform_trust,verify in order");
   if (!input.provenance || !input.sbom || !input.sign || !input.platform_trust || !input.verify) fail("each stage requires immutable evidence reference");
   for (const stage of contract.stages) { const value = input[stage]; if (typeof value !== "object" || !HEX64.test(value.sha256 || "") || value.status !== "planned") fail(`${stage} evidence must be planned with SHA-256`); }
-  const expectedTrust = "apple-notary";
+  const expectedTrust = "authenticode";
   if (input.platform_trust.provider !== expectedTrust) fail(`${target} requires ${expectedTrust} platform trust`);
   return { ...input, schema: contract.schema, product: contract.product };
 }

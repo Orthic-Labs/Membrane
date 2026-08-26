@@ -7,20 +7,16 @@
 //! parallel, runs the deterministic in-process admission, and emits a
 //! content-free ContextPacket v1 plus per-candidate ContextReceipt v2.
 //!
-//! This Rust module is the dispatcher: it spawns the Python federation
-//! implementation at `engine/federation/gateway.py` (resolved by walking
-//! up from the repo through current Membrane layouts), parses the
-//! assembled ContextCandidateSet v1, runs the existing pure-in-process
-//! planner, and prints the final planner envelope to stdout.
+//! This Rust module is the native dispatcher and planner-envelope adapter.
 //!
 //! Provider payload formats and SQLite details never enter client
 //! adapters. Cortex durable storage is never modified. Bearer tokens
 //! are passed via the standard `MEMBRANE_API_TOKEN_FILE` env, never in
-//! argv or stdout. ScopeGrant enforcement happens in the Python script.
+//! argv or stdout. ScopeGrant enforcement happens in native source bindings.
 
-use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
-use super::{federation_sources, native_federation};
 use super::federation_sources::RuntimeReleaseSource;
+use super::{federation_sources, native_federation};
+use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -31,40 +27,7 @@ fn federation_session_id(session: Option<String>) -> String {
         .unwrap_or_else(|| crate::store::opaque_correlation_token("anonymous-session", "session"))
 }
 
-/// Current gateway layouts relative to a candidate ancestor directory.
-const GATEWAY_LAYOUTS: [&[&str]; 2] = [
-    // Parent workspace holding membrane as a nested checkout.
-    &["membrane", "engine", "federation", "gateway.py"],
-    // Membrane checkout itself.
-    &["engine", "federation", "gateway.py"],
-];
-
-fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
-    layout
-        .iter()
-        .fold(dir.to_path_buf(), |acc, seg| acc.join(seg))
-}
-
-/// Walk up from `start` looking for the first directory holding any known
-/// federation gateway layout. Returns the gateway script path itself, not
-/// the workspace root — the two are no longer a fixed relative pair.
-pub(crate) fn find_federation_gateway(start: &Path) -> Option<PathBuf> {
-    let mut cursor: Option<&Path> = Some(start);
-    while let Some(dir) = cursor {
-        for layout in GATEWAY_LAYOUTS {
-            let probe = gateway_layout_path(dir, layout);
-            if probe.exists() {
-                return Some(probe);
-            }
-        }
-        cursor = dir.parent();
-    }
-    None
-}
-
-/// Run the federation gateway end-to-end. Spawns the Python gateway,
-/// invokes the in-process planner on its assembled CCS, emits the final
-/// envelope to stdout.
+/// Run native federation end-to-end and emit its final planner envelope.
 #[allow(clippy::too_many_arguments)]
 pub fn run_federate(
     task: String,
@@ -79,8 +42,7 @@ pub fn run_federate(
     federation_script: Option<PathBuf>,
     accepted_receipt_versions: Vec<u32>,
 ) -> Result<(), String> {
-    // `federation_script` remains a legacy/shadow-test input until MEM-028;
-    // production execution is native and never consults it.
+    // Kept for V1 CLI call compatibility; native execution never consults it.
     let _ = federation_script;
     let root = repo
         .canonicalize()
@@ -119,19 +81,27 @@ pub fn run_federate(
         })?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
     let mut payload = envelope_from_ccs(
-        &serde_json::to_string(&ccs).map_err(|error| format!("serialize native candidates: {error}"))?,
+        &serde_json::to_string(&ccs)
+            .map_err(|error| format!("serialize native candidates: {error}"))?,
         EnvelopeInput {
             max_tokens,
             packet_char_budget_override,
             packet_char_budget_model,
-            accepted_receipt_versions: if accepted_receipt_versions.is_empty() { vec![2] } else { accepted_receipt_versions },
+            accepted_receipt_versions: if accepted_receipt_versions.is_empty() {
+                vec![2]
+            } else {
+                accepted_receipt_versions
+            },
             scope_grant_present: scope_grant_id.is_some(),
             gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
     )?;
     if let Some(fields) = payload.as_object_mut() {
         fields.insert("transport".to_owned(), Value::String("native".to_owned()));
-        fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+        fields.insert(
+            "federationMetrics".to_owned(),
+            serde_json::json!(native_metrics),
+        );
     }
     println!(
         "{}",
@@ -155,7 +125,12 @@ pub fn native_route_response(body: &str) -> (u16, String) {
     };
     let root = match PathBuf::from(repo_text).canonicalize() {
         Ok(path) if path.is_dir() => path,
-        _ => return (400, "{\"error\":\"repo must be an existing directory\"}".to_owned()),
+        _ => {
+            return (
+                400,
+                "{\"error\":\"repo must be an existing directory\"}".to_owned(),
+            )
+        }
     };
     let max_tokens = value
         .get("maxTokens")
@@ -180,7 +155,13 @@ pub fn native_route_response(body: &str) -> (u16, String) {
     let anchors = value
         .get("anchors")
         .and_then(Value::as_str)
-        .map(|text| text.split(',').map(str::trim).filter(|item| !item.is_empty()).map(str::to_owned).collect())
+        .map(|text| {
+            text.split(',')
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
         .unwrap_or_default();
     let scope_grant_id = value
         .get("scopeGrantId")
@@ -209,10 +190,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             .enable_all()
             .build()
             .map_err(|error| format!("create native federation runtime: {error}"))?
-            .block_on(native.federate(
-                &request,
-                tokio_util::sync::CancellationToken::new(),
-        ))?;
+            .block_on(native.federate(&request, tokio_util::sync::CancellationToken::new()))?;
         let native_metrics = native.metrics_snapshot();
         let freshness = native
             .freshness_snapshot()
@@ -237,14 +215,22 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         )?;
         if let Some(fields) = payload.as_object_mut() {
             fields.insert("transport".to_owned(), Value::String("native".to_owned()));
-            fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            fields.insert(
+                "federationMetrics".to_owned(),
+                serde_json::json!(native_metrics),
+            );
         }
         Ok(payload)
     })();
     match result {
         Ok(payload) => serde_json::to_string(&payload)
             .map(|body| (200, body))
-            .unwrap_or_else(|_| (500, "{\"error\":\"federation envelope serialization failed\"}".to_owned())),
+            .unwrap_or_else(|_| {
+                (
+                    500,
+                    "{\"error\":\"federation envelope serialization failed\"}".to_owned(),
+                )
+            }),
         Err(error) => (502, serde_json::json!({"error": error}).to_string()),
     }
 }
@@ -279,8 +265,14 @@ fn native_request(
         blueprint_generation: None,
         skills_generation: None,
         extensions: std::collections::BTreeMap::from([
-            ("repositoryId".to_owned(), serde_json::json!(membrane_federation::root::canonical_repository_id(root))),
-            ("worktreeRoot".to_owned(), serde_json::json!(repository_root)),
+            (
+                "repositoryId".to_owned(),
+                serde_json::json!(membrane_federation::root::canonical_repository_id(root)),
+            ),
+            (
+                "worktreeRoot".to_owned(),
+                serde_json::json!(repository_root),
+            ),
         ]),
     }
 }
@@ -290,16 +282,19 @@ fn native_response_to_ccs(
     request: &membrane_protocol::FederationRequestV1,
     freshness: &membrane_protocol::FreshnessSnapshotV1,
 ) -> Value {
-    let candidates = serde_json::to_value(&response.candidates).unwrap_or_else(|_| Value::Array(Vec::new()));
+    let candidates =
+        serde_json::to_value(&response.candidates).unwrap_or_else(|_| Value::Array(Vec::new()));
     let omissions = response
         .omissions
         .iter()
         .enumerate()
-        .map(|(index, omission)| serde_json::json!({
-            "id": omission.candidate_id.clone().unwrap_or_else(|| format!("omission:{index}")),
-            "layer": Value::Null,
-            "reason": omission.reason.as_str(),
-        }))
+        .map(|(index, omission)| {
+            serde_json::json!({
+                "id": omission.candidate_id.clone().unwrap_or_else(|| format!("omission:{index}")),
+                "layer": Value::Null,
+                "reason": omission.reason.as_str(),
+            })
+        })
         .collect::<Vec<_>>();
     serde_json::json!({
         "schemaVersion": 1,
@@ -731,99 +726,6 @@ mod observability_tests {
     }
 }
 
-/// Locate the Python interpreter that can run the federation gateway.
-///
-/// Honours `PYTHON` env override, then `python3` / `python` / `py` on
-/// PATH (POSIX), then the Windows `py -3.11` launcher, then a hard-coded
-/// Windows fallback. Returns a `Command` with the chosen program as
-/// argv[0]; callers append the script path + flags themselves.
-pub(crate) fn resolve_python_invoker() -> Command {
-    if let Ok(p) = std::env::var("PYTHON") {
-        if !p.is_empty() {
-            eprintln!("[federation] using PYTHON override: {}", p);
-            return Command::new(p);
-        }
-    }
-    for name in ["python3", "python", "py"] {
-        if let Some(found) = which(name) {
-            // On Windows `py` requires `-3.11` to disambiguate versions.
-            // Other interpreters ignore the flag.
-            let mut cmd = Command::new(&found);
-            let s = found.to_string_lossy().to_ascii_lowercase();
-            let is_py = s.ends_with("py.exe") || s.ends_with("py.cmd") || s.ends_with("py.bat");
-            if is_py {
-                cmd.arg("-3.11");
-            }
-            eprintln!(
-                "[federation] resolved Python: {} (py_launcher={})",
-                found.display(),
-                is_py
-            );
-            return cmd;
-        }
-    }
-    // Last-resort fallback for hosts where Python is installed but not
-    // on PATH. The Windows installer commonly drops `py.exe` under
-    // `%LOCALAPPDATA%\Programs\Python\Python311`.
-    let guesses: &[&str] = if cfg!(windows) {
-        &[
-            r"C:\Python311\python.exe",
-            r"C:\Program Files\Python311\python.exe",
-            r"C:\Users\Default\AppData\Local\Programs\Python\Python311\python.exe",
-        ]
-    } else {
-        &["/usr/bin/python3", "/usr/local/bin/python3"]
-    };
-    for guess in guesses {
-        if Path::new(guess).exists() {
-            eprintln!("[federation] using guess path: {}", guess);
-            return Command::new(guess);
-        }
-    }
-    Command::new("python3")
-}
-
-/// Tiny PATH lookup. Avoids pulling in the `which` crate dependency.
-///
-/// On Windows the executable launcher is usually `py.exe` even when the
-/// PATH entry is named `py` (or absent an extension entirely). Try the
-/// `.exe` suffix BEFORE the bare name to avoid running a CMD shim or a
-/// non-executable file with the same stem. POSIX is unaffected.
-///
-/// Skip MSYS2/Git-Bash shim directories (`/c/Users/<u>/bin`, `/usr/bin`,
-/// `/mingw64/bin`) — those are shell-script launchers (e.g.
-/// `python3` → `exec python`) and Rust's `Command::spawn` rejects them
-/// with os error 193 ("not a valid Win32 application").
-fn which(name: &str) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    let suffixes: &[&str] = if cfg!(windows) {
-        &[".exe", ".cmd", ".bat", ""]
-    } else {
-        &[""]
-    };
-    for entry in std::env::split_paths(&path_var) {
-        let entry_str = entry.to_string_lossy().to_ascii_lowercase();
-        if cfg!(windows) {
-            // Skip MSYS2/Git-Bash launcher directories — those are shell
-            // script wrappers, not native Win32 binaries, and Rust's
-            // Command::spawn rejects them with os error 193.
-            let is_user_bin = entry_str.starts_with("c:\\users\\") && entry_str.ends_with("\\bin");
-            let is_usr_bin = entry_str == "\\usr\\bin" || entry_str == "c:\\usr\\bin";
-            let is_mingw_bin = entry_str == "\\mingw64\\bin" || entry_str == "c:\\mingw64\\bin";
-            if is_user_bin || is_usr_bin || is_mingw_bin {
-                continue;
-            }
-        }
-        for suffix in suffixes {
-            let candidate = entry.join(format!("{name}{suffix}"));
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -901,38 +803,6 @@ mod tests {
         // text is CONTENT, not an id/slug (the bug this fixes).
         assert!(!text.starts_with("memory:role:") && !text.starts_with("mem-"));
         assert!(top["resolver"].as_str().unwrap().starts_with("cortex get "));
-    }
-
-    fn touch_gateway(root: &Path, layout: &[&str]) -> PathBuf {
-        let path = gateway_layout_path(root, layout);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, b"# fixture").unwrap();
-        path
-    }
-
-    #[test]
-    fn gateway_resolves_membrane_layout_by_walking_up_from_a_nested_repo() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path();
-        let expected = touch_gateway(workspace, GATEWAY_LAYOUTS[0]);
-        let nested = workspace.join("someapp").join("src");
-        std::fs::create_dir_all(&nested).unwrap();
-
-        assert_eq!(find_federation_gateway(&nested), Some(expected));
-    }
-
-    #[test]
-    fn gateway_resolves_a_standalone_membrane_checkout() {
-        let tmp = tempfile::tempdir().unwrap();
-        let expected = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[1]);
-
-        assert_eq!(find_federation_gateway(tmp.path()), Some(expected));
-    }
-
-    #[test]
-    fn gateway_resolution_is_none_when_no_layout_exists() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(find_federation_gateway(tmp.path()), None);
     }
 
     #[test]

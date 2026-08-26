@@ -6,17 +6,19 @@
 use membrane_federation::blueprint_client::{
     BlueprintClient, ContextualBlueprintSource, UnixBlueprintTransport,
 };
-use membrane_federation::release::{ReleaseError, ReleaseIdentity, ReleaseSource};
 use membrane_federation::providers::rules::{
     DeliveryKey, DeliveryLedger, DeliveryMode, DeliveryReceipt, LedgerError, RuleDocument,
     RuleFuture, RuleSource, RuleSourceError, RuleSourceResponse,
 };
-use membrane_provider_sdk::{
-    AuditFindingSource, BlueprintSource, DecisionRecordSource, FreshnessSource,
-    MemoryCandidate, MemoryCandidateSource, ScopeGrantSource, SkillCatalogEntry,
-    SkillCatalogSource, SourceQuery, SourceResponse, SourceResult, SourceSet, SourceWarning,
-};
+use membrane_federation::release::{ReleaseError, ReleaseIdentity, ReleaseSource};
 use membrane_protocol::{CandidateV1, FreshnessSnapshotV1};
+use membrane_provider_sdk::{
+    AuditFindingSource, BlueprintSource, DecisionRecordSource, FreshnessSource, MemoryCandidate,
+    MemoryCandidateSource, ScopeGrantSource, SkillCatalogEntry, SkillCatalogSource, SourceQuery,
+    SourceResponse, SourceResult, SourceSet, SourceWarning,
+};
+#[cfg(windows)]
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -71,23 +73,20 @@ impl NativeSourceBindings {
             .map_err(|error| format!("resolve context catalog: {error}"))?;
         let catalog = crate::catalog::ContextCatalog::open(catalog_path)
             .map_err(|error| format!("open context catalog: {error}"))?;
-        let endpoint = std::env::var_os("MEMBRANE_BLUEPRINT_SOCKET")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(PathBuf::from)
-                    .map(|home| home.join(".blueprint").join("blueprint.sock"))
-            })
-            .ok_or_else(|| "Blueprint socket is unavailable".to_owned())?;
-        let blueprint = Arc::new(BlueprintClient::new(Arc::new(
-            UnixBlueprintTransport::new(endpoint),
-        )));
+        let endpoint = hub_blueprint_endpoint()?;
+        let blueprint = Arc::new(BlueprintClient::new(Arc::new(UnixBlueprintTransport::new(
+            endpoint,
+        ))));
 
         Ok(Self {
             audit: Some(Arc::new(EmptyAuditSource)),
             decisions: Some(Arc::new(EmptyDecisionSource)),
-            skills: Some(Arc::new(RuntimeSkillsSource { store: store.clone() })),
-            memory: Some(Arc::new(RuntimeMemorySource { store: store.clone() })),
+            skills: Some(Arc::new(RuntimeSkillsSource {
+                store: store.clone(),
+            })),
+            memory: Some(Arc::new(RuntimeMemorySource {
+                store: store.clone(),
+            })),
             scope_grant: Some(Arc::new(RuntimeScopeGrantSource {
                 catalog,
                 grant_id: scope_grant_id.map(str::to_owned),
@@ -112,6 +111,29 @@ impl NativeSourceBindings {
     }
 }
 
+fn hub_blueprint_endpoint() -> Result<PathBuf, String> {
+    if let Some(endpoint) = std::env::var_os("BLUEPRINT_DAEMON_ENDPOINT") {
+        return Ok(PathBuf::from(endpoint));
+    }
+    #[cfg(windows)]
+    {
+        let profile =
+            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE is unavailable".to_owned())?;
+        let suffix = hex::encode(Sha256::digest(profile.as_bytes()));
+        return Ok(PathBuf::from(format!(
+            r"\\.\pipe\membrane-blueprint-{}",
+            &suffix[..16]
+        )));
+    }
+    #[cfg(not(windows))]
+    {
+        let home = std::env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
+        Ok(PathBuf::from(home)
+            .join(".blueprint")
+            .join("blueprint.sock"))
+    }
+}
+
 /// Runtime-owned release identity.  Its generation is compiled into this
 /// binary by `release_identity`; it never falls back to repository contents.
 #[derive(Clone, Copy, Debug, Default)]
@@ -119,7 +141,8 @@ pub struct RuntimeReleaseSource;
 
 impl RuntimeReleaseSource {
     pub fn generation() -> Result<String, String> {
-        RuntimeReleaseSource.current_release()
+        RuntimeReleaseSource
+            .current_release()
             .map(|identity| identity.generation)
             .map_err(|error| error.to_string())
     }
@@ -310,7 +333,10 @@ impl FreshnessSource for RuntimeFreshnessSource {
                 .trim_matches('"')
                 .to_owned();
             let stale = !verdict.stable
-                || matches!(verdict.graph_state, crate::freshness::GraphState::StaleSnapshot);
+                || matches!(
+                    verdict.graph_state,
+                    crate::freshness::GraphState::StaleSnapshot
+                );
             let warning = (!verdict.stable).then(|| SourceWarning {
                 code: "freshness_unavailable".to_owned(),
                 detail_id: verdict.reasons.first().cloned(),
@@ -358,7 +384,9 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
                 ));
             };
             let grant = crate::catalog::lookup_grant(&catalog, &id)
-                .map_err(|error| membrane_provider_sdk::ProviderError::Unavailable(error.to_string()))?
+                .map_err(|error| {
+                    membrane_provider_sdk::ProviderError::Unavailable(error.to_string())
+                })?
                 .ok_or_else(|| {
                     membrane_provider_sdk::ProviderError::Unavailable("scope_grant_missing".into())
                 })?;
@@ -389,7 +417,11 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
 pub struct RuntimeRuleSource;
 
 impl RuleSource for RuntimeRuleSource {
-    fn read_rules(&self, query: SourceQuery, authorized_paths: Vec<String>) -> RuleFuture<RuleSourceResponse> {
+    fn read_rules(
+        &self,
+        query: SourceQuery,
+        authorized_paths: Vec<String>,
+    ) -> RuleFuture<RuleSourceResponse> {
         Box::pin(async move {
             let root = PathBuf::from(&query.repository_root)
                 .canonicalize()
@@ -401,7 +433,9 @@ impl RuleSource for RuntimeRuleSource {
                     .canonicalize()
                     .map_err(|error| RuleSourceError::Unavailable(error.to_string()))?;
                 if !path.starts_with(&root) {
-                    return Err(RuleSourceError::Unauthorized("path_outside_repository".into()));
+                    return Err(RuleSourceError::Unauthorized(
+                        "path_outside_repository".into(),
+                    ));
                 }
                 let content = std::fs::read_to_string(&path)
                     .map_err(|error| RuleSourceError::Unavailable(error.to_string()))?;
@@ -432,7 +466,10 @@ pub struct RuntimeDeliveryLedger {
 }
 
 impl DeliveryLedger for RuntimeDeliveryLedger {
-    fn claim(&self, key: DeliveryKey) -> Pin<Box<dyn Future<Output = Result<DeliveryReceipt, LedgerError>> + Send>> {
+    fn claim(
+        &self,
+        key: DeliveryKey,
+    ) -> Pin<Box<dyn Future<Output = Result<DeliveryReceipt, LedgerError>> + Send>> {
         let claimed = self.claimed.clone();
         Box::pin(async move {
             let identity = format!(
@@ -447,7 +484,11 @@ impl DeliveryLedger for RuntimeDeliveryLedger {
             let first = claimed.insert(receipt_id.clone());
             Ok(DeliveryReceipt {
                 receipt_id,
-                mode: if first { DeliveryMode::Inline } else { DeliveryMode::Reference },
+                mode: if first {
+                    DeliveryMode::Inline
+                } else {
+                    DeliveryMode::Reference
+                },
             })
         })
     }

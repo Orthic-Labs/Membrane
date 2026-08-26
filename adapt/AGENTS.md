@@ -19,11 +19,11 @@ It never retrains models or stores private chain-of-thought.
 - Use Python only for release-excluded differential/evaluation tooling through workspace tools venv.
 
 ## Locked invariants
-- Admit durable authority only from authenticated user-origin evidence.
+- Admit durable authority only from an explicitly user-selected transcript with exact source binding/hash and required review.
 - Keep Adapt proposal eligibility, Cortex durable admission, and Membrane context admission distinct.
 - Quarantine assistant narration, echoed repository text, authority expansion, and security weakening.
 - Keep Taste preferences, Insights findings, and non-Taste episodic facts distinct.
-- Never let silent acceptance alone activate Taste; require authenticated human-act evidence for post-accept edits.
+- Never let silent acceptance alone activate Taste; automatic implicit host signals remain optional and separate from selected-transcript authority.
 - Resolve authority/evidence class before specificity.
 - Require immutable reviewed payload hashes before apply.
 - Keep apply opt-in, transactional, journaled, and integrity-checked.

@@ -1,11 +1,10 @@
 //! Canonical Membrane MCP resources.
 //!
-//! Every resource definition lives in `schemas/registry/resources/*.json` so the
-//! native (Rust) MCP server and the legacy JS MCP server serve the exact same
-//! payload. This module embeds those JSON files at compile time via
+//! Every resource definition lives in `schemas/registry/resources/*.json` as
+//! the canonical MCP payload. This module embeds those JSON files at compile time via
 //! `include_str!` and exposes a tiny façade so `resources/list` and
 //! `resources/read` JSON-RPC methods can answer from a single canonical
-//! registry, with the same access-grant boundary the JS surface enforces.
+//! registry, with the same access-grant boundary used by native callers.
 
 use serde_json::{json, Value};
 

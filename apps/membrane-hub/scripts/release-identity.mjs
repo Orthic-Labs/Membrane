@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // The release generation is baked into the engine at compile time via
 // `option_env!("MEMBRANE_SOURCE_TREE_SHA256")` (engine/crates/membrane-runtime/src/release_identity.rs).
@@ -79,4 +81,23 @@ export function engineReleaseIdentity(repoRoot) {
     sourceTreeSha256: digest,
     releaseGeneration: `sha256:${digest}`,
   };
+}
+
+export function writeEngineReleaseIdentity(repoRoot, outputPath) {
+  const identity = engineReleaseIdentity(repoRoot);
+  const text = `${JSON.stringify(identity, null, 2)}\n`;
+  mkdirSync(dirname(outputPath), { recursive: true });
+  if (!existsSync(outputPath) || readFileSync(outputPath, "utf8") !== text) {
+    writeFileSync(outputPath, text);
+  }
+  return identity;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  const argv = process.argv.slice(2);
+  const outIndex = argv.indexOf("--out");
+  const out = outIndex >= 0 ? argv[outIndex + 1] : undefined;
+  if (!out) throw new Error("usage: release-identity.mjs --out <release-identity.json>");
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  process.stdout.write(`${JSON.stringify(writeEngineReleaseIdentity(repoRoot, resolve(out)))}\n`);
 }

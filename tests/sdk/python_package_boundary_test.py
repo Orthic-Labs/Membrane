@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parents[2]
-PY_PKG = REPO_ROOT / "packages" / "python"
+PY_PKG = REPO_ROOT / "dist" / "packages" / "python"
 SCHEMA_PATH = REPO_ROOT / "schemas" / "sdk-python-package-boundary.v1.schema.json"
 BOUNDARY_PATH = PY_PKG / "package-boundary.v1.json"
 

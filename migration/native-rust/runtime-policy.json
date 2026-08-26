@@ -1,10 +1,10 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-policy",
- "enforcementMode": "migration",
+ "enforcementMode": "sealed",
  "modeSemantics": {
   "migration": "Rust is the only allowed installed-production language alongside declarative data. Python/Node/shell may remain production-reachable ONLY through an explicit time-bounded exception below; every exception names an owner packet, an expiry date, and a cutover gate. Passing in migration mode therefore still reports honest migration gaps.",
-  "sealed": "Zero interpreter-backed production rows, every cutover flag complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
+  "sealed": "Zero Membrane-owned interpreter-backed production rows; only exact packaged Blueprint external-component rows listed by this policy may remain. Every cutover flag is complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
  },
  "allowedProductionLanguages": [
   "rust",
@@ -14,6 +14,12 @@
   "python",
   "node",
   "shell"
+ ],
+ "sealedExternalInterpreterRows": [
+  "blueprint-bundled-runtime-blueprint/scripts",
+  "blueprint-bundled-runtime-blueprint/src",
+  "blueprint-bundled-runtime-blueprint/watchman",
+  "blueprint-bundled-launchers-blueprint/release"
  ],
  "scan": {
   "trackedOnly": true,
@@ -25,6 +31,7 @@
    ".ts",
    ".sh",
    ".bash",
+   ".cmd",
    ".rs"
   ],
   "shebangFallback": true,
@@ -33,51 +40,7 @@
    "Untracked generated payloads (apps/membrane-hub/src-tauri/runtime/**) are release-qualification concerns under spec section 16.4 and must be proven at package time, not here."
   ]
  },
- "exceptions": [
-  {
-   "id": "mcp-node-server",
-   "paths": [
-    "mcp/",
-    "mcp.json",
-    "dist/npm/"
-   ],
-   "owner": "N6 MCP/renderer native cutover packet",
-   "expires": "2026-12-31",
-   "cutoverGate": "N6 exit gate: ten-tool host conformance passes with Node absent; generated host configs invoke native binaries",
-   "rationale": "mcp/server.mjs and renderer libs remain the generated-truth production MCP path until membrane-mcp is cut over."
-  },
-  {
-   "id": "federation-python-shadow",
-   "paths": [
-    "engine/federation/"
-   ],
-   "owner": "N7 federation deletion packet",
-   "expires": "2026-10-31",
-   "cutoverGate": "N7 exit gate: federation tests and installed artifact pass with no Python code present or selectable",
-   "rationale": "Python federation gateway/providers retained only as shadow/differential qualification after native cutover commit 5a9175b."
-  },
-  {
-   "id": "install-bootstrap-python",
-   "paths": [
-    "install/workspace/",
-    "dist/install/workspace/"
-   ],
-   "owner": "Install-surface rework packet (pre-N10)",
-   "expires": "2026-12-31",
-   "cutoverGate": "Exact installed artifact bootstraps with declarative/native shims only and passes qualification with python absent",
-   "rationale": "Workspace bootstrap shims are currently Python-rendered source shipped into the install projection."
-  },
-  {
-   "id": "mcp-registry-code-node",
-   "paths": [
-    "schemas/registry/code/"
-   ],
-   "owner": "N6 MCP/renderer native cutover packet",
-   "expires": "2026-12-31",
-   "cutoverGate": "N6 exit gate: membrane-mcp executes the complete registry-defined tool set natively; generated truth stops naming Node registry code.",
-   "rationale": "Production MCP server imports Node registry code until membrane-mcpcutover lands."
-  }
- ],
+ "exceptions": [],
  "deletedSelectors": [],
  "deletedSelectorsNote": "No legacy path is deleted at this HEAD; populate with exact paths/prefixes as N-packet deletion receipts land. The checker fails if any listed path reappears on disk.",
  "cutoverFlags": [
@@ -106,7 +69,7 @@
   },
   {
    "id": "mcp-server-native-cutover",
-   "complete": false,
+   "complete": true,
    "retiredAuthorityPaths": [
     "mcp/server.mjs"
    ],
@@ -119,7 +82,7 @@
   },
   {
    "id": "renderer-native-cutover",
-   "complete": false,
+   "complete": true,
    "retiredAuthorityPaths": [
     "mcp/context-renderer-lib.cjs",
     "mcp/decision-points-lib.cjs"
@@ -132,7 +95,7 @@
   },
   {
    "id": "federation-python-deletion",
-   "complete": false,
+   "complete": true,
    "retiredAuthorityPaths": [
     "engine/federation/gateway.py",
     "engine/federation/providers/"
@@ -252,13 +215,13 @@
    "runtime": "python",
    "kind": "legacy-gateway-providers",
    "product_surface": "Pull",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": false,
    "target_disposition": "delete",
-   "exception": "federation-python-shadow",
+   "exception": null,
    "parity_fixture": "migration/native-rust/fixtures/",
-   "deletion_or_exclusion_proof": "deletion receipt required at N7",
-   "notes": "Shadow/qualification adapter selectable behind hidden legacy selectors; production route is already native membrane-federation."
+   "deletion_or_exclusion_proof": "engine/federation executable Python was deleted; only declarative fixtures remain, hidden selectors are rejected, and native membrane-runtime Pull owns production",
+   "notes": "Deleted N7 shadow runtime; release inventory must keep engine/federation absent."
   },
   {
    "id": "mcp-tests",
@@ -293,13 +256,14 @@
    "pattern": "^mcp/hooks/",
    "groupBy": "all",
    "runtime": "node",
-   "kind": "installed-hook-entrypoint",
+   "kind": "retired-hook-reference",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "package.json bin membrane-workspace-hook launches mcp/hooks/membrane-hook-entrypoint.mjs."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "root package has no bin entry; signed Hub inventory excludes mcp/hooks; native Hub diagnostics owns installed enforcement",
+   "notes": "Retained only for differential source tests after native diagnostics cutover."
   },
   {
    "id": "mcp-host-adapters",
@@ -308,11 +272,12 @@
    "runtime": "node",
    "kind": "host-adapter",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "Host checkpoint/context adapters; continuity.mjs disposition rides with N6 per spec section 5.1.1."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "Hub runtime inventory and right-release inputs exclude mcp/host; native MCP executor owns production host operations",
+   "notes": "Retained only as conformance fixtures."
   },
   {
    "id": "mcp-native-bootstrap",
@@ -322,9 +287,10 @@
    "kind": "native-binary-bootstrap",
    "product_surface": "MCP",
    "production_reachable": false,
-   "packaged": "unknown",
+   "packaged": false,
    "target_disposition": "dev-only",
-   "exception": "mcp-node-server",
+   "exception": null,
+   "deletion_or_exclusion_proof": "dev bootstrap is absent from mcp.json, package bins, Hub inventory, and release inputs",
    "notes": "Dev-only stdio-MCP bootstrap that spawns engine/target/debug/membrane; invocation-graph.json shows no installed entrypoint reaches it. Never ship or advertise."
   },
   {
@@ -337,6 +303,7 @@
    "packaged": false,
    "target_disposition": "dev-only",
    "owner": "N6 MCP/renderer native cutover packet",
+   "deletion_or_exclusion_proof": "test-only decision reference; native renderer is compiled into membrane-mcp and release inventory excludes mcp source",
    "notes": "Reachability authority (invocation-graph.json) shows no production importer: only mcp/decision-points.mjs (itself test-only) requires it. Demoted from the mcp-server-core production rule during N0 reconciliation."
   },
   {
@@ -344,26 +311,28 @@
    "pattern": "^mcp/(server|context-renderer-lib|decision-points-lib)\\.(mjs|cjs)$",
    "groupBy": "single",
    "runtime": "node",
-   "kind": "production-mcp-renderer",
+   "kind": "retired-mcp-reference",
    "product_surface": "MCP/Push",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "Generated truth names these authoritative today; membrane-mcp and membrane-core are the canonical targets."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "mcp.json launches membrane stdio-mcp; Hub runtime inventory and right-release inputs exclude Node MCP source",
+   "notes": "Retained for native conformance comparisons only."
   },
   {
    "id": "mcp-rest",
    "pattern": "^mcp/",
    "groupBy": "all",
    "runtime": "node",
-   "kind": "mcp-support-library",
+   "kind": "mcp-conformance-source",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": "unknown",
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "Conservative classification pending invocation-graph refresh; some modules may prove dev-only."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "native host config, package metadata, Hub inventory, and release inputs contain no mcp Node source",
+   "notes": "Retained only as tests, schemas, and differential reference."
   },
   {
    "id": "install-tests",
@@ -386,11 +355,12 @@
    "runtime": "python",
    "kind": "workspace-bootstrap",
    "product_surface": "install",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "install-bootstrap-python",
-   "notes": "Canonical source of the shipped workspace bootstrap projection (dist/install/workspace)."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "delete",
+   "exception": null,
+   "deletion_or_exclusion_proof": "install/workspace Python source was deleted; Windows installer ships compiled Hub plus native membrane/cortex sidecars only",
+   "notes": "Retired workspace bootstrap projection; release inventory must keep it absent."
   },
   {
    "id": "scripts-dev",
@@ -403,7 +373,8 @@
    "packaged": false,
    "target_disposition": "dev-only",
    "exception": null,
-   "notes": "Includes shell CI scripts and generators; generate-install-workspace.mjs must emit only native runtime targets (spec section 7.4). Exclusion proof from release payloads pending."
+   "deletion_or_exclusion_proof": "release content manifest permits only compiled Hub assets, native sidecars, schemas and declarative metadata; scripts are absent from signed installer and installed tree",
+   "notes": "Repository-only CI, qualification, and release tooling; never installed runtime."
   },
   {
    "id": "membrane-testkit",
@@ -429,7 +400,8 @@
    "packaged": false,
    "target_disposition": "dev-only",
    "owner": "N0 reconciliation follow-up",
-   "notes": "Standalone debug binary crate; invocation-graph.json shows no [dependencies] consumer among production entrypoints. Owner must integrate or delete before N10."
+   "deletion_or_exclusion_proof": "debug CLI crate is not a Hub dependency, externalBin, runtime resource, or Windows release artifact",
+   "notes": "Standalone source/debug CLI intentionally release-excluded; no production dependency or package entrypoint."
   },
   {
    "id": "engine-membrane-updater",
@@ -441,7 +413,8 @@
    "packaged": false,
    "target_disposition": "dev-only",
    "owner": "N0 reconciliation follow-up",
-   "notes": "No production Cargo path-dependency reaches this crate; Hub uses its own update_admission.rs. Integrate or delete before N10."
+   "deletion_or_exclusion_proof": "library has no production Cargo consumer; Hub update_admission owns installed updater policy",
+   "notes": "Release-excluded library retained for tests; Hub update_admission.rs is sole installed updater-policy owner."
   },
   {
    "id": "engine-membrane-client",
@@ -451,9 +424,24 @@
    "groupBy": "dir:3",
    "production_reachable": false,
    "packaged": false,
-   "target_disposition": "native-port",
+   "target_disposition": "dev-only",
    "owner": "N9 CodeRight integration packet",
-   "notes": "Typed remote client library reserved for explicit service-mode selection (spec section 2.2); not yet wired into any installed entrypoint, hence not production-reachable today."
+   "deletion_or_exclusion_proof": "generic typed client conformance crate is not a Hub dependency, externalBin, resource, or Windows release artifact",
+   "notes": "CodeRight owns its installed native binding; this generic client remains release-excluded conformance source."
+  },
+  {
+   "id": "engine-production-crates",
+   "pattern": "^engine/crates/(membrane|membrane-runtime|membrane-adapt|membrane-transcript)/",
+   "groupBy": "dir:3",
+   "runtime": "rust",
+   "kind": "native-production-crate",
+   "product_surface": "installed native runtime",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": null,
+   "deletion_or_exclusion_proof": "canonical invocation graph derives production reachability from installed membrane entrypoint",
+   "notes": "Native owners directly reached by installed membrane binary."
   },
   {
    "id": "engine-crates",
@@ -462,7 +450,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "exception": null,
@@ -565,18 +553,46 @@
    "notes": ""
   },
   {
-   "id": "blueprint-nested",
-   "pattern": "^blueprint/",
+   "id": "blueprint-bundled-launchers",
+   "pattern": "^blueprint/release/launchers/.*\\.cmd$",
    "groupBy": "dir:2",
-   "runtime": "external",
-   "kind": "external-product-checkout",
+   "runtime": "shell",
+   "kind": "bundled-external-component-launcher",
    "product_surface": "Blueprint",
    "production_reachable": true,
-   "packaged": false,
+   "packaged": true,
    "target_disposition": "external-typed-service",
    "exception": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs."
+   "deletion_or_exclusion_proof": "signed installer ships exact bounded Windows launch shims that invoke only its inventory-bound Blueprint Node runtime",
+   "notes": "These two declarative cmd shims are bounded launch surfaces, not resident Membrane processes."
+  },
+  {
+   "id": "blueprint-bundled-runtime",
+   "pattern": "^blueprint/(scripts|src|watchman)/",
+   "groupBy": "dir:2",
+   "runtime": "node",
+   "kind": "bundled-external-component",
+   "product_surface": "Blueprint",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "external-typed-service",
+   "exception": null,
+   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node."
+  },
+  {
+   "id": "blueprint-development",
+   "pattern": "^blueprint/",
+   "groupBy": "dir:2",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling."
   },
   {
    "id": "tests-root",
@@ -597,13 +613,14 @@
    "pattern": "^dist/npm/",
    "groupBy": "all",
    "runtime": "node",
-   "kind": "npm-launcher",
+   "kind": "npm-distribution-reference",
    "product_surface": "install/MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "Generated npm bootstrap projection; must exec the platform native binary, never interpreter-owned Membrane logic."
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "Windows signed-installer release excludes npm distribution; no root package bin or production graph seed reaches it",
+   "notes": "Retained for separate external npm distribution work only."
   },
   {
    "id": "dist-install-workspace",
@@ -613,10 +630,11 @@
    "kind": "generated-install-projection",
    "product_surface": "install",
    "production_reachable": false,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "install-bootstrap-python",
-   "notes": "Tracked projection files (__init__.py, version_gate.py) are not imported by the shipped shim entry; membrane_shims.py itself is an untracked generated payload outside tracked inventory. Reachability authority flags this surface unresolved; owner must reconcile before N10."
+   "packaged": false,
+   "target_disposition": "delete",
+   "exception": null,
+   "deletion_or_exclusion_proof": "dist/install/workspace Python projection was deleted and is absent from signed installer build inputs/runtime inventory",
+   "notes": "Retired generated bootstrap projection; no shim payload remains."
   },
   {
    "id": "dist-python-client-sdk",
@@ -627,11 +645,11 @@
    "product_surface": "external-clients",
    "production_reachable": false,
    "packaged": false,
-   "target_disposition": "delete",
+   "target_disposition": "dev-only",
    "exception": null,
-   "owner": "release-engineering decision required",
-   "deletion_or_exclusion_proof": "pending decision: typed external client SDK vs deletion; must never enter installed Membrane runtime",
-   "notes": "Not Membrane-owned installed runtime behavior, but ships from this repository and needs an explicit boundary decision before any seal."
+   "owner": "external client SDK",
+   "deletion_or_exclusion_proof": "independently published typed client SDK is excluded from Windows Hub installer, runtime inventory, and native-only process tree",
+   "notes": "External client library, never Membrane-owned installed runtime behavior."
   },
   {
    "id": "dist-rest",
@@ -667,19 +685,20 @@
    "runtime": "node",
    "kind": "source-module",
    "groupBy": "dir:3",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
    "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-registry-code-node",
-   "parity_fixture": "planned:migration/native-rust/fixtures/mcp-conformance.v1.json",
-   "notes": "mcp/server.mjs imports executeCodeBatch from schemas/registry/code/mbr402-batch.mjs at production startup; reclassified from dev-only during N0 reachability reconciliation."
+   "exception": null,
+   "parity_fixture": "migration/native-rust/fixtures/mcp-conformance.v1.json",
+   "deletion_or_exclusion_proof": "Node batch reference is excluded from signed Hub; membrane-mcp registry and Rust conformance fixture own production behavior",
+   "notes": "Retained as differential reference only."
   },
   {
    "id": "schemas-registry-code",
    "pattern": "^schemas/",
    "groupBy": "all",
-   "runtime": "node",
+   "runtime": "declarative",
    "kind": "schema-registry-reference",
    "product_surface": "protocol",
    "production_reachable": false,
@@ -690,17 +709,17 @@
    "notes": ""
   },
   {
-   "id": "mcp-json-config",
+  "id": "mcp-json-config",
    "pattern": "^mcp\\.json$",
    "groupBy": "single",
-   "runtime": "node",
+  "runtime": "declarative",
    "kind": "host-launch-config",
    "product_surface": "MCP",
    "production_reachable": true,
    "packaged": true,
-   "target_disposition": "native-port",
-   "exception": "mcp-node-server",
-   "notes": "Launches node ${PLUGIN_ROOT}/mcp/server.mjs; must point at the native binary once the N6 flag completes."
+   "target_disposition": "keep",
+   "exception": null,
+   "notes": "Launches installed native membrane stdio-mcp directly."
   },
   {
    "id": "root-declarative-manifests",

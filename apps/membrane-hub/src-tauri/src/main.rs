@@ -26,9 +26,10 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 // update_admission.rs for why (no macOS RightKit updater artifact exists
 // yet) -- but present and tested so the update flow that does exist can be
 // gated on it without further plumbing changes.
+mod adapt_launch;
+mod blueprint;
 #[cfg(test)]
 mod hub_contract_tests;
-mod adapt_launch;
 mod hub_telemetry;
 mod supervisor;
 mod update_admission;
@@ -59,6 +60,7 @@ const HUB_SECTION_NAMES: [&str; 8] = [
     "alerts",
 ];
 type ServiceState = Arc<supervisor::Supervisor>;
+type BlueprintState = Arc<blueprint::Supervisor>;
 type TelemetryState = Arc<hub_telemetry::HubTelemetry>;
 
 fn service_status_name(status: supervisor::ServiceStatus) -> &'static str {
@@ -257,6 +259,29 @@ fn stop_membrane_service(service: &ServiceState) {
     service.stop();
 }
 
+fn stop_blueprint_service(service: &BlueprintState) {
+    service.stop();
+    std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+}
+
+fn publish_blueprint_endpoint() -> Result<(), String> {
+    let endpoint = blueprint::canonical_endpoint()?;
+    std::env::set_var(blueprint::DAEMON_ENDPOINT_ENV, endpoint);
+    Ok(())
+}
+
+fn blueprint_state_for_status(status: blueprint::ServiceStatus) -> blueprint::LifecycleState {
+    match status {
+        blueprint::ServiceStatus::Running => blueprint::LifecycleState::Running,
+        blueprint::ServiceStatus::Unavailable => blueprint::LifecycleState::TransportUnavailable,
+    }
+}
+
+fn record_blueprint_failure(telemetry: &hub_telemetry::HubTelemetry, error: &str) {
+    let state = blueprint::lifecycle_state_for_error(error);
+    telemetry.event("blueprint_installed", state.as_str(), Some(error));
+}
+
 /// N5 installed launch cutover: the user-level `~/bin/adapt` launcher is
 /// Hub-owned and always execs this Hub's bundled native binary's `membrane
 /// adapt` CLI. The retired Python shim (a source-checkout PYTHONPATH wrapper)
@@ -326,7 +351,8 @@ fn resident_health_ok() -> Option<bool> {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(300)));
     let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(300)));
     use std::io::{Read, Write};
-    let request = format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    let request =
+        format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw).ok()?;
@@ -457,10 +483,7 @@ fn startup_step(
         Err(_) => None,
     }
 }
-fn initial_poll(
-    path: &Path,
-    gate: &StartupGate,
-) -> (Result<CachedSnapshot, String>, bool) {
+fn initial_poll(path: &Path, gate: &StartupGate) -> (Result<CachedSnapshot, String>, bool) {
     let deadline = std::time::Instant::now() + STARTUP_GRACE;
     let mut latest = None;
     loop {
@@ -603,10 +626,15 @@ fn platform_startup_setting() -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
+fn quit_app(
+    app: tauri::AppHandle,
+    service: tauri::State<'_, ServiceState>,
+    blueprint: tauri::State<'_, BlueprintState>,
+) {
     if let Some(telemetry) = app.try_state::<TelemetryState>() {
         telemetry.event("hub_quit", "requested", None);
     }
+    stop_blueprint_service(&blueprint);
     stop_membrane_service(&service);
     app.exit(0);
 }
@@ -720,6 +748,9 @@ fn main() {
                         }
                     }
                     "quit" => {
+                        if let Some(blueprint) = app.try_state::<BlueprintState>() {
+                            stop_blueprint_service(&blueprint);
+                        }
                         if let Some(service) = app.try_state::<ServiceState>() {
                             stop_membrane_service(&service);
                         }
@@ -777,18 +808,83 @@ fn main() {
                 });
                 dashboard.hide()?;
             }
+            // Migrate legacy installed configuration before the first strict
+            // v3 resolution below. The serialized migration result is kept in
+            // Hub's durable JSONL telemetry as the startup receipt.
+            let migration_receipt =
+                workspace::migrate_startup_config().map_err(std::io::Error::other)?;
+            if let Some(receipt) = migration_receipt {
+                let state = if receipt.migrated {
+                    "migrated"
+                } else {
+                    "already_v3"
+                };
+                let reason = serde_json::to_string(&receipt).map_err(std::io::Error::other)?;
+                telemetry
+                    .event_required("workspace_config_migration", state, Some(&reason))
+                    .map_err(std::io::Error::other)?;
+            }
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let supervisor = Arc::new(
-                membrane_runtime_supervisor().map_err(std::io::Error::other)?,
-            );
-            let started = supervisor.start().map_err(std::io::Error::other)?;
+            let blueprint_root = workspace::resolve().map_err(std::io::Error::other)?.root;
+            let blueprint_runtime = app
+                .path()
+                .resource_dir()
+                .map_err(std::io::Error::other)?
+                .join("runtime")
+                .join("blueprint");
+            // Production Hub owns endpoint publication. Do not inherit a
+            // developer-selected Blueprint endpoint into bundled startup.
+            std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+            let blueprint = Arc::new(blueprint::Supervisor::new(
+                blueprint_root,
+                blueprint_runtime,
+            ));
+            let supervisor = match membrane_runtime_supervisor() {
+                Ok(supervisor) => Arc::new(supervisor),
+                Err(error) => return Err(std::io::Error::other(error).into()),
+            };
+            let started = match supervisor.start() {
+                Ok(status) => status,
+                Err(error) => return Err(std::io::Error::other(error).into()),
+            };
             telemetry.service(service_status_name(started), None);
             if started != supervisor::ServiceStatus::Running {
                 return Err(std::io::Error::other("membrane_hub_resident_unavailable").into());
             }
             app.manage(supervisor.clone());
+            if supervisor.supervise() == supervisor::ServiceStatus::Running {
+                match blueprint.start() {
+                    Ok(status) => {
+                        if status == blueprint::ServiceStatus::Running {
+                            match publish_blueprint_endpoint() {
+                                Ok(()) => telemetry.event(
+                                    "blueprint_installed",
+                                    blueprint::LifecycleState::Running.as_str(),
+                                    None,
+                                ),
+                                Err(error) => {
+                                    stop_blueprint_service(&blueprint);
+                                    record_blueprint_failure(&telemetry, &error);
+                                }
+                            }
+                        } else {
+                            std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+                            telemetry.event(
+                                "blueprint_installed",
+                                blueprint_state_for_status(status).as_str(),
+                                None,
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+                        record_blueprint_failure(&telemetry, &error)
+                    }
+                }
+            }
+            app.manage(blueprint.clone());
             let handle = app.handle().clone();
             // N5 cutover: replace the installed Python Adapt launcher with the
             // native one and bind the production Adapt cycle schedule to the
@@ -798,8 +894,11 @@ fn main() {
             {
                 let adapt_supervisor = supervisor.clone();
                 let adapt_telemetry = telemetry.clone();
+                let adapt_workspace_root = workspace::resolve()
+                    .map(|workspace| workspace.root)
+                    .unwrap_or_default();
                 std::thread::spawn(move || {
-                    let launcher = adapt_launch::AdaptLauncher::new(adapt_program);
+                    let launcher = adapt_launch::AdaptLauncher::new(adapt_workspace_root);
                     let schedule_path = adapt_launch::default_schedule_path()
                         .unwrap_or_else(|_| PathBuf::from("adapt-schedule-unavailable"));
                     let mut scheduler = adapt_launch::AdaptScheduler::new(
@@ -812,17 +911,23 @@ fn main() {
                             adapt_supervisor.supervise() == supervisor::ServiceStatus::Running,
                             &launcher,
                         ) {
-                            adapt_telemetry.event("adapt_cycle", status.state, status.reason.as_deref());
+                            adapt_telemetry.event(
+                                "adapt_cycle",
+                                status.state,
+                                status.reason.as_deref(),
+                            );
                         }
                         std::thread::sleep(POLL_INTERVAL);
                     }
                 });
             }
             let gate = app.state::<Arc<StartupGate>>().inner().clone();
+            let blueprint_supervisor = blueprint.clone();
             std::thread::spawn(move || loop {
                 let observed_service_status = supervisor.supervise();
                 let service_status =
                     if observed_service_status != supervisor::ServiceStatus::Running {
+                        stop_blueprint_service(&blueprint_supervisor);
                         telemetry.service(
                             service_status_name(observed_service_status),
                             Some("resident_not_running"),
@@ -840,6 +945,46 @@ fn main() {
                     } else {
                         observed_service_status
                     };
+                if service_status == supervisor::ServiceStatus::Running {
+                    let observed_blueprint_status = blueprint_supervisor.supervise();
+                    if observed_blueprint_status == blueprint::ServiceStatus::Unavailable {
+                        std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+                        match blueprint_supervisor.start() {
+                            Ok(status) => {
+                                if status == blueprint::ServiceStatus::Running {
+                                    match publish_blueprint_endpoint() {
+                                        Ok(()) => telemetry.event(
+                                            "blueprint_installed",
+                                            blueprint::LifecycleState::Running.as_str(),
+                                            None,
+                                        ),
+                                        Err(error) => {
+                                            stop_blueprint_service(&blueprint_supervisor);
+                                            record_blueprint_failure(&telemetry, &error);
+                                        }
+                                    }
+                                } else {
+                                    telemetry.event(
+                                        "blueprint_installed",
+                                        blueprint_state_for_status(status).as_str(),
+                                        None,
+                                    );
+                                }
+                            }
+                            Err(error) => {
+                                std::env::remove_var(blueprint::DAEMON_ENDPOINT_ENV);
+                                record_blueprint_failure(&telemetry, &error)
+                            }
+                        }
+                    }
+                } else {
+                    stop_blueprint_service(&blueprint_supervisor);
+                    telemetry.event(
+                        "blueprint_installed",
+                        blueprint::LifecycleState::HubInactive.as_str(),
+                        Some("membrane_not_running"),
+                    );
+                }
                 let (current, live_snapshot_available) = if gate.active() {
                     initial_poll(&cache, &gate)
                 } else {
@@ -867,8 +1012,18 @@ fn main() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("run Membrane Hub");
+        .build(tauri::generate_context!())
+        .expect("build Membrane Hub")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+                if let Some(blueprint) = app.try_state::<BlueprintState>() {
+                    stop_blueprint_service(&blueprint);
+                }
+                if let Some(service) = app.try_state::<ServiceState>() {
+                    stop_membrane_service(&service);
+                }
+            }
+        });
 }
 
 #[cfg(test)]

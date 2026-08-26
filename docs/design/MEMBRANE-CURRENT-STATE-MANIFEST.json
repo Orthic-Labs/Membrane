@@ -52,7 +52,7 @@
         "description": "Mines experience into governed proposals and never writes durable truth directly."
       }
     ],
-    "currentTarget": "macOS",
+    "currentTarget": "Windows",
     "cortexScope": "durable-memory-only",
     "residentServiceAuthority": "hub",
     "mcpToolCount": 17,
@@ -87,12 +87,13 @@
     ],
     "platforms": {
       "tier1": [
-        "macOS"
+        "Windows"
       ],
       "tier2BestEffort": []
     },
     "generatedFrom": [
-      "mcp/server.mjs",
+      "engine/crates/membrane-mcp/src/tools.rs",
+      "migration/native-rust/fixtures/mcp-conformance.v1.json",
       "docs/membrane/capability-matrix.v1.json"
     ],
     "generatedBy": "scripts/tools/productization/generate-product-truth.mjs"

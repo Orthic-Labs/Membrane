@@ -167,7 +167,7 @@ export class WatchSupervisor {
     this.hasActed = false;
   }
 
-  async reload() {
+  async reload({ failOnStart = false } = {}) {
     this.hasActed = true;
     const config = readWatchConfig(this.configPath);
     const wanted = new Map(config.repos.map((repo) => [repo.root, repo]));
@@ -189,21 +189,30 @@ export class WatchSupervisor {
       this.actors.set(repo.root, actor);
       pendingStarts.push(actor);
     }
+    const failures = [];
     let next = 0;
     await Promise.all(
       Array.from({ length: Math.min(CONCURRENT_ACTOR_STARTS, pendingStarts.length) }, async () => {
         while (next < pendingStarts.length) {
           const actor = pendingStarts[next++];
-          try { await actor.start(); } catch (error) { actor.log(error); }
+          try { await actor.start(); }
+          catch (error) {
+            actor.log(error);
+            failures.push(error);
+          }
         }
       }),
     );
+    if (failOnStart && failures.length) throw failures[0];
     this.configMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
     return this.status();
   }
 
-  async start() {
-    await this.reload();
+  async start(options = {}) {
+    // Existing in-process supervisors may tolerate one repo failure and keep
+    // serving healthy peers; resident blueprint-watch opts into strict
+    // readiness explicitly with { failOnStart: true }.
+    await this.reload({ failOnStart: false, ...options });
     this.signalHandler = () => this.reload().catch(() => {});
     process.on("SIGHUP", this.signalHandler);
     this.poller = setInterval(() => {

@@ -83,9 +83,11 @@ impl TryFrom<&membrane_transcript::TranscriptEventV1> for TranscriptEventV1 {
             evidence_eligible: !event.synthetic
                 && !event.meta
                 && !event.private_reasoning_omitted
+                && !event.redacted
                 && !event.flags.synthetic
                 && !event.flags.meta
-                && !event.flags.private_reasoning_omitted,
+                && !event.flags.private_reasoning_omitted
+                && !event.flags.redacted,
         })
     }
 }
@@ -178,12 +180,24 @@ impl FailureEpisodeV1 {
         user_expectation: &str,
         evidence_events: &[&TranscriptEventV1],
     ) -> Self {
+        // Ineligible transcript rows are not observable evidence.  Keep them
+        // out of identity, metadata, timestamps, and excerpts alike so a
+        // detector cannot leak or derive an episode from redacted/private
+        // material even if it accidentally passes such a row.
+        let evidence_events: Vec<&TranscriptEventV1> = evidence_events
+            .iter()
+            .copied()
+            .filter(|event| event.evidence_eligible)
+            .collect();
         let spans: Vec<(String, i64, i64)> = evidence_events
             .iter()
             .map(|ev| (ev.event_id.clone(), ev.byte_start, ev.byte_end))
             .collect();
         let episode_id = crate::canonical::derive_episode_id(detector, &spans);
-        let mut sessions: Vec<String> = evidence_events.iter().map(|e| e.session_id.clone()).collect();
+        let mut sessions: Vec<String> = evidence_events
+            .iter()
+            .map(|e| e.session_id.clone())
+            .collect();
         sessions.sort();
         sessions.dedup();
         let mut hosts: Vec<String> = evidence_events.iter().map(|e| e.host.clone()).collect();
@@ -208,8 +222,10 @@ impl FailureEpisodeV1 {
                 }
             })
             .collect();
-        let timestamps: Vec<&String> =
-            evidence_events.iter().filter_map(|e| e.timestamp.as_ref()).collect();
+        let timestamps: Vec<&String> = evidence_events
+            .iter()
+            .filter_map(|e| e.timestamp.as_ref())
+            .collect();
         Self {
             schema_version: FAILURE_EPISODE_SCHEMA.to_string(),
             episode_id,
@@ -235,7 +251,10 @@ impl FailureEpisodeV1 {
     pub fn nearest_user_text(events: &[TranscriptEventV1], index: usize) -> String {
         let start = index.saturating_sub(6);
         for ev in events[start..index].iter().rev() {
-            if ev.is_user() && !ev.text.trim().is_empty() {
+            if ev.evidence_eligible
+                && crate::insights::guards::guard_user_span(ev).is_pass()
+                && !ev.text.trim().is_empty()
+            {
                 return ev.text.trim().chars().take(200).collect();
             }
         }
@@ -317,7 +336,11 @@ mod tests {
             event_id: id.into(),
             session_id: session.into(),
             host: "pi".into(),
-            provenance: if kind == EventKind::UserMessage { "external_user".into() } else { "assistant".into() },
+            provenance: if kind == EventKind::UserMessage {
+                "external_user".into()
+            } else {
+                "assistant".into()
+            },
             kind,
             text: text.into(),
             timestamp: Some("2026-08-24T01:00:00Z".into()),
@@ -345,5 +368,46 @@ mod tests {
         assert!(!IssueState::Observed.can_transition_to(IssueState::Mitigated));
         assert!(!IssueState::Dismissed.can_transition_to(IssueState::Recurring));
         assert!(IssueState::Mitigated.can_transition_to(IssueState::Reopened));
+    }
+
+    #[test]
+    fn redacted_native_user_events_emit_no_eligible_episode() {
+        for (top_level_redacted, nested_redacted) in [(true, false), (false, true)] {
+            let native = |id: &str, sequence: u64| -> membrane_transcript::TranscriptEventV1 {
+                serde_json::from_value(serde_json::json!({
+                    "eventId": id,
+                    "rowIndex": sequence,
+                    "byteStart": 0,
+                    "byteEnd": 51,
+                    "blockIndex": 0,
+                    "sequence": sequence,
+                    "kind": "user_message",
+                    "role": "user",
+                    "text": "please run the full test suite before claiming done",
+                    "timestamp": "2026-08-24T01:00:00Z",
+                    "classification": "successful_readonly",
+                    "class": "successful_readonly",
+                    "projection": "default",
+                    "host": "pi",
+                    "sessionId": format!("s{sequence}"),
+                    "transcriptId": format!("t{sequence}"),
+                    "parserDigest": "sha256:test",
+                    "synthetic": false,
+                    "meta": false,
+                    "privateReasoningOmitted": false,
+                    "redacted": top_level_redacted,
+                    "flags": { "redacted": nested_redacted }
+                }))
+                .unwrap()
+            };
+            let source = [native("a", 1), native("b", 2)];
+            let events: Vec<_> = source
+                .iter()
+                .map(TranscriptEventV1::try_from)
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert!(events.iter().all(|event| !event.evidence_eligible));
+            assert!(crate::insights::detectors::run_all_detectors(&events).is_empty());
+        }
     }
 }

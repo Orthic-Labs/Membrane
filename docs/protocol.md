@@ -40,4 +40,4 @@ repository, root, and scope of each request.
 
 ## Platform status
 
-The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
+The sole supported current target is **Windows** (tier 1). Other targets are not current supported targets.

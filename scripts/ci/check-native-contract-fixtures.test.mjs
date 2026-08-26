@@ -13,6 +13,8 @@ import {
   PUBLIC_REGISTRY_DIR,
   aggregateDigest,
   buildManifest,
+  canonicalFixtureBytes,
+  fixtureSha256,
   sha256,
   validateAgainstSchema,
   validateFixtures,
@@ -22,6 +24,12 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 test("sha256 matches a known vector", () => {
   assert.equal(sha256(Buffer.from("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+});
+test("fixture hashes are invariant across native text line endings", () => {
+  assert.equal(
+    sha256(canonicalFixtureBytes(Buffer.from("one\r\ntwo\r\n"))),
+    sha256(Buffer.from("one\ntwo\n")),
+  );
 });
 test("aggregateDigest is order-insensitive and content-sensitive", () => {
   const a = `${FIXTURES_DIR}/insight-issue-v1.schema.json`;
@@ -78,10 +86,15 @@ function corpusFiles(root) {
 
 test("buildManifest hashes every fixture file and reproduces aggregateSha256", () => {
   const manifest = buildManifest({ root: REPO });
+  assert.equal(
+    manifest.contracts.some((contract) => contract.name === "UserActEvidenceV1"),
+    false,
+    "retired UserActEvidenceV1 must not be regenerated",
+  );
   for (const c of manifest.contracts) {
     assert.equal(c.visibility, "internal");
     for (const f of c.fixtureFiles) {
-      const actual = sha256(readFileSync(join(REPO, f.path)));
+      const actual = fixtureSha256(join(REPO, f.path));
       assert.equal(f.sha256, actual, `${c.name}: ${f.path}`);
     }
   }

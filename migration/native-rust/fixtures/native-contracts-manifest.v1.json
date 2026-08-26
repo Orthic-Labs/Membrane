@@ -3,7 +3,7 @@
  "artifact": "membrane.native-contract-fixtures",
  "corpusId": "native-contracts-v1",
  "immutable": true,
- "generatedAt": "2026-08-24T17:47:06.908Z",
+ "generatedAt": "2026-08-26T10:10:56.851Z",
  "visibilityNote": "All contracts here are internal Adapt/transcript domain contracts. They are recorded for N1 freeze and native-port differential testing; none is added to the public protocol registry. The five public V1 shapes are unchanged.",
  "contracts": [
   {
@@ -21,24 +21,6 @@
      "path": "migration/native-rust/fixtures/native-contracts.v1/examples/transcript-event-v1.example.json",
      "role": "golden-example",
      "sha256": "35102285addb24d2ecc5cfd50030df234aa9123d44da789446043c12557f8c6b"
-    }
-   ]
-  },
-  {
-   "name": "UserActEvidenceV1",
-   "schemaVersionTag": "adapt.user-act-evidence.v1",
-   "visibility": "internal",
-   "sourceOfTruth": "engine/crates/membrane-transcript/src/evidence.rs",
-   "fixtureFiles": [
-    {
-     "path": "migration/native-rust/fixtures/native-contracts.v1/user-act-evidence-v1.schema.json",
-     "role": "schema",
-     "sha256": "f120744e1e7ffc6fb48b454ebe94a617cc9bdd96363b283c51ce68dee96fb67e"
-    },
-    {
-     "path": "migration/native-rust/fixtures/native-contracts.v1/examples/user-act-evidence-v1.example.json",
-     "role": "golden-example",
-     "sha256": "fdc39b1e9dfb1b9db3147c5a78cd88814b149d2e886639eeee2a154019de7f83"
     }
    ]
   },
@@ -87,7 +69,7 @@
     {
      "path": "migration/native-rust/fixtures/native-contracts.v1/preference-record-v1.schema.json",
      "role": "schema",
-     "sha256": "fd4dfc002b3f3f27da93e9ddebecb63dabed8165809c887c48ac6c20f4ab0b10"
+     "sha256": "e115bf2ea483dbdd965c6c462a2e0323c148c3a30de4dee12e49b9bcb961e331"
     },
     {
      "path": "migration/native-rust/fixtures/native-contracts.v1/examples/preference-record-v1.example.json",
@@ -125,7 +107,7 @@
    "note": "Verbatim snapshot of the canonical Python-era schema at freeze time; referenced by InsightIssueV1.state.mitigation_links."
   }
  ],
- "aggregateSha256": "72a57e1e7f141ba86f7789d7d73784184e5a701c650e21d5b2b00dfc5932700c",
+ "aggregateSha256": "f9ccc2fae43447a934b22334c9a6dfb7642017fe40c44b04360b07824f6074f2",
  "intentionalDeltas": [
   {
    "id": "no-bug-for-bug-parity",

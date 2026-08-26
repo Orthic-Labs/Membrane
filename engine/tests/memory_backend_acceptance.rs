@@ -1,14 +1,14 @@
 //! M8 acceptance for service-backed memory backend compatibility.
 
+use cortex_core::MemoryTier as EmbeddedTier;
 use membrane_client::{
     handshake::CompatibilityRequirement, CallOptions, CancellationToken, ClientError,
     MemoryBackendClient, MemoryTier,
 };
-use cortex_core::MemoryTier as EmbeddedTier;
 use membrane_runtime::MemoryStore;
 use serde_json::{json, Map, Value};
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 fn row() -> Value {
     json!({"id":"m1","tier":"Working","content":"body","keywords":["k"],"score":0.5,"created_at":"now","access_count":1,"scope_id":"workspace","chars":4,"access":1,"inject":0})
@@ -16,7 +16,9 @@ fn row() -> Value {
 
 fn response(operation: &str) -> Value {
     match operation {
-        "/health" => json!({"serviceId":"membrane-acceptance","releaseGeneration":"r1","protocolVersion":1,"schemaVersion":1,"capabilities":[],"embedderDim":256}),
+        "/health" => {
+            json!({"serviceId":"membrane-acceptance","installationId":"install-acceptance","cortexStoreId":"store-acceptance","releaseGeneration":"r1","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"],"embedderDim":256})
+        }
         "/activity" | "/metrics" => json!({"ok":true}),
         "/list" | "/search" => json!([row()]),
         "/scopes" => json!(["workspace"]),
@@ -61,8 +63,12 @@ fn handshake_and_all_backend_operations_share_typed_contract() {
     client.get_full("m1").unwrap();
     client.recall_scored("body", 10, &scope).unwrap();
     client.record_injections(&["m1".to_owned()]).unwrap();
-    client.put("name", "body", "workspace", MemoryTier::Working).unwrap();
-    client.try_put("name", "body", "workspace", MemoryTier::Working).unwrap();
+    client
+        .put("name", "body", "workspace", MemoryTier::Working)
+        .unwrap();
+    client
+        .try_put("name", "body", "workspace", MemoryTier::Working)
+        .unwrap();
     client.remember("body", vec!["k".into()]).unwrap();
     client
         .remember_consolidated("name", "body", vec!["k".into()], 0.5)
@@ -89,14 +95,23 @@ fn incompatibility_failure_timeout_and_cancellation_are_explicit() {
         .bind(&CompatibilityRequirement::default())
         .unwrap()
         .with_options(CallOptions::after(Duration::ZERO));
-    assert!(matches!(expired.metrics_json(), Err(ClientError::Timeout { .. })));
+    assert!(matches!(
+        expired.metrics_json(),
+        Err(ClientError::Timeout { .. })
+    ));
     let cancellation = CancellationToken::new();
     cancellation.cancel();
     let cancelled = client()
         .bind(&CompatibilityRequirement::default())
         .unwrap()
-        .with_options(CallOptions { deadline: std::time::Instant::now() + Duration::from_secs(1), cancellation });
-    assert!(matches!(cancelled.metrics_json(), Err(ClientError::Cancelled)));
+        .with_options(CallOptions {
+            deadline: std::time::Instant::now() + Duration::from_secs(1),
+            cancellation,
+        });
+    assert!(matches!(
+        cancelled.metrics_json(),
+        Err(ClientError::Cancelled)
+    ));
     let credentialed = base_client.with_bearer_token("secret");
     assert!(credentialed.has_bearer_token());
 }
@@ -112,7 +127,10 @@ fn embedded_and_service_share_one_typed_conformance_matrix() {
     let service_rows = service.search("body", 10).unwrap();
     assert_eq!(embedded_rows[0].content, service_rows[0].content);
     assert_eq!(embedded_rows[0].scope_id, service_rows[0].scope_id);
-    assert_eq!(embedded_tier_name(embedded_rows[0].tier), service_rows[0].tier.as_str());
+    assert_eq!(
+        embedded_tier_name(embedded_rows[0].tier),
+        service_rows[0].tier.as_str()
+    );
 
     let embedded_entries = embedded.entries(10);
     let service_entries = service.entries(10).unwrap();
@@ -125,7 +143,9 @@ fn embedded_and_service_share_one_typed_conformance_matrix() {
     assert_eq!(embedded_list[0].2, service_list[0].chars as i64);
 
     let embedded_recall = embedded.recall_scored("body", 10, &["workspace".into()]);
-    let service_recall = service.recall_scored("body", 10, &["workspace".into()]).unwrap();
+    let service_recall = service
+        .recall_scored("body", 10, &["workspace".into()])
+        .unwrap();
     assert_eq!(embedded_recall[0].0.content, service_recall[0].0.content);
     assert_eq!(embedded_recall[0].0.scope_id, service_recall[0].0.scope_id);
     assert!(embedded.delete(&embedded_id));
@@ -147,25 +167,44 @@ fn request_output_conformance_and_transport_failures_are_typed() {
         .bind(&CompatibilityRequirement::default())
         .unwrap();
     conformance.search("body", 7).unwrap();
-    conformance.put("name", "body", "workspace", MemoryTier::Working).unwrap();
-    conformance.recall_scored("body", 3, &["workspace".into()]).unwrap();
+    conformance
+        .put("name", "body", "workspace", MemoryTier::Working)
+        .unwrap();
+    conformance
+        .recall_scored("body", 3, &["workspace".into()])
+        .unwrap();
     let calls = seen.lock().unwrap();
-    let search = calls.iter().find(|(operation, _)| operation == "/search").unwrap();
+    let search = calls
+        .iter()
+        .find(|(operation, _)| operation == "/search")
+        .unwrap();
     assert_eq!(search.1.get("query").and_then(Value::as_str), Some("body"));
     assert_eq!(search.1.get("limit").and_then(Value::as_u64), Some(7));
-    let put = calls.iter().find(|(operation, _)| operation == "/put").unwrap();
+    let put = calls
+        .iter()
+        .find(|(operation, _)| operation == "/put")
+        .unwrap();
     assert_eq!(put.1.get("tier").and_then(Value::as_str), Some("Working"));
-    let failing = MemoryBackendClient::new(Box::new(|operation: &str, _request: &Map<String, Value>| {
-        if operation == "/health" {
-            Ok(response(operation))
-        } else if operation == "/search" {
-            Err(ClientError::protocol("transport_down", "fixture transport failed"))
-        } else {
-            Ok(json!("malformed"))
-        }
-    }))
+    let failing = MemoryBackendClient::new(Box::new(
+        |operation: &str, _request: &Map<String, Value>| {
+            if operation == "/health" {
+                Ok(response(operation))
+            } else if operation == "/search" {
+                Err(ClientError::protocol(
+                    "transport_down",
+                    "fixture transport failed",
+                ))
+            } else {
+                Ok(json!("malformed"))
+            }
+        },
+    ))
     .bind(&CompatibilityRequirement::default())
     .unwrap();
-    assert!(matches!(failing.search("body", 1), Err(ClientError::Protocol { code, .. }) if code == "transport_down"));
-    assert!(matches!(failing.entries(1), Err(ClientError::Protocol { code, .. }) if code == "response_malformed"));
+    assert!(
+        matches!(failing.search("body", 1), Err(ClientError::Protocol { code, .. }) if code == "transport_down")
+    );
+    assert!(
+        matches!(failing.entries(1), Err(ClientError::Protocol { code, .. }) if code == "response_malformed")
+    );
 }

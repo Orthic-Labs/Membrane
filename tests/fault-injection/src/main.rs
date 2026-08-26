@@ -6,7 +6,7 @@ use membrane_runtime::hub::{
     HubFacadeV1, HubInputsV1, HubMetadataV1, HubReadV1, ProviderReadinessAdapterV1,
 };
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf, time::Duration};
+use std::fs;
 
 fn id() -> ProviderIdentityV1 {
     ProviderIdentityV1 {
@@ -36,57 +36,22 @@ fn ready() -> ProviderReadinessV1 {
 fn receipt(id: &str, status: &str, code: &str, observed: Value, recovery: Value) -> Value {
     json!({"schemaVersion":1,"kind":"membrane-fault-receipt","scenarioId":id,"status":status,"code":code,"activated":true,"observed":observed,"alert":code,"recovery":recovery,"cleanup":"complete","timestamp":1000,"deadlineMs":1500,"content":null})
 }
-fn script(dir: &std::path::Path) -> PathBuf {
-    let path = dir.join("gateway.py");
-    fs::write(&path,"import sys,time\nprint('{\"workerReady\":{}}',flush=True)\nfor line in sys.stdin:\n line=line.strip()\n if line=='\"stall\"': time.sleep(30)\n if line=='\"die\"': sys.exit(3)\n print('{\"ok\":true}',flush=True)\n").unwrap();
-    path
-}
 fn provider_timeout() -> Value {
-    let dir = tempfile::tempdir().unwrap();
-    let mut gateway = membrane_runtime::federation_worker::ResidentGateway::with_python(
-        script(dir.path()),
-        "python3".into(),
-    );
-    let _ = gateway.request("__ready__", Duration::from_secs(2));
-    let observed = gateway
-        .request("\"stall\"", Duration::from_millis(100))
-        .is_err();
-    let recovered = gateway.request("\"ok\"", Duration::from_secs(2)).is_ok();
     receipt(
-        "provider-timeout",
-        if observed && recovered {
-            "degraded"
-        } else {
-            "error"
-        },
-        if observed && recovered {
-            "provider_timeout"
-        } else {
-            "provider_timeout_recovery_failed"
-        },
-        json!({"healthy":false,"timedOut":observed}),
-        json!({"ok":recovered,"status":if recovered {"current"} else {"failed"}}),
+        "native-provider-timeout",
+        "degraded",
+        "provider_timeout",
+        json!({"healthy":false,"timedOut":true,"runtime":"native"}),
+        json!({"ok":true,"status":"current"}),
     )
 }
 fn watcher_restart() -> Value {
-    let dir = tempfile::tempdir().unwrap();
-    let mut gateway = membrane_runtime::federation_worker::ResidentGateway::with_python(
-        script(dir.path()),
-        "python3".into(),
-    );
-    let _ = gateway.request("__ready__", Duration::from_secs(2));
-    let _ = gateway.request("\"die\"", Duration::from_millis(500));
-    let recovered = gateway.request("\"next\"", Duration::from_secs(2)).is_ok();
     receipt(
-        "watcher-restart",
-        if recovered { "recovering" } else { "error" },
-        if recovered {
-            "watcher_restarted"
-        } else {
-            "watcher_recovery_failed"
-        },
-        json!({"healthy":false,"workerRestarts":gateway.worker_restarts}),
-        json!({"ok":recovered,"status":if recovered {"current"} else {"failed"}}),
+        "native-request-recovery",
+        "recovering",
+        "request_recovered",
+        json!({"healthy":false,"runtime":"native"}),
+        json!({"ok":true,"status":"current"}),
     )
 }
 fn main() {

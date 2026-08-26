@@ -97,7 +97,10 @@ impl OutcomeLedger {
             raw, exposure.opportunities
         );
         let entry = OutcomeEntryV1 {
-            entry_id: format!("out-{}", &crate::canonical::sha256_hex(id_src.as_bytes())[..12].to_string()),
+            entry_id: format!(
+                "out-{}",
+                &crate::canonical::sha256_hex(id_src.as_bytes())[..12].to_string()
+            ),
             issue_id: issue_id.to_string(),
             mitigation_proposal_id: mitigation_proposal_id.to_string(),
             raw,
@@ -106,7 +109,10 @@ impl OutcomeLedger {
             note: note.to_string(),
         };
         let idx = self.entries.len();
-        self.index.entry(issue_id.to_string()).or_default().push(idx);
+        self.index
+            .entry(issue_id.to_string())
+            .or_default()
+            .push(idx);
         self.entries.push(entry);
         &self.entries[idx]
     }
@@ -150,13 +156,22 @@ mod tests {
     use super::*;
 
     fn exp(o: u32) -> Exposure {
-        Exposure { opportunities: o, baseline: 10 }
+        Exposure {
+            opportunities: o,
+            baseline: 10,
+        }
     }
 
     #[test]
     fn exposure_adjusts_outcome() {
-        assert_eq!(adjust(RawOutcome::NoRecurrence, &exp(9)), AdjustedOutcome::Effective);
-        assert_eq!(adjust(RawOutcome::NoRecurrence, &exp(3)), AdjustedOutcome::ProbablyEffective);
+        assert_eq!(
+            adjust(RawOutcome::NoRecurrence, &exp(9)),
+            AdjustedOutcome::Effective
+        );
+        assert_eq!(
+            adjust(RawOutcome::NoRecurrence, &exp(3)),
+            AdjustedOutcome::ProbablyEffective
+        );
         assert_eq!(
             adjust(RawOutcome::RecurredSameSignature, &exp(9)),
             AdjustedOutcome::Ineffective

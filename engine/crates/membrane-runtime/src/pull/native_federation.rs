@@ -9,8 +9,7 @@ use crate::pull::metrics::{FederationMetricStatus, FederationMetrics};
 use membrane_federation::providers::{
     anchors::AnchorsProvider, architect::ArchitectProvider, audit::AuditProvider,
     blueprint::BlueprintProvider, cortex::CortexProvider, git::GitProvider,
-    live_files::LiveFilesProvider, rules::RulesProvider,
-    skills::SkillsProvider,
+    live_files::LiveFilesProvider, rules::RulesProvider, skills::SkillsProvider,
 };
 use membrane_federation::{FederationConfig, FederationEngine, ProviderRegistry};
 use membrane_protocol::{FederationRequestV1, FederationResponseV1, ProviderId};
@@ -61,15 +60,60 @@ impl NativeFederation {
         let rules = Arc::new(RuntimeRuleSource);
         let ledger = Arc::new(RuntimeDeliveryLedger::default());
         let providers = vec![
-            registration(ProviderId::Anchors, "native.anchors", Arc::new(anchors_provider), vec![ProviderId::Blueprint]),
-            registration(ProviderId::Blueprint, "native.blueprint", blueprint_provider, vec![]),
-            registration(ProviderId::Rules, "native.rules", Arc::new(RulesProvider::new(rules, ledger)), vec![]),
-            registration(ProviderId::LiveFiles, "native.live_files", Arc::new(LiveFilesProvider::default()), vec![]),
+            registration(
+                ProviderId::Anchors,
+                "native.anchors",
+                Arc::new(anchors_provider),
+                vec![ProviderId::Blueprint],
+            ),
+            registration(
+                ProviderId::Blueprint,
+                "native.blueprint",
+                blueprint_provider,
+                vec![],
+            ),
+            registration(
+                ProviderId::Rules,
+                "native.rules",
+                Arc::new(RulesProvider::new(rules, ledger)),
+                vec![],
+            ),
+            registration(
+                ProviderId::LiveFiles,
+                "native.live_files",
+                Arc::new(LiveFilesProvider::default()),
+                vec![],
+            ),
             registration(ProviderId::Git, "native.git", Arc::new(GitProvider), vec![]),
-            registration(ProviderId::Audit, "native.audit", Arc::new(AuditProvider::new()), vec![]),
-            registration(ProviderId::Architect, "native.architect", Arc::new(ArchitectProvider::new()), vec![]),
-            registration(ProviderId::Skills, "native.skills", Arc::new(SkillsProvider::new(bindings.skills.clone().ok_or_else(|| "native skills source unavailable".to_owned())?)), vec![]),
-            registration(ProviderId::Cortex, "native.cortex", Arc::new(CortexProvider::new()), vec![]),
+            registration(
+                ProviderId::Audit,
+                "native.audit",
+                Arc::new(AuditProvider::new()),
+                vec![],
+            ),
+            registration(
+                ProviderId::Architect,
+                "native.architect",
+                Arc::new(ArchitectProvider::new()),
+                vec![],
+            ),
+            registration(
+                ProviderId::Skills,
+                "native.skills",
+                Arc::new(SkillsProvider::new(
+                    bindings
+                        .skills
+                        .clone()
+                        .ok_or_else(|| "native skills source unavailable".to_owned())?,
+                )),
+                vec![],
+            ),
+            registration(
+                ProviderId::Cortex,
+                "native.cortex",
+                Arc::new(CortexProvider::new()),
+                vec![],
+            ),
         ];
         let registry = ProviderRegistry::new(providers).map_err(|e| e.to_string())?;
         let engine = FederationEngine::with_release_source(
@@ -78,7 +122,7 @@ impl NativeFederation {
             bindings.source_set(),
             release,
         )
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
         Ok(Self {
             engine,
             metrics: Arc::new(FederationMetrics::new()),
@@ -96,7 +140,10 @@ impl NativeFederation {
     }
 
     pub fn freshness_snapshot(&self) -> Option<membrane_protocol::FreshnessSnapshotV1> {
-        self.last_freshness.lock().ok().and_then(|snapshot| snapshot.clone())
+        self.last_freshness
+            .lock()
+            .ok()
+            .and_then(|snapshot| snapshot.clone())
     }
 
     pub async fn federate(
@@ -107,9 +154,9 @@ impl NativeFederation {
         let cancelled = cancellation.is_cancelled();
         let query = SourceQuery {
             request_id: request.request_id.clone(),
-            repository_id: membrane_federation::root::canonical_repository_id(
-                Path::new(&request.repository_root),
-            ),
+            repository_id: membrane_federation::root::canonical_repository_id(Path::new(
+                &request.repository_root,
+            )),
             repository_root: request.repository_root.clone(),
             task: request.task.clone(),
             session_id: request.session_id.clone(),
@@ -138,7 +185,9 @@ impl NativeFederation {
         let response = self.engine.federate(request, cancellation).await;
         match &response {
             Ok(value) => self.metrics.record(metric_status(value, cancelled)),
-            Err(error) => self.metrics.record(error_status(&error.to_string(), cancelled)),
+            Err(error) => self
+                .metrics
+                .record(error_status(&error.to_string(), cancelled)),
         }
         response.map_err(|e| e.to_string())
     }
@@ -156,17 +205,28 @@ fn metric_status(response: &FederationResponseV1, cancelled: bool) -> Federation
     {
         return FederationMetricStatus::Timeout;
     }
-    if response.candidates.is_empty() && response.status == membrane_protocol::FederationStatus::Complete {
+    if response.candidates.is_empty()
+        && response.status == membrane_protocol::FederationStatus::Complete
+    {
         return FederationMetricStatus::EmptyComplete;
     }
     response
         .warnings
         .first()
         .map(|warning| match warning.reason {
-            membrane_protocol::ReasonCode::ProviderUnavailable => FederationMetricStatus::Unavailable,
-            membrane_protocol::ReasonCode::ProviderTimeout | membrane_protocol::ReasonCode::DeadlineExhausted => FederationMetricStatus::Timeout,
-            membrane_protocol::ReasonCode::GenerationIncoherent | membrane_protocol::ReasonCode::ReleaseGenerationMismatch => FederationMetricStatus::Incoherent,
-            membrane_protocol::ReasonCode::ScopeGrantInvalid | membrane_protocol::ReasonCode::ScopeGrantMissing => FederationMetricStatus::Unauthorized,
+            membrane_protocol::ReasonCode::ProviderUnavailable => {
+                FederationMetricStatus::Unavailable
+            }
+            membrane_protocol::ReasonCode::ProviderTimeout
+            | membrane_protocol::ReasonCode::DeadlineExhausted => FederationMetricStatus::Timeout,
+            membrane_protocol::ReasonCode::GenerationIncoherent
+            | membrane_protocol::ReasonCode::ReleaseGenerationMismatch => {
+                FederationMetricStatus::Incoherent
+            }
+            membrane_protocol::ReasonCode::ScopeGrantInvalid
+            | membrane_protocol::ReasonCode::ScopeGrantMissing => {
+                FederationMetricStatus::Unauthorized
+            }
             membrane_protocol::ReasonCode::ProviderMalformed => FederationMetricStatus::Malformed,
             _ => FederationMetricStatus::Unavailable,
         })

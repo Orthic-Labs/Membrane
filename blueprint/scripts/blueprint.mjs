@@ -2128,6 +2128,11 @@ async function runGraphCommand(root, outDir, subcommand, args) {
     }
   }
   if (subcommand === "build") {
+    // Keep direct graph builds equivalent to the top-level build command:
+    // consumers rely on an explicit output directory carrying its config.
+    // Loading here also creates config.json before graph generation reads the
+    // same output root, including when invoked through the Windows wrapper.
+    loadConfig(root, outDir);
     const generation = buildGraphGeneration(root, { outDir });
     generation.sourceObservation = gitSourceObservation(root);
     await finalizeAndPersistGraphGeneration(root, outDir, generation, { augment: false });

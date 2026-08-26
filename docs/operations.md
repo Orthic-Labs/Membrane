@@ -14,7 +14,7 @@ node scripts/tools/productization/check-docs.mjs --check               # full ga
 
 The gate fails on a broken README link, a stale generated doc, a wrong claimed
 tool count (source truth: 17), or a stale platform status
-(source truth: macOS).
+(source truth: Windows).
 
 ## Running the product
 
@@ -27,7 +27,7 @@ rightkit cargo test --manifest-path engine/Cargo.toml --workspace --features fas
 
 ## Platform status
 
-The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
+The sole supported current target is **Windows** (tier 1). Other targets are not current supported targets.
 
 ## Hub alerts & reasons
 

@@ -7,8 +7,8 @@ differential/golden corpora.
 
 ## Internal, not public
 
-`TranscriptEventV1`, `UserActEvidenceV1`, `FailureEpisodeV1`, `InsightIssueV1`,
-and the Adapt record contracts here are internal domain contracts. Their
+`TranscriptEventV1`, `FailureEpisodeV1`, `InsightIssueV1`, and the Adapt record
+contracts here are internal domain contracts. Their
 schema/version/digest records live in `../native-contracts-manifest.v1.json`;
 they are deliberately NOT added to the public protocol registry. The five
 public V1 shapes (`ScopeGrantV1`, `ContextCandidateSetV1`, `ContextPacketV1`,
@@ -19,7 +19,6 @@ public V1 shapes (`ScopeGrantV1`, `ContextCandidateSetV1`, `ContextPacketV1`,
 | File | Contract | Source of truth |
 |---|---|---|
 | `transcript-event-v1.schema.json` | TranscriptEventV1 | `engine/crates/membrane-transcript/src/event.rs` |
-| `user-act-evidence-v1.schema.json` | UserActEvidenceV1 | `engine/crates/membrane-transcript/src/evidence.rs` |
 | `failure-episode-v1.schema.json` | FailureEpisodeV1 | `engine/crates/membrane-adapt/src/insights/mod.rs` |
 | `insight-issue-v1.schema.json` | InsightIssueV1 | `engine/crates/membrane-adapt/src/insights/mod.rs` |
 | `preference-record-v1.schema.json` | PreferenceRecordV1 | `engine/crates/membrane-adapt/src/record.rs` |

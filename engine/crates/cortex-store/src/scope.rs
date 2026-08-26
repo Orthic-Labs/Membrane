@@ -121,7 +121,6 @@ impl ScopeDescriptorV1 {
 struct MembraneWorkspaceConfig {
     schema_version: u32,
     workspace_root: PathBuf,
-    python_executable: PathBuf,
 }
 
 fn validated_workspace_root(value: &str) -> Option<PathBuf> {
@@ -140,10 +139,7 @@ pub(crate) fn workspace_root_from(
     }
     let payload = std::fs::read(config_path?).ok()?;
     let config: MembraneWorkspaceConfig = serde_json::from_slice(&payload).ok()?;
-    if config.schema_version != 2
-        || !config.python_executable.is_absolute()
-        || !config.python_executable.is_file()
-    {
+    if config.schema_version != 3 {
         return None;
     }
     validated_workspace_root(config.workspace_root.to_str()?)
@@ -329,17 +325,14 @@ mod tests {
     }
 
     #[test]
-    fn workspace_root_reads_only_strict_v2_config() {
+    fn workspace_root_reads_only_strict_v3_config() {
         let root = temp_installation();
-        let python = root.join("python-custom");
-        std::fs::write(&python, b"").unwrap();
         let config_path = root.join("workspace.json");
         std::fs::write(
             &config_path,
             serde_json::json!({
-                "schemaVersion": 2,
+                "schemaVersion": 3,
                 "workspaceRoot": root,
-                "pythonExecutable": python,
             })
             .to_string(),
         )
@@ -352,9 +345,8 @@ mod tests {
         std::fs::write(
             &config_path,
             serde_json::json!({
-                "schemaVersion": 2,
+                "schemaVersion": 3,
                 "workspaceRoot": root,
-                "pythonExecutable": python,
                 "hostname": "must-not-be-accepted",
             })
             .to_string(),

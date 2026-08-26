@@ -40,9 +40,14 @@ impl std::fmt::Display for ScopeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ScopeError::UnknownDimension { key } => write!(f, "unknown scope dimension: {key}"),
-            ScopeError::EmptyDimensionValue { key } => write!(f, "empty value for scope dimension: {key}"),
+            ScopeError::EmptyDimensionValue { key } => {
+                write!(f, "empty value for scope dimension: {key}")
+            }
             ScopeError::DimensionTooLong { key, len } => {
-                write!(f, "scope dimension {key} exceeds {MAX_DIMENSION_CHARS} chars ({len})")
+                write!(
+                    f,
+                    "scope dimension {key} exceeds {MAX_DIMENSION_CHARS} chars ({len})"
+                )
             }
             ScopeError::EmptyKey => write!(f, "empty scope dimension key"),
         }
@@ -152,7 +157,9 @@ mod tests {
         let err = ScopeDimensions::normalize(&dims(&[("colour", "red")])).unwrap_err();
         assert_eq!(
             err,
-            ScopeError::UnknownDimension { key: "colour".into() }
+            ScopeError::UnknownDimension {
+                key: "colour".into()
+            }
         );
     }
 
@@ -171,8 +178,7 @@ mod tests {
 
     #[test]
     fn narrowed_record_requires_context_dimension_fail_closed() {
-        let record =
-            ScopeDimensions::normalize(&dims(&[("language", "rust")])).unwrap();
+        let record = ScopeDimensions::normalize(&dims(&[("language", "rust")])).unwrap();
         // Context that cannot speak to language does NOT match.
         let empty_ctx = ScopeDimensions::default();
         assert!(!record.matches(&empty_ctx));
@@ -185,7 +191,8 @@ mod tests {
     #[test]
     fn path_prefix_matches_normalized_prefixes() {
         let record = ScopeDimensions::normalize(&dims(&[("path_prefix", "Engine\\Src")])).unwrap();
-        let ctx = ScopeDimensions::normalize(&dims(&[("path_prefix", "engine/src/adapters")])).unwrap();
+        let ctx =
+            ScopeDimensions::normalize(&dims(&[("path_prefix", "engine/src/adapters")])).unwrap();
         assert!(record.matches(&ctx));
         let outside = ScopeDimensions::normalize(&dims(&[("path_prefix", "docs")])).unwrap();
         assert!(!record.matches(&outside));

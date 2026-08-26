@@ -22,7 +22,7 @@ importers:
         specifier: 0.2.67
         version: 0.2.67
       '@tauri-apps/cli':
-        specifier: ^2.0.0
+        specifier: 2.11.4
         version: 2.11.4
 
 packages:

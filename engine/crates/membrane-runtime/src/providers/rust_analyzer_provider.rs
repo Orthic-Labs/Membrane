@@ -27,8 +27,8 @@
 //! build scripts, no compilers, and touches no network.
 
 use crate::live_diagnostics::{
-    AbsoluteDeadline, CapabilityKind, ConvergenceProof, DiagnosticsProvider,
-    ProviderCapabilities, ProviderError, ProviderOutput, RequestId, SideEffectClass,
+    AbsoluteDeadline, CapabilityKind, ConvergenceProof, DiagnosticsProvider, ProviderCapabilities,
+    ProviderError, ProviderOutput, RequestId, SideEffectClass,
 };
 use crate::providers::child_process::{
     default_search_path, drain_frames_until, lsp_frame_bytes, probe_search_path,
@@ -36,7 +36,7 @@ use crate::providers::child_process::{
     spawn_stderr_drainer, FrameOutcome, LspDecoder, SanitizedProcess,
 };
 use membrane_protocol::diagnostics::{
-    CapabilityVocabulary, ConvergenceClass, CoverageLaneV1, CostClass, LaneState, ObservationV1,
+    CapabilityVocabulary, ConvergenceClass, CostClass, CoverageLaneV1, LaneState, ObservationV1,
     SeverityHint, SourceClass, SourceRange, TypedOmission, WorkspaceEpochV1,
 };
 use serde_json::{json, Value};
@@ -131,10 +131,7 @@ fn start_session(
 ) -> Result<LspSession, ProviderError> {
     let env = sanitized_child_env(search_path);
     let mut process = spawn_sanitized(binary, &[], project_root, &env).map_err(|error| {
-        ProviderError::Unavailable(format!(
-            "failed to spawn {}: {error}",
-            binary.display()
-        ))
+        ProviderError::Unavailable(format!("failed to spawn {}: {error}", binary.display()))
     })?;
     let stdin = process.child.stdin.take();
     let stdout = process
@@ -217,7 +214,10 @@ enum InboundMessage {
     /// A response to one of our requests (result or error either acks).
     Response(i64),
     /// A server-initiated notification.
-    Notification { method: String, params: Value },
+    Notification {
+        method: String,
+        params: Value,
+    },
     Ignored,
 }
 
@@ -317,7 +317,10 @@ fn observation_from_lsp_diagnostic(
         code: lsp_code_string(diagnostic),
         path: relative_path.to_string(),
         range: lsp_range_to_source_range(diagnostic),
-        message: diagnostic["message"].as_str().unwrap_or_default().to_string(),
+        message: diagnostic["message"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         semantic_anchor: None,
         source_class: SourceClass::NativeLanguageService,
         cost_class: CostClass::Interactive,
@@ -508,7 +511,10 @@ impl RustAnalyzerProvider {
         })
     }
 
-    fn await_initialize_response(session: &LspSession, request_id: i64) -> Result<(), ProviderError> {
+    fn await_initialize_response(
+        session: &LspSession,
+        request_id: i64,
+    ) -> Result<(), ProviderError> {
         let started = Instant::now();
         loop {
             let elapsed_ms = started.elapsed().as_millis() as u64;
@@ -563,8 +569,7 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
                     .into(),
             ));
         };
-        let mut session =
-            start_session(&binary, &self.project_root, &self.search_path)?;
+        let mut session = start_session(&binary, &self.project_root, &self.search_path)?;
         let request_id = self.next_id;
         self.next_id += 1;
         let envelope = json!({
@@ -657,7 +662,10 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         let pre_hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         if self.sync_targets.is_empty() {
             let has_mismatch = !pre_hash_mismatches.is_empty()
-                || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+                || self
+                    .sync_omissions
+                    .iter()
+                    .any(|o| o.code == "hash_mismatch");
             let exact = !has_mismatch;
             self.convergence = Some(ConvergenceRecord {
                 epoch: epoch.epoch,
@@ -681,8 +689,11 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         self.next_id += 1;
         let ack_uri = self.sync_targets[0].uri.clone();
         let expected_version = i64::try_from(epoch.epoch).unwrap_or(i64::MAX);
-        let target_uris: Vec<String> =
-            self.sync_targets.iter().map(|target| target.uri.clone()).collect();
+        let target_uris: Vec<String> = self
+            .sync_targets
+            .iter()
+            .map(|target| target.uri.clone())
+            .collect();
 
         let session = self.session.as_mut().expect("session checked above");
         let overflow_before = session.overflow_dropped.load(Ordering::Relaxed);
@@ -736,8 +747,7 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
                         if !self.uri_relative.contains_key(&uri) {
                             continue;
                         }
-                        let relative =
-                            self.uri_relative.get(&uri).cloned().unwrap_or_default();
+                        let relative = self.uri_relative.get(&uri).cloned().unwrap_or_default();
                         let mut observations = Vec::new();
                         if let Some(diagnostics) = params["diagnostics"].as_array() {
                             for (index, diagnostic) in diagnostics.iter().enumerate() {
@@ -775,8 +785,13 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         let overflow_delta = overflow_after.saturating_sub(overflow_before);
         let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         let has_hash_mismatch = !hash_mismatches.is_empty()
-            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
-        let all_versioned = published.values().all(|record| record.version == Some(expected_version));
+            || self
+                .sync_omissions
+                .iter()
+                .any(|o| o.code == "hash_mismatch");
+        let all_versioned = published
+            .values()
+            .all(|record| record.version == Some(expected_version));
         let exact = !has_hash_mismatch && all_versioned;
         self.convergence = Some(ConvergenceRecord {
             epoch: epoch.epoch,
@@ -828,7 +843,10 @@ impl DiagnosticsProvider for RustAnalyzerProvider {
         // still match declared changed_file_hashes.
         let hash_mismatches = current_hash_mismatches(&self.project_root, epoch);
         let has_hash_mismatch = !hash_mismatches.is_empty()
-            || self.sync_omissions.iter().any(|o| o.code == "hash_mismatch");
+            || self
+                .sync_omissions
+                .iter()
+                .any(|o| o.code == "hash_mismatch");
         if has_hash_mismatch {
             return ConvergenceProof {
                 converged: false,
@@ -943,7 +961,11 @@ impl RustAnalyzerProvider {
             observations,
             lane: CoverageLaneV1 {
                 provider_id: PROVIDER_ID.to_string(),
-                scope: self.sync_targets.iter().map(|t| t.relative.clone()).collect(),
+                scope: self
+                    .sync_targets
+                    .iter()
+                    .map(|t| t.relative.clone())
+                    .collect(),
                 capabilities_covered: vec![
                     CapabilityVocabulary::Syntax,
                     CapabilityVocabulary::RepositoryModuleResolution,
@@ -1021,10 +1043,22 @@ mod tests {
 
     #[test]
     fn severity_one_blocks_everything_else_stays_advisory() {
-        assert_eq!(lsp_severity_hint(&json!({ "severity": 1 })), SeverityHint::Blocking);
-        assert_eq!(lsp_severity_hint(&json!({ "severity": 2 })), SeverityHint::Advisory);
-        assert_eq!(lsp_severity_hint(&json!({ "severity": 3 })), SeverityHint::Advisory);
-        assert_eq!(lsp_severity_hint(&json!({ "severity": 4 })), SeverityHint::Advisory);
+        assert_eq!(
+            lsp_severity_hint(&json!({ "severity": 1 })),
+            SeverityHint::Blocking
+        );
+        assert_eq!(
+            lsp_severity_hint(&json!({ "severity": 2 })),
+            SeverityHint::Advisory
+        );
+        assert_eq!(
+            lsp_severity_hint(&json!({ "severity": 3 })),
+            SeverityHint::Advisory
+        );
+        assert_eq!(
+            lsp_severity_hint(&json!({ "severity": 4 })),
+            SeverityHint::Advisory
+        );
         assert_eq!(lsp_severity_hint(&json!({})), SeverityHint::Advisory);
     }
 
@@ -1089,7 +1123,10 @@ mod tests {
         assert_eq!(parse_lsp_message(&response), InboundMessage::Response(7));
         let error_response =
             json!({"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"nope"}}).to_string();
-        assert_eq!(parse_lsp_message(&error_response), InboundMessage::Response(9));
+        assert_eq!(
+            parse_lsp_message(&error_response),
+            InboundMessage::Response(9)
+        );
         let notification = json!({
             "jsonrpc":"2.0",
             "method":"textDocument/publishDiagnostics",
@@ -1103,10 +1140,7 @@ mod tests {
             }
             other => panic!("expected notification, got {other:?}"),
         }
-        assert_eq!(
-            parse_lsp_message("garbage bytes"),
-            InboundMessage::Ignored
-        );
+        assert_eq!(parse_lsp_message("garbage bytes"), InboundMessage::Ignored);
     }
 
     #[test]
@@ -1124,7 +1158,10 @@ mod tests {
         assert!(capabilities
             .capabilities
             .contains(&CapabilityKind::NativeLanguageService));
-        assert_eq!(capabilities.side_effect_class, SideEffectClass::PureAnalysis);
+        assert_eq!(
+            capabilities.side_effect_class,
+            SideEffectClass::PureAnalysis
+        );
         assert_eq!(capabilities.cost_class, CostClass::Interactive);
         assert_eq!(capabilities.convergence_class, ConvergenceClass::PullExact);
     }

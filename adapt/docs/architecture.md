@@ -12,13 +12,13 @@ durable admission, lifecycle, retrieval, and delivery storage.
 ## Production flow
 
 1. Native host adapters produce canonical transcript events with source spans and
-   provenance. Structured host user acts are eligible only after Ed25519 verification
-   against a configured installation/host/session trust boundary and replay store.
+   provenance. An explicitly user-selected transcript is eligible when its exact source
+   hash/rebinding is verified; no ambient host or login signal grants transcript authority.
 2. Taste extraction emits candidates. Deterministic authority and safety checks can
    reject or quarantine them; optional model output remains proposal-only.
-3. Independent adjudication requires an Ed25519 receipt bound to the installation,
-   pending manifest, canonical pool, complete decisions, and validation time, then binds
-   every accepted record to one immutable semantic payload and digest. Duplicate groups
+3. Required review and independent adjudication bind the pending manifest, canonical pool,
+   complete decisions, and validation time, then bind every accepted record to one immutable
+   semantic payload and digest. Duplicate groups
    are deterministic and default to abstention, preserving every member unless a valid
    reviewed merge receipt is supplied.
 4. Apply revalidates the full manifest and each semantic seal immediately before one
@@ -45,12 +45,11 @@ durable admission, lifecycle, retrieval, and delivery storage.
 
 - The committed Insights corpus and scorer are detector-conformance evidence, not
   proof of automated mitigation effectiveness.
-- The committed Taste corpus is synthetic conformance evidence. N4 remains open until
-  an independently sourced real-world held-out corpus, interval report, and exact
-  installed-artifact qualification exist.
-- CodeRight user-act issuer/trust provisioning, semantic-adjudicator trust provisioning,
-  and installed reviewed-merge receipt delivery are external integration gaps; their
-  absence fails closed.
+- The committed Taste corpus is synthetic conformance evidence. Exact installed-artifact
+  qualification remains separate from selected-transcript processing, which binds exact
+  source hashes and requires review.
+- Installed reviewed-merge receipt delivery remains separate qualification work; assistant,
+  tool, model, and repository text remain non-authoritative.
 - Legacy Python under `adapt/src/adapt/` is migration/differential material. The final
   product-wide native-only claim remains blocked until packaging proves it is absent
   from installed artifacts and the remaining native migration lanes close.

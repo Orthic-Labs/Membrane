@@ -3,9 +3,9 @@
   "mcpServers": {
     "membrane": {
       "type": "stdio",
-      "command": "node",
+      "command": "membrane",
       "args": [
-        "${PLUGIN_ROOT}/mcp/server.mjs"
+        "stdio-mcp"
       ]
     }
   }

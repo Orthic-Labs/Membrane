@@ -164,7 +164,12 @@ impl std::error::Error for HandshakeError {}
 /// installation-root discovery, including when that root has not been created.
 pub fn canonical_data_root(path: &Path) -> String {
     let mut normalized = PathBuf::new();
-    let absolute = path.is_absolute();
+    let absolute = path.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir
+        )
+    });
     let mut normal_depth = 0usize;
 
     for component in path.components() {
@@ -475,10 +480,20 @@ mod tests {
     fn canonical_data_root_collapses_segments_without_escaping_root() {
         assert_eq!(
             canonical_data_root(Path::new("/workspace/alpha/./beta/../gamma")),
-            "/workspace/alpha/gamma"
+            PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+                .join("workspace/alpha/gamma")
+                .to_string_lossy()
         );
-        assert_eq!(canonical_data_root(Path::new("/../escape")), "/escape");
-        assert_eq!(canonical_data_root(Path::new("a/../../b")), "../b");
+        assert_eq!(
+            canonical_data_root(Path::new("/../escape")),
+            PathBuf::from(std::path::MAIN_SEPARATOR.to_string())
+                .join("escape")
+                .to_string_lossy()
+        );
+        assert_eq!(
+            canonical_data_root(Path::new("a/../../b")),
+            PathBuf::from("..").join("b").to_string_lossy()
+        );
     }
 
     #[test]

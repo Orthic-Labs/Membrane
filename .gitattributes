@@ -1,2 +1,8 @@
 docs/evidence/**/*.json -text
 engine/crates/membrane/src/generated_cli_subcommands.rs text eol=lf
+engine/crates/cortex/tests/fixtures/p2-frozen-corpus-v1.json text eol=lf
+engine/crates/cortex/tests/fixtures/p2-frozen-corpus-v1.manifest.json text eol=lf
+engine/crates/membrane-runtime/tests/fixtures/doc-spine-shadow-replay-v1/** text eol=lf
+apps/membrane-hub/tests/fixtures/hub-snapshot-*.json text eol=lf
+adapt/eval/taste_bench/v1/*.jsonl text eol=lf
+adapt/eval/insights_detector_bench/*.jsonl text eol=lf

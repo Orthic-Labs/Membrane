@@ -46,7 +46,10 @@ export function isExecutableCandidate(rel, policy, root) {
 }
 
 export function discoverExecutables(trackedFiles, policy, root) {
-  return trackedFiles.filter((f) => isExecutableCandidate(f, policy, root)).sort();
+  return trackedFiles
+    .filter((f) => !root || existsSync(join(root, f)))
+    .filter((f) => isExecutableCandidate(f, policy, root))
+    .sort();
 }
 
 export function firstMatchingRule(policy, relPath) {
@@ -111,13 +114,15 @@ export function buildManifest({ root, policy, trackedFiles, now = new Date(), po
   const byRuntime = {};
   const byDisposition = {};
   let productionInterpreterRows = 0;
+  let boundedExternalInterpreterRows = 0;
   let fileCount = 0;
   for (const row of rows) {
     byRuntime[row.runtime] = (byRuntime[row.runtime] ?? 0) + 1;
     byDisposition[row.target_disposition] = (byDisposition[row.target_disposition] ?? 0) + 1;
     fileCount += row.files.length;
     if (row.production_reachable && policy.interpreterRuntimes.includes(row.runtime)) {
-      productionInterpreterRows += 1;
+      if (sealedExternalInterpreterRow(policy, row)) boundedExternalInterpreterRows += 1;
+      else productionInterpreterRows += 1;
     }
   }
   return {
@@ -132,9 +137,16 @@ export function buildManifest({ root, policy, trackedFiles, now = new Date(), po
       byRuntime,
       byDisposition,
       productionInterpreterRows,
+      boundedExternalInterpreterRows,
     },
     rows,
   };
+}
+
+function sealedExternalInterpreterRow(policy, row) {
+  return (policy.sealedExternalInterpreterRows ?? []).includes(row.id)
+    && row.target_disposition === "external-typed-service"
+    && row.packaged === true;
 }
 
 function safePolicyDigest(root) {
@@ -217,9 +229,9 @@ export function validateManifest({
     const interpreterProduction =
       row.production_reachable && (policy.interpreterRuntimes ?? []).includes(row.runtime);
     if (interpreterProduction) {
-      if (policy.enforcementMode === "sealed") {
+      if (policy.enforcementMode === "sealed" && !sealedExternalInterpreterRow(policy, row)) {
         add("SEALED_MODE_INTERPRETER_PRODUCTION", `sealed mode forbids ${row.runtime} production row`, row.id);
-      } else {
+      } else if (policy.enforcementMode !== "sealed") {
         if (!row.exception) {
           add("DISALLOWED_PRODUCTION_LANGUAGE", `${row.runtime} production row without bounded exception`, row.id);
         } else {
@@ -239,6 +251,13 @@ export function validateManifest({
           }
         }
       }
+    }
+  }
+
+  for (const id of policy.sealedExternalInterpreterRows ?? []) {
+    const row = (manifest.rows ?? []).find(candidate => candidate.id === id);
+    if (!row || !sealedExternalInterpreterRow(policy, row) || !(policy.interpreterRuntimes ?? []).includes(row.runtime) || !row.production_reachable) {
+      add("INVALID_SEALED_EXTERNAL_INTERPRETER", `sealed external interpreter row is missing or invalid`, id);
     }
   }
 
@@ -274,7 +293,7 @@ export function evaluateSealReadiness({ policy, manifest, existsFile }) {
   for (const row of manifest.rows ?? []) {
     const interpreterProduction =
       row.production_reachable && (policy.interpreterRuntimes ?? []).includes(row.runtime);
-    if (interpreterProduction) {
+    if (interpreterProduction && !sealedExternalInterpreterRow(policy, row)) {
       blockers.push(`production ${row.runtime} row remains: ${row.id}`);
     }
     if (

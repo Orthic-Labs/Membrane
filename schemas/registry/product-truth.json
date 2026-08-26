@@ -50,9 +50,10 @@
     }
   ],
   "cortexScope": "durable-memory-only",
-  "currentTarget": "macOS",
+  "currentTarget": "Windows",
   "generatedFrom": [
-    "mcp/server.mjs",
+    "engine/crates/membrane-mcp/src/tools.rs",
+    "migration/native-rust/fixtures/mcp-conformance.v1.json",
     "docs/membrane/capability-matrix.v1.json"
   ],
   "residentServiceAuthority": "hub",

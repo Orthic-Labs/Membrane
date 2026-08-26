@@ -1,26 +1,26 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-25T21:09:46.506Z",
- "enforcementMode": "migration",
- "policyDigest": "fdbe7ff961c271671f829450e6df8509c2798f86b6b9352438778bbb27df4421",
+ "generatedAt": "2026-08-26T12:36:00.956Z",
+ "enforcementMode": "sealed",
+ "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
  "totals": {
-  "files": 1161,
-  "rows": 58,
+  "files": 1144,
+  "rows": 54,
   "byRuntime": {
-   "python": 12,
-   "external": 9,
-   "node": 17,
+   "python": 7,
+   "shell": 1,
+   "node": 26,
    "rust": 20
   },
   "byDisposition": {
-   "migration-oracle": 6,
-   "dev-only": 18,
-   "external-typed-service": 9,
-   "native-port": 23,
-   "delete": 2
+   "migration-oracle": 5,
+   "dev-only": 32,
+   "external-typed-service": 4,
+   "native-port": 13
   },
-  "productionInterpreterRows": 9
+  "productionInterpreterRows": 0,
+  "boundedExternalInterpreterRows": 4
  },
  "rows": [
   {
@@ -41,7 +41,7 @@
    "files": [
     "adapt/adapt.py"
    ],
-   "content_digest": "dd30e1943081ce24dd1977dc3e5af5efd74176159758b0125c54b0de638250fd"
+   "content_digest": "89c15c9203f3192b4990d25ac17be3d837728927d32166235f934d8c8965d50b"
   },
   {
    "id": "adapt-eval-adapt-eval",
@@ -89,7 +89,7 @@
     "adapt/eval/smoke_production_delivery.py",
     "adapt/eval/validate_insights_bench.py"
    ],
-   "content_digest": "308d4fb98e2c973bbba77651289db5b23318f9cbfb3ed682e2bd0611d8122fee"
+   "content_digest": "fe133854603a2e578f214686afed2f4d8766d06c3874e688d383bd56690559ab"
   },
   {
    "id": "adapt-runtime-adapt-runtime",
@@ -144,7 +144,7 @@
     "adapt/src/adapt/transcript_sources.py",
     "adapt/src/adapt/workspace_runtime.py"
    ],
-   "content_digest": "73fc308f5d0ec306719244615061f9e77267dfc5466e0c766c801c2b234fb934"
+   "content_digest": "7caeadc554465fe74e3b2e5ef1ea60cd62de9d3bae187134e4ed36a67620f5af"
   },
   {
    "id": "adapt-tests-adapt-tests",
@@ -207,145 +207,44 @@
     "adapt/tests/test_transcript_snapshots.py",
     "adapt/tests/test_transcript_sources.py"
    ],
-   "content_digest": "0546076e165c7ec0fbca3f7dfae4436bf98387af4fd069798872bc6d9ad73f5d"
+   "content_digest": "4e478448dd080f77c74081c8b52fa135f9a6c8501d2215c569c1047baf191609"
   },
   {
-   "id": "blueprint-nested-blueprint/action",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
+   "id": "blueprint-bundled-launchers-blueprint/release",
+   "rule": "blueprint-bundled-launchers",
+   "runtime": "shell",
+   "kind": "bundled-external-component-launcher",
    "product_surface": "Blueprint",
    "production_reachable": true,
-   "packaged": false,
+   "packaged": true,
    "target_disposition": "external-typed-service",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
+   "deletion_or_exclusion_proof": "signed installer ships exact bounded Windows launch shims that invoke only its inventory-bound Blueprint Node runtime",
+   "seal_blocker_note": null,
+   "notes": "These two declarative cmd shims are bounded launch surfaces, not resident Membrane processes.",
    "files": [
-    "blueprint/action/index.mjs"
+    "blueprint/release/launchers/blueprint-mcp.cmd",
+    "blueprint/release/launchers/blueprint.cmd"
    ],
-   "content_digest": "d1ab95722cc9583990be9dbdd4a21c22333fdf4bdfec484e4c2a2d51d30204db"
+   "content_digest": "6b91c52e87e2dc05dfd6e742648e1a174023932887997a04de49aec7305513b0"
   },
   {
-   "id": "blueprint-nested-blueprint/evals",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
+   "id": "blueprint-bundled-runtime-blueprint/scripts",
+   "rule": "blueprint-bundled-runtime",
+   "runtime": "node",
+   "kind": "bundled-external-component",
    "product_surface": "Blueprint",
    "production_reachable": true,
-   "packaged": false,
+   "packaged": true,
    "target_disposition": "external-typed-service",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
-   "files": [
-    "blueprint/evals/ax/report.mjs",
-    "blueprint/evals/ax/run-behavioral.mjs",
-    "blueprint/evals/ax/run-conformance.mjs",
-    "blueprint/evals/context-baselines.mjs",
-    "blueprint/evals/fixture-repos/mixed-doc/src/refresh.ts",
-    "blueprint/evals/fixture-repos/python-context/app.py",
-    "blueprint/evals/fixture-repos/python-context/index.py",
-    "blueprint/evals/fixture-repos/python-context/test_index.py",
-    "blueprint/evals/fixture-repos/rust-audio/src/decoder.rs",
-    "blueprint/evals/fixture-repos/rust-audio/src/lib.rs",
-    "blueprint/evals/fixture-repos/typescript-commerce/src/config.ts",
-    "blueprint/evals/fixture-repos/typescript-commerce/src/routes.ts",
-    "blueprint/evals/fixture-repos/typescript-commerce/src/service.ts",
-    "blueprint/evals/fixture-repos/typescript-commerce/src/store.ts",
-    "blueprint/evals/fixture-repos/typescript-commerce/test/service.test.ts",
-    "blueprint/evals/freeze-task-evidence.mjs",
-    "blueprint/evals/generate-scip-answer-keys.mjs",
-    "blueprint/evals/run-qualification.mjs"
-   ],
-   "content_digest": "7dbbbfa7860343758f31e283c2e1516c73d89c3755b7194877e1979587c747e2"
-  },
-  {
-   "id": "blueprint-nested-blueprint/examples",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
-   "product_surface": "Blueprint",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "external-typed-service",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
-   "files": [
-    "blueprint/examples/providers/example-language-plugin.mjs"
-   ],
-   "content_digest": "6e7b8f573171038d29cb8843c0cdc2243f65c06eb6c1ca8874f5798dd81b7aad"
-  },
-  {
-   "id": "blueprint-nested-blueprint/fixtures",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
-   "product_surface": "Blueprint",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "external-typed-service",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
-   "files": [
-    "blueprint/fixtures/security/build-hostile-repo.mjs",
-    "blueprint/fixtures/soak/fixture.mjs",
-    "blueprint/fixtures/stores/build-stores.mjs"
-   ],
-   "content_digest": "558e37f5ae52f5bc619b3ad0a7536f6a7562c336c1c63e0c1b5049aceabcdc0f"
-  },
-  {
-   "id": "blueprint-nested-blueprint/release",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
-   "product_surface": "Blueprint",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "external-typed-service",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
-   "files": [
-    "blueprint/release/launchers/blueprint",
-    "blueprint/release/launchers/blueprint-mcp",
-    "blueprint/release/macos/postinstall",
-    "blueprint/release/macos/uninstall.sh"
-   ],
-   "content_digest": "a3714c499165a1c38e8b1cfe5bd0c787b6b363d8eafe7cdfd12ca4360a00fb1b"
-  },
-  {
-   "id": "blueprint-nested-blueprint/scripts",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
-   "product_surface": "Blueprint",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "external-typed-service",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
+   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "seal_blocker_note": null,
+   "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
    "files": [
     "blueprint/scripts/benchmark-canonical-core.mjs",
     "blueprint/scripts/benchmark-contract.mjs",
@@ -356,6 +255,7 @@
     "blueprint/scripts/blueprint-install.mjs",
     "blueprint/scripts/blueprint-mcp.mjs",
     "blueprint/scripts/blueprint-watch.mjs",
+    "blueprint/scripts/blueprint.cmd",
     "blueprint/scripts/blueprint.mjs",
     "blueprint/scripts/ci/check-generated.mjs",
     "blueprint/scripts/ci/check-network-boundary.mjs",
@@ -386,23 +286,23 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "5b6b3c1ef32e5ce8f8d0fb36c62592d19b02fc2e5eebca92e70c6d0280ea069b"
+   "content_digest": "e6332aa40ea893a2db92731473208ac388e5371b41d1ee6da09e5ce1c0aa003a"
   },
   {
-   "id": "blueprint-nested-blueprint/src",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
+   "id": "blueprint-bundled-runtime-blueprint/src",
+   "rule": "blueprint-bundled-runtime",
+   "runtime": "node",
+   "kind": "bundled-external-component",
    "product_surface": "Blueprint",
    "production_reachable": true,
-   "packaged": false,
+   "packaged": true,
    "target_disposition": "external-typed-service",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
+   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "seal_blocker_note": null,
+   "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
    "files": [
     "blueprint/src/graph/analytics/index.mjs",
     "blueprint/src/graph/architecture-model.mjs",
@@ -564,23 +464,168 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "2ff92d5c45fbe94f77edf0826ec62a793265124656325f5e0c9c7f6cd808e6cb"
+   "content_digest": "6195a5dc052ded9048528f5fcd4f63169fb12ed526e81e2369c7e3cd15068952"
   },
   {
-   "id": "blueprint-nested-blueprint/tests",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
+   "id": "blueprint-bundled-runtime-blueprint/watchman",
+   "rule": "blueprint-bundled-runtime",
+   "runtime": "node",
+   "kind": "bundled-external-component",
    "product_surface": "Blueprint",
    "production_reachable": true,
-   "packaged": false,
+   "packaged": true,
    "target_disposition": "external-typed-service",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
+   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "seal_blocker_note": null,
+   "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
+   "files": [
+    "blueprint/watchman/adapter.mjs",
+    "blueprint/watchman/reconcile.mjs",
+    "blueprint/watchman/repo-actor.mjs",
+    "blueprint/watchman/supervisor.mjs"
+   ],
+   "content_digest": "8798a35c7adc03c902f026a73fad77dd1fe3e91ec784879f033bde6e45af338c"
+  },
+  {
+   "id": "blueprint-development-blueprint/action",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
+   "files": [
+    "blueprint/action/index.mjs"
+   ],
+   "content_digest": "88c19a25105c4005e8781707a6c9749c09135f385090a05699f3b764ee6683bc"
+  },
+  {
+   "id": "blueprint-development-blueprint/evals",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
+   "files": [
+    "blueprint/evals/ax/report.mjs",
+    "blueprint/evals/ax/run-behavioral.mjs",
+    "blueprint/evals/ax/run-conformance.mjs",
+    "blueprint/evals/context-baselines.mjs",
+    "blueprint/evals/fixture-repos/mixed-doc/src/refresh.ts",
+    "blueprint/evals/fixture-repos/python-context/app.py",
+    "blueprint/evals/fixture-repos/python-context/index.py",
+    "blueprint/evals/fixture-repos/python-context/test_index.py",
+    "blueprint/evals/fixture-repos/rust-audio/src/decoder.rs",
+    "blueprint/evals/fixture-repos/rust-audio/src/lib.rs",
+    "blueprint/evals/fixture-repos/typescript-commerce/src/config.ts",
+    "blueprint/evals/fixture-repos/typescript-commerce/src/routes.ts",
+    "blueprint/evals/fixture-repos/typescript-commerce/src/service.ts",
+    "blueprint/evals/fixture-repos/typescript-commerce/src/store.ts",
+    "blueprint/evals/fixture-repos/typescript-commerce/test/service.test.ts",
+    "blueprint/evals/freeze-task-evidence.mjs",
+    "blueprint/evals/generate-scip-answer-keys.mjs",
+    "blueprint/evals/run-qualification.mjs"
+   ],
+   "content_digest": "53be602fb40fd029b056d69e35f6f5fd1705e473ea03ba9e407eabec964546ce"
+  },
+  {
+   "id": "blueprint-development-blueprint/examples",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
+   "files": [
+    "blueprint/examples/providers/example-language-plugin.mjs"
+   ],
+   "content_digest": "75aa38d8b11d33ec7c883e1fa4782a48a6a78e3b8ba195269107534bf71b1fc4"
+  },
+  {
+   "id": "blueprint-development-blueprint/fixtures",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
+   "files": [
+    "blueprint/fixtures/security/build-hostile-repo.mjs",
+    "blueprint/fixtures/soak/fixture.mjs",
+    "blueprint/fixtures/stores/build-stores.mjs"
+   ],
+   "content_digest": "fc5ce6dd12d203854226f34361e3bcc4b0b7675e9ccce5f98a2c13cab66b6ae4"
+  },
+  {
+   "id": "blueprint-development-blueprint/release",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
+   "files": [
+    "blueprint/release/launchers/blueprint",
+    "blueprint/release/launchers/blueprint-mcp",
+    "blueprint/release/macos/postinstall",
+    "blueprint/release/macos/uninstall.sh"
+   ],
+   "content_digest": "f5f743634b52c73f1a7abf06afa87293f8c37adf4db5f00b6d78b2def9bfcf0b"
+  },
+  {
+   "id": "blueprint-development-blueprint/tests",
+   "rule": "blueprint-development",
+   "runtime": "node",
+   "kind": "external-component-development",
+   "product_surface": "Blueprint/dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Blueprint tests, evals, fixtures, examples, release tooling, and action scripts are excluded from installed runtime",
+   "seal_blocker_note": null,
+   "notes": "Development-only Blueprint executables remain repository fixtures/tooling.",
    "files": [
     "blueprint/tests/_store-helpers.mjs",
     "blueprint/tests/_workspace-root.mjs",
@@ -742,30 +787,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "c1f18e50ef929ec9754fa3eaef8246126403b1c7c78c9f8cef62ad8b654b120f"
-  },
-  {
-   "id": "blueprint-nested-blueprint/watchman",
-   "rule": "blueprint-nested",
-   "runtime": "external",
-   "kind": "external-product-checkout",
-   "product_surface": "Blueprint",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "external-typed-service",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": "Nested external product checkout tracked inside the Membrane repository; final packaging requires a separately versioned external service reached only through a typed native client (spec section 8.3).",
-   "notes": "Invoked from engine/federation/providers/anchors.py via subprocess to blueprint/scripts/blueprint.mjs.",
-   "files": [
-    "blueprint/watchman/adapter.mjs",
-    "blueprint/watchman/reconcile.mjs",
-    "blueprint/watchman/repo-actor.mjs",
-    "blueprint/watchman/supervisor.mjs"
-   ],
-   "content_digest": "c2a6a2610491472c8c17c084b209fdd4f31747720aaa09c45dd60b24fd9a005a"
+   "content_digest": "775f52b1e692601a2abde05618ca83d830f4adb45b3d8012b6c7da9be00c2928"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -814,48 +836,25 @@
    "content_digest": "4f4508427a9073923fd2b7245aa13ea04b276874f5c92315942798e8efbb74f5"
   },
   {
-   "id": "dist-install-workspace-dist-install-workspace",
-   "rule": "dist-install-workspace",
-   "runtime": "python",
-   "kind": "generated-install-projection",
-   "product_surface": "install",
-   "production_reachable": false,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "Install-surface rework packet (pre-N10)",
-   "exception": "install-bootstrap-python",
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "Tracked projection files (__init__.py, version_gate.py) are not imported by the shipped shim entry; membrane_shims.py itself is an untracked generated payload outside tracked inventory. Reachability authority flags this surface unresolved; owner must reconcile before N10.",
-   "files": [
-    "dist/install/workspace/__init__.py",
-    "dist/install/workspace/version_gate.py"
-   ],
-   "content_digest": "814caf93f13e01055cbacc2e5ddae83b4ee28a13c2f9d6882b6aee6aaa6c7e51",
-   "expiry": "2026-12-31"
-  },
-  {
    "id": "dist-npm-dist-npm",
    "rule": "dist-npm",
    "runtime": "node",
-   "kind": "npm-launcher",
+   "kind": "npm-distribution-reference",
    "product_surface": "install/MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "Windows signed-installer release excludes npm distribution; no root package bin or production graph seed reaches it",
    "seal_blocker_note": null,
-   "notes": "Generated npm bootstrap projection; must exec the platform native binary, never interpreter-owned Membrane logic.",
+   "notes": "Retained for separate external npm distribution work only.",
    "files": [
     "dist/npm/bin/membrane.mjs",
     "dist/npm/index.mjs"
    ],
-   "content_digest": "1adc6c7ea073ce099c9050291fe36db3a8aa2e53571592c24244712100ae59f3",
-   "expiry": "2026-12-31"
+   "content_digest": "362409b1e9f110b1c20730449f310dee38577db56c1b966c73e63cb2b2034734"
   },
   {
    "id": "dist-python-client-sdk-dist-python-client-sdk",
@@ -865,18 +864,18 @@
    "product_surface": "external-clients",
    "production_reachable": false,
    "packaged": false,
-   "target_disposition": "delete",
-   "owner": "release-engineering decision required",
+   "target_disposition": "dev-only",
+   "owner": "external client SDK",
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": "pending decision: typed external client SDK vs deletion; must never enter installed Membrane runtime",
+   "deletion_or_exclusion_proof": "independently published typed client SDK is excluded from Windows Hub installer, runtime inventory, and native-only process tree",
    "seal_blocker_note": null,
-   "notes": "Not Membrane-owned installed runtime behavior, but ships from this repository and needs an explicit boundary decision before any seal.",
+   "notes": "External client library, never Membrane-owned installed runtime behavior.",
    "files": [
     "dist/packages/python/src/membrane_client/__init__.py",
     "dist/packages/python/src/membrane_client/client.py"
    ],
-   "content_digest": "14c88c1feb71ffcd828e09770d75ea35e61ee92edfb754279b94e97a0f7b217b"
+   "content_digest": "c243b0264544fb3e79d451b55332a85a7a8095ade552df63623226e59a864f9b"
   },
   {
    "id": "dist-rest-dist-rest",
@@ -898,7 +897,7 @@
     "dist/packaging/legal/verify.mjs",
     "dist/release/channels/compatibility-policy.mjs"
    ],
-   "content_digest": "87929ee3e67788a906e4b4bf7bfda41d5f5b08a44b8e8d8c39cf8668d14a4e99"
+   "content_digest": "051b291806fcfe936edbb9ef6cfe57c7953e699f74e49f25250d5b3c12612fcd"
   },
   {
    "id": "docs-examples-docs-examples",
@@ -922,7 +921,7 @@
     "docs/examples/providers/cortex_example/src/main.rs",
     "docs/examples/quickstart/run.mjs"
    ],
-   "content_digest": "e605f7f3439226ecab9afd06a2bd86f3b14783043bd6bdacc6824e76283dc7ce"
+   "content_digest": "bef38c40e8be07767993a0d4233028eb4a8ea5929c2129c084d24c3496b71a02"
   },
   {
    "id": "engine-cortex-bin-crate-engine/crates/cortex",
@@ -936,9 +935,9 @@
    "owner": "N0 reconciliation follow-up",
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "debug CLI crate is not a Hub dependency, externalBin, runtime resource, or Windows release artifact",
    "seal_blocker_note": null,
-   "notes": "Standalone debug binary crate; invocation-graph.json shows no [dependencies] consumer among production entrypoints. Owner must integrate or delete before N10.",
+   "notes": "Standalone source/debug CLI intentionally release-excluded; no production dependency or package entrypoint.",
    "files": [
     "engine/crates/cortex/src/lib.rs",
     "engine/crates/cortex/src/main.rs",
@@ -955,7 +954,7 @@
     "engine/crates/cortex/tests/public_api_signature.rs",
     "engine/crates/cortex/tests/skill_read_test.rs"
    ],
-   "content_digest": "72954017cef3216d6075cc09cb636c393d6da45b57633027fc15469a8924d91a"
+   "content_digest": "ce8a7cb4c1afbae770d8a09f967f23ea25f5831a9b9732de52c6248100dc4991"
   },
   {
    "id": "engine-crates-engine/crates/cortex-core",
@@ -963,7 +962,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -997,7 +996,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "6093570db322852713f5d9436badae7075141534c896afb10cf65e88f89b4372"
+   "content_digest": "1e6ff5b531c0744a8ca36359dc3bdd747cfa5bf95971b2fd789be38e0ee5b8f7"
   },
   {
    "id": "engine-crates-engine/crates/cortex-format",
@@ -1005,7 +1004,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1018,7 +1017,7 @@
     "engine/crates/cortex-format/src/lib.rs",
     "engine/crates/cortex-format/src/okf.rs"
    ],
-   "content_digest": "fe56f3c53e18a739d66e9ff600c468b12d43547716d9b25dd4670ba3172bec70"
+   "content_digest": "545d8c5c4120a5b52360d9c6342610539568f3492e532a42c3c5a68dc20e86ba"
   },
   {
    "id": "engine-crates-engine/crates/cortex-store",
@@ -1026,7 +1025,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1051,101 +1050,7 @@
     "engine/crates/cortex-store/src/time.rs",
     "engine/crates/cortex-store/src/transcript.rs"
    ],
-   "content_digest": "c1714eae523fe7f9ecb0dbdf9fc735d296778a03183857ba911583aedcc83350"
-  },
-  {
-   "id": "engine-crates-engine/crates/membrane",
-   "rule": "engine-crates",
-   "runtime": "rust",
-   "kind": "native-crate",
-   "product_surface": "all axes",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "Already-native authoritative implementations (one row per crate).",
-   "files": [
-    "engine/crates/membrane/build.rs",
-    "engine/crates/membrane/scripts/generate-cli-subcommands.mjs",
-    "engine/crates/membrane/scripts/generate-cli-subcommands.test.mjs",
-    "engine/crates/membrane/src/bin/cli-parity.rs",
-    "engine/crates/membrane/src/cli.rs",
-    "engine/crates/membrane/src/cli_parity.rs",
-    "engine/crates/membrane/src/dispatch.rs",
-    "engine/crates/membrane/src/generated_cli_subcommands.rs",
-    "engine/crates/membrane/src/install_tx.rs",
-    "engine/crates/membrane/src/lib.rs",
-    "engine/crates/membrane/src/main.rs",
-    "engine/crates/membrane/src/migration.rs",
-    "engine/crates/membrane/src/modes.rs",
-    "engine/crates/membrane/src/serve.rs",
-    "engine/crates/membrane/src/uninstall.rs",
-    "engine/crates/membrane/src/update.rs",
-    "engine/crates/membrane/tests/adapt_installed.rs",
-    "engine/crates/membrane/tests/dispatch.rs",
-    "engine/crates/membrane/tests/identifier_contracts.rs"
-   ],
-   "content_digest": "187136f9432f49b3cab583814700a9096d4ad08ef5c9cc0d91936fd74dbced66"
-  },
-  {
-   "id": "engine-crates-engine/crates/membrane-adapt",
-   "rule": "engine-crates",
-   "runtime": "rust",
-   "kind": "native-crate",
-   "product_surface": "all axes",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "Already-native authoritative implementations (one row per crate).",
-   "files": [
-    "engine/crates/membrane-adapt/src/adaptive.rs",
-    "engine/crates/membrane-adapt/src/admission.rs",
-    "engine/crates/membrane-adapt/src/authority.rs",
-    "engine/crates/membrane-adapt/src/benchmark.rs",
-    "engine/crates/membrane-adapt/src/canonical.rs",
-    "engine/crates/membrane-adapt/src/cli_api.rs",
-    "engine/crates/membrane-adapt/src/context_cost.rs",
-    "engine/crates/membrane-adapt/src/delivery.rs",
-    "engine/crates/membrane-adapt/src/duplicate_groups.rs",
-    "engine/crates/membrane-adapt/src/evidence.rs",
-    "engine/crates/membrane-adapt/src/gates.rs",
-    "engine/crates/membrane-adapt/src/insights/detectors.rs",
-    "engine/crates/membrane-adapt/src/insights/guards.rs",
-    "engine/crates/membrane-adapt/src/insights/mod.rs",
-    "engine/crates/membrane-adapt/src/insights/recurrence.rs",
-    "engine/crates/membrane-adapt/src/insights/sealed_issue.rs",
-    "engine/crates/membrane-adapt/src/lib.rs",
-    "engine/crates/membrane-adapt/src/manifest.rs",
-    "engine/crates/membrane-adapt/src/model_boundary.rs",
-    "engine/crates/membrane-adapt/src/multiwriter.rs",
-    "engine/crates/membrane-adapt/src/outcomes.rs",
-    "engine/crates/membrane-adapt/src/portable.rs",
-    "engine/crates/membrane-adapt/src/proposal.rs",
-    "engine/crates/membrane-adapt/src/record.rs",
-    "engine/crates/membrane-adapt/src/remediation.rs",
-    "engine/crates/membrane-adapt/src/scope.rs",
-    "engine/crates/membrane-adapt/src/seal.rs",
-    "engine/crates/membrane-adapt/src/taste.rs",
-    "engine/crates/membrane-adapt/tests/canonical_and_ids.rs",
-    "engine/crates/membrane-adapt/tests/cli_surface_and_convergence.rs",
-    "engine/crates/membrane-adapt/tests/gates_and_boundaries.rs",
-    "engine/crates/membrane-adapt/tests/insights_detector_benchmark.rs",
-    "engine/crates/membrane-adapt/tests/insights_pipeline.rs",
-    "engine/crates/membrane-adapt/tests/portable_insights_benchmark.rs",
-    "engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs",
-    "engine/crates/membrane-adapt/tests/taste_contracts.rs",
-    "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
-   ],
-   "content_digest": "921db6cf151f8ef84ab8b0f594f87de39bca1e4b6f6b40789c55a7e710bdce87"
+   "content_digest": "5d80e26405a5646e87efe0e1444d9626b09f6d5a60a6f5cc094788bcbf715f45"
   },
   {
    "id": "engine-crates-engine/crates/membrane-core",
@@ -1153,7 +1058,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1172,7 +1077,7 @@
     "engine/crates/membrane-core/src/reconcile.rs",
     "engine/crates/membrane-core/tests/compaction.rs"
    ],
-   "content_digest": "484f67fd0d0804e32ed14dbf0dbb5c46e1f05ee9babc3dfa04b4caaf4f87aae0"
+   "content_digest": "26de970256dd8569077377aeecad857d28317a7d0d2b2b1dec0b84dd32c62ef9"
   },
   {
    "id": "engine-crates-engine/crates/membrane-federation",
@@ -1180,7 +1085,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1231,7 +1136,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "5e0dfd11d78d197e409998022640b600461dd5f0d30a33707a80722e254555c4"
+   "content_digest": "33a4b4b39c01d3c140f90286c536ac42fbe2e36847cbed98cdfcd723998407e8"
   },
   {
    "id": "engine-crates-engine/crates/membrane-mcp",
@@ -1239,7 +1144,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1260,7 +1165,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "abae3d82d8b1ac2e298ffb6c22a95cf633bb9c15d87999d5940fcbecf2ea8c0a"
+   "content_digest": "131c194c44ba439ae658b1cc6a75f8bbc506123f3b85f81ef1f3201bb931c389"
   },
   {
    "id": "engine-crates-engine/crates/membrane-protocol",
@@ -1268,7 +1173,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1308,7 +1213,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "cace86975d9b15c89249f35bd109110e2a40c6fe965ab40f396c934a48fb9d13"
+   "content_digest": "d1bc5cc0575ad5a503a74d751004e96fb024aa8c82e6fbdf5afe7731a8dd478a"
   },
   {
    "id": "engine-crates-engine/crates/membrane-provider-sdk",
@@ -1316,7 +1221,7 @@
    "runtime": "rust",
    "kind": "native-crate",
    "product_surface": "all axes",
-   "production_reachable": true,
+   "production_reachable": false,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
@@ -1338,25 +1243,199 @@
     "engine/crates/membrane-provider-sdk/tests/conformance.rs",
     "engine/crates/membrane-provider-sdk/tests/downstream_fixture.rs"
    ],
-   "content_digest": "3892f9f7a1f9923ba009315fc11f44d1b6c91506979106772ffe23d30e8ba6d8"
+   "content_digest": "bb807a7275a1a9c0dd60e8ad641e5409eff04b8a67e17ee8ac3bb14ea853c865"
   },
   {
-   "id": "engine-crates-engine/crates/membrane-runtime",
-   "rule": "engine-crates",
+   "id": "engine-dev-rust-engine-dev-rust",
+   "rule": "engine-dev-rust",
    "runtime": "rust",
-   "kind": "native-crate",
-   "product_surface": "all axes",
+   "kind": "benchmark-spike",
+   "product_surface": "dev",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "bench/bakeoff binaries excluded from release artifact set",
+   "seal_blocker_note": null,
+   "notes": "",
+   "files": [
+    "engine/benches/vector_scale.rs",
+    "engine/spike/dump_golden.py",
+    "engine/spike/parity.py",
+    "engine/vector-bakeoff/common/src/lib.rs",
+    "engine/vector-bakeoff/control/src/main.rs",
+    "engine/vector-bakeoff/harness.py",
+    "engine/vector-bakeoff/lance/src/main.rs",
+    "engine/vector-bakeoff/protoc/src/main.rs",
+    "engine/vector-bakeoff/run.sh",
+    "engine/vector-bakeoff/simd/src/main.rs",
+    "engine/vector-bakeoff/sqlite-alpha/build.rs",
+    "engine/vector-bakeoff/sqlite-alpha/src/main.rs",
+    "engine/vector-bakeoff/sqlite-stable/src/main.rs",
+    "engine/vector-bakeoff/tests/test_harness.py"
+   ],
+   "content_digest": "39abcd9e25afef9df2302fadb1f015ba1486cce61d43cebfe651d40b699e2675"
+  },
+  {
+   "id": "engine-membrane-client-engine/crates/membrane-client",
+   "rule": "engine-membrane-client",
+   "runtime": "rust",
+   "kind": "library-crate",
+   "product_surface": "",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": "N9 CodeRight integration packet",
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "generic typed client conformance crate is not a Hub dependency, externalBin, resource, or Windows release artifact",
+   "seal_blocker_note": null,
+   "notes": "CodeRight owns its installed native binding; this generic client remains release-excluded conformance source.",
+   "files": [
+    "engine/crates/membrane-client/src/error.rs",
+    "engine/crates/membrane-client/src/handshake.rs",
+    "engine/crates/membrane-client/src/lib.rs",
+    "engine/crates/membrane-client/src/memory_backend.rs",
+    "engine/crates/membrane-client/src/records.rs",
+    "engine/crates/membrane-client/tests/compat.rs",
+    "engine/crates/membrane-client/tests/memory_backend.rs"
+   ],
+   "content_digest": "5cb166afeeb98ae5e9263a51d6528e5583cbf88c1d94ceb145557d80670321b9"
+  },
+  {
+   "id": "engine-membrane-updater-engine/crates/membrane-updater",
+   "rule": "engine-membrane-updater",
+   "runtime": "rust",
+   "kind": "library-crate",
+   "product_surface": "",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": "N0 reconciliation follow-up",
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "library has no production Cargo consumer; Hub update_admission owns installed updater policy",
+   "seal_blocker_note": null,
+   "notes": "Release-excluded library retained for tests; Hub update_admission.rs is sole installed updater-policy owner.",
+   "files": [
+    "engine/crates/membrane-updater/src/lib.rs"
+   ],
+   "content_digest": "c473d928f5db04e59a1d0d515678291eb3c86d1b6d8d879923406bfc7f39fee7"
+  },
+  {
+   "id": "engine-production-crates-engine/crates/membrane",
+   "rule": "engine-production-crates",
+   "runtime": "rust",
+   "kind": "native-production-crate",
+   "product_surface": "installed native runtime",
    "production_reachable": true,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "canonical invocation graph derives production reachability from installed membrane entrypoint",
    "seal_blocker_note": null,
-   "notes": "Already-native authoritative implementations (one row per crate).",
+   "notes": "Native owners directly reached by installed membrane binary.",
+   "files": [
+    "engine/crates/membrane/build.rs",
+    "engine/crates/membrane/scripts/generate-cli-subcommands.mjs",
+    "engine/crates/membrane/scripts/generate-cli-subcommands.test.mjs",
+    "engine/crates/membrane/src/bin/cli-parity.rs",
+    "engine/crates/membrane/src/cli.rs",
+    "engine/crates/membrane/src/cli_parity.rs",
+    "engine/crates/membrane/src/dispatch.rs",
+    "engine/crates/membrane/src/generated_cli_subcommands.rs",
+    "engine/crates/membrane/src/install_tx.rs",
+    "engine/crates/membrane/src/lib.rs",
+    "engine/crates/membrane/src/main.rs",
+    "engine/crates/membrane/src/migration.rs",
+    "engine/crates/membrane/src/modes.rs",
+    "engine/crates/membrane/src/serve.rs",
+    "engine/crates/membrane/src/uninstall.rs",
+    "engine/crates/membrane/src/update.rs",
+    "engine/crates/membrane/tests/adapt_installed.rs",
+    "engine/crates/membrane/tests/dispatch.rs",
+    "engine/crates/membrane/tests/identifier_contracts.rs"
+   ],
+   "content_digest": "654626ee32ea1e51172ab7d1b6db48d39e3628712b03bcb03cc8cc16b5579577"
+  },
+  {
+   "id": "engine-production-crates-engine/crates/membrane-adapt",
+   "rule": "engine-production-crates",
+   "runtime": "rust",
+   "kind": "native-production-crate",
+   "product_surface": "installed native runtime",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "canonical invocation graph derives production reachability from installed membrane entrypoint",
+   "seal_blocker_note": null,
+   "notes": "Native owners directly reached by installed membrane binary.",
+   "files": [
+    "engine/crates/membrane-adapt/src/adaptive.rs",
+    "engine/crates/membrane-adapt/src/admission.rs",
+    "engine/crates/membrane-adapt/src/authority.rs",
+    "engine/crates/membrane-adapt/src/benchmark.rs",
+    "engine/crates/membrane-adapt/src/canonical.rs",
+    "engine/crates/membrane-adapt/src/cli_api.rs",
+    "engine/crates/membrane-adapt/src/context_cost.rs",
+    "engine/crates/membrane-adapt/src/delivery.rs",
+    "engine/crates/membrane-adapt/src/duplicate_groups.rs",
+    "engine/crates/membrane-adapt/src/evidence.rs",
+    "engine/crates/membrane-adapt/src/gates.rs",
+    "engine/crates/membrane-adapt/src/insights/detectors.rs",
+    "engine/crates/membrane-adapt/src/insights/guards.rs",
+    "engine/crates/membrane-adapt/src/insights/mod.rs",
+    "engine/crates/membrane-adapt/src/insights/recurrence.rs",
+    "engine/crates/membrane-adapt/src/insights/sealed_issue.rs",
+    "engine/crates/membrane-adapt/src/lib.rs",
+    "engine/crates/membrane-adapt/src/manifest.rs",
+    "engine/crates/membrane-adapt/src/model_boundary.rs",
+    "engine/crates/membrane-adapt/src/multiwriter.rs",
+    "engine/crates/membrane-adapt/src/outcomes.rs",
+    "engine/crates/membrane-adapt/src/portable.rs",
+    "engine/crates/membrane-adapt/src/proposal.rs",
+    "engine/crates/membrane-adapt/src/record.rs",
+    "engine/crates/membrane-adapt/src/remediation.rs",
+    "engine/crates/membrane-adapt/src/scope.rs",
+    "engine/crates/membrane-adapt/src/seal.rs",
+    "engine/crates/membrane-adapt/src/taste.rs",
+    "engine/crates/membrane-adapt/tests/canonical_and_ids.rs",
+    "engine/crates/membrane-adapt/tests/cli_surface_and_convergence.rs",
+    "engine/crates/membrane-adapt/tests/gates_and_boundaries.rs",
+    "engine/crates/membrane-adapt/tests/insights_detector_benchmark.rs",
+    "engine/crates/membrane-adapt/tests/insights_pipeline.rs",
+    "engine/crates/membrane-adapt/tests/portable_insights_benchmark.rs",
+    "engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs",
+    "engine/crates/membrane-adapt/tests/taste_contracts.rs",
+    "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
+   ],
+   "content_digest": "3979b241354b197463e352c1ad5a4b4db2f7d3ebb5830121f20fc1a2385e2391"
+  },
+  {
+   "id": "engine-production-crates-engine/crates/membrane-runtime",
+   "rule": "engine-production-crates",
+   "runtime": "rust",
+   "kind": "native-production-crate",
+   "product_surface": "installed native runtime",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "canonical invocation graph derives production reachability from installed membrane entrypoint",
+   "seal_blocker_note": null,
+   "notes": "Native owners directly reached by installed membrane binary.",
    "files": [
     "engine/crates/membrane-runtime/build.rs",
+    "engine/crates/membrane-runtime/examples/hub_runtime_test_host.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
     "engine/crates/membrane-runtime/src/cache_prefix.rs",
@@ -1388,10 +1467,12 @@
     "engine/crates/membrane-runtime/src/lib.rs",
     "engine/crates/membrane-runtime/src/live_diagnostics.rs",
     "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
+    "engine/crates/membrane-runtime/src/mcp_executor.rs",
     "engine/crates/membrane-runtime/src/mcp_http.rs",
     "engine/crates/membrane-runtime/src/memory_provider.rs",
     "engine/crates/membrane-runtime/src/memory_sentinel_producer.rs",
     "engine/crates/membrane-runtime/src/memory_sentinel_view.rs",
+    "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
     "engine/crates/membrane-runtime/src/notifications.rs",
     "engine/crates/membrane-runtime/src/paths.rs",
     "engine/crates/membrane-runtime/src/planes.rs",
@@ -1406,7 +1487,6 @@
     "engine/crates/membrane-runtime/src/pull/cli.rs",
     "engine/crates/membrane-runtime/src/pull/federation.rs",
     "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
-    "engine/crates/membrane-runtime/src/pull/federation_worker.rs",
     "engine/crates/membrane-runtime/src/pull/metrics.rs",
     "engine/crates/membrane-runtime/src/pull/mod.rs",
     "engine/crates/membrane-runtime/src/pull/native_federation.rs",
@@ -1445,30 +1525,29 @@
     "engine/crates/membrane-runtime/tests/ledger_spine_shadow_replay_corpus.rs",
     "engine/crates/membrane-runtime/tests/paths.rs",
     "engine/crates/membrane-runtime/tests/pull_catalog.rs",
-    "engine/crates/membrane-runtime/tests/pull_federate_route.rs",
     "engine/crates/membrane-runtime/tests/pull_freshness.rs",
     "engine/crates/membrane-runtime/tests/pull_memory_provider.rs",
     "engine/crates/membrane-runtime/tests/pull_planner_conformance_scope.rs",
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "42bfe9972be72685458d5e59302af8be8be8d74adedd3a19cc8246867f677ba6"
+   "content_digest": "2bdefb88afa8b7bf98edd1fd74ae0ff0488fe3eaec4e3444a3253f0601c3e51c"
   },
   {
-   "id": "engine-crates-engine/crates/membrane-transcript",
-   "rule": "engine-crates",
+   "id": "engine-production-crates-engine/crates/membrane-transcript",
+   "rule": "engine-production-crates",
    "runtime": "rust",
-   "kind": "native-crate",
-   "product_surface": "all axes",
+   "kind": "native-production-crate",
+   "product_surface": "installed native runtime",
    "production_reachable": true,
    "packaged": true,
    "target_disposition": "native-port",
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "canonical invocation graph derives production reachability from installed membrane entrypoint",
    "seal_blocker_note": null,
-   "notes": "Already-native authoritative implementations (one row per crate).",
+   "notes": "Native owners directly reached by installed membrane binary.",
    "files": [
     "engine/crates/membrane-transcript/src/adapters.rs",
     "engine/crates/membrane-transcript/src/canonical.rs",
@@ -1480,90 +1559,10 @@
     "engine/crates/membrane-transcript/src/parser.rs",
     "engine/crates/membrane-transcript/src/redact.rs",
     "engine/crates/membrane-transcript/src/source.rs",
-    "engine/crates/membrane-transcript/src/user_act.rs",
     "engine/crates/membrane-transcript/tests/host_conformance.rs",
     "engine/crates/membrane-transcript/tests/normalize.rs"
    ],
-   "content_digest": "3dcbae64bd746e86a5ed7cdaafdc8495f88515739d488c5d9bb0251a8bd80ad4"
-  },
-  {
-   "id": "engine-dev-rust-engine-dev-rust",
-   "rule": "engine-dev-rust",
-   "runtime": "rust",
-   "kind": "benchmark-spike",
-   "product_surface": "dev",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "bench/bakeoff binaries excluded from release artifact set",
-   "seal_blocker_note": null,
-   "notes": "",
-   "files": [
-    "engine/benches/vector_scale.rs",
-    "engine/spike/dump_golden.py",
-    "engine/spike/parity.py",
-    "engine/vector-bakeoff/common/src/lib.rs",
-    "engine/vector-bakeoff/control/src/main.rs",
-    "engine/vector-bakeoff/harness.py",
-    "engine/vector-bakeoff/lance/src/main.rs",
-    "engine/vector-bakeoff/protoc/src/main.rs",
-    "engine/vector-bakeoff/run.sh",
-    "engine/vector-bakeoff/simd/src/main.rs",
-    "engine/vector-bakeoff/sqlite-alpha/build.rs",
-    "engine/vector-bakeoff/sqlite-alpha/src/main.rs",
-    "engine/vector-bakeoff/sqlite-stable/src/main.rs",
-    "engine/vector-bakeoff/tests/test_harness.py"
-   ],
-   "content_digest": "88e9af048557e47a65638901d74101d48d63c73ee82a33e07f8fe204b25829cb"
-  },
-  {
-   "id": "engine-membrane-client-engine/crates/membrane-client",
-   "rule": "engine-membrane-client",
-   "runtime": "rust",
-   "kind": "library-crate",
-   "product_surface": "",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "native-port",
-   "owner": "N9 CodeRight integration packet",
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "Typed remote client library reserved for explicit service-mode selection (spec section 2.2); not yet wired into any installed entrypoint, hence not production-reachable today.",
-   "files": [
-    "engine/crates/membrane-client/src/error.rs",
-    "engine/crates/membrane-client/src/handshake.rs",
-    "engine/crates/membrane-client/src/lib.rs",
-    "engine/crates/membrane-client/src/memory_backend.rs",
-    "engine/crates/membrane-client/src/records.rs",
-    "engine/crates/membrane-client/tests/compat.rs",
-    "engine/crates/membrane-client/tests/memory_backend.rs"
-   ],
-   "content_digest": "a6ccfef8c42a779c290de71380864c28536b106032c2a82fd2180edd669a0643"
-  },
-  {
-   "id": "engine-membrane-updater-engine/crates/membrane-updater",
-   "rule": "engine-membrane-updater",
-   "runtime": "rust",
-   "kind": "library-crate",
-   "product_surface": "",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": "N0 reconciliation follow-up",
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "No production Cargo path-dependency reaches this crate; Hub uses its own update_admission.rs. Integrate or delete before N10.",
-   "files": [
-    "engine/crates/membrane-updater/src/lib.rs"
-   ],
-   "content_digest": "7d38847d14f15052d36f2827d19979ceb1b193d4dc8669b00aadc4e7e998af55"
+   "content_digest": "831b98c1ceb160bdb5e5c21b67459ca51b80b153c8251f6cb1ff8fe57bdcde83"
   },
   {
    "id": "engine-tests-js-engine-tests-js",
@@ -1583,7 +1582,7 @@
    "files": [
     "engine/tests/dashboard-outbox.test.mjs"
    ],
-   "content_digest": "36831c31a6c49f0bb2b96fbae2b4f9a08b4524755d6d50e24f73c6e6a62b5d2e"
+   "content_digest": "4d81eccc4a8758b3c2279ca605ec1994bb2b4d4483c0134234872e769746e4bb"
   },
   {
    "id": "engine-tests-rs-engine-tests-rs",
@@ -1606,74 +1605,7 @@
     "engine/tests/memory_backend_acceptance.rs",
     "engine/tests/transcript_ledger_acceptance.rs"
    ],
-   "content_digest": "2cbf679ddeb736de35017f514a1092e342fb8a4b76000487d0562a30d4766bb5"
-  },
-  {
-   "id": "federation-legacy-federation-legacy",
-   "rule": "federation-legacy",
-   "runtime": "python",
-   "kind": "legacy-gateway-providers",
-   "product_surface": "Pull",
-   "production_reachable": true,
-   "packaged": false,
-   "target_disposition": "delete",
-   "owner": "N7 federation deletion packet",
-   "exception": "federation-python-shadow",
-   "parity_fixture": "migration/native-rust/fixtures/",
-   "deletion_or_exclusion_proof": "deletion receipt required at N7",
-   "seal_blocker_note": null,
-   "notes": "Shadow/qualification adapter selectable behind hidden legacy selectors; production route is already native membrane-federation.",
-   "files": [
-    "engine/federation/__init__.py",
-    "engine/federation/gateway.py",
-    "engine/federation/providers/__init__.py",
-    "engine/federation/providers/anchors.py",
-    "engine/federation/providers/architect.py",
-    "engine/federation/providers/audit.py",
-    "engine/federation/providers/blueprint.py",
-    "engine/federation/providers/cortex.py",
-    "engine/federation/providers/git_provider.py",
-    "engine/federation/providers/live.py",
-    "engine/federation/providers/rules.py",
-    "engine/federation/providers/scope_grant.py",
-    "engine/federation/providers/skills.py"
-   ],
-   "content_digest": "ebe294c6b436bef673205774faa1faef19ddb0809d60405da47cda86abf577d7",
-   "expiry": "2026-10-31"
-  },
-  {
-   "id": "federation-tests-federation-tests",
-   "rule": "federation-tests",
-   "runtime": "python",
-   "kind": "test-suite",
-   "product_surface": "Pull",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "migration-oracle",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "delete at N7 after parity acceptance",
-   "seal_blocker_note": null,
-   "notes": "",
-   "files": [
-    "engine/federation/providers/test_anchors_provider.py",
-    "engine/federation/providers/test_blueprint_provider.py",
-    "engine/federation/providers/test_cortex_provider.py",
-    "engine/federation/providers/test_live_provider.py",
-    "engine/federation/providers/test_repository_identity.py",
-    "engine/federation/providers/test_rules_provider.py",
-    "engine/federation/providers/test_scope_grant_path.py",
-    "engine/federation/providers/test_skills_provider.py",
-    "engine/federation/test_equivalence_net.py",
-    "engine/federation/test_expected_release_generation_source_fallback.py",
-    "engine/federation/test_gateway_failure_taxonomy.py",
-    "engine/federation/test_gateway_freshness.py",
-    "engine/federation/test_gateway_merge_order.py",
-    "engine/federation/test_gateway_stdio.py",
-    "engine/federation/test_warm_receipts.py"
-   ],
-   "content_digest": "a11d97650204ff50a6109eb30293d51481352e2d31314dfc41c85e34b8fc3c36"
+   "content_digest": "ba227b3068cf994737fa15d4bccb758914fad513952ec2017e325fa451f2a92a"
   },
   {
    "id": "hub-native-src-hub-native-src",
@@ -1692,6 +1624,7 @@
    "notes": "workspace.rs still validates a required python_executable config field; that contract defect is tracked in the N8/N10 lane, not here.",
    "files": [
     "apps/membrane-hub/src-tauri/src/adapt_launch.rs",
+    "apps/membrane-hub/src-tauri/src/blueprint.rs",
     "apps/membrane-hub/src-tauri/src/hub_contract_tests.rs",
     "apps/membrane-hub/src-tauri/src/hub_telemetry.rs",
     "apps/membrane-hub/src-tauri/src/main.rs",
@@ -1700,7 +1633,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "841cc947fbf832664b65dcf87a111a25d526ea0e0fb0d872dc5affb0bfe16202"
+   "content_digest": "7713993ad8240123b9261a2b30aa81bb99283198d437aba358a67be5456c3e78"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -1731,6 +1664,8 @@
     "apps/membrane-hub/src/sources.mjs",
     "apps/membrane-hub/tests/actions.mjs",
     "apps/membrane-hub/tests/agents-adapters.test.mjs",
+    "apps/membrane-hub/tests/blueprint-lifecycle.test.mjs",
+    "apps/membrane-hub/tests/bounded-presentation.test.mjs",
     "apps/membrane-hub/tests/cache.mjs",
     "apps/membrane-hub/tests/delivery-trace.test.mjs",
     "apps/membrane-hub/tests/hub-chain.mjs",
@@ -1740,9 +1675,11 @@
     "apps/membrane-hub/tests/release-channel.test.mjs",
     "apps/membrane-hub/tests/release-identity.mjs",
     "apps/membrane-hub/tests/runtime-inventory.test.mjs",
-    "apps/membrane-hub/tests/sources-explorer.test.mjs"
+    "apps/membrane-hub/tests/sources-explorer.test.mjs",
+    "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
+    "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "0034a5c5149b35a0f17c7db48f87b047d2f246f83b643deecccae39ce32125f8"
+   "content_digest": "d5161db582e63e74d9bc998a067dedda3cada21edd52315a6cbcb5bb2ea9e755"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1762,8 +1699,10 @@
    "files": [
     "apps/membrane-hub/scripts/build-frontend.mjs",
     "apps/membrane-hub/scripts/build-mac-release.mjs",
+    "apps/membrane-hub/scripts/build-windows-release.mjs",
     "apps/membrane-hub/scripts/dev.mjs",
     "apps/membrane-hub/scripts/lib/target-root.mjs",
+    "apps/membrane-hub/scripts/presentation-assets.mjs",
     "apps/membrane-hub/scripts/release-assets.mjs",
     "apps/membrane-hub/scripts/release-build-mac.mjs",
     "apps/membrane-hub/scripts/release-identity.mjs",
@@ -1772,52 +1711,10 @@
     "apps/membrane-hub/scripts/stage-runtime.mjs",
     "apps/membrane-hub/scripts/tray-icons.mjs",
     "apps/membrane-hub/scripts/verify-unpacked-artifact.mjs",
-    "apps/membrane-hub/scripts/write-release-manifest.mjs"
+    "apps/membrane-hub/scripts/write-release-manifest.mjs",
+    "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "0f2d07ce456cf157d5426cd6446af6cec581be9deda75a67bf65840969a7fa81"
-  },
-  {
-   "id": "install-tests-install-tests",
-   "rule": "install-tests",
-   "runtime": "python",
-   "kind": "test-suite",
-   "product_surface": "install",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "package-context test; not shipped (README documents test roots)",
-   "seal_blocker_note": null,
-   "notes": "",
-   "files": [
-    "install/tests/test_workspace_package.py"
-   ],
-   "content_digest": "8aae9de0c4b6111c710773cdce9c82884624033bc83e0c231c9b2e7f48f7c330"
-  },
-  {
-   "id": "install-workspace-install-workspace",
-   "rule": "install-workspace",
-   "runtime": "python",
-   "kind": "workspace-bootstrap",
-   "product_surface": "install",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "Install-surface rework packet (pre-N10)",
-   "exception": "install-bootstrap-python",
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
-   "seal_blocker_note": null,
-   "notes": "Canonical source of the shipped workspace bootstrap projection (dist/install/workspace).",
-   "files": [
-    "install/workspace/__init__.py",
-    "install/workspace/membrane_shims.py",
-    "install/workspace/version_gate.py"
-   ],
-   "content_digest": "31e55b5f7167460f1ec7f767cfd63d4c805a4ac07e673badcf987c4e90bb93d4",
-   "expiry": "2026-12-31"
+   "content_digest": "c79ee82d267fae163c0a07d2e3c77bc7488fc4195df53206719f9da411e47903"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1831,36 +1728,35 @@
    "owner": "N6 MCP/renderer native cutover packet",
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "test-only decision reference; native renderer is compiled into membrane-mcp and release inventory excludes mcp source",
    "seal_blocker_note": null,
    "notes": "Reachability authority (invocation-graph.json) shows no production importer: only mcp/decision-points.mjs (itself test-only) requires it. Demoted from the mcp-server-core production rule during N0 reconciliation.",
    "files": [
     "mcp/decision-points-lib.cjs"
    ],
-   "content_digest": "102a4662598b68a297a1f54f33d4d317d86c7a74b96f72ec027e2376dc3ea49e"
+   "content_digest": "a45b811690c942e1d47a74b631a39f6ecea8d0d78bea00d631a81fbab68a62e6"
   },
   {
    "id": "mcp-hooks-mcp-hooks",
    "rule": "mcp-hooks",
    "runtime": "node",
-   "kind": "installed-hook-entrypoint",
+   "kind": "retired-hook-reference",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "root package has no bin entry; signed Hub inventory excludes mcp/hooks; native Hub diagnostics owns installed enforcement",
    "seal_blocker_note": null,
-   "notes": "package.json bin membrane-workspace-hook launches mcp/hooks/membrane-hook-entrypoint.mjs.",
+   "notes": "Retained only for differential source tests after native diagnostics cutover.",
    "files": [
     "mcp/hooks/membrane-hook-entrypoint.mjs",
     "mcp/hooks/membrane-hook-runtime.mjs",
     "mcp/hooks/membrane-workspace-operations.mjs"
    ],
-   "content_digest": "445da5ec83bd309effc02926015f8f7fcf37dbd78872c6ec439fb1ef1e848ee9",
-   "expiry": "2026-12-31"
+   "content_digest": "bbf5de256ddea10b0ede89fd34fc7fef31f10edd6c9aca10a47abc08c895953d"
   },
   {
    "id": "mcp-host-adapters-mcp-host-adapters",
@@ -1868,15 +1764,15 @@
    "runtime": "node",
    "kind": "host-adapter",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "Hub runtime inventory and right-release inputs exclude mcp/host; native MCP executor owns production host operations",
    "seal_blocker_note": null,
-   "notes": "Host checkpoint/context adapters; continuity.mjs disposition rides with N6 per spec section 5.1.1.",
+   "notes": "Retained only as conformance fixtures.",
    "files": [
     "mcp/host/candidate-set.mjs",
     "mcp/host/capability-matrix.mjs",
@@ -1889,8 +1785,7 @@
     "mcp/host/observable-event.cjs",
     "mcp/host/observable-ingress.cjs"
    ],
-   "content_digest": "51e46da9cddd8de1192ee149f3a21ccc7015acebbcb1c3dd8ff08b73da2e1745",
-   "expiry": "2026-12-31"
+   "content_digest": "ae0c078ab513edc9957700b7924225abc04a5050b2e3059bb52c79388775d711"
   },
   {
    "id": "mcp-host-fixtures-mcp-host-fixtures",
@@ -1910,7 +1805,7 @@
    "files": [
     "mcp/host/fixtures/membrane-client.mjs"
    ],
-   "content_digest": "d8b84f79aedde7d559a7492d0fa714a4b3a71c37336bd38145ff7f299ff2597d"
+   "content_digest": "6b99e86aa7858aa31963168cfd9e9c3006805607cb580226bef6a60a44836373"
   },
   {
    "id": "mcp-native-bootstrap-mcp/membrane-mcp-native.mjs",
@@ -1919,35 +1814,34 @@
    "kind": "native-binary-bootstrap",
    "product_surface": "MCP",
    "production_reachable": false,
-   "packaged": "unknown",
+   "packaged": false,
    "target_disposition": "dev-only",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "dev bootstrap is absent from mcp.json, package bins, Hub inventory, and release inputs",
    "seal_blocker_note": null,
    "notes": "Dev-only stdio-MCP bootstrap that spawns engine/target/debug/membrane; invocation-graph.json shows no installed entrypoint reaches it. Never ship or advertise.",
    "files": [
     "mcp/membrane-mcp-native.mjs"
    ],
-   "content_digest": "c5b0c226eb8644fd797f8d66c716cf80edc2a3949ddd795eab84dd4d6ed52da8",
-   "expiry": "2026-12-31"
+   "content_digest": "d70ba6f4fe3bba3403483655aa4f9d71615b68838fb7bf59c93b0b8e5050b1b2"
   },
   {
    "id": "mcp-rest-mcp-rest",
    "rule": "mcp-rest",
    "runtime": "node",
-   "kind": "mcp-support-library",
+   "kind": "mcp-conformance-source",
    "product_surface": "MCP",
-   "production_reachable": true,
-   "packaged": "unknown",
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "native host config, package metadata, Hub inventory, and release inputs contain no mcp Node source",
    "seal_blocker_note": null,
-   "notes": "Conservative classification pending invocation-graph refresh; some modules may prove dev-only.",
+   "notes": "Retained only as tests, schemas, and differential reference.",
    "files": [
     "mcp/adapter-manifest.mjs",
     "mcp/adapters.mjs",
@@ -1982,50 +1876,47 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "4749205d68bee215102264cb537126124e803155cc0977200bf9f45bf87fafa6",
-   "expiry": "2026-12-31"
+   "content_digest": "e5b82d235d7a403cda378553c091c357031c2be60d0b0fd7d0aa8edd83d0903f"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
    "rule": "mcp-server-core",
    "runtime": "node",
-   "kind": "production-mcp-renderer",
+   "kind": "retired-mcp-reference",
    "product_surface": "MCP/Push",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "mcp.json launches membrane stdio-mcp; Hub runtime inventory and right-release inputs exclude Node MCP source",
    "seal_blocker_note": null,
-   "notes": "Generated truth names these authoritative today; membrane-mcp and membrane-core are the canonical targets.",
+   "notes": "Retained for native conformance comparisons only.",
    "files": [
     "mcp/context-renderer-lib.cjs"
    ],
-   "content_digest": "5917da8bc1a4d83f7c1743936a962c001a4c5a6d47b72c79baf19a5d8fbbcfae",
-   "expiry": "2026-12-31"
+   "content_digest": "93f2ce30f28fb11fccce41fa31da69a684126c6729085421cf82658bf25a91ee"
   },
   {
    "id": "mcp-server-core-mcp/server.mjs",
    "rule": "mcp-server-core",
    "runtime": "node",
-   "kind": "production-mcp-renderer",
+   "kind": "retired-mcp-reference",
    "product_surface": "MCP/Push",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
-   "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-node-server",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "mcp.json launches membrane stdio-mcp; Hub runtime inventory and right-release inputs exclude Node MCP source",
    "seal_blocker_note": null,
-   "notes": "Generated truth names these authoritative today; membrane-mcp and membrane-core are the canonical targets.",
+   "notes": "Retained for native conformance comparisons only.",
    "files": [
     "mcp/server.mjs"
    ],
-   "content_digest": "03872625dad58c88e44220c1a625d4d18f8818fa89725368df13e30171c13dd7",
-   "expiry": "2026-12-31"
+   "content_digest": "1349308d83b801192027a26f182cc5ba2d850b83fb71d574dac6504614ef73ae"
   },
   {
    "id": "mcp-tests-mcp-tests",
@@ -2085,7 +1976,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "6bdfd618a5e31c204f1acead77b0bc6ebea3fdcf8c00d8f557229b1f64fd81f6"
+   "content_digest": "9a070ce30b5306c72c0a889dbd5ad018875181aedb7131cb05b4fe414bc31d5f"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -2105,7 +1996,7 @@
    "files": [
     "engine/crates/membrane-testkit/src/lib.rs"
    ],
-   "content_digest": "1d362cb015e574e4085de49278f6013d39428275cb7025686f2c2585af2a63da"
+   "content_digest": "373f0ed27e0334fcfa0049599f3975922a41ac451f4b3df05e405ee18610f63a"
   },
   {
    "id": "schemas-registry-code-runtime-schemas/registry/code",
@@ -2113,21 +2004,20 @@
    "runtime": "node",
    "kind": "source-module",
    "product_surface": "",
-   "production_reachable": true,
-   "packaged": true,
-   "target_disposition": "native-port",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
    "owner": "N6 MCP/renderer native cutover packet",
-   "exception": "mcp-registry-code-node",
-   "parity_fixture": "planned:migration/native-rust/fixtures/mcp-conformance.v1.json",
-   "deletion_or_exclusion_proof": null,
+   "exception": null,
+   "parity_fixture": "migration/native-rust/fixtures/mcp-conformance.v1.json",
+   "deletion_or_exclusion_proof": "Node batch reference is excluded from signed Hub; membrane-mcp registry and Rust conformance fixture own production behavior",
    "seal_blocker_note": null,
-   "notes": "mcp/server.mjs imports executeCodeBatch from schemas/registry/code/mbr402-batch.mjs at production startup; reclassified from dev-only during N0 reachability reconciliation.",
+   "notes": "Retained as differential reference only.",
    "files": [
     "schemas/registry/code/code-batch-limits.mjs",
     "schemas/registry/code/mbr402-batch.mjs"
    ],
-   "content_digest": "d48e0e59c6d0b9c73aabfc0159343e60e95847b4265c4fedb3028584cf18e101",
-   "expiry": "2026-12-31"
+   "content_digest": "ac1edb35be3157cae267e29d766e61363fe5e360a8022aae8a457825c056b363"
   },
   {
    "id": "scripts-dev-scripts-dev",
@@ -2141,9 +2031,9 @@
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": null,
+   "deletion_or_exclusion_proof": "release content manifest permits only compiled Hub assets, native sidecars, schemas and declarative metadata; scripts are absent from signed installer and installed tree",
    "seal_blocker_note": null,
-   "notes": "Includes shell CI scripts and generators; generate-install-workspace.mjs must emit only native runtime targets (spec section 7.4). Exclusion proof from release payloads pending.",
+   "notes": "Repository-only CI, qualification, and release tooling; never installed runtime.",
    "files": [
     "scripts/archive-retired-repositories.mjs",
     "scripts/ci/build-invocation-graph.mjs",
@@ -2169,6 +2059,9 @@
     "scripts/generate-install-workspace.test.mjs",
     "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
     "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
+    "scripts/qualification/install-release.test.mjs",
+    "scripts/qualification/issue-native-only-seal.mjs",
+    "scripts/qualification/issue-native-only-seal.test.mjs",
     "scripts/qualification/memory/run-memory-benchmarks.mjs",
     "scripts/qualification/memory/run-memory-benchmarks.test.mjs",
     "scripts/qualification/run-adversarial.mjs",
@@ -2177,6 +2070,10 @@
     "scripts/qualification/verify-mbr801-evidence.mjs",
     "scripts/qualification/verify-memory-benchmark.mjs",
     "scripts/qualification/verify-whole-task-benchmark.mjs",
+    "scripts/qualification/write-prequalification-binding.mjs",
+    "scripts/qualification/write-prequalification-binding.test.mjs",
+    "scripts/qualification/write-windows-platform-evidence.mjs",
+    "scripts/qualification/write-windows-platform-evidence.test.mjs",
     "scripts/qualify-competitor-parity.mjs",
     "scripts/release/evidence/sbom.mjs",
     "scripts/release/evidence/sbom.test.mjs",
@@ -2206,7 +2103,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "b10b1d3b893fed863f3ebd4b157c38e553fc92ec84ffb6f7ed7d7c891b473052"
+   "content_digest": "7c10e76d20d8a3e6a26dd2d5d2980862e7f9cb9d8576b046c4e4c5d6fed54897"
   },
   {
    "id": "tests-root-tests-root",
@@ -2278,7 +2175,6 @@
     "tests/onboarding/getting-started-consistency.test.mjs",
     "tests/onboarding/quickstart.test.mjs",
     "tests/outcomes/causal_promotion.rs",
-    "tests/overlay/test_dirty_overlay_identity.py",
     "tests/platform/platform-artifacts.test.mjs",
     "tests/platform/release-install-identity.test.mjs",
     "tests/provenance/bridge.mjs",
@@ -2295,7 +2191,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "e560f5428cba812816d5889c3fbbda58b5a7b30a65053df3765b7620d1032f1b"
+   "content_digest": "88b265cabce679b7a612603055572a3026e3a69d5cb747e465e14d998d9de01b"
   }
  ]
 }

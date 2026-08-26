@@ -65,6 +65,15 @@ impl HubTelemetry {
         self.write(event, state, reason);
     }
 
+    pub fn event_required(
+        &self,
+        event: &str,
+        state: &str,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        self.write_required(event, state, reason)
+    }
+
     pub fn report(&self) -> HubDiagnostics {
         self.state
             .lock()
@@ -111,18 +120,26 @@ impl HubTelemetry {
     }
 
     fn write(&self, event: &str, state: &str, reason: Option<&str>) {
-        let Ok(_guard) = self.writer.lock() else {
-            return;
-        };
+        let _ = self.write_required(event, state, reason);
+    }
+
+    fn write_required(&self, event: &str, state: &str, reason: Option<&str>) -> Result<(), String> {
+        let _guard = self
+            .writer
+            .lock()
+            .map_err(|_| "hub_telemetry_lock_unavailable".to_string())?;
         if let Some(parent) = self.path.parent() {
-            if fs::create_dir_all(parent).is_err() {
-                return;
-            }
+            fs::create_dir_all(parent).map_err(|_| "hub_telemetry_directory_unavailable")?;
         }
         if fs::metadata(&self.path).is_ok_and(|metadata| metadata.len() >= MAX_LOG_BYTES) {
             let previous = self.path.with_extension("previous.jsonl");
-            let _ = fs::remove_file(&previous);
-            let _ = fs::rename(&self.path, previous);
+            if let Err(error) = fs::remove_file(&previous) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    return Err("hub_telemetry_rotation_failed".into());
+                }
+            }
+            fs::rename(&self.path, previous)
+                .map_err(|_| "hub_telemetry_rotation_failed".to_string())?;
         }
         let record = serde_json::json!({
             "schemaVersion": 1,
@@ -133,16 +150,17 @@ impl HubTelemetry {
             "reason": reason,
             "observedAtUnixMs": now_ms(),
         });
-        if let Ok(mut file) = OpenOptions::new()
+        let bytes = serde_json::to_vec(&record)
+            .map_err(|_| "hub_telemetry_serialization_failed".to_string())?;
+        let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
-        {
-            if let Ok(bytes) = serde_json::to_vec(&record) {
-                let _ = file.write_all(&bytes);
-                let _ = file.write_all(b"\n");
-            }
-        }
+            .map_err(|_| "hub_telemetry_open_failed".to_string())?;
+        file.write_all(&bytes)
+            .and_then(|_| file.write_all(b"\n"))
+            .and_then(|_| file.sync_data())
+            .map_err(|_| "hub_telemetry_write_failed".to_string())
     }
 }
 
@@ -184,5 +202,25 @@ mod tests {
         telemetry.service("running", None);
         telemetry.service("running", None);
         assert_eq!(fs::read_to_string(path).unwrap().lines().count(), 1);
+    }
+
+    #[test]
+    fn required_event_is_durable_or_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("required.jsonl");
+        let telemetry = HubTelemetry::new(path.clone());
+        telemetry
+            .event_required("workspace_config_migration", "migrated", None)
+            .unwrap();
+        assert!(fs::read_to_string(path)
+            .unwrap()
+            .contains("workspace_config_migration"));
+
+        let blocked_parent = dir.path().join("blocked-parent");
+        fs::write(&blocked_parent, b"not-a-directory").unwrap();
+        let blocked = HubTelemetry::new(blocked_parent.join("hub.jsonl"));
+        assert!(blocked
+            .event_required("workspace_config_migration", "migrated", None)
+            .is_err());
     }
 }

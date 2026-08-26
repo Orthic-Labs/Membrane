@@ -23,7 +23,10 @@ impl std::fmt::Display for ModelProposalError {
                 write!(f, "model proposal is not bound to qualifying evidence")
             }
             ModelProposalError::AuthorityEscalationAttempted => {
-                write!(f, "model proposal attempted to set authority or permissions")
+                write!(
+                    f,
+                    "model proposal attempted to set authority or permissions"
+                )
             }
             ModelProposalError::ScopeBeyondEvidence => {
                 write!(f, "model proposal declared scope broader than evidence")
@@ -47,8 +50,8 @@ pub struct ModelExtractionProposal {
     /// Evidence objects this proposal claims to be bound to. Deterministic
     /// code re-verifies each binding; the model's claim alone proves nothing.
     pub bound_evidence_ids: Vec<String>,
-    /// Exact excerpt the rule was extracted from; must hash-match an
-    /// authenticated user-act evidence object before eligibility evaluation.
+    /// Exact excerpt the rule was extracted from; must hash-match a selected,
+    /// external-user transcript event before eligibility evaluation.
     pub bound_evidence_excerpt: String,
 }
 
@@ -76,17 +79,19 @@ pub struct ModelRemediationTextProposal {
 
 impl ModelExtractionProposal {
     /// Verify that every claimed evidence binding exists and each excerpt
-    /// digest matches an authenticated user evidence object. Returns the list
+    /// digest matches a selected user transcript event. Returns the list
     /// of verified binding IDs, or an error. This is where "model says so"
     /// becomes "deterministic code confirmed so" — nowhere else.
     pub fn verify_bindings(
         &self,
-        authenticated_evidence: &[(String, String)], // (evidence_id, excerpt_sha256)
+        selected_transcript_evidence: &[(String, String)], // (event_id, excerpt_sha256)
     ) -> Result<Vec<String>, ModelProposalError> {
         use crate::canonical::sha256_hex;
         let mut verified = Vec::new();
         for id in &self.bound_evidence_ids {
-            let found = authenticated_evidence.iter().find(|(eid, _)| eid == id);
+            let found = selected_transcript_evidence
+                .iter()
+                .find(|(eid, _)| eid == id);
             let Some((_, digest)) = found else {
                 return Err(ModelProposalError::UnboundEvidence);
             };
@@ -120,7 +125,13 @@ mod tests {
             bound_evidence_excerpt: "always x".into(),
         };
         let json = serde_json::to_string(&p).unwrap();
-        for forbidden in ["authority", "permission", "origin", "signal_strength", "precedence"] {
+        for forbidden in [
+            "authority",
+            "permission",
+            "origin",
+            "signal_strength",
+            "precedence",
+        ] {
             assert!(!json.contains(forbidden), "proposal leaked {forbidden}");
         }
     }
@@ -135,8 +146,7 @@ mod tests {
             bound_evidence_ids: vec!["ev-fake".into()],
             bound_evidence_excerpt: "always run tests".into(),
         };
-        let real: Vec<(String, String)> =
-            vec![("ev-real".into(), sha256_hex(b"some other text"))];
+        let real: Vec<(String, String)> = vec![("ev-real".into(), sha256_hex(b"some other text"))];
         assert_eq!(
             p.verify_bindings(&real),
             Err(ModelProposalError::UnboundEvidence)

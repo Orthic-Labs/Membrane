@@ -38,7 +38,7 @@ assert.match(privacy, /persists?[^.]{0,80}scope-grant[^.]{0,80}(token|digest)/i)
 assert.equal(manifest.thirdPartyInventory.scope, "locked-javascript-and-rust-resolutions");
 const pnpmLock = await readFile(resolve(root, manifest.thirdPartyInventory.pnpmLockfile), "utf8");
 const cargoLock = await readFile(resolve(root, manifest.thirdPartyInventory.cargoLockfile), "utf8");
-const jsPackages = [...pnpmLock.matchAll(/^  '?(.*?)'?:\n    resolution:/gm)].map((match) => match[1]);
+const jsPackages = [...pnpmLock.matchAll(/^  '?(.*?)'?:\r?\n    resolution:/gm)].map((match) => match[1]);
 const cargoPackages = cargoLock
   .split("[[package]]\n")
   .slice(1)

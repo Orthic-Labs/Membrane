@@ -16,10 +16,10 @@ const freshRuntime = { serviceState: 'running', snapshotState: 'available', last
 test('cli hub-snapshot fixture (healthy resident) renders Running parent with local child states', async () => {
   const cached = { schema_version: 1, observed_at_unix_ms: 42, payload: await fixture('hub-snapshot-running.json') };
   const vm = viewModel(cached, freshRuntime);
-  // CASE 1 + CASE 6 shape: Membrane Running while Blueprint stays Unavailable.
+  // CASE 1 + CASE 6 shape: Membrane Running while Blueprint transport is unavailable.
   assert.equal(vm.overall, 'Running');
   assert.equal(vm.membrane, 'Running');
-  assert.equal(vm.subsystems.blueprint.status, 'Unavailable');
+  assert.equal(vm.subsystems.blueprint.status, 'Transport unavailable');
   assert.equal(vm.subsystems.blueprint.state, 'unavailable');
   // Typed Not configured arrives natively — no reason-string reconstruction.
   for (const name of ['pull', 'push', 'ledger', 'adapt']) {

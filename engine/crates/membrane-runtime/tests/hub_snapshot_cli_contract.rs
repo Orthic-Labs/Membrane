@@ -95,8 +95,7 @@ fn spawn_blueprint_stub(reply: &'static str) -> std::path::PathBuf {
 }
 
 const HEALTH_OK: &str = r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok","memoryCount":7},"dailyAnalysis":{"status":"fresh","alert":false}}"#;
-const HEALTH_UNHEALTHY: &str =
-    r#"{"ok":false,"catalog":{"status":"error"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#;
+const HEALTH_UNHEALTHY: &str = r#"{"ok":false,"catalog":{"status":"error"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#;
 
 fn set_missing_blueprint_endpoint() {
     unsafe {
@@ -232,18 +231,27 @@ fn cli_composition_healthy_resident_is_running_with_absent_blueprint_ipc() {
         subsystems_of(&snapshot).blueprint.state,
         membrane_protocol::SubsystemStateV1::Unavailable
     );
-    assert_eq!(subsystems_of(&snapshot).blueprint.reason, "blueprint_unavailable");
+    assert_eq!(
+        subsystems_of(&snapshot).blueprint.reason,
+        "transport_unavailable"
+    );
 
     // Not-configured is a first-class typed state, not degraded/unavailable.
     let subsystems = subsystems_of(&snapshot);
     for name in ["pull", "push", "ledger", "adapt"] {
         let section = subsystem(subsystems, name);
-        assert_eq!(section.state, membrane_protocol::SubsystemStateV1::NotConfigured);
+        assert_eq!(
+            section.state,
+            membrane_protocol::SubsystemStateV1::NotConfigured
+        );
         assert_eq!(section.reason, "not_instrumented");
     }
 
     // Ledger is distinct from Cortex/sentinel evidence.
-    assert_ne!(subsystems_of(&snapshot).ledger.reason, subsystems_of(&snapshot).cortex.reason);
+    assert_ne!(
+        subsystems_of(&snapshot).ledger.reason,
+        subsystems_of(&snapshot).cortex.reason
+    );
 
     // Child failure never promotes into parent state.
     assert_eq!(
@@ -274,7 +282,11 @@ fn cli_composition_reads_blueprint_through_live_ipc_seam() {
         subsystems_of(&snapshot).blueprint.state,
         membrane_protocol::SubsystemStateV1::Available
     );
-    let items = subsystems_of(&snapshot).blueprint.items.as_ref().expect("evidence items");
+    let items = subsystems_of(&snapshot)
+        .blueprint
+        .items
+        .as_ref()
+        .expect("evidence items");
     assert_eq!(items[0]["graphState"], "fresh");
     assert_eq!(items[0]["generationId"], "gen-contract");
     // Parent state remains untouched by child availability.
@@ -292,8 +304,11 @@ fn offline_fallback_is_offline_without_inventing_child_health() {
     let subsystems = subsystems_of(&snapshot);
     for name in membrane_protocol::SUBSYSTEM_NAMES {
         let section = subsystem(subsystems, name);
-        assert_eq!(section.state, membrane_protocol::SubsystemStateV1::Unavailable);
-        assert_eq!(section.reason, "source_not_connected");
+        assert_eq!(
+            section.state,
+            membrane_protocol::SubsystemStateV1::Unavailable
+        );
+        assert_eq!(section.reason, "hub_inactive");
     }
 }
 
@@ -353,8 +368,10 @@ fn js_chain_fixtures_match_producer_serialization() {
 
     let write_requested =
         std::env::var_os("HUB_SNAPSHOT_FIXTURE_WRITE").is_some() || sentinel.exists();
-    for (((name, _), body), expected_state) in
-        cases.iter().zip(generated.iter()).zip(expected_states.iter())
+    for (((name, _), body), expected_state) in cases
+        .iter()
+        .zip(generated.iter())
+        .zip(expected_states.iter())
     {
         let path = fixture_dir.join(name);
         if write_requested {

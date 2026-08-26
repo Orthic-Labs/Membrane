@@ -84,7 +84,10 @@ impl PortableTastePackageV1 {
 
     fn identity_value(&self) -> serde_json::Value {
         let mut value = self.unsigned_value();
-        value.as_object_mut().expect("portable package is object").remove("package_id");
+        value
+            .as_object_mut()
+            .expect("portable package is object")
+            .remove("package_id");
         value
     }
 
@@ -131,7 +134,10 @@ impl PortableTastePackageV1 {
                     record_id: item.record.id.clone(),
                 });
             }
-            let expected_machine = item.record.machine_only.then(|| item.record.machine.clone());
+            let expected_machine = item
+                .record
+                .machine_only
+                .then(|| item.record.machine.clone());
             if item.semantic_payload.record_kind != item.record.kind
                 || item.semantic_payload.category != item.record.category
                 || item.semantic_payload.canonical_text
@@ -278,8 +284,13 @@ mod tests {
         let keypair = signature::Ed25519KeyPair::from_seed_unchecked(&seed).unwrap();
         let mut package = package();
         package.sign("k", &seed).unwrap();
-        let imported = package.import_candidates(keypair.public_key().as_ref()).unwrap();
-        assert_eq!(imported[0].precedence, PrecedenceTier::TrustedImportedPreference);
+        let imported = package
+            .import_candidates(keypair.public_key().as_ref())
+            .unwrap();
+        assert_eq!(
+            imported[0].precedence,
+            PrecedenceTier::TrustedImportedPreference
+        );
         assert!(imported[0].requires_local_promotion);
     }
 
@@ -305,7 +316,10 @@ mod tests {
         let mut package = package();
         package.package_id = format!("ptp_{}", "f".repeat(64));
         package.sign("k", &seed).unwrap();
-        assert_eq!(package.verify(keypair.public_key().as_ref()), Err(PortableTasteError::IdentityMismatch));
+        assert_eq!(
+            package.verify(keypair.public_key().as_ref()),
+            Err(PortableTasteError::IdentityMismatch)
+        );
     }
 
     #[test]

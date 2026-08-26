@@ -173,7 +173,7 @@ impl HubReadV1 {
         }
     }
 
-    /// Typed subsystem projection. `Unavailable` with the `not_instrumented`
+    /// Typed subsystem projection. `Unavailable` with a not-configured reason
     /// reason becomes a first-class `NotConfigured` on the wire so no
     /// presentation layer has to reconstruct that semantic from a reason
     /// string.
@@ -209,7 +209,9 @@ impl HubReadV1 {
                         .then_some(metadata.observed_at_unix_ms),
                 }
             }
-            Self::Unavailable { reason } if reason == "not_instrumented" => {
+            Self::Unavailable { reason }
+                if matches!(reason.as_str(), "not_instrumented" | "not_configured") =>
+            {
                 HubSubsystemV1::not_configured(reason)
             }
             Self::Unavailable { reason } => HubSubsystemV1 {

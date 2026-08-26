@@ -52,13 +52,14 @@ narrative overview; this file carries the source-derived facts.
 | **Ledger** | Navigates indexed document sections with hash-bound references. |
 | **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |
 
-Current supported target is **macOS**. Cortex is **durable-memory-only**; **Membrane Hub** is the sole resident service authority.
+Current supported target is **Windows**. Cortex is **durable-memory-only**; **Membrane Hub** is the sole resident service authority.
 
 ## Platform status
 
-The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
+The sole supported current target is **Windows** (tier 1). Other targets are not current supported targets.
 
 ## Derived from
 
-- `mcp/server.mjs`
+- `engine/crates/membrane-mcp/src/tools.rs`
+- `migration/native-rust/fixtures/mcp-conformance.v1.json`
 - `docs/membrane/capability-matrix.v1.json`

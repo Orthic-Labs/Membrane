@@ -9,7 +9,6 @@ pub mod admission;
 pub mod cli;
 pub mod federation;
 pub(crate) mod federation_sources;
-pub mod federation_worker;
 pub mod metrics;
 pub(crate) mod native_federation;
 pub mod publication;

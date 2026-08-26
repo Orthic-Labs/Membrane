@@ -114,15 +114,16 @@ pub fn sanitized_child_env(search_path: &[PathBuf]) -> Vec<(String, String)> {
         .map(|directory| directory.to_string_lossy().into_owned())
         .collect::<Vec<_>>()
         .join(separator);
-    let mut env: Vec<(String, String)> = sanitize_env_pairs(std::env::vars_os().map(|(key, value)| {
-        (
-            key.to_string_lossy().into_owned(),
-            value.to_string_lossy().into_owned(),
-        )
-    }))
-    .into_iter()
-    .filter(|(key, _)| key != "PATH")
-    .collect();
+    let mut env: Vec<(String, String)> =
+        sanitize_env_pairs(std::env::vars_os().map(|(key, value)| {
+            (
+                key.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            )
+        }))
+        .into_iter()
+        .filter(|(key, _)| key != "PATH")
+        .collect();
     env.push(("PATH".to_string(), path_value));
     env.sort_by(|left, right| left.0.cmp(&right.0));
     env
@@ -190,7 +191,10 @@ pub fn spawn_sanitized(
         .args(args)
         .current_dir(working_dir)
         .env_clear()
-        .envs(env.iter().map(|(key, value)| (key.as_str(), value.as_str())))
+        .envs(
+            env.iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -752,8 +756,9 @@ mod tests {
         let right = dir.path().join("right");
         std::fs::create_dir_all(&left).unwrap();
         std::fs::create_dir_all(&right).unwrap();
-        let left_binary = left.join("membrane-fake-engine");
-        let right_binary = right.join("membrane-fake-engine");
+        let name = format!("membrane-fake-engine{}", BINARY_SUFFIXES[0]);
+        let left_binary = left.join(&name);
+        let right_binary = right.join(&name);
         executable(&left_binary);
         executable(&right_binary);
 
@@ -779,7 +784,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bin_dir = dir.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        assert_eq!(probe_search_path("definitely-absent-binary", &[bin_dir]), None);
+        assert_eq!(
+            probe_search_path("definitely-absent-binary", &[bin_dir]),
+            None
+        );
     }
 
     #[test]
@@ -811,8 +819,13 @@ mod tests {
             env.windows(2).all(|pair| pair[0].0 < pair[1].0),
             "env must be sorted by key: {env:?}"
         );
-        assert!(env.iter().all(|(key, _)| SANITIZED_ENV_KEYS.contains(&key.as_str())));
-        let path = env.iter().find(|(key, _)| key == "PATH").map(|(_, value)| value);
+        assert!(env
+            .iter()
+            .all(|(key, _)| SANITIZED_ENV_KEYS.contains(&key.as_str())));
+        let path = env
+            .iter()
+            .find(|(key, _)| key == "PATH")
+            .map(|(_, value)| value);
         assert_eq!(
             path.map(|value| value.starts_with("/opt/allowlisted")),
             Some(true)
@@ -847,7 +860,10 @@ mod tests {
         let (sender, receiver_closed) = std::sync::mpsc::sync_channel::<String>(1);
         drop(sender);
         assert_eq!(
-            recv_with_deadline(&receiver_closed, AbsoluteDeadline::after(now_unix_ms(), 60_000)),
+            recv_with_deadline(
+                &receiver_closed,
+                AbsoluteDeadline::after(now_unix_ms(), 60_000)
+            ),
             FrameOutcome::QueueClosed
         );
     }

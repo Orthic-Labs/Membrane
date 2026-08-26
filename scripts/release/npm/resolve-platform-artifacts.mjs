@@ -1,4 +1,4 @@
-// MBR-906: resolves, per Mac npm platform key, the real artifact MBR-903's
+// MBR-906: resolves, per Windows npm platform key, the real artifact MBR-903's
 // release pipeline has already sealed and recorded, by
 // reading its immutable docs/evidence/releases/<releaseId>/release-generation.json
 // (dist/release/contracts/release-generation.v1.schema.json), read-only.
@@ -6,7 +6,7 @@
 // This module never builds, signs, notarizes, uploads, or publishes
 // anything, and it never invents a version, commit, digest, or URL: every
 // value it returns is copied verbatim from a release-generation.json MBR-903
-// already wrote for a Mac target it independently verified. A target whose
+// already wrote for a Windows target it independently verified. A target whose
 // pipeline status is not "verified" is a declared, named gap, never a fabricated
 // artifact. It is the resolution layer the
 // npm bootstrapper (dist/npm/bin/membrane.mjs, dist/npm/index.mjs) and the per-platform
@@ -16,12 +16,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { releaseId as computeReleaseId } from "../identity.mjs";
 
-// Mac npm platform key (dist/npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
+// Windows npm platform key (dist/npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
 // target enum dist/release/contracts/platforms.v1.json and
 // docs/evidence/releases/<releaseId>/release-generation.json actually use.
 export const NPM_PLATFORM_TO_PIPELINE_TARGET = Object.freeze({
-  "darwin-arm64": "mac-arm64",
-  "darwin-x64": "mac-x64",
+  "win32-x64": "windows-x86_64",
 });
 
 export class ArtifactNotVerifiedError extends Error {}

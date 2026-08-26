@@ -32,7 +32,7 @@ impl std::fmt::Display for RemediationError {
         match self {
             RemediationError::MissingUserEvidenceForTasteCandidate => write!(
                 f,
-                "taste_candidate remediation requires qualifying authenticated user evidence"
+                "taste_candidate remediation requires qualifying selected-transcript user evidence"
             ),
             RemediationError::PrecisionGateNotMet { measured, required } => write!(
                 f,
@@ -128,7 +128,8 @@ fn proposal_kind(effect: RemediationEffect) -> &'static str {
 }
 
 fn valid_prefixed_digest(value: &str) -> bool {
-    value.strip_prefix("sha256:")
+    value
+        .strip_prefix("sha256:")
         .is_some_and(|digest| digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
@@ -145,7 +146,10 @@ impl SealedRemediationProposalV1 {
         actor: &str,
         at: &str,
     ) -> Result<Self, RemediationSealError> {
-        let issue_suffix = proposal.issue_id.strip_prefix("ii_").ok_or(RemediationSealError::InvalidIssueId)?;
+        let issue_suffix = proposal
+            .issue_id
+            .strip_prefix("ii_")
+            .ok_or(RemediationSealError::InvalidIssueId)?;
         if issue_suffix.len() != 64 || !issue_suffix.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(RemediationSealError::InvalidIssueId);
         }
@@ -157,7 +161,9 @@ impl SealedRemediationProposalV1 {
             return Err(RemediationSealError::EmptyProposal);
         }
         if let Some(receipt) = semantic_validator_receipt_id {
-            let suffix = receipt.strip_prefix("rcpt_").ok_or(RemediationSealError::InvalidValidatorReceipt)?;
+            let suffix = receipt
+                .strip_prefix("rcpt_")
+                .ok_or(RemediationSealError::InvalidValidatorReceipt)?;
             if suffix.len() != 32 || !suffix.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Err(RemediationSealError::InvalidValidatorReceipt);
             }
@@ -165,9 +171,17 @@ impl SealedRemediationProposalV1 {
         if proposal.effect == RemediationEffect::TasteCandidate {
             if user_evidence.is_empty()
                 || user_evidence.iter().any(|evidence| {
-                    !matches!(evidence.signal_class.as_str(), "user_authoritative" | "user_behavioral")
-                        || !matches!(evidence.act.as_str(), "explicit_statement" | "accept" | "reject" | "post_accept_edit" | "named_choice")
-                        || !valid_prefixed_digest(&evidence.evidence_digest)
+                    !matches!(
+                        evidence.signal_class.as_str(),
+                        "user_authoritative" | "user_behavioral"
+                    ) || !matches!(
+                        evidence.act.as_str(),
+                        "explicit_statement"
+                            | "accept"
+                            | "reject"
+                            | "post_accept_edit"
+                            | "named_choice"
+                    ) || !valid_prefixed_digest(&evidence.evidence_digest)
                         || evidence.captured_at.trim().is_empty()
                 })
             {
@@ -184,7 +198,10 @@ impl SealedRemediationProposalV1 {
             authority_class: "none".into(),
             effect_boundary: effect_boundary.into(),
             user_evidence: (proposal.effect == RemediationEffect::TasteCandidate).then_some(
-                RemediationUserEvidenceEnvelopeV1 { qualifying: true, signals: user_evidence },
+                RemediationUserEvidenceEnvelopeV1 {
+                    qualifying: true,
+                    signals: user_evidence,
+                },
             ),
             honesty_limit: honesty_limit.into(),
             admission_policy_version: admission_policy_version.into(),
@@ -210,7 +227,10 @@ impl SealedRemediationProposalV1 {
                     actor: actor.into(),
                     prev_status: None,
                     new_status: "proposed".into(),
-                    receipt_id: format!("rcpt_{}", &crate::canonical::sha256_hex(receipt_material.as_bytes())[..32]),
+                    receipt_id: format!(
+                        "rcpt_{}",
+                        &crate::canonical::sha256_hex(receipt_material.as_bytes())[..32]
+                    ),
                     note: "immutable remediation semantics sealed".into(),
                 }],
             },
@@ -263,12 +283,12 @@ impl RemediationProposalV1 {
         }
     }
 
-    /// Validate evidence requirements. `authenticated_user_evidence_ids` are
-    /// the evidence objects deterministically confirmed as external-user
-    /// acts; the proposal's claimed IDs must all be present in that set.
+    /// Validate evidence requirements. `selected_user_evidence_ids` are
+    /// event IDs from caller-selected external-user transcript sources; the
+    /// proposal's claimed IDs must all be present in that set.
     pub fn validate_evidence(
         &self,
-        authenticated_user_evidence_ids: &std::collections::BTreeSet<String>,
+        selected_user_evidence_ids: &std::collections::BTreeSet<String>,
     ) -> Result<(), RemediationError> {
         if self.effect != RemediationEffect::TasteCandidate {
             return Ok(());
@@ -277,7 +297,7 @@ impl RemediationProposalV1 {
             || !self
                 .supporting_user_evidence_ids
                 .iter()
-                .all(|id| authenticated_user_evidence_ids.contains(id))
+                .all(|id| selected_user_evidence_ids.contains(id))
         {
             return Err(RemediationError::MissingUserEvidenceForTasteCandidate);
         }
@@ -316,18 +336,16 @@ mod tests {
     }
 
     #[test]
-    fn taste_candidate_requires_authenticated_user_evidence() {
+    fn taste_candidate_requires_selected_transcript_evidence() {
         let p = prop(RemediationEffect::TasteCandidate, vec!["ev-9".into()]);
         let mut auth = BTreeSet::new();
         assert!(p.validate_evidence(&auth).is_err());
         auth.insert("ev-9".into());
         assert!(p.validate_evidence(&auth).is_ok());
         // Non-taste effects need no evidence.
-        assert!(
-            prop(RemediationEffect::ProcessChange, vec![])
-                .validate_evidence(&BTreeSet::new())
-                .is_ok()
-        );
+        assert!(prop(RemediationEffect::ProcessChange, vec![])
+            .validate_evidence(&BTreeSet::new())
+            .is_ok());
     }
 
     #[test]
@@ -366,9 +384,13 @@ mod tests {
             vec![],
             "adapt",
             "2026-08-25T00:00:00Z",
-        ).unwrap();
+        )
+        .unwrap();
         assert!(sealed.verify().is_ok());
         sealed.payload.canonical_proposal_text.push_str(" changed");
-        assert_eq!(sealed.verify(), Err(RemediationSealError::PayloadDigestMismatch));
+        assert_eq!(
+            sealed.verify(),
+            Err(RemediationSealError::PayloadDigestMismatch)
+        );
     }
 }

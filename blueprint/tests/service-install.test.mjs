@@ -1,7 +1,7 @@
 // D15: service lifecycle — no OS registration (D-S03), foreground mode only (D-S04)
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -27,6 +27,12 @@ test("foregroundRunArgs returns blueprint service run target", () => {
   const args = foregroundRunArgs();
   assert.ok(Array.isArray(args));
   assert.ok(args.join(" ").includes("service run"));
+});
+
+test("foreground service resolves watcher from installed runtime, not enrolled repo", () => {
+  const commands = readFileSync(join(import.meta.dirname, "..", "scripts", "cli", "commands.mjs"), "utf8");
+  assert.match(commands, /resolve\(import\.meta\.dirname, "\.\.\/blueprint-watch\.mjs"\)/);
+  assert.doesNotMatch(commands, /resolve\(root, "scripts", "blueprint-watch\.mjs"\)/);
 });
 
 test("serviceTarget is null per D-S03", () => {
@@ -63,7 +69,8 @@ test("uninstallService with purge lists the data dir", () => {
 test("grep gate: no OS-registration code reachable in service/", async () => {
   const { readFileSync, readdirSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const svcFiles = readdirSync("src/service").filter((f) => f.endsWith(".mjs")).map((f) => join("src/service", f));
+  const serviceDir = join(import.meta.dirname, "..", "src", "service");
+  const svcFiles = readdirSync(serviceDir).filter((f) => f.endsWith(".mjs")).map((f) => join(serviceDir, f));
   for (const f of svcFiles) {
     const src = readFileSync(f, "utf8");
     assert.equal(/launchctl/.test(src), false, `${f} must not contain launchctl per D-S03`);

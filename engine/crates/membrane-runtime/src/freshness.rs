@@ -11,8 +11,6 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-#[cfg(windows)]
-use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -694,7 +692,7 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     }
 }
 
-fn blueprint_daemon_endpoint() -> Result<PathBuf, String> {
+fn hub_blueprint_endpoint() -> Result<PathBuf, String> {
     if let Some(endpoint) = std::env::var_os("BLUEPRINT_DAEMON_ENDPOINT") {
         return Ok(PathBuf::from(endpoint));
     }
@@ -738,6 +736,7 @@ fn exchange_blueprint_status<T: Read + Write>(
     stream: &mut T,
     repo_root: &Path,
 ) -> Result<serde_json::Value, String> {
+    let deadline = Instant::now() + BLUEPRINT_REQUEST_TIMEOUT;
     stream
         .write_all(&blueprint_status_request(repo_root)?)
         .map_err(|error| error.to_string())?;
@@ -745,12 +744,19 @@ fn exchange_blueprint_status<T: Read + Write>(
     let mut frame = Vec::new();
     let mut byte = [0_u8; 1];
     while frame.len() < BLUEPRINT_FRAME_BYTES {
+        if Instant::now() >= deadline {
+            return Err("Blueprint status request timed out".to_string());
+        }
         let count = stream.read(&mut byte).map_err(|error| error.to_string())?;
         if count == 0 || byte[0] == b'\n' {
             break;
         }
         frame.push(byte[0]);
     }
+    parse_blueprint_status_frame(&frame)
+}
+
+fn parse_blueprint_status_frame(frame: &[u8]) -> Result<serde_json::Value, String> {
     if frame.is_empty() {
         return Err("Blueprint daemon returned no status frame".to_string());
     }
@@ -758,7 +764,7 @@ fn exchange_blueprint_status<T: Read + Write>(
         return Err("Blueprint status frame exceeds limit".to_string());
     }
     let value: serde_json::Value =
-        serde_json::from_slice(&frame).map_err(|error| error.to_string())?;
+        serde_json::from_slice(frame).map_err(|error| error.to_string())?;
     if value
         .get("protocolVersion")
         .and_then(serde_json::Value::as_u64)
@@ -796,25 +802,25 @@ fn read_blueprint_status_at(
     endpoint: &Path,
     repo_root: &Path,
 ) -> Result<serde_json::Value, String> {
-    let endpoint = endpoint.to_path_buf();
-    let repo_root = repo_root.to_path_buf();
-    let (sender, receiver) = mpsc::sync_channel(1);
-    std::thread::spawn(move || {
-        let result = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(endpoint)
-            .map_err(|error| error.to_string())
-            .and_then(|mut pipe| exchange_blueprint_status(&mut pipe, &repo_root));
-        let _ = sender.send(result);
-    });
-    receiver
-        .recv_timeout(BLUEPRINT_REQUEST_TIMEOUT)
-        .map_err(|_| "Blueprint status request timed out".to_string())?
+    let request = blueprint_status_request(repo_root)?;
+    let frame = membrane_federation::blueprint_client::exchange_windows_named_pipe(
+        endpoint,
+        &request,
+        BLUEPRINT_FRAME_BYTES,
+        BLUEPRINT_REQUEST_TIMEOUT,
+    )
+    .map_err(|error| {
+        if error == "__blueprint_pipe_timeout__" {
+            "Blueprint status request timed out".to_string()
+        } else {
+            error
+        }
+    })?;
+    parse_blueprint_status_frame(&frame)
 }
 
 pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
-    read_blueprint_status_at(&blueprint_daemon_endpoint()?, repo_root)
+    read_blueprint_status_at(&hub_blueprint_endpoint()?, repo_root)
 }
 
 pub fn evaluate_repository_freshness(store: &MemoryStore, repo_root: PathBuf) -> FreshnessVerdict {

@@ -1,7 +1,7 @@
 # Adapt — product overview
 
 Adapt is Membrane's governed behavioral-learning subsystem. Taste proposes durable,
-scoped preferences from authenticated user evidence. Insights reports recurring
+scoped preferences from explicitly user-selected, source-bound transcript evidence. Insights reports recurring
 agent, model, tool, and context-cost failures from attributable evidence. Adapt does
 not retrain a model, store private chain-of-thought, or own durable memory.
 
@@ -22,8 +22,7 @@ durable state, and no detector grants itself behavioral authority.
 ## Qualification boundaries
 
 The Taste benchmark is synthetic and records a known product-fact modal false positive;
-it is not a real-world held-out quality claim. Installed CodeRight user-act and
-semantic-adjudicator trust provisioning, reviewed semantic-merge delivery, exact
-released-package qualification, and the product-wide native-only release seal remain
-open. See the canonical Adapt document and native migration ledger for acceptance
-criteria.
+it is not a real-world quality claim. The selected-transcript path binds exact source hashes
+and requires review before apply. Reviewed semantic-merge delivery, exact released-package
+qualification, and product-wide native-only release seal remain separate release work. See
+canonical Adapt document and native migration ledger for acceptance criteria.

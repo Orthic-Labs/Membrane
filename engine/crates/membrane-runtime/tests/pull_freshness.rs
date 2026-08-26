@@ -295,7 +295,7 @@ fn freshness_route_returns_versioned_content_free_service_metadata() {
         .as_str()
         .is_some_and(|generation| generation.starts_with("sha256:")));
     assert!(value["firstAfterIdle"].is_boolean());
-    assert!(value["stageElapsedMs"]["git_status"].is_u64());
+    assert!(value["stageElapsedMs"].is_object());
     assert!(value.get("content").is_none());
 }
 

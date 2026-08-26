@@ -13,7 +13,13 @@ import {
   isExecutableCandidate,
   resolvePythonModule,
 } from "./build-invocation-graph.mjs";
-import { SEAL_REL, deriveReachability, rowAgreement, validateInvocationGraph } from "./check-invocation-graph.mjs";
+import {
+  SEAL_REL,
+  deriveReachability,
+  productionUnresolvedReferences,
+  rowAgreement,
+  validateInvocationGraph,
+} from "./check-invocation-graph.mjs";
 
 const node = (id, kind = "tracked-executable", production_reachable = false) => ({
   id,
@@ -142,6 +148,50 @@ test("validateInvocationGraph flags ghost nodes, unreachable drift, and legacy-l
   }
 });
 
+test("validateInvocationGraph flags fresh-build edge drift without node drift", () => {
+  const root = makeTmpRoot();
+  try {
+    mkdirSync(join(root, "mcp"), { recursive: true });
+    writeFileSync(join(root, "mcp", "server.mjs"), "console.log(1);\n");
+    writeFileSync(join(root, "mcp", "lib.cjs"), "module.exports = {};\n");
+
+    const graph = {
+      artifact: "membrane.invocation-graph",
+      schemaVersion: 2,
+      baselineCommit: "deadbeef",
+      productionEntrypoints: [{ id: "mcp/server.mjs" }],
+      nodes: [
+        node("mcp/server.mjs", "tracked-executable", true),
+        node("mcp/lib.cjs", "tracked-executable", true),
+      ],
+      edges: [
+        { id: "e1", from: "mcp/server.mjs", to: "mcp/lib.cjs", boundary: "import", origin: "scanned", evidence: ["x"] },
+      ],
+      unresolvedReferences: [],
+    };
+    const freshGraph = {
+      ...graph,
+      edges: [
+        ...graph.edges,
+        { id: "e2", from: "mcp/lib.cjs", to: "mcp/server.mjs", boundary: "process", origin: "scanned", evidence: ["new-edge"] },
+      ],
+    };
+    const reconciliation = { status: "superseded", mappings: [], legacyArtifactCount: 0, gatesConsumingLegacyLedger: [] };
+    const { errors } = validateInvocationGraph({
+      root,
+      graph,
+      freshGraph,
+      manifest: { rows: [{ id: "row-ok", runtime: "node", files: ["mcp/lib.cjs"], production_reachable: true }] },
+      reconciliation,
+      trackedFiles: ["mcp/server.mjs", "mcp/lib.cjs"],
+    });
+    assert.ok(errors.some((error) => error.code === "STALE_GRAPH_EDGE_DRIFT"), JSON.stringify(errors));
+    assert.equal(errors.some((error) => error.code === "STALE_GRAPH_MISSING_NODE" || error.code === "STALE_GRAPH_GHOST_NODE"), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("native-only seal honesty guard blocks a premature seal", () => {
   const root = makeTmpRoot();
   try {
@@ -151,7 +201,7 @@ test("native-only seal honesty guard blocks a premature seal", () => {
       productionEntrypoints: [],
       nodes: [node("still-python/tool.py", "tracked-executable", true)],
       edges: [],
-      unresolvedReferences: [{ reference: "x", from: "y", reason: "z" }],
+      unresolvedReferences: [{ reference: "x", from: "still-python/tool.py", reason: "z" }],
     };
     const manifest = {
       rows: [{ id: "py-row", runtime: "python", files: ["still-python/tool.py"], production_reachable: true }],
@@ -161,6 +211,48 @@ test("native-only seal honesty guard blocks a premature seal", () => {
     const { errors } = validateInvocationGraph({ root, graph, manifest, reconciliation: null, trackedFiles: [] });
     assert.ok(errors.some((e) => e.code === "LEGACY_LEDGER_NOT_SUPERSEDED"));
     assert.ok(errors.some((e) => e.code === "NATIVE_ONLY_SEAL_PREMATURE"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native-only seal ignores unresolved references outside production reachability", () => {
+  const root = makeTmpRoot();
+  try {
+    const graph = {
+      artifact: "membrane.invocation-graph",
+      schemaVersion: 2,
+      productionEntrypoints: [{ id: "engine/main.rs" }],
+      nodes: [
+        node("engine/main.rs", "tracked-executable", true),
+        node("eval/dev-only.py", "tracked-executable", false),
+      ],
+      edges: [],
+      unresolvedReferences: [
+        { reference: "pathlib", from: "eval/dev-only.py", reason: "module not resolved against known package roots" },
+      ],
+    };
+    const manifest = {
+      rows: [{ id: "native-row", runtime: "rust", files: ["engine/main.rs"], production_reachable: true }],
+    };
+    const reconciliation = { status: "superseded", mappings: [], legacyArtifactCount: 0, gatesConsumingLegacyLedger: [] };
+    mkdirSync(join(root, "engine"), { recursive: true });
+    writeFileSync(join(root, "engine", "main.rs"), "fn main() {}\n");
+    mkdirSync(join(root, "eval"), { recursive: true });
+    writeFileSync(join(root, "eval", "dev-only.py"), "from pathlib import Path\n");
+    mkdirSync(join(root, "migration", "native-rust"), { recursive: true });
+    writeFileSync(join(root, SEAL_REL), "{}");
+
+    const reachableSet = new Set(["engine/main.rs"]);
+    assert.deepEqual(productionUnresolvedReferences(graph, reachableSet), []);
+    const { errors } = validateInvocationGraph({
+      root,
+      graph,
+      manifest,
+      reconciliation,
+      trackedFiles: ["engine/main.rs", "eval/dev-only.py"],
+    });
+    assert.equal(errors.some((error) => error.code === "NATIVE_ONLY_SEAL_PREMATURE"), false, JSON.stringify(errors));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -32,11 +32,18 @@ const HOLDER_SCRIPT = join(HERE, "fixtures", "store-lease-holder.mjs");
 function withTempDb(fn) {
   const dir = mkdtempSync(join(tmpdir(), "blueprint-store-lease-"));
   const dbPath = join(dir, "graph.db");
+  let result;
   try {
-    return fn(dbPath);
-  } finally {
+    result = fn(dbPath);
+  } catch (error) {
     rmSync(dir, { recursive: true, force: true });
+    throw error;
   }
+  if (result && typeof result.then === "function") {
+    return Promise.resolve(result).finally(() => rmSync(dir, { recursive: true, force: true }));
+  }
+  rmSync(dir, { recursive: true, force: true });
+  return result;
 }
 
 function spawnHolder(dbPath, mode, extraArgs = []) {

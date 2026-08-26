@@ -41,15 +41,18 @@ pub mod rust_analyzer_provider;
 pub mod typescript_provider;
 
 pub use blueprint_findings::{
-    BlueprintFindingsClient, BlueprintFindingsError, BlueprintFinding, BlueprintFindingsResult,
+    BlueprintFinding, BlueprintFindingsClient, BlueprintFindingsError, BlueprintFindingsResult,
     DaemonFindingsClient,
 };
 pub use child_process::{
     default_search_path, drain_frames_until, lsp_frame_bytes, probe_search_path,
-    recv_with_deadline, recv_within, sanitize_env_pairs, sanitized_child_env,
-    spawn_bounded_reader, spawn_sanitized, spawn_stderr_drainer, tsserver_line_bytes,
-    FrameDecoder, FrameOutcome, LspDecoder, LineFrameDecoder, ReaderPump, SanitizedProcess,
-    SANITIZED_ENV_KEYS,
+    recv_with_deadline, recv_within, sanitize_env_pairs, sanitized_child_env, spawn_bounded_reader,
+    spawn_sanitized, spawn_stderr_drainer, tsserver_line_bytes, FrameDecoder, FrameOutcome,
+    LineFrameDecoder, LspDecoder, ReaderPump, SanitizedProcess, SANITIZED_ENV_KEYS,
 };
-pub use rust_analyzer_provider::{qualified_capabilities as rust_analyzer_capabilities, RustAnalyzerProvider};
-pub use typescript_provider::{qualified_capabilities as typescript_capabilities, TypeScriptProvider};
+pub use rust_analyzer_provider::{
+    qualified_capabilities as rust_analyzer_capabilities, RustAnalyzerProvider,
+};
+pub use typescript_provider::{
+    qualified_capabilities as typescript_capabilities, TypeScriptProvider,
+};

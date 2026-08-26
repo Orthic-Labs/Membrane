@@ -2,6 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -210,7 +211,9 @@ test("blueprint service install --dry-run does not register OS service", () => {
 test("blueprint service run starts in foreground and exits when Hub owner pipe closes", async () => {
   const home = mkdtempSync(join(tmpdir(), "blueprint-service-home-"));
   try {
-    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, BLUEPRINT_SNAPSHOT_TOKEN: "test-token", MEMBRANE_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
+    const launchToken = randomBytes(32).toString("hex");
+    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, BLUEPRINT_SNAPSHOT_TOKEN: "test-token", MEMBRANE_HUB_CHILD: "1", MEMBRANE_HUB_PARENT_PID: String(process.pid), MEMBRANE_HUB_LAUNCH_TOKEN: launchToken }, stdio: ["pipe", "pipe", "pipe"] });
+    child.stdin.write(`${launchToken}\n`);
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));
     await new Promise((resolve, reject) => {

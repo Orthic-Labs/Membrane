@@ -29,7 +29,7 @@ export const RECONCILIATION_REL =
   "migration/native-rust/legacy-ledger-reconciliation.json";
 export const MANIFEST_REL = "migration/native-rust/runtime-language-manifest.json";
 
-const EXECUTABLE_EXTENSIONS = [".py", ".mjs", ".cjs", ".js", ".ts", ".sh", ".bash", ".rs"];
+const EXECUTABLE_EXTENSIONS = [".py", ".mjs", ".cjs", ".js", ".ts", ".sh", ".bash", ".cmd", ".rs"];
 const INTERPRETER_EXTENSIONS = new Set([".py", ".mjs", ".cjs", ".js", ".ts"]);
 
 function hasShebang(buf) {
@@ -69,34 +69,6 @@ function currentHead(root) {
 export function productionEntrypoints() {
   return [
     {
-      id: "mcp/server.mjs",
-      kind: "installed-entrypoint",
-      runtime: "node",
-      justification:
-        "Generated host configs invoke `node mcp/server.mjs`; spec section 7.1 names it the current generated-truth MCP surface.",
-    },
-    {
-      id: "mcp/hooks/membrane-hook-entrypoint.mjs",
-      kind: "installed-entrypoint",
-      runtime: "node",
-      justification:
-        "Installed Live Diagnostics host-hook enforcement entrypoint; spec section 7.5.",
-    },
-    {
-      id: "mcp/host/context-adapter.cjs",
-      kind: "installed-entrypoint",
-      runtime: "node",
-      justification:
-        "Host adapter invoked by client hosts for membrane context; spawnSync fallback observed in tracked source.",
-    },
-    {
-      id: "install/workspace/membrane_shims.py",
-      kind: "installed-entrypoint",
-      runtime: "python",
-      justification:
-        "Workspace bootstrap shim shipped into the install projection; policy exception install-bootstrap-python.",
-    },
-    {
       id: "apps/membrane-hub/src-tauri/src/main.rs",
       kind: "installed-entrypoint",
       runtime: "rust",
@@ -110,11 +82,17 @@ export function productionEntrypoints() {
         "`membrane` binary entry (engine/crates/membrane) invoked directly by users and bundled by the Hub supervisor.",
     },
     {
-      id: "dist/npm/bin/membrane.mjs",
-      kind: "installed-entrypoint",
-      runtime: "node",
+      id: "blueprint/release/launchers/blueprint.cmd",
+      kind: "installed-external-component-entrypoint",
+      runtime: "shell",
       justification:
-        "MBR-906 npm bootstrapper: user-facing `npx @membrane/membrane` entry shipped in the packaged projection.",
+        "Signed Windows Blueprint CLI launcher bundled by the installer; direct consumers use bounded one-shot operations.",
+    },
+    {
+      id: "blueprint/release/launchers/blueprint-mcp.cmd",
+      kind: "installed-external-component-entrypoint",
+      runtime: "shell",
+      justification: "Signed Windows Blueprint MCP launcher bundled by the installer.",
     },
   ];
 }
@@ -138,6 +116,27 @@ export function curatedEdges() {
       evidence: { path: "engine/crates/membrane/src/modes.rs", symbol: "dispatch_cli / membrane_runtime::cli::run_cli_from" },
     },
     {
+      from: "blueprint/release/launchers/blueprint.cmd",
+      to: "blueprint/scripts/blueprint.mjs",
+      operation: "bounded installed Blueprint CLI launch",
+      boundary: "process",
+      evidence: { path: "blueprint/release/launchers/blueprint.cmd", symbol: "lib\\node.exe ... scripts\\blueprint.mjs" },
+    },
+    {
+      from: "blueprint/release/launchers/blueprint-mcp.cmd",
+      to: "blueprint/scripts/blueprint-mcp.mjs",
+      operation: "bounded installed Blueprint MCP launch",
+      boundary: "process",
+      evidence: { path: "blueprint/release/launchers/blueprint-mcp.cmd", symbol: "lib\\node.exe ... scripts\\blueprint-mcp.mjs" },
+    },
+    {
+      from: "blueprint/scripts/cli/commands.mjs",
+      to: "blueprint/scripts/blueprint-watch.mjs",
+      operation: "Hub-owned Blueprint watcher launch",
+      boundary: "process",
+      evidence: { path: "blueprint/scripts/cli/commands.mjs", symbol: "spawn(process.execPath, [watcherScript, \"start\"])" },
+    },
+    {
       from: "engine/crates/membrane-runtime/src/cli.rs",
       to: "engine/crates/membrane-adapt/src/lib.rs",
       operation: "native Adapt command handlers",
@@ -159,74 +158,11 @@ export function curatedEdges() {
       evidence: { path: "apps/membrane-hub/src-tauri/src/supervisor.rs", symbol: "run_hub_runtime" },
     },
     {
-      from: "engine/crates/membrane-runtime/src/pull/federation.rs",
-      to: "engine/federation/gateway.py",
-      operation: "python3 one-shot gateway command (path segments joined at runtime)",
-      boundary: "process",
-      evidence: { path: "engine/crates/membrane-runtime/src/pull/federation.rs", symbol: "run_federate / &[\"membrane\",\"engine\",\"federation\",\"gateway.py\"]" },
-    },
-    {
-      from: "engine/crates/membrane-runtime/src/pull/federation_worker.rs",
-      to: "engine/federation/gateway.py",
-      operation: "resident python worker --serve-stdio spawn",
-      boundary: "process",
-      evidence: { path: "engine/crates/membrane-runtime/src/pull/federation_worker.rs", symbol: "ResidentGateway::spawn" },
-    },
-    {
-      from: "engine/federation/providers/blueprint.py",
-      to: "external:blueprint-daemon",
-      operation: "Unix socket / named pipe recall",
-      boundary: "external-typed-protocol",
-      evidence: { path: "engine/federation/providers/blueprint.py", symbol: "_read_daemon_request" },
-    },
-    {
-      from: "engine/federation/gateway.py",
-      to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "loopback POST /freshness, /scope_grants, /skills-snapshot, cortex route",
-      boundary: "loopback-http",
-      evidence: { path: "engine/federation/gateway.py", symbol: "_fetch_freshness_verdict" },
-    },
-    {
-      from: "engine/federation/providers/scope_grant.py",
-      to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "loopback POST /scope_grants",
-      boundary: "loopback-http",
-      evidence: { path: "engine/federation/providers/scope_grant.py", symbol: "_resident_lookup" },
-    },
-    {
-      from: "engine/federation/providers/cortex.py",
-      to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "loopback resident Cortex application route",
-      boundary: "loopback-http",
-      evidence: { path: "engine/federation/providers/cortex.py", symbol: "_ccs_from_serve" },
-    },
-    {
-      from: "engine/federation/providers/skills.py",
-      to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "loopback POST /skills-snapshot",
-      boundary: "loopback-http",
-      evidence: { path: "engine/federation/providers/skills.py", symbol: "_snapshot_from_serve" },
-    },
-    {
-      from: "install/workspace/membrane_shims.py",
-      to: "dist/install/workspace/membrane_shims.py",
-      operation: "packaged projection of workspace bootstrap shim",
-      boundary: "packaged-projection",
-      evidence: { path: "dist/install/workspace/", symbol: "install projection mirror of install/workspace/" },
-    },
-    {
-      from: "mcp/server.mjs",
-      to: "dist/npm/index.mjs",
-      operation: "packaged projection of MCP surface",
-      boundary: "packaged-projection",
-      evidence: { path: "dist/npm/index.mjs", symbol: "npm package root mirroring mcp/" },
-    },
-    {
       from: "external:host-clients",
-      to: "mcp/server.mjs",
-      operation: "stdio MCP session launched by generated host configs",
+      to: "engine/crates/membrane/src/main.rs",
+      operation: "native stdio MCP session launched by generated host config",
       boundary: "stdio",
-      evidence: { path: "mcp.json", symbol: "membrane server command" },
+      evidence: { path: "mcp.json", symbol: "membrane stdio-mcp" },
     },
   ];
 }

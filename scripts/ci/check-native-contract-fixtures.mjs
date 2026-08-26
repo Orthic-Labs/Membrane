@@ -6,7 +6,7 @@
 //   - the aggregate digest reproduces;
 //   - golden examples validate against their schemas via a bounded draft-07
 //     subset (type/required/enum/const/pattern/min/max/items/properties);
-//   - internal contracts stay internal: none of the four N1-named internal V1
+//   - internal contracts stay internal: none of the three N1-named internal V1
 //     contracts appears in the public protocol registry (schemas/*.schema.json);
 //   - the five public Membrane V1 shapes remain present in that registry,
 //     untouched.
@@ -29,7 +29,6 @@ export const PUBLIC_REGISTRY_DIR = "schemas";
 
 export const INTERNAL_CONTRACT_NAMES = [
   "TranscriptEventV1",
-  "UserActEvidenceV1",
   "FailureEpisodeV1",
   "InsightIssueV1",
 ];
@@ -44,8 +43,16 @@ export const PUBLIC_V1_SHAPES = [
 
 export const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 
+export function canonicalFixtureBytes(buf) {
+  return Buffer.from(buf).toString("utf8").replaceAll("\r\n", "\n");
+}
+
+export function fixtureSha256(path) {
+  return sha256(canonicalFixtureBytes(readFileSync(path)));
+}
+
 export function aggregateDigest(root, files) {
-  const lines = [...files].sort().map((f) => `${f}:${sha256(readFileSync(join(root, f)))}\n`);
+  const lines = [...files].sort().map((f) => `${f}:${fixtureSha256(join(root, f))}\n`);
   return sha256(lines.join(""));
 }
 
@@ -67,7 +74,7 @@ export function buildManifest({ root, now = new Date() }) {
   const fileEntry = (path, role) => ({
     path,
     role,
-    sha256: sha256(readFileSync(join(root, path))),
+    sha256: fixtureSha256(join(root, path)),
   });
   const contract = (name, schemaVersionTag, sourceOfTruth, schemaFile, exampleFile, extra = {}) => ({
     name,
@@ -95,12 +102,6 @@ export function buildManifest({ root, now = new Date() }) {
         "engine/crates/membrane-transcript/src/event.rs",
         `${FIXTURES_DIR}/transcript-event-v1.schema.json`,
         `${FIXTURES_DIR}/examples/transcript-event-v1.example.json`,
-      ),
-      contract(
-        "UserActEvidenceV1", "adapt.user-act-evidence.v1",
-        "engine/crates/membrane-transcript/src/evidence.rs",
-        `${FIXTURES_DIR}/user-act-evidence-v1.schema.json`,
-        `${FIXTURES_DIR}/examples/user-act-evidence-v1.example.json`,
       ),
       contract(
         "FailureEpisodeV1", "adapt.failure-episode.v1",
@@ -244,7 +245,7 @@ export function validateFixtures({ root, manifest }) {
         continue;
       }
       if (typeof entry === "object" && entry.sha256) {
-        const actual = sha256(readFileSync(join(root, f)));
+        const actual = fixtureSha256(join(root, f));
         if (actual !== entry.sha256) {
           add("FIXTURE_HASH_MISMATCH", `recorded ${entry.sha256.slice(0, 12)}… != actual ${actual.slice(0, 12)}… — in-place edits are forbidden; roll corpus ${manifest.corpusId ? manifest.corpusId.replace(/v\d+$/, "v" + (Number(manifest.corpusId.slice(-1)) + 1)) : "v+1"} with a recorded reason`, f);
         }

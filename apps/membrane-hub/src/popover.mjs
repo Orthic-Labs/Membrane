@@ -1,14 +1,36 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
 export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
 export const SUBSYSTEM_ORDER = ['pull', 'push', 'cortex', 'blueprint', 'ledger', 'adapt'];
-const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
+const TYPED_REASON_STATES = Object.freeze({
+  not_instrumented: 'not_configured',
+  not_configured: 'not_configured',
+  stale: 'stale',
+  stale_generation: 'stale',
+  blueprint_stale: 'stale',
+  transport_unavailable: 'transport_unavailable',
+  hub_inactive: 'hub_inactive',
+  resident_owner_active: 'resident_owner_active',
+});
+const typedReasonState = reason => TYPED_REASON_STATES[String(reason ?? '').toLowerCase()] || null;
+export const lifecycleReasonLabel = reason => ({
+  not_instrumented: 'Not configured',
+  not_configured: 'Not configured',
+  stale: 'Stale',
+  stale_generation: 'Stale generation',
+  blueprint_stale: 'Blueprint stale',
+  transport_unavailable: 'Transport unavailable',
+  hub_inactive: 'Hub inactive',
+  resident_owner_active: 'Resident owner active',
+}[String(reason ?? '').toLowerCase()] || String(reason ?? 'No evidence'));
+const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', stale: 'Stale', transport_unavailable: 'Transport unavailable', hub_inactive: 'Hub inactive', resident_owner_active: 'Resident owner active', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
 const state = section => typeof section === 'object' && section ? section.state : null;
 const sectionStatus = section => {
   const s = state(section);
   // Typed wire contract: subsystems carry Not configured natively.
   if (s === 'not_configured') return s;
+  const typed = typedReasonState(section?.reason);
+  if (typed) return typed;
   // Operational resources still encode it as unavailable+not_instrumented.
-  if (s === 'unavailable' && section.reason === 'not_instrumented') return 'not_configured';
   return STATUS_ORDER.includes(s) ? s : 'unavailable';
 };
 const freshLiveSnapshot = runtime => ['available', 'live'].includes(String(runtime?.snapshotState ?? '').toLowerCase());
@@ -51,11 +73,11 @@ export function viewModel(snapshot, runtime) {
   const service = serviceState(snapshot, runtime);
   const resources = Object.fromEntries(SECTION_ORDER.map(key => {
     const section = sectionMap[key];
-    return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence') }];
+    return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence'), reasonLabel: lifecycleReasonLabel(section?.reason) }];
   }));
   const subsystems = Object.fromEntries(SUBSYSTEM_ORDER.map(key => {
     const section = subsystemMap[key];
-    return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence') }];
+    return [key, { state: state(section), status: label(sectionStatus(section)), reason: String(section?.reason ?? 'No evidence'), reasonLabel: lifecycleReasonLabel(section?.reason) }];
   }));
   const observed = snapshot?.observed_at_unix_ms ?? p.observedAtUnixMs ?? null;
   const stale = Boolean(Number(snapshot?.cache_age_ms) > 0 || SECTION_ORDER.some(key => Number(sectionMap[key]?.cacheAgeMs) > 0));
