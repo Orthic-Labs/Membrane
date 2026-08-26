@@ -76,7 +76,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(windowsBuild, /managed raw Hub executable/);
   assert.match(windowsBuild, /signed raw Hub executable/);
   assert.match(windowsBuild, /managed NSIS installer/);
-  assert.match(windowsBuild, /resolve\(source\)\.toLowerCase\(\) === resolve\(destination\)\.toLowerCase\(\)/);
+  assert.match(windowsBuild, /realpathSync\.native\(source\)\.toLowerCase\(\)/);
+  assert.match(windowsBuild, /realpathSync\.native\(destination\)\.toLowerCase\(\)/);
   assert.doesNotMatch(windowsBuild, /sign-windows|signtool|Azure/);
   const rawBuild = windowsBuild.slice(windowsBuild.indexOf('phase === "raw"'), windowsBuild.indexOf("} else {"));
   const packageBuild = windowsBuild.slice(windowsBuild.indexOf("} else {"));
