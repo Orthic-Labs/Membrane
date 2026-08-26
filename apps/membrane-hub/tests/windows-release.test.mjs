@@ -46,6 +46,10 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(target.updater.artifacts[0].key, /updates\/windows\/current\/Membrane_x64-setup\.exe$/);
   assert.doesNotMatch(JSON.stringify(target), /upload|publish/);
   assert.equal(tauriConfig.bundle.publisher, "Adrian D'souza");
+  assert.equal(
+    tauriConfig.plugins.updater.pubkey,
+    "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5Mzk1RjlGRjQ2NjI2MUQKUldRZEptYjBuMTg1S1VSUXlBdFM4WmtzaHArYko0U2hRMDVlSDJmSExVZG82Q0hoQ2srUlhqanAK",
+  );
   assert.equal(windowsTauriConfig.bundle.windows.allowDowngrades, true);
   assert.equal(windowsTauriConfig.bundle.windows.nsis.allowDowngrades, undefined);
   assert.equal(tauriConfig.app.security.freezePrototype, true);
