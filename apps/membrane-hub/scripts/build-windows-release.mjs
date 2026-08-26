@@ -6,7 +6,7 @@ import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 
 if (process.platform !== "win32") throw new Error("Windows package must run on Windows");
 
-const phase = process.argv[2];
+const phase = process.argv.slice(2).find((argument) => argument !== "--");
 if (!new Set(["raw", "package"]).has(phase)) {
   throw new Error("usage: build-windows-release.mjs <raw|package>");
 }

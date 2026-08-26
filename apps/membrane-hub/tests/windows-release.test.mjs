@@ -55,7 +55,7 @@ test("Windows release is signed, sealed & stays local", () => {
 
 test("Windows package creates raw EXE before signing, then bundles without rebuilding it", () => {
   assert.match(windowsBuild, /process\.platform !== "win32"/);
-  assert.match(windowsBuild, /const phase = process\.argv\[2\]/);
+  assert.match(windowsBuild, /process\.argv\.slice\(2\)\.find\(\(argument\) => argument !== "--"\)/);
   assert.match(windowsBuild, /<raw\|package>/);
   assert.match(windowsBuild, /scripts\/stage-runtime\.mjs/);
   assert.match(windowsBuild, /const triple = "x86_64-pc-windows-msvc"/);
