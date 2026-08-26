@@ -69,6 +69,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(windowsBuild, /"--bundles", "nsis"/);
   assert.match(windowsBuild, /MEMBRANE_SIDECARS_READY/);
   assert.match(windowsBuild, /MEMBRANE_SIGNED_SIDECARS_READY/);
+  assert.match(windowsBuild, /command === "pnpm" \? "pnpm\.cmd" : command/);
+  assert.match(windowsBuild, /shell: executable\.endsWith\("\.cmd"\)/);
   assert.match(windowsBuild, /signed Windows sidecars are not prepared/);
   assert.match(windowsBuild, /resolveTargetRoot/);
   assert.match(windowsBuild, /managed raw Hub executable/);

@@ -29,9 +29,16 @@ function run(command, args, { sidecarsReady = false } = {}) {
   const env = { ...process.env, TAURI_ENV_TARGET_TRIPLE: "x86_64-pc-windows-msvc" };
   if (sidecarsReady) env.MEMBRANE_SIDECARS_READY = "1";
   else delete env.MEMBRANE_SIDECARS_READY;
-  const result = spawnSync(command, args, { cwd: new URL("../", import.meta.url), env, stdio: "inherit", windowsHide: true });
+  const executable = command === "pnpm" ? "pnpm.cmd" : command;
+  const result = spawnSync(executable, args, {
+    cwd: new URL("../", import.meta.url),
+    env,
+    shell: executable.endsWith(".cmd"),
+    stdio: "inherit",
+    windowsHide: true,
+  });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
+  if (result.status !== 0) throw new Error(`${executable} exited ${result.status}`);
 }
 
 if (phase === "raw") {
