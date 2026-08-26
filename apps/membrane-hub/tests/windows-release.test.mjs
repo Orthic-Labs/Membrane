@@ -93,6 +93,10 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.ok(rawBuild.indexOf('run("pnpm", ["run", "build"])') < rawBuild.indexOf('scripts/stage-runtime.mjs'));
   assert.match(packageBuild, /"tauri", "bundle"/);
   assert.doesNotMatch(packageBuild, /"tauri", "build"/);
+  assert.match(packageBuild, /membrane-hub-release-/);
+  assert.match(packageBuild, /preserved signed raw Hub executable/);
+  assert.match(packageBuild, /"tauri", "NSIS", "makensis\.exe"/);
+  assert.match(packageBuild, /installer\.nsi/);
   assert.match(frontendBuild, /spawnSync\(rightkit, \["cargo", "build"/);
   assert.match(frontendBuild, /process\.platform === "win32" \? "rightkit\.cmd" : "rightkit"/);
   assert.match(frontendBuild, /shell: process\.platform === "win32"/);

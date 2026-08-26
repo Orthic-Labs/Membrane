@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
@@ -60,9 +61,24 @@ if (phase === "raw") {
   mirror(join(managedRelease, rawRelative), join(sealedRelease, rawRelative), "managed raw Hub executable");
 } else {
   // right-release signed the mirrored raw EXE between phases. Put those exact
-  // bytes back under Cargo's managed target before NSIS embeds them.
-  mirror(join(sealedRelease, rawRelative), join(managedRelease, rawRelative), "signed raw Hub executable");
-  // `tauri bundle` consumes existing release bytes; it never recompiles them.
-  run("pnpm", ["exec", "tauri", "bundle", "--target", triple, "--bundles", "nsis", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
+  // bytes back under Cargo's managed target before NSIS embeds them. Tauri's
+  // bundle preparation strips Authenticode while generating installer inputs,
+  // so preserve signed bytes, restore them, then rerun only deterministic NSIS.
+  const signedRaw = join(sealedRelease, rawRelative);
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "membrane-hub-release-"));
+  const signedBackup = join(temporaryRoot, rawRelative);
+  cpSync(signedRaw, signedBackup);
+  try {
+    mirror(signedRaw, join(managedRelease, rawRelative), "signed raw Hub executable");
+    run("pnpm", ["exec", "tauri", "bundle", "--target", triple, "--bundles", "nsis", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
+    mirror(signedBackup, join(managedRelease, rawRelative), "preserved signed raw Hub executable");
+    const localAppData = process.env.LOCALAPPDATA;
+    if (!localAppData) throw new Error("LOCALAPPDATA is required to locate Tauri NSIS");
+    run(join(localAppData, "tauri", "NSIS", "makensis.exe"), [
+      "-INPUTCHARSET", "UTF8", "-OUTPUTCHARSET", "UTF8", "-V1", join(managedRelease, "nsis", "x64", "installer.nsi"),
+    ]);
+  } finally {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+  }
   mirror(join(managedRelease, installerRelative), join(sealedRelease, installerRelative), "managed NSIS installer");
 }
