@@ -79,8 +79,12 @@ if (process.env.MEMBRANE_SIDECARS_READY === "1") {
 }
 
 function buildSidecars(architectureTarget) {
-  const rightkit = process.env.RIGHTKIT || "rightkit";
-  const result = spawnSync(rightkit, ["cargo", "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--message-format=json-render-diagnostics"], { cwd: repo, encoding: "utf8" });
+  const rightkit = process.env.RIGHTKIT || (process.platform === "win32" ? "rightkit.cmd" : "rightkit");
+  const result = spawnSync(rightkit, ["cargo", "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
+    cwd: repo,
+    encoding: "utf8",
+    shell: process.platform === "win32",
+  });
   if (result.error) throw result.error;
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);

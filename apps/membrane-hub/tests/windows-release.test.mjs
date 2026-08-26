@@ -81,6 +81,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(packageBuild, /"tauri", "bundle"/);
   assert.doesNotMatch(packageBuild, /"tauri", "build"/);
   assert.match(frontendBuild, /spawnSync\(rightkit, \["cargo", "build"/);
+  assert.match(frontendBuild, /process\.platform === "win32" \? "rightkit\.cmd" : "rightkit"/);
+  assert.match(frontendBuild, /shell: process\.platform === "win32"/);
   assert.match(frontendBuild, /--message-format=json-render-diagnostics/);
   assert.match(frontendBuild, /message\.reason !== "compiler-artifact"/);
   assert.doesNotMatch(frontendBuild, /--target-dir|CARGO_TARGET_DIR|resolveManagedCargoTarget/);
