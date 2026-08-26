@@ -52,19 +52,22 @@ export function stageRuntime({ out = null } = {}) {
 
   // 2. Production install inside the extracted package (grammars + watcher
   // assets resolve from the staged production install, not the source checkout).
-  writeFileSync(join(packageDir, ".npmrc"), "package-lock=false\n");
+  writeFileSync(join(packageDir, ".npmrc"), "package-lock=false\nnode-linker=hoisted\n");
   copyFileSync(join(ROOT, "pnpm-lock.yaml"), join(packageDir, "pnpm-lock.yaml"));
   writeFileSync(join(packageDir, "pnpm-workspace.yaml"), "packages:\n  - .\nallowBuilds:\n  '@parcel/watcher': true\n");
-  runPnpm(["install", "--prod", "--frozen-lockfile"], { cwd: packageDir, stdio: "ignore", timeout: 240000 });
+  runPnpm(["--config.node-linker=hoisted", "install", "--prod", "--frozen-lockfile"], { cwd: packageDir, stdio: "ignore", timeout: 240000 });
   rmSync(join(packageDir, "pnpm-workspace.yaml"), { force: true });
 
   // 3. Copy app files into app/package per the S-12 layout; schemas and
   // grammars live at app/schemas and app/grammars, resolved from the staged
   // production install (never the source checkout).
   const appPackageDir = join(appDir, "package");
-  // pnpm deploy materializes portable dependencies instead of retaining
-  // links into staging temp or machine-local content-addressable store.
-  runPnpm(["--filter", ".", "deploy", "--prod", "--legacy", appPackageDir], { cwd: packageDir, stdio: "ignore", timeout: 240000 });
+  // Hoisted production install contains only package files and hard links.
+  // Copy it directly so pnpm deploy cannot reintroduce symlinked dependency
+  // edges that Windows installers and runtime inventory reject.
+  cpSync(packageDir, appPackageDir, { recursive: true });
+  rmSync(join(appPackageDir, ".npmrc"), { force: true });
+  rmSync(join(appPackageDir, "pnpm-lock.yaml"), { force: true });
   // Runtime imports packages directly; npm command shims are not used.
   // Removing `.bin` prevents links into the temporary install root from
   // surviving after that root is deleted in `finally` below.

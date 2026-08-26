@@ -3,7 +3,7 @@
 // on PATH (simulated by pointing PATH at /usr/bin:/bin).
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -22,6 +22,17 @@ function stagedBundle() {
   return { out, result };
 }
 
+function linksBelow(root) {
+  const links = [];
+  const visit = (path) => {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) { links.push(path); return; }
+    if (stat.isDirectory()) for (const name of readdirSync(path)) visit(join(path, name));
+  };
+  visit(root);
+  return links;
+}
+
 test("stageRuntime produces the S-12 layout", () => {
   const { out, result } = stagedBundle();
   try {
@@ -32,6 +43,7 @@ test("stageRuntime produces the S-12 layout", () => {
     assert.ok(result.layout.includes("app/package/node_modules"));
     assert.equal(result.layout.includes("app/node_modules"), false);
     assert.equal(existsSync(join(out, "app", "package", "node_modules", ".bin")), false, "unused npm shims leaked temporary install links");
+    assert.deepEqual(linksBelow(join(out, "app", "package")), [], "portable app contains symlinks");
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
