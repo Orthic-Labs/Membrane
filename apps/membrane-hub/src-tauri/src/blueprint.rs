@@ -341,7 +341,7 @@ impl Supervisor {
 }
 
 fn startup_failure(line: &str) -> String {
-    let line = line.to_ascii_lowercase();
+    let line = line.trim().to_ascii_lowercase();
     for code in [
         "resident_owner_active",
         "hub_inactive",
@@ -353,7 +353,16 @@ fn startup_failure(line: &str) -> String {
             return code.into();
         }
     }
-    "blueprint_service_startup_failed".into()
+    let detail: String = line
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(512)
+        .collect();
+    if detail.is_empty() {
+        "blueprint_service_startup_failed".into()
+    } else {
+        format!("blueprint_service_startup_failed:{detail}")
+    }
 }
 
 fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(), String> {
@@ -510,6 +519,10 @@ mod tests {
         assert_eq!(
             startup_failure(r#"{"error":{"code":"resident_owner_active"}}"#),
             "resident_owner_active"
+        );
+        assert_eq!(
+            startup_failure("unexpected startup output\n"),
+            "blueprint_service_startup_failed:unexpected startup output"
         );
     }
 
