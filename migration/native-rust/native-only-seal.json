@@ -14,7 +14,7 @@
     },
     "runtimeLanguageManifest": {
       "path": "D:\\Claude\\membrane\\migration\\native-rust\\runtime-language-manifest.json",
-      "sha256": "106fa4e334a896c3a93e56070d021040462302a1f05ebc9aa174fe68c88f4228"
+      "sha256": "3c36b8ec4d9dce8cc0c8b03c24faa5de66d8bba77875bf1e5e98cd24ed4a23e9"
     },
     "invocationGraph": {
       "path": "D:\\Claude\\membrane\\migration\\native-rust\\invocation-graph.json",
@@ -25,5 +25,5 @@
       "sha256": "19bf6ee955581a81f670eb38a0e45004d5b855e03013269aeb507624866c1518"
     }
   },
-  "generatedAt": "2026-08-27T02:53:37.928Z"
+  "generatedAt": "2026-08-27T03:00:33.752Z"
 }

@@ -1,9 +1,9 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-27T02:46:32.808Z",
+ "generatedAt": "2026-08-27T03:00:08.541Z",
  "enforcementMode": "sealed",
- "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
+ "policyDigest": "c6122cb1d8a9c5b7bf0ad92bcec35e26eb3e9d4c080d0513a234ec60fac41f92",
  "totals": {
   "files": 1144,
   "rows": 54,
@@ -1621,7 +1621,7 @@
    "parity_fixture": null,
    "deletion_or_exclusion_proof": null,
    "seal_blocker_note": null,
-   "notes": "workspace.rs still validates a required python_executable config field; that contract defect is tracked in the N8/N10 lane, not here.",
+   "notes": "workspace.rs enforces strict v3 workspace configuration; v2 python_executable is accepted only by atomic startup migration and never by native runtime resolution.",
    "files": [
     "apps/membrane-hub/src-tauri/src/adapt_launch.rs",
     "apps/membrane-hub/src-tauri/src/blueprint.rs",
@@ -2103,7 +2103,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "135a6723738214bf8a9dd7a636a8da65ab67995837f083355b6ef45b8debf1a8"
+   "content_digest": "f77387b71ee28a507fea8546fb6116f592efd723253df5a076face5d5236aefe"
   },
   {
    "id": "tests-root-tests-root",

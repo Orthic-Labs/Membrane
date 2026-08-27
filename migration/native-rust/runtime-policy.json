@@ -509,7 +509,7 @@
    "packaged": true,
    "target_disposition": "native-port",
    "exception": null,
-   "notes": "workspace.rs still validates a required python_executable config field; that contract defect is tracked in the N8/N10 lane, not here."
+   "notes": "workspace.rs enforces strict v3 workspace configuration; v2 python_executable is accepted only by atomic startup migration and never by native runtime resolution."
   },
   {
    "id": "hub-scripts",
