@@ -2,16 +2,16 @@
   "schema": "membrane.release-evidence.v1",
   "release": {
     "tag": "v0.1.12",
-    "commit": "dc9a75371416fc7f2cc09082d7055bd103617271",
-    "tree": "f7b7046ae868a5dafee2f1e66161252c77201a81",
+    "commit": "ced7e63dcca627748931c57ac0a7b7caa9531728",
+    "tree": "45fcf3869859911e864c17067b20f3e2025d3860",
     "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "target": "windows-x86_64",
-    "artifact_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "artifact_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
     "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2"
   },
   "artifact": {
     "path": "Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+    "sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9"
   },
   "sbom": {
     "path": "sbom.json",
@@ -67,7 +67,7 @@
     {
       "kind": "ed25519",
       "identity": "right-release-tauri-ed25519",
-      "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+      "subject_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
       "receipt": {
         "path": "ed25519-receipt.json",
         "sha256": "937a4d9e0bbf78a4fa2964e00168577c337dcd4a17c5a2c19e665ca5ba48a8f9"
@@ -77,7 +77,7 @@
   "platform_trust": {
     "kind": "authenticode",
     "identity": "CN=Damned Ventures LLC",
-    "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "subject_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
     "receipt": {
       "path": "authenticode-source-receipt.json",
       "sha256": "f67d58eb67a69fee3b12fd9a8982ed58160ad46abf515838ef568efd3e0b7840"

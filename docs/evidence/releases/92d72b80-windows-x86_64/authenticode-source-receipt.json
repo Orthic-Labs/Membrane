@@ -2,14 +2,14 @@
   "schema": 1,
   "files": [
     {
-      "file": "D:\\membrane-sign-final3\\MembraneHub_0.1.12_x64-setup.exe",
+      "file": "D:\\membrane-sign-final5\\MembraneHub_0.1.12_x64-setup.exe",
       "before": {
-        "sha256": "71889463061311ef8c246963d76d664019b35bd2b07db31980a55b9eda981a27",
-        "sizeBytes": 52590691
+        "sha256": "a15eec99f2998b30159c2b3780a4612973f70b3b464ad054faa8f7dea475079c",
+        "sizeBytes": 52591657
       },
       "after": {
-        "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
-        "sizeBytes": 52605496
+        "sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
+        "sizeBytes": 52606464
       },
       "authenticode": "Valid",
       "subject": "CN=Damned Ventures LLC",

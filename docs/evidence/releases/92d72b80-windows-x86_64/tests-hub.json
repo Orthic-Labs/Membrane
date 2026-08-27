@@ -3,5 +3,9 @@
   "suite": "membrane-hub",
   "status": "pass",
   "command": "pnpm --dir apps/membrane-hub test",
-  "counts": { "tests": 83, "pass": 83, "fail": 0 }
+  "counts": {
+    "tests": 84,
+    "pass": 84,
+    "fail": 0
+  }
 }

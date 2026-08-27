@@ -2,29 +2,29 @@
   "schema": 1,
   "rawExe": {
     "file": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\membrane-hub.exe",
-    "signedSha256": "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381",
-    "verifiedSha256": "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381"
+    "signedSha256": "b538b81885efb851decba4698a00aa59a647ee29fc3605b8c494bd68ef0bab86",
+    "verifiedSha256": "b538b81885efb851decba4698a00aa59a647ee29fc3605b8c494bd68ef0bab86"
   },
   "bundleMarkers": [
     {
       "file": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\membrane-hub.exe",
       "bundle": "nsis",
-      "offset": 30462562,
+      "offset": 30462594,
       "changedBytes": 3,
       "alreadyPatched": false,
       "size": 36371968,
-      "beforeSha256": "65c8e14445535a45a03325ea38e78d57f8f612eb08138b8a911a342cb0a8ee26",
-      "afterSha256": "ea49032abf0d3ed303fdfee600655c82539e1e9741f572c4b35b67250e1f62b3"
+      "beforeSha256": "50d7b46803909f342c518ce85f22863b4deea9e319dc17d98f45911c07187ba7",
+      "afterSha256": "51a046d4ce30c1bc35451c092e40a8c482cd13ae833c412a04fca3e500fae28a"
     }
   ],
   "embedded": [
     {
       "installer": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane Hub_0.1.12_x64-setup.exe",
       "entry": "membrane-hub.exe",
-      "sha256": "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381",
+      "sha256": "b538b81885efb851decba4698a00aa59a647ee29fc3605b8c494bd68ef0bab86",
       "sizeBytes": 36386768,
-      "installerSha256": "71889463061311ef8c246963d76d664019b35bd2b07db31980a55b9eda981a27"
+      "installerSha256": "a15eec99f2998b30159c2b3780a4612973f70b3b464ad054faa8f7dea475079c"
     }
   ],
-  "verifiedAt": "2026-08-27T02:03:38.326Z"
+  "verifiedAt": "2026-08-27T03:10:48.453Z"
 }
