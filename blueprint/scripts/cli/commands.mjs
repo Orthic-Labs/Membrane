@@ -234,6 +234,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
             cwd: root,
             env: { ...process.env, BLUEPRINT_SERVICE_CHILD: "1" },
             stdio: ["pipe", "pipe", "pipe"],
+            windowsHide: true,
           });
           watcher.stdout?.setEncoding("utf8");
           watcher.stdout?.on("data", (chunk) => { watcherOutput += chunk; });
