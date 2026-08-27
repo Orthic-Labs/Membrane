@@ -2,12 +2,12 @@
   "root": ".",
   "release": {
     "tag": "v0.1.12",
-    "commit": "9020f448f61cd559c08ec01e93ba3cb27b19b7fa",
-    "tree": "8cebb013e2e91198a3cdf8b0937ae5fede540cd6",
+    "commit": "e6206a85d6874713699021891aca0809bf46118e",
+    "tree": "de06dfe82f712a7058bcfd024cc063eed8dc2158",
     "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "target": "windows-x86_64",
     "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2",
-    "artifact_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
+    "artifact_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e"
   },
   "artifact": "Membrane Hub_0.1.12_x64-setup.exe",
   "sbom": "sbom.json",
@@ -33,7 +33,7 @@
     {
       "kind": "ed25519",
       "identity": "right-release-tauri-ed25519",
-      "subject_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
+      "subject_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
       "receipt": {
         "path": "ed25519-receipt.json"
       }
@@ -42,7 +42,7 @@
   "platformTrust": {
     "kind": "authenticode",
     "identity": "CN=Damned Ventures LLC",
-    "subject_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
+    "subject_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
     "receipt": {
       "path": "authenticode-source-receipt.json"
     }

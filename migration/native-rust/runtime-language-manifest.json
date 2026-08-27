@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-27T04:41:54.381Z",
+ "generatedAt": "2026-08-27T05:17:10.784Z",
  "enforcementMode": "sealed",
  "policyDigest": "c6122cb1d8a9c5b7bf0ad92bcec35e26eb3e9d4c080d0513a234ec60fac41f92",
  "totals": {

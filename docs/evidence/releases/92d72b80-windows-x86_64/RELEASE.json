@@ -2,28 +2,28 @@
   "schema": "membrane.release-evidence.v1",
   "release": {
     "tag": "v0.1.12",
-    "commit": "9020f448f61cd559c08ec01e93ba3cb27b19b7fa",
-    "tree": "8cebb013e2e91198a3cdf8b0937ae5fede540cd6",
+    "commit": "e6206a85d6874713699021891aca0809bf46118e",
+    "tree": "de06dfe82f712a7058bcfd024cc063eed8dc2158",
     "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "target": "windows-x86_64",
-    "artifact_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
+    "artifact_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
     "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2"
   },
   "artifact": {
     "path": "Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
+    "sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e"
   },
   "sbom": {
     "path": "sbom.json",
-    "sha256": "22d5978ef0ba0af33f0cefa8a1fe7e10d472011d2e2a53240a8e4dbd5b55b61a"
+    "sha256": "73c091174193e714ff6a87272173d80d52825216760ab18334bf8157a50caf12"
   },
   "provenance": {
     "path": "provenance.json",
-    "sha256": "a7f5388b59d6aceb5bb1725d1a85506eb5175145c805c2704618432d4f72e469"
+    "sha256": "7608044d5b96b2526e45233daed62bc8fff7e38befee3e276b4f437e194d6a64"
   },
   "toolchain": {
     "path": "toolchain.json",
-    "sha256": "41565e42fe5355beeb8af0204eba008d4955efc832af00382cdee5173febacaa"
+    "sha256": "71bda2cbe6bacb86208becc3b925f2c5a8fdc25feac321c2a16992fb0be4292c"
   },
   "tests": [
     {
@@ -67,25 +67,25 @@
     {
       "kind": "ed25519",
       "identity": "right-release-tauri-ed25519",
-      "subject_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
+      "subject_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
       "receipt": {
         "path": "ed25519-receipt.json",
-        "sha256": "ce9f0a42a91bea7c6108eebf3be34b8124bdb86b1ae7651ce3f03d1962416f16"
+        "sha256": "1dafca90b0a2d6ba13c3f8bea89c5723dec9c297a5a46e1ae637eb289df9f5f7"
       }
     }
   ],
   "platform_trust": {
     "kind": "authenticode",
     "identity": "CN=Damned Ventures LLC",
-    "subject_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
+    "subject_sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
     "receipt": {
       "path": "authenticode-source-receipt.json",
-      "sha256": "dbf4e11bb61c2d448c326693445730191b04459c06c4948cb0a3f62da231ed73"
+      "sha256": "b079c6626b8db5c8459dc25a47b5adb03f5d51275594434c087d4023f107bb62"
     }
   },
   "compatibility": {
     "path": "compatibility.json",
-    "sha256": "f24cd601bc0e678ed09db4a90e81eb882a1c65be61d88aa67bacc88746a110c5"
+    "sha256": "108373363e7a1a8849b3cc845e7eb75007fc46fa60a50c10cd756456f300c3d6"
   },
   "install_receipts": [
     {
@@ -93,11 +93,11 @@
       "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2",
       "contract": {
         "path": "windows-platform-contract.json",
-        "sha256": "e4de3bcbe591646d67d43fa3aab4c0f00729aa949c6b09cbf15f3fa9aa51aa63"
+        "sha256": "d4b5220f5120f798cf7e8aad67ea63e8646720bdf66cd1944aa157edcd637fcb"
       },
       "receipt": {
         "path": "windows-platform-receipt.json",
-        "sha256": "14b5647d14d9a8c221f7d64d24e4bd78a48dab84838e0ebe10cdd1734abcdced"
+        "sha256": "1c87ce74273aaff9b01f6c8d8ac8d1a245c2fcd0e24678a26b55711150fdf5fa"
       }
     }
   ],

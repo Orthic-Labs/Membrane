@@ -2,8 +2,8 @@
   "schema": 1,
   "rawExe": {
     "file": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\membrane-hub.exe",
-    "signedSha256": "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902",
-    "verifiedSha256": "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902"
+    "signedSha256": "e6c54dbbadad8b1fe04e862cc8999d238b0ad47298395751c62c58b12b3bf078",
+    "verifiedSha256": "e6c54dbbadad8b1fe04e862cc8999d238b0ad47298395751c62c58b12b3bf078"
   },
   "bundleMarkers": [
     {
@@ -13,18 +13,18 @@
       "changedBytes": 3,
       "alreadyPatched": false,
       "size": 36371968,
-      "beforeSha256": "ef02db5a654ed241a485cce52cdcf9e376c7bd093ceb490a8745474af6e86478",
-      "afterSha256": "7c2006f4aeea4df28237e13d292a47bbf478ea8bd89af98535433d9efddc92b3"
+      "beforeSha256": "87f86f168298a5f6d2f1f8a7b434c2737499a7c8c570674080bc23dffb569fa2",
+      "afterSha256": "f99eda3734c06ddb5d2feb5d24365bedf788bc5bc3601742681fc5610c4089e4"
     }
   ],
   "embedded": [
     {
       "installer": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane Hub_0.1.12_x64-setup.exe",
       "entry": "membrane-hub.exe",
-      "sha256": "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902",
+      "sha256": "e6c54dbbadad8b1fe04e862cc8999d238b0ad47298395751c62c58b12b3bf078",
       "sizeBytes": 36386768,
-      "installerSha256": "d16af970db1d2e1de8a6dc8af7fb30f7a8b31af2269b2e11a06441d747c70793"
+      "installerSha256": "8e336e47700927be8f911623917cd3c6c5dfed1dcf12d2c9a43af474d3059cd1"
     }
   ],
-  "verifiedAt": "2026-08-27T03:29:27.466Z"
+  "verifiedAt": "2026-08-27T04:48:27.936Z"
 }

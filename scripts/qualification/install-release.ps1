@@ -487,7 +487,7 @@ function Convert-ProcessEvidence($Rows) {
       $systemPath = Join-Path (Join-Path $env:WINDIR 'System32') ([string]$_.Name)
       if (Test-Path -LiteralPath $systemPath -PathType Leaf) { $path = $systemPath }
     }
-    Require ($path) "process $($_.ProcessId) [$($_.Name)] has no resolvable executable path"
+    Require (-not [string]::IsNullOrWhiteSpace($path)) "process $($_.ProcessId) [$($_.Name)] has no resolvable executable path"
     [ordered]@{
       processId = [int]$_.ProcessId
       parentProcessId = [int]$_.ParentProcessId

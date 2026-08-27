@@ -2,20 +2,20 @@
   "schema": "membrane.provenance.v1",
   "release": {
     "tag": "v0.1.12",
-    "commit": "9020f448f61cd559c08ec01e93ba3cb27b19b7fa",
-    "tree": "8cebb013e2e91198a3cdf8b0937ae5fede540cd6",
+    "commit": "e6206a85d6874713699021891aca0809bf46118e",
+    "tree": "de06dfe82f712a7058bcfd024cc063eed8dc2158",
     "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "target": "windows-x86_64",
     "vectorDispatch": "CORTEX_VECTOR_DISPATCH_V2"
   },
   "artifact": {
     "name": "Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
-    "sizeBytes": 52616200
+    "sha256": "8ad86f35b403c54f5f47e3398bb48bd4f426027e91f5e3c9d126f3498761719e",
+    "sizeBytes": 52612992
   },
   "source": {
     "identityPath": "release-identity.json",
-    "identitySha256": "8addbac935dfa4c8836b4e52a6bc63039e8a1c6a312c777985c8072b9b804dbf",
+    "identitySha256": "2ee26317c49a9c86ee03124c5a3bbfa262234ebc6fe525dd8e84d44b72625e81",
     "treePath": "engine",
     "treeSha256": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "fileCount": 483
