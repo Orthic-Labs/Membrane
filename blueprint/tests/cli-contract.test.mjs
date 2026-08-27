@@ -13,13 +13,25 @@ import { EXIT } from "../scripts/cli/args.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
+const WATCH = join(ROOT, "scripts/blueprint-watch.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
+
+function enroll(repo) {
+  const result = spawnSync(process.execPath, [WATCH, "enroll", repo], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function unenroll(repo) {
+  const result = spawnSync(process.execPath, [WATCH, "unenroll", repo], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
 
 function buildRepo() {
   const repo = mkdtempSync(join(tmpdir(), "blueprint-cli-contract-"));
   cpSync(FIXTURE, repo, { recursive: true });
   const build = spawnSync(process.execPath, [CLI, "graph", "build", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
   assert.equal(build.status, 0, build.stderr || build.stdout);
+  enroll(repo);
   return repo;
 }
 
@@ -49,6 +61,7 @@ test("facade status --json returns stable keys", () => {
     assert.ok(payload.repository);
     assert.ok("state" in payload);
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -73,6 +86,7 @@ test("facade search --json returns stable keys and matches graph search", () => 
       if (facadeIds.size) assert.ok(facadeIds.has(item.id), `alias returned ${item.id} not in facade results`);
     }
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -87,6 +101,7 @@ test("facade show --json resolves a node", () => {
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.id ?? payload.node?.id ?? first.id, first.id);
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -101,6 +116,7 @@ test("facade expand and impact work with JSON", () => {
     const impact = run(repo, ["impact", "--anchor", first.id, "--depth", "2", "--json"]);
     assert.equal(impact.status, 0, impact.stderr || impact.stdout);
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -114,6 +130,7 @@ test("facade docs --json lists claims", () => {
     assert.equal(payload.schemaVersion, 1);
     assert.ok(Array.isArray(payload.claims));
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -133,6 +150,7 @@ test("read commands never write graph artifacts", () => {
     const after = readFileSync(join(repo, ".agent", "graph", "graph.db")).length;
     assert.equal(after, before, "read commands must not modify the store");
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -145,6 +163,7 @@ test("stable exit codes: usage error returns USAGE", () => {
     const payload = parseJsonStderr(result);
     assert.equal(payload.error.code, "query_required");
   } finally {
+    unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });

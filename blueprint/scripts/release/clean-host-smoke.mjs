@@ -137,7 +137,11 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     run("git", ["-C", repo, "add", "releaseProof.mjs"]);
     const blueprint = join(packageRoot, "scripts", "blueprint.mjs");
     const mcp = join(packageRoot, "scripts", "blueprint-mcp.mjs");
-    JSON.parse(runNode(blueprint, ["init", "--host", "generic", "--mcp", "off", "--watch", "off", "--json"], { cwd: repo }));
+    // Explicit root enrollment is the authorization boundary for every
+    // graph-dependent query.  Keep smoke setup on the public init path so
+    // direct Blueprint remains usable without a resident Hub while retaining
+    // root_not_enrolled for callers that skip enrollment.
+    JSON.parse(runNode(blueprint, ["init", "--host", "generic", "--mcp", "off", "--watch", "on", "--json"], { cwd: repo }));
     stages.init = true;
     const query = JSON.parse(runNode(blueprint, ["search", "--query", "release", "--json"], { cwd: repo }));
     const queryEvidence = validateQueryEvidence(query);

@@ -60,7 +60,11 @@ function unenroll(root) {
 
 async function start() {
   if (args.includes("--daemon")) {
-    const child = spawn(process.execPath, [new URL(import.meta.url).pathname, "start"], { detached: true, stdio: "ignore" });
+    const child = spawn(process.execPath, [new URL(import.meta.url).pathname, "start"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
     child.unref();
     // The child claims the pidfile itself and may decline as already_running,
     // so this process only knows it spawned — reporting "started" would be a

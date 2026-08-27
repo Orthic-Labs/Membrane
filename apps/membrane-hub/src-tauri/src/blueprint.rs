@@ -272,6 +272,7 @@ impl Supervisor {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        suppress_windows_console(&mut command);
         let mut child = command
             .spawn()
             .map_err(|_| "blueprint_service_spawn_failed".to_string())?;
@@ -374,13 +375,16 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
         return Ok(());
     }
     let child_root = child_path(workspace_root);
-    let status = Command::new(&layout.node)
+    let mut command = Command::new(&layout.node);
+    command
         .arg(&layout.watcher)
         .arg("enroll")
         .arg(&child_root)
         .current_dir(&layout.package)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null());
+    suppress_windows_console(&mut command);
+    let status = command
         .status()
         .map_err(|_| "blueprint_enrollment_spawn_failed".to_string())?;
     if status.success() || workspace_is_enrolled(workspace_root) {
@@ -406,6 +410,14 @@ fn child_path(path: &Path) -> PathBuf {
         }
     }
     path.to_path_buf()
+}
+
+fn suppress_windows_console(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
 }
 
 fn workspace_is_enrolled(workspace_root: &Path) -> bool {

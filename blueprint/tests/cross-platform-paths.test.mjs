@@ -79,7 +79,12 @@ test("root registry confines an explicit repoRoot to enrolled roots", () => {
   try {
     const registry = new RootRegistry([{ root: repo }]);
     assert.equal(registry.resolve({ repoRoot: repo }), realpathSync.native(repo));
-    assert.throws(() => registry.resolve({ repoRoot: elsewhere }), /No enrolled Blueprint repository/);
+    assert.throws(() => registry.resolve({ repoRoot: elsewhere }), (error) => {
+      assert.equal(error.code, "root_not_enrolled");
+      assert.equal(error.details.normalizedRoot, realpathSync.native(elsewhere));
+      assert.match(error.message, /Blueprint root is not enrolled/);
+      return true;
+    });
     // A trailing separator variant must not change the identity.
     assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), realpathSync.native(repo));
   } finally {

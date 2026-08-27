@@ -17,6 +17,7 @@ import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
+const WATCH = join(ROOT, "scripts/blueprint-watch.mjs");
 const ENVELOPES = JSON.parse(readFileSync(join(ROOT, "evals/performance-envelopes.json"), "utf8"));
 
 function repoClassFixture(className) {
@@ -41,6 +42,16 @@ async function elapsedAsync(fn) {
 
 function runCli(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8", timeout: 300_000 });
+}
+
+function enroll(repo) {
+  const result = spawnSync(process.execPath, [WATCH, "enroll", repo], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function unenroll(repo) {
+  const result = spawnSync(process.execPath, [WATCH, "unenroll", repo], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
 function dbSizeBytes(repo) {
@@ -109,6 +120,7 @@ test("medium class envelopes: cold build, delta ingest write volume, status resp
     assert.equal(build.value.status, 0, build.value.stderr?.slice(-500));
     assert.ok(build.ms <= medium.coldBuildMs * ENVELOPES.ciSlackMultiplier, `cold build ${build.ms.toFixed(0)}ms > budget`);
 
+    enroll(repo);
     const statusStart = performance.now();
     const status = runCli(repo, ["status", "--json"]);
     const statusMs = performance.now() - statusStart;
@@ -141,6 +153,7 @@ test("medium class envelopes: cold build, delta ingest write volume, status resp
       }
     }
   } finally {
+    if (repo) unenroll(repo);
     rmSync(repo, { recursive: true, force: true });
   }
 });

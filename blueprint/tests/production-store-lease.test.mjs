@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { acquireStoreLease, isStoreLeaseHeld, readStoreLeaseMetadata } from "../src/graph/store-lease.mjs";
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 import { RepositoryActor } from "../watchman/repo-actor.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -107,7 +108,10 @@ test("Hub-hosted repository actor holds the resident lease for its writable life
         () => acquireStoreLease(path, { ownerKind: "one_shot" }),
         (error) => error.code === "resident_owner_active",
       );
-      const residentService = createBlueprintApplicationService({ freshnessOwnership: "resident" });
+      const residentService = createBlueprintApplicationService({
+        freshnessOwnership: "resident",
+        rootRegistry: new RootRegistry([{ root }]),
+      });
       const result = await residentService.search({ repoRoot: root, query: "answer", allowStale: true });
       assert.ok(Array.isArray(result.results), "resident query must read without self-contending for the actor lease");
       assert.equal(result.freshnessReceipt.details.readOnly, true);
