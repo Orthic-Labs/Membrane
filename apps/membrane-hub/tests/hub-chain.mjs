@@ -93,3 +93,15 @@ test('fresh live fetch restores trust in producer-frozen state (Blueprint recove
   assert.equal(vm.overall, 'Running');
   assert.equal(vm.subsystems.blueprint.status, 'Available');
 });
+
+test('tray popover preserves typed Blueprint root_not_enrolled reporting', () => {
+  const payload = {
+    sections: { repositories: { state: 'unavailable', reason: 'root_not_enrolled' } },
+    subsystems: { blueprint: { state: 'unavailable', reason: 'root_not_enrolled' } },
+  };
+  const vm = viewModel({ schema_version: 1, payload }, freshRuntime);
+  assert.equal(vm.resources.repositories.status, 'Root not enrolled');
+  assert.equal(vm.resources.repositories.reasonLabel, 'Root not enrolled');
+  assert.equal(vm.subsystems.blueprint.status, 'Root not enrolled');
+  assert.equal(vm.subsystems.blueprint.reasonLabel, 'Root not enrolled');
+});

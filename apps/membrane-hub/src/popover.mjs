@@ -7,6 +7,7 @@ const TYPED_REASON_STATES = Object.freeze({
   stale: 'stale',
   stale_generation: 'stale',
   blueprint_stale: 'stale',
+  root_not_enrolled: 'root_not_enrolled',
   transport_unavailable: 'transport_unavailable',
   hub_inactive: 'hub_inactive',
   resident_owner_active: 'resident_owner_active',
@@ -18,11 +19,12 @@ export const lifecycleReasonLabel = reason => ({
   stale: 'Stale',
   stale_generation: 'Stale generation',
   blueprint_stale: 'Blueprint stale',
+  root_not_enrolled: 'Root not enrolled',
   transport_unavailable: 'Transport unavailable',
   hub_inactive: 'Hub inactive',
   resident_owner_active: 'Resident owner active',
 }[String(reason ?? '').toLowerCase()] || String(reason ?? 'No evidence'));
-const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', stale: 'Stale', transport_unavailable: 'Transport unavailable', hub_inactive: 'Hub inactive', resident_owner_active: 'Resident owner active', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
+const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', not_configured: 'Not configured', root_not_enrolled: 'Root not enrolled', stale: 'Stale', transport_unavailable: 'Transport unavailable', hub_inactive: 'Hub inactive', resident_owner_active: 'Resident owner active', running: 'Running', offline: 'Offline' }[s] || 'Unavailable');
 const state = section => typeof section === 'object' && section ? section.state : null;
 const sectionStatus = section => {
   const s = state(section);
