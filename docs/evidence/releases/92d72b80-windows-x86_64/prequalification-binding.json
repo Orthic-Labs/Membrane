@@ -3,21 +3,21 @@
   "provisional": true,
   "artifact": {
     "path": "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9"
+    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
   },
   "release": {
     "tag": "v0.1.12",
     "version": "0.1.12",
-    "commit": "ced7e63dcca627748931c57ac0a7b7caa9531728",
-    "tree": "45fcf3869859911e864c17067b20f3e2025d3860",
+    "commit": "9020f448f61cd559c08ec01e93ba3cb27b19b7fa",
+    "tree": "8cebb013e2e91198a3cdf8b0937ae5fede540cd6",
     "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
     "target": "windows-x86_64",
-    "artifact_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
+    "artifact_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
     "provisional": true
   },
   "sbom": {
     "path": "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\sbom.json",
     "schema": "membrane.sbom.v1",
-    "artifact_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9"
+    "artifact_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
   }
 }

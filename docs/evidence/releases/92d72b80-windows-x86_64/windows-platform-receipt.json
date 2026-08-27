@@ -1,14 +1,14 @@
 {
   "schema": "membrane.platform-acceptance.v1",
-  "commit": "dc9a75371416fc7f2cc09082d7055bd103617271",
+  "commit": "9020f448f61cd559c08ec01e93ba3cb27b19b7fa",
   "releaseGeneration": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
-  "version": "0.1.12",
+  "version": "v0.1.12",
   "platform": "windows",
   "artifact": {
     "name": "Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
   },
-  "receiptId": "windows-installed-c08efd50d04271ff",
+  "receiptId": "windows-installed-502fe2068a2ba3ea",
   "mode": "installed-local",
   "trust": {
     "authenticode": "pass",

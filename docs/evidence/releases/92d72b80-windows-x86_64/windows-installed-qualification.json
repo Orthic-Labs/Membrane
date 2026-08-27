@@ -1,17 +1,17 @@
 {
     "schema":  "membrane.windows-installed-qualification.v1",
-    "generatedAt":  "2026-08-27T02:20:07.4872996Z",
+    "generatedAt":  "2026-08-27T04:30:09.5894746Z",
     "platform":  "windows-x86_64",
     "profile":  "installed-local",
     "artifact":  {
-                     "path":  "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\bundle\\nsis\\Membrane Hub_0.1.12_x64-setup.exe",
+                     "path":  "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\Membrane Hub_0.1.12_x64-setup.exe",
                      "version":  "v0.1.12",
-                     "sha256":  "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+                     "sha256":  "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
                      "authenticode":  "Valid",
                      "signerSubject":  "CN=Damned Ventures LLC, O=Damned Ventures LLC, L=new york, S=New York, C=US",
                      "signerThumbprint":  "1427D76F35400602797A360315C56EAA272E1F1E",
-                     "timestampSubject":  "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:7B1A-05E0-D947, OU=Microsoft Ireland Operations Limited, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
-                     "timestampThumbprint":  "317441819B0A17D8DE6425618461B31CDAA3F51E"
+                     "timestampSubject":  "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:7A1A-05E0-D947, OU=Microsoft Ireland Operations Limited, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+                     "timestampThumbprint":  "DAACDA1851DE00EE1916479CD19663E18BA2C24F"
                  },
     "previousArtifact":  {
                              "path":  "D:\\membrane-prev-artifacts\\Membrane_Hub_0.1.11_x64-setup.exe",
@@ -25,12 +25,12 @@
                          },
     "inputs":  {
                    "releaseManifest":  {
-                                           "path":  "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\prequalification-binding.json",
-                                           "sha256":  "a4873722709639d6b19083d06b5f18bb3029e75c0325c9e23078de3a6cdf1dd9"
+                                           "path":  "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\RELEASE.json",
+                                           "sha256":  "513a08c07ef7a7b580436eabb900e61c02a6a58d1481a62daa69a7790d7d728a"
                                        },
                    "sbom":  {
                                 "path":  "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\sbom.json",
-                                "sha256":  "564364d6a349cdb6066ddf145fbc618a41f5d6cf46610e2c5870124c29852551"
+                                "sha256":  "22d5978ef0ba0af33f0cefa8a1fe7e10d472011d2e2a53240a8e4dbd5b55b61a"
                             }
                },
     "runtime":  {
@@ -291,7 +291,7 @@
                                                       },
                                                       {
                                                           "path":  "blueprint/app/package/node_modules/.modules.yaml",
-                                                          "sha256":  "38f33ddda24d4f294bc314cbd9777a468e427d9534044f452116661b393e27f5"
+                                                          "sha256":  "12209afd1a6b834fbff51caaade1f8b911a516a050a2e509c6e2dcf9002c1856"
                                                       },
                                                       {
                                                           "path":  "blueprint/app/package/node_modules/.package-map.json",
@@ -299,7 +299,7 @@
                                                       },
                                                       {
                                                           "path":  "blueprint/app/package/node_modules/.pnpm-workspace-state-v1.json",
-                                                          "sha256":  "9f6eedccb95e179c6955948c1a150d61a66d56ec2c983553c6abaefc5ca46857"
+                                                          "sha256":  "24adfdff25ca79cab715cba2b5ec8b90a5392af585bfaab9c38ab668c4f8fdcf"
                                                       },
                                                       {
                                                           "path":  "blueprint/app/package/node_modules/.pnpm/lock.yaml",
@@ -16343,7 +16343,7 @@
                                                       },
                                                       {
                                                           "path":  "blueprint/app/package/watchman/supervisor.mjs",
-                                                          "sha256":  "62d9de0f1ef610fcce889c79a5c095aa18e1c2372d6e5438c4fee04b8a3f25f6"
+                                                          "sha256":  "4e70fb79d61c192ed890ccdde020a1bbf9dc7508809952e04705602fad3e4c7f"
                                                       },
                                                       {
                                                           "path":  "blueprint/app/schemas/architecture-flow-view-v1.schema.json",
@@ -16987,17 +16987,17 @@
                                   },
                     "adapt":  {
                                   "contract":  {
-                                                   "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\adapt-native\\review-contract.json",
-                                                   "sha256":  "e0a231bdffcddd5ee92c6ab7e0561ffa7d215f9d37cb4346f24039cefc671121",
+                                                   "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\adapt-native\\review-contract.json",
+                                                   "sha256":  "f417745ab5a30ea90768d50d954025fca8c5ead9e18408f33416d208e9404a16",
                                                    "schema":  "adapt.user-taste-review.v1",
                                                    "installationId":  "installed-local-qualification",
                                                    "canonicalPoolSha256":  "c49063d04d60a7a7f7956efd92f454e5f35f42c3b163ab7353c96daf72c5a867",
                                                    "pendingManifestSha256":  "c8dc61681a167f58115de0b72d921f4518a82cf1bafe910c17bf38d45fb5d571"
                                                },
                                   "selectedTranscript":  {
-                                                             "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\adapt-native\\selected-transcript.jsonl",
+                                                             "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\adapt-native\\selected-transcript.jsonl",
                                                              "sha256":  "0d09a022e4eafbc92978a2f111d1e9a2e9fee11a72e77e6d8da54caa271d0b41",
-                                                             "root":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\adapt-native",
+                                                             "root":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\adapt-native",
                                                              "source":  "caller-selected",
                                                              "checkout":  false
                                                          },
@@ -17019,7 +17019,7 @@
                                                      "records":  1,
                                                      "validatedAt":  "2026-08-26T00:00:03Z",
                                                      "decisionsSha256":  "5cb5965a741eed9d276cfe371e6fbff4936d64f15c6fac92bbb3cef06d610387",
-                                                     "decisionsPath":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\adapt-native\\decisions.json",
+                                                     "decisionsPath":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\adapt-native\\decisions.json",
                                                      "contract":  "adapt.user-taste-review.v1"
                                                  },
                                   "apply":  {
@@ -17046,14 +17046,14 @@
                               },
                     "workspaceConfigMigration":  {
                                                      "contract":  "workspace-config-v2-to-v3-startup-migration-v1",
-                                                     "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\workspace.json",
+                                                     "path":  "C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\workspace.json",
                                                      "schemaVersion":  3,
                                                      "pythonExecutable":  false,
                                                      "migratedOnInitialStartup":  true,
                                                      "atomicTempFiles":  false,
-                                                     "initialSha256":  "28e4cd70845f15f798e13dabb02a3ee5d3f83063a9089217b83ef8c0e97d642f",
+                                                     "initialSha256":  "950e97bacd1d12fc86dbcacfa49138a2c2fa0d517226a3b7187efaf059cc41d4",
                                                      "upgradeIdempotent":  true,
-                                                     "upgradeSha256":  "28e4cd70845f15f798e13dabb02a3ee5d3f83063a9089217b83ef8c0e97d642f"
+                                                     "upgradeSha256":  "950e97bacd1d12fc86dbcacfa49138a2c2fa0d517226a3b7187efaf059cc41d4"
                                                  },
                     "hubHosted":  {
                                       "endpoint":  "\\\\.\\pipe\\membrane-blueprint-70d4ccea1e2130d9",
@@ -17070,7 +17070,7 @@
                                           "exitCode":  0,
                                           "state":  "fresh",
                                           "availability":  "available",
-                                          "outputSha256":  "85e4bc63cb15b4b6e22f4c08ebf73d72a655f7bde451a30558edbd2c298e1dd0"
+                                          "outputSha256":  "3142af3699d100e409a14b0e2f18b983741d3029b06f2466d31790387491df6b"
                                       }
                 },
     "environment":  {
@@ -17357,7 +17357,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.modules.yaml",
-                                                                        "sha256":  "38f33ddda24d4f294bc314cbd9777a468e427d9534044f452116661b393e27f5"
+                                                                        "sha256":  "12209afd1a6b834fbff51caaade1f8b911a516a050a2e509c6e2dcf9002c1856"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.package-map.json",
@@ -17365,7 +17365,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.pnpm-workspace-state-v1.json",
-                                                                        "sha256":  "9f6eedccb95e179c6955948c1a150d61a66d56ec2c983553c6abaefc5ca46857"
+                                                                        "sha256":  "24adfdff25ca79cab715cba2b5ec8b90a5392af585bfaab9c38ab668c4f8fdcf"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.pnpm/lock.yaml",
@@ -33409,7 +33409,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/watchman/supervisor.mjs",
-                                                                        "sha256":  "62d9de0f1ef610fcce889c79a5c095aa18e1c2372d6e5438c4fee04b8a3f25f6"
+                                                                        "sha256":  "4e70fb79d61c192ed890ccdde020a1bbf9dc7508809952e04705602fad3e4c7f"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/schemas/architecture-flow-view-v1.schema.json",
@@ -34057,7 +34057,7 @@
                                    "catalog":  {
                                                    "activeGrants":  0,
                                                    "cortexDbUntouched":  true,
-                                                   "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
+                                                   "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
                                                    "receipts":  0,
                                                    "retrievalEvents":  0,
                                                    "schemaVersion":  2,
@@ -34065,8 +34065,8 @@
                                                                    "alternateCatalogs":  [
 
                                                                                          ],
-                                                                   "canonicalPath":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
-                                                                   "catalogInstallationId":  "817a9415-3637-43d0-a498-c6f955cb2193",
+                                                                   "canonicalPath":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
+                                                                   "catalogInstallationId":  "f68f3ccc-535c-4bcf-9bbd-05c40996ce5f",
                                                                    "degradationReason":  null,
                                                                    "journalMode":  "wal",
                                                                    "mainBytes":  4096,
@@ -34077,7 +34077,7 @@
                                                                },
                                                    "status":  "ok"
                                                },
-                                   "cortexStoreId":  "sha256:2d8d529294b78f7771d9450e365a1362c600312b821809d9bb55e4b5bb29c60b",
+                                   "cortexStoreId":  "sha256:0530caf5ccf030c778070d1eaf73dcdda20a206a12a8e5347cab5257ace60763",
                                    "dailyAnalysis":  {
                                                          "alert":  true,
                                                          "lastSuccessAgeSeconds":  null,
@@ -34094,7 +34094,7 @@
                                                                                            "observationErrors":  [
 
                                                                                                                  ],
-                                                                                           "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
+                                                                                           "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
                                                                                            "status":  "ok",
                                                                                            "walBytes":  0
                                                                                        },
@@ -34105,7 +34105,7 @@
                                                                                     "observationErrors":  [
 
                                                                                                           ],
-                                                                                    "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
+                                                                                    "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
                                                                                     "status":  "ok",
                                                                                     "walBytes":  622152
                                                                                 }
@@ -34116,7 +34116,7 @@
                                    "embedder_fingerprint":  "pf:v1:b6ddbb04989d9d5df397f7207a718ed19a8f6134ec89d096cf7487b343eaadd2",
                                    "embedder_issue":  null,
                                    "embedder_model":  "hash-256",
-                                   "installationId":  "b9df480e-ff9e-415c-a847-2cf7956f139d",
+                                   "installationId":  "5b08b1de-e560-4d47-898a-0cf12056d8b5",
                                    "last_persist_error":  null,
                                    "nativeOnly":  true,
                                    "ok":  true,
@@ -34141,20 +34141,20 @@
                                                              },
                                    "releaseGeneration":  "sha256:871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
                                    "runtimeReceipt":  {
-                                                          "catalogDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
-                                                          "claimedAt":  "2026-08-27T02:18:25Z",
-                                                          "cortexDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
-                                                          "installationId":  "b9df480e-ff9e-415c-a847-2cf7956f139d",
+                                                          "catalogDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
+                                                          "claimedAt":  "2026-08-27T04:28:20Z",
+                                                          "cortexDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
+                                                          "installationId":  "5b08b1de-e560-4d47-898a-0cf12056d8b5",
                                                           "schemaVersion":  2,
-                                                          "serviceInstanceId":  "11a71b65-b2ee-4522-bf30-3b6a8da8f05a",
+                                                          "serviceInstanceId":  "e9f108c9-2a10-4b4d-a843-0f72b242117e",
                                                           "startupGeneration":  1,
-                                                          "telemetryEventDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
-                                                          "telemetryOutboxDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
+                                                          "telemetryEventDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
+                                                          "telemetryOutboxDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
                                                           "telemetryOutboxTable":  "membrane_event_outbox",
-                                                          "workspaceRoot":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5"
+                                                          "workspaceRoot":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade"
                                                       },
                                    "schemaVersion":  1,
-                                   "serviceGeneration":  "sha256:91c0fec411c66c9d7d7957916de60d49dbf5073a3a18547147e49b7c7a8494d8",
+                                   "serviceGeneration":  "sha256:ef9ab861337dcade20b99e368fe521f18624c1cefc753c15aea431013c92db80",
                                    "serviceId":  "membrane-hub",
                                    "subsystems":  [
                                                       "pull",
@@ -34196,85 +34196,85 @@
                                },
                     "ProcessTree":  [
                                         {
-                                            "processId":  184244,
-                                            "parentProcessId":  145156,
+                                            "processId":  164408,
+                                            "parentProcessId":  185820,
                                             "name":  "membrane-hub.exe",
                                             "executablePath":  "D:\\Membrane\\membrane-hub.exe",
-                                            "executableSha256":  "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381"
+                                            "executableSha256":  "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902"
                                         },
                                         {
-                                            "processId":  159752,
-                                            "parentProcessId":  184244,
+                                            "processId":  156308,
+                                            "parentProcessId":  164408,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  171520,
-                                            "parentProcessId":  184244,
+                                            "processId":  164472,
+                                            "parentProcessId":  164408,
                                             "name":  "node.exe",
                                             "executablePath":  "D:\\Membrane\\runtime\\blueprint\\lib\\node.exe",
                                             "executableSha256":  "119d6fa70e6ae1b15b90688ab6bcc8e3a2819acea021af196895cab1843645af"
                                         },
                                         {
-                                            "processId":  182576,
-                                            "parentProcessId":  159752,
+                                            "processId":  183660,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  185804,
-                                            "parentProcessId":  159752,
+                                            "processId":  182424,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  186292,
-                                            "parentProcessId":  159752,
+                                            "processId":  168048,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  183288,
-                                            "parentProcessId":  159752,
+                                            "processId":  154424,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  153520,
-                                            "parentProcessId":  159752,
+                                            "processId":  183464,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  168140,
-                                            "parentProcessId":  159752,
+                                            "processId":  172056,
+                                            "parentProcessId":  156308,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  184272,
-                                            "parentProcessId":  171520,
+                                            "processId":  180820,
+                                            "parentProcessId":  164472,
                                             "name":  "conhost.exe",
                                             "executablePath":  "C:\\WINDOWS\\system32\\conhost.exe",
                                             "executableSha256":  "7ced551ec8afab3391a3ede5442046558e4799dcfd631ac9252fe93929a3465e"
                                         },
                                         {
-                                            "processId":  179420,
-                                            "parentProcessId":  171520,
+                                            "processId":  184780,
+                                            "parentProcessId":  164472,
                                             "name":  "node.exe",
                                             "executablePath":  "D:\\Membrane\\runtime\\blueprint\\lib\\node.exe",
                                             "executableSha256":  "119d6fa70e6ae1b15b90688ab6bcc8e3a2819acea021af196895cab1843645af"
                                         },
                                         {
-                                            "processId":  182552,
-                                            "parentProcessId":  179420,
+                                            "processId":  118948,
+                                            "parentProcessId":  184780,
                                             "name":  "conhost.exe",
                                             "executablePath":  "C:\\WINDOWS\\system32\\conhost.exe",
                                             "executableSha256":  "7ced551ec8afab3391a3ede5442046558e4799dcfd631ac9252fe93929a3465e"
@@ -34306,7 +34306,7 @@
                                              {
                                                  "path":  "membrane-hub.exe",
                                                  "size":  36386768,
-                                                 "sha256":  "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381"
+                                                 "sha256":  "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/grammars/tree-sitter-bash.wasm",
@@ -34626,7 +34626,7 @@
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.modules.yaml",
                                                  "size":  8426,
-                                                 "sha256":  "38f33ddda24d4f294bc314cbd9777a468e427d9534044f452116661b393e27f5"
+                                                 "sha256":  "12209afd1a6b834fbff51caaade1f8b911a516a050a2e509c6e2dcf9002c1856"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.package-map.json",
@@ -34640,8 +34640,8 @@
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.pnpm-workspace-state-v1.json",
-                                                 "size":  1074,
-                                                 "sha256":  "9f6eedccb95e179c6955948c1a150d61a66d56ec2c983553c6abaefc5ca46857"
+                                                 "size":  1035,
+                                                 "sha256":  "24adfdff25ca79cab715cba2b5ec8b90a5392af585bfaab9c38ab668c4f8fdcf"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/@hono/node-server/dist/conninfo.cjs",
@@ -54690,8 +54690,8 @@
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/watchman/supervisor.mjs",
-                                                 "size":  12406,
-                                                 "sha256":  "62d9de0f1ef610fcce889c79a5c095aa18e1c2372d6e5438c4fee04b8a3f25f6"
+                                                 "size":  12866,
+                                                 "sha256":  "4e70fb79d61c192ed890ccdde020a1bbf9dc7508809952e04705602fad3e4c7f"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/schemas/architecture-flow-view-v1.schema.json",
@@ -55476,12 +55476,12 @@
                                              {
                                                  "path":  "runtime/runtime-inventory.json",
                                                  "size":  1946672,
-                                                 "sha256":  "53abb90143d32ab6ed8a964e18ec87637f5fa8f2a4150bcbb0b2a369058c4b2b"
+                                                 "sha256":  "ab6f61ee6580e163cc264c2326ef7891603ecc44f12ecc207ee3668169b97067"
                                              },
                                              {
                                                  "path":  "uninstall.exe",
                                                  "size":  112915,
-                                                 "sha256":  "ba5ae710e50b13e21cebda2f06171d7e6ef6cc017fb35365f8ff4ff6d392cdce"
+                                                 "sha256":  "47a4a4f9ccf9ebd5200267e7c0c2bb3a14f15b91c5b89ab1e5b4bf4fbd2d2492"
                                              }
                                          ],
                     "Blueprint":  {
@@ -55539,71 +55539,64 @@
                       "version":  "v0.1.11",
                       "processTree":  [
                                           {
-                                              "processId":  175500,
-                                              "parentProcessId":  145156,
+                                              "processId":  174860,
+                                              "parentProcessId":  185820,
                                               "name":  "membrane-hub.exe",
                                               "executablePath":  "D:\\Membrane\\membrane-hub.exe",
                                               "executableSha256":  "d9a3e2df5ec6f76d528d1a7dd186d3eb81e1c6ad3a07694c7e2881c9043c53a0"
                                           },
                                           {
-                                              "processId":  143572,
-                                              "parentProcessId":  175500,
+                                              "processId":  131332,
+                                              "parentProcessId":  174860,
                                               "name":  "conhost.exe",
                                               "executablePath":  "C:\\WINDOWS\\system32\\conhost.exe",
                                               "executableSha256":  "7ced551ec8afab3391a3ede5442046558e4799dcfd631ac9252fe93929a3465e"
                                           },
                                           {
-                                              "processId":  135424,
-                                              "parentProcessId":  175500,
+                                              "processId":  142080,
+                                              "parentProcessId":  174860,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  184692,
-                                              "parentProcessId":  175500,
-                                              "name":  "taskkill.exe",
-                                              "executablePath":  "C:\\Windows\\System32\\taskkill.exe",
-                                              "executableSha256":  "1249717315fc8f4d2df17d5db9da0444795fdb9fb83dfb1f763c3f39282244f7"
-                                          },
-                                          {
-                                              "processId":  185744,
-                                              "parentProcessId":  135424,
+                                              "processId":  176124,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  181280,
-                                              "parentProcessId":  135424,
+                                              "processId":  170856,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  180588,
-                                              "parentProcessId":  135424,
+                                              "processId":  179724,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  179936,
-                                              "parentProcessId":  135424,
+                                              "processId":  183896,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  174808,
-                                              "parentProcessId":  135424,
+                                              "processId":  180020,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                           },
                                           {
-                                              "processId":  118084,
-                                              "parentProcessId":  135424,
+                                              "processId":  110740,
+                                              "parentProcessId":  142080,
                                               "name":  "msedgewebview2.exe",
                                               "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                               "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
@@ -77069,7 +77062,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.modules.yaml",
-                                                                        "sha256":  "38f33ddda24d4f294bc314cbd9777a468e427d9534044f452116661b393e27f5"
+                                                                        "sha256":  "12209afd1a6b834fbff51caaade1f8b911a516a050a2e509c6e2dcf9002c1856"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.package-map.json",
@@ -77077,7 +77070,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.pnpm-workspace-state-v1.json",
-                                                                        "sha256":  "9f6eedccb95e179c6955948c1a150d61a66d56ec2c983553c6abaefc5ca46857"
+                                                                        "sha256":  "24adfdff25ca79cab715cba2b5ec8b90a5392af585bfaab9c38ab668c4f8fdcf"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/node_modules/.pnpm/lock.yaml",
@@ -93121,7 +93114,7 @@
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/package/watchman/supervisor.mjs",
-                                                                        "sha256":  "62d9de0f1ef610fcce889c79a5c095aa18e1c2372d6e5438c4fee04b8a3f25f6"
+                                                                        "sha256":  "4e70fb79d61c192ed890ccdde020a1bbf9dc7508809952e04705602fad3e4c7f"
                                                                     },
                                                                     {
                                                                         "path":  "blueprint/app/schemas/architecture-flow-view-v1.schema.json",
@@ -93769,7 +93762,7 @@
                                    "catalog":  {
                                                    "activeGrants":  0,
                                                    "cortexDbUntouched":  true,
-                                                   "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
+                                                   "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
                                                    "receipts":  0,
                                                    "retrievalEvents":  0,
                                                    "schemaVersion":  2,
@@ -93777,8 +93770,8 @@
                                                                    "alternateCatalogs":  [
 
                                                                                          ],
-                                                                   "canonicalPath":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
-                                                                   "catalogInstallationId":  "817a9415-3637-43d0-a498-c6f955cb2193",
+                                                                   "canonicalPath":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
+                                                                   "catalogInstallationId":  "f68f3ccc-535c-4bcf-9bbd-05c40996ce5f",
                                                                    "degradationReason":  null,
                                                                    "journalMode":  "wal",
                                                                    "mainBytes":  4096,
@@ -93789,7 +93782,7 @@
                                                                },
                                                    "status":  "ok"
                                                },
-                                   "cortexStoreId":  "sha256:2d8d529294b78f7771d9450e365a1362c600312b821809d9bb55e4b5bb29c60b",
+                                   "cortexStoreId":  "sha256:0530caf5ccf030c778070d1eaf73dcdda20a206a12a8e5347cab5257ace60763",
                                    "dailyAnalysis":  {
                                                          "alert":  true,
                                                          "lastSuccessAgeSeconds":  null,
@@ -93806,7 +93799,7 @@
                                                                                            "observationErrors":  [
 
                                                                                                                  ],
-                                                                                           "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
+                                                                                           "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
                                                                                            "status":  "ok",
                                                                                            "walBytes":  0
                                                                                        },
@@ -93817,7 +93810,7 @@
                                                                                     "observationErrors":  [
 
                                                                                                           ],
-                                                                                    "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
+                                                                                    "path":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
                                                                                     "status":  "ok",
                                                                                     "walBytes":  0
                                                                                 }
@@ -93828,7 +93821,7 @@
                                    "embedder_fingerprint":  "pf:v1:b6ddbb04989d9d5df397f7207a718ed19a8f6134ec89d096cf7487b343eaadd2",
                                    "embedder_issue":  null,
                                    "embedder_model":  "hash-256",
-                                   "installationId":  "b9df480e-ff9e-415c-a847-2cf7956f139d",
+                                   "installationId":  "5b08b1de-e560-4d47-898a-0cf12056d8b5",
                                    "last_persist_error":  null,
                                    "nativeOnly":  true,
                                    "ok":  true,
@@ -93853,20 +93846,20 @@
                                                              },
                                    "releaseGeneration":  "sha256:871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
                                    "runtimeReceipt":  {
-                                                          "catalogDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\catalog.db",
-                                                          "claimedAt":  "2026-08-27T02:19:28Z",
-                                                          "cortexDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
-                                                          "installationId":  "b9df480e-ff9e-415c-a847-2cf7956f139d",
+                                                          "catalogDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\catalog.db",
+                                                          "claimedAt":  "2026-08-27T04:29:30Z",
+                                                          "cortexDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
+                                                          "installationId":  "5b08b1de-e560-4d47-898a-0cf12056d8b5",
                                                           "schemaVersion":  2,
-                                                          "serviceInstanceId":  "0fe6eaf6-7eb1-4cad-be31-8ff1bba76c58",
+                                                          "serviceInstanceId":  "e58657cd-fc11-4856-bc4c-08b85736547a",
                                                           "startupGeneration":  3,
-                                                          "telemetryEventDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
-                                                          "telemetryOutboxDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5\\tools\\.cache\\memory\\cortex-engine.db",
+                                                          "telemetryEventDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.membrane-events.sqlite3",
+                                                          "telemetryOutboxDb":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade\\tools\\.cache\\memory\\cortex-engine.db",
                                                           "telemetryOutboxTable":  "membrane_event_outbox",
-                                                          "workspaceRoot":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-226756a709e449b3b67b726b351428f5"
+                                                          "workspaceRoot":  "\\\\?\\C:\\Users\\adrds\\AppData\\Local\\Temp\\membrane-windows-qualification-124e01bfa7904bfd99c06dba18fd8ade"
                                                       },
                                    "schemaVersion":  1,
-                                   "serviceGeneration":  "sha256:22fddc683371727e28f643237e6453bc15eb2e44bc5bd35bfce72cbe46fa66c0",
+                                   "serviceGeneration":  "sha256:14b9f9403472ee5fc92b778f27692385329985f99d4cf17e2c36bf317a685958",
                                    "serviceId":  "membrane-hub",
                                    "subsystems":  [
                                                       "pull",
@@ -93908,85 +93901,85 @@
                                },
                     "ProcessTree":  [
                                         {
-                                            "processId":  128072,
-                                            "parentProcessId":  145156,
+                                            "processId":  167052,
+                                            "parentProcessId":  185820,
                                             "name":  "membrane-hub.exe",
                                             "executablePath":  "D:\\Membrane\\membrane-hub.exe",
-                                            "executableSha256":  "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381"
+                                            "executableSha256":  "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902"
                                         },
                                         {
-                                            "processId":  180276,
-                                            "parentProcessId":  128072,
+                                            "processId":  116944,
+                                            "parentProcessId":  167052,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  185780,
-                                            "parentProcessId":  128072,
+                                            "processId":  177684,
+                                            "parentProcessId":  167052,
                                             "name":  "node.exe",
                                             "executablePath":  "D:\\Membrane\\runtime\\blueprint\\lib\\node.exe",
                                             "executableSha256":  "119d6fa70e6ae1b15b90688ab6bcc8e3a2819acea021af196895cab1843645af"
                                         },
                                         {
-                                            "processId":  160128,
-                                            "parentProcessId":  180276,
+                                            "processId":  183708,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  185056,
-                                            "parentProcessId":  180276,
+                                            "processId":  149516,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  121756,
-                                            "parentProcessId":  180276,
+                                            "processId":  183240,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  184844,
-                                            "parentProcessId":  180276,
+                                            "processId":  170232,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  184012,
-                                            "parentProcessId":  180276,
+                                            "processId":  184656,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  169580,
-                                            "parentProcessId":  180276,
+                                            "processId":  165060,
+                                            "parentProcessId":  116944,
                                             "name":  "msedgewebview2.exe",
                                             "executablePath":  "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
                                             "executableSha256":  "fe7922326f2a1d3188454ba5502861253223d5da10d9da0b858f9b10f3e01468"
                                         },
                                         {
-                                            "processId":  129208,
-                                            "parentProcessId":  185780,
+                                            "processId":  144180,
+                                            "parentProcessId":  177684,
                                             "name":  "conhost.exe",
                                             "executablePath":  "C:\\WINDOWS\\system32\\conhost.exe",
                                             "executableSha256":  "7ced551ec8afab3391a3ede5442046558e4799dcfd631ac9252fe93929a3465e"
                                         },
                                         {
-                                            "processId":  5096,
-                                            "parentProcessId":  185780,
+                                            "processId":  142100,
+                                            "parentProcessId":  177684,
                                             "name":  "node.exe",
                                             "executablePath":  "D:\\Membrane\\runtime\\blueprint\\lib\\node.exe",
                                             "executableSha256":  "119d6fa70e6ae1b15b90688ab6bcc8e3a2819acea021af196895cab1843645af"
                                         },
                                         {
-                                            "processId":  163708,
-                                            "parentProcessId":  5096,
+                                            "processId":  178260,
+                                            "parentProcessId":  142100,
                                             "name":  "conhost.exe",
                                             "executablePath":  "C:\\WINDOWS\\system32\\conhost.exe",
                                             "executableSha256":  "7ced551ec8afab3391a3ede5442046558e4799dcfd631ac9252fe93929a3465e"
@@ -94018,7 +94011,7 @@
                                              {
                                                  "path":  "membrane-hub.exe",
                                                  "size":  36386768,
-                                                 "sha256":  "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381"
+                                                 "sha256":  "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/grammars/tree-sitter-bash.wasm",
@@ -94338,7 +94331,7 @@
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.modules.yaml",
                                                  "size":  8426,
-                                                 "sha256":  "38f33ddda24d4f294bc314cbd9777a468e427d9534044f452116661b393e27f5"
+                                                 "sha256":  "12209afd1a6b834fbff51caaade1f8b911a516a050a2e509c6e2dcf9002c1856"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.package-map.json",
@@ -94352,8 +94345,8 @@
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/.pnpm-workspace-state-v1.json",
-                                                 "size":  1074,
-                                                 "sha256":  "9f6eedccb95e179c6955948c1a150d61a66d56ec2c983553c6abaefc5ca46857"
+                                                 "size":  1035,
+                                                 "sha256":  "24adfdff25ca79cab715cba2b5ec8b90a5392af585bfaab9c38ab668c4f8fdcf"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/node_modules/@hono/node-server/dist/conninfo.cjs",
@@ -114402,8 +114395,8 @@
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/package/watchman/supervisor.mjs",
-                                                 "size":  12406,
-                                                 "sha256":  "62d9de0f1ef610fcce889c79a5c095aa18e1c2372d6e5438c4fee04b8a3f25f6"
+                                                 "size":  12866,
+                                                 "sha256":  "4e70fb79d61c192ed890ccdde020a1bbf9dc7508809952e04705602fad3e4c7f"
                                              },
                                              {
                                                  "path":  "runtime/blueprint/app/schemas/architecture-flow-view-v1.schema.json",
@@ -115188,12 +115181,12 @@
                                              {
                                                  "path":  "runtime/runtime-inventory.json",
                                                  "size":  1946672,
-                                                 "sha256":  "53abb90143d32ab6ed8a964e18ec87637f5fa8f2a4150bcbb0b2a369058c4b2b"
+                                                 "sha256":  "ab6f61ee6580e163cc264c2326ef7891603ecc44f12ecc207ee3668169b97067"
                                              },
                                              {
                                                  "path":  "uninstall.exe",
                                                  "size":  112915,
-                                                 "sha256":  "ba5ae710e50b13e21cebda2f06171d7e6ef6cc017fb35365f8ff4ff6d392cdce"
+                                                 "sha256":  "47a4a4f9ccf9ebd5200267e7c0c2bb3a14f15b91c5b89ab1e5b4bf4fbd2d2492"
                                              }
                                          ],
                     "Blueprint":  {

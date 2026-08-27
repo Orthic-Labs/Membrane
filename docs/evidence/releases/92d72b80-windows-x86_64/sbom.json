@@ -2,8 +2,8 @@
   "schema": "membrane.sbom.v1",
   "artifact": {
     "path": "apps/membrane-hub/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/Membrane Hub_0.1.12_x64-setup.exe",
-    "size": 52606464,
-    "sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9"
+    "size": 52616200,
+    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9"
   },
   "generatedFrom": [
     {

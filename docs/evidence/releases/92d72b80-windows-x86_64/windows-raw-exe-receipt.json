@@ -4,11 +4,11 @@
     {
       "file": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\membrane-hub.exe",
       "before": {
-        "sha256": "51a046d4ce30c1bc35451c092e40a8c482cd13ae833c412a04fca3e500fae28a",
+        "sha256": "7c2006f4aeea4df28237e13d292a47bbf478ea8bd89af98535433d9efddc92b3",
         "sizeBytes": 36371968
       },
       "after": {
-        "sha256": "b538b81885efb851decba4698a00aa59a647ee29fc3605b8c494bd68ef0bab86",
+        "sha256": "46f00a984992a7d619d4793081603510c14202466d160ce99b86be8f0aaab902",
         "sizeBytes": 36386768
       },
       "authenticode": "Valid",

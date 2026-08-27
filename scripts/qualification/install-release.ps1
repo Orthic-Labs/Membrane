@@ -149,13 +149,28 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
 
 function Invoke-Installer([string]$Path) {
   $resolved = Resolve-File $Path 'installer'
+  $expectedVersion = Get-ArtifactVersion $resolved 'installer'
   # NSIS requires /D=<path> as one final argument; embedding quotes after the
   # equals sign makes NSIS silently fall back to its default install root.
   # Start-Process preserves one array item, so paths without spaces remain
   # exact while callers can still supply an explicit Membrane directory.
-  $process = Start-Process -FilePath $resolved -ArgumentList @('/S', "/D=$InstallRoot") -Wait -PassThru -WindowStyle Hidden
-  Require ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $resolved"
-  Start-Sleep -Milliseconds 750
+  # A just-terminated downgrade process can briefly retain an executable
+  # handle; NSIS may then report success while leaving that old binary in
+  # place. Retry only when installed Hub identity proves replacement did not
+  # happen, keeping upgrade evidence fail-closed and bounded.
+  $actualVersion = $null
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $process = Start-Process -FilePath $resolved -ArgumentList @('/S', "/D=$InstallRoot") -Wait -PassThru -WindowStyle Hidden
+    Require ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $resolved"
+    Start-Sleep -Milliseconds 750
+    $installedHub = Join-Path $InstallRoot 'membrane-hub.exe'
+    if (Test-Path -LiteralPath $installedHub -PathType Leaf) {
+      try { $actualVersion = Get-ArtifactVersion $installedHub 'installed Hub after installer' } catch { $actualVersion = $null }
+    }
+    if ($actualVersion -eq $expectedVersion) { return }
+    if ($attempt -lt 3) { Start-Sleep -Milliseconds 750 }
+  }
+  throw "installer completed but installed Hub version $actualVersion does not match expected $($expectedVersion): $resolved"
 }
 
 function Get-InstalledExecutable([string]$Root, [string]$Label = 'Hub executable') {
@@ -354,15 +369,53 @@ namespace MembraneQualification {
 function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [string]$BlueprintNodeSha256) {
   $latest = @()
   $rendererPath = $null
-  for ($sample = 0; $sample -lt [Math]::Max(1, $SteadyStateSamples); $sample++) {
+  # Rust Hub publishes health as soon as its service child handshakes, while
+  # Windows may materialize that child's Blueprint watcher a little later.
+  # Wait for the one required resident watcher inside the same bounded
+  # qualification deadline before sampling steady state; a missing watcher
+  # still fails typed instead of being hidden by an unbounded wait.
+  $readyDeadline = (Get-Date).AddSeconds([Math]::Max(5, $TimeoutSeconds))
+  $readyService = @()
+  $readyWatcher = @()
+  do {
     $latest = @(Get-ProcessTree $ProcessId)
+    $readyDescendants = @($latest | Where-Object { [uint32]$_.ProcessId -ne [uint32]$ProcessId })
+    $readyService = @($readyDescendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint\.mjs.*\bservice\b.*\brun\b' })
+    $readyWatcher = @($readyDescendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint-watch\.mjs.*\bstart\b' })
+    if ($readyService.Count -eq 1 -and $readyWatcher.Count -eq 1) { break }
+    $hubProcess = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    Require ($null -ne $hubProcess -and -not $hubProcess.HasExited) 'Hub exited while waiting for Blueprint watcher readiness'
+    Start-Sleep -Milliseconds 250
+  } while ((Get-Date) -lt $readyDeadline)
+  Require ($readyService.Count -eq 1) "Hub did not expose exactly one Blueprint service process before steady-state sampling (observed $($readyService.Count))"
+  Require ($readyWatcher.Count -eq 1) "Hub did not expose exactly one Blueprint watcher process before steady-state sampling (observed $($readyWatcher.Count))"
+  for ($sample = 0; $sample -lt [Math]::Max(1, $SteadyStateSamples); $sample++) {
+    # WMI can retain a just-exited short-lived child for one query tick. Keep
+    # only processes still present in the OS before classifying ancestry so a
+    # completed Git fingerprint cannot appear as an orphan.
+    $latest = @(Get-ProcessTree $ProcessId | Where-Object {
+      $candidate = Get-Process -Id ([int]$_.ProcessId) -ErrorAction SilentlyContinue
+      $null -ne $candidate -and -not $candidate.HasExited
+    })
     $descendants = @($latest | Where-Object { [uint32]$_.ProcessId -ne [uint32]$ProcessId })
     $blueprintService = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint\.mjs.*\bservice\b.*\brun\b' })
     $blueprintWatcher = @($descendants | Where-Object { $_.Name -match '(?i)^node(?:\.exe)?$' -and $_.CommandLine -match '(?i)blueprint-watch\.mjs.*\bstart\b' })
     $processSummary = (@($descendants | ForEach-Object { "[$($_.Name)] $($_.CommandLine)" }) -join ' | ')
     Require ($blueprintService.Count -eq 1) "Hub did not expose exactly one Blueprint service process (observed $($blueprintService.Count); descendants: $processSummary)"
     Require ($blueprintWatcher.Count -eq 1) "Hub did not expose exactly one Blueprint watcher process (observed $($blueprintWatcher.Count); descendants: $processSummary)"
-    $blueprintProcesses = @($blueprintService + $blueprintWatcher)
+    # First-use graph recovery is a Hub-owned, singleflight Blueprint build.
+    # It runs as another child of service run using the same inventory-bound
+    # Node executable; admit that worker (and any equivalent Blueprint helper)
+    # without weakening the one-service/one-watcher residency invariant.
+    $residentIds = @($blueprintService.ProcessId + $blueprintWatcher.ProcessId)
+    $blueprintWorkers = @($descendants | Where-Object {
+      $_.Name -match '(?i)^node(?:\.exe)?$' -and
+        $_.ExecutablePath -and
+        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq [IO.Path]::GetFullPath($BlueprintNode)) -and
+        ([uint32]$_.ProcessId -notin @($residentIds)) -and
+        $_.CommandLine -match '(?i)blueprint(?:-[A-Za-z0-9_-]+)?\.mjs\b'
+    })
+    $blueprintProcesses = @($blueprintService + $blueprintWatcher + $blueprintWorkers)
     foreach ($blueprintProcess in $blueprintProcesses) {
       Require ($blueprintProcess.ExecutablePath -and ([IO.Path]::GetFullPath($blueprintProcess.ExecutablePath) -ieq [IO.Path]::GetFullPath($BlueprintNode))) 'Blueprint process executable is not the inventory-bound node.exe'
       Require ((Hash-File $blueprintProcess.ExecutablePath) -ieq $BlueprintNodeSha256) 'Blueprint process executable hash does not match inventory'
@@ -420,6 +473,21 @@ function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [stri
 function Convert-ProcessEvidence($Rows) {
   return @($Rows | ForEach-Object {
     $path = [string]$_.ExecutablePath
+    # Win32_Process can briefly omit ExecutablePath for short-lived children
+    # (notably taskkill.exe) even though process identity is still known.
+    # Resolve live rows through Process.Path, then bind known OS executables
+    # to System32; never emit an unbound process row into sealed evidence.
+    if (-not $path) {
+      try {
+        $live = Get-Process -Id ([int]$_.ProcessId) -ErrorAction Stop
+        $path = [string]$live.Path
+      } catch { $path = '' }
+    }
+    if (-not $path -and [string]$_.Name -match '(?i)^[A-Za-z0-9._-]+$') {
+      $systemPath = Join-Path (Join-Path $env:WINDIR 'System32') ([string]$_.Name)
+      if (Test-Path -LiteralPath $systemPath -PathType Leaf) { $path = $systemPath }
+    }
+    Require ($path) "process $($_.ProcessId) [$($_.Name)] has no resolvable executable path"
     [ordered]@{
       processId = [int]$_.ProcessId
       parentProcessId = [int]$_.ParentProcessId

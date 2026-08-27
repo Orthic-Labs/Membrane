@@ -2,8 +2,8 @@
   "schema": "membrane.signature-receipt.v1",
   "kind": "ed25519",
   "identity": "right-release-tauri-ed25519",
-  "subject_sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
+  "subject_sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
   "signaturePath": "Membrane Hub_0.1.12_x64-setup.exe.sig",
-  "signatureSha256": "71fc6f3078bb2434e6aec76cacea093b22aa4ba4c41bc5069f7be6544d7693b2",
-  "command": "right-release sign-updater --file D:\\\\membrane-sign-final5\\\\MembraneHub_0.1.12_x64-setup.exe"
+  "signatureSha256": "eb95ab202626d3464b8a52301bd503a30efb3202a1af6217dcbb6121920892eb",
+  "command": "right-release sign-updater --file D:\\\\membrane-sign-final6\\\\MembraneHub_0.1.12_x64-setup.exe"
 }

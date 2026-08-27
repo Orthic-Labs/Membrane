@@ -4,7 +4,7 @@
   "current": {
     "version": "v0.1.12",
     "artifact": "Membrane Hub_0.1.12_x64-setup.exe",
-    "sha256": "a2b985dbf45825ce117b469e95a3879dd9e3012f52bfb90a26cb2073580234d9",
+    "sha256": "502fe2068a2ba3eae05bb1969c99afcbfa1ea63095afb7636dfc236318a899b9",
     "authenticode": "Valid",
     "signer": "CN=Damned Ventures LLC",
     "signerThumbprint": "1427D76F35400602797A360315C56EAA272E1F1E"
