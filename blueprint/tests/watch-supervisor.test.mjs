@@ -188,6 +188,23 @@ test("one repository's actor failing to start does not stall the others (child i
   }
 });
 
+test("strict resident startup tolerates stale registry roots when one enrolled actor is healthy", async () => {
+  const goodRepo = makeRepo("blueprint-fleet-strict-good-");
+  const brokenRoot = join(tmpdir(), "blueprint-fleet-strict-missing-" + Math.random().toString(36).slice(2));
+  const configPath = tempConfigPath();
+  const supervisor = new WatchSupervisor({ configPath });
+  try {
+    writeWatchConfig({ repos: [{ root: goodRepo, enabled: true }, { root: brokenRoot, enabled: true }] }, configPath);
+    await supervisor.start({ failOnStart: true });
+    const status = supervisor.status();
+    assert.equal(status.repos.find((repo) => repo.root === goodRepo).freshness, FRESHNESS.CURRENT);
+    assert.equal(status.repos.find((repo) => repo.root === brokenRoot).freshness, FRESHNESS.UNWATCHED);
+  } finally {
+    await supervisor.stop();
+    rmSync(goodRepo, { recursive: true, force: true });
+  }
+});
+
 test("a multi-repo supervisor watches each repo independently: an edit in one does not touch another's graph", async () => {
   const repoA = makeRepo("blueprint-fleet-multi-a-");
   const repoB = makeRepo("blueprint-fleet-multi-b-");

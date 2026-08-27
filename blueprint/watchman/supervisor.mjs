@@ -203,7 +203,14 @@ export class WatchSupervisor {
         }
       }),
     );
-    if (failOnStart && failures.length) throw failures[0];
+    // Resident Hub startup must remain available when registry contains an
+    // old/missing root: healthy enrolled actors still form one watcher, while
+    // each failed root stays visible as an honestly unwatched row. Fail only
+    // when strict startup found no actor able to run at all, preserving typed
+    // watcher-startup failure for a fully broken registry/installation.
+    if (failOnStart && failures.length && ![...this.actors.values()].some((actor) => actor.running)) {
+      throw failures[0];
+    }
     this.configMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
     return this.status();
   }

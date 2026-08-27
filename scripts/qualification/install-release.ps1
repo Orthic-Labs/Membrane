@@ -1067,7 +1067,13 @@ function Stop-QualificationHub {
   # exact Hub root, then process/path assertions prove no orphan remained.
   $taskkill = Join-Path $env:WINDIR 'System32\taskkill.exe'
   $killer = Start-Process -FilePath $taskkill -ArgumentList @('/PID', [string]$hubPid, '/T', '/F') -Wait -PassThru -WindowStyle Hidden
-  Require ($killer.ExitCode -eq 0) "could not terminate qualification process tree $($ids -join ','): taskkill exit $($killer.ExitCode)"
+  if ($killer.ExitCode -ne 0) {
+    # taskkill reports a race-specific nonzero code when Hub exits between
+    # tree capture & scoped termination. Accept only after exact captured IDs
+    # have disappeared; any survivor remains a hard qualification failure.
+    $remaining = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $ids -contains [int]$_.ProcessId })
+    Require ($remaining.Count -eq 0) "could not terminate qualification process tree $($ids -join ','): taskkill exit $($killer.ExitCode)"
+  }
   Assert-QualificationProcessTreeGone $ids $InstallRoot
   Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
   $script:HubProcess = $null
