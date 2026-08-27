@@ -1,0 +1,8 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "rust-workspace",
+  "status": "pass",
+  "command": "pnpm exec rightkit cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast",
+  "notes": "All workspace crates, integration tests, and doc tests passed through RightKit; membrane-runtime reported 570 pass and 3 ignored.",
+  "counts": { "fail": 0 }
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "membrane.release-compatibility.v1",
+  "target": "windows-x86_64",
+  "current": {
+    "version": "v0.1.12",
+    "artifact": "Membrane Hub_0.1.12_x64-setup.exe",
+    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "authenticode": "Valid",
+    "signer": "CN=Damned Ventures LLC",
+    "signerThumbprint": "1427D76F35400602797A360315C56EAA272E1F1E"
+  },
+  "predecessor": {
+    "version": "v0.1.11",
+    "artifact": "Membrane_Hub_0.1.11_x64-setup.exe",
+    "sha256": "3c22504c95272cec95cc56f4424b23f74f2be59ffbded998e9e6a584becea794",
+    "authenticode": "Valid",
+    "signer": "CN=Damned Ventures LLC",
+    "signerThumbprint": "1427D76F35400602797A360315C56EAA272E1F1E"
+  },
+  "contracts": {
+    "upgrade": "full-native-upgrade-uninstall-v1",
+    "downgrade": "signed-version-liveness-durable-state-v1",
+    "installRoot": "D:\\Membrane",
+    "durableState": "preserved",
+    "userData": "preserved"
+  }
+}

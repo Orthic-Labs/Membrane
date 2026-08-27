@@ -1,0 +1,28 @@
+{
+  "schema": "membrane.platform-acceptance.v1",
+  "commit": "dc9a75371416fc7f2cc09082d7055bd103617271",
+  "releaseGeneration": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
+  "version": "0.1.12",
+  "platform": "windows",
+  "artifact": {
+    "name": "Membrane Hub_0.1.12_x64-setup.exe",
+    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+  },
+  "receiptId": "windows-installed-c08efd50d04271ff",
+  "mode": "installed-local",
+  "trust": {
+    "authenticode": "pass",
+    "timestamp": "pass",
+    "publisher": "authenticode:1427D76F35400602797A360315C56EAA272E1F1E"
+  },
+  "lifecycle": {
+    "install": "pass",
+    "startup": "pass",
+    "update": "pass",
+    "uninstall": "pass"
+  },
+  "environment": {
+    "host": "windows-laptop",
+    "bypassWarnings": false
+  }
+}

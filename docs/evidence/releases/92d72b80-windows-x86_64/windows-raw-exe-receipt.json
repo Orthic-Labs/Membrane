@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "file": "D:\\Claude\\membrane\\apps\\membrane-hub\\src-tauri\\target\\x86_64-pc-windows-msvc\\release\\membrane-hub.exe",
+      "before": {
+        "sha256": "ea49032abf0d3ed303fdfee600655c82539e1e9741f572c4b35b67250e1f62b3",
+        "sizeBytes": 36371968
+      },
+      "after": {
+        "sha256": "ae6604555b7dacd2c6aa21e9ea4c85e437e7094cbd2437972145409bf6540381",
+        "sizeBytes": 36386768
+      },
+      "authenticode": "Valid",
+      "subject": "CN=Damned Ventures LLC",
+      "timestampPresent": true
+    }
+  ]
+}

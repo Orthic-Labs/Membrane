@@ -1,0 +1,8 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "root-node",
+  "status": "pass",
+  "command": "pnpm test",
+  "counts": { "tests": 191, "pass": 191, "fail": 0 },
+  "legalSourceInventory": { "javascript": 118, "rust": 474, "status": "pass" }
+}

@@ -42,7 +42,7 @@ test("qualification covers tray, popup, renderer, native cutover & forbidden des
     "Shell_TrayWnd", "Find-TrayElement", "Assert-TrayAndPopup", "Assert-RendererWindows",
     "Assert-Dashboard", "msedgewebview2", "Assert-NativeHostCutover",
     "native-only steady-state", "^node(?:\\.exe)?$", "exactly one Blueprint service process", "exactly one Blueprint watcher process", "blueprint\\.mjs.*\\bservice\\b.*\\brun\\b",
-    "blueprint-watch\\.mjs.*\\bstart\\b", "-not ($blueprint -or $renderer -or $consolehost)", "unexpected",
+    "blueprint-watch\\.mjs.*\\bstart\\b", "blueprintGitProcesses", "blueprintGitConsoleHosts", "-not ($blueprint -or $renderer -or $consoleHost -or $git)", "unexpected",
   ]) assert.ok(lower.includes(term.toLowerCase()), term);
   assert.match(lower, /windows notification area is unavailable/);
   for (const field of ["serviceId", "installationId", "cortexStoreId", "releaseGeneration", "protocolVersion", "schemaVersion", "nativeOnly", "subsystems", "capabilities"]) assert.ok(source.includes(field), field);

@@ -1,0 +1,12 @@
+{
+  "TEMPLATE_ONLY": true,
+  "publishable": false,
+  "schemaVersion": 1,
+  "packageIdentifier": "OrthicLabs.Blueprint",
+  "version": "__VERSION__",
+  "manifestType": "version",
+  "manifestVersion": "1.6.0",
+  "defaultLocale": "en-US",
+  "installerManifest": "Membrane.Blueprint.installer.template.yaml",
+  "localeManifest": "Membrane.Blueprint.locale.template.yaml"
+}

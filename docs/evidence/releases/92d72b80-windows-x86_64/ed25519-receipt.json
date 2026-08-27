@@ -1,0 +1,9 @@
+{
+  "schema": "membrane.signature-receipt.v1",
+  "kind": "ed25519",
+  "identity": "right-release-tauri-ed25519",
+  "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+  "signaturePath": "Membrane Hub_0.1.12_x64-setup.exe.sig",
+  "signatureSha256": "8c0d318803c6b4cd9e9b3cf6d8685c5d3410637056340369b63b25939e67c182",
+  "command": "right-release sign-updater --file D:\\membrane-sign-final3\\MembraneHub_0.1.12_x64-setup.exe"
+}

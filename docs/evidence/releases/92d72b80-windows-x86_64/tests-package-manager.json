@@ -1,0 +1,7 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "package-manager-manifests",
+  "status": "pass",
+  "command": "pnpm exec node --test blueprint/tests/package-manager-manifests.test.mjs",
+  "counts": { "tests": 6, "pass": 6, "fail": 0 }
+}

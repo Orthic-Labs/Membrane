@@ -1,0 +1,7 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "membrane-hub",
+  "status": "pass",
+  "command": "pnpm --dir apps/membrane-hub test",
+  "counts": { "tests": 83, "pass": 83, "fail": 0 }
+}

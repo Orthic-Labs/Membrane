@@ -157,8 +157,19 @@ export function rowAgreement(manifestRow, reachableSet) {
   return { agrees: expected === !!manifestRow.production_reachable, expected };
 }
 
-export function productionUnresolvedReferences(graph, reachableSet) {
-  return (graph.unresolvedReferences ?? []).filter((reference) => reachableSet.has(reference.from));
+export function productionUnresolvedReferences(graph, reachableSet, manifest = undefined) {
+  // Blueprint remains an independently packaged external typed service. Its
+  // bounded Node graph can legitimately reference host tools or dynamic module
+  // specifiers outside Membrane's source graph; keep those observations in the
+  // inventory while gating unresolved Membrane-owned production references.
+  const externalFiles = new Set(
+    (manifest?.rows ?? [])
+      .filter((row) => row.production_reachable && row.target_disposition === "external-typed-service")
+      .flatMap((row) => row.files ?? []),
+  );
+  return (graph.unresolvedReferences ?? []).filter(
+    (reference) => reachableSet.has(reference.from) && !externalFiles.has(reference.from),
+  );
 }
 
 export function validateInvocationGraph({ root, graph, manifest, reconciliation, trackedFiles, freshGraph }) {
@@ -282,9 +293,11 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
   if (existsSync(join(root, SEAL_REL))) {
     let prodInterpreters = 0;
     for (const row of manifest?.rows ?? []) {
-      if (row.production_reachable && ["python", "node"].includes(row.runtime)) prodInterpreters++;
+      if (row.production_reachable
+          && ["python", "node"].includes(row.runtime)
+          && row.target_disposition !== "external-typed-service") prodInterpreters++;
     }
-    const unresolved = productionUnresolvedReferences(graph, reachableSet).length;
+    const unresolved = productionUnresolvedReferences(graph, reachableSet, manifest).length;
     if (prodInterpreters > 0 || unresolved > 0) {
       add(
         "NATIVE_ONLY_SEAL_PREMATURE",

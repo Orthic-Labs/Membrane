@@ -1,0 +1,111 @@
+{
+  "schema": "membrane.release-evidence.v1",
+  "release": {
+    "tag": "v0.1.12",
+    "commit": "dc9a75371416fc7f2cc09082d7055bd103617271",
+    "tree": "f7b7046ae868a5dafee2f1e66161252c77201a81",
+    "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
+    "target": "windows-x86_64",
+    "artifact_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2"
+  },
+  "artifact": {
+    "path": "Membrane Hub_0.1.12_x64-setup.exe",
+    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+  },
+  "sbom": {
+    "path": "sbom.json",
+    "sha256": "564364d6a349cdb6066ddf145fbc618a41f5d6cf46610e2c5870124c29852551"
+  },
+  "provenance": {
+    "path": "provenance.json",
+    "sha256": "1219bf7ac43366d1512e5b2dcba1a192fc015c510558c770283a5b60da699e75"
+  },
+  "toolchain": {
+    "path": "toolchain.json",
+    "sha256": "2e6093525af98926dff1e95ac8a510bf75c6073f3a83c5e777bc0703ab9b4a55"
+  },
+  "tests": [
+    {
+      "path": "tests-root-node.json",
+      "sha256": "9255993082dc20237b87c5478e092fe239dc9dd6176665a0402d282d5f501eb8"
+    },
+    {
+      "path": "tests-mcp.json",
+      "sha256": "cbb737856b1b07e0c059a115e1c068c7961ea84849cdbe719322f9b4217d7368"
+    },
+    {
+      "path": "tests-hub.json",
+      "sha256": "e9f5239bb04b05510b5398db6fda548d0f40567c663ee632accd4f8ce0fb14c7"
+    },
+    {
+      "path": "tests-install.json",
+      "sha256": "2eae84ca89e8d6a73473ea9a9bb06b9ec318bacebedd0ae3471e7026f1620bb1"
+    },
+    {
+      "path": "tests-blueprint.json",
+      "sha256": "25501847dcabc9f52f92fea5ae80a1626c39bf11b4cf1cad06f8cdc9df51f924"
+    },
+    {
+      "path": "tests-rust.json",
+      "sha256": "86636646dffe633ec50dbaba3ec6d241e98b6f6e4617c25c84433ead70708188"
+    },
+    {
+      "path": "tests-generated.json",
+      "sha256": "41888dce428aaebfd5bcb6e9a45d5d5cad0682a5f7488c0a4a882290e506ac84"
+    },
+    {
+      "path": "tests-package-manager.json",
+      "sha256": "7cd78bf430914c0f3b07106c05f425914b4e4ce04f8da9d5b60a101f649bba20"
+    },
+    {
+      "path": "tests-focused.json",
+      "sha256": "cabf184f991c87890ce20344085cbd9b7f6e1338621a4177f91b2a2c750f1b44"
+    }
+  ],
+  "signatures": [
+    {
+      "kind": "ed25519",
+      "identity": "right-release-tauri-ed25519",
+      "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+      "receipt": {
+        "path": "ed25519-receipt.json",
+        "sha256": "937a4d9e0bbf78a4fa2964e00168577c337dcd4a17c5a2c19e665ca5ba48a8f9"
+      }
+    }
+  ],
+  "platform_trust": {
+    "kind": "authenticode",
+    "identity": "CN=Damned Ventures LLC",
+    "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "receipt": {
+      "path": "authenticode-source-receipt.json",
+      "sha256": "f67d58eb67a69fee3b12fd9a8982ed58160ad46abf515838ef568efd3e0b7840"
+    }
+  },
+  "compatibility": {
+    "path": "compatibility.json",
+    "sha256": "0eeca59b693f09b0843590b586b6d8e1481ee4dba9619d25f4605302c347ee7a"
+  },
+  "install_receipts": [
+    {
+      "os": "windows",
+      "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2",
+      "contract": {
+        "path": "windows-platform-contract.json",
+        "sha256": "30d4bcecf44bfc7eaf277f472733172d6cba1488418ee849ca7a4b87b7a19634"
+      },
+      "receipt": {
+        "path": "windows-platform-receipt.json",
+        "sha256": "1734e1aafca78d71481563fa87ae299b04cdf6d229f2483c72018960ad8e7576"
+      }
+    }
+  ],
+  "event_history": {
+    "status": "sealed",
+    "receipt": {
+      "path": "event-history.json",
+      "sha256": "4ea8bfccbe6b96ce8893375fe92f38a1d6778fef39ab16598fe00c5168e388ae"
+    }
+  }
+}

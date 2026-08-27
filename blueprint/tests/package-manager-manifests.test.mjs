@@ -19,10 +19,21 @@ test("Homebrew template uses immutable release URL and exact hash", () => {
   assert.ok(!formula.includes("latest"), "never points at latest");
 });
 
-test("Mac Homebrew is only native package-manager surface", () => {
+test("local Homebrew & WinGet definitions are template-only", () => {
   assert.ok(existsSync(join(ROOT, "release/homebrew/blueprint.rb.template")));
   assert.equal(existsSync(join(ROOT, "release/scoop/blueprint.json.template")), false);
-  assert.equal(existsSync(join(ROOT, "release/winget/Membrane.Blueprint.version.template.json")), false);
+  const wingetRoot = join(ROOT, "release/winget");
+  const version = JSON.parse(readFileSync(join(wingetRoot, "Membrane.Blueprint.version.template.json"), "utf8"));
+  assert.equal(version.TEMPLATE_ONLY, true);
+  assert.equal(version.publishable, false);
+  assert.equal(version.packageIdentifier, "OrthicLabs.Blueprint");
+  for (const file of ["Membrane.Blueprint.installer.template.yaml", "Membrane.Blueprint.locale.template.yaml"]) {
+    const manifest = readFileSync(join(wingetRoot, file), "utf8");
+    assert.match(manifest, /TEMPLATE_ONLY/);
+    assert.match(manifest, /__VERSION__/);
+    assert.doesNotMatch(manifest, /latest/i);
+  }
+  assert.match(readFileSync(join(wingetRoot, "Membrane.Blueprint.installer.template.yaml"), "utf8"), /v__VERSION__/);
 });
 
 test("MCP server.json launches blueprint mcp serve from npm", () => {
@@ -42,6 +53,8 @@ test("container files exist for CI/headless use", () => {
 test("all manifests reference versioned identities, not latest", () => {
   const server = read("server.json");
   assert.ok(!server.includes("latest"));
+  const winget = read("release/winget/Membrane.Blueprint.installer.template.yaml");
+  assert.ok(!winget.includes("latest"));
 });
 
 test("tracked release tree contains templates, never final instances", () => {

@@ -386,13 +386,32 @@ function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [stri
         ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq ([IO.Path]::Combine($env:WINDIR, 'System32', 'conhost.exe'))) -and
         ([uint32]$_.ParentProcessId -in @($blueprintProcesses.ProcessId))
     })
+    # Repository fingerprinting is delegated to the host Git executable. Keep
+    # this bounded to the PATH-resolved binary and its direct Blueprint parent;
+    # Git may itself receive a System32 console host on Windows.
+    $blueprintGitProcesses = @($descendants | Where-Object {
+      $_.Name -match '(?i)^git(?:\.exe)?$' -and
+        $_.ExecutablePath -and
+        $script:GitPath -and
+        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq [IO.Path]::GetFullPath($script:GitPath)) -and
+        ((Hash-File $_.ExecutablePath) -ieq (Hash-File $script:GitPath)) -and
+        ([uint32]$_.ParentProcessId -in @($blueprintProcesses.ProcessId))
+    })
+    $blueprintGitConsoleHosts = @($descendants | Where-Object {
+      $_.Name -match '(?i)^conhost(?:\.exe)?$' -and
+        $_.ExecutablePath -and
+        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq ([IO.Path]::Combine($env:WINDIR, 'System32', 'conhost.exe'))) -and
+        ([uint32]$_.ParentProcessId -in @($blueprintGitProcesses.ProcessId))
+    })
     $unexpected = @($descendants | Where-Object {
       $blueprint = $_.ProcessId -in @($blueprintProcesses.ProcessId)
       $renderer = $_.ProcessId -in @($rendererProcesses.ProcessId)
-      $consoleHost = $_.ProcessId -in @($blueprintConsoleHosts.ProcessId)
-      -not ($blueprint -or $renderer -or $consoleHost)
+      $consoleHost = $_.ProcessId -in @($blueprintConsoleHosts.ProcessId + $blueprintGitConsoleHosts.ProcessId)
+      $git = $_.ProcessId -in @($blueprintGitProcesses.ProcessId)
+      -not ($blueprint -or $renderer -or $consoleHost -or $git)
     })
-    Require ($unexpected.Count -eq 0) "native-only steady-state process tree violated: $($unexpected.Name -join ', ')"
+    $unexpectedSummary = (@($unexpected | ForEach-Object { "[$($_.Name)] path=$($_.ExecutablePath) parent=$($_.ParentProcessId) cmd=$($_.CommandLine)" }) -join ' | ')
+    Require ($unexpected.Count -eq 0) "native-only steady-state process tree violated: $unexpectedSummary"
     if ($sample + 1 -lt [Math]::Max(1, $SteadyStateSamples)) { Start-Sleep -Milliseconds 500 }
   }
   return $latest

@@ -1,0 +1,13 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "generated-and-contract-checks",
+  "status": "pass",
+  "commands": [
+    "node scripts/ci/check-invocation-graph.mjs --json",
+    "node scripts/ci/check-runtime-language-manifest.mjs --json",
+    "node scripts/ci/check-native-contract-fixtures.mjs --json",
+    "node scripts/ci/check-adapt-ontology.mjs",
+    "node scripts/ci/check-generated.mjs"
+  ],
+  "counts": { "checks": 5, "pass": 5, "fail": 0 }
+}

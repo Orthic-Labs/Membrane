@@ -258,6 +258,49 @@ test("native-only seal ignores unresolved references outside production reachabi
   }
 });
 
+test("native-only seal permits unresolved references inside bounded external Blueprint rows", () => {
+  const root = makeTmpRoot();
+  try {
+    const graph = {
+      artifact: "membrane.invocation-graph",
+      schemaVersion: 2,
+      productionEntrypoints: [{ id: "blueprint/release/launchers/blueprint.cmd" }],
+      nodes: [node("blueprint/release/launchers/blueprint.cmd", "tracked-executable", true)],
+      edges: [],
+      unresolvedReferences: [{ reference: "git", from: "blueprint/release/launchers/blueprint.cmd", reason: "PATH-resolved host tool" }],
+    };
+    const manifest = {
+      rows: [{
+        id: "blueprint-bundled-runtime-blueprint/scripts",
+        runtime: "node",
+        target_disposition: "external-typed-service",
+        files: ["blueprint/release/launchers/blueprint.cmd"],
+        production_reachable: true,
+      }],
+    };
+    const reconciliation = { status: "superseded", mappings: [], legacyArtifactCount: 0, gatesConsumingLegacyLedger: [] };
+    mkdirSync(join(root, "blueprint", "release", "launchers"), { recursive: true });
+    writeFileSync(join(root, "blueprint", "release", "launchers", "blueprint.cmd"), "@echo off\n");
+    mkdirSync(join(root, "migration", "native-rust"), { recursive: true });
+    writeFileSync(join(root, SEAL_REL), "{}");
+
+    assert.deepEqual(
+      productionUnresolvedReferences(graph, new Set(["blueprint/release/launchers/blueprint.cmd"]), manifest),
+      [],
+    );
+    const { errors } = validateInvocationGraph({
+      root,
+      graph,
+      manifest,
+      reconciliation,
+      trackedFiles: ["blueprint/release/launchers/blueprint.cmd"],
+    });
+    assert.equal(errors.some((error) => error.code === "NATIVE_ONLY_SEAL_PREMATURE"), false, JSON.stringify(errors));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("isExecutableCandidate classifies extensions and shebangs", () => {
   const root = makeTmpRoot();
   try {

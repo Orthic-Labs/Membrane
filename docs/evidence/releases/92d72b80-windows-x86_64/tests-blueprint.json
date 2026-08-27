@@ -1,0 +1,7 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "blueprint",
+  "status": "pass",
+  "command": "pnpm --dir blueprint test:all",
+  "counts": { "tests": 1000, "pass": 994, "fail": 0, "skipped": 6 }
+}

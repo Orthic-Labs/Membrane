@@ -1,0 +1,29 @@
+{
+  "schema": "membrane.native-only-seal.v1",
+  "status": "sealed",
+  "target": "windows-x86_64",
+  "artifact_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+  "inputs": {
+    "releaseEvidence": {
+      "path": "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\RELEASE.json",
+      "sha256": "459143358e0164ba6277676ccc55aa053922de180306d3626e80858f00ea2aea"
+    },
+    "installedQualification": {
+      "path": "D:\\Claude\\membrane\\docs\\evidence\\releases\\92d72b80-windows-x86_64\\windows-installed-qualification.json",
+      "sha256": "c0a04c0e9d096c0d86c990cc264cd860d3a08293643bcd6b1a43e7f74c7e367a"
+    },
+    "runtimeLanguageManifest": {
+      "path": "D:\\Claude\\membrane\\migration\\native-rust\\runtime-language-manifest.json",
+      "sha256": "106fa4e334a896c3a93e56070d021040462302a1f05ebc9aa174fe68c88f4228"
+    },
+    "invocationGraph": {
+      "path": "D:\\Claude\\membrane\\migration\\native-rust\\invocation-graph.json",
+      "sha256": "f8e91374de7b7e74b8cbefd0d0952c7dcd340e737e76b33f9da262db03da93a9"
+    },
+    "nativeContractManifest": {
+      "path": "D:\\Claude\\membrane\\migration\\native-rust\\fixtures\\native-contracts-manifest.v1.json",
+      "sha256": "19bf6ee955581a81f670eb38a0e45004d5b855e03013269aeb507624866c1518"
+    }
+  },
+  "generatedAt": "2026-08-27T02:53:37.928Z"
+}

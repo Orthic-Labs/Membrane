@@ -1,0 +1,11 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "focused-contracts",
+  "status": "pass",
+  "commands": [
+    "pnpm exec node --test blueprint/tests/cli-contract.test.mjs blueprint/tests/cross-platform-paths.test.mjs",
+    "pnpm exec node --test blueprint/tests/performance-envelopes.test.mjs blueprint/tests/production-store-lease.test.mjs",
+    "pnpm exec node --test scripts/qualification/install-release.test.mjs"
+  ],
+  "counts": { "tests": 29, "pass": 29, "fail": 0 }
+}

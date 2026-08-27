@@ -1,0 +1,7 @@
+{
+  "schema": "membrane.test-receipt.v1",
+  "suite": "mcp",
+  "status": "pass",
+  "command": "pnpm test:mcp",
+  "counts": { "tests": 181, "pass": 181, "fail": 0 }
+}

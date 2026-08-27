@@ -27,7 +27,12 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const ENGINE_ROOT = join(REPO_ROOT, "engine");
-const DEFAULT_BIN = join(ENGINE_ROOT, "target/debug/membrane");
+const DEFAULT_BIN = join(
+  ENGINE_ROOT,
+  "target",
+  "debug",
+  process.platform === "win32" ? "membrane.exe" : "membrane",
+);
 
 function resolveBinary() {
   const fromEnv = process.env.MEMBRANE_BIN;
@@ -35,9 +40,9 @@ function resolveBinary() {
   if (existsSync(DEFAULT_BIN)) return DEFAULT_BIN;
   if (process.env.MEMBRANE_SKIP_BUILD === "1") return null;
   execFileSync(
-    "cargo",
-    ["build", "-p", "membrane", "--bin", "membrane"],
-    { cwd: ENGINE_ROOT, stdio: "inherit" },
+    process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+    ["exec", "rightkit", "cargo", "build", "--manifest-path", join(ENGINE_ROOT, "Cargo.toml"), "-p", "membrane", "--bin", "membrane"],
+    { cwd: REPO_ROOT, stdio: "inherit" },
   );
   if (!existsSync(DEFAULT_BIN)) {
     throw new Error(

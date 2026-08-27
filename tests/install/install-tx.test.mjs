@@ -30,7 +30,12 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const ENGINE_ROOT = join(REPO_ROOT, "engine");
-const DEFAULT_BIN = join(ENGINE_ROOT, "target/debug/membrane");
+const DEFAULT_BIN = join(
+  ENGINE_ROOT,
+  "target",
+  "debug",
+  process.platform === "win32" ? "membrane.exe" : "membrane",
+);
 
 function resolveBinary() {
   const fromEnv = process.env.MEMBRANE_BIN;
@@ -38,9 +43,9 @@ function resolveBinary() {
   if (existsSync(DEFAULT_BIN)) return DEFAULT_BIN;
   if (process.env.MEMBRANE_SKIP_BUILD === "1") return null;
   execFileSync(
-    "cargo",
-    ["build", "-p", "membrane", "--bin", "membrane"],
-    { cwd: ENGINE_ROOT, stdio: "inherit" },
+    process.platform === "win32" ? "pnpm.cmd" : "pnpm",
+    ["exec", "rightkit", "cargo", "build", "--manifest-path", join(ENGINE_ROOT, "Cargo.toml"), "-p", "membrane", "--bin", "membrane"],
+    { cwd: REPO_ROOT, stdio: "inherit" },
   );
   if (!existsSync(DEFAULT_BIN)) {
     throw new Error(
@@ -64,6 +69,40 @@ function writePlanFile(scratchRoot, plan) {
   const path = join(scratchRoot, "plan.json");
   writeFileSync(path, JSON.stringify(plan, null, 2));
   return path;
+}
+
+const shellSuccess = process.platform === "win32" ? "cmd /c exit 0" : "true";
+// Qualification temp roots are created under the workspace's short, stable
+// path in CI. Avoid embedded Windows quote parsing because the Rust runner
+// already supplies the command as one `cmd /C` argument.
+const shellQuote = (value) => process.platform === "win32"
+  ? String(value)
+  : `'${String(value).replaceAll("'", "'\\''")}'`;
+
+function writeActionHelper(scratchRoot) {
+  const helper = join(scratchRoot, "install-action-helper.mjs");
+  writeFileSync(helper, `import { appendFileSync, readFileSync } from "node:fs";
+const [mode, file, value] = process.argv.slice(2);
+if (mode === "append" || mode === "append-fail") {
+  appendFileSync(file, value + "\\n");
+  if (mode === "append-fail") process.exit(1);
+} else if (mode === "assert-receipt") {
+  const receipt = JSON.parse(readFileSync(file, "utf8"));
+  if (receipt.stages_completed.length !== Number(value)) {
+    console.error("expected " + value + " stages, got " + JSON.stringify(receipt.stages_completed));
+    process.exit(1);
+  }
+  if (value === "1" && receipt.stages_completed[0] !== "Enumerate") {
+    console.error("unexpected first stage " + JSON.stringify(receipt.stages_completed));
+    process.exit(1);
+  }
+}
+`);
+  return helper;
+}
+
+function action(helper, ...args) {
+  return `node ${[helper, ...args].map(shellQuote).join(" ")}`;
 }
 
 function makePlan(scratchRoot, label, steps) {
@@ -93,9 +132,9 @@ test("3-stage plan produces outcome=committed with 3 stages_completed", { skip: 
   const target = freshAbsentRoot("three-target");
   try {
     const plan = makePlan(scratch, "three", [
-      { stage: "Enumerate", action: "true", rollback: "true" },
-      { stage: "WriteManifest", action: "true", rollback: "true" },
-      { stage: "MintLease", action: "true", rollback: "true" },
+      { stage: "Enumerate", action: shellSuccess, rollback: shellSuccess },
+      { stage: "WriteManifest", action: shellSuccess, rollback: shellSuccess },
+      { stage: "MintLease", action: shellSuccess, rollback: shellSuccess },
     ]);
     const planPath = writePlanFile(scratch, plan);
     const result = runInstall(BIN, { scratchRoot: scratch, targetRoot: target, planPath });
@@ -120,27 +159,28 @@ test("3-stage plan where stage 2 fails produces outcome=rolled_back and reverse-
   // Track which commands the test framework observes running, in order.
   const observed = [];
   const observerPath = join(scratch, "observer.log");
+  const helper = writeActionHelper(scratch);
   try {
     const plan = makePlan(scratch, "rollback", [
       // Stage 1: appends to the observer log; the rollback deletes the marker.
       {
         stage: "Enumerate",
-        action: `printf 'forward-enumerate\\n' >> ${observerPath}`,
-        rollback: `printf 'rollback-enumerate\\n' >> ${observerPath}`,
+        action: action(helper, "append", observerPath, "forward-enumerate"),
+        rollback: action(helper, "append", observerPath, "rollback-enumerate"),
       },
       // Stage 2: appends to the observer log; the rollback also appends so
       // we can prove reverse order. The forward action FAILS, triggering the
       // rollback chain.
       {
         stage: "WriteManifest",
-        action: `printf 'forward-writemanifest\\n' >> ${observerPath} && exit 1`,
-        rollback: `printf 'rollback-writemanifest\\n' >> ${observerPath}`,
+        action: action(helper, "append-fail", observerPath, "forward-writemanifest"),
+        rollback: action(helper, "append", observerPath, "rollback-writemanifest"),
       },
       // Stage 3 never runs because stage 2 failed.
       {
         stage: "MintLease",
-        action: `printf 'forward-mintlease\\n' >> ${observerPath}`,
-        rollback: `printf 'rollback-mintlease\\n' >> ${observerPath}`,
+        action: action(helper, "append", observerPath, "forward-mintlease"),
+        rollback: action(helper, "append", observerPath, "rollback-mintlease"),
       },
     ]);
     const planPath = writePlanFile(scratch, plan);
@@ -180,26 +220,26 @@ test("3-stage plan where stage 2 fails produces outcome=rolled_back and reverse-
 test("receipt file exists on disk after stage 1 before stage 2", { skip: buildNeeded }, () => {
   const scratch = freshRoot("persistence");
   const target = freshAbsentRoot("persistence-target");
+  const helper = writeActionHelper(scratch);
   try {
     // Stage 1's forward action verifies the receipt is already on disk
     // with stages_completed count = 0 (the framework persists the initial
     // receipt BEFORE the first stage runs). Stage 2's forward action
     // verifies the receipt is already on disk with stages_completed
     // count = 1 (the framework persists after every stage). Both
-    // assertions read the receipt with grep + wc so no jq dependency is
-    // pulled in.
+    // assertions use the Node helper so same plan runs on Windows & POSIX.
     const plan = makePlan(scratch, "persistence", [
       {
         stage: "Enumerate",
-        action: `test -f ${scratch}/install-receipt.json && grep -q '"stages_completed": \\[\\]' ${scratch}/install-receipt.json`,
-        rollback: "true",
+        action: action(helper, "assert-receipt", join(scratch, "install-receipt.json"), "0"),
+        rollback: shellSuccess,
       },
       {
         stage: "WriteManifest",
-        action: `node -e 'const r=require(process.argv[1]);process.exit(r.stages_completed.length===1&&r.stages_completed[0]==="Enumerate"?0:1)' ${scratch}/install-receipt.json`,
-        rollback: "true",
+        action: action(helper, "assert-receipt", join(scratch, "install-receipt.json"), "1"),
+        rollback: shellSuccess,
       },
-      { stage: "MintLease", action: "true", rollback: "true" },
+      { stage: "MintLease", action: shellSuccess, rollback: shellSuccess },
     ]);
     const planPath = writePlanFile(scratch, plan);
     const result = runInstall(BIN, { scratchRoot: scratch, targetRoot: target, planPath });
@@ -224,8 +264,8 @@ test("--dry-run never renames scratch to target", { skip: buildNeeded }, () => {
   const target = freshAbsentRoot("dryrun-target");
   try {
     const plan = makePlan(scratch, "dryrun", [
-      { stage: "Enumerate", action: "true", rollback: "true" },
-      { stage: "WriteManifest", action: "true", rollback: "true" },
+      { stage: "Enumerate", action: shellSuccess, rollback: shellSuccess },
+      { stage: "WriteManifest", action: shellSuccess, rollback: shellSuccess },
     ]);
     const planPath = writePlanFile(scratch, plan);
     const result = runInstall(BIN, {

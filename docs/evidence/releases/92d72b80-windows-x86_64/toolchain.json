@@ -1,0 +1,20 @@
+{
+  "schema": "membrane.toolchain.v1",
+  "target": "windows-x86_64",
+  "node": "v26.5.0",
+  "pnpm": "11.18.0",
+  "cargo": "1.97.1",
+  "rustc": "1.97.1",
+  "rustHost": "x86_64-pc-windows-msvc",
+  "sccache": "0.17.0",
+  "rightKit": {
+    "cargoInvocation": "pnpm exec rightkit cargo",
+    "releaseInvocation": "pnpm --dir apps/membrane-hub exec right-release",
+    "signingPipeline": "24710df46586de42",
+    "signingIdentity": "windows-raw-exe-authenticode-before-nsis-v1"
+  },
+  "artifact": {
+    "name": "Membrane Hub_0.1.12_x64-setup.exe",
+    "sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+  }
+}

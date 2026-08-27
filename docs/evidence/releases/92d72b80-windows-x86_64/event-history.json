@@ -1,0 +1,12 @@
+{
+  "schema": "membrane.release-event-history.v1",
+  "status": "sealed",
+  "events": [
+    { "phase": "build", "status": "pass", "receipt": "release-identity.json" },
+    { "phase": "sign-windows", "status": "pass", "receipt": "authenticode-source-receipt.json" },
+    { "phase": "hardeningscan", "status": "pass", "receipt": "windows-raw-exe-receipt.json" },
+    { "phase": "sign-updater", "status": "pass", "receipt": "ed25519-receipt.json" },
+    { "phase": "install-qualification", "status": "pass", "receipt": "windows-installed-qualification.json" },
+    { "phase": "platform-evidence", "status": "pass", "receipt": "windows-platform-receipt.json" }
+  ]
+}

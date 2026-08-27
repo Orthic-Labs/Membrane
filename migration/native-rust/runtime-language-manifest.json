@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-26T22:29:23.223Z",
+ "generatedAt": "2026-08-27T02:46:32.808Z",
  "enforcementMode": "sealed",
  "policyDigest": "6db87f8466909f5a0bcfd5466993b7042400c82dad1b33a94096ddfa920ca0ca",
  "totals": {
@@ -286,7 +286,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "94b5d676c3e1e2274fa2678c752bc27b2bb72cbba2e5764c73901a59f892383b"
+   "content_digest": "e1d434840accdabe829d733766389bb3d31a486885fbdab64f172a5dd457d510"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -787,7 +787,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "c608f856b8aef11ad94addf01b6f6796ad2e7b9dd3f65d25f80066fecf18c202"
+   "content_digest": "915b86a6fcdf3e9f1c68cf103fcfe0bc82d79ee4c20f546be1a2dc199d59a960"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1531,7 +1531,7 @@
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "9d3db47d4ec57fedd6217b703060ab06df84a47101fc00179c55749c5b715929"
+   "content_digest": "8f97e2a4c56767221e15c6d37dd10888b8696bb17aaa35ade394e902a24c5256"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1633,7 +1633,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "ebc9318225e1bc5913adb4c4dda948c8ec702104ceab5ff853cce74093800389"
+   "content_digest": "600bdabe6a466827a8bffc62c9828613a2ae0446e59f96d8ef54ce24efe73b2f"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -2103,7 +2103,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "25a2866c8020e5625869aa72bd2ca1c446833d5bc8b70f55fee8994c1317a24e"
+   "content_digest": "135a6723738214bf8a9dd7a636a8da65ab67995837f083355b6ef45b8debf1a8"
   },
   {
    "id": "tests-root-tests-root",
@@ -2191,7 +2191,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "1786985eab5f408afd8531b7ade3b57ff73e45692e188a437b58215503be5239"
+   "content_digest": "22bea04696141c291415daf9312b7e43c119ab032cb3bf306e4c3b100d3b46b8"
   }
  ]
 }

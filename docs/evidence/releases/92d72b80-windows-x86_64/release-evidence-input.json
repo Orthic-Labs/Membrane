@@ -1,0 +1,51 @@
+{
+  "root": ".",
+  "release": {
+    "tag": "v0.1.12",
+    "commit": "dc9a75371416fc7f2cc09082d7055bd103617271",
+    "tree": "f7b7046ae868a5dafee2f1e66161252c77201a81",
+    "generation": "871fbe36442f9d4a7b8fb13b48fc8afdf84ebb931f9fe46e82f75e3dc916bc08",
+    "target": "windows-x86_64",
+    "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2",
+    "artifact_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5"
+  },
+  "artifact": "Membrane Hub_0.1.12_x64-setup.exe",
+  "sbom": "sbom.json",
+  "provenance": "provenance.json",
+  "toolchain": "toolchain.json",
+  "compatibility": "compatibility.json",
+  "platformAcceptance": {
+    "contract": "windows-platform-contract.json",
+    "receipt": "windows-platform-receipt.json"
+  },
+  "tests": [
+    "tests-root-node.json",
+    "tests-mcp.json",
+    "tests-hub.json",
+    "tests-install.json",
+    "tests-blueprint.json",
+    "tests-rust.json",
+    "tests-generated.json",
+    "tests-package-manager.json",
+    "tests-focused.json"
+  ],
+  "signatures": [
+    {
+      "kind": "ed25519",
+      "identity": "right-release-tauri-ed25519",
+      "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+      "receipt": { "path": "ed25519-receipt.json" }
+    }
+  ],
+  "platformTrust": {
+    "kind": "authenticode",
+    "identity": "CN=Damned Ventures LLC",
+    "subject_sha256": "c08efd50d04271ff3409e6418d1b654e293dd9caa948227d94641b42f06cb7a5",
+    "receipt": { "path": "authenticode-source-receipt.json" }
+  },
+  "eventHistory": {
+    "status": "sealed",
+    "receipt": "event-history.json"
+  },
+  "output": "RELEASE.json"
+}
