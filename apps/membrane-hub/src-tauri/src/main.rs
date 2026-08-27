@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use membrane_protocol::{
     membrane_parent_state, HubSnapshotV1, HubStateV1, MembraneParentState, HUB_SCHEMA_VERSION,
 };
