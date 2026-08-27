@@ -232,10 +232,16 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           const watcherScript = resolve(import.meta.dirname, "../blueprint-watch.mjs");
           watcher = spawn(process.execPath, [watcherScript, "start"], {
             cwd: root,
-            env: { ...process.env, BLUEPRINT_SERVICE_CHILD: "1" },
+            env: {
+              ...process.env,
+              BLUEPRINT_SERVICE_CHILD: "1",
+              MEMBRANE_BLUEPRINT_PARENT_PID: String(process.pid),
+              MEMBRANE_BLUEPRINT_LAUNCH_TOKEN: process.env[HUB_LAUNCH_TOKEN_ENV],
+            },
             stdio: ["pipe", "pipe", "pipe"],
             windowsHide: true,
           });
+          watcher.stdin.write(`${process.env[HUB_LAUNCH_TOKEN_ENV]}\n`);
           watcher.stdout?.setEncoding("utf8");
           watcher.stdout?.on("data", (chunk) => { watcherOutput += chunk; });
           watcher.stderr?.setEncoding("utf8");

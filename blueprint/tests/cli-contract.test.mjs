@@ -51,6 +51,25 @@ test("help prints branded Blueprint usage and exits 0", () => {
   assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
 });
 
+test("standalone blueprint-watch start is Hub-gated and cannot create a watcher", () => {
+  const home = mkdtempSync(join(tmpdir(), "blueprint-watch-direct-home-"));
+  try {
+    const result = spawnSync(process.execPath, [WATCH, "start"], {
+      cwd: ROOT,
+      env: { ...process.env, HOME: home, USERPROFILE: home, MEMBRANE_HUB_CHILD: undefined, BLUEPRINT_SERVICE_CHILD: undefined },
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    assert.notEqual(result.status, 0, "standalone watcher start must fail closed");
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.started, false);
+    assert.equal(payload.error.code, "hub_inactive");
+    assert.equal(existsSync(join(home, ".blueprint", "watchman.pid")), false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("facade status --json returns stable keys", () => {
   const repo = buildRepo();
   try {
