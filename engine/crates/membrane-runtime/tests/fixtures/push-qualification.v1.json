@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "fixtureId": "push-qualification-v1",
+  "attentionBudgetTokens": 32,
+  "development": [
+    {
+      "id": "dev-protected-query",
+      "path": "notes.txt",
+      "query": "resolver timeout",
+      "resolver": "resolver://qualification/dev-protected-query",
+      "requiredEvidence": ["resolver timeout", "REQ-17"],
+      "protectedSpans": ["REQ-17: resolver timeout must remain visible."],
+      "source": "# Incident notes\nREQ-17: resolver timeout must remain visible.\nThis ordinary implementation detail may be reduced when attention is constrained.\nA second ordinary note is intentionally low priority and has no recovery meaning.\nA third background paragraph documents routine context without affecting task correctness.\nA fourth detail exists only to exercise deterministic reduction at matched budget.\n"
+    },
+    {
+      "id": "dev-error-recovery",
+      "path": "worker.rs",
+      "query": "recover receipt",
+      "resolver": "resolver://qualification/dev-error-recovery",
+      "requiredEvidence": ["recover", "receipt"],
+      "protectedSpans": ["recover the task from receipt handle."],
+      "source": "fn worker() {\n    // ordinary setup detail can be reduced\n    recover the task from receipt handle.\n    keep this routine worker detail only when budget allows\n    // verbose background detail exercises the matched attention budget\n    // one more routine implementation note remains expendable\n}\n"
+    }
+  ],
+  "heldOut": [
+    {
+      "id": "heldout-constraint",
+      "path": "release.txt",
+      "query": "constraint rollback",
+      "resolver": "resolver://qualification/heldout-constraint",
+      "requiredEvidence": ["constraint", "rollback"],
+      "protectedSpans": ["constraint: rollback is required after failure."],
+      "source": "Release review\nconstraint: rollback is required after failure.\nBackground context can be reduced safely when attention is constrained.\nKeep this unrelated detail only when budget allows and never treat it as required evidence.\nA further routine release note exercises deterministic reduction without semantic authority.\n"
+    },
+    {
+      "id": "heldout-identifier",
+      "path": "deploy.py",
+      "query": "deploy candidate",
+      "resolver": "resolver://qualification/heldout-identifier",
+      "requiredEvidence": ["candidate", "deploy"],
+      "protectedSpans": ["deploy candidate only after review."],
+      "source": "def deploy():\n    candidate package is ready for review\n    deploy candidate only after review.\n    This explanatory line is expendable under pressure\n    Another low-priority operational note remains available only if budget permits.\n    A final routine detail makes held-out reduction behavior measurable.\n"
+    }
+  ]
+}

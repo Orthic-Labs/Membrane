@@ -1,23 +1,22 @@
-# Membrane Cross-Subsystem Improvements, Evidence Gates, and Ledger Rename Plan
+# Membrane Cross-Subsystem Improvement Contracts and Evidence Gates
 
-**Date:** 2026-08-25  
-**Status:** cross-subsystem implementation architecture; companion to canonical Membrane doctrine  
-**Scope:** changes that cut across Pull, Push, Cortex, Blueprint, Ledger, Adapt, Hub, and CodeRight integration  
-**Does not supersede:** subsystem-specific semantic canons  
-**Requires canonical amendment:** Guide → Ledger rename and the production-path evidence invariant
+**Date:** 2026-08-25
+**Status:** canonical cross-subsystem contracts; companion to canonical Membrane doctrine
+**Scope:** contracts spanning Pull, Push, Cortex, Blueprint, Ledger, Adapt, tray/daemon/Hub, and CodeRight integration
+**Does not supersede:** subsystem-specific semantic canons
 
 ## Executive decision
 
-This document consolidates the cross-subsystem changes that should not be buried inside Adapt or Ledger implementation plans.
+This document consolidates cross-subsystem contracts that do not belong to one subsystem owner.
 
 The main decisions are:
 
-1. Rename **Guide → Ledger** across current Membrane architecture.
+1. **Ledger** is the canonical document-navigation subsystem; Guide survives only at explicit compatibility/history boundaries.
 2. Add one cross-cutting Definition-of-Done invariant:
    > **A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.**
 3. Keep shared integrity semantics aligned across subsystems without creating an unowned generic "contracts" layer.
-4. Improve Pull with measured heterogeneous-rank fusion and corrective retrieval.
-5. Improve Push with query-aware reduction and context-order evaluation while preserving its no-second-planner boundary.
+4. Pull uses deterministic RRF as its standing fusion baseline and owns bounded corrective retrieval.
+5. Push may perform query-aware reduction and preserves planner-selected ordering without becoming a second planner.
 6. Make Cortex semantic lifecycle/curation the shared durable mechanism that satisfies Adapt's reevaluation requirements.
 7. Keep Blueprint build-time intelligence and deterministic graph traversal under Blueprint ownership.
 8. Use Adapt as the behavioral-learning loop over subsystem outcomes, not as the implementation owner of other subsystems.
@@ -29,17 +28,18 @@ The main decisions are:
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 
-- Membrane runtime exists **only inside the active Hub process**. There is no
-  standalone Membrane runtime and no Hub-supervised Membrane child process.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds to
-  Membrane through Hub, or it has no binding.
-- MCP and CLI surfaces are **stateless Hub clients/transports**. They never
+- Membrane runtime exists only inside the headless child daemon of the visible
+  native tray, with OS-enforced lifetime coupling. There is no standalone or
+  orphanable Membrane runtime.
+- There is **no embedded CodeRight Membrane backend**. CodeRight binds through
+  the active tray-owned daemon, or it has no binding.
+- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
   launch, auto-start, or register a Membrane process.
-- **Hub off → no Membrane context.** Requests return typed
+- **Tray off → no Membrane context.** Requests return typed
   `membrane_unavailable { reason: hub_inactive, retryable: true }`.
 - **Ledger** is the canonical subsystem name; it replaces Guide.
 - Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only under Hub; with Hub off, Blueprint
+  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
   access is an explicit bounded one-shot operation that never daemonizes.
 
 ---
@@ -193,7 +193,7 @@ This gives alignment without one shared runtime owner.
 
 ---
 
-# 4. Rename Guide → Ledger
+# 4. Ledger identity
 
 The canonical six axes become:
 
@@ -206,24 +206,8 @@ The canonical six axes become:
 | **Ledger** | registered document corpus indexing/navigation/exact resolution |
 | Adapt | governed behavioral learning |
 
-The dedicated Ledger implementation plan controls the detailed migration.
-
-Cross-subsystem updates required here:
-
-- Membrane doctrine terminology;
-- system map;
-- generated product truth;
-- Hub six-subsystem status;
-- subsystem enums/diagnostics;
-- Pull provider labels;
-- Push docs;
-- Cortex source-reference docs;
-- Blueprint document-evidence docs;
-- Adapt references;
-- CodeRight capability handshake;
-- runtime migration ledgers and installed qualification.
-
-Historical `Guide`/`Spine` remains only in migration/history.
+Current product code and documentation use Ledger. Historical `Guide`/`Spine` remains only in
+explicit compatibility, migration, or history boundaries.
 
 ---
 
@@ -244,24 +228,11 @@ Pull owns:
 
 No provider may become a second final planner.
 
-## 5.2 Heterogeneous fusion: evaluate Reciprocal Rank Fusion
+## 5.2 Heterogeneous fusion
 
 Ledger lexical/BM25 ranks, Cortex vector/lexical ranks, Blueprint structural confidence, exact anchors, and other lanes are not naturally score-calibrated.
 
-Reciprocal Rank Fusion (RRF) is a strong candidate because it combines rank positions without assuming comparable score scales.
-
-Do not simply declare RRF canonical.
-
-Implementation plan:
-
-1. freeze current fusion baseline;
-2. define representative multi-provider tasks;
-3. implement RRF behind a shadow strategy id;
-4. compare paired task/retrieval metrics;
-5. include diversity/duplicate and required-evidence coverage;
-6. freeze `k` or other parameters on dev;
-7. run held-out once;
-8. activate only if qualified.
+Reciprocal Rank Fusion (RRF) is the standing deterministic baseline because it combines rank positions without assuming comparable score scales. An active production path that uses another policy must identify that policy and remain a measured migration/control path until RRF cutover qualification passes.
 
 Pull receipts should record:
 
@@ -279,9 +250,9 @@ CRAG and Self-RAG are useful research references for one principle:
 
 Membrane SHOULD NOT copy their model architecture.
 
-Membrane already has typed sufficiency, omissions, and evidence requirements. Use those deterministic structures.
+Membrane planner owns typed sufficiency, omissions, and evidence requirements. Corrective retrieval consumes those deterministic structures.
 
-Candidate flow:
+Required flow:
 
 ```text
 initial acquisition
@@ -338,15 +309,15 @@ It does not:
 - invent missing evidence;
 - become a summarization planner.
 
-## 6.2 Query-aware reduction
+## 6.2 Query-aware reduction contract
 
 LongLLMLingua is relevant for the high-level finding that compression can benefit from query/task awareness.
 
 Do not automatically add an LLM compressor to Push.
 
-Instead add a measured query-aware reduction mode using planner-supplied task/evidence metadata.
+Any query-aware reduction mode uses planner-supplied task/evidence metadata and remains a faithful transform, not a second attention planner.
 
-Candidate behavior:
+Required behavior:
 
 - protect query/task entities;
 - protect exact identifiers/errors/tests/constraints;
@@ -354,7 +325,7 @@ Candidate behavior:
 - preserve exact recovery handles;
 - fall back to less reduction on uncertainty.
 
-Compare:
+Qualification compares:
 
 ```text
 raw control
@@ -374,13 +345,13 @@ Metrics:
 - resolver restores;
 - user corrections.
 
-## 6.3 Lost-in-the-middle ordering evaluation
+## 6.3 Ordering policy contract
 
 "Lost in the Middle" shows long-context models can use evidence differently depending on position.
 
 This does not make Push the ranking owner.
 
-Pull/final renderer should evaluate ordering policies such as:
+Pull/final renderer owns explicit, versioned ordering policies such as:
 
 - highest-authority/required evidence early;
 - critical constraints early plus final recap/reference late;
@@ -644,68 +615,12 @@ Do not substitute one for the other.
 
 ---
 
-# 14. Suggested implementation sequence
+# 14. Pending implementation ownership
 
-## M0 — Amend canonical doctrine
-
-Add:
-
-- Guide → Ledger;
-- production-path evidence invariant;
-- integrity-profile/test-vector rule.
-
-Regenerate all derived product truth.
-
-## M1 — Land bounded correctness fixes
-
-Parallel safe work:
-
-- Ledger Unicode/non-ASCII query fix;
-- stale status/doc cleanup;
-- exact production-path instrumentation where absent.
-
-## M2 — Freeze evaluation frameworks
-
-Create or repair:
-
-- Ledger dev/held-out corpus;
-- Adapt real held-out corpus;
-- Pull fusion/sufficiency corpus;
-- Push paired reduction corpus;
-- CodeRight generic eval engine contracts.
-
-## M3 — CodeRight structured observation seam
-
-Implement typed host/event/eval outcome flow into Membrane/Adapt.
-
-## M4 — Ledger structural/FTS work
-
-Follow Ledger-specific plan.
-
-## M5 — Pull corrective/fusion experiments
-
-Shadow RRF/corrective policy; qualify before activation.
-
-## M6 — Push query-aware experiment
-
-Shadow against raw/current Push.
-
-## M7 — Adapt emergent discovery and regression loop
-
-Build after CodeRight observations/eval execution exist.
-
-## M8 — Cortex semantic reevaluation integration
-
-Wire Adapt/CodeRight/Ledger/Blueprint triggers into governed Cortex curation.
-
-## M9 — System qualification
-
-Prove:
-
-- each active mechanism is on the production path;
-- cross-subsystem receipts compose without authority laundering;
-- installed CodeRight/Membrane loop works;
-- rollback/degradation is honest.
+This canonical document defines contracts and evidence gates, not rollout order. Non-experimental
+Membrane implementation work lives in `docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md` and may be
+scheduled only after its production-path audit establishes a verified gap. Host-owned work remains
+in the host repository.
 
 ---
 
@@ -756,13 +671,13 @@ installed-artifact test, not a unit test.
 
 | Scenario | Required result |
 |---|---|
-| Hub off, agent invokes Membrane | typed `membrane_unavailable { hub_inactive }`; zero Membrane processes spawned |
-| Hub on | Membrane runtime present in the Hub PID/process, nowhere else |
-| Hub quits | Membrane disappears with Hub; no orphan, no restart |
+| Tray off, agent invokes Membrane | typed `membrane_unavailable { hub_inactive }`; zero Membrane processes spawned |
+| Tray on | visible tray plus one headless child daemon; Hub dashboard optional and on demand |
+| Tray quits | daemon disappears with tray; no orphan, no restart |
 | Agent launches stdio MCP | only a stateless adapter process exists; it launches nothing |
-| Hub off, explicit Blueprint query | bounded one-shot operation runs, reports generation + freshness, exits |
-| Hub off, normal Membrane context request | typed unavailable; **no** Blueprint one-shot fallback is invoked |
-| Hub on, one-shot Blueprint writer attempted | routes through the owner or fails `resident_owner_active`; never a second writer |
-| Crashed Hub | stale lease metadata cannot permanently lock the Blueprint store; OS lock semantics release it |
+| Tray off, explicit Blueprint query | bounded one-shot operation runs, reports generation + freshness, exits |
+| Tray off, normal Membrane context request | typed unavailable; **no** Blueprint one-shot fallback is invoked |
+| Tray on, one-shot Blueprint writer attempted | routes through the owner or fails `resident_owner_active`; never a second writer |
+| Crashed tray or daemon | stale lease metadata cannot permanently lock the Blueprint store; OS lock semantics release it |
 | Blueprint graph queried after source changed | freshness reports `changed_since_generation`, not silent success |
-| OS login with Hub disabled | no Membrane and no Blueprint resident processes exist |
+| OS login with tray disabled | no Membrane and no Blueprint resident processes exist |

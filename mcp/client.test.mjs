@@ -61,9 +61,15 @@ try {
 
   const taskEnvelope = { schema: "membrane.task-envelope.v1", task_id: "task-1" };
   const turnEnvelope = { schema: "membrane.turn-envelope.v1", task_id: "task-1", turn_id: "turn-1" };
+  const sufficiencyContract = {
+    schemaVersion: 1,
+    policy: "membrane-sufficiency-v1",
+    requirements: [{ id: "repo-evidence", evidenceClass: "repository_file", acceptableProviders: ["blueprint"], acceptableSourceRefs: ["README.md"], minimumCandidates: 1 }],
+    maxCorrectiveStages: 1,
+  };
   const absent = await runClient({
     task: "large response", repo: process.cwd(), session: "session-fallback",
-    taskEnvelope, turnEnvelope,
+    taskEnvelope, turnEnvelope, sufficiencyContract,
   });
   assert.equal(absent.code, 0, absent.stderr);
   assert.equal(absent.parsed.traceId, "session-fallback");
@@ -74,6 +80,7 @@ try {
   assert.equal(requests[0].headers["x-membrane-version"], "membrane-mcp/1");
   assert.deepEqual(requests[0].body.taskEnvelope, taskEnvelope);
   assert.deepEqual(requests[0].body.turnEnvelope, turnEnvelope);
+  assert.deepEqual(requests[0].body.sufficiencyContract, sufficiencyContract);
 
   const validTrace = {
     traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",

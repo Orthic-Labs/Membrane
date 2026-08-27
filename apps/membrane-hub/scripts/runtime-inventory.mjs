@@ -54,6 +54,8 @@ const WINDOWS_TARGET = "x86_64-pc-windows-msvc";
 const EXTERNAL_BINARIES = new Map([
   ["membrane-command", "membrane"],
   ["cortex-cli", "cortex"],
+  ["membrane-tray", "membrane-tray"],
+  ["membrane-daemon", "membrane-daemon"],
 ]);
 
 function externalBinaryName(entry) {
@@ -66,6 +68,8 @@ function externalBinaryName(entry) {
 // `externalBin` & `tauriBundle` record ownership without
 // copying source or duplicating sidecars/icons into Tauri's resource tree.
 export const RUNTIME_SPECS = [
+  { id: "membrane-tray", component: "membrane-tray", delivery: "externalBin", path: "src-tauri/binaries/membrane-tray-{target}.exe" },
+  { id: "membrane-daemon", component: "membrane-daemon", delivery: "externalBin", path: "src-tauri/binaries/membrane-daemon-{target}.exe" },
   { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}.exe" },
   { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "src-tauri/binaries/cortex-{target}.exe" },
   { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "../../schemas/operations/membrane-context.v1.schema.json" },
@@ -73,9 +77,9 @@ export const RUNTIME_SPECS = [
   { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "../../schemas/memory-lifecycle.v1.schema.json" },
   { id: "blueprint-contract", component: "blueprint", axis: "blueprint", delivery: "resource", transport: "named-pipe", path: "../../schemas/operations/membrane-blueprint.v1.schema.json" },
   { id: "ledger-contract", component: "ledger", axis: "ledger", delivery: "resource", path: "../../schemas/operations/membrane-source-read.v1.schema.json" },
-  // N5 cutover: Hub executes scheduled Adapt cycles in-process. The separate
-  // user launcher invokes bundled native CLI only when a user calls it.
-  { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "hub-native" },
+  // Architecture B: resident Adapt cycles execute inside tray-owned daemon.
+  // On-demand dashboard only projects authenticated daemon state.
+  { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "../../schemas/operations/membrane-feedback.v1.schema.json", invocation: "daemon-native" },
   { id: "runtime-schemas", component: "membrane-schemas", delivery: "resource", path: "../../schemas", tree: true, extensions: [".json", ".yaml", ".yml"] },
   { id: "license-membrane", component: "license", delivery: "resource", path: "../../LICENSE" },
   { id: "hub-icons", component: "icons", delivery: "tauriBundle", path: "src-tauri/icons", tree: true },
@@ -245,12 +249,12 @@ function expectHubInactive(sidecarDir) {
 function nativeUnpackedProbes() {
   return {
     async nativeBootstrap({ sidecarDir }) {
-      await run(join(sidecarDir, "membrane.exe"), ["--help"]); return true;
+      for (const binary of ["membrane-tray.exe", "membrane-daemon.exe", "membrane.exe"]) await run(join(sidecarDir, binary), ["--help"]);
+      return true;
     },
-    async hubRuntimeInProcess() {
-      const supervisor = readFileSync(join(hub, "src-tauri", "src", "supervisor.rs"), "utf8");
-      const retiredChildMode = ["supervisor", "child"].join("-");
-      if (!supervisor.includes("run_hub_runtime") || supervisor.includes("std::process::Command") || supervisor.includes(retiredChildMode)) throw new Error("Hub runtime topology invalid");
+    async dashboardOnDemand() {
+      const main = readFileSync(join(hub, "src-tauri", "src", "main.rs"), "utf8").split("#[cfg(test)]")[0];
+      if (!main.includes("DashboardConnectionState::from_stdin()") || !main.includes("startup_owned_by_tray") || main.includes("run_hub_runtime") || main.includes("std::thread::spawn") || main.includes("mod supervisor;")) throw new Error("on-demand dashboard topology invalid");
       return true;
     },
     async blueprintInstalled({ runtimeDir, inventory }) {
@@ -297,12 +301,12 @@ export async function verifyUnpackedArtifact({ runtimeDir = runtime, sidecarDir,
   if (!inventory.entries.some((entry) => entry.component === "blueprint-runtime" && entry.delivery === "installedComponent")) throw new Error("installed Blueprint runtime missing");
   if (!inventory.components?.blueprint?.treeSha256 || !Number.isInteger(inventory.components.blueprint.fileCount)) throw new Error("installed Blueprint inventory metadata missing");
   if (!inventory.entries.some((entry) => entry.component === "blueprint-contract" && entry.delivery === "resource")) throw new Error("installed Blueprint contract missing");
-  if (!inventory.entries.some((entry) => entry.component === "adapt-contract" && entry.invocation === "hub-native")) throw new Error("Adapt invocation seam invalid");
+  if (!inventory.entries.some((entry) => entry.component === "adapt-contract" && entry.invocation === "daemon-native")) throw new Error("Adapt invocation seam invalid");
   if (!sidecarDir) throw new Error("unpacked sidecar directory required");
   verifySidecars(sidecarDir, inventory);
   const activeProbes = Object.keys(probes).length ? probes : nativeUnpackedProbes();
   try {
-    for (const name of ["nativeBootstrap", "hubRuntimeInProcess", "blueprintInstalled", "hubInactive"]) {
+    for (const name of ["nativeBootstrap", "dashboardOnDemand", "blueprintInstalled", "hubInactive"]) {
       if (typeof activeProbes[name] !== "function") throw new Error(`unpacked executable probe required: ${name}`);
       if (!(await activeProbes[name]({ runtimeDir, sidecarDir, inventory }))) throw new Error(`unpacked executable probe failed: ${name}`);
     }

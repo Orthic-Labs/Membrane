@@ -4,7 +4,7 @@
   "description": "Blueprint: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@11.24.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Orthic-Labs/Membrane.git",

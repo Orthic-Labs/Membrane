@@ -27,6 +27,6 @@ jobs:
           package-manager-cache: false
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.18.0
+          version: 11.24.0
       - run: rustup toolchain install stable --profile minimal
       - run: bash ./scripts/ci/run-ci.sh

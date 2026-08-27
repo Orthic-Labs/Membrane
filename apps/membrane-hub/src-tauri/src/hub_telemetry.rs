@@ -61,10 +61,6 @@ impl HubTelemetry {
         self.update("snapshot", state, reason);
     }
 
-    pub fn event(&self, event: &str, state: &str, reason: Option<&str>) {
-        self.write(event, state, reason);
-    }
-
     pub fn event_required(
         &self,
         event: &str,

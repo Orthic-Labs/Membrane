@@ -131,10 +131,6 @@ impl NativeFederation {
         })
     }
 
-    pub fn engine(&self) -> &FederationEngine {
-        &self.engine
-    }
-
     pub fn metrics_snapshot(&self) -> std::collections::BTreeMap<String, u64> {
         self.metrics.snapshot()
     }

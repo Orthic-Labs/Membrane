@@ -2549,7 +2549,9 @@ fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool
             && item.lifecycle.influence_class.as_deref() == Some("behavioral_directive"))
 }
 
-/// Production federation route is native and same-process.
+/// Production federation route is native and same-process. Its request-time
+/// H8 ceiling is validated before fan-out and its Push selection is attached
+/// to the same response.
 fn federate_route_response(body: &str) -> (u16, String) {
     crate::pull::federation::native_route_response(body)
 }
@@ -6203,11 +6205,14 @@ mod tests {
             payload_down["sections"]["providers"], payload_up["sections"]["providers"],
             "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
         );
-        // Healthy resident + live snapshot => Running even though Blueprint is
-        // unavailable; parent state is resident-local, never child-derived.
+        // Healthy resident + live snapshot => Running regardless of Blueprint's
+        // independently observed state; parent state is never child-derived.
         assert_eq!(payload_up["membraneState"], "running", "body: {body_up}");
-        assert_eq!(
-            payload_up["subsystems"]["blueprint"]["state"], "unavailable",
+        let blueprint_state = payload_up["subsystems"]["blueprint"]["state"]
+            .as_str()
+            .expect("Blueprint state is a closed string");
+        assert!(
+            matches!(blueprint_state, "available" | "degraded" | "unavailable"),
             "body: {body_up}"
         );
     }

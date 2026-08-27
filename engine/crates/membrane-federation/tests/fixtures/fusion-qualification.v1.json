@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "controlPolicy": "membrane-fusion-fixed-v1",
+  "candidateStrategy": "membrane-fusion-rrf-v1",
+  "operationalMetrics": {
+    "latencyMs": { "status": "unavailable", "reason": "not_instrumented" },
+    "costUnits": { "status": "unavailable", "reason": "host_unsupported" }
+  },
+  "corpora": [
+    {
+      "name": "development",
+      "frozen": false,
+      "cases": [
+        {
+          "id": "duplicate-and-diversity",
+          "requiredProviders": ["anchors", "blueprint"],
+          "providers": [
+            { "provider": "anchors", "candidates": [
+              { "id": "shared", "text": "authoritative anchor", "score": 0.95, "sourceHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+              { "id": "anchor-only", "text": "anchor detail", "score": 0.60, "sourceHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" }
+            ] },
+            { "provider": "blueprint", "candidates": [
+              { "id": "shared", "text": "authoritative anchor", "score": 0.90, "sourceHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+              { "id": "unique-blueprint", "text": "repository structure", "score": 0.80, "sourceHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }
+            ] }
+          ]
+        },
+        {
+          "id": "required-evidence-with-omission",
+          "requiredProviders": ["anchors", "blueprint", "cortex"],
+          "providers": [
+            { "provider": "anchors", "candidates": [
+              { "id": "required-anchor", "text": "required evidence", "score": 0.99 }
+            ] },
+            { "provider": "blueprint", "candidates": [] }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "held_out",
+      "frozen": true,
+      "cases": [
+        {
+          "id": "held-out-mixed-authority",
+          "requiredProviders": ["anchors", "rules"],
+          "providers": [
+            { "provider": "anchors", "candidates": [
+              { "id": "policy-anchor", "text": "frozen policy evidence", "score": 0.93 }
+            ] },
+            { "provider": "rules", "candidates": [
+              { "id": "rule-detail", "text": "frozen rule evidence", "score": 0.88 }
+            ] }
+          ]
+        }
+      ]
+    }
+  ]
+}

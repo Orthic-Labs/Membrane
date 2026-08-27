@@ -5,7 +5,7 @@
     "os": ["ubuntu-latest"],
     "node": ["22.13"]
   },
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@11.24.0",
   "templateVersion": "1.1.0",
   "profile": "rust-hybrid",
   "gate": {

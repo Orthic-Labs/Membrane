@@ -177,6 +177,7 @@ function loadInput({ inputArg, maxTokens }) {
     turnEnvelope: parsed.turnEnvelope,
     clientEnvelope: parsed.clientEnvelope,
     overlay: parsed.overlay,
+    sufficiencyContract: parsed.sufficiencyContract,
     ...boundedTrace(parsed),
   };
 }

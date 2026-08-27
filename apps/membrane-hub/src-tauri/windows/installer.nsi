@@ -722,6 +722,8 @@ Section Install
 
   ; Save $INSTDIR in registry for future installations
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
+  ; Architecture B: only visible native tray owns per-user startup.
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray" "$\"$INSTDIR\membrane-tray.exe$\" --login-launch"
 
   !if "${INSTALLMODE}" == "both"
     ; Save install mode to be selected by default for the next installation such as updating
@@ -790,7 +792,7 @@ Function .onInstSuccess
     ${GetOptions} $CMDLINE "/R" $R0
     ${IfNot} ${Errors}
       ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
+      nsis_tauri_utils::RunAsUser "$INSTDIR\membrane-tray.exe" "$R0"
     ${EndIf}
   ${EndIf}
 FunctionEnd
@@ -904,7 +906,7 @@ Section Uninstall
   ; If it doesn't exist, it does nothing.
   ; We do this when not updating (to preserve the registry value on updates)
   ${If} $UpdateMode <> 1
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
   ${EndIf}
 
   ; Delete app data if the checkbox is selected

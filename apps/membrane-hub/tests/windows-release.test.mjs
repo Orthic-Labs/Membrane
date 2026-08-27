@@ -23,10 +23,12 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.equal(pkg.scripts["release:identity"], "node scripts/release-identity.mjs --out dist/release-identity.json");
   assert.equal(pkg.scripts["release:evidence:win"], "node scripts/write-windows-release-evidence.mjs");
   assert.match(pkg.scripts["release:prepare:sidecars:win"], /pnpm run build/);
-  assert.match(pkg.scripts["release:prepare:sidecars:win"], /right-release sign-windows .*cortex-.*\.exe .*membrane-.*\.exe/);
-  assert.match(pkg.scripts["release:prepare:sidecars:win"], /right-release sign-windows --verify-only/);
+  assert.match(pkg.scripts["release:prepare:sidecars:win"], /release-build-windows\.mjs --prepare-only/);
   assert.equal(pkg.scripts["release:build:win"], "node scripts/release-build-windows.mjs");
   assert.match(windowsRelease, /right-release", "sign-windows", "--verify-only"/);
+  assert.match(windowsRelease, /membrane-tray-x86_64-pc-windows-msvc\.exe/);
+  assert.match(windowsRelease, /membrane-daemon-x86_64-pc-windows-msvc\.exe/);
+  assert.match(windowsRelease, /membrane-tray-windows\.exe/);
   assert.match(windowsRelease, /MEMBRANE_SIGNED_SIDECARS_READY: "1"/);
   assert.match(windowsRelease, /right-release", "build", "--platform", "win"/);
   const target = config.targets.win;
@@ -35,8 +37,9 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.equal(target.prePackage.cmd, "pnpm");
   assert.deepEqual(target.prePackage.args, ["run", "rightkit:package:win", "--", "raw"]);
   assert.deepEqual(target.package.args, ["run", "rightkit:package:win", "--", "package"]);
-  assert.deepEqual(target.sign.prePackageFiles, ["src-tauri/target/x86_64-pc-windows-msvc/release/membrane-hub.exe"]);
   assert.equal(target.sign.prePackageFiles.length, 1);
+  assert.match(target.sign.prePackageFiles[0], /[\\/]x86_64-pc-windows-msvc[\\/]release[\\/]membrane-hub\.exe$/);
+  assert.doesNotMatch(target.sign.prePackageFiles[0], /[\\/]src-tauri[\\/]target[\\/]/);
   assert.notEqual(target.sign.prePackageFiles[0], target.sign.files[0]);
   assert.deepEqual(target.artifacts, target.sign.files);
   assert.equal(target.installer.artifacts[0].file, target.sign.files[0]);
@@ -52,6 +55,7 @@ test("Windows release is signed, sealed & stays local", () => {
   );
   assert.equal(windowsTauriConfig.bundle.windows.allowDowngrades, true);
   assert.equal(windowsTauriConfig.bundle.createUpdaterArtifacts, false);
+  assert.deepEqual(windowsTauriConfig.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);
   assert.equal(windowsTauriConfig.bundle.windows.nsis.allowDowngrades, undefined);
   assert.equal(tauriConfig.app.security.freezePrototype, true);
   assert.deepEqual(tauriConfig.app.security.capabilities, ["hub-local-ui"]);
@@ -59,6 +63,9 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(tauriConfig.app.security.csp, /object-src 'none'/);
   assert.doesNotMatch(tauriConfig.app.security.csp, /unsafe-(?:inline|eval)/);
   assert.match(nsisTemplate, /!define INSTALLIDENTITY "Membrane Hub"/);
+  assert.match(nsisTemplate, /Membrane Tray.*--login-launch/);
+  assert.match(nsisTemplate, /RunAsUser "\$INSTDIR\\membrane-tray\.exe"/);
+  assert.doesNotMatch(nsisTemplate, /CurrentVersion\\Run" "Membrane Hub"/);
   assert.doesNotMatch(nsisTemplate, /Unsloth Studio/);
 });
 

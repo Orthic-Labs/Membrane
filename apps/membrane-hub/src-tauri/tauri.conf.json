@@ -32,21 +32,6 @@
     },
     "windows": [
       {
-        "label": "hub",
-        "title": "Membrane Hub",
-        "url": "popover.html",
-        "width": 360,
-        "height": 330,
-        "resizable": false,
-        "maximizable": false,
-        "minimizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": false
-      },
-      {
         "label": "dashboard",
         "title": "Membrane Hub",
         "url": "index.html",
@@ -62,7 +47,7 @@
         "transparent": false,
         "alwaysOnTop": false,
         "skipTaskbar": false,
-        "visible": false
+        "visible": true
       }
     ]
   }

@@ -6,6 +6,7 @@ license-file.workspace = true
 description = "Native Membrane federation coordinator and immutable provider registry."
 
 [dependencies]
+membrane-core = { path = "../membrane-core" }
 membrane-protocol = { path = "../membrane-protocol" }
 membrane-provider-sdk = { path = "../membrane-provider-sdk" }
 async-trait = { workspace = true }

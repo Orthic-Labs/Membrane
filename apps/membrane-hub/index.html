@@ -1,13 +1,152 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Membrane Hub</title><link rel="stylesheet" href="./src/overview.css"><main id="app" tabindex="0" aria-live="polite"><div id="snapshot"><section class="error-state" role="status"><h2>Offline — no snapshot cached</h2><p>Waiting for Hub-owned Membrane service</p></section></div><section class="startup-control" aria-label="Startup"><label><input id="launch-at-login" type="checkbox"> Launch Membrane Hub at login</label><output id="startup-status" aria-live="polite"></output></section></main><script type="module">
-import { renderOverview } from './src/overview.mjs';
-const app = document.querySelector('#app'); const snapshot = document.querySelector('#snapshot'); const startup = document.querySelector('#launch-at-login'); const startupStatus = document.querySelector('#startup-status');
-const message=error=>error?.message||String(error||'Hub controls unavailable');
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>Membrane Hub</title>
+  <link rel="stylesheet" href="./src/overview.css">
+</head>
+<body>
+<main id="app" tabindex="0" aria-live="polite">
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="title-slot" data-tauri-drag-region><span class="pagetitle" data-tauri-drag-region>Overview</span></div>
+    <div class="title-meta" data-tauri-drag-region><span class="crumb" id="crumb" data-tauri-drag-region>hub.snapshot</span></div>
+    <div class="caption">
+      <button type="button" data-caption="minimize" aria-label="Minimise">&#8211;</button>
+      <button type="button" data-caption="maximize" aria-label="Maximise">&#9633;</button>
+      <button type="button" class="x" data-caption="close" aria-label="Close to notification area">&#10005;</button>
+    </div>
+  </div>
+
+  <aside class="rail" data-tauri-drag-region>
+    <nav aria-label="Hub sections">
+      <a href="#overview" data-tab="overview" class="active" aria-current="page"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg><span>Overview</span></a>
+      <a href="#ledger" data-tab="ledger"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><path d="M5.5 3.5h9l4 4v13h-13z"/><path d="M8.5 12h7M8.5 16h4"/></svg><span>Ledger</span></a>
+      <a href="#sources" data-tab="sources"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17"/></svg><span>Sources</span></a>
+      <a href="#subsystems" data-tab="subsystems"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><path d="M10.4 6.9 6.4 15.8M13.6 6.9l4 8.9M7.4 18h9.2"/></svg><span>Subsystems</span></a>
+      <hr>
+      <a href="#memories" data-tab="memories"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h11"/></svg><span>Memories</span></a>
+      <a href="#sessions" data-tab="sessions"><span class="active-bar" aria-hidden="true"></span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.4 2"/></svg><span>Sessions</span></a>
+    </nav>
+    <div class="railfoot">
+      <div class="rail-brand"><span class="mark" aria-hidden="true"></span><span class="wordmark">Mem<em>brane</em></span></div>
+      <section class="rail-status" aria-label="Snapshot status">
+        <span class="v state-unknown" data-boundary-status><i aria-hidden="true"></i><b>Boundary unknown</b></span>
+        <dl>
+          <div><dt>Live</dt><dd data-live-status>Unknown</dd></div>
+          <div><dt>Observed</dt><dd data-observed-status>Unknown</dd></div>
+        </dl>
+      </section>
+    </div>
+  </aside>
+
+  <div class="body" id="snapshot">
+    <section class="error-state" role="status"><h2>Offline — no snapshot cached</h2><p>Waiting for Hub-owned Membrane service</p></section>
+  </div>
+</main>
+<script type="module">
+import { renderView, VIEW_ORDER } from './src/overview.mjs';
+import { applyShellChrome, wireRovingSidebar } from './src/shell.mjs';
+
+const app = document.querySelector('#app');
+const snapshot = document.querySelector('#snapshot');
+const nav = app.querySelector('nav[aria-label="Hub sections"]');
+const pagetitle = document.querySelector('.pagetitle');
+const crumb = document.querySelector('#crumb');
+const boundaryStatus = document.querySelector('[data-boundary-status]');
+const liveStatus = document.querySelector('[data-live-status]');
+const observedStatus = document.querySelector('[data-observed-status]');
+const message = error => error?.message || String(error || 'Hub controls unavailable');
+const titles = { overview: 'Overview', ledger: 'Ledger', sources: 'Sources', subsystems: 'Subsystems', memories: 'Memories', sessions: 'Sessions' };
+let activeTab = 'overview';
+let currentSnapshot = null;
+let currentRuntime = null;
 let invoke;
-try { ({invoke}=await import('./vendor/@tauri-apps/api/core.js')); } catch(error) { startup.disabled=true; startupStatus.value=message(error); }
-async function refresh(){if(!invoke)return;const [runtime,snapshotResult]=await Promise.allSettled([invoke('diagnostics_report'),invoke('snapshot')]);const runtimeValue=runtime.status==='fulfilled'?runtime.value:null;if(snapshotResult.status==='fulfilled'){renderOverview(snapshotResult.value,snapshot,runtimeValue);}else{renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:message(snapshotResult.reason)}},snapshot,runtimeValue);}}
-if(invoke){
-  await refresh();
-  try { startup.checked=await invoke('startup_setting'); startup.addEventListener('change',async()=>{startup.disabled=true; startupStatus.value='Saving…'; try{await invoke('set_startup',{enabled:startup.checked}); startupStatus.value=startup.checked?'Hub will launch at login':'Hub will not launch at login';}catch(error){startup.checked=!startup.checked; startupStatus.value=message(error);}finally{startup.disabled=false;}}); } catch(error) { startup.disabled=true; startupStatus.value=message(error); }
-  try { const [{listen},{getCurrentWindow}]=await Promise.all([import('./vendor/@tauri-apps/api/event.js'),import('./vendor/@tauri-apps/api/window.js')]); const current=getCurrentWindow(); window.addEventListener('keydown',e=>{if(e.key==='Escape')current.hide();}); await current.onFocusChanged(({payload})=>{if(payload)app.focus();}); await listen('hub-snapshot-tick',refresh); } catch(error) { startupStatus.value ||= message(error); }
+
+function tabFromHash() {
+  const value = String(window.location.hash || '').slice(1).toLowerCase();
+  return VIEW_ORDER.includes(value) ? value : 'overview';
 }
+
+function setNavSelection(tab) {
+  activeTab = VIEW_ORDER.includes(tab) ? tab : 'overview';
+  for (const item of nav.querySelectorAll('a[data-tab]')) {
+    const selected = item.dataset.tab === activeTab;
+    item.classList.toggle('active', selected);
+    if (selected) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+  }
+  pagetitle.textContent = titles[activeTab] || 'Overview';
+  document.title = `Membrane Hub · ${titles[activeTab] || 'Overview'}`;
+  snapshot.dataset.view = activeTab;
+}
+
+function renderCurrent() {
+  if (currentSnapshot) renderView(currentSnapshot, snapshot, currentRuntime, activeTab);
+  const payload = currentSnapshot?.result?.data || currentSnapshot?.payload || currentSnapshot || {};
+  const admission = payload?.admission;
+  const hasBoundary = Number.isFinite(Number(admission?.decisionsTotal)) && Number(admission?.decisionsTotal) >= 0;
+  const stale = currentRuntime?.snapshotState && !['available', 'live'].includes(String(currentRuntime.snapshotState).toLowerCase());
+  const boundaryState = hasBoundary ? 'available' : 'unknown';
+  boundaryStatus.className = `v state-${boundaryState}`;
+  boundaryStatus.dataset.state = boundaryState;
+  boundaryStatus.querySelector('b').textContent = hasBoundary ? 'Boundary active' : 'Boundary unknown';
+  liveStatus.textContent = stale ? 'Cached' : currentRuntime?.serviceState ? 'Live' : 'Unknown';
+  const observedValue = payload?.observedAtUnixMs || currentSnapshot?.observed_at_unix_ms;
+  observedStatus.textContent = Number.isFinite(Number(observedValue)) && Number(observedValue) >= 946684800000
+    ? new Date(Number(observedValue)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : 'Unknown';
+}
+
+function activate(tab) {
+  const target = VIEW_ORDER.includes(tab) ? tab : 'overview';
+  if (window.location.hash !== `#${target}`) window.location.hash = target;
+  else { setNavSelection(target); renderCurrent(); }
+}
+
+window.addEventListener('hashchange', () => { setNavSelection(tabFromHash()); renderCurrent(); });
+nav.addEventListener('click', event => {
+  const link = event.target.closest('a[data-tab]');
+  if (link) { event.preventDefault(); activate(link.dataset.tab); }
+});
+
+await applyShellChrome(app);
+wireRovingSidebar(nav, { onActivate: item => activate(item.dataset.tab) });
+setNavSelection(tabFromHash());
+
+try { ({ invoke } = await import('./vendor/@tauri-apps/api/core.js')); }
+catch { invoke = null; }
+
+async function refresh() {
+  if (!invoke) return;
+  const [runtimeResult, snapshotResult] = await Promise.allSettled([invoke('diagnostics_report'), invoke('snapshot')]);
+  currentRuntime = runtimeResult.status === 'fulfilled' ? runtimeResult.value : null;
+  currentSnapshot = snapshotResult.status === 'fulfilled'
+    ? snapshotResult.value
+    : { result: { kind: 'error', code: 'snapshot_unavailable', message: message(snapshotResult.reason) } };
+  const data = currentSnapshot?.result?.data || currentSnapshot?.payload || currentSnapshot;
+  const schema = data?.schemaVersion;
+  crumb.textContent = schema ? `hub.snapshot · schema ${schema}` : 'hub.snapshot';
+  renderCurrent();
+}
+
+if (invoke) {
+  await refresh();
+  try {
+    const [{ listen }, { getCurrentWindow }] = await Promise.all([import('./vendor/@tauri-apps/api/event.js'), import('./vendor/@tauri-apps/api/window.js')]);
+    const current = getCurrentWindow();
+    window.addEventListener('keydown', event => { if (event.key === 'Escape') current.hide(); });
+    await current.onFocusChanged(({ payload }) => { if (payload) app.focus(); });
+    await listen('hub-snapshot-tick', refresh);
+  } catch { /* Window events are optional outside Tauri host. */ }
+}
+
+// Small browser-QA bridge; production still has no mutable data store or API.
+window.__membraneHub = Object.freeze({
+  render(nextSnapshot, runtime = null) { currentSnapshot = nextSnapshot; currentRuntime = runtime; renderCurrent(); },
+  activate,
+  get activeTab() { return activeTab; },
+});
+
 </script>
+</body>
+</html>

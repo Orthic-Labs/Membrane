@@ -22,7 +22,7 @@ function specs() {
     { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "pull.txt" },
     { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "push.txt" },
     { id: "ledger-contract", component: "ledger", axis: "ledger", delivery: "resource", path: "ledger.txt" },
-    { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "hub-native" },
+    { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "daemon-native" },
   ];
 }
 
@@ -37,7 +37,7 @@ function installBlueprint(runtime, make) {
 
 test("runtime closure records native sidecars, installed Blueprint & six axes", () => {
   const ids = new Set(RUNTIME_SPECS.map((spec) => spec.id));
-  for (const id of ["membrane-command", "cortex-cli", "blueprint-contract", "pull-contract", "push-contract", "ledger-contract", "adapt-contract", "runtime-schemas", "hub-icons"]) assert.ok(ids.has(id), id);
+  for (const id of ["membrane-tray", "membrane-daemon", "membrane-command", "cortex-cli", "blueprint-contract", "pull-contract", "push-contract", "ledger-contract", "adapt-contract", "runtime-schemas", "hub-icons"]) assert.ok(ids.has(id), id);
   for (const retired of ["host-adapters", "install-workspace", "install-workspace-manifest"]) assert.ok(!ids.has(retired), retired);
   const blueprint = RUNTIME_SPECS.find((spec) => spec.id === "blueprint-contract");
   assert.equal(blueprint.delivery, "resource"); assert.equal(blueprint.transport, "named-pipe");
@@ -45,38 +45,34 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   const tauri = readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8");
   assert.match(tauri, /"resources": \["runtime"\]/);
   assert.match(tauri, /"externalBin": \["binaries\/cortex", "binaries\/membrane"\]/);
+  const windowsTauri = JSON.parse(readFileSync(new URL("../src-tauri/tauri.windows.conf.json", import.meta.url), "utf8"));
+  assert.deepEqual(windowsTauri.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);
   assert.doesNotMatch(tauri, /cortex-service/);
-  const supervisor = readFileSync(new URL("../src-tauri/src/supervisor.rs", import.meta.url), "utf8");
   const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-  assert.match(supervisor, /run_hub_runtime/);
-  assert.match(supervisor, /membrane-hub-runtime/);
-  assert.match(supervisor, /request_drain/);
-  assert.doesNotMatch(supervisor, /std::process::Command|supervisor-child|ResidentLeaseV1|ResidentHelloV1|MEMBRANE_LIFECYCLE_STDIO/);
-  assert.doesNotMatch(supervisor, /MEMBRANE_OWNER_PIPE/);
+  const production = main.split("#[cfg(test)]")[0];
+  assert.match(production, /DashboardConnectionState::from_stdin\(\)/);
+  assert.match(production, /connection\.get\("\/hub\/snapshot"/);
+  assert.match(production, /connection\.get\("\/health"/);
+  assert.match(production, /startup_owned_by_tray/);
+  assert.match(production, /let _ = show_dashboard\(app\.handle\(\)/);
+  assert.match(production, /app\.exit\(0\)/);
+  assert.doesNotMatch(production, /bundled_binary\("membrane"\)/);
+  assert.doesNotMatch(production, /mod supervisor;|mod blueprint;|mod adapt_launch;/);
+  assert.doesNotMatch(production, /run_hub_runtime|std::thread::spawn/);
+  assert.doesNotMatch(production, /LaunchAgents|current_app_bundle|set_platform_startup/);
+  assert.doesNotMatch(production, /stop_membrane_service|stop_blueprint_service/);
+  assert.doesNotMatch(production, /fn (?:open_dashboard|hide_popover)/);
   assert.doesNotMatch(readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8"), /membrane-supervisor/);
-  assert.match(main, /bundled_binary\("membrane"\)/);
-  assert.match(main, /GET \/hub\/snapshot HTTP\/1\.1/);
-  assert.doesNotMatch(main, /args\(\["cli", "hub-snapshot"\]\)/);
-  assert.match(main, /com\.membrane\.hub/);
-  assert.match(main, /LaunchAgents/);
-  assert.match(main, /current_app_bundle/);
-  assert.match(main, /<key>RunAtLoad<\/key><true\/>/);
-  assert.match(main, /"quit" => \{[\s\S]*stop_membrane_service\(&service\);[\s\S]*app\.exit\(0\)/);
-  assert.doesNotMatch(main, /startup\.json/);
-  assert.doesNotMatch(`${supervisor}\n${main}`, /cortex-service/);
-  // N5 cutover: Hub owns native Adapt scheduling + the installed launcher.
-  assert.match(main, /mod adapt_launch;/);
-  assert.match(main, /install_native_adapt_seam/);
-  assert.match(main, /AdaptScheduler::new\(/);
-  const adaptLaunch = readFileSync(new URL("../src-tauri/src/adapt_launch.rs", import.meta.url), "utf8");
-  assert.match(adaptLaunch, /adapt\.cli\.v1/);
-  assert.match(adaptLaunch, /run_native_adapt_mine/);
-  assert.match(adaptLaunch, /adapt\.schedule\.v1/);
-  assert.doesNotMatch(adaptLaunch, /python3|PYTHONPATH|Command::new|process::Command|try_wait/);
-  assert.doesNotMatch(adaptLaunch, /run_incremental_multiwriter/);
+  assert.match(tauri, /"identifier": "com\.membrane\.hub"/);
+  assert.doesNotMatch(production, /args\(\["cli", "hub-snapshot"\]\)/);
+  assert.doesNotMatch(production, /startup\.json/);
+  // Native tray owns resident sidecar launch; Hub inventory keeps only
+  // on-demand command artifacts at its external-bin boundary.
+  const membraneSidecar = RUNTIME_SPECS.find((spec) => spec.id === "membrane-command");
+  assert.equal(membraneSidecar.delivery, "externalBin");
+  assert.equal(membraneSidecar.component, "membrane");
   const probes = readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8");
   assert.match(probes, /MEMBRANE_PORT/);
-  assert.match(probes, /hubRuntimeInProcess/);
   assert.match(probes, /membrane_unavailable/);
   assert.match(probes, /hub_inactive/);
   assert.doesNotMatch(probes, /MEMBRANE_LIFECYCLE_STDIO|supervisor-child|\["cli", "build-info"\]/);
@@ -121,7 +117,7 @@ test("runtime inventory hashes native runtime & rejects missing/extra/retired", 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("unpacked artifact requires native bootstrap, in-process Hub runtime, installed Blueprint & Hub-off probes", async () => {
+test("unpacked artifact requires native bootstrap, on-demand dashboard, installed Blueprint & Hub-off probes", async () => {
   const { root, make, runtime } = fixture(); const sidecars = join(root, "sidecars");
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
@@ -130,18 +126,18 @@ test("unpacked artifact requires native bootstrap, in-process Hub runtime, insta
     make(join(sidecars, "cortex.exe"), readFileSync(join(root, "cortex-x86_64-pc-windows-msvc.exe")));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
     const called = [];
-    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["nativeBootstrap", "hubRuntimeInProcess", "blueprintInstalled", "hubInactive"].map((name) => [name, async () => { called.push(name); return true; }])) });
-    assert.deepEqual(called, ["nativeBootstrap", "hubRuntimeInProcess", "blueprintInstalled", "hubInactive"]);
+    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["nativeBootstrap", "dashboardOnDemand", "blueprintInstalled", "hubInactive"].map((name) => [name, async () => { called.push(name); return true; }])) });
+    assert.deepEqual(called, ["nativeBootstrap", "dashboardOnDemand", "blueprintInstalled", "hubInactive"]);
     make(join(sidecars, "Membrane Hub"));
-    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, hubRuntimeInProcess: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /unexpected unpacked sidecar/);
+    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, dashboardOnDemand: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /unexpected unpacked sidecar/);
     rmSync(join(sidecars, "Membrane Hub"));
     make(join(sidecars, "cortex.exe-debug"));
-    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, hubRuntimeInProcess: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /unexpected unpacked sidecar/);
+    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, dashboardOnDemand: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /unexpected unpacked sidecar/);
     rmSync(join(sidecars, "cortex.exe-debug"));
-    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, hubRuntimeInProcess: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /retired unpacked sidecar/);
+    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, dashboardOnDemand: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /retired unpacked sidecar/);
     rmSync(join(sidecars, "crypt-service"));
     writeFileSync(join(sidecars, "membrane.exe"), "tampered");
-    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, hubRuntimeInProcess: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /sidecar hash mismatch/);
+    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { nativeBootstrap: () => true, dashboardOnDemand: () => true, blueprintInstalled: () => true, hubInactive: () => true } }), /sidecar hash mismatch/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -1,7 +1,51 @@
 {
   "schemaVersion": 1,
   "axis": "pull",
-  "status": "fixture-entrypoint-defined",
-  "entrypoint": "membrane pull plan-context",
-  "metrics": ["eligibility", "sufficiency", "omission_receipts", "packet_bounds", "publication_determinism"]
+  "status": "mechanics-qualified-no-promotion",
+  "entrypoint": "membrane-federation fusion_qualification production path",
+  "control": "membrane-fusion-fixed-v1",
+  "candidate": "membrane-fusion-rrf-v1",
+  "fixture": "engine/crates/membrane-federation/tests/fixtures/fusion-qualification.v1.json",
+  "corpora": ["development", "held_out_frozen"],
+  "metrics": ["eligibility", "required_evidence_coverage", "duplicate_collapse", "diversity", "omission_receipts", "latency_ms", "cost_units", "receipt_identity"],
+  "operational_metrics": {
+    "latency_ms": { "status": "unavailable", "reason": "not_instrumented" },
+    "cost_units": { "status": "unavailable", "reason": "host_unsupported" }
+  },
+  "qualification": {
+    "status": "pass",
+    "result": "production_path_mechanics_only",
+    "request_id": "c9bde7ff-6a9f-4787-966a-74ba33b05b4f",
+    "tests_passed": 3,
+    "tests_failed": 0,
+    "held_out_tuning": "forbidden",
+    "fixture_results": {
+      "development": {
+        "cases": 2,
+        "control_runs": 2,
+        "rrf_runs": 2,
+        "receipt_stability_checks": 2,
+        "required_provider_coverage": "2/2; 2/3",
+        "omission_cases": 1,
+        "duplicate_source_hash_case_count": 1,
+        "diverse_provider_case_count": 1
+      },
+      "held_out": {
+        "frozen": true,
+        "cases": 1,
+        "control_runs": 1,
+        "rrf_runs": 1,
+        "required_provider_coverage": "2/2",
+        "omission_cases": 0,
+        "duplicate_source_hash_case_count": 0,
+        "diverse_provider_case_count": 1
+      }
+    },
+    "limits": [
+      "Synthetic fixture validates production-path merge, receipt identity, omission accounting, duplicate handling, and deterministic ordering; it has no relevance labels or task-success outcomes.",
+      "Held-out corpus contains one case and was evaluated once; no uncertainty interval can be estimated.",
+      "Latency is not instrumented and cost is unavailable on this host.",
+      "Evidence does not establish that RRF meets or improves fixed-order control and does not authorize default cutover."
+    ]
+  }
 }

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "policy": "membrane-corrective-retrieval-v1",
+  "development": [
+    {"caseId": "dev-cortex-recovery", "alternateOutput": "held-out-cortex", "expectedOutcome": "corrective_stage_sufficient"}
+  ],
+  "heldOutFrozen": [
+    {"caseId": "held-out-terminal-insufficiency", "alternateOutput": null, "expectedOutcome": "terminal_insufficient_second_assessment"}
+  ],
+  "disjoint": true,
+  "tuning": "forbidden"
+}

@@ -21,6 +21,7 @@ pub mod planner;
 mod quant;
 mod registry;
 pub mod retriever;
+pub mod review;
 mod routing;
 pub mod transcript;
 pub mod types;
@@ -52,6 +53,14 @@ pub use planner::{
 pub use quant::{quantized_cosine, QuantizedVector};
 pub use registry::{MemoryRegistry, RegistryError};
 pub use retriever::{LexicalHit, MemoryRetriever};
+pub use review::{
+    bound_memory_candidate_extraction_window, ExtractionWindowV1, ForegroundMemoryEmissionV1,
+    MemoryCandidateExtractionBlockerV1, MemoryCandidateExtractionDecisionV1,
+    MemoryCandidateExtractionLimitsV1, MemoryCandidateExtractionSkipV1, MemoryCandidateV1,
+    ReviewContractError, ReviewEvidenceRefV1, SemanticCurationBlockerV1, SemanticCurationKindV1,
+    SemanticCurationProposalV1, SemanticCurationStatusV1,
+    MEMORY_CANDIDATE_EXTRACTION_SCHEMA_VERSION, SEMANTIC_CURATION_PROPOSAL_SCHEMA_VERSION,
+};
 pub use routing::{QueryFeatures, RetrievalTier, RoutingPolicy};
 pub use transcript::{
     build_transcript_chunks, retrieve_transcript_chunks, TranscriptChunk, TranscriptChunkBuilder,

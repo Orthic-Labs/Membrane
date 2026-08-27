@@ -8,9 +8,15 @@ pub mod compress;
 pub mod compression_provider;
 pub mod prep;
 pub mod runc;
+pub mod selection;
 pub mod skel;
 pub mod telemetry;
 pub mod truncate;
+
+pub use prep::{
+    prep_files_with_budget_and_policy, prep_files_with_policy, PrepPolicy, PushPolicy,
+    QueryAwarePolicy,
+};
 
 /// Push's stable operation identity, used by diagnostics and capability
 /// reports so every surface exposes the same six-axis vocabulary.

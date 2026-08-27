@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "axis": "pull-corrective-retrieval",
+  "status": "mechanics-qualified-no-promotion",
+  "entrypoint": "membrane-federation FederationEngine::federate production path",
+  "harness": "engine/crates/membrane-federation/tests/corrective_retrieval_qualification.rs",
+  "fixture": "engine/crates/membrane-federation/tests/fixtures/corrective-retrieval-qualification.v1.json",
+  "corpora": {
+    "development": {"frozen": true, "cases": 1, "caseId": "dev-cortex-recovery"},
+    "held_out": {"frozen": true, "cases": 1, "caseId": "held-out-terminal-insufficiency"},
+    "disjointness": "case IDs and expected provider outcomes are disjoint; held-out tuning forbidden"
+  },
+  "invariants": [
+    "exactly one alternate lane is scheduled",
+    "trigger lane is not retried",
+    "request ID, trace ID, deadline, and bound release generation remain unchanged",
+    "corrective output is remerged and sufficiency is reevaluated",
+    "second insufficiency is terminal and typed"
+  ],
+  "qualification": {
+    "status": "pass",
+    "result": "production_path_mechanics_only",
+    "tests_passed": 2,
+    "tests_failed": 0,
+    "held_out_tuning": "forbidden",
+    "limits": [
+      "Synthetic providers prove routing and receipt mechanics; no task-success evaluator is present.",
+      "Evidence does not authorize changing corrective policy defaults."
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-//! Deterministic fixed-lane fusion for completed provider candidate sets.
+//! Deterministic RRF fusion for completed provider candidate sets.
 //!
 //! Provider-local scores establish only a lane-local rank. Cross-provider
 //! selection uses reciprocal-rank position, then explicit stable tie-breaks;
@@ -44,6 +44,7 @@ struct RankedCandidate {
     provider: String,
     candidate: CandidateV1,
     provider_rank: u32,
+    rrf_score: f64,
 }
 
 fn provider_candidate_order(left: &CandidateV1, right: &CandidateV1) -> Ordering {
@@ -93,6 +94,10 @@ fn fusion_order(left: &RankedCandidate, right: &RankedCandidate) -> Ordering {
             freshness_rank(left.candidate.freshness_class)
                 .cmp(&freshness_rank(right.candidate.freshness_class))
         })
+        // Authority and freshness are admission precedence. Within an
+        // equivalent lane, aggregate reciprocal-rank evidence is the active
+        // cross-provider signal; deterministic identity fields finish ties.
+        .then_with(|| right.rrf_score.total_cmp(&left.rrf_score))
         .then_with(|| left.provider_rank.cmp(&right.provider_rank))
         .then_with(|| left.candidate.id.cmp(&right.candidate.id))
         .then_with(|| left.provider.cmp(&right.provider))
@@ -102,13 +107,14 @@ fn fusion_order(left: &RankedCandidate, right: &RankedCandidate) -> Ordering {
         .then_with(|| canonical_json_of(&left.candidate).cmp(&canonical_json_of(&right.candidate)))
 }
 
-/// Fuse completed provider sets with MBR-407's fixed-lane baseline.
+/// Fuse completed provider sets with MBR-407's selectable RRF baseline.
 ///
 /// Each provider lane is first sorted by its local score, candidate id, source
-/// hash, source reference, text, then canonical candidate bytes. Provider ids are bytewise sorted. The
-/// cross-provider order is reciprocal-rank denominator, candidate id, provider
-/// id, source hash, source reference, text, then canonical candidate bytes. These orderings make input
-/// completion order irrelevant and form part of receipt contract.
+/// hash, source reference, text, then canonical candidate bytes. Provider ids are
+/// bytewise sorted. Every admitted candidate contributes `1 / (k + rank)` to
+/// its source identity; aggregate reciprocal-rank score then orders equivalent
+/// authority/freshness lanes. These orderings make input completion order
+/// irrelevant and form part of receipt contract.
 pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> FusionResult {
     let mut by_provider: BTreeMap<String, Vec<CandidateV1>> = BTreeMap::new();
     for set in candidate_sets {
@@ -122,6 +128,7 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
     let provider_order = by_provider.keys().cloned().collect::<Vec<_>>();
     let mut decisions = Vec::new();
     let mut ranked = Vec::new();
+    let mut rrf_scores: BTreeMap<String, f64> = BTreeMap::new();
 
     for (provider, candidates) in &mut by_provider {
         candidates.sort_by(provider_candidate_order);
@@ -139,25 +146,44 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
                     provider: provider.clone(),
                     provider_rank: rank,
                     rrf_denominator: denominator,
+                    fused_rank: None,
                     decision: "rejected".to_string(),
                     reason: "provider_quota".to_string(),
                 });
             } else {
+                *rrf_scores.entry(candidate.source_hash.clone()).or_default() +=
+                    1.0 / f64::from(denominator.max(1));
                 ranked.push(RankedCandidate {
                     provider: provider.clone(),
                     candidate,
                     provider_rank: rank,
+                    rrf_score: 0.0,
                 });
             }
         }
     }
 
+    for entry in &mut ranked {
+        entry.rrf_score = rrf_scores
+            .get(&entry.candidate.source_hash)
+            .copied()
+            .unwrap_or_default();
+    }
     ranked.sort_by(fusion_order);
     let mut selected = Vec::new();
     let mut seen = HashSet::new();
+    let mut fused_ranks: BTreeMap<String, u32> = BTreeMap::new();
+    let mut next_fused_rank = 1u32;
     for entry in ranked {
         let denominator = bounds.rrf_k.saturating_add(entry.provider_rank);
         let duplicate = !entry.candidate.protected && seen.contains(&entry.candidate.source_hash);
+        let fused_rank = *fused_ranks
+            .entry(entry.candidate.source_hash.clone())
+            .or_insert_with(|| {
+                let rank = next_fused_rank;
+                next_fused_rank = next_fused_rank.saturating_add(1);
+                rank
+            });
         seen.insert(entry.candidate.source_hash.clone());
         let capped = u32::try_from(selected.len()).unwrap_or(u32::MAX) >= bounds.max_items;
         let (decision, reason) = if duplicate {
@@ -173,6 +199,7 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
             provider: entry.provider,
             provider_rank: entry.provider_rank,
             rrf_denominator: denominator,
+            fused_rank: Some(fused_rank),
             decision: decision.to_string(),
             reason: reason.to_string(),
         });
@@ -190,7 +217,7 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
         candidates: selected,
         receipt: FusionReceiptV1 {
             schema_version: FusionReceiptV1::SCHEMA_VERSION,
-            policy: FusionReceiptV1::POLICY.to_string(),
+            policy: FusionReceiptV1::RRF_POLICY.to_string(),
             fallback_policy: FusionReceiptV1::FALLBACK_POLICY.to_string(),
             provider_order,
             provider_quotas: bounds.provider_quotas,
@@ -322,6 +349,70 @@ mod tests {
                 "diagnostic".to_string(),
                 "memory".to_string()
             ]
+        );
+        assert_eq!(expected.receipt.policy, FusionReceiptV1::RRF_POLICY);
+    }
+
+    #[test]
+    fn aggregate_rrf_promotes_cross_provider_agreement() {
+        let corpus = vec![
+            set(
+                "blueprint",
+                vec![
+                    candidate("a1", 1.0, "hash-a1"),
+                    candidate("a2", 0.9, "hash-agreed"),
+                ],
+            ),
+            set(
+                "memory",
+                vec![
+                    candidate("b1", 1.0, "hash-agreed"),
+                    candidate("b2", 0.9, "hash-b2"),
+                ],
+            ),
+        ];
+        let result = fuse(
+            &corpus,
+            FusionBounds {
+                provider_quotas: BTreeMap::from([
+                    ("blueprint".to_owned(), 2),
+                    ("memory".to_owned(), 2),
+                ]),
+                rrf_k: 60,
+                max_items: 3,
+            },
+        );
+
+        // The shared source hash receives rank-2 + rank-1 contributions and
+        // outranks the rank-1 singleton, while memory's rank-1 representative
+        // wins the deterministic duplicate tie.
+        assert_eq!(
+            result
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["b1", "a1", "b2"]
+        );
+        let shared = result
+            .receipt
+            .decisions
+            .iter()
+            .find(|decision| decision.id == "b1")
+            .expect("selected shared candidate receipt");
+        assert_eq!(shared.fused_rank, Some(1));
+        assert_eq!(
+            result
+                .receipt
+                .decisions
+                .iter()
+                .find(|decision| decision.id == "a2")
+                .map(|decision| (
+                    decision.decision.as_str(),
+                    decision.reason.as_str(),
+                    decision.fused_rank
+                )),
+            Some(("rejected", "duplicate_source_hash", Some(1)))
         );
     }
 

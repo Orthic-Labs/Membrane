@@ -1,7 +1,7 @@
 use membrane_protocol::{
-    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HubSubsystemV1,
-    HubSubsystemsV1, MembraneParentState, ProviderIdentityV1, ProviderReadinessStateV1,
-    ProviderReadinessV1, SubsystemStateV1, HUB_SCHEMA_VERSION,
+    HubAdmissionV1, HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1,
+    HubSubsystemV1, HubSubsystemsV1, MembraneParentState, ProviderIdentityV1,
+    ProviderReadinessStateV1, ProviderReadinessV1, SubsystemStateV1, HUB_SCHEMA_VERSION,
 };
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -362,6 +362,26 @@ impl HubFacadeV1 {
         membrane_state: Option<MembraneParentState>,
         subsystems: Option<HubSubsystemsV1>,
     ) -> HubSnapshotV1 {
+        self.snapshot_with_admission(
+            observed_at_unix_ms,
+            inputs,
+            membrane_state,
+            subsystems,
+            None,
+        )
+    }
+
+    /// Full composer, additionally carrying the additive V1 admission-ledger
+    /// aggregate. `admission` stays `None` whenever the catalog receipt store
+    /// could not be read — never a fabricated zero.
+    pub fn snapshot_with_admission(
+        &self,
+        observed_at_unix_ms: u64,
+        inputs: HubInputsV1,
+        membrane_state: Option<MembraneParentState>,
+        subsystems: Option<HubSubsystemsV1>,
+        admission: Option<HubAdmissionV1>,
+    ) -> HubSnapshotV1 {
         HubSnapshotV1 {
             schema_version: HUB_SCHEMA_VERSION,
             product_id: "membrane".into(),
@@ -378,6 +398,7 @@ impl HubFacadeV1 {
             ]),
             membrane_state,
             subsystems,
+            admission,
         }
     }
 }

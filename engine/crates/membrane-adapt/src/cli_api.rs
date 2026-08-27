@@ -52,6 +52,16 @@ pub struct MineResponse {
     pub api_version: String,
     pub episodes: Vec<FailureEpisodeV1>,
     pub issues: Vec<InsightIssueV1>,
+    /// Sealed review-only proposals generated on the same native path. They
+    /// remain `proposed` until host review and precision admission.
+    #[serde(default)]
+    pub remediation_proposals: Vec<crate::remediation::SealedRemediationProposalV1>,
+    /// Read-only joins over the same mined snapshot. Host-side variant,
+    /// experiment, deployment, and evaluation inputs remain typed gaps.
+    #[serde(default)]
+    pub lineage: Vec<crate::lineage::LearningLineageV1>,
+    #[serde(default)]
+    pub insights_projection: crate::lineage::InsightsProjectionV1,
 }
 
 /// `review`: inspect pending candidates (episodes/issues/manifests) without
@@ -155,10 +165,16 @@ pub struct DoctorFinding {
 pub fn handle_mine(req: &MineRequest) -> MineResponse {
     let episodes = crate::insights::detectors::run_all_detectors(&req.events);
     let issues = form_issues(&episodes, req.min_recurrence);
+    let remediation_proposals = crate::remediation::seal_review_proposals(&issues);
+    let projection =
+        crate::lineage::project_mine(&req.events, &episodes, &issues, &remediation_proposals);
     MineResponse {
         api_version: CLI_API_VERSION.into(),
         episodes,
         issues,
+        remediation_proposals,
+        lineage: projection.lineage,
+        insights_projection: projection.insights,
     }
 }
 
@@ -350,6 +366,13 @@ mod tests {
         );
         assert_eq!(r1.api_version, "adapt.cli.v1");
         assert!(r1.episodes.iter().any(|e| e.family == "repeated_ask"));
+        assert!(!r1.remediation_proposals.is_empty());
+        assert!(r1
+            .remediation_proposals
+            .iter()
+            .all(|proposal| proposal.verify().is_ok()));
+        assert_eq!(r1.lineage.len(), r1.issues.len());
+        assert_eq!(r1.insights_projection.rows.len(), r1.issues.len());
     }
 
     #[test]

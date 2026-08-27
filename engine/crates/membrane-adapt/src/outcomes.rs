@@ -65,6 +65,18 @@ pub struct OutcomeEntryV1 {
     pub note: String,
 }
 
+/// Host outcome fields used by closed-loop projections. Kept separate from
+/// the mitigation ledger so absent host measurements cannot become zero.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClosedLoopOutcomeV1 {
+    pub outcome_id: String,
+    pub asset_id: crate::procedural_effectiveness::Observed<String>,
+    pub success: crate::procedural_effectiveness::Observed<bool>,
+    pub correction: crate::procedural_effectiveness::Observed<bool>,
+    pub evidence_refs: crate::procedural_effectiveness::Observed<Vec<String>>,
+}
+
 /// Append-only outcome ledger.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OutcomeLedger {

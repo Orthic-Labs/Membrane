@@ -542,7 +542,15 @@ try {
       jsonrpc: "2.0", id: 21, method: "tools/call",
       params: {
         name: "membrane_context",
-        arguments: { task: "trace context", repository: enrolledRoot, caller: virtualCaller },
+        arguments: {
+          task: "trace context", repository: enrolledRoot, caller: virtualCaller,
+          sufficiencyContract: {
+            schemaVersion: 1,
+            policy: "membrane-sufficiency-v1",
+            requirements: [{ id: "repo-evidence", evidenceClass: "repository_file", acceptableProviders: ["blueprint"], acceptableSourceRefs: ["README.md"], minimumCandidates: 1 }],
+            maxCorrectiveStages: 1,
+          },
+        },
         _meta: { ...modernMeta, traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a" },
       },
     },
@@ -553,6 +561,12 @@ try {
   });
   assert.deepEqual({ traceparent: federateBody.traceparent, tracestate: federateBody.tracestate, baggage: federateBody.baggage }, {
     traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a",
+  });
+  assert.deepEqual(federateBody.sufficiencyContract, {
+    schemaVersion: 1,
+    policy: "membrane-sufficiency-v1",
+    requirements: [{ id: "repo-evidence", evidenceClass: "repository_file", acceptableProviders: ["blueprint"], acceptableSourceRefs: ["README.md"], minimumCandidates: 1 }],
+    maxCorrectiveStages: 1,
   });
   assert.equal(federateHeaders.traceparent, "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future");
   assert.equal(federateHeaders.tracestate, "membrane=server");

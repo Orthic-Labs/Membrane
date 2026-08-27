@@ -113,18 +113,27 @@ fn unset_blueprint_endpoint() {
 }
 
 fn with_missing_db<R>(f: impl FnOnce() -> R) -> R {
-    let prior = std::env::var_os("MEMBRANE_DB_PATH");
+    let prior_db = std::env::var_os("MEMBRANE_DB_PATH");
+    let prior_catalog = std::env::var_os("MEMBRANE_CATALOG");
     unsafe {
         std::env::set_var(
             "MEMBRANE_DB_PATH",
             "/nonexistent/hub_cli_contract/cortex-engine.db",
         );
+        std::env::set_var(
+            "MEMBRANE_CATALOG",
+            "/nonexistent/hub_cli_contract/catalog.db",
+        );
     }
     let result = f();
     unsafe {
-        match prior {
+        match prior_db {
             Some(value) => std::env::set_var("MEMBRANE_DB_PATH", value),
             None => std::env::remove_var("MEMBRANE_DB_PATH"),
+        }
+        match prior_catalog {
+            Some(value) => std::env::set_var("MEMBRANE_CATALOG", value),
+            None => std::env::remove_var("MEMBRANE_CATALOG"),
         }
     }
     result
@@ -218,6 +227,10 @@ fn assert_canonical_shape(snapshot: &membrane_protocol::HubSnapshotV1, expected_
     // Schema stays v1.
     assert_eq!(encoded["schemaVersion"], 1);
     assert_eq!(encoded["productId"], "membrane");
+    assert!(
+        encoded.get("admission").is_none(),
+        "missing catalog must omit admission instead of fabricating zeros"
+    );
 }
 
 #[test]

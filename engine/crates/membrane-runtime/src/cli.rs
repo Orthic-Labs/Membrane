@@ -3,7 +3,7 @@
 
 use crate::scope::{normalize_scope, path_to_scope};
 use crate::{CheckpointV1, MemDb, MemoryStore};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -479,6 +479,14 @@ enum PullCmd {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum PushPrepPolicyArg {
+    /// Existing query-agnostic prep behavior.
+    Control,
+    /// Planner-selected query-aware prep; requires query/admission metadata.
+    QueryAware,
+}
+
 #[derive(Subcommand)]
 enum PushCmd {
     Runc {
@@ -521,6 +529,26 @@ enum PushCmd {
         budget: Option<usize>,
         #[arg(long, default_value_t = 800)]
         min_bytes: usize,
+        /// Reduction policy; defaults to legacy/control behavior.
+        #[arg(long, value_enum, default_value = "control")]
+        policy: PushPrepPolicyArg,
+        /// Planner-supplied task query; required for query-aware policy.
+        #[arg(long)]
+        query: Option<String>,
+        /// Assert planner admitted source authority for query-aware reduction.
+        #[arg(long)]
+        authority_admitted: bool,
+        /// Assert planner accepted source freshness for query-aware reduction.
+        #[arg(long)]
+        freshness_valid: bool,
+    },
+    /// Select largest complete Membrane-authored representation for host H8 capacity.
+    Select {
+        #[arg(long)]
+        plan: PathBuf,
+        /// Host-produced RemainingContextCeilingV1 JSON; no default capacity is used.
+        #[arg(long, alias = "remaining-context-ceiling")]
+        ceiling: PathBuf,
     },
     Restore {
         anchor: String,
@@ -2811,6 +2839,13 @@ fn read_adapt_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Str
         .map_err(|error| format!("parse Adapt input {}: {error}", path.display()))
 }
 
+fn read_push_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
+    let body = std::fs::read_to_string(path)
+        .map_err(|error| format!("read Push input {}: {error}", path.display()))?;
+    serde_json::from_str(&body)
+        .map_err(|error| format!("parse Push input {}: {error}", path.display()))
+}
+
 fn print_adapt_json<T: Serialize>(value: &T) -> Result<(), String> {
     println!(
         "{}",
@@ -3384,6 +3419,74 @@ fn run_pull(command: PullCmd) -> Result<(), String> {
     }
 }
 
+fn resolve_push_prep_policy(
+    policy: PushPrepPolicyArg,
+    query: Option<String>,
+    authority_admitted: bool,
+    freshness_valid: bool,
+) -> Result<crate::push::prep::PushPolicy, String> {
+    match policy {
+        PushPrepPolicyArg::Control => {
+            if query.is_some() || authority_admitted || freshness_valid {
+                return Err("push prep metadata requires --policy query-aware".to_string());
+            }
+            Ok(crate::push::prep::PushPolicy::Control)
+        }
+        PushPrepPolicyArg::QueryAware => {
+            let query = query
+                .filter(|value| !value.trim().is_empty())
+                .ok_or_else(|| "--query is required with --policy query-aware".to_string())?;
+            Ok(crate::push::prep::PushPolicy::query_aware(
+                query,
+                authority_admitted,
+                freshness_valid,
+            ))
+        }
+    }
+}
+
+fn prepare_push_manifest(
+    out_dir: &Path,
+    files: &[PathBuf],
+    rate: f32,
+    min_bytes: usize,
+    budget_tokens: Option<usize>,
+    policy: PushPrepPolicyArg,
+    query: Option<String>,
+    authority_admitted: bool,
+    freshness_valid: bool,
+) -> Result<Vec<crate::push::prep::PrepEntry>, String> {
+    let policy = resolve_push_prep_policy(policy, query, authority_admitted, freshness_valid)?;
+    Ok(crate::push::prep::prep_files_with_budget_and_policy(
+        out_dir,
+        files,
+        rate,
+        min_bytes,
+        budget_tokens,
+        policy,
+    ))
+}
+
+fn select_push_representation(
+    plan_path: &Path,
+    ceiling_path: &Path,
+) -> Result<serde_json::Value, String> {
+    let plan: membrane_protocol::PacketReductionPlanV1 = read_push_json(plan_path)?;
+    let ceiling: membrane_protocol::RemainingContextCeilingV1 = read_push_json(ceiling_path)?;
+    let selected = plan
+        .select_for_capacity(&ceiling)
+        .map_err(|error| format!("Push selection refused: {error}"))?;
+    let remaining_tokens = ceiling
+        .remaining_tokens
+        .estimate
+        .value
+        .ok_or_else(|| "Push selection returned without exact capacity".to_string())?;
+    Ok(serde_json::json!({
+        "selectedRepresentation": selected,
+        "remainingTokens": remaining_tokens,
+    }))
+}
+
 fn run_push(command: PushCmd) -> Result<(), String> {
     match command {
         PushCmd::Skel {
@@ -3493,16 +3596,36 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             rate,
             budget,
             min_bytes,
+            policy,
+            query,
+            authority_admitted,
+            freshness_valid,
         } => {
-            let manifest = crate::push::prep::prep_files_with_budget(
-                &out_dir, &files, rate, min_bytes, budget,
-            );
+            let manifest = prepare_push_manifest(
+                &out_dir,
+                &files,
+                rate,
+                min_bytes,
+                budget,
+                policy,
+                query,
+                authority_admitted,
+                freshness_valid,
+            )?;
             for (verb, before, after, metadata) in crate::push::prep::transform_rows(&manifest) {
                 crate::push::telemetry::record(verb.as_str(), before, after, metadata, None);
             }
             println!(
                 "{}",
                 serde_json::to_string(&manifest).map_err(|error| error.to_string())?
+            );
+            Ok(())
+        }
+        PushCmd::Select { plan, ceiling } => {
+            let selection = select_push_representation(&plan, &ceiling)?;
+            println!(
+                "{}",
+                serde_json::to_string(&selection).map_err(|error| error.to_string())?
             );
             Ok(())
         }
@@ -4920,6 +5043,202 @@ mod tests {
                 }
             }
         ));
+    }
+
+    fn write_push_selection_fixtures(
+        directory: &Path,
+        remaining_tokens: u64,
+        unavailable: bool,
+    ) -> (PathBuf, PathBuf) {
+        let plan_path = directory.join("plan.json");
+        let ceiling_path = directory.join("ceiling.json");
+        let representation = |id: &str, tokens: u64| {
+            serde_json::json!({
+                "id": id,
+                "tokens": tokens,
+                "content": {
+                    "representation": id,
+                    "protected": ["task-entity", "error-code"],
+                },
+                "parentRef": "packet://task-1",
+                "protected": ["task-entity", "error-code"],
+                "evidenceRefs": ["evidence://result-1"],
+                "resolverPaths": ["resolver://result-1"],
+                "minimumViableTokens": 32,
+                "coverageNote": format!("{id} retains required coverage"),
+            })
+        };
+        let plan = serde_json::json!({
+            "schemaVersion": 1,
+            "estimatorBasis": {"id": "test-estimator", "version": "v1"},
+            "representations": [representation("full", 128), representation("floor", 32)],
+            "protected": ["task-entity", "error-code"],
+            "minimumViableTokens": 32,
+        });
+        let estimate = if unavailable {
+            serde_json::json!({
+                "coverage": "unavailable",
+                "unavailableReason": "provider_omitted",
+            })
+        } else {
+            serde_json::json!({
+                "coverage": "complete",
+                "value": remaining_tokens,
+            })
+        };
+        let ceiling = serde_json::json!({
+            "schemaVersion": 1,
+            "ceilingId": "ceiling-1",
+            "sessionId": "session-1",
+            "taskId": {"coverage": "complete", "value": "task-1"},
+            "requestedAtUnixMs": 1700000000000u64,
+            "remainingTokens": {
+                "basis": {"id": "test-estimator", "version": "v1"},
+                "estimate": estimate,
+            },
+            "provenanceReceipt": {
+                "schemaVersion": 1,
+                "receiptId": "receipt-1",
+                "source": "test-host",
+                "observedAtUnixMs": 1700000000000u64,
+                "receiptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            },
+        });
+        std::fs::write(&plan_path, serde_json::to_vec(&plan).unwrap()).unwrap();
+        std::fs::write(&ceiling_path, serde_json::to_vec(&ceiling).unwrap()).unwrap();
+        (plan_path, ceiling_path)
+    }
+
+    #[test]
+    fn push_select_cli_reaches_bounded_host_capacity_selection() {
+        let parsed = super::Cli::try_parse_from([
+            "membrane",
+            "push",
+            "select",
+            "--plan",
+            "plan.json",
+            "--remaining-context-ceiling",
+            "ceiling.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Push {
+                command: super::PushCmd::Select { .. }
+            }
+        ));
+
+        let temp = tempfile::tempdir().unwrap();
+        let (plan_path, ceiling_path) = write_push_selection_fixtures(temp.path(), 100, false);
+        let output = super::select_push_representation(&plan_path, &ceiling_path).unwrap();
+        assert_eq!(output["selectedRepresentation"]["id"], "floor");
+        assert_eq!(output["remainingTokens"], serde_json::json!(100));
+        assert_eq!(
+            output["selectedRepresentation"]["protected"],
+            serde_json::json!(["task-entity", "error-code"])
+        );
+    }
+
+    #[test]
+    fn push_select_cli_refuses_unavailable_host_capacity() {
+        let temp = tempfile::tempdir().unwrap();
+        let (plan_path, ceiling_path) = write_push_selection_fixtures(temp.path(), 128, true);
+        let error = super::select_push_representation(&plan_path, &ceiling_path).unwrap_err();
+        assert!(error.contains("not exact"));
+        assert!(error.contains("ProviderOmitted"));
+    }
+
+    #[test]
+    fn push_prep_defaults_to_control_policy() {
+        let parsed =
+            super::Cli::try_parse_from(["membrane", "push", "prep", "out", "input.txt"]).unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Push {
+                command: super::PushCmd::Prep {
+                    policy: super::PushPrepPolicyArg::Control,
+                    query: None,
+                    authority_admitted: false,
+                    freshness_valid: false,
+                    ..
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn push_prep_query_aware_policy_reaches_provider_route() {
+        let parsed = super::Cli::try_parse_from([
+            "membrane",
+            "push",
+            "prep",
+            "out",
+            "input.txt",
+            "--policy",
+            "query-aware",
+            "--query",
+            "needle",
+            "--authority-admitted",
+            "--freshness-valid",
+            "--budget",
+            "2",
+            "--min-bytes",
+            "1",
+        ])
+        .unwrap();
+        let super::Cmd::Push {
+            command:
+                super::PushCmd::Prep {
+                    policy,
+                    query,
+                    authority_admitted,
+                    freshness_valid,
+                    budget,
+                    min_bytes,
+                    ..
+                },
+        } = parsed.cmd
+        else {
+            panic!("expected push prep command");
+        };
+        assert_eq!(policy, super::PushPrepPolicyArg::QueryAware);
+        let temp = tempfile::tempdir().unwrap();
+        let source_path = temp.path().join("input.txt");
+        let out_dir = temp.path().join("out");
+        std::fs::write(
+            &source_path,
+            "ordinary words alpha beta gamma\nordinary words delta epsilon needle\n",
+        )
+        .unwrap();
+        let manifest = super::prepare_push_manifest(
+            &out_dir,
+            std::slice::from_ref(&source_path),
+            0.1,
+            min_bytes,
+            budget,
+            policy,
+            query,
+            authority_admitted,
+            freshness_valid,
+        )
+        .unwrap();
+        let output = std::fs::read_to_string(manifest[0].prepared.as_ref().unwrap()).unwrap();
+        assert!(
+            output.contains("needle"),
+            "selected query-aware route must retain query term: {output:?}"
+        );
+    }
+
+    #[test]
+    fn push_prep_rejects_query_metadata_on_control_policy() {
+        let error = super::resolve_push_prep_policy(
+            super::PushPrepPolicyArg::Control,
+            Some("needle".into()),
+            true,
+            true,
+        )
+        .unwrap_err();
+        assert!(error.contains("query-aware"));
     }
 
     #[test]

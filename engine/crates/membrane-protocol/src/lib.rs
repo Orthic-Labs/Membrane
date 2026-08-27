@@ -23,6 +23,7 @@
 //!
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
+pub mod background_review;
 pub mod canonical;
 pub mod compatibility_policy;
 pub mod compression;
@@ -30,6 +31,7 @@ pub mod diagnostics;
 pub mod federation;
 pub mod fusion;
 pub mod heartbeat;
+pub mod host_observation;
 pub mod hub;
 pub mod installation;
 pub mod lease;
@@ -38,12 +40,23 @@ pub mod observable_event;
 pub mod operations;
 pub mod portable_pack;
 pub mod provider_readiness;
+pub mod push;
 pub mod release_channel;
 pub mod source_resolution;
 pub mod status;
 pub mod team_policy;
+pub mod tray_daemon;
 pub mod types;
 
+pub use background_review::{
+    BackgroundReviewActivitySignalV1, BackgroundReviewConfigError, BackgroundReviewConfigV1,
+    BackgroundReviewExecutionStatusV1, BackgroundReviewExecutionV1, BackgroundReviewJobKindV1,
+    BackgroundReviewJobV1, BackgroundReviewObservationReceiptV1, BackgroundReviewObservationV1,
+    BackgroundReviewProposalRefV1, BackgroundReviewReasonV1, BackgroundReviewStatusV1,
+    BackgroundReviewValidationError, BACKGROUND_REVIEW_ACTIVITY_SCHEMA_VERSION,
+    BACKGROUND_REVIEW_EXECUTION_SCHEMA_VERSION, BACKGROUND_REVIEW_RECEIPT_SCHEMA_VERSION,
+    BACKGROUND_REVIEW_SCHEMA_VERSION,
+};
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
 pub use compatibility_policy::{
     evaluate_compatibility, evaluate_release_channel, AdmittedRelease, CompatibilityViolation,
@@ -79,10 +92,26 @@ pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };
+pub use host_observation::{
+    compare_token_estimates, ensure_same_estimator_basis, sum_token_estimates,
+    CodeRightEvaluationOutcomeV1, CodeRightExecutionObservationV1, CompletionEmissionStatusV1,
+    CompletionEmissionV1, DeliveryAcknowledgementV1, EstimatorBasisV1, EvaluationOutcomeV1,
+    ExecutionCostV1, ExecutionObservationKindV1, ExecutionObservationV1, ExecutionUsageV1,
+    HostObservationCoverageV1, HostObservationProvenanceV1, HostObservationUnavailableReasonV1,
+    HostObservationValidationError, HostProvenanceReceiptV1, LoadedContextIdentitiesV1,
+    LoadedContextIdentityV1, ObservationCoverage, ObservationCoverageV1,
+    ObservationUnavailableReason, ObservationUnavailableReasonV1, ObservedFieldV1,
+    PacketDeliveryAcknowledgementStatusV1, PacketDeliveryAcknowledgementV1,
+    PacketDeliveryAcknowledgmentV1, RemainingContextCeilingV1, TokenEstimateV1,
+    EVALUATION_OUTCOME_SCHEMA_VERSION, EXECUTION_OBSERVATION_SCHEMA_VERSION,
+    HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION, HOST_OBSERVATION_SCHEMA_VERSION,
+    LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION, PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION,
+    PACKET_DELIVERY_ACKNOWLEDGMENT_SCHEMA_VERSION, REMAINING_CONTEXT_CEILING_SCHEMA_VERSION,
+};
 pub use hub::{
-    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HubSubsystemV1,
-    HubSubsystemsV1, MembraneUnavailableReasonV1, MembraneUnavailableV1, SubsystemStateV1,
-    HUB_SCHEMA_VERSION,
+    AdmissionReasonCountV1, HubAdmissionV1, HubCapabilitiesV1, HubSectionV1, HubSnapshotV1,
+    HubStateV1, HubStreamV1, HubSubsystemV1, HubSubsystemsV1, MembraneUnavailableReasonV1,
+    MembraneUnavailableV1, SubsystemStateV1, HUB_ADMISSION_SCHEMA_VERSION, HUB_SCHEMA_VERSION,
 };
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
@@ -109,6 +138,11 @@ pub use provider_readiness::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
 };
+pub use push::{
+    PacketReductionPlanError, PacketReductionPlanSelectionError, PacketReductionPlanV1,
+    PacketReductionRepresentationV1, PacketReductionSelectionError,
+    PACKET_REDUCTION_PLAN_SCHEMA_VERSION,
+};
 pub use release_channel::{
     ReleaseChannel, ReleaseChannelV1, SchemaCompatibility, SupportState, SupportWindowV1,
     RELEASE_CHANNEL_SCHEMA_VERSION,
@@ -123,6 +157,11 @@ pub use status::{
 pub use team_policy::{
     EncryptedReplicationEnvelopeV1, TeamPolicyReceiptV1, TeamPolicyScopeV1, TeamPolicySyncV1,
     TeamSyncOptInV1, TEAM_POLICY_SCHEMA_VERSION,
+};
+pub use tray_daemon::{
+    decode_command_frame, decode_event_frame, decode_frame, decode_launch_frame, encode_frame,
+    DaemonCommandKind, DaemonCommandV1, DaemonEventKind, DaemonEventV1, DaemonLaunchKind,
+    DaemonLaunchV1, DaemonProtocolError, DAEMON_IPC_MAX_FRAME_BYTES, DAEMON_IPC_SCHEMA_VERSION,
 };
 pub use types::*;
 

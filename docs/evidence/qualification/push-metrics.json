@@ -1,7 +1,40 @@
 {
   "schemaVersion": 1,
   "axis": "push",
-  "status": "fixture-entrypoint-defined",
-  "entrypoint": "membrane push",
-  "metrics": ["protected_span_retention", "byte_token_balance", "restore_success", "telemetry_isolation"]
+  "status": "mechanics-qualified-no-promotion",
+  "entrypoint": "membrane-runtime Push preparation production path",
+  "harness": "engine/crates/membrane-runtime/tests/push_qualification.rs",
+  "fixture": "engine/crates/membrane-runtime/tests/fixtures/push-qualification.v1.json",
+  "policyArms": ["raw_control", "structural_query_agnostic", "query_aware"],
+  "attentionBudget": {"tokens": 32, "matching": true},
+  "corpora": {
+    "development": {"frozen": true, "cases": 2},
+    "held_out": {"frozen": true, "cases": 2, "tuning": "forbidden"},
+    "disjointness": "ids, sources, and paths verified disjoint"
+  },
+  "metrics": {
+    "required_evidence_retention": {"status": "measured", "result": "8/8 assertions; 4/4 cases"},
+    "protected_span_integrity": {"status": "measured", "result": "4/4 assertions; 4/4 cases"},
+    "token_budget_compliance": {"status": "measured", "result": "4/4 cases at or below 32 tokens"},
+    "query_aware_reachability": {"status": "measured", "result": "3/3 qualification tests; query-aware output differed from structural output"},
+    "task_correctness": {"status": "unavailable", "reason": "host evaluator not instrumented"},
+    "latency": {"status": "unavailable", "reason": "host telemetry not instrumented"},
+    "resolver_restores": {"status": "unavailable", "reason": "host restore path not instrumented"},
+    "corrections_after_use": {"status": "unavailable", "reason": "host/user feedback not instrumented"}
+  },
+  "qualification": {
+    "status": "pass",
+    "result": "production_path_mechanics_only",
+    "request_id": "0e2b22d6-06e8-4e3c-9241-b54a7441852a",
+    "tests_passed": 3,
+    "tests_failed": 0,
+    "held_out_tuning": "forbidden",
+    "defaultPolicyChanged": false,
+    "limits": [
+      "Frozen synthetic fixture validates production preparation routing, matched budget enforcement, required-evidence retention, protected-span checks, and query-aware reachability; it has no task-success evaluator.",
+      "Held-out corpus contains two cases and was evaluated once; no uncertainty interval or real-traffic generalization is established.",
+      "Latency, resolver restores, and user corrections require host instrumentation and remain unavailable.",
+      "Evidence does not establish query-aware improvement over control and does not authorize default-policy promotion."
+    ]
+  }
 }

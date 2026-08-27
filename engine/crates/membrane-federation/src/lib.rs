@@ -5,6 +5,7 @@
 
 pub mod blueprint_client;
 pub mod config;
+pub mod corrective;
 pub mod deadline;
 pub mod engine;
 pub mod error;
@@ -36,4 +37,5 @@ pub mod providers {
 pub use config::{FederationConfig, ProviderConfig, FEDERATION_CONFIG_SCHEMA_VERSION};
 pub use engine::FederationEngine;
 pub use error::{ConfigError, RegistryError};
+pub use merge::FusionStrategy;
 pub use registry::ProviderRegistry;
