@@ -5205,7 +5205,11 @@ pub(crate) fn run(
             lifecycle.mark_ready(port);
             let shutdown = lifecycle.clone();
             let server = std::future::IntoFuture::into_future(
-                axum::serve(listener, app).with_graceful_shutdown(async move {
+                axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
                     while !shutdown.shutdown_requested() {
                         tokio::time::sleep(Duration::from_millis(10)).await;
                     }

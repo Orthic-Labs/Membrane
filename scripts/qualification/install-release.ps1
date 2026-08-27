@@ -14,8 +14,16 @@ param(
 # It accepts already-created package/evidence paths and exercises one exact
 # signed package through current -> previous -> current lifecycle.
 $ErrorActionPreference = 'Stop'
+# Native command diagnostics are checked through explicit exit codes below;
+# keep non-fatal Git warnings from becoming terminating PowerShell errors.
+$PSNativeCommandUseErrorActionPreference = $false
+Add-Type -AssemblyName System.Net.Http
 $script:HubProcess = $null
-$script:SafePath = "$env:WINDIR\System32;$env:WINDIR"
+# Keep qualification isolated from checkout-local runtimes while retaining
+# system Git, which Blueprint uses for repository fingerprinting.
+$script:GitPath = (Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+$script:GitBin = if ($script:GitPath) { Split-Path -Parent $script:GitPath } else { $null }
+$script:SafePath = ((@("$env:WINDIR\System32", "$env:WINDIR", $script:GitBin) | Where-Object { $_ }) -join ';')
 $script:QualificationWorkspace = $null
 $script:AdaptEvidence = $null
 $script:State = $null
@@ -26,6 +34,8 @@ $script:PreviousMembraneWorkspaceConfig = $null
 $script:WorkspaceConfigPath = $null
 $script:WorkspaceConfigInitialSha256 = $null
 $script:WorkspaceMigrationEvidence = $null
+$script:ActiveHubHealth = $null
+$script:ActiveHubPort = $null
 
 function Require([bool]$Condition, [string]$Message) {
   if (-not $Condition) { throw $Message }
@@ -39,6 +49,13 @@ function Resolve-File([string]$Path, [string]$Label) {
 
 function Hash-File([string]$Path) {
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Normalize-ComparablePath([string]$Path) {
+  $full = [IO.Path]::GetFullPath($Path)
+  if ($full.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) { return ('\\' + $full.Substring(8)) }
+  if ($full.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) { return $full.Substring(4) }
+  return $full
 }
 
 function Normalize-Version([string]$Value, [string]$Label) {
@@ -188,21 +205,25 @@ function Get-BlueprintEndpoint {
   return "\\.\pipe\membrane-blueprint-$($hex.Substring(0, 16))"
 }
 
-function Invoke-BlueprintPipe([string]$Endpoint, [string]$Method, [hashtable]$Input = @{}, [int]$DeadlineMs = 30000) {
+function Invoke-BlueprintPipe([string]$Endpoint, [string]$Method, [hashtable]$Payload = @{}, [int]$DeadlineMs = 30000) {
   $pipeName = $Endpoint.Substring($Endpoint.LastIndexOf('\') + 1)
   $client = [IO.Pipes.NamedPipeClientStream]::new('.', $pipeName, [IO.Pipes.PipeDirection]::InOut, [IO.Pipes.PipeOptions]::Asynchronous)
   try {
-    $client.Connect([Math]::Min($DeadlineMs, 5000)); $client.ReadTimeout = $DeadlineMs + 500; $client.WriteTimeout = $DeadlineMs
+    $client.Connect([Math]::Min($DeadlineMs, 5000))
+    # NamedPipeClientStream does not implement stream timeouts on Windows;
+    # connect deadline plus service protocol deadline provides bounded calls.
+    try { $client.ReadTimeout = $DeadlineMs + 500 } catch { }
+    try { $client.WriteTimeout = $DeadlineMs } catch { }
     $writer = [IO.StreamWriter]::new($client, [Text.UTF8Encoding]::new($false), 4096, $true); $writer.AutoFlush = $true
     $reader = [IO.StreamReader]::new($client, [Text.UTF8Encoding]::new($false), $false, 4096, $true)
-    $request = [ordered]@{ protocolVersion = 1; requestId = [guid]::NewGuid().ToString(); repoId = $null; generation = $null; method = $Method; deadlineMs = $DeadlineMs; input = $Input }
+    $request = [ordered]@{ protocolVersion = 1; requestId = [guid]::NewGuid().ToString(); repoId = $null; generation = $null; method = $Method; deadlineMs = $DeadlineMs; input = $Payload }
     $writer.WriteLine(($request | ConvertTo-Json -Compress -Depth 20)); $line = $reader.ReadLine(); Require (-not [string]::IsNullOrWhiteSpace($line)) "Blueprint $Method returned no response"; return $line | ConvertFrom-Json
   } finally { $client.Dispose() }
 }
 
-function Invoke-BlueprintPipeUntilReady([string]$Endpoint, [string]$Method, [hashtable]$Input, [int]$Timeout) {
+function Invoke-BlueprintPipeUntilReady([string]$Endpoint, [string]$Method, [hashtable]$Payload, [int]$Timeout) {
   $deadline = (Get-Date).AddSeconds($Timeout); $response = $null
-  do { try { $response = Invoke-BlueprintPipe $Endpoint $Method $Input ([Math]::Min(30000, $Timeout * 1000)) } catch { $response = $null }; if ($response.ok -eq $true) { return $response }; Start-Sleep -Milliseconds 250 } while ((Get-Date) -lt $deadline)
+  do { try { $response = Invoke-BlueprintPipe $Endpoint $Method $Payload ([Math]::Min(30000, $Timeout * 1000)) } catch { $response = $null }; if ($response.ok -eq $true) { return $response }; Start-Sleep -Milliseconds 250 } while ((Get-Date) -lt $deadline)
   return $response
 }
 
@@ -213,10 +234,14 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
     try {
       $status = Invoke-BlueprintPipe $endpoint 'status' @{ repoRoot = $WorkspaceRoot }
       if ($status.ok -eq $true -or $typedStates -contains [string]$status.error.code) { break }
-    } catch { $status = $null }
+    } catch {
+      $script:LastBlueprintPipeError = $_.Exception.Message
+      $status = $null
+    }
     Start-Sleep -Milliseconds 250
   } while ((Get-Date) -lt $deadline)
-  Require ($null -ne $status) 'Hub-hosted Blueprint returned no status envelope'
+  $pipeDetail = if ($script:LastBlueprintPipeError) { ": $script:LastBlueprintPipeError" } else { '' }
+  Require ($null -ne $status) "Hub-hosted Blueprint returned no status envelope$pipeDetail"
   if ($status.ok -eq $true) {
     Require ($status.result -and [string]$status.result.state -in @('fresh', 'degraded', 'running')) 'Hub-hosted Blueprint status is not serving'
     $enrollment = if ([int]$status.result.runtime.enrolledRepoCount -gt 0) { 'enrolled' } else { 'not_configured' }
@@ -300,6 +325,7 @@ namespace MembraneQualification {
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr handle);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string className, string title);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr handle, uint message, IntPtr wParam, IntPtr lParam);
 
     private static string Text(IntPtr handle, bool title) {
       var buffer = new StringBuilder(512);
@@ -319,6 +345,7 @@ namespace MembraneQualification {
     }
 
     public static IntPtr Find(string className, string title) { return FindWindow(className, title); }
+    public static bool PostTrayClick(IntPtr handle, bool up) { return PostMessage(handle, 6002u, IntPtr.Zero, (IntPtr)(up ? 514 : 513)); }
   }
 }
 '@
@@ -349,10 +376,21 @@ function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [stri
       Require ($signature.Status -eq 'Valid') "WebView2 renderer is not signed: $path"
       if ($null -eq $rendererPath) { $rendererPath = $path } else { Require ($rendererPath -ieq $path) 'WebView2 renderer path changed during steady-state sampling' }
     }
+    # Windows may materialize a hidden console host for a bundled Blueprint
+    # Node process even with CREATE_NO_WINDOW/windowsHide. It is an OS host,
+    # not a Membrane-owned runtime; admit only signed System32 hosts directly
+    # parented by inventory-bound Blueprint actors.
+    $blueprintConsoleHosts = @($descendants | Where-Object {
+      $_.Name -match '(?i)^conhost(?:\.exe)?$' -and
+        $_.ExecutablePath -and
+        ([IO.Path]::GetFullPath($_.ExecutablePath) -ieq ([IO.Path]::Combine($env:WINDIR, 'System32', 'conhost.exe'))) -and
+        ([uint32]$_.ParentProcessId -in @($blueprintProcesses.ProcessId))
+    })
     $unexpected = @($descendants | Where-Object {
       $blueprint = $_.ProcessId -in @($blueprintProcesses.ProcessId)
       $renderer = $_.ProcessId -in @($rendererProcesses.ProcessId)
-      -not ($blueprint -or $renderer)
+      $consoleHost = $_.ProcessId -in @($blueprintConsoleHosts.ProcessId)
+      -not ($blueprint -or $renderer -or $consoleHost)
     })
     Require ($unexpected.Count -eq 0) "native-only steady-state process tree violated: $($unexpected.Name -join ', ')"
     if ($sample + 1 -lt [Math]::Max(1, $SteadyStateSamples)) { Start-Sleep -Milliseconds 500 }
@@ -412,11 +450,22 @@ function Assert-TrayAndPopup([int]$ProcessId) {
   $shell = [MembraneQualification.NativeWindowProbe]::Find('Shell_TrayWnd', $null)
   Require ($shell -ne [IntPtr]::Zero) 'Windows notification area is unavailable'
   $element = Find-TrayElement
-  Require ($null -ne $element) 'Membrane tray icon is not exposed by Windows UI Automation'
-  try {
-    $pattern = $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-    $pattern.Invoke()
-  } catch { throw "Membrane tray icon could not be activated: $($_.Exception.Message)" }
+  if ($null -ne $element) {
+    try {
+      $pattern = $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
+      $pattern.Invoke()
+    } catch { throw "Membrane tray icon could not be activated: $($_.Exception.Message)" }
+  } else {
+    # Windows 11 can omit a valid Tauri tray icon from UI Automation (notably
+    # when notification overflow is collapsed). Exercise same callback via
+    # tray-icon's documented WM_USER_TRAYICON contract, still requiring one
+    # process-owned tray window before activation.
+    $trayWindows = @(Get-WindowRows $ProcessId | Where-Object { $_.ClassName -eq 'tray_icon_app' })
+    Require ($trayWindows.Count -eq 1) 'Membrane tray icon window is missing'
+    Require ([MembraneQualification.NativeWindowProbe]::PostTrayClick($trayWindows[0].Handle, $false)) 'Membrane tray icon press could not be posted'
+    Start-Sleep -Milliseconds 100
+    Require ([MembraneQualification.NativeWindowProbe]::PostTrayClick($trayWindows[0].Handle, $true)) 'Membrane tray icon release could not be posted'
+  }
   Start-Sleep -Milliseconds 750
   $windows = @(Get-WindowRows $ProcessId)
   $visible = @($windows | Where-Object { $_.Visible })
@@ -738,7 +787,44 @@ function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]
     Require ($null -ne $call.result.structuredContent) "MCP tool response $($call.id) omitted structuredContent"
     Require (-not [string]::IsNullOrWhiteSpace([string]$call.result.structuredContent.operation)) "MCP tool response $($call.id) omitted operation envelope"
   }
-  return [pscustomobject]@{ Responses = @($responses); Tools = $tools; Calls = $calls }
+	  # Materialize generic collections explicitly; PowerShell's array
+	  # subexpression binder can throw "Argument types do not match" when a
+	  # JSON-RPC response carries mixed structured-content shapes.
+	  return [pscustomobject]@{ Responses = $responses.ToArray(); Tools = @($tools); Calls = @($calls) }
+}
+
+function Invoke-HubMcpCall([string]$Name, $Payload) {
+  Require ($null -ne $script:ActiveHubHealth -and $script:ActiveHubPort) "Hub MCP call $Name requires an active Hub"
+  $tokenPath = Join-Path $script:QualificationWorkspace 'tools\.cache\memory\api-token'
+  $identityPath = Join-Path $script:QualificationWorkspace 'tools\.cache\memory\installation.json'
+  Require (Test-Path -LiteralPath $tokenPath -PathType Leaf) 'Hub MCP token is missing'
+  Require (Test-Path -LiteralPath $identityPath -PathType Leaf) 'Hub MCP installation identity is missing'
+  $token = (Get-Content -LiteralPath $tokenPath -Raw).Trim()
+  $identity = Read-JsonFile $identityPath 'Hub MCP installation identity'
+  $sessionId = if ($identity.currentServiceInstanceId) { [string]$identity.currentServiceInstanceId } else { [string]$identity.current_service_instance_id }
+  Require (-not [string]::IsNullOrWhiteSpace($token)) 'Hub MCP token is empty'
+  Require (-not [string]::IsNullOrWhiteSpace($sessionId)) 'Hub MCP session identity is missing'
+  $wire = (@{
+      jsonrpc = '2.0'; id = 1; method = 'tools/call';
+      params = @{ name = $Name; arguments = $Payload }
+    } | ConvertTo-Json -Compress -Depth 30)
+  $client = [System.Net.Http.HttpClient]::new()
+  $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "http://127.0.0.1:$($script:ActiveHubPort)/mcp")
+  try {
+    $request.Content = [System.Net.Http.StringContent]::new($wire, [Text.Encoding]::UTF8, 'application/json')
+    [void]$request.Headers.TryAddWithoutValidation('Origin', "http://127.0.0.1:$($script:ActiveHubPort)")
+    [void]$request.Headers.TryAddWithoutValidation('Authorization', "Bearer $token")
+    [void]$request.Headers.TryAddWithoutValidation('x-membrane-installation-id', [string]$script:ActiveHubHealth.installationId)
+    [void]$request.Headers.TryAddWithoutValidation('x-membrane-cortex-store-id', [string]$script:ActiveHubHealth.cortexStoreId)
+    [void]$request.Headers.TryAddWithoutValidation('x-membrane-release-generation', [string]$script:ActiveHubHealth.releaseGeneration)
+    [void]$request.Headers.TryAddWithoutValidation('x-membrane-session', $sessionId)
+    $response = $client.SendAsync($request).GetAwaiter().GetResult()
+    $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+    Require ($response.IsSuccessStatusCode) "Hub MCP call $Name failed with HTTP $([int]$response.StatusCode): $body"
+    try { return ($body | ConvertFrom-Json) } catch { throw "Hub MCP call $Name emitted invalid JSON: $body" }
+  } finally {
+    $request.Dispose(); $client.Dispose()
+  }
 }
 
 function Get-DoctorPaths([string]$MembraneExecutable) {
@@ -754,9 +840,8 @@ function Save-State([string]$MembraneExecutable) {
     operation = 'save'; sessionId = 'qualification-session'; taskId = 'qualification-task'; contextId = $contextId
     context = [ordered]@{ contextId = $contextId; marker = 'native-upgrade-continuity'; value = [guid]::NewGuid().ToString('N') }
   }
-  $response = Invoke-NativeMcp $MembraneExecutable -AdditionalCalls @{ membrane_working_context = $payload }
-  $saved = @($response.Calls | Where-Object { $_.result.structuredContent.operation -eq 'membrane_working_context' }) | Select-Object -Last 1
-  Require ($saved.result.structuredContent.result.kind -eq 'success') 'working-context state save did not succeed'
+  $saved = Invoke-HubMcpCall 'membrane_working_context' $payload
+  Require ($saved.result.structuredContent.result.kind -eq 'success') "working-context state save did not succeed: $($saved.result.structuredContent | ConvertTo-Json -Compress -Depth 20)"
   $script:State = [pscustomobject]@{ ContextId = $contextId; Marker = $payload.context.marker; Hash = (ConvertTo-Json $payload.context -Compress) }
 }
 
@@ -765,9 +850,8 @@ function Assert-State([string]$MembraneExecutable, [string]$Phase) {
     repository = 'windows-qualification'; caller = [ordered]@{ root = $script:QualificationWorkspace; repositoryId = 'windows-qualification'; scopeId = 'windows-qualification' }
     operation = 'load'; sessionId = 'qualification-session'; taskId = 'qualification-task'
   }
-  $response = Invoke-NativeMcp $MembraneExecutable -AdditionalCalls @{ membrane_working_context = $payload }
-  $loaded = @($response.Calls | Where-Object { $_.result.structuredContent.operation -eq 'membrane_working_context' }) | Select-Object -Last 1
-  Require ($loaded.result.structuredContent.result.kind -eq 'success') "working-context state load failed after $Phase"
+  $loaded = Invoke-HubMcpCall 'membrane_working_context' $payload
+  Require ($loaded.result.structuredContent.result.kind -eq 'success') "working-context state load failed after $Phase`: $($loaded.result.structuredContent | ConvertTo-Json -Compress -Depth 20)"
   $contexts = @($loaded.result.structuredContent.result.data.contexts)
   Require (@($contexts | Where-Object { $_.contextId -eq $script:State.ContextId -and $_.marker -eq $script:State.Marker }).Count -eq 1) "working-context state was not continuous after $Phase"
 }
@@ -793,12 +877,40 @@ function Seed-WorkspaceV2Config([string]$Path, [string]$WorkspaceRoot) {
   Write-NativeText $Path ($legacy | ConvertTo-Json -Compress -Depth 10)
 }
 
+function Initialize-QualificationRepository([string]$WorkspaceRoot) {
+  # Blueprint fingerprints repository inputs through Git. Use a fresh local
+  # repository under %TEMP%, keeping installed qualification independent from
+  # this checkout while exercising real repository semantics.
+  Require (-not [string]::IsNullOrWhiteSpace($script:GitPath)) 'system Git is required for Blueprint qualification'
+  $readme = Join-Path $WorkspaceRoot 'README.md'
+  Write-NativeText $readme "# Windows qualification`n"
+  $git = $script:GitPath
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $init = & $git -C $WorkspaceRoot init --quiet 2>&1
+  } finally { $ErrorActionPreference = $previousErrorAction }
+  Require ($LASTEXITCODE -eq 0) "could not initialize qualification repository: $init"
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $add = & $git -C $WorkspaceRoot add -- README.md 2>&1
+  } finally { $ErrorActionPreference = $previousErrorAction }
+  Require ($LASTEXITCODE -eq 0) "could not stage qualification repository: $add"
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $commit = & $git -C $WorkspaceRoot -c user.name='Membrane Qualification' -c user.email='qualification@membrane.invalid' commit --quiet -m 'qualification seed' 2>&1
+  } finally { $ErrorActionPreference = $previousErrorAction }
+  Require ($LASTEXITCODE -eq 0) "could not commit qualification repository: $commit"
+}
+
 function Assert-WorkspaceConfigMigrated([string]$Path, [string]$Phase, [string]$ExpectedSha256 = '') {
   Require (Test-Path -LiteralPath $Path -PathType Leaf) "workspace config was not written during $Phase"
   $config = Read-JsonFile $Path "workspace config during $Phase"
   Require ([int]$config.schemaVersion -eq 3) "workspace config did not migrate to strict v3 during $Phase"
   Require ($null -eq $config.PSObject.Properties['pythonExecutable']) "workspace config retained pythonExecutable during $Phase"
-  Require ([string]$config.workspaceRoot -eq [IO.Path]::GetFullPath($script:QualificationWorkspace)) "workspace config root changed during $Phase"
+  Require ((Normalize-ComparablePath ([string]$config.workspaceRoot)) -eq (Normalize-ComparablePath $script:QualificationWorkspace)) "workspace config root changed during $Phase"
   $temporary = @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter '.workspace-*.tmp' -File -ErrorAction Stop)
   Require ($temporary.Count -eq 0) "workspace config migration left temporary files during $Phase"
   $digest = Hash-File $Path
@@ -838,6 +950,8 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   if (-not [string]::IsNullOrWhiteSpace($ForbiddenGeneration)) { Require ($generation -ne $ForbiddenGeneration) "Hub downgrade retained current releaseGeneration during $Phase" }
   Require ([int]$health.protocolVersion -eq 1 -and [int]$health.schemaVersion -eq 1) "Hub protocol/schema handshake is invalid during $Phase"
   Require ($health.nativeOnly -eq $true) "Hub did not attest nativeOnly during $Phase"
+  $script:ActiveHubHealth = $health
+  $script:ActiveHubPort = $port
   $subsystems = @($health.subsystems | Sort-Object)
   Require (($subsystems -join ',') -eq 'adapt,blueprint,cortex,ledger,pull,push') "Hub six-subsystem health is invalid during $Phase"
   Require (@($health.capabilities) -contains 'memory') "Hub health omitted memory capability during $Phase"
@@ -916,13 +1030,14 @@ function Assert-QualificationProcessTreeGone([int[]]$ProcessIds, [string]$Root) 
 }
 
 function Stop-QualificationHub {
-  if ($null -eq $script:HubProcess) { return }
+  if ($null -eq $script:HubProcess) { $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null; return }
   $hubPid = $script:HubProcess.Id
   $rootProcess = Get-Process -Id $hubPid -ErrorAction SilentlyContinue
   if ($null -eq $rootProcess -or $rootProcess.HasExited) {
     Assert-QualificationProcessTreeGone @($hubPid) $InstallRoot
     Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
     $script:HubProcess = $null
+    $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null
     return
   }
   $tree = @(Get-ProcessTree $hubPid)
@@ -937,6 +1052,7 @@ function Stop-QualificationHub {
   Assert-QualificationProcessTreeGone $ids $InstallRoot
   Require (Test-BlueprintPipeClosed (Get-BlueprintEndpoint)) 'Blueprint named pipe remained open after Hub shutdown'
   $script:HubProcess = $null
+  $script:ActiveHubHealth = $null; $script:ActiveHubPort = $null
 }
 
 function Assert-UninstallResidue([string]$Root, $Doctor, [string]$DataMarker, [string]$DataHash) {
@@ -1018,6 +1134,7 @@ $script:PreviousMembraneWorkspaceRoot = [Environment]::GetEnvironmentVariable('M
 $script:PreviousMembraneWorkspaceConfig = [Environment]::GetEnvironmentVariable('MEMBRANE_WORKSPACE_CONFIG', 'Process')
 $script:WorkspaceConfigPath = Join-Path $script:QualificationWorkspace 'workspace.json'
 Seed-WorkspaceV2Config $script:WorkspaceConfigPath $script:QualificationWorkspace
+Initialize-QualificationRepository $script:QualificationWorkspace
 # Hub owns enrollment. Bind every installed Hub phase to this exact configured
 # workspace so Blueprint status/findings/recall address an enrolled actor,
 # rather than an unrelated fresh root supplied only to request payloads.
