@@ -101,6 +101,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(packageBuild, /"tauri", "bundle"/);
   assert.doesNotMatch(packageBuild, /"tauri", "build"/);
   assert.match(packageBuild, /membrane-hub-release-/);
+  assert.match(packageBuild, /const signedRaw = join\(managedRelease, rawRelative\)/);
+  assert.doesNotMatch(packageBuild, /const signedRaw = join\(sealedRelease, rawRelative\)/);
   assert.match(packageBuild, /preserved signed raw Hub executable/);
   assert.match(packageBuild, /"tauri", "NSIS", "makensis\.exe"/);
   assert.match(packageBuild, /installer\.nsi/);

@@ -61,15 +61,15 @@ if (phase === "raw") {
   mirror(join(managedRelease, rawRelative), join(sealedRelease, rawRelative), "managed raw Hub executable");
 } else {
   // right-release signed the mirrored raw EXE between phases. Put those exact
-  // bytes back under Cargo's managed target before NSIS embeds them. Tauri's
-  // bundle preparation strips Authenticode while generating installer inputs,
-  // so preserve signed bytes, restore them, then rerun only deterministic NSIS.
-  const signedRaw = join(sealedRelease, rawRelative);
+  // managed-target bytes back before NSIS embeds them. Tauri's bundle
+  // preparation strips Authenticode while generating installer inputs, so
+  // preserve signed bytes, restore them, then rerun only deterministic NSIS.
+  const signedRaw = join(managedRelease, rawRelative);
+  if (!existsSync(signedRaw)) throw new Error(`signed raw Hub executable is missing: ${signedRaw}`);
   const temporaryRoot = mkdtempSync(join(tmpdir(), "membrane-hub-release-"));
   const signedBackup = join(temporaryRoot, rawRelative);
   cpSync(signedRaw, signedBackup);
   try {
-    mirror(signedRaw, join(managedRelease, rawRelative), "signed raw Hub executable");
     run("pnpm", ["exec", "tauri", "bundle", "--target", triple, "--bundles", "nsis", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
     mirror(signedBackup, join(managedRelease, rawRelative), "preserved signed raw Hub executable");
     const localAppData = process.env.LOCALAPPDATA;
