@@ -18,6 +18,17 @@ harness bindings. Failure restores prior pointer, integration journal, and
 healthy generation. Signed manifest is sole trust authority; `checksums.json`
 is manifest-bound convenience output.
 
+Production and development are isolated. Production executables, `PATH`,
+startup, MCP, hooks, and client projections resolve only through user-local
+stable `current` (`%LOCALAPPDATA%\Orthic Labs\Membrane\current` on Windows).
+Repository, `dist`, `target`, `node_modules`, and version-specific paths are not
+valid production bindings. `pnpm dev` uses origin `development`, a
+checkout-scoped port, and separate config/data/cache/log roots under
+`Membrane Dev/<checkout-id>`; it never reconciles global clients or mutates
+installed state. `membrane activate` accepts only stable installed `current`
+and reports installed origin, stable root, resolved version root, release
+generation, and client state.
+
 The installed Hub hosts the only Membrane runtime. Headless clients are
 stateless and do not create a resident service. No external product manifest,
 add-on handoff, or retired installer lane is

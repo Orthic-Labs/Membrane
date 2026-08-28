@@ -1531,16 +1531,16 @@ membrane-X.Y.Z-windows-arm64.zip
 membrane-X.Y.Z-macos-x86_64.tar.gz
 membrane-X.Y.Z-macos-arm64.tar.gz
 release-manifest.json
-release-manifest.sig
+release-manifest.cat
 checksums.json
 provenance-<os>-<arch>.intoto.jsonl
 sbom-<os>-<arch>.cdx.json
 THIRD_PARTY_NOTICES.md
 ```
 
-`release-manifest.json` plus its detached signature is the sole release trust
-authority. `checksums.json` is convenience output whose digest is bound by the
-signed manifest. The manifest binds product, version, tag, source commit, exact
+`release-manifest.json` plus its detached Azure-signed Authenticode catalog is
+the sole release trust authority on Windows. `checksums.json` is convenience
+output whose digest is bound by the signed manifest. The manifest binds product, version, tag, source commit, exact
 asset URL, OS, architecture, size, SHA-256, executable path, native-signature
 policy, provenance digest, SBOM digest, minimum bootstrap version, and signing
 key ID.
@@ -1550,7 +1550,7 @@ Trust order is fixed:
 ```text
 orthiclabs.com TLS/DNS
   -> immutable versioned bootstrap with accepted key IDs
-  -> detached release-manifest signature
+  -> detached release-manifest catalog signature
   -> exact OS/architecture asset hash
   -> provenance and SBOM hashes
   -> native platform signatures
@@ -1582,6 +1582,30 @@ repairs tray-owned residency, waits for exact daemon health, and reconciles
 supported harness registrations to absolute `membrane stdio-mcp` bindings.
 Install scripts and optional graphical packages call this command rather than
 reimplementing registration or lifecycle policy.
+
+### Installed and development isolation
+
+Production exists only under the user-local product root. On Windows its sole
+executable authority is `%LOCALAPPDATA%\Orthic Labs\Membrane\current`; `current`
+targets one direct child of `versions`. Production `PATH`, startup, MCP, hooks,
+and client projections bind only this stable path. Repository, `dist`, `target`,
+`node_modules`, and version-specific executable paths are prohibited production
+bindings. Activation fails closed when its requested root is not stable
+`current`, when `current` does not target one installed version, when resident
+health identifies a development runtime, or when a harness binding escapes
+stable `current`.
+
+Development is explicit and non-authoritative. Each checkout uses origin
+`development`, a deterministic checkout-scoped port, and separate config, data,
+cache, and log roots under `Membrane Dev/<checkout-id>`. Development commands do
+not modify user `PATH`, startup registration, stable `current`, installed state,
+or global harness configuration. Tests use temporary roots. Health and
+activation receipts expose `runtimeOrigin`, stable install root, resolved version
+root, and release generation so installed/dev contamination is observable.
+
+Bootstrap is the only production transition authority: stage and verify one
+immutable version, journal integrations, switch `current`, activate through
+stable path, and require exact installed-origin health plus harness bindings.
 
 ### Agent Plugins and client projections
 

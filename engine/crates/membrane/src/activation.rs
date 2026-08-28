@@ -72,6 +72,12 @@ pub struct ActivationOptions {
     pub dry_run: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeOrigin {
+    Installed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ClientActivationReceipt {
@@ -94,7 +100,9 @@ pub struct ServiceActivationReceipt {
 #[serde(rename_all = "camelCase")]
 pub struct ActivationReceiptV1 {
     pub schema_version: u32,
+    pub runtime_origin: RuntimeOrigin,
     pub install_root: PathBuf,
+    pub version_root: PathBuf,
     pub membrane_executable: PathBuf,
     pub tray_executable: PathBuf,
     pub activated_at_unix_ms: u64,
@@ -162,20 +170,11 @@ impl Drop for ActivationLock {
 }
 
 pub fn default_install_root() -> Result<PathBuf, String> {
-    std::env::current_exe()
-        .map_err(|error| format!("resolve activation executable: {error}"))?
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| "activation executable has no parent directory".to_string())
+    expected_stable_install_root()
 }
 
 pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
-    let install_root = std::fs::canonicalize(&options.install_root).map_err(|error| {
-        format!(
-            "activation install root {} is unavailable: {error}",
-            options.install_root.display()
-        )
-    })?;
+    let (install_root, version_root) = validate_installed_root(&options.install_root)?;
     let membrane = install_root.join(executable_name("membrane"));
     let tray = install_root.join(executable_name("membrane-tray"));
     require_file(&membrane, "membrane executable")?;
@@ -202,7 +201,9 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     let clients = reconcile_clients(&membrane, &options.clients, options.dry_run, run_client)?;
     let receipt = ActivationReceiptV1 {
         schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
+        runtime_origin: RuntimeOrigin::Installed,
         install_root: install_root.clone(),
+        version_root,
         membrane_executable: membrane,
         tray_executable: tray,
         activated_at_unix_ms: now_unix_ms(),
@@ -219,6 +220,76 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         persist_receipt(&install_root, &receipt)?;
     }
     Ok(receipt)
+}
+
+fn expected_stable_install_root() -> Result<PathBuf, String> {
+    #[cfg(windows)]
+    let base = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .ok_or_else(|| "LOCALAPPDATA is unavailable".to_string())?;
+    #[cfg(target_os = "macos")]
+    let base = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Library/Application Support"))
+        .ok_or_else(|| "HOME is unavailable".to_string())?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".local/share"))
+        })
+        .ok_or_else(|| "user data root is unavailable".to_string())?;
+    Ok(base.join("Orthic Labs/Membrane/current"))
+}
+
+fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), String> {
+    if requested.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::CurDir | std::path::Component::ParentDir
+        )
+    }) {
+        return Err("activation install root must be exact stable current path".to_string());
+    }
+    let requested = if requested.is_absolute() {
+        requested.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("resolve activation working directory: {error}"))?
+            .join(requested)
+    };
+    let stable = expected_stable_install_root()?;
+    if !paths_equal(&requested.to_string_lossy(), &stable.to_string_lossy()) {
+        return Err(format!(
+            "activation install root must be stable installed path {}; repository, dist, target, node_modules, and version-specific roots are prohibited",
+            stable.display()
+        ));
+    }
+    let version_root = std::fs::canonicalize(&stable).map_err(|error| {
+        format!(
+            "stable installed path {} is unavailable: {error}",
+            stable.display()
+        )
+    })?;
+    let versions = stable
+        .parent()
+        .map(|root| root.join("versions"))
+        .ok_or_else(|| "stable installed path has no product root".to_string())?;
+    let versions = std::fs::canonicalize(&versions).map_err(|error| {
+        format!(
+            "installed versions root {} is unavailable: {error}",
+            versions.display()
+        )
+    })?;
+    let parent = version_root
+        .parent()
+        .ok_or_else(|| "stable current target has no versions parent".to_string())?;
+    if !paths_equal(&parent.to_string_lossy(), &versions.to_string_lossy()) {
+        return Err("stable current path does not target one direct installed version".to_string());
+    }
+    Ok((stable, version_root))
 }
 
 fn require_current_health(
@@ -301,7 +372,13 @@ fn launch_tray_with_mode(
     let mut command = Command::new(tray);
     command
         .arg(mode)
+        .env("MEMBRANE_RUNTIME_ORIGIN", "installed")
+        .env_remove("MEMBRANE_CONFIG_ROOT")
+        .env_remove("MEMBRANE_DATA_ROOT")
+        .env_remove("MEMBRANE_CACHE_ROOT")
+        .env_remove("MEMBRANE_LOG_ROOT")
         .env("MEMBRANE_WORKSPACE_ROOT", workspace_root)
+        .env("MEMBRANE_PORT", port.to_string())
         .env("MEMBRANE_HTTP_PORT", port.to_string());
     #[cfg(windows)]
     {
@@ -452,10 +529,23 @@ fn parse_health_response(
             "Membrane health omitted release generation".to_string(),
         ));
     };
+    let runtime_origin = body
+        .get("runtimeOrigin")
+        .and_then(serde_json::Value::as_str);
+    if runtime_origin == Some("development") {
+        return Ok(HealthObservation::Foreign(
+            "service on Membrane port is a development runtime".to_string(),
+        ));
+    }
     if release_generation != expected_generation {
         return Ok(HealthObservation::PriorGeneration {
             release_generation: release_generation.to_string(),
         });
+    }
+    if runtime_origin != Some("installed") {
+        return Ok(HealthObservation::Foreign(
+            "Membrane health omitted installed runtime origin".to_string(),
+        ));
     }
     if status != 200 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Ok(HealthObservation::NotReady);
@@ -466,6 +556,9 @@ fn parse_health_response(
 }
 
 fn installed_runtime() -> Result<(PathBuf, u16), String> {
+    if std::env::var("MEMBRANE_RUNTIME_ORIGIN").ok().as_deref() == Some("development") {
+        return Err("development runtime cannot perform installed activation".to_string());
+    }
     if let Some(value) = std::env::var_os("MEMBRANE_PORT") {
         let port = value
             .to_string_lossy()
@@ -998,7 +1091,7 @@ mod tests {
 
     #[test]
     fn health_gate_rejects_foreign_identity_and_accepts_exact_generation() {
-        let ready = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"releaseGeneration\":\"g1\"}";
+        let ready = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"installed\",\"releaseGeneration\":\"g1\"}";
         assert_eq!(
             parse_health_response(ready, "g1").unwrap(),
             HealthObservation::Ready {
@@ -1016,13 +1109,27 @@ mod tests {
                 release_generation: "g1".to_string()
             }
         );
+        let development = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"development\",\"releaseGeneration\":\"g1\"}";
+        assert!(matches!(
+            parse_health_response(development, "g1").unwrap(),
+            HealthObservation::Foreign(reason) if reason.contains("development")
+        ));
+        let legacy = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"releaseGeneration\":\"g0\"}";
+        assert_eq!(
+            parse_health_response(legacy, "g1").unwrap(),
+            HealthObservation::PriorGeneration {
+                release_generation: "g0".to_string()
+            }
+        );
     }
 
     #[test]
     fn activation_receipt_health_keys_are_camel_case() {
         let receipt = ActivationReceiptV1 {
             schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
+            runtime_origin: RuntimeOrigin::Installed,
             install_root: PathBuf::from("current"),
+            version_root: PathBuf::from("versions/v1"),
             membrane_executable: PathBuf::from("current/membrane"),
             tray_executable: PathBuf::from("current/membrane-tray"),
             activated_at_unix_ms: 1,
@@ -1037,6 +1144,7 @@ mod tests {
         };
         let value = serde_json::to_value(receipt).unwrap();
         assert_eq!(value["schemaVersion"], ACTIVATION_RECEIPT_SCHEMA_VERSION);
+        assert_eq!(value["runtimeOrigin"], "installed");
         assert_eq!(value["dryRun"], true);
         assert_eq!(value["service"]["serviceId"], SERVICE_ID);
         assert_eq!(value["service"]["releaseGeneration"], "sha256:test");
