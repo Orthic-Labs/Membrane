@@ -20,8 +20,12 @@ const VALID_RUNTIMES = ["rust", "python", "node", "shell", "declarative", "exter
 
 const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 
+function normalizedTextBytes(path) {
+  return Buffer.from(readFileSync(path, "utf8").replaceAll("\r\n", "\n"), "utf8");
+}
+
 export function fileSha256(root, rel) {
-  return sha256(readFileSync(join(root, rel)));
+  return sha256(normalizedTextBytes(join(root, rel)));
 }
 
 export function aggregateDigest(root, files) {
@@ -151,7 +155,7 @@ function sealedExternalInterpreterRow(policy, row) {
 
 function safePolicyDigest(root) {
   try {
-    return sha256(readFileSync(join(root, POLICY_REL)));
+    return sha256(normalizedTextBytes(join(root, POLICY_REL)));
   } catch {
     return null;
   }
@@ -345,7 +349,7 @@ function main(argv) {
   const update = argv.includes("--update");
   const write = argv.includes("--write");
   const policy = JSON.parse(readFileSync(join(root, POLICY_REL), "utf8"));
-  const policyDigest = sha256(readFileSync(join(root, POLICY_REL)));
+  const policyDigest = sha256(normalizedTextBytes(join(root, POLICY_REL)));
   const today = new Date().toISOString().slice(0, 10);
 
   if (update) {

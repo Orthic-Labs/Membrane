@@ -9,6 +9,7 @@ import {
   checkGeneratedTruth,
   discoverExecutables,
   evaluateSealReadiness,
+  fileSha256,
   findDeletedSelectors,
   firstMatchingRule,
   isExecutableCandidate,
@@ -262,6 +263,13 @@ test("sealed mode forbids any interpreter production row outright", () => {
     discovered, truthTexts: [], today: TODAY, root,
   });
   assert.ok(out.errors.some((e) => e.code === "SEALED_MODE_INTERPRETER_PRODUCTION"));
+});
+
+test("file digests are invariant across Git line endings", (t) => {
+  const root = makeTree(t, { "f/source.rs": "fn main() {}\n" });
+  const lf = fileSha256(root, "f/source.rs");
+  writeFileSync(join(root, "f/source.rs"), "fn main() {}\r\n");
+  assert.equal(fileSha256(root, "f/source.rs"), lf);
 });
 
 test("sealed mode permits only an exact packaged external-component interpreter row", () => {
