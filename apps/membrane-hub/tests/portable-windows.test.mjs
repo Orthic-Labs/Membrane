@@ -20,8 +20,8 @@ test("portable Windows lane signs raw app & archives without NSIS", () => {
   assert.doesNotMatch(release, /right-release", "build"|rightkit:package:win", "--", "package"/i);
 });
 
-test("portable payload is signed, hashed & includes activation bootstrap", () => {
-  for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe", "install.ps1", "release.json", "checksums.json"]) {
+test("portable payload is signed, hashed & includes activation plus Agent Plugins core", () => {
+  for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe", "install.ps1", "plugin.json", "mcp.json", "skills", "LICENSE", "release.json", "checksums.json"]) {
     assert.ok(packager.includes(name), name);
   }
   assert.match(packager, /Get-AuthenticodeSignature/);

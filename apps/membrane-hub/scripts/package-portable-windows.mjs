@@ -71,6 +71,10 @@ const runtime = join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 cpSync(join(repo, "install.ps1"), join(payload, "install.ps1"));
+for (const entry of ["plugin.json", "mcp.json", "skills"]) {
+  cpSync(join(repo, entry), join(payload, entry), { recursive: true });
+}
+cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
 
 powershell(
   "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",
