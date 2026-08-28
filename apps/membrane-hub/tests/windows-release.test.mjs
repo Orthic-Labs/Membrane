@@ -31,6 +31,9 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(windowsRelease, /right-release", "sign-windows", "--verify-only"/);
   assert.match(windowsRelease, /membrane-tray-x86_64-pc-windows-msvc\.exe/);
   assert.match(windowsRelease, /membrane-daemon-x86_64-pc-windows-msvc\.exe/);
+  assert.match(windowsRelease, /engineRelease, "cortex\.exe"/);
+  assert.match(windowsRelease, /engineRelease, "membrane\.exe"/);
+  assert.match(windowsRelease, /run\(\["run", "build"\]\)/);
   assert.match(windowsRelease, /membrane-tray-windows\.exe/);
   assert.match(windowsRelease, /MEMBRANE_SIGNED_SIDECARS_READY: "1"/);
   assert.match(windowsRelease, /right-release", "build", "--platform", "win"/);

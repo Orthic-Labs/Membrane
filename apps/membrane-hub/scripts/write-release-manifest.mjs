@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const APP="membrane-hub",VERSION="0.1.13",TARGET="aarch64-apple-darwin";
+const APP="membrane-hub",VERSION="0.1.14",TARGET="aarch64-apple-darwin";
 const PRESERVED=["product_version","source_repo","schema_compat","model"],IDENTITY=["membrane_source_commit","source_tree_path","source_tree_sha256","release_generation"],ASSET=["os","arch","name","role","sha256","release_generation"];
 const REL=join("apps","membrane-hub","membrane-hub-release.json");
 // Git tree paths (`<rev>:<path>` revision specs, ls-tree, cat-file) are always

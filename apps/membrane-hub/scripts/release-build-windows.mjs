@@ -14,12 +14,18 @@ const sidecars = [
 ];
 
 function prepareNativeBinaries() {
+  // `pnpm run build` writes current release identity before compiling & staging
+  // cortex/membrane. Daemon/tray then compile against that same identity.
+  run(["run", "build"]);
   run(["exec", "rightkit", "cargo", "build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
   run(["exec", "rightkit", "cargo", "build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc"]);
   const hub = fileURLToPath(new URL("../", import.meta.url));
   const target = "x86_64-pc-windows-msvc";
+  const engineRelease = join(resolveTargetRoot(join(hub, "../../engine/Cargo.toml")), target, "release");
   const outputs = [
-    [join(resolveTargetRoot(join(hub, "../../engine/Cargo.toml")), target, "release", "membrane-daemon.exe"), join(hub, "src-tauri/binaries/membrane-daemon-x86_64-pc-windows-msvc.exe")],
+    [join(engineRelease, "cortex.exe"), join(hub, "src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe")],
+    [join(engineRelease, "membrane.exe"), join(hub, "src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe")],
+    [join(engineRelease, "membrane-daemon.exe"), join(hub, "src-tauri/binaries/membrane-daemon-x86_64-pc-windows-msvc.exe")],
     [join(resolveTargetRoot(join(hub, "../membrane-tray-windows/Cargo.toml")), target, "release", "membrane-tray-windows.exe"), join(hub, "src-tauri/binaries/membrane-tray-x86_64-pc-windows-msvc.exe")],
   ];
   mkdirSync(join(hub, "src-tauri/binaries"), { recursive: true });
