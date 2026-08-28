@@ -1492,7 +1492,7 @@ Native tray owns:
 
 - start-at-login;
 - the sole resident lifecycle and visible status surface;
-- installer/updater lifecycle;
+- activation/update lifecycle;
 - daemon restart/backoff;
 - the Blueprint watcher/query residency while tray is active.
 
@@ -1504,6 +1504,34 @@ runtime. Blueprint owns its package, protocol, store, watcher semantics, and que
 tray owns their resident lifecycle. Cortex may expose durable-memory library and CLI operations to daemon, but it does
 not claim a resident service, service identity, port, lease, or process
 lifecycle.
+
+## Distribution and harness activation
+
+Primary desktop distribution is an ordinary signed archive per native OS and
+architecture, an exact checksum manifest, and a bootstrap script published as
+immutable GitHub Release assets. Windows V1 ships
+`membrane-windows-x64.zip`, `checksums.json`, and `install.ps1`.
+
+Bootstrap must:
+
+1. resolve one exact release asset;
+2. verify archive checksum and every native binary signature;
+3. extract into staging;
+4. swap staging into the user-local install root with rollback;
+5. add that root to user `PATH`;
+6. run `membrane activate --install-root <root>`;
+7. verify exact resident service identity and release generation.
+
+`membrane activate` is the single idempotent activation authority. It starts or
+repairs tray-owned residency, waits for exact daemon health, and reconciles
+supported harness registrations to absolute `membrane stdio-mcp` bindings.
+Install scripts and optional graphical packages call this command rather than
+reimplementing registration or lifecycle policy.
+
+Membrane is a user-session app, not a Windows Service. Setup EXE, MSI, DMG,
+WinGet, Homebrew, and custom download domains are optional discovery or UI
+channels; none is required for installation, activation, update, or harness
+availability. GitHub Releases is immutable asset hosting, not package authority.
 
 Membrane exposes:
 
