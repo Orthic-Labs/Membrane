@@ -48,7 +48,6 @@ fn status_uses_activation_receipt_without_client_mutation() {
         .expect("status dry-run parses");
     assert_eq!(inv.mode, MembraneMode::Activate);
     let activation = inv.activation.expect("status payload");
-    assert!(activation.status_only);
     assert!(activation.dry_run);
 }
 

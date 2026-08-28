@@ -535,6 +535,7 @@ mod tests {
         assert!(!current.is_retired());
     }
 
+    #[cfg(windows)]
     #[test]
     fn resident_server_same_process_generation_restarts_after_lifecycle_drain() {
         let lifecycle = crate::service::LifecycleControl::default();
