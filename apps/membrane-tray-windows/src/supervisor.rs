@@ -163,6 +163,7 @@ pub struct Supervisor {
     daemon_path: PathBuf,
     http_port: u16,
     bearer_token: Option<String>,
+    installed_origin: bool,
 }
 
 impl Default for Supervisor {
@@ -198,6 +199,7 @@ impl Supervisor {
             daemon_path,
             http_port,
             bearer_token: None,
+            installed_origin: false,
         }
     }
 
@@ -212,6 +214,27 @@ impl Supervisor {
     }
     pub fn bearer_token(&self) -> Option<&str> {
         self.bearer_token.as_deref()
+    }
+    pub fn workspace_dashboard_path(&self) -> Option<PathBuf> {
+        if self.daemon_path.file_name().is_some_and(|name| {
+            name == "membrane-daemon.exe" || name == "membrane-daemon"
+        }) {
+            self.daemon_path.parent().map(|parent| {
+                parent.join(if cfg!(windows) {
+                    "membrane-hub.exe"
+                } else {
+                    "membrane-hub"
+                })
+            })
+        } else {
+            None
+        }
+    }
+    pub fn is_installed_origin(&self) -> bool {
+        self.installed_origin
+    }
+    pub fn set_origin(&mut self, origin: workspace::RuntimeOrigin) {
+        self.installed_origin = origin == workspace::RuntimeOrigin::Installed;
     }
     pub fn is_quit_complete(&self) -> bool {
         self.drain_complete
@@ -698,6 +721,21 @@ fn reason_from_str(value: &str) -> Reason {
 }
 
 pub fn default_daemon_path() -> PathBuf {
+    // A production tray is always launched through stable `current`. Never
+    // honor a development override in that process; version-backed binaries
+    // remain an implementation detail behind this stable projection.
+    if let Some(installed) = workspace::installed_tray_path() {
+        if std::env::current_exe()
+            .ok()
+            .is_some_and(|exe| same_path(&exe, &installed))
+        {
+            return installed.with_file_name(if cfg!(windows) {
+                "membrane-daemon.exe"
+            } else {
+                "membrane-daemon"
+            });
+        }
+    }
     if let Some(path) = std::env::var_os("MEMBRANE_DAEMON_PATH") {
         return PathBuf::from(path);
     }
@@ -718,6 +756,10 @@ pub fn default_daemon_path() -> PathBuf {
                 "membrane-daemon"
             })
         })
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    left.to_string_lossy().eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
 pub fn now_unix_ms() -> u64 {

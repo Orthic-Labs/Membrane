@@ -93,8 +93,12 @@ fn main() -> Result<(), slint::PlatformError> {
     let popover = TrayPopover::new()?;
     popover.hide()?;
 
-    let daemon_path = supervisor::default_daemon_path();
     let resolved_workspace = workspace::resolve();
+    let daemon_path = resolved_workspace
+        .as_ref()
+        .ok()
+        .and_then(workspace::Workspace::daemon_path)
+        .unwrap_or_else(supervisor::default_daemon_path);
     let workspace_root = resolved_workspace
         .as_ref()
         .map(|workspace| workspace.root.clone())
@@ -114,12 +118,33 @@ fn main() -> Result<(), slint::PlatformError> {
         daemon_path,
         http_port,
     )));
+    if let Ok(workspace) = resolved_workspace.as_ref() {
+        supervisor.borrow_mut().set_origin(workspace.origin);
+    }
+    let startup_path = resolved_workspace
+        .as_ref()
+        .ok()
+        .filter(|workspace| workspace.origin == workspace::RuntimeOrigin::Installed)
+        .and_then(workspace::Workspace::tray_path)
+        .unwrap_or_else(|| {
+            std::env::current_exe().unwrap_or_else(|_| PathBuf::from(if cfg!(windows) {
+                "membrane-tray.exe"
+            } else {
+                "membrane-tray"
+            }))
+        });
+    let installed_origin = resolved_workspace
+        .as_ref()
+        .is_ok_and(|workspace| workspace.origin == workspace::RuntimeOrigin::Installed);
+    if activation_launch && installed_origin {
+        let _ = startup::install_for_current_user(&startup_path);
+    }
     let first_run = demo_state.is_none() && startup::should_show_first_run(login_launch);
     if first_run {
         let _ = startup::mark_first_run();
     }
     let login_enabled =
-        startup::is_enabled_for_current_user(&startup_executable_path()).unwrap_or(false);
+        startup::is_enabled_for_current_user(&startup_path).unwrap_or(false);
 
     if let Some(state) = demo_state {
         apply_demo_state(&popover, state);
@@ -151,6 +176,7 @@ fn main() -> Result<(), slint::PlatformError> {
             Ok(workspace) => {
                 let mut supervisor = callback_supervisor.borrow_mut();
                 supervisor.set_workspace(workspace.root, workspace.http_port);
+                supervisor.set_origin(workspace.origin);
                 supervisor.manual_restart_process(now);
             }
             Err(reason) => {
@@ -166,8 +192,11 @@ fn main() -> Result<(), slint::PlatformError> {
     });
 
     let login_popover = popover.as_weak();
+    let startup_path_for_toggle = startup_path.clone();
     popover.on_toggle_login(move || {
-        let path = startup_executable_path();
+        if !installed_origin {
+            return;
+        }
         let currently_enabled = login_popover
             .upgrade()
             .map(|window| window.get_login_enabled())
@@ -175,7 +204,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let result = if currently_enabled {
             startup::remove_for_current_user()
         } else {
-            startup::install_for_current_user(&path)
+            startup::install_for_current_user(&startup_path_for_toggle)
         };
         if result.is_ok() {
             if let Some(window) = login_popover.upgrade() {
@@ -291,6 +320,7 @@ fn main() -> Result<(), slint::PlatformError> {
                     Ok(workspace) => {
                         let mut supervisor = timer_supervisor.borrow_mut();
                         supervisor.set_workspace(workspace.root, workspace.http_port);
+                        supervisor.set_origin(workspace.origin);
                         supervisor.manual_restart_process(now);
                     }
                     Err(reason) => {
@@ -775,21 +805,26 @@ fn demo_state() -> Option<supervisor::State> {
     }
 }
 
-fn startup_executable_path() -> PathBuf {
-    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("membrane-tray-windows.exe"))
-}
-
 fn launch_dashboard(supervisor: &supervisor::Supervisor) -> bool {
     let (Some(endpoint), Some(token)) = (supervisor.endpoint(), supervisor.bearer_token()) else {
         return false;
     };
-    let path = std::env::var_os("MEMBRANE_DASHBOARD_PATH")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::current_exe()
-                .ok()
-                .and_then(|exe| exe.parent().map(|parent| parent.join("membrane-hub.exe")))
-        })
+    let path = if supervisor.is_installed_origin() {
+        supervisor.workspace_dashboard_path()
+    } else {
+        std::env::var_os("MEMBRANE_DASHBOARD_PATH")
+            .map(PathBuf::from)
+            .or_else(|| supervisor.workspace_dashboard_path())
+            .or_else(|| {
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|exe| exe.parent().map(|parent| parent.join(if cfg!(windows) {
+                        "membrane-hub.exe"
+                    } else {
+                        "membrane-hub"
+                    })))
+            })
+    }
         .unwrap_or_else(|| PathBuf::from("membrane-hub.exe"));
     let mut child = match Command::new(path)
         .stdin(Stdio::piped())

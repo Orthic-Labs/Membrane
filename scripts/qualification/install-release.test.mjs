@@ -86,6 +86,12 @@ test("qualification binds exact installed renderer, sidecar, & Blueprint process
   assert.match(lower, /blueprint recall/);
 });
 
+test("qualification binds all four native sidecars", () => {
+  for (const sidecar of ["membrane-tray", "membrane-daemon", "membrane-command", "cortex-cli"]) {
+    assert.match(lower, new RegExp(sidecar.replace('.', '\\.'), 'i'), sidecar);
+  }
+});
+
 test("qualification proves installed native Adapt selected-transcript lifecycle", () => {
   for (const term of [
     "Invoke-InstalledAdaptQualification",

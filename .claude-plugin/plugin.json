@@ -19,10 +19,20 @@
   ],
   "mcpServers": {
     "membrane": {
-      "command": "membrane",
-      "args": [
-        "stdio-mcp"
-      ]
+      "command": "${CLAUDE_PLUGIN_ROOT}/membrane.exe",
+      "args": ["stdio-mcp"]
     }
+  },
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostToolUseFailure": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "TaskCompleted": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}]
   }
 }

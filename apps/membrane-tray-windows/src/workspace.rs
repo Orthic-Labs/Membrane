@@ -11,11 +11,64 @@ use std::{
 };
 
 const WORKSPACE_SCHEMA_VERSION: u64 = 3;
+pub const INSTALLED_PORT: u16 = 47_851;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeOrigin {
+    Installed,
+    Development,
+}
+
+impl RuntimeOrigin {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Installed => "installed",
+            Self::Development => "development",
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub root: PathBuf,
     pub http_port: u16,
+    pub origin: RuntimeOrigin,
+    pub product_root: Option<PathBuf>,
+    pub stable_current: Option<PathBuf>,
+    pub version_root: Option<PathBuf>,
+    pub state_root: Option<PathBuf>,
+}
+
+impl Workspace {
+    pub fn daemon_path(&self) -> Option<PathBuf> {
+        self.stable_current.as_ref().map(|root| {
+            root.join(if cfg!(windows) {
+                "membrane-daemon.exe"
+            } else {
+                "membrane-daemon"
+            })
+        })
+    }
+
+    pub fn tray_path(&self) -> Option<PathBuf> {
+        self.stable_current.as_ref().map(|root| {
+            root.join(if cfg!(windows) {
+                "membrane-tray.exe"
+            } else {
+                "membrane-tray"
+            })
+        })
+    }
+
+    pub fn dashboard_path(&self) -> Option<PathBuf> {
+        self.stable_current.as_ref().map(|root| {
+            root.join(if cfg!(windows) {
+                "membrane-hub.exe"
+            } else {
+                "membrane-hub"
+            })
+        })
+    }
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf, &'static str> {
@@ -76,10 +129,91 @@ fn runtime_port(root: &Path) -> Result<u16, &'static str> {
 fn from_root(root: PathBuf) -> Result<Workspace, &'static str> {
     let root = canonical_directory(&root)?;
     let http_port = runtime_port(&root)?;
-    Ok(Workspace { root, http_port })
+    Ok(Workspace {
+        root,
+        http_port,
+        origin: RuntimeOrigin::Development,
+        product_root: None,
+        stable_current: None,
+        version_root: None,
+        state_root: None,
+    })
+}
+
+fn product_root() -> Result<PathBuf, &'static str> {
+    let base = std::env::var_os("LOCALAPPDATA")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or("installed_product_root_missing")?;
+    Ok(base.join("Orthic Labs").join("Membrane"))
+}
+
+fn installed_layout() -> Result<Workspace, &'static str> {
+    let product_root = product_root()?;
+    let stable_current = product_root.join("current");
+    let versions = product_root.join("versions");
+    let pointer = std::fs::read_link(&stable_current).map_err(|_| "installed_current_missing")?;
+    let pointer = if pointer.is_absolute() {
+        pointer
+    } else {
+        product_root.join(pointer)
+    };
+    let version_root = std::fs::canonicalize(pointer).map_err(|_| "installed_version_missing")?;
+    let versions = std::fs::canonicalize(versions).map_err(|_| "installed_versions_missing")?;
+    if version_root.parent() != Some(versions.as_path()) || !version_root.is_dir() {
+        return Err("installed_current_invalid");
+    }
+    let state_root = product_root.join("state");
+    Ok(Workspace {
+        root: state_root.clone(),
+        http_port: INSTALLED_PORT,
+        origin: RuntimeOrigin::Installed,
+        product_root: Some(product_root),
+        stable_current: Some(stable_current),
+        version_root: Some(version_root),
+        state_root: Some(state_root),
+    })
+}
+
+pub fn installed_tray_path() -> Option<PathBuf> {
+    installed_layout().ok().and_then(|workspace| workspace.tray_path())
 }
 
 pub fn resolve() -> Result<Workspace, &'static str> {
+    // Development is explicit. This branch is intentionally checked before
+    // installed discovery so a checkout can never accidentally take over the
+    // user's production state.
+    if std::env::var_os("MEMBRANE_RUNTIME_ORIGIN").as_deref()
+        == Some(std::ffi::OsStr::new("development"))
+    {
+        return resolve_development();
+    }
+    // A process launched from the production projection must never fall back
+    // to a checkout when the pointer or installed state is damaged.
+    if std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .is_some_and(|parent| {
+            product_root()
+                .ok()
+                .is_some_and(|root| parent == root.join("current"))
+        })
+    {
+        return installed_layout();
+    }
+    if ["MEMBRANE_WORKSPACE_ROOT", "WORKSPACE_ROOT"]
+        .into_iter()
+        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
+    {
+        return resolve_development();
+    }
+    if let Ok(installed) = installed_layout() {
+        return Ok(installed);
+    }
+    resolve_development()
+}
+
+fn resolve_development() -> Result<Workspace, &'static str> {
     for name in ["MEMBRANE_WORKSPACE_ROOT", "WORKSPACE_ROOT"] {
         if let Some(root) = std::env::var_os(name)
             .filter(|value| !value.is_empty())
@@ -227,5 +361,25 @@ mod tests {
         assert!(is_canonical_token(&"a".repeat(64)));
         assert!(!is_canonical_token(&"a".repeat(43)));
         assert!(!is_canonical_token(&"A".repeat(64)));
+    }
+
+    #[test]
+    fn installed_contract_uses_state_and_fixed_port() {
+        assert_eq!(INSTALLED_PORT, 47_851);
+        assert_eq!(RuntimeOrigin::Installed.as_str(), "installed");
+        assert_eq!(RuntimeOrigin::Development.as_str(), "development");
+        let workspace = Workspace {
+            root: PathBuf::from(r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\state"),
+            http_port: INSTALLED_PORT,
+            origin: RuntimeOrigin::Installed,
+            product_root: Some(PathBuf::from(r"C:\Users\test\AppData\Local\Orthic Labs\Membrane")),
+            stable_current: Some(PathBuf::from(r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current")),
+            version_root: Some(PathBuf::from(r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\versions\0.1.0")),
+            state_root: Some(PathBuf::from(r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\state")),
+        };
+        assert_eq!(
+            workspace.daemon_path().unwrap().file_stem().and_then(|name| name.to_str()),
+            Some("membrane-daemon")
+        );
     }
 }

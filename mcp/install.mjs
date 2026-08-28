@@ -13,6 +13,7 @@ const SERVER = fileURLToPath(new URL("./server.mjs", import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 const SERVER_NAME = "membrane";
 const CLIENTS = new Set(["codex", "claude"]);
+const INSTALLED_PORT = 47851;
 function usage() { return "usage: membrane init <root> --repository <id> --scope <id> [--virtual-id <id> --tenant-id <id> --parent <id>] [--native <name>] [--config <path>] [--dry-run] | membrane catalog <root> [--grant <repository-id>] [--registry <path>] [--dry-run] | membrane install <root> [--client codex|claude] [--claude-scope local|project|user] [--dry-run] | membrane uninstall <root> [--client codex|claude] [--dry-run] | membrane token rotate <root> [--dry-run] | membrane token recover <root> --reason leak [--dry-run]"; }
 const [, , command, ...args] = process.argv;
 const value = (items, flag) => { const i = items.indexOf(flag); return i >= 0 ? items[i + 1] : undefined; };
@@ -43,15 +44,17 @@ function spawnRunner(command, args, options = {}) {
   });
 }
 
-function commandFor(client, action, { nodePath, serverPath, claudeScope, prior } = {}) {
+function commandFor(client, action, { nodePath, serverPath, serverArgs, claudeScope, prior } = {}) {
   const binary = client === "codex" ? (process.env.MEMBRANE_CODEX_BIN || "codex") : (process.env.MEMBRANE_CLAUDE_BIN || "claude");
   if (action === "detect") return { binary, args: ["--version"] };
-  if (action === "get") return { binary, args: ["mcp", "get", SERVER_NAME] };
-  if (action === "remove") return { binary, args: ["mcp", "remove", SERVER_NAME] };
+  // Claude's native CLI defaults to local scope; read/remove must use the
+  // same explicit scope as add or a legacy user binding can be missed.
+  if (action === "get") return { binary, args: client === "claude" ? ["mcp", "get", SERVER_NAME, "-s", claudeScope] : ["mcp", "get", SERVER_NAME] };
+  if (action === "remove") return { binary, args: client === "claude" ? ["mcp", "remove", SERVER_NAME, "-s", claudeScope] : ["mcp", "remove", SERVER_NAME] };
   const executable = prior?.command || nodePath;
-  const serverArgs = prior?.args || [serverPath || SERVER];
-  if (client === "codex") return { binary, args: ["mcp", "add", SERVER_NAME, "--", executable, ...serverArgs] };
-  return { binary, args: ["mcp", "add", "--scope", claudeScope, SERVER_NAME, "--", executable, ...serverArgs] };
+  const args = prior?.args || serverArgs || [serverPath || SERVER];
+  if (client === "codex") return { binary, args: ["mcp", "add", SERVER_NAME, "--", executable, ...args] };
+  return { binary, args: ["mcp", "add", "--scope", claudeScope, SERVER_NAME, "--", executable, ...args] };
 }
 
 function redacted(value) {
@@ -76,16 +79,23 @@ function priorConfig(stdout) {
   } catch { return null; }
 }
 
-function isExpected(stdout, nodePath, serverPath = SERVER) {
+function isExpected(stdout, nodePath, serverPath = SERVER, serverArgs) {
   const parsed = priorConfig(stdout);
-  if (parsed) return parsed.command === nodePath && parsed.args.length === 1 && parsed.args[0] === serverPath;
+  const expectedArgs = serverArgs || [serverPath];
+  if (parsed) return parsed.command === nodePath && JSON.stringify(parsed.args) === JSON.stringify(expectedArgs);
   const normalized = stdout.replaceAll("\\\\", "\\");
-  return normalized.includes(nodePath) && normalized.includes(serverPath);
+  return normalized.includes(nodePath) && expectedArgs.every((arg) => normalized.includes(arg));
 }
 
-export function createNativeInstaller({ runner = spawnRunner, nodePath = process.execPath, serverPath = SERVER } = {}) {
+export function createNativeInstaller({ runner = spawnRunner, nodePath = process.execPath, serverPath = SERVER, serverArgs, mode = "development" } = {}) {
+  // The JS enrollment helper is retained for development fixtures only. A
+  // production installer must pass the absolute signed stable-current binary;
+  // it may never silently select this source checkout's Node server.
+  if (mode === "production" && (nodePath === process.execPath || serverPath === SERVER)) {
+    throw new Error("production native enrollment requires signed stable-current membrane executable");
+  }
   const execute = async (client, action, root, options = {}) => {
-    const command = commandFor(client, action, { nodePath, serverPath, claudeScope: options.claudeScope || "local", prior: options.prior });
+    const command = commandFor(client, action, { nodePath, serverPath, serverArgs, claudeScope: options.claudeScope || "local", prior: options.prior });
     const result = await runner(command.binary, command.args, { cwd: root, windowsHide: true });
     return { command: [command.binary, ...command.args], result };
   };
@@ -94,7 +104,7 @@ export function createNativeInstaller({ runner = spawnRunner, nodePath = process
     if (detected.result.code !== 0) return { client, status: "not_installed", detected };
     const current = await execute(client, "get", root);
     if (current.result.code !== 0) return { client, status: "absent", detected, current };
-    if (isExpected(current.result.stdout, nodePath, serverPath)) return { client, status: "already_correct", detected, current };
+    if (isExpected(current.result.stdout, nodePath, serverPath, serverArgs)) return { client, status: "already_correct", detected, current };
     const prior = priorConfig(current.result.stdout);
     if (!prior) throw new Error(`${client} has a conflicting ${SERVER_NAME} entry that cannot be safely restored`);
     return { client, status: "conflict", detected, current, prior };
@@ -106,7 +116,7 @@ export function createNativeInstaller({ runner = spawnRunner, nodePath = process
       const detail = inspections.filter((entry) => entry.status === "not_installed").map((entry) => `${entry.client}: ${entry.detected.result.stderr}`).join("; ");
       throw new Error(`native MCP client not installed: ${unavailable.join(", ")} (${detail})`);
     }
-    const planned = inspections.flatMap((entry) => entry.status === "already_correct" ? [] : [entry.status === "conflict" ? commandFor(entry.client, "remove", { claudeScope, nodePath, serverPath }) : null, commandFor(entry.client, "add", { claudeScope, nodePath, serverPath })].filter(Boolean));
+    const planned = inspections.flatMap((entry) => entry.status === "already_correct" ? [] : [entry.status === "conflict" ? commandFor(entry.client, "remove", { claudeScope, nodePath, serverPath, serverArgs }) : null, commandFor(entry.client, "add", { claudeScope, nodePath, serverPath, serverArgs })].filter(Boolean));
     if (dryRun) return { clients: inspections.map((entry) => ({ client: entry.client, before: entry.status })), commands: planned.map((entry) => [entry.binary, ...entry.args]), files: { server: serverPath, client_config: "native-cli-managed" }, dry_run: true };
     const completed = [];
     let active;
@@ -121,7 +131,7 @@ export function createNativeInstaller({ runner = spawnRunner, nodePath = process
         const added = await execute(entry.client, "add", root, { claudeScope });
         if (added.result.code !== 0) throw new Error(`${entry.client} add failed: ${added.result.stderr}`);
         const verified = await execute(entry.client, "get", root);
-        if (verified.result.code !== 0 || !isExpected(verified.result.stdout, nodePath, serverPath)) throw new Error(`${entry.client} add verification failed`);
+        if (verified.result.code !== 0 || !isExpected(verified.result.stdout, nodePath, serverPath, serverArgs)) throw new Error(`${entry.client} add verification failed`);
         completed.push({ ...entry, changed: true, after: "installed" });
         active = undefined;
       }
@@ -143,9 +153,9 @@ export function createNativeInstaller({ runner = spawnRunner, nodePath = process
     const planned = [];
     for (const receipt of receipts) {
       const current = await execute(receipt.client, "get", root);
-      if (current.result.code !== 0 || !isExpected(current.result.stdout, nodePath, serverPath)) throw new Error(`${receipt.client} ${SERVER_NAME} entry is not receipt-owned`);
-      planned.push(commandFor(receipt.client, "remove", { claudeScope, nodePath, serverPath }));
-      if (receipt.prior) planned.push(commandFor(receipt.client, "add", { claudeScope, nodePath, serverPath, prior: receipt.prior }));
+      if (current.result.code !== 0 || !isExpected(current.result.stdout, nodePath, serverPath, serverArgs)) throw new Error(`${receipt.client} ${SERVER_NAME} entry is not receipt-owned`);
+      planned.push(commandFor(receipt.client, "remove", { claudeScope, nodePath, serverPath, serverArgs }));
+      if (receipt.prior) planned.push(commandFor(receipt.client, "add", { claudeScope, nodePath, serverPath, serverArgs, prior: receipt.prior }));
     }
     if (dryRun) return { clients: receipts.map((receipt) => receipt.client), commands: planned.map((entry) => [entry.binary, ...entry.args]), dry_run: true };
     for (const receipt of receipts) {
@@ -159,6 +169,29 @@ export function createNativeInstaller({ runner = spawnRunner, nodePath = process
     return { clients: receipts.map((receipt) => receipt.client), dry_run: false };
   };
   return { install, uninstall };
+}
+
+/** Resolve production enrollment to user-local stable `current`. */
+export function installedCurrentRoot({ env = process.env, platform = process.platform } = {}) {
+  const base = platform === "win32"
+    ? env.LOCALAPPDATA
+    : platform === "darwin"
+      ? (env.HOME ? join(env.HOME, "Library", "Application Support") : undefined)
+      : (env.XDG_DATA_HOME || (env.HOME ? join(env.HOME, ".local", "share") : undefined));
+  if (!base) throw new Error("installed product root unavailable");
+  return join(base, "Orthic Labs", "Membrane", "current");
+}
+
+export function createInstalledNativeInstaller({ runner = spawnRunner, env = process.env, platform = process.platform } = {}) {
+  const root = installedCurrentRoot({ env, platform });
+  const executable = join(root, platform === "win32" ? "membrane.exe" : "membrane");
+  return createNativeInstaller({ runner, nodePath: executable, serverPath: "stdio-mcp", mode: "production" });
+}
+
+function nativeInstallerForRuntime(options = {}) {
+  return process.env.MEMBRANE_RUNTIME_ORIGIN === "installed"
+    ? createInstalledNativeInstaller(options)
+    : createNativeInstaller(options);
 }
 
 function descriptorFrom(rest, scope_id) {
@@ -202,7 +235,7 @@ async function init(root, rest) {
 async function install(root, rest) {
   if (!root) throw new Error(usage());
   const binding = await bindingFor(root);
-  const native = createNativeInstaller();
+  const native = nativeInstallerForRuntime();
   const result = await native.install(binding.root, selectedClients(rest), { dryRun: dryRunFor(rest), claudeScope: claudeScopeFor(rest) });
   const receipt = { action: "install", root: binding.root, repository_id: binding.repository_id, registry: defaultRegistryPath(), ...result };
   if (!receipt.dry_run) {
@@ -237,7 +270,7 @@ async function uninstall(root, rest) {
   const receipts = clients.map((client) => binding.provider_config?.installations?.[client]).filter(Boolean);
   const revoked_token_generations = [...new Set([...(binding.token_grant?.revoked_generations || []), ...(binding.token_grant ? [binding.token_grant.generation] : [])])].sort((a, b) => a - b);
   const receipt = { action: "uninstall", root: binding.root, repository_id: binding.repository_id, registry: defaultRegistryPath(), revoked_token_generations, dry_run: dryRunFor(rest) };
-  if (receipts.length) receipt.native = await createNativeInstaller().uninstall(binding.root, receipts, { dryRun: receipt.dry_run, claudeScope: claudeScopeFor(rest) });
+  if (receipts.length) receipt.native = await nativeInstallerForRuntime().uninstall(binding.root, receipts, { dryRun: receipt.dry_run, claudeScope: claudeScopeFor(rest) });
   if (!receipt.dry_run) Object.assign(receipt, await removeBinding(root));
   return receipt;
 }

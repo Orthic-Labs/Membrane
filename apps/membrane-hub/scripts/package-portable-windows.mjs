@@ -28,6 +28,8 @@ if (hubArg < 0 || !process.argv[hubArg + 1] || startedArg < 0 || !process.argv[s
   throw new Error("usage: package-portable-windows.mjs --hub-exe <signed membrane-hub.exe> --started-at <ISO-8601>");
 }
 const inputRoot = inputArg >= 0 ? resolve(process.argv[inputArg + 1]) : null;
+const projectionRoot = inputRoot || repo;
+const descriptorRoot = inputRoot && existsSync(join(inputRoot, ".claude-plugin")) ? inputRoot : repo;
 
 const output = join(hub, "dist", "portable");
 const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
@@ -95,13 +97,35 @@ if (!pluginValidation.valid) throw new Error(`Agent Plugins core invalid: ${plug
 for (const entry of readdirSync(portableCore)) {
   cpSync(join(portableCore, entry), join(payload, entry), { recursive: true });
 }
-cpSync(join(repo, ".claude-plugin"), join(payload, ".claude-plugin"), { recursive: true });
-cpSync(join(repo, ".codex-plugin"), join(payload, ".codex-plugin"), { recursive: true });
+cpSync(join(descriptorRoot, ".claude-plugin"), join(payload, ".claude-plugin"), { recursive: true });
+cpSync(join(descriptorRoot, ".codex-plugin"), join(payload, ".codex-plugin"), { recursive: true });
 mkdirSync(join(payload, ".agents", "skills"), { recursive: true });
-cpSync(join(repo, "skills", "membrane"), join(payload, ".agents", "skills", "membrane"), { recursive: true });
-cpSync(join(repo, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
+cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".agents", "skills", "membrane"), { recursive: true });
+cpSync(join(descriptorRoot, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
-cpSync(join(repo, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
+cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
+// Claude hooks are product code, not a development-only source reference.
+// Carry their complete, dependency-closed projection in the candidate so
+// protected finalization consumes exactly what CI produced.
+const hookFiles = [
+  ["mcp/hooks/membrane-hook-entrypoint.mjs", "mcp/hooks/membrane-hook-entrypoint.mjs"],
+  ["mcp/hooks/membrane-hook-runtime.mjs", "mcp/hooks/membrane-hook-runtime.mjs"],
+  ["mcp/hooks/membrane-workspace-operations.mjs", "mcp/hooks/membrane-workspace-operations.mjs"],
+  ["mcp/lib/verification-command.mjs", "mcp/lib/verification-command.mjs"],
+  ["mcp/lib/diagnostics-client.mjs", "mcp/lib/diagnostics-client.mjs"],
+  ["mcp/host/context-adapter.cjs", "mcp/host/context-adapter.cjs"],
+  ["mcp/host/continuity.mjs", "mcp/host/continuity.mjs"],
+  ["mcp/host/delivery-ledger-store.cjs", "mcp/host/delivery-ledger-store.cjs"],
+  ["mcp/host/observable-event.cjs", "mcp/host/observable-event.cjs"],
+  ["mcp/host/observable-ingress.cjs", "mcp/host/observable-ingress.cjs"],
+  ["mcp/context-renderer-lib.cjs", "mcp/context-renderer-lib.cjs"],
+];
+for (const [source, destination] of hookFiles) {
+  const from = join(projectionRoot, source);
+  if (!existsSync(from)) throw new Error(`installed hook projection file missing: ${from}`);
+  mkdirSync(join(payload, destination, ".."), { recursive: true });
+  cpSync(from, join(payload, destination));
+}
 cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
 cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
 

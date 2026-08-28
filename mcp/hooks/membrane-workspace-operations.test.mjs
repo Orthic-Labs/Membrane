@@ -95,8 +95,11 @@ test("SessionStart performs health only & never starts or kicks Cortex", async (
   assert.deepEqual(calls, ["status"]);
   assert.equal(result.membraneHook.results[0].output.detail.lifecycle, "hub-child");
   assert.equal(result.membraneHook.results[1].output.reason, "event_not_applicable");
-  const manifest = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
-  assert.equal(manifest.bin["membrane-workspace-hook"], "mcp/hooks/membrane-hook-entrypoint.mjs");
+  const manifest = JSON.parse(readFileSync(new URL("../../.claude-plugin/plugin.json", import.meta.url), "utf8"));
+  assert.equal(
+    manifest.hooks.SessionStart[0].hooks[0].command,
+    '"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe" "${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs"',
+  );
 });
 
 test("Membrane owns rearm, access bump, conflict, observer, & nag behavior", async () => {

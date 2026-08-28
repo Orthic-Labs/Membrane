@@ -24,6 +24,16 @@ pub struct RuntimeReceiptV2 {
     pub startup_generation: u64,
     pub service_instance_id: String,
     pub claimed_at: String,
+    /// Additive installed/development provenance. Older receipts remain
+    /// readable while current health can identify stable-current resolution.
+    #[serde(default)]
+    pub runtime_origin: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stable_install_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_version_root: Option<PathBuf>,
+    #[serde(default)]
+    pub release_generation: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -132,6 +142,26 @@ impl RuntimeReceiptV2 {
             return Err(RuntimeReceiptError::IdentityMismatch);
         }
         let cortex_db = require_absolute("CORTEX_DB", cortex_db)?;
+        let runtime_origin = match std::env::var("MEMBRANE_RUNTIME_ORIGIN").ok().as_deref() {
+            Some("installed") => "installed",
+            Some("development") => "development",
+            _ if workspace_root.file_name().is_some_and(|name| name == "state")
+                && workspace_root
+                    .parent()
+                    .and_then(Path::file_name)
+                    .is_some_and(|name| name == "Membrane") => "installed",
+            _ => "development",
+        };
+        let (stable_install_root, resolved_version_root) = if runtime_origin == "installed" {
+            let product_root = workspace_root
+                .parent()
+                .ok_or_else(|| RuntimeReceiptError::WorkspaceUnbound(workspace_root.to_path_buf()))?;
+            let stable = product_root.join("current");
+            let version = std::fs::canonicalize(&stable).ok();
+            (Some(stable), version)
+        } else {
+            (None, None)
+        };
         Ok(Self {
             schema_version: RUNTIME_RECEIPT_SCHEMA_VERSION,
             workspace_root: require_absolute("WORKSPACE_ROOT", workspace_root)?,
@@ -144,6 +174,10 @@ impl RuntimeReceiptV2 {
             startup_generation: claim.startup_generation,
             service_instance_id: claim.service_instance_id.clone(),
             claimed_at: claim.claimed_at.clone(),
+            runtime_origin: runtime_origin.to_string(),
+            stable_install_root,
+            resolved_version_root,
+            release_generation: crate::release_identity::release_generation(),
         })
     }
 

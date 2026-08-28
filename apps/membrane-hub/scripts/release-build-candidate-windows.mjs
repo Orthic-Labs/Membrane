@@ -79,6 +79,29 @@ const runtime = join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`candidate runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 
+// The unsigned candidate owns the complete installed hook projection. The
+// protected native finalizer may sign/package these bytes, but never rebuilds
+// or substitutes hook sources from a checkout.
+const hookFiles = [
+  "mcp/hooks/membrane-hook-entrypoint.mjs",
+  "mcp/hooks/membrane-hook-runtime.mjs",
+  "mcp/hooks/membrane-workspace-operations.mjs",
+  "mcp/lib/verification-command.mjs",
+  "mcp/lib/diagnostics-client.mjs",
+  "mcp/host/context-adapter.cjs",
+  "mcp/host/continuity.mjs",
+  "mcp/host/delivery-ledger-store.cjs",
+  "mcp/host/observable-event.cjs",
+  "mcp/host/observable-ingress.cjs",
+  "mcp/context-renderer-lib.cjs",
+];
+for (const file of hookFiles) {
+  const source = join(repo, file);
+  if (!existsSync(source)) throw new Error(`candidate hook projection file missing: ${source}`);
+  mkdirSync(join(payload, file, ".."), { recursive: true });
+  cpSync(source, join(payload, file));
+}
+
 const files = Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), sha256(path)]));
 const archiveName = `membrane-${pkg.version}-windows-x86_64-unsigned.zip`;
 const archive = createPortableArchive({ sourceDir: payload, outputPath: join(artifactRoot, archiveName) });

@@ -82,6 +82,14 @@ impl DaemonBackgroundExecutor {
     }
 
     fn input_path(root: &PathBuf) -> PathBuf {
+        if root.file_name().is_some_and(|name| name == "state")
+            && root
+                .parent()
+                .and_then(std::path::Path::file_name)
+                .is_some_and(|name| name == "Membrane")
+        {
+            return root.join(DEFAULT_BACKGROUND_REVIEW_INPUT);
+        }
         std::env::var_os(BACKGROUND_REVIEW_INPUT_ENV)
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)

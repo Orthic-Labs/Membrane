@@ -192,11 +192,15 @@ struct RuntimeConfig {
 }
 
 pub(crate) struct Runtime {
+    pub(crate) workspace_root: PathBuf,
     pub(crate) db: PathBuf,
     pub(crate) token: PathBuf,
     pub(crate) ort: PathBuf,
     pub(crate) hf_home: PathBuf,
     pub(crate) port: u16,
+    pub(crate) origin: &'static str,
+    pub(crate) stable_current: Option<PathBuf>,
+    pub(crate) version_root: Option<PathBuf>,
 }
 
 fn build_info() -> serde_json::Value {
@@ -218,12 +222,7 @@ pub(crate) fn prepare_runtime_identity(
     ),
     String,
 > {
-    let workspace_root = runtime
-        .db
-        .ancestors()
-        .nth(4)
-        .ok_or_else(|| "resolve workspace root from database path".to_string())?;
-    crate::installation_identity::prepare_service_start(workspace_root)
+    crate::installation_identity::prepare_service_start(&runtime.workspace_root)
         .map_err(|error| format!("prepare installation identity: {error}"))
 }
 
@@ -232,6 +231,11 @@ fn runtime_from_exe_at_workspace(
     workspace_root: Option<&Path>,
     allow_hub_bundle: bool,
 ) -> Result<Runtime, String> {
+    if workspace_root.is_none() {
+        if let Ok(runtime) = runtime_from_installed_exe(exe) {
+            return Ok(runtime);
+        }
+    }
     let direct_bin = exe
         .parent()
         .filter(|path| path.file_name().is_some_and(|name| name == "bin"))
@@ -301,11 +305,72 @@ fn runtime_from_exe_at_workspace(
         "libonnxruntime.so"
     };
     Ok(Runtime {
+        workspace_root: tools
+            .parent()
+            .ok_or_else(|| "membrane runtime could not locate workspace root".to_string())?
+            .to_path_buf(),
         db: tools.join(".cache/memory/cortex-engine.db"),
         token: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
         port: config.port,
+        origin: "development",
+        stable_current: None,
+        version_root: None,
+    })
+}
+
+fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
+    let current = exe
+        .parent()
+        .filter(|path| path.file_name().is_some_and(|name| name == "current"))
+        .ok_or_else(|| "executable is not under installed current".to_string())?;
+    let product_root = current
+        .parent()
+        .ok_or_else(|| "installed current has no product root".to_string())?;
+    let versions = product_root.join("versions");
+    let pointer = std::fs::read_link(current)
+        .map_err(|error| format!("read installed current pointer: {error}"))?;
+    let pointer = if pointer.is_absolute() {
+        pointer
+    } else {
+        product_root.join(pointer)
+    };
+    let version_root = std::fs::canonicalize(pointer)
+        .map_err(|error| format!("resolve installed version: {error}"))?;
+    let versions = std::fs::canonicalize(versions)
+        .map_err(|error| format!("resolve installed versions: {error}"))?;
+    if version_root.parent() != Some(versions.as_path()) || !version_root.is_dir() {
+        return Err("installed current does not target one direct version".into());
+    }
+    let state = product_root.join("state");
+    runtime_from_installed_state(&state, current.to_path_buf(), version_root)
+}
+
+fn runtime_from_installed_state(
+    state: &Path,
+    stable_current: PathBuf,
+    version_root: PathBuf,
+) -> Result<Runtime, String> {
+    let tools = state.join("tools");
+    let bin = stable_current;
+    let ort_name = if cfg!(windows) {
+        "onnxruntime.dll"
+    } else if cfg!(target_os = "macos") {
+        "libonnxruntime.dylib"
+    } else {
+        "libonnxruntime.so"
+    };
+    Ok(Runtime {
+        workspace_root: state.to_path_buf(),
+        db: tools.join(".cache/memory/cortex-engine.db"),
+        token: tools.join(".cache/memory/api-token"),
+        ort: version_root.join(ort_name),
+        hf_home: tools.join(".cache/fastembed"),
+        port: 47_851,
+        origin: "installed",
+        stable_current: Some(bin),
+        version_root: Some(version_root),
     })
 }
 
@@ -343,13 +408,41 @@ fn is_hub_bundled_membrane(exe: &Path) -> bool {
 }
 
 pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
-    let workspace = std::env::var_os("WORKSPACE_ROOT").map(PathBuf::from);
+    let development = std::env::var_os("MEMBRANE_RUNTIME_ORIGIN")
+        .is_some_and(|value| value == "development");
+    let workspace = development.then(|| std::env::var_os("WORKSPACE_ROOT")).flatten().map(PathBuf::from);
     runtime_from_exe_at_workspace(exe, workspace.as_deref(), lifecycle_control().hub_bound())
 }
 
 fn runtime_from_workspace_root(workspace_root: &Path) -> Result<Runtime, String> {
     let root = std::fs::canonicalize(workspace_root)
         .map_err(|error| format!("canonicalize Hub workspace root: {error}"))?;
+    if root.file_name().is_some_and(|name| name == "state")
+        && root
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "Membrane")
+    {
+        let product_root = root
+            .parent()
+            .ok_or_else(|| "installed state has no product root".to_string())?;
+        let current = product_root.join("current");
+        let versions = std::fs::canonicalize(product_root.join("versions"))
+            .map_err(|error| format!("resolve installed versions: {error}"))?;
+        let pointer = std::fs::read_link(&current)
+            .map_err(|error| format!("read installed current pointer: {error}"))?;
+        let pointer = if pointer.is_absolute() {
+            pointer
+        } else {
+            product_root.join(pointer)
+        };
+        let version_root = std::fs::canonicalize(pointer)
+            .map_err(|error| format!("resolve installed version: {error}"))?;
+        if version_root.parent() != Some(versions.as_path()) {
+            return Err("installed current does not target one direct version".into());
+        }
+        return runtime_from_installed_state(&root, current, version_root);
+    }
     let tools = root.join("tools");
     let bin = tools.join("bin");
     let config_path = tools.join("lib/memory/runtime.json");
@@ -376,11 +469,15 @@ fn runtime_from_workspace_root(workspace_root: &Path) -> Result<Runtime, String>
         "libonnxruntime.so"
     };
     Ok(Runtime {
+        workspace_root: root.clone(),
         db: tools.join(".cache/memory/cortex-engine.db"),
         token: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
         port: config.port,
+        origin: "development",
+        stable_current: None,
+        version_root: None,
     })
 }
 
@@ -401,22 +498,12 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
     std::env::set_var("ORT_DYLIB_PATH", &runtime.ort);
     std::env::set_var("HF_HOME", &runtime.hf_home);
     std::env::set_var("HF_HUB_OFFLINE", "1");
-    std::env::set_var(
-        "WORKSPACE_ROOT",
-        runtime
-            .db
-            .ancestors()
-            .nth(4)
-            .ok_or_else(|| "resolve workspace root from database path".to_string())?,
-    );
+    std::env::set_var("WORKSPACE_ROOT", &runtime.workspace_root);
+    std::env::set_var("MEMBRANE_RUNTIME_ORIGIN", runtime.origin);
     let catalog_path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
     std::env::set_var("MEMBRANE_CATALOG", catalog_path);
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
-    let workspace_root = runtime
-        .db
-        .ancestors()
-        .nth(4)
-        .ok_or_else(|| "resolve workspace root from database path".to_string())?;
+    let workspace_root = &runtime.workspace_root;
     // Publish the IPC handshake manifest before any peer can connect. This
     // is a hard requirement of the MBR-105 contract: a resident that has
     // not published its manifest must reject every handshake. We deliberately
@@ -531,6 +618,22 @@ mod tests {
         );
     }
 
+    #[test]
+    fn installed_state_binds_fixed_port_and_stable_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let state = temp.path().join("Membrane/state");
+        let current = temp.path().join("Membrane/current");
+        let version = temp.path().join("Membrane/versions/v1");
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::create_dir_all(&version).unwrap();
+        let runtime = runtime_from_installed_state(&state, current.clone(), version.clone()).unwrap();
+        assert_eq!(runtime.port, 47_851);
+        assert_eq!(runtime.workspace_root, state);
+        assert_eq!(runtime.stable_current, Some(current));
+        assert_eq!(runtime.version_root, Some(version));
+        assert_eq!(runtime.origin, "installed");
+    }
+
     #[cfg(unix)]
     #[test]
     fn relocated_service_requires_exact_workspace_symlink() {
@@ -594,11 +697,15 @@ mod tests {
     fn resident_startup_advances_identity_and_publishes_claim_before_serve() {
         let temp = tempfile::tempdir().unwrap();
         let runtime = Runtime {
+            workspace_root: temp.path().to_path_buf(),
             db: temp.path().join("tools/.cache/memory/cortex-engine.db"),
             token: temp.path().join("tools/.cache/memory/api-token"),
             ort: temp.path().join("tools/bin/onnxruntime.dll"),
             hf_home: temp.path().join("tools/.cache/fastembed"),
             port: 47851,
+            origin: "development",
+            stable_current: None,
+            version_root: None,
         };
 
         let (identity, claim) = prepare_runtime_identity(&runtime).unwrap();

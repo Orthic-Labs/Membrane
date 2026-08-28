@@ -102,6 +102,8 @@ enum Command {
     Uninstall(UninstallArgs),
     /// Activate installed app & register native MCP harnesses.
     Activate(ActivateArgs),
+    /// Inspect installed service, release identity, & native harness projections.
+    Status(ActivateArgs),
     /// MBR-210: move recognized legacy state without copying or starting a daemon.
     MigrateLegacy(MigrateLegacyArgs),
 }
@@ -172,7 +174,8 @@ struct UninstallArgs {
 
 #[derive(Debug, clap::Args)]
 struct ActivateArgs {
-    /// Installed application directory. Defaults to current executable's directory.
+    /// Installed stable `current` directory. Defaults to the user-local
+    /// product root's stable current path.
     #[arg(long)]
     install_root: Option<std::path::PathBuf>,
     /// Native harness to register. Repeatable; defaults to Codex plus Claude.
@@ -389,6 +392,21 @@ where
             activation: None,
             migration: None,
         },
+        Command::Status(args) => ParsedInvocation {
+            mode: MembraneMode::Activate,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: Some(ActivationInvocation {
+                install_root: args.install_root,
+                clients: args.client,
+                timeout_ms: args.timeout_ms,
+                dry_run: true,
+            }),
+            migration: None,
+        },
         Command::Activate(args) => ParsedInvocation {
             mode: MembraneMode::Activate,
             cli_tail: Vec::new(),
@@ -516,9 +534,8 @@ pub fn consume_lifecycle_channel() -> Result<Option<LifecycleChannel>, String> {
     validate_lifecycle_hello_shape(&hello)?;
     let declared_root = std::fs::canonicalize(&hello.declared_data_root)
         .map_err(|_| "lifecycle data root unavailable")?;
-    let configured_root = std::env::var_os("WORKSPACE_ROOT")
+    let configured_root = std::env::var_os("MEMBRANE_STATE_ROOT")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
         .and_then(|path| std::fs::canonicalize(path).ok())
         .ok_or("lifecycle configured data root unavailable")?;
     if declared_root != configured_root {

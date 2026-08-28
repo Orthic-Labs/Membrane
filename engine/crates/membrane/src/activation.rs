@@ -24,6 +24,7 @@ use std::{
 
 pub const ACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const ACTIVATION_RECEIPT_FILE: &str = "activation-receipt.json";
+pub const INSTALLED_PORT: u16 = 47_851;
 const LOCK_DIR: &str = ".activation.lock";
 const LOCK_STALE_AFTER: Duration = Duration::from_secs(90);
 const LOCK_WAIT: Duration = Duration::from_secs(15);
@@ -94,6 +95,12 @@ pub struct ServiceActivationReceipt {
     pub port: u16,
     pub release_generation: String,
     pub already_running: bool,
+    /// Additive readiness projection. `ready` is the only state that permits
+    /// activation to claim an exact resident generation.
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,26 +191,73 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     let runtime_tray = version_root.join(executable_name("membrane-tray"));
     require_file(&runtime_membrane, "resolved membrane executable")?;
     require_file(&runtime_tray, "resolved tray executable")?;
-    let (workspace_root, port) = installed_runtime()?;
+    let (workspace_root, port) = installed_runtime(product_root)?;
     let expected_generation = membrane_runtime::release_identity::release_generation();
-    let _lock = acquire_lock(product_root)?;
+    if !options.dry_run {
+        std::fs::create_dir_all(&workspace_root).map_err(|error| {
+            format!(
+                "create installed runtime state {}: {error}",
+                workspace_root.display()
+            )
+        })?;
+    }
+    // Inspection must be entirely non-mutating, including lock acquisition.
+    let _lock = (!options.dry_run)
+        .then(|| acquire_lock(product_root))
+        .transpose()?;
 
-    let initial = probe_health(port, &expected_generation)?;
-    let already_running = matches!(initial, HealthObservation::Ready { .. });
-    let release_generation = if options.dry_run {
-        require_current_health(initial, &expected_generation)?
-    } else if let HealthObservation::Ready { release_generation } = initial {
-        release_generation
+    // A dry-run is an inspection receipt even when no resident exists yet. A
+    // malformed or foreign listener is recorded in `state`/`reason` rather
+    // than preventing callers from receiving usable JSON.
+    let initial = match probe_health(port, &expected_generation) {
+        Ok(observation) => observation,
+        Err(error) => HealthObservation::Foreign(error),
+    };
+    let already_running = matches!(&initial, HealthObservation::Ready { .. });
+    let (release_generation, service_state, service_reason) = if options.dry_run {
+        match initial {
+            HealthObservation::Ready { release_generation } => {
+                (release_generation, "ready".to_string(), None)
+            }
+            HealthObservation::PriorGeneration { release_generation } => (
+                release_generation,
+                "stale_generation".to_string(),
+                Some("resident release generation differs from installed current".to_string()),
+            ),
+            HealthObservation::Unavailable => (
+                expected_generation.clone(),
+                "unavailable".to_string(),
+                Some("installed Membrane is not running".to_string()),
+            ),
+            HealthObservation::NotReady => (
+                expected_generation.clone(),
+                "not_ready".to_string(),
+                Some("installed Membrane is not healthy".to_string()),
+            ),
+            HealthObservation::Foreign(reason) => {
+                (expected_generation.clone(), "foreign".to_string(), Some(reason))
+            }
+        }
+    } else if let HealthObservation::Ready { release_generation } = &initial {
+        (release_generation.clone(), "ready".to_string(), None)
     } else {
-        if matches!(initial, HealthObservation::PriorGeneration { .. }) {
-            request_resident_replacement(&runtime_tray, &workspace_root, port)?;
+        if matches!(&initial, HealthObservation::PriorGeneration { .. }) {
+            request_resident_replacement(&tray, &workspace_root, port)?;
             wait_for_shutdown(port, &expected_generation, options.timeout)?;
         }
-        launch_tray(&runtime_tray, &workspace_root, port)?;
-        wait_for_health(port, &expected_generation, options.timeout)?
+        launch_tray(&tray, &workspace_root, port)?;
+        (
+            wait_for_health(port, &expected_generation, options.timeout)?,
+            "ready".to_string(),
+            None,
+        )
     };
 
     let clients = reconcile_clients(&membrane, &options.clients, options.dry_run, run_client)?;
+    if !options.dry_run {
+        ensure_user_path(&install_root)?;
+        reconcile_claude_hooks(&install_root)?;
+    }
     let receipt = ActivationReceiptV1 {
         schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
         runtime_origin: RuntimeOrigin::Installed,
@@ -218,11 +272,13 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
             port,
             release_generation,
             already_running,
+            state: service_state,
+            reason: service_reason,
         },
         clients,
     };
     if !options.dry_run {
-        persist_receipt(product_root, &receipt)?;
+        persist_receipt(&workspace_root, &receipt)?;
     }
     Ok(receipt)
 }
@@ -396,7 +452,7 @@ fn launch_tray_with_mode(
         .env_remove("MEMBRANE_DATA_ROOT")
         .env_remove("MEMBRANE_CACHE_ROOT")
         .env_remove("MEMBRANE_LOG_ROOT")
-        .env("MEMBRANE_WORKSPACE_ROOT", workspace_root)
+        .env("MEMBRANE_STATE_ROOT", workspace_root)
         .env("MEMBRANE_PORT", port.to_string())
         .env("MEMBRANE_HTTP_PORT", port.to_string());
     #[cfg(windows)]
@@ -574,69 +630,205 @@ fn parse_health_response(
     })
 }
 
-fn installed_runtime() -> Result<(PathBuf, u16), String> {
+fn installed_runtime(product_root: &Path) -> Result<(PathBuf, u16), String> {
     if std::env::var("MEMBRANE_RUNTIME_ORIGIN").ok().as_deref() == Some("development") {
         return Err("development runtime cannot perform installed activation".to_string());
     }
-    if let Some(value) = std::env::var_os("MEMBRANE_PORT") {
-        let port = value
-            .to_string_lossy()
-            .parse::<u16>()
-            .ok()
-            .filter(|port| *port >= 1024)
-            .ok_or_else(|| "MEMBRANE_PORT is invalid".to_string())?;
-        let workspace_root = std::env::var_os("MEMBRANE_WORKSPACE_ROOT")
-            .map(PathBuf::from)
-            .ok_or_else(|| "MEMBRANE_WORKSPACE_ROOT is required with MEMBRANE_PORT".to_string())?;
-        return Ok((workspace_root, port));
-    }
-    let workspace_root = if let Some(value) = std::env::var_os("MEMBRANE_WORKSPACE_ROOT") {
-        PathBuf::from(value)
-    } else {
-        let profile = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-            .map(PathBuf::from)
-            .ok_or_else(|| "workspace profile is unavailable".to_string())?;
-        let path = profile.join(".config/membrane/workspace.json");
-        let value: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(&path)
-                .map_err(|error| format!("read workspace config {}: {error}", path.display()))?,
-        )
-        .map_err(|error| format!("parse workspace config {}: {error}", path.display()))?;
-        if value
-            .get("schemaVersion")
-            .and_then(serde_json::Value::as_u64)
-            != Some(3)
-        {
-            return Err("workspace config schema is unsupported".to_string());
-        }
-        value
-            .get("workspaceRoot")
-            .and_then(serde_json::Value::as_str)
-            .map(PathBuf::from)
-            .ok_or_else(|| "workspace config root is missing".to_string())?
+    // Installed state is product-owned and deliberately independent from any
+    // checkout, workspace config, or repository runtime manifest.
+    Ok((product_root.join("state"), INSTALLED_PORT))
+}
+
+#[cfg(windows)]
+fn ensure_user_path(install_root: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_QUERY_VALUE, KEY_SET_VALUE, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
     };
-    let runtime = workspace_root.join("tools/lib/memory/runtime.json");
-    let value: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(&runtime)
-            .map_err(|error| format!("read runtime config {}: {error}", runtime.display()))?,
-    )
-    .map_err(|error| format!("parse runtime config {}: {error}", runtime.display()))?;
-    if value
-        .get("schemaVersion")
-        .and_then(serde_json::Value::as_u64)
-        != Some(1)
-        || value.get("serviceId").and_then(serde_json::Value::as_str) != Some("membrane-local-v1")
-        || value.get("host").and_then(serde_json::Value::as_str) != Some("127.0.0.1")
-    {
-        return Err("runtime config identity is invalid".to_string());
+    let wide = |value: &std::ffi::OsStr| value.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    let key_name = wide(std::ffi::OsStr::new("Environment"));
+    let value_name = wide(std::ffi::OsStr::new("Path"));
+    let mut key: HKEY = std::ptr::null_mut();
+    let opened = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            key_name.as_ptr(),
+            0,
+            KEY_QUERY_VALUE | KEY_SET_VALUE,
+            &mut key,
+        )
+    };
+    if opened != 0 {
+        return Err(format!("open user PATH registry key: {opened}"));
     }
-    let port = value
-        .get("port")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|value| u16::try_from(value).ok())
-        .filter(|port| *port >= 1024)
-        .ok_or_else(|| "runtime config port is invalid".to_string())?;
-    Ok((workspace_root, port))
+    let mut kind: REG_VALUE_TYPE = REG_EXPAND_SZ;
+    let mut byte_len = 0_u32;
+    let queried = unsafe {
+        RegQueryValueExW(
+            key,
+            value_name.as_ptr(),
+            std::ptr::null(),
+            &mut kind,
+            std::ptr::null_mut(),
+            &mut byte_len,
+        )
+    };
+    let mut current = String::new();
+    if queried == 0 && byte_len > 0 {
+        let mut buffer = vec![0_u16; (byte_len as usize + 1) / 2];
+        let read = unsafe {
+            RegQueryValueExW(
+                key,
+                value_name.as_ptr(),
+                std::ptr::null(),
+                &mut kind,
+                buffer.as_mut_ptr() as *mut u8,
+                &mut byte_len,
+            )
+        };
+        if read != 0 {
+            unsafe { RegCloseKey(key) };
+            return Err(format!("read user PATH: {read}"));
+        }
+        let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+        current = String::from_utf16_lossy(&buffer[..end]);
+    } else if queried != 0 && queried != 2 {
+        unsafe { RegCloseKey(key) };
+        return Err(format!("query user PATH: {queried}"));
+    }
+    let stable = install_root.to_string_lossy().trim_end_matches(['\\', '/']).to_string();
+    let legacy = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map(|root| root.join("Membrane Hub").to_string_lossy().to_string());
+    let mut entries = current
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|value| {
+            !legacy.as_ref().is_some_and(|legacy| value.trim_matches('"').eq_ignore_ascii_case(legacy))
+        })
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if !entries.iter().any(|value| value.trim_matches('"').eq_ignore_ascii_case(&stable)) {
+        entries.push(stable);
+    }
+    let updated = entries.join(";");
+    if updated != current {
+        let encoded = wide(std::ffi::OsStr::new(&updated));
+        let value_kind = if kind == REG_SZ { REG_SZ } else { REG_EXPAND_SZ };
+        let written = unsafe {
+            RegSetValueExW(
+                key,
+                value_name.as_ptr(),
+                0,
+                value_kind,
+                encoded.as_ptr() as *const u8,
+                (encoded.len() * 2) as u32,
+            )
+        };
+        if written != 0 {
+            unsafe { RegCloseKey(key) };
+            return Err(format!("write user PATH: {written}"));
+        }
+    }
+    unsafe { RegCloseKey(key) };
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn ensure_user_path(_install_root: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
+    let profile = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .ok_or_else(|| "Claude settings profile is unavailable".to_string())?;
+    let settings_path = profile.join(".claude").join("settings.json");
+    let mut settings: serde_json::Value = if settings_path.is_file() {
+        serde_json::from_slice(
+            &std::fs::read(&settings_path)
+                .map_err(|error| format!("read Claude settings {}: {error}", settings_path.display()))?,
+        )
+        .map_err(|error| format!("parse Claude settings {}: {error}", settings_path.display()))?
+    } else {
+        serde_json::json!({})
+    };
+    let node = install_root.join("runtime/blueprint/lib").join(executable_name("node"));
+    let entrypoint = install_root.join("mcp/hooks/membrane-hook-entrypoint.mjs");
+    require_file(&node, "installed hook Node runtime")?;
+    require_file(&entrypoint, "installed Claude hook entrypoint")?;
+    let command = format!("\"{}\" \"{}\"", node.display(), entrypoint.display());
+    let root = settings
+        .as_object_mut()
+        .ok_or_else(|| "Claude settings root must be an object".to_string())?;
+    let hooks = root
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .ok_or_else(|| "Claude settings hooks must be an object".to_string())?;
+    const EVENTS: [&str; 10] = [
+        "SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse",
+        "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd",
+    ];
+    for event in EVENTS {
+        let entries = hooks
+            .entry(event)
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .ok_or_else(|| format!("Claude hook {event} must be an array"))?;
+        replace_legacy_hook_commands(entries, &command);
+        let present = entries.iter().any(|entry| {
+            entry
+                .get("hooks")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|items| items.iter().any(|item| {
+                    item.get("command").and_then(serde_json::Value::as_str) == Some(&command)
+                }))
+        });
+        if !present {
+            let mut projection = serde_json::json!({
+                "hooks": [{"type": "command", "command": command.clone()}]
+            });
+            if matches!(event, "PreToolUse" | "PostToolUse" | "PostToolUseFailure") {
+                projection["matcher"] = serde_json::Value::String(".*".to_string());
+            }
+            entries.push(projection);
+        }
+    }
+    let parent = settings_path
+        .parent()
+        .ok_or_else(|| "Claude settings path has no parent".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create Claude settings directory: {error}"))?;
+    let staged = settings_path.with_extension(format!("json.{}.partial", std::process::id()));
+    std::fs::write(
+        &staged,
+        serde_json::to_vec_pretty(&settings)
+            .map_err(|error| format!("serialize Claude settings: {error}"))?,
+    )
+    .map_err(|error| format!("stage Claude settings: {error}"))?;
+    replace_file(&staged, &settings_path)
+        .map_err(|error| format!("promote Claude settings: {error}"))
+}
+
+fn replace_legacy_hook_commands(entries: &mut [serde_json::Value], expected: &str) {
+    for entry in entries {
+        let Some(items) = entry.get_mut("hooks").and_then(serde_json::Value::as_array_mut) else {
+            continue;
+        };
+        for item in items {
+            let Some(command) = item.get_mut("command") else { continue };
+            let owned = command.as_str().is_some_and(|value| {
+                value.contains("membrane_host.py")
+                    || (value.contains(".venv-tools") && value.to_ascii_lowercase().contains("membrane"))
+            });
+            if owned {
+                *command = serde_json::Value::String(expected.to_string());
+            }
+        }
+    }
 }
 
 fn reconcile_clients<F>(
@@ -773,18 +965,21 @@ fn rollback_clients<F>(
 fn get_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "get", "membrane", "--json"],
-        HarnessClient::Claude => vec!["mcp", "get", "membrane"],
+        HarnessClient::Claude => vec!["mcp", "get", "membrane", "-s", "user"],
     }
     .into_iter()
     .map(str::to_string)
     .collect()
 }
 
-fn remove_args(_client: HarnessClient) -> Vec<String> {
-    ["mcp", "remove", "membrane"]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+fn remove_args(client: HarnessClient) -> Vec<String> {
+    match client {
+        HarnessClient::Codex => vec!["mcp", "remove", "membrane"],
+        HarnessClient::Claude => vec!["mcp", "remove", "membrane", "-s", "user"],
+    }
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 fn add_args(client: HarnessClient, command: &str, args: &[String]) -> Vec<String> {
@@ -1075,6 +1270,20 @@ mod tests {
                 args: vec!["stdio-mcp".to_string()],
             })
         );
+        assert_eq!(
+            get_args(HarnessClient::Claude),
+            ["mcp", "get", "membrane", "-s", "user"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            remove_args(HarnessClient::Claude),
+            ["mcp", "remove", "membrane", "-s", "user"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -1195,6 +1404,8 @@ mod tests {
                 port: 43177,
                 release_generation: "sha256:test".to_string(),
                 already_running: true,
+                state: "ready".to_string(),
+                reason: None,
             },
             clients: Vec::new(),
         };
@@ -1231,5 +1442,40 @@ mod tests {
         )
         .unwrap_err()
         .contains("does not match"));
+    }
+
+    #[test]
+    fn installed_runtime_is_product_state_on_fixed_port() {
+        let (root, port) = installed_runtime(Path::new(r"C:\Users\test\Orthic Labs\Membrane"))
+            .expect("installed runtime layout");
+        assert_eq!(root, PathBuf::from(r"C:\Users\test\Orthic Labs\Membrane\state"));
+        assert_eq!(port, INSTALLED_PORT);
+    }
+
+    #[test]
+    fn dry_run_health_projection_is_non_ready_but_serializable() {
+        let receipt = ActivationReceiptV1 {
+            schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
+            runtime_origin: RuntimeOrigin::Installed,
+            install_root: PathBuf::from("current"),
+            version_root: PathBuf::from("versions/v1"),
+            membrane_executable: PathBuf::from("current/membrane.exe"),
+            tray_executable: PathBuf::from("current/membrane-tray.exe"),
+            activated_at_unix_ms: 1,
+            dry_run: true,
+            service: ServiceActivationReceipt {
+                service_id: SERVICE_ID.to_string(),
+                port: INSTALLED_PORT,
+                release_generation: "sha256:test".to_string(),
+                already_running: false,
+                state: "unavailable".to_string(),
+                reason: Some("installed Membrane is not running".to_string()),
+            },
+            clients: Vec::new(),
+        };
+        let value = serde_json::to_value(receipt).expect("inspection receipt JSON");
+        assert_eq!(value["dryRun"], true);
+        assert_eq!(value["service"]["state"], "unavailable");
+        assert_eq!(value["service"]["port"], INSTALLED_PORT);
     }
 }

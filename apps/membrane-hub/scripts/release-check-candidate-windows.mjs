@@ -21,6 +21,21 @@ if (!candidate.startedAt || Number.isNaN(Date.parse(candidate.startedAt))) throw
 for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) {
   if (!candidate.files?.[name]) throw new Error(`candidate executable closure missing: ${name}`);
 }
+for (const name of [
+  "mcp/hooks/membrane-hook-entrypoint.mjs",
+  "mcp/hooks/membrane-hook-runtime.mjs",
+  "mcp/hooks/membrane-workspace-operations.mjs",
+  "mcp/lib/verification-command.mjs",
+  "mcp/lib/diagnostics-client.mjs",
+  "mcp/host/context-adapter.cjs",
+  "mcp/host/continuity.mjs",
+  "mcp/host/delivery-ledger-store.cjs",
+  "mcp/host/observable-event.cjs",
+  "mcp/host/observable-ingress.cjs",
+  "mcp/context-renderer-lib.cjs",
+]) {
+  if (!candidate.files?.[name]) throw new Error(`candidate hook projection closure missing: ${name}`);
+}
 if (!Object.keys(candidate.files ?? {}).some((name) => name.startsWith("runtime/"))) throw new Error("candidate runtime closure is missing");
 const archive = join(artifactRoot, candidate.archive.name);
 if (!existsSync(archive)) throw new Error("candidate archive is missing");
