@@ -25,7 +25,7 @@ const githubPlan = prepareGitHubDirectRelease({
   product: "membrane",
   version: pkg.version,
   manifestPath: join(output, "release-manifest.json"),
-  signaturePath: join(output, "release-manifest.sig"),
+  signaturePath: join(output, "release-manifest.cat"),
   checksumsPath: join(output, "checksums.json"),
   archivePaths: [join(output, `membrane-${pkg.version}-windows-x86_64.zip`)],
   provenancePaths: [join(output, "provenance-windows-x86_64.intoto.jsonl")],
