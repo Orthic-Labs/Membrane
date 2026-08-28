@@ -686,16 +686,30 @@ fn is_expected(stdout: &str, executable: &str) -> bool {
             && config.args == ["stdio-mcp".to_string()];
     }
     let normalized = stdout.replace("\\\\", "\\");
-    normalized.contains(executable) && normalized.contains("stdio-mcp")
+    let expected = normalize_windows_path(executable);
+    normalized
+        .to_ascii_lowercase()
+        .contains(&expected.to_ascii_lowercase())
+        && normalized.contains("stdio-mcp")
 }
 
 fn paths_equal(left: &str, right: &str) -> bool {
     if cfg!(windows) {
-        left.replace('/', "\\")
-            .eq_ignore_ascii_case(&right.replace('/', "\\"))
+        normalize_windows_path(left).eq_ignore_ascii_case(&normalize_windows_path(right))
     } else {
         left == right
     }
+}
+
+fn normalize_windows_path(value: &str) -> String {
+    let normalized = value.replace('/', "\\");
+    if let Some(rest) = normalized.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    normalized
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&normalized)
+        .to_string()
 }
 
 fn run_client(client: HarnessClient, args: &[String]) -> CommandResult {
@@ -849,6 +863,10 @@ mod tests {
             })
         );
         assert!(is_expected(body, r"C:\Membrane\membrane.exe"));
+        assert!(is_expected(
+            "Command: C:\\Membrane\\membrane.exe\nArgs: stdio-mcp",
+            r"\\?\C:\Membrane\membrane.exe"
+        ));
     }
 
     #[test]
