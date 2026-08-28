@@ -235,6 +235,7 @@ fn run() -> Result<(), &'static str> {
     let control = LifecycleControl::from_lifecycle_capability(&launch.bearer_token)
         .map_err(|_| "daemon_protocol_invalid")?;
     let runtime_control = control.clone();
+    let runtime_failure_control = control.clone();
     let root = PathBuf::from(&launch.workspace_root);
     let background_review = BackgroundReviewScheduler::from_workspace_root(&root, now_unix_ms());
     let background_observation_sink =
@@ -244,7 +245,13 @@ fn run() -> Result<(), &'static str> {
     let runtime_root = root.clone();
     let runtime = thread::Builder::new()
         .name("membrane-daemon-runtime".into())
-        .spawn(move || run_hub_runtime(&runtime_root, runtime_control))
+        .spawn(move || {
+            let result = run_hub_runtime(&runtime_root, runtime_control);
+            if let Err(error) = &result {
+                runtime_failure_control.fail(stable_runtime_reason(error));
+            }
+            result
+        })
         .map_err(|_| "daemon_spawn_failed")?;
 
     let (signal_tx, signal_rx) = mpsc::channel();
@@ -288,12 +295,23 @@ fn run() -> Result<(), &'static str> {
                 _ if control.command().as_deref() == Some("parent_closed") => {
                     "daemon_parent_closed"
                 }
-                _ => "daemon_ready_failed",
+                _ => control
+                    .failure()
+                    .as_deref()
+                    .map(stable_runtime_reason)
+                    .unwrap_or("daemon_ready_failed"),
             };
             background_review.set_hub_active(false, now_unix_ms());
             background_review.observe_idle(now_unix_ms());
             emit_background_observations(&background_review, &background_observation_sink);
             control.fail(reason);
+            emit_event(
+                &mut event_sequence,
+                DaemonEventKind::Fatal,
+                pid,
+                None,
+                Some(reason),
+            )?;
             let _ = runtime.join();
             return Err(reason);
         }
@@ -526,8 +544,16 @@ fn health_answers(port: u16) -> bool {
     response[..read].starts_with(b"HTTP/1.1 200") || response[..read].starts_with(b"HTTP/1.0 200")
 }
 
-fn stable_runtime_reason(_error: &str) -> &'static str {
-    "daemon_exited"
+fn stable_runtime_reason(error: &str) -> &'static str {
+    if error.contains("runtime.json") || error.contains("runtime identity") {
+        "daemon_runtime_config_unavailable"
+    } else if error.contains("installation identity") || error.contains("installation manifest") {
+        "daemon_identity_unavailable"
+    } else if error.contains("bind") || error.contains("address") {
+        "daemon_bind_failed"
+    } else {
+        "daemon_exited"
+    }
 }
 
 #[cfg(test)]

@@ -127,6 +127,7 @@ fn fetch_snapshot(endpoint: &str, bearer_token: &str) -> Result<SnapshotValues, 
     }
     let mut response = Vec::new();
     let mut bytes = [0_u8; 8 * 1024];
+    let mut expected_response_bytes = None;
     loop {
         let read_timeout = remaining_timeout(deadline)?;
         stream
@@ -138,6 +139,26 @@ fn fetch_snapshot(endpoint: &str, bearer_token: &str) -> Result<SnapshotValues, 
                 response.extend_from_slice(&bytes[..read]);
                 if response.len() > MAX_RESPONSE_BYTES {
                     return Err("snapshot_too_large");
+                }
+                if expected_response_bytes.is_none() {
+                    if let Some(split) =
+                        response.windows(4).position(|window| window == b"\r\n\r\n")
+                    {
+                        let head = std::str::from_utf8(&response[..split])
+                            .map_err(|_| "snapshot_invalid_http")?;
+                        let content_length = content_length(head)?;
+                        let total = split
+                            .checked_add(4)
+                            .and_then(|value| value.checked_add(content_length))
+                            .ok_or("snapshot_too_large")?;
+                        if total > MAX_RESPONSE_BYTES {
+                            return Err("snapshot_too_large");
+                        }
+                        expected_response_bytes = Some(total);
+                    }
+                }
+                if expected_response_bytes.is_some_and(|expected| response.len() >= expected) {
+                    break;
                 }
             }
             Err(error) => return Err(snapshot_io_reason(error)),
@@ -151,7 +172,14 @@ fn fetch_snapshot(endpoint: &str, bearer_token: &str) -> Result<SnapshotValues, 
     if !head.starts_with("HTTP/1.1 200 ") && !head.starts_with("HTTP/1.0 200 ") {
         return Err("snapshot_unavailable");
     }
-    let body = &response[split + 4..];
+    let body_length = content_length(head)?;
+    let body_end = split
+        .checked_add(4)
+        .and_then(|value| value.checked_add(body_length))
+        .ok_or("snapshot_too_large")?;
+    let body = response
+        .get(split + 4..body_end)
+        .ok_or("snapshot_invalid_http")?;
     let snapshot: HubSnapshotV1 = serde_json::from_slice(body).map_err(|_| "snapshot_invalid")?;
     if snapshot.schema_version != HUB_SCHEMA_VERSION {
         return Err("snapshot_schema_unsupported");
@@ -170,6 +198,25 @@ fn fetch_snapshot(endpoint: &str, bearer_token: &str) -> Result<SnapshotValues, 
         budget: admission.budget_pressure_total.to_string(),
         observed: format_observed(admission.window_hours, snapshot.observed_at_unix_ms),
     })
+}
+
+fn content_length(head: &str) -> Result<usize, &'static str> {
+    let mut value = None;
+    for line in head.lines().skip(1) {
+        let Some((name, raw_value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            let parsed = raw_value
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| "snapshot_invalid_http")?;
+            if value.replace(parsed).is_some() {
+                return Err("snapshot_invalid_http");
+            }
+        }
+    }
+    value.ok_or("snapshot_invalid_http")
 }
 
 fn remaining_timeout(deadline: Instant) -> Result<Duration, &'static str> {
@@ -251,5 +298,23 @@ mod tests {
         assert!(values.admitted.starts_with("Unknown · snapshot_timeout"));
         assert!(values.withheld.starts_with("Unknown · snapshot_timeout"));
         assert!(values.budget.starts_with("Unknown · snapshot_timeout"));
+    }
+
+    #[test]
+    fn content_length_frames_keep_alive_response() {
+        assert_eq!(
+            content_length(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\ncontent-length: 42"
+            ),
+            Ok(42)
+        );
+        assert_eq!(
+            content_length("HTTP/1.1 200 OK\r\ncontent-type: application/json"),
+            Err("snapshot_invalid_http")
+        );
+        assert_eq!(
+            content_length("HTTP/1.1 200 OK\r\ncontent-length: 1\r\nContent-Length: 1"),
+            Err("snapshot_invalid_http")
+        );
     }
 }

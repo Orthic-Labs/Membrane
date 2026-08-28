@@ -7,6 +7,7 @@ node_modules/
 /apps/membrane-hub/src-tauri/runtime/
 
 # Local runtime state (never belongs in the repo)
+/.membrane/
 *.db
 *.db-wal
 *.db-shm

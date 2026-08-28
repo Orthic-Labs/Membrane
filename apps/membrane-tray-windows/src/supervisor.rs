@@ -24,12 +24,13 @@ use crate::{
     ipc::EventDecoder,
     process::{self, DaemonProcess, ProcessEvent},
     snapshot::{self, SnapshotUpdate},
+    workspace,
 };
 
 pub const CRASH_LOOP_THRESHOLD: usize = 3;
 pub const CRASH_LOOP_WINDOW_MS: u64 = 60_000;
 pub const RESTART_BACKOFF_MS: u64 = 1_000;
-pub const HANDSHAKE_TIMEOUT_MS: u64 = 10_000;
+pub const HANDSHAKE_TIMEOUT_MS: u64 = 35_000;
 pub const DRAIN_TIMEOUT_MS: u64 = 7_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -214,6 +215,18 @@ impl Supervisor {
     }
     pub fn is_quit_complete(&self) -> bool {
         self.drain_complete
+    }
+
+    pub fn set_workspace(&mut self, workspace_root: PathBuf, http_port: u16) {
+        self.workspace_root = workspace_root;
+        self.http_port = http_port;
+    }
+
+    pub fn block_startup(&mut self, reason: &str, now_ms: u64) -> Transition {
+        self.close_process();
+        self.retry_at = None;
+        self.handshake_deadline = None;
+        self.transition(State::CrashLoop, reason, now_ms, None, None)
     }
 
     fn transition(
@@ -582,18 +595,24 @@ impl Supervisor {
         self.process_exited = false;
         let process = match process::launch(&self.daemon_path) {
             Ok(process) => process,
-            Err(_) => {
-                return Some(self.fail_process(
-                    now_ms,
-                    Reason::DaemonSpawnFailed.as_str(),
-                    None,
-                    None,
-                ));
+            Err(error) => {
+                let reason = error
+                    .raw_os_error()
+                    .map(|code| format!("daemon_spawn_failed_windows_{code}"))
+                    .unwrap_or_else(|| Reason::DaemonSpawnFailed.as_str().to_owned());
+                return Some(self.fail_process(now_ms, &reason, None, None));
             }
         };
 
-        let mut token_bytes = [0_u8; 32];
-        if getrandom::fill(&mut token_bytes).is_err() {
+        let token = match workspace::api_token(&self.workspace_root) {
+            Ok(token) => token,
+            Err(reason) => {
+                let pid = Some(process.process_id());
+                drop(process);
+                return Some(self.fail_process(now_ms, reason, pid, None));
+            }
+        };
+        if token.len() != 64 {
             let pid = Some(process.process_id());
             drop(process);
             return Some(self.fail_process(
@@ -603,10 +622,6 @@ impl Supervisor {
                 None,
             ));
         }
-        let token = token_bytes
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
         let launch = DaemonLaunchV1 {
             schema_version: DAEMON_IPC_SCHEMA_VERSION,
             sequence: 1,

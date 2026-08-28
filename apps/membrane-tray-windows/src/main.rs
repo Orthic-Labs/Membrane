@@ -1,5 +1,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
+mod instance;
 mod ipc;
 mod placement;
 mod process;
@@ -7,6 +8,7 @@ mod snapshot;
 mod startup;
 mod supervisor;
 mod tray;
+mod workspace;
 
 slint::include_modules!();
 
@@ -53,10 +55,25 @@ unsafe extern "system" {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
-    if std::env::args().any(|arg| arg == "--self-test") {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.iter().any(|arg| arg == "--self-test") {
         println!("membrane-tray-windows: PASS");
         println!("native=slint-1.17.1 window=300px verdicts=filled-square,half-square,hollow-square,dash");
         println!("supervisor=job-object+3 exits / 60s placement=work-area-aware blur-grace=500ms startup=HKCU-Run");
+        return Ok(());
+    }
+
+    let login_launch = args.iter().any(|arg| arg == startup::LOGIN_LAUNCH_ARG);
+    let activation_launch = args.iter().any(|arg| arg == "--activate");
+    let open_dashboard_on_start = args.iter().any(|arg| arg == "--open-dashboard");
+    let instance_event = instance::InstanceEvent::acquire()
+        .map_err(|error| slint::PlatformError::Other(error.to_string()))?;
+    if !instance_event.is_primary() {
+        if activation_launch {
+            let _ = instance_event.signal(instance::InstanceSignal::Activate);
+        } else if !login_launch {
+            let _ = instance_event.signal(instance::InstanceSignal::OpenDashboard);
+        }
         return Ok(());
     }
 
@@ -71,20 +88,26 @@ fn main() -> Result<(), slint::PlatformError> {
     popover.hide()?;
 
     let daemon_path = supervisor::default_daemon_path();
-    let workspace_root = std::env::var_os("MEMBRANE_WORKSPACE_ROOT")
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
-        .unwrap_or_else(|| PathBuf::from("."));
+    let resolved_workspace = workspace::resolve();
+    let workspace_root = resolved_workspace
+        .as_ref()
+        .map(|workspace| workspace.root.clone())
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let http_port = std::env::var("MEMBRANE_HTTP_PORT")
         .ok()
         .and_then(|value| value.parse().ok())
-        .unwrap_or(4317);
+        .or_else(|| {
+            resolved_workspace
+                .as_ref()
+                .ok()
+                .map(|workspace| workspace.http_port)
+        })
+        .unwrap_or(47_851);
     let supervisor = Rc::new(RefCell::new(supervisor::Supervisor::new(
         workspace_root,
         daemon_path,
         http_port,
     )));
-    let login_launch = std::env::args().any(|arg| arg == startup::LOGIN_LAUNCH_ARG);
     let first_run = demo_state.is_none() && startup::should_show_first_run(login_launch);
     if first_run {
         let _ = startup::mark_first_run();
@@ -96,7 +119,11 @@ fn main() -> Result<(), slint::PlatformError> {
         apply_demo_state(&popover, state);
     } else {
         let now = supervisor::now_unix_ms();
-        supervisor.borrow_mut().start_process(now);
+        if let Err(reason) = resolved_workspace {
+            supervisor.borrow_mut().block_startup(reason, now);
+        } else {
+            supervisor.borrow_mut().start_process(now);
+        }
         apply_observation(&popover, &supervisor.borrow(), first_run, login_enabled);
     }
     popover.set_first_run(first_run);
@@ -114,13 +141,22 @@ fn main() -> Result<(), slint::PlatformError> {
     let callback_supervisor = supervisor.clone();
     popover.on_restart(move || {
         let now = supervisor::now_unix_ms();
-        callback_supervisor.borrow_mut().manual_restart_process(now);
+        match workspace::resolve() {
+            Ok(workspace) => {
+                let mut supervisor = callback_supervisor.borrow_mut();
+                supervisor.set_workspace(workspace.root, workspace.http_port);
+                supervisor.manual_restart_process(now);
+            }
+            Err(reason) => {
+                callback_supervisor.borrow_mut().block_startup(reason, now);
+            }
+        };
     });
 
     let dashboard_supervisor = supervisor.clone();
     popover.on_open_dashboard(move || {
         let supervisor = dashboard_supervisor.borrow();
-        launch_dashboard(&supervisor);
+        let _ = launch_dashboard(&supervisor);
     });
 
     let login_popover = popover.as_weak();
@@ -196,6 +232,8 @@ fn main() -> Result<(), slint::PlatformError> {
     // Re-apply once after show: Winit may queue pre-show position changes
     // before native HWND creation.
     let mut initial_anchor_pending = initial_show;
+    let mut open_dashboard_deadline =
+        open_dashboard_on_start.then(|| supervisor::now_unix_ms() + 20_000);
     timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
         let now = supervisor::now_unix_ms();
         while let Ok(event) = tray_events.try_recv() {
@@ -240,6 +278,39 @@ fn main() -> Result<(), slint::PlatformError> {
         if !demo_mode {
             timer_supervisor.borrow_mut().tick(now);
         }
+        if instance_event.take_signal(instance::InstanceSignal::Activate) {
+            let should_restart = timer_supervisor.borrow().state() != supervisor::State::Running;
+            if should_restart {
+                match workspace::resolve() {
+                    Ok(workspace) => {
+                        let mut supervisor = timer_supervisor.borrow_mut();
+                        supervisor.set_workspace(workspace.root, workspace.http_port);
+                        supervisor.manual_restart_process(now);
+                    }
+                    Err(reason) => {
+                        timer_supervisor.borrow_mut().block_startup(reason, now);
+                    }
+                };
+            }
+        }
+        if instance_event.take_signal(instance::InstanceSignal::OpenDashboard) {
+            open_dashboard_deadline = Some(now + 20_000);
+        }
+        if open_dashboard_deadline.is_some()
+            && timer_supervisor.borrow().state() == supervisor::State::Running
+            && launch_dashboard(&timer_supervisor.borrow())
+        {
+            open_dashboard_deadline = None;
+        } else if open_dashboard_deadline.is_some_and(|deadline| now >= deadline) {
+            if let Some(window) = timer_popover.upgrade() {
+                if let Some(anchor) = tray_icon.rect().map(anchor_from_tray_rect) {
+                    place_popover(&window, anchor, window.get_first_run());
+                }
+                let _ = window.show();
+                focus_pending = true;
+            }
+            open_dashboard_deadline = None;
+        }
         if let Some(window) = timer_popover.upgrade() {
             let login = window.get_login_enabled();
             if !demo_mode {
@@ -265,6 +336,7 @@ fn main() -> Result<(), slint::PlatformError> {
             }
             if !demo_mode
                 && window.window().is_visible()
+                && !window.get_first_run()
                 && !native_window_focused(&window)
                 && timer_dismiss_guard.borrow().should_dismiss(now, true)
             {
@@ -695,7 +767,10 @@ fn startup_executable_path() -> PathBuf {
     std::env::current_exe().unwrap_or_else(|_| PathBuf::from("membrane-tray-windows.exe"))
 }
 
-fn launch_dashboard(supervisor: &supervisor::Supervisor) {
+fn launch_dashboard(supervisor: &supervisor::Supervisor) -> bool {
+    let (Some(endpoint), Some(token)) = (supervisor.endpoint(), supervisor.bearer_token()) else {
+        return false;
+    };
     let path = std::env::var_os("MEMBRANE_DASHBOARD_PATH")
         .map(PathBuf::from)
         .or_else(|| {
@@ -711,19 +786,20 @@ fn launch_dashboard(supervisor: &supervisor::Supervisor) {
         .spawn()
     {
         Ok(child) => child,
-        Err(_) => return,
+        Err(_) => return false,
     };
     let payload = serde_json::json!({
-        "endpoint": supervisor.endpoint().unwrap_or_default(),
-        "token": supervisor.bearer_token().unwrap_or_default(),
+        "endpoint": endpoint,
+        "token": token,
     });
     let Ok(mut bytes) = serde_json::to_vec(&payload) else {
-        return;
+        return false;
     };
     bytes.push(b'\n');
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(&bytes);
+        return stdin.write_all(&bytes).is_ok();
     }
+    false
 }
 
 fn format_observed(observed_ms: u64) -> String {

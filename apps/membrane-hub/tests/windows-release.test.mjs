@@ -15,6 +15,9 @@ const releaseIdentity = readFileSync(new URL("../scripts/release-identity.mjs", 
 const tauriConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 const windowsTauriConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.windows.conf.json", import.meta.url), "utf8"));
 const nsisTemplate = readFileSync(new URL("../src-tauri/windows/installer.nsi", import.meta.url), "utf8");
+const trayMain = readFileSync(new URL("../../membrane-tray-windows/src/main.rs", import.meta.url), "utf8");
+const trayInstance = readFileSync(new URL("../../membrane-tray-windows/src/instance.rs", import.meta.url), "utf8");
+const trayStartup = readFileSync(new URL("../../membrane-tray-windows/src/startup.rs", import.meta.url), "utf8");
 const qualification = readFileSync(new URL("../../../scripts/qualification/install-release.ps1", import.meta.url), "utf8");
 
 test("Windows release is signed, sealed & stays local", () => {
@@ -65,8 +68,22 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(tauriConfig.app.security.csp, /object-src 'none'/);
   assert.doesNotMatch(tauriConfig.app.security.csp, /unsafe-(?:inline|eval)/);
   assert.match(nsisTemplate, /!define INSTALLIDENTITY "Membrane Hub"/);
-  assert.match(nsisTemplate, /Membrane Tray.*--login-launch/);
-  assert.match(nsisTemplate, /RunAsUser "\$INSTDIR\\membrane-tray\.exe"/);
+  assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" .*membrane-tray\.exe.*--login-launch/);
+  assert.match(nsisTemplate, /DeleteRegValue HKCU .*CurrentVersion\\Run" "Membrane Tray"/);
+  assert.match(nsisTemplate, /Function RunMainBinary[\s\S]*RunAsUser "\$INSTDIR\\membrane-tray\.exe"/);
+  assert.doesNotMatch(nsisTemplate, /Function RunMainBinary[\s\S]{0,200}RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"/);
+  assert.match(nsisTemplate, /CreateShortcut .*membrane-tray\.exe" "--open-dashboard"/);
+  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
+  assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
+  assert.match(nsisTemplate, /membrane\.exe.*activate --install-root/);
+  assert.match(nsisTemplate, /ExecWait[\s\S]*Membrane activation failed/);
+  assert.match(trayStartup, /RUN_VALUE_NAME: &str = "Membrane"/);
+  assert.match(trayStartup, /LEGACY_RUN_VALUE_NAME: &str = "Membrane Tray"/);
+  assert.match(trayInstance, /MembraneTrayOpenDashboardV1/);
+  assert.match(trayInstance, /MembraneTrayActivateV1/);
+  assert.match(trayMain, /InstanceSignal::Activate/);
+  assert.match(trayMain, /open_dashboard_deadline/);
+  assert.match(trayMain, /let \(Some\(endpoint\), Some\(token\)\)/);
   assert.doesNotMatch(nsisTemplate, /CurrentVersion\\Run" "Membrane Hub"/);
   assert.doesNotMatch(nsisTemplate, /Unsloth Studio/);
 });

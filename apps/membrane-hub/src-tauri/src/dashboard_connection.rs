@@ -58,16 +58,45 @@ impl DashboardConnection {
         stream
             .write_all(request.as_bytes())
             .map_err(|_| "dashboard_request_write_failed")?;
-        let mut raw = Vec::new();
-        stream
-            .take((HTTP_MAX_RESPONSE_BYTES + 1) as u64)
-            .read_to_end(&mut raw)
+        let raw = read_http_response(&mut stream)?;
+        parse_http_response(&raw)
+    }
+}
+
+fn read_http_response(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
+    let mut raw = Vec::new();
+    let mut chunk = [0_u8; 8 * 1024];
+    let mut expected_bytes = None;
+    loop {
+        let read = stream
+            .read(&mut chunk)
             .map_err(|_| "dashboard_request_read_failed")?;
+        if read == 0 {
+            break;
+        }
+        raw.extend_from_slice(&chunk[..read]);
         if raw.len() > HTTP_MAX_RESPONSE_BYTES {
             return Err("dashboard_response_too_large".into());
         }
-        parse_http_response(&raw)
+        if expected_bytes.is_none() {
+            if let Some(split) = header_end(&raw) {
+                let header =
+                    std::str::from_utf8(&raw[..split]).map_err(|_| "dashboard_response_invalid")?;
+                let content_length = content_length(header)?;
+                let total = split
+                    .checked_add(content_length)
+                    .ok_or("dashboard_response_too_large")?;
+                if total > HTTP_MAX_RESPONSE_BYTES {
+                    return Err("dashboard_response_too_large".into());
+                }
+                expected_bytes = Some(total);
+            }
+        }
+        if expected_bytes.is_some_and(|expected| raw.len() >= expected) {
+            break;
+        }
     }
+    Ok(raw)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -85,16 +114,7 @@ pub fn parse_http_response(raw: &[u8]) -> Result<HttpResponse, String> {
     if raw.len() > HTTP_MAX_RESPONSE_BYTES {
         return Err("dashboard_response_too_large".into());
     }
-    let split = raw
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
-        .map(|index| index + 4)
-        .or_else(|| {
-            raw.windows(2)
-                .position(|window| window == b"\n\n")
-                .map(|index| index + 2)
-        })
-        .ok_or("dashboard_response_invalid")?;
+    let split = header_end(raw).ok_or("dashboard_response_invalid")?;
     let header = std::str::from_utf8(&raw[..split]).map_err(|_| "dashboard_response_invalid")?;
     let status_line = header.lines().next().ok_or("dashboard_response_invalid")?;
     let mut parts = status_line.split_whitespace();
@@ -107,10 +127,47 @@ pub fn parse_http_response(raw: &[u8]) -> Result<HttpResponse, String> {
     if version != "HTTP/1.1" && version != "HTTP/1.0" {
         return Err("dashboard_response_invalid".into());
     }
+    let content_length = content_length(header)?;
+    let body_end = split
+        .checked_add(content_length)
+        .ok_or("dashboard_response_too_large")?;
+    let body = raw
+        .get(split..body_end)
+        .ok_or("dashboard_response_invalid")?;
     Ok(HttpResponse {
         status,
-        body: raw[split..].to_vec(),
+        body: body.to_vec(),
     })
+}
+
+fn header_end(raw: &[u8]) -> Option<usize> {
+    raw.windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+        .or_else(|| {
+            raw.windows(2)
+                .position(|window| window == b"\n\n")
+                .map(|index| index + 2)
+        })
+}
+
+fn content_length(header: &str) -> Result<usize, String> {
+    let mut value = None;
+    for line in header.lines().skip(1) {
+        let Some((name, raw_value)) = line.split_once(':') else {
+            continue;
+        };
+        if name.eq_ignore_ascii_case("content-length") {
+            let parsed = raw_value
+                .trim()
+                .parse::<usize>()
+                .map_err(|_| "dashboard_response_invalid")?;
+            if value.replace(parsed).is_some() {
+                return Err("dashboard_response_invalid".into());
+            }
+        }
+    }
+    value.ok_or_else(|| "dashboard_response_invalid".into())
 }
 
 /// Decode and validate the one-shot bootstrap frame.
@@ -336,8 +393,10 @@ mod tests {
 
     #[test]
     fn http_response_parser_is_bounded_and_status_preserving() {
-        let response =
-            parse_http_response(b"HTTP/1.1 503 Service Unavailable\r\n\r\n{\"ok\":false}").unwrap();
+        let response = parse_http_response(
+            b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 12\r\n\r\n{\"ok\":false}",
+        )
+        .unwrap();
         assert_eq!(response.status, 503);
         assert_eq!(response.body, br#"{"ok":false}"#);
         assert_eq!(
@@ -376,5 +435,34 @@ mod tests {
         server.join().unwrap();
         assert_eq!(response.status, 200);
         assert_eq!(response.body, b"ok");
+    }
+
+    #[test]
+    fn authenticated_get_honors_content_length_without_socket_close() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&chunk[..read]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .unwrap();
+            thread::sleep(Duration::from_millis(250));
+        });
+        let connection = DashboardConnection {
+            endpoint,
+            bearer_token: "a".repeat(64),
+        };
+        let response = connection
+            .get("/health", Duration::from_millis(100))
+            .unwrap();
+        assert_eq!(response.body, b"ok");
+        server.join().unwrap();
     }
 }

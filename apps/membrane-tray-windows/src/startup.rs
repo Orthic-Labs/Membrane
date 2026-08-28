@@ -7,6 +7,7 @@ use std::{
 
 pub const RUN_KEY_PATH: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 pub const RUN_VALUE_NAME: &str = "Membrane";
+pub const LEGACY_RUN_VALUE_NAME: &str = "Membrane Tray";
 pub const LOGIN_LAUNCH_ARG: &str = "--login-launch";
 
 pub fn quote_windows_path(path: &Path) -> String {
@@ -38,6 +39,7 @@ pub fn install_for_current_user(exe: &Path) -> io::Result<()> {
             REG_SZ,
         },
     };
+    let _ = delete_value_for_current_user(LEGACY_RUN_VALUE_NAME);
     let key_w = wide(RUN_KEY_PATH);
     let name_w = wide(RUN_VALUE_NAME);
     let value_w = wide(&run_key_command(exe));
@@ -87,7 +89,7 @@ pub fn install_for_current_user(_exe: &Path) -> io::Result<()> {
 }
 
 #[cfg(windows)]
-pub fn remove_for_current_user() -> io::Result<()> {
+fn delete_value_for_current_user(value_name: &str) -> io::Result<()> {
     use windows_sys::Win32::{
         Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS},
         System::Registry::{
@@ -95,7 +97,7 @@ pub fn remove_for_current_user() -> io::Result<()> {
         },
     };
     let key_w = wide(RUN_KEY_PATH);
-    let name_w = wide(RUN_VALUE_NAME);
+    let name_w = wide(value_name);
     let mut handle: HKEY = std::ptr::null_mut();
     let result = unsafe {
         RegOpenKeyExW(
@@ -121,6 +123,12 @@ pub fn remove_for_current_user() -> io::Result<()> {
     } else {
         Err(io::Error::from_raw_os_error(result as i32))
     }
+}
+
+#[cfg(windows)]
+pub fn remove_for_current_user() -> io::Result<()> {
+    delete_value_for_current_user(RUN_VALUE_NAME)?;
+    delete_value_for_current_user(LEGACY_RUN_VALUE_NAME)
 }
 
 #[cfg(not(windows))]

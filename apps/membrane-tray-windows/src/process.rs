@@ -467,6 +467,21 @@ mod windows_impl {
 #[cfg(windows)]
 pub use windows_impl::{launch, DaemonProcess, ProcessEvent};
 
+#[cfg(all(test, windows))]
+mod native_tests {
+    use super::*;
+
+    #[test]
+    fn configured_daemon_can_be_created_inside_kill_on_close_job() {
+        let Some(path) = std::env::var_os("MEMBRANE_TEST_DAEMON_PATH") else {
+            return;
+        };
+        let process = launch(Path::new(&path)).expect("native daemon process launch failed");
+        assert_ne!(process.process_id(), 0);
+        drop(process);
+    }
+}
+
 #[cfg(not(windows))]
 mod non_windows_impl {
     use super::*;
