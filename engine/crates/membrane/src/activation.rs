@@ -817,29 +817,54 @@ fn require_command_success(
 }
 
 fn parse_prior_config(stdout: &str) -> Option<ServerConfig> {
-    let parsed: serde_json::Value = serde_json::from_str(stdout).ok()?;
-    let config = parsed
-        .get("server")
-        .or_else(|| parsed.get("transport"))
-        .unwrap_or(&parsed);
-    let command = config
-        .get("command")
-        .or_else(|| config.get("commandOrUrl"))?
-        .as_str()?
-        .to_string();
-    let args = match config
-        .get("args")
-        .or_else(|| config.get("arguments"))
-        .and_then(serde_json::Value::as_array)
-    {
-        Some(values) => values
-            .iter()
-            .map(|value| value.as_str().map(str::to_string))
-            .collect::<Option<Vec<_>>>()?,
-        None => Vec::new(),
-    };
-    if std::iter::once(command.as_str())
-        .chain(args.iter().map(String::as_str))
+    let parsed = serde_json::from_str::<serde_json::Value>(stdout)
+        .ok()
+        .and_then(|parsed| {
+            let config = parsed
+                .get("server")
+                .or_else(|| parsed.get("transport"))
+                .unwrap_or(&parsed);
+            let command = config
+                .get("command")
+                .or_else(|| config.get("commandOrUrl"))?
+                .as_str()?
+                .to_string();
+            let args = match config
+                .get("args")
+                .or_else(|| config.get("arguments"))
+                .and_then(serde_json::Value::as_array)
+            {
+                Some(values) => values
+                    .iter()
+                    .map(|value| value.as_str().map(str::to_string))
+                    .collect::<Option<Vec<_>>>()?,
+                None => Vec::new(),
+            };
+            Some(ServerConfig { command, args })
+        })
+        .or_else(|| parse_labeled_client_config(stdout))?;
+    validate_server_config(parsed)
+}
+
+fn parse_labeled_client_config(stdout: &str) -> Option<ServerConfig> {
+    let command = stdout.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Command:")
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })?;
+    let args = stdout
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("Args:").map(str::trim))
+        .map(|value| value.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
+    Some(ServerConfig { command, args })
+}
+
+fn validate_server_config(config: ServerConfig) -> Option<ServerConfig> {
+    if std::iter::once(config.command.as_str())
+        .chain(config.args.iter().map(String::as_str))
         .any(|value| {
             value
                 .chars()
@@ -848,7 +873,7 @@ fn parse_prior_config(stdout: &str) -> Option<ServerConfig> {
     {
         return None;
     }
-    Some(ServerConfig { command, args })
+    Some(config)
 }
 
 fn is_expected(stdout: &str, executable: &str) -> bool {
@@ -1038,6 +1063,18 @@ mod tests {
             "Command: C:\\Membrane\\membrane.exe\nArgs: stdio-mcp",
             r"\\?\C:\Membrane\membrane.exe"
         ));
+    }
+
+    #[test]
+    fn claude_labeled_config_is_parsed_for_upgrade_and_rollback() {
+        let body = "membrane:\n  Scope: User config\n  Status: Connected\n  Type: stdio\n  Command: C:\\Membrane Hub\\membrane.exe\n  Args: stdio-mcp\n  Environment:";
+        assert_eq!(
+            parse_prior_config(body),
+            Some(ServerConfig {
+                command: r"C:\Membrane Hub\membrane.exe".to_string(),
+                args: vec!["stdio-mcp".to_string()],
+            })
+        );
     }
 
     #[test]
