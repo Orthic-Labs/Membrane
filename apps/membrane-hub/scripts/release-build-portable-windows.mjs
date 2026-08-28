@@ -8,6 +8,7 @@ import { mkdirSync } from "node:fs";
 if (process.platform !== "win32") throw new Error("portable Windows release must run on Windows");
 
 const hub = fileURLToPath(new URL("../", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const startedAt = new Date().toISOString();
 const target = "x86_64-pc-windows-msvc";
 const sidecars = [
@@ -28,6 +29,19 @@ function run(args, env = process.env) {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`pnpm exited ${result.status}`);
+}
+
+function runRightReleaseAtRepoRoot(args) {
+  const result = spawnSync(join(hub, "node_modules", ".bin", "right-release.cmd"), args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: process.env,
+    shell: true,
+    stdio: "inherit",
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`right-release exited ${result.status}`);
 }
 
 // Reuse existing native build & workspace signing capability. Portable lane
@@ -51,16 +65,16 @@ run(["exec", "right-release", "sign-windows", "--verify-only", hubExe]);
 const hardeningEvidence = join(hub, "dist", "portable", "windows-hardening-evidence.json");
 mkdirSync(join(hub, "dist", "portable"), { recursive: true });
 materializeHardeningEvidence({
-  root: hub,
+  root: repoRoot,
   outputPath: hardeningEvidence,
   allowances: sidecars.slice(0, 2).map((file) => ({
     rule: "system-prompt-marker",
     exact: "system_prompt",
-    file,
-    sourceEvidence: "../../engine/crates/membrane-adapt/src/remediation.rs:74",
+    file: join(hub, file),
+    sourceEvidence: "engine/crates/membrane-adapt/src/remediation.rs:74",
     rationale: "Public remediation scope enum serialization token; no prompt content is embedded.",
   })),
 });
-run(["exec", "right-release", "hardening", "--allow-evidence", hardeningEvidence, hubExe, ...sidecars]);
+runRightReleaseAtRepoRoot(["hardening", "--allow-evidence", hardeningEvidence, hubExe, ...sidecars.map((file) => join(hub, file))]);
 run(["exec", "node", "scripts/package-portable-windows.mjs", "--hub-exe", hubExe, "--started-at", startedAt]);
 run(["exec", "node", "scripts/finalize-portable-release.mjs"]);

@@ -15,7 +15,9 @@ test("portable Windows lane signs raw app & archives without NSIS", () => {
   assert.match(release, /rightkit:package:win", "--", "raw"/);
   assert.match(release, /materializeHardeningEvidence/);
   assert.match(release, /--allow-evidence/);
-  assert.match(release, /right-release", "hardening"/);
+  assert.match(release, /runRightReleaseAtRepoRoot\(\["hardening"/);
+  assert.match(release, /root: repoRoot/);
+  assert.match(release, /engine\/crates\/membrane-adapt\/src\/remediation\.rs:74/);
   assert.match(release, /package-portable-windows\.mjs/);
   assert.match(release, /finalize-portable-release\.mjs/);
   assert.doesNotMatch(release, /right-release", "build"|rightkit:package:win", "--", "package"/i);
