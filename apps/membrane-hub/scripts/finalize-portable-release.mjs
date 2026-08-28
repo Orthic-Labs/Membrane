@@ -45,6 +45,7 @@ const directRelease = materializeDirectRelease({
     assets: [asset],
   },
 });
+writeFileSync(join(output, "release-manifest-signing.json"), `${JSON.stringify(directRelease.signing, null, 2)}\n`);
 const bootstrap = renderPowerShellBootstrap({
   product: "membrane",
   repository: "Orthic-Labs/Membrane",

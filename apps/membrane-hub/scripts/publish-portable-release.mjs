@@ -19,6 +19,7 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
 const output = join(hub, "dist", "portable");
 const dryRun = process.argv.includes("--dry-run");
+const signing = JSON.parse(readFileSync(join(output, "release-manifest-signing.json"), "utf8"));
 const githubPlan = prepareGitHubDirectRelease({
   repoRoot: repo,
   repo: "Orthic-Labs/Membrane",
@@ -26,6 +27,7 @@ const githubPlan = prepareGitHubDirectRelease({
   version: pkg.version,
   manifestPath: join(output, "release-manifest.json"),
   signaturePath: join(output, "release-manifest.cat"),
+  signing,
   checksumsPath: join(output, "checksums.json"),
   archivePaths: [join(output, `membrane-${pkg.version}-windows-x86_64.zip`)],
   provenancePaths: [join(output, "provenance-windows-x86_64.intoto.jsonl")],
