@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "80767fe1fb8cfb8cdc8d4483bdc5e6bf73ceb1d2",
- "generatedAt": "2026-08-28T18:45:56.590Z",
+ "baselineCommit": "2b3937a1007037a60ffd278690caedbc8eeb2a1f",
+ "generatedAt": "2026-08-28T18:56:39.288Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -16,7 +16,7 @@
    "childProcessLiteralScan": true,
    "repoRelativeExecutablePathLiterals": true,
    "rustModTree": true,
-   "scannedEdges": 1856
+   "scannedEdges": 1876
   },
   "curatedEdges": 9,
   "limitations": [
@@ -4099,133 +4099,221 @@
    "id": "engine/crates/cortex-core/src/absorbed.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/accounting.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/calibration.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/dream.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/effectiveness.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/embed.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/eval_gate.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/fingerprint.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/graph.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/lexical.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 5
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/markdown.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/planner.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/quant.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/registry.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/retriever.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/review.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/routing.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/transcript.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/types.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/vector_index_tests.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/src/vector_index.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-core/tests/absorbed_records.rs",
@@ -4243,97 +4331,161 @@
    "id": "engine/crates/cortex-format/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/cortex-format/src/okf.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/absorbed_migrations.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/absorbed_records.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/context_telemetry.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/db.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/fts5.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/installation_identity.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/maintenance_exec.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/memdb.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/scope.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/team_sync.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/temporal.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/time.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex-store/src/transcript.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/cortex/src/lib.rs",
@@ -4837,43 +4989,71 @@
    "id": "engine/crates/membrane-core/src/budget.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/compaction_receipt.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/compaction.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/fusion.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/lane.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-core/src/reconcile.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-core/tests/compaction.rs",
@@ -4885,55 +5065,91 @@
    "id": "engine/crates/membrane-federation/src/blueprint_client.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/config.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/corrective.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/deadline.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/engine.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/error.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/freshness.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/merge.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/migrate_audit.rs",
@@ -4945,19 +5161,31 @@
    "id": "engine/crates/membrane-federation/src/migrate_decisions.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/normalize.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/omission.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/providers/anchors.rs",
@@ -5017,43 +5245,71 @@
    "id": "engine/crates/membrane-federation/src/registry.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/release.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/request.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/root.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/scheduler.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/scope.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/shadow.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-federation/src/skill_ranker.rs",
@@ -5143,43 +5399,71 @@
    "id": "engine/crates/membrane-mcp/src/discovery.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/http_security.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/jsonrpc.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 2
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/prompts.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/resources.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/src/tools.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs",
@@ -5227,151 +5511,251 @@
    "id": "engine/crates/membrane-protocol/src/background_review.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/canonical.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/compatibility_policy.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/compression.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/diagnostics.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/federation.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/fusion.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/heartbeat.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/host_observation.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/hub.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/installation.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/lease.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 2
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/membrane_status.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/observable_event.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/operations.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/portable_pack.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/provider_readiness.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/push.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/release_channel.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/source_resolution.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/status.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/team_policy.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/tray_daemon.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/src/types.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-protocol/tests/common/mod.rs",
@@ -5401,55 +5785,91 @@
    "id": "engine/crates/membrane-provider-sdk/src/batch.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/conformance.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/context.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/error.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/output.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/registry.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/src/source.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-provider-sdk/tests/conformance.rs",
@@ -5479,25 +5899,41 @@
    "id": "engine/crates/membrane-runtime/src/admission_producer.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/background_review.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
@@ -5509,19 +5945,31 @@
    "id": "engine/crates/membrane-runtime/src/cache_prefix.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/catalog.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/checkpoint.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/cli.rs",
@@ -5537,265 +5985,441 @@
    "id": "engine/crates/membrane-runtime/src/code_batch.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/digest.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/doctor.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/feedback.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/fleet.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/freshness.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/hub_inputs.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/hub.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/installation_manifest.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/db.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/doc_shadow.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/identifier.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/index.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/outline.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/lib.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 2
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/live_diagnostics.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/mcp_executor.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/mcp_http.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/memory_provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/memory_sentinel_producer.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/memory_sentinel_view.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/notifications.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/paths.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/planes.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/provenance.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/child_process.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/identity.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/rust_analyzer_provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/providers/typescript_provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/admission.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/cli.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
@@ -5807,19 +6431,31 @@
    "id": "engine/crates/membrane-runtime/src/pull/federation.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/metrics.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/pull/native_federation.rs",
@@ -5831,85 +6467,141 @@
    "id": "engine/crates/membrane-runtime/src/pull/publication.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/compress.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/compression_provider.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/mod.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/prep.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/runc.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/selection.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/skel.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/telemetry.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/push/truncate.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/receipt.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/release_identity.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/runtime_receipt.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/scratchpad.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/serve.rs",
@@ -5925,43 +6617,71 @@
    "id": "engine/crates/membrane-runtime/src/service.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/source_resolution.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/sources_explorer.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/sources_producer.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/store.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/team_policy.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/src/working_context.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
-   "production_reachable": false
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 3
+   }
   },
   {
    "id": "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
@@ -33977,6 +34697,62 @@
   },
   {
    "id": "e1864",
+   "from": "engine/crates/cortex-store/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/cortex-store/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1865",
+   "from": "engine/crates/cortex/src/lib.rs",
+   "to": "engine/crates/membrane-runtime/src/lib.rs",
+   "operation": "cargo path dependency membrane-runtime",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/cortex/Cargo.toml",
+     "symbol": "membrane-runtime = { path = \"../membrane-runtime\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1866",
+   "from": "engine/crates/membrane-adapt/src/lib.rs",
+   "to": "engine/crates/membrane-transcript/src/lib.rs",
+   "operation": "cargo path dependency membrane-transcript",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-adapt/Cargo.toml",
+     "symbol": "membrane-transcript = { path = \"../membrane-transcript\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1867",
+   "from": "engine/crates/membrane-core/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-core/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1868",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-core/src/lib.rs",
    "operation": "cargo path dependency membrane-core",
@@ -33990,7 +34766,7 @@
    ]
   },
   {
-   "id": "e1865",
+   "id": "e1869",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -34004,7 +34780,7 @@
    ]
   },
   {
-   "id": "e1866",
+   "id": "e1870",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "operation": "cargo path dependency membrane-provider-sdk",
@@ -34014,6 +34790,230 @@
     {
      "path": "engine/crates/membrane-federation/Cargo.toml",
      "symbol": "membrane-provider-sdk = { path = \"../membrane-provider-sdk\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1871",
+   "from": "engine/crates/membrane-mcp/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-mcp/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1872",
+   "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-provider-sdk/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1873",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/cortex-store/src/lib.rs",
+   "operation": "cargo path dependency cortex-store",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "cortex-store = { path = \"../cortex-store\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1874",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/cortex-core/src/lib.rs",
+   "operation": "cargo path dependency cortex-core",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "cortex-core = { path = \"../cortex-core\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1875",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/cortex-format/src/lib.rs",
+   "operation": "cargo path dependency cortex-format",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "cortex-format = { path = \"../cortex-format\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1876",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1877",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-core/src/lib.rs",
+   "operation": "cargo path dependency membrane-core",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-core = { path = \"../membrane-core\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1878",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-mcp/src/lib.rs",
+   "operation": "cargo path dependency membrane-mcp",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-mcp = { path = \"../membrane-mcp\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1879",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-federation/src/lib.rs",
+   "operation": "cargo path dependency membrane-federation",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-federation = { path = \"../membrane-federation\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1880",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
+   "operation": "cargo path dependency membrane-provider-sdk",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-provider-sdk = { path = \"../membrane-provider-sdk\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1881",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-adapt/src/lib.rs",
+   "operation": "cargo path dependency membrane-adapt",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-adapt = { path = \"../membrane-adapt\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1882",
+   "from": "engine/crates/membrane-runtime/src/lib.rs",
+   "to": "engine/crates/membrane-transcript/src/lib.rs",
+   "operation": "cargo path dependency membrane-transcript",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-runtime/Cargo.toml",
+     "symbol": "membrane-transcript = { path = \"../membrane-transcript\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1883",
+   "from": "engine/crates/membrane-testkit/src/lib.rs",
+   "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
+   "operation": "cargo path dependency membrane-provider-sdk",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-testkit/Cargo.toml",
+     "symbol": "membrane-provider-sdk = { path = \"../membrane-provider-sdk\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1884",
+   "from": "engine/crates/membrane/src/lib.rs",
+   "to": "engine/crates/membrane-mcp/src/lib.rs",
+   "operation": "cargo path dependency membrane-mcp",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane/Cargo.toml",
+     "symbol": "membrane-mcp = { path = \"../membrane-mcp\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1885",
+   "from": "engine/crates/membrane/src/lib.rs",
+   "to": "engine/crates/membrane-runtime/src/lib.rs",
+   "operation": "cargo path dependency membrane-runtime",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane/Cargo.toml",
+     "symbol": "membrane-runtime = { path = \"../membrane-runtime\" }"
+    }
+   ]
+  },
+  {
+   "id": "e1886",
+   "from": "engine/crates/membrane/src/lib.rs",
+   "to": "engine/crates/membrane-protocol/src/lib.rs",
+   "operation": "cargo path dependency membrane-protocol",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane/Cargo.toml",
+     "symbol": "membrane-protocol = { path = \"../membrane-protocol\" }"
     }
    ]
   }
@@ -41191,6 +42191,44 @@
   "blueprint/watchman/reconcile.mjs",
   "blueprint/watchman/repo-actor.mjs",
   "blueprint/watchman/supervisor.mjs",
+  "engine/crates/cortex-core/src/absorbed.rs",
+  "engine/crates/cortex-core/src/accounting.rs",
+  "engine/crates/cortex-core/src/calibration.rs",
+  "engine/crates/cortex-core/src/dream.rs",
+  "engine/crates/cortex-core/src/effectiveness.rs",
+  "engine/crates/cortex-core/src/embed.rs",
+  "engine/crates/cortex-core/src/eval_gate.rs",
+  "engine/crates/cortex-core/src/fingerprint.rs",
+  "engine/crates/cortex-core/src/graph.rs",
+  "engine/crates/cortex-core/src/lexical.rs",
+  "engine/crates/cortex-core/src/lib.rs",
+  "engine/crates/cortex-core/src/markdown.rs",
+  "engine/crates/cortex-core/src/planner.rs",
+  "engine/crates/cortex-core/src/quant.rs",
+  "engine/crates/cortex-core/src/registry.rs",
+  "engine/crates/cortex-core/src/retriever.rs",
+  "engine/crates/cortex-core/src/review.rs",
+  "engine/crates/cortex-core/src/routing.rs",
+  "engine/crates/cortex-core/src/transcript.rs",
+  "engine/crates/cortex-core/src/types.rs",
+  "engine/crates/cortex-core/src/vector_index_tests.rs",
+  "engine/crates/cortex-core/src/vector_index.rs",
+  "engine/crates/cortex-format/src/lib.rs",
+  "engine/crates/cortex-format/src/okf.rs",
+  "engine/crates/cortex-store/src/absorbed_migrations.rs",
+  "engine/crates/cortex-store/src/absorbed_records.rs",
+  "engine/crates/cortex-store/src/context_telemetry.rs",
+  "engine/crates/cortex-store/src/db.rs",
+  "engine/crates/cortex-store/src/fts5.rs",
+  "engine/crates/cortex-store/src/installation_identity.rs",
+  "engine/crates/cortex-store/src/lib.rs",
+  "engine/crates/cortex-store/src/maintenance_exec.rs",
+  "engine/crates/cortex-store/src/memdb.rs",
+  "engine/crates/cortex-store/src/scope.rs",
+  "engine/crates/cortex-store/src/team_sync.rs",
+  "engine/crates/cortex-store/src/temporal.rs",
+  "engine/crates/cortex-store/src/time.rs",
+  "engine/crates/cortex-store/src/transcript.rs",
   "engine/crates/membrane-adapt/src/adaptive.rs",
   "engine/crates/membrane-adapt/src/admission.rs",
   "engine/crates/membrane-adapt/src/authority.rs",
@@ -41221,8 +42259,150 @@
   "engine/crates/membrane-adapt/src/scope.rs",
   "engine/crates/membrane-adapt/src/seal.rs",
   "engine/crates/membrane-adapt/src/taste.rs",
+  "engine/crates/membrane-core/src/budget.rs",
+  "engine/crates/membrane-core/src/compaction_receipt.rs",
+  "engine/crates/membrane-core/src/compaction.rs",
+  "engine/crates/membrane-core/src/fusion.rs",
+  "engine/crates/membrane-core/src/lane.rs",
+  "engine/crates/membrane-core/src/lib.rs",
+  "engine/crates/membrane-core/src/reconcile.rs",
+  "engine/crates/membrane-federation/src/blueprint_client.rs",
+  "engine/crates/membrane-federation/src/config.rs",
+  "engine/crates/membrane-federation/src/corrective.rs",
+  "engine/crates/membrane-federation/src/deadline.rs",
+  "engine/crates/membrane-federation/src/engine.rs",
+  "engine/crates/membrane-federation/src/error.rs",
+  "engine/crates/membrane-federation/src/freshness.rs",
+  "engine/crates/membrane-federation/src/lib.rs",
+  "engine/crates/membrane-federation/src/merge.rs",
+  "engine/crates/membrane-federation/src/migrate_decisions.rs",
+  "engine/crates/membrane-federation/src/normalize.rs",
+  "engine/crates/membrane-federation/src/omission.rs",
+  "engine/crates/membrane-federation/src/registry.rs",
+  "engine/crates/membrane-federation/src/release.rs",
+  "engine/crates/membrane-federation/src/request.rs",
+  "engine/crates/membrane-federation/src/root.rs",
+  "engine/crates/membrane-federation/src/scheduler.rs",
+  "engine/crates/membrane-federation/src/scope.rs",
+  "engine/crates/membrane-federation/src/shadow.rs",
+  "engine/crates/membrane-mcp/src/discovery.rs",
+  "engine/crates/membrane-mcp/src/http_security.rs",
+  "engine/crates/membrane-mcp/src/jsonrpc.rs",
+  "engine/crates/membrane-mcp/src/lib.rs",
+  "engine/crates/membrane-mcp/src/prompts.rs",
+  "engine/crates/membrane-mcp/src/resources.rs",
+  "engine/crates/membrane-mcp/src/tools.rs",
+  "engine/crates/membrane-protocol/src/background_review.rs",
+  "engine/crates/membrane-protocol/src/canonical.rs",
+  "engine/crates/membrane-protocol/src/compatibility_policy.rs",
+  "engine/crates/membrane-protocol/src/compression.rs",
+  "engine/crates/membrane-protocol/src/diagnostics.rs",
+  "engine/crates/membrane-protocol/src/federation.rs",
+  "engine/crates/membrane-protocol/src/fusion.rs",
+  "engine/crates/membrane-protocol/src/heartbeat.rs",
+  "engine/crates/membrane-protocol/src/host_observation.rs",
+  "engine/crates/membrane-protocol/src/hub.rs",
+  "engine/crates/membrane-protocol/src/installation.rs",
+  "engine/crates/membrane-protocol/src/lease.rs",
+  "engine/crates/membrane-protocol/src/lib.rs",
+  "engine/crates/membrane-protocol/src/membrane_status.rs",
+  "engine/crates/membrane-protocol/src/observable_event.rs",
+  "engine/crates/membrane-protocol/src/operations.rs",
+  "engine/crates/membrane-protocol/src/portable_pack.rs",
+  "engine/crates/membrane-protocol/src/provider_readiness.rs",
+  "engine/crates/membrane-protocol/src/push.rs",
+  "engine/crates/membrane-protocol/src/release_channel.rs",
+  "engine/crates/membrane-protocol/src/source_resolution.rs",
+  "engine/crates/membrane-protocol/src/status.rs",
+  "engine/crates/membrane-protocol/src/team_policy.rs",
+  "engine/crates/membrane-protocol/src/tray_daemon.rs",
+  "engine/crates/membrane-protocol/src/types.rs",
+  "engine/crates/membrane-provider-sdk/src/batch.rs",
+  "engine/crates/membrane-provider-sdk/src/conformance.rs",
+  "engine/crates/membrane-provider-sdk/src/context.rs",
+  "engine/crates/membrane-provider-sdk/src/error.rs",
+  "engine/crates/membrane-provider-sdk/src/lib.rs",
+  "engine/crates/membrane-provider-sdk/src/output.rs",
+  "engine/crates/membrane-provider-sdk/src/provider.rs",
+  "engine/crates/membrane-provider-sdk/src/registry.rs",
+  "engine/crates/membrane-provider-sdk/src/source.rs",
+  "engine/crates/membrane-runtime/src/admission_producer.rs",
+  "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
+  "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
+  "engine/crates/membrane-runtime/src/background_review.rs",
+  "engine/crates/membrane-runtime/src/cache_prefix.rs",
+  "engine/crates/membrane-runtime/src/catalog.rs",
+  "engine/crates/membrane-runtime/src/checkpoint.rs",
   "engine/crates/membrane-runtime/src/cli.rs",
+  "engine/crates/membrane-runtime/src/code_batch.rs",
+  "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
+  "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
+  "engine/crates/membrane-runtime/src/digest.rs",
+  "engine/crates/membrane-runtime/src/doctor.rs",
+  "engine/crates/membrane-runtime/src/feedback.rs",
+  "engine/crates/membrane-runtime/src/fleet.rs",
+  "engine/crates/membrane-runtime/src/freshness.rs",
+  "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+  "engine/crates/membrane-runtime/src/hub_inputs.rs",
+  "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
+  "engine/crates/membrane-runtime/src/hub.rs",
+  "engine/crates/membrane-runtime/src/installation_manifest.rs",
+  "engine/crates/membrane-runtime/src/ledger/db.rs",
+  "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
+  "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
+  "engine/crates/membrane-runtime/src/ledger/doc_shadow.rs",
+  "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+  "engine/crates/membrane-runtime/src/ledger/identifier.rs",
+  "engine/crates/membrane-runtime/src/ledger/index.rs",
+  "engine/crates/membrane-runtime/src/ledger/mod.rs",
+  "engine/crates/membrane-runtime/src/ledger/outline.rs",
+  "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
+  "engine/crates/membrane-runtime/src/lib.rs",
+  "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
+  "engine/crates/membrane-runtime/src/live_diagnostics.rs",
+  "engine/crates/membrane-runtime/src/mcp_executor.rs",
+  "engine/crates/membrane-runtime/src/mcp_http.rs",
+  "engine/crates/membrane-runtime/src/memory_provider.rs",
+  "engine/crates/membrane-runtime/src/memory_sentinel_producer.rs",
+  "engine/crates/membrane-runtime/src/memory_sentinel_view.rs",
+  "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
+  "engine/crates/membrane-runtime/src/notifications.rs",
+  "engine/crates/membrane-runtime/src/paths.rs",
+  "engine/crates/membrane-runtime/src/planes.rs",
+  "engine/crates/membrane-runtime/src/provenance.rs",
+  "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
+  "engine/crates/membrane-runtime/src/providers/child_process.rs",
+  "engine/crates/membrane-runtime/src/providers/identity.rs",
+  "engine/crates/membrane-runtime/src/providers/mod.rs",
+  "engine/crates/membrane-runtime/src/providers/rust_analyzer_provider.rs",
+  "engine/crates/membrane-runtime/src/providers/typescript_provider.rs",
+  "engine/crates/membrane-runtime/src/pull/admission.rs",
+  "engine/crates/membrane-runtime/src/pull/cli.rs",
+  "engine/crates/membrane-runtime/src/pull/federation.rs",
+  "engine/crates/membrane-runtime/src/pull/metrics.rs",
+  "engine/crates/membrane-runtime/src/pull/mod.rs",
+  "engine/crates/membrane-runtime/src/pull/publication.rs",
+  "engine/crates/membrane-runtime/src/push/compress.rs",
+  "engine/crates/membrane-runtime/src/push/compression_provider.rs",
+  "engine/crates/membrane-runtime/src/push/mod.rs",
+  "engine/crates/membrane-runtime/src/push/prep.rs",
+  "engine/crates/membrane-runtime/src/push/runc.rs",
+  "engine/crates/membrane-runtime/src/push/selection.rs",
+  "engine/crates/membrane-runtime/src/push/skel.rs",
+  "engine/crates/membrane-runtime/src/push/telemetry.rs",
+  "engine/crates/membrane-runtime/src/push/truncate.rs",
+  "engine/crates/membrane-runtime/src/receipt.rs",
+  "engine/crates/membrane-runtime/src/release_identity.rs",
+  "engine/crates/membrane-runtime/src/runtime_receipt.rs",
+  "engine/crates/membrane-runtime/src/scratchpad.rs",
   "engine/crates/membrane-runtime/src/serve.rs",
+  "engine/crates/membrane-runtime/src/service.rs",
+  "engine/crates/membrane-runtime/src/source_resolution.rs",
+  "engine/crates/membrane-runtime/src/sources_explorer.rs",
+  "engine/crates/membrane-runtime/src/sources_producer.rs",
+  "engine/crates/membrane-runtime/src/store.rs",
+  "engine/crates/membrane-runtime/src/team_policy.rs",
+  "engine/crates/membrane-runtime/src/working_context.rs",
   "engine/crates/membrane-transcript/src/adapters.rs",
   "engine/crates/membrane-transcript/src/canonical.rs",
   "engine/crates/membrane-transcript/src/classify.rs",

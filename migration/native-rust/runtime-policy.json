@@ -431,7 +431,7 @@
   },
   {
    "id": "engine-production-crates",
-   "pattern": "^engine/crates/(membrane|membrane-runtime|membrane-adapt|membrane-transcript)/",
+   "pattern": "^engine/crates/(cortex-core|cortex-format|cortex-store|membrane|membrane-adapt|membrane-core|membrane-federation|membrane-mcp|membrane-protocol|membrane-provider-sdk|membrane-runtime|membrane-transcript)/",
    "groupBy": "dir:3",
    "runtime": "rust",
    "kind": "native-production-crate",

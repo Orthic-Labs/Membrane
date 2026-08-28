@@ -535,7 +535,7 @@ export function buildGraph({ root, trackedFiles, now = new Date(), head = null }
     // Only [dependencies] are runtime edges; [dev-dependencies]/[build-dependencies]
     // never make a crate production-reachable.
     const depRe = /^(\w[\w-]*)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"/gm;
-    const linesC = text.split("\n");
+    const linesC = text.split(/\r?\n/);
     const lineSection = [];
     let cur = "none";
     for (const l of linesC) {
