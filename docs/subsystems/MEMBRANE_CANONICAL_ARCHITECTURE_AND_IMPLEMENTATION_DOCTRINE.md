@@ -1507,20 +1507,75 @@ lifecycle.
 
 ## Distribution and harness activation
 
-Primary desktop distribution is an ordinary signed archive per native OS and
-architecture, an exact checksum manifest, and a bootstrap script published as
-immutable GitHub Release assets. Windows V1 ships
-`membrane-windows-x64.zip`, `checksums.json`, and `install.ps1`.
+### Public entry point and release authority
+
+Primary customer entry points are branded bootstrap URLs:
+
+```text
+https://membrane.orthiclabs.com/install.ps1
+https://membrane.orthiclabs.com/install.sh
+```
+
+The stable URL serves or redirects to an immutable versioned bootstrap under
+R2. R2 owns bootstrap discovery only and stores no Membrane release payload.
+The versioned bootstrap embeds accepted release-manifest signing-key IDs.
+RightRelease must reuse the provisioned workspace R2/DNS/TLS publication path;
+Membrane must not implement a product-local R2 uploader.
+
+GitHub Releases is the immutable payload authority. Tag `vX.Y.Z` publishes only
+targets actually built, signed, qualified, and supported from this set:
+
+```text
+membrane-X.Y.Z-windows-x86_64.zip
+membrane-X.Y.Z-windows-arm64.zip
+membrane-X.Y.Z-macos-x86_64.tar.gz
+membrane-X.Y.Z-macos-arm64.tar.gz
+release-manifest.json
+release-manifest.sig
+checksums.json
+provenance-<os>-<arch>.intoto.jsonl
+sbom-<os>-<arch>.cdx.json
+THIRD_PARTY_NOTICES.md
+```
+
+`release-manifest.json` plus its detached signature is the sole release trust
+authority. `checksums.json` is convenience output whose digest is bound by the
+signed manifest. The manifest binds product, version, tag, source commit, exact
+asset URL, OS, architecture, size, SHA-256, executable path, native-signature
+policy, provenance digest, SBOM digest, minimum bootstrap version, and signing
+key ID.
+
+Trust order is fixed:
+
+```text
+orthiclabs.com TLS/DNS
+  -> immutable versioned bootstrap with accepted key IDs
+  -> detached release-manifest signature
+  -> exact OS/architecture asset hash
+  -> provenance and SBOM hashes
+  -> native platform signatures
+  -> product activation and exact health
+```
+
+### Transactional install and update
 
 Bootstrap must:
 
-1. resolve one exact release asset;
-2. verify archive checksum and every native binary signature;
-3. extract into staging;
-4. swap staging into the user-local install root with rollback;
-5. add that root to user `PATH`;
-6. run `membrane activate --install-root <root>`;
-7. verify exact resident service identity and release generation.
+1. detect native OS and architecture, then resolve one exact version;
+2. verify the signed manifest, selected archive, provenance, SBOM, and native binaries;
+3. extract into a versioned user-local staging root;
+4. optionally run activation preflight without mutation;
+5. journal every client projection or configuration change;
+6. atomically switch the stable `current` path to the staged version;
+7. add the stable root to user `PATH`;
+8. run stable-path `membrane activate --install-root <root>`;
+9. verify exact resident daemon identity, release generation, and harness bindings.
+
+Harness registrations always bind the stable `current` executable, never a
+disposable version directory. Failure restores the prior `current` pointer,
+integration journal, and prior healthy generation. Keep the previous successful
+version. Rerunning bootstrap updates; exact version pins are supported;
+downgrade requires an explicit flag. No resident or background updater exists.
 
 `membrane activate` is the single idempotent activation authority. It starts or
 repairs tray-owned residency, waits for exact daemon health, and reconciles
@@ -1528,10 +1583,39 @@ supported harness registrations to absolute `membrane stdio-mcp` bindings.
 Install scripts and optional graphical packages call this command rather than
 reimplementing registration or lifecycle policy.
 
+### Agent Plugins and client projections
+
+Membrane ships a product-specific Agent Plugins 1.0 core rooted at
+`plugin.json`, with `mcp.json` and only public Membrane skills when such skills
+exist. Private or personal workspace material is prohibited. `mcp.json` invokes
+stable-path `membrane stdio-mcp`. Agent Plugins owns portable skills and MCP
+description only; bootstrap and `membrane activate` own installation, updates,
+enablement, UI, and reconciliation.
+
+Client projections remain thin and native where portable Agent Plugins does not
+cover the client or required surface:
+
+- Claude Code uses its native `.claude-plugin` projection for MCP, hooks, and agents;
+- Codex uses Agent Plugins core plus Codex metadata/policy when required;
+- Cursor uses Agent Plugins core plus a sidecar only for Cursor-specific rules, agents, or hooks;
+- Pi uses its native `.agents/skills` projection;
+- Antigravity uses its native plugin projection.
+
+Activation claims only adapters proven by the current release. Missing adapters
+remain typed unsupported outcomes rather than inferred success.
+
 Membrane is a user-session app, not a Windows Service. Setup EXE, MSI, DMG,
-WinGet, Homebrew, and custom download domains are optional discovery or UI
-channels; none is required for installation, activation, update, or harness
-availability. GitHub Releases is immutable asset hosting, not package authority.
+WinGet, and Homebrew are optional aliases or UI channels; none is required for
+installation, activation, update, or harness availability. The archive still
+contains native `.exe` files on Windows; “no installer EXE” means no required
+Setup application.
+
+RightRelease owns shared archive naming, manifest schema, signing and key
+rotation, immutable GitHub publication, R2 bootstrap publication, and shared
+update transaction. AX owns Agent Plugins schema, containment, and conformance.
+Infrastructure owns R2 buckets, DNS, TLS, cache, and object policy. Membrane owns
+its payload, install roots, activation, daemon health, harness reconciliation,
+and rollback semantics.
 
 Membrane exposes:
 
