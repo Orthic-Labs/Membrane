@@ -175,6 +175,9 @@ pub fn default_install_root() -> Result<PathBuf, String> {
 
 pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
     let (install_root, version_root) = validate_installed_root(&options.install_root)?;
+    let product_root = install_root
+        .parent()
+        .ok_or_else(|| "stable installed path has no product root".to_string())?;
     let membrane = install_root.join(executable_name("membrane"));
     let tray = install_root.join(executable_name("membrane-tray"));
     let runtime_membrane = version_root.join(executable_name("membrane"));
@@ -183,7 +186,7 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     require_file(&runtime_tray, "resolved tray executable")?;
     let (workspace_root, port) = installed_runtime()?;
     let expected_generation = membrane_runtime::release_identity::release_generation();
-    let _lock = acquire_lock(&install_root)?;
+    let _lock = acquire_lock(product_root)?;
 
     let initial = probe_health(port, &expected_generation)?;
     let already_running = matches!(initial, HealthObservation::Ready { .. });
@@ -219,7 +222,7 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         clients,
     };
     if !options.dry_run {
-        persist_receipt(&install_root, &receipt)?;
+        persist_receipt(product_root, &receipt)?;
     }
     Ok(receipt)
 }
