@@ -18,7 +18,8 @@ const packageJson = JSON.parse(readFileSync(join(hubRoot, "package.json"), "utf8
 const managedRelease = join(resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml")), triple, "release");
 const sealedRelease = join(hubRoot, "src-tauri", "target", triple, "release");
 const rawRelative = "membrane-hub.exe";
-const installerRelative = join("bundle", "nsis", `Membrane Hub_${packageJson.version}_x64-setup.exe`);
+const generatedInstallerRelative = join("bundle", "nsis", `Membrane Hub_${packageJson.version}_x64-setup.exe`);
+const installerRelative = join("bundle", "nsis", `Membrane_Hub_${packageJson.version}_x64-setup.exe`);
 
 function mirror(source, destination, label) {
   if (!existsSync(source)) throw new Error(`${label} is missing: ${source}`);
@@ -80,5 +81,6 @@ if (phase === "raw") {
   } finally {
     rmSync(temporaryRoot, { recursive: true, force: true });
   }
+  mirror(join(managedRelease, generatedInstallerRelative), join(managedRelease, installerRelative), "generated NSIS installer");
   mirror(join(managedRelease, installerRelative), join(sealedRelease, installerRelative), "managed NSIS installer");
 }

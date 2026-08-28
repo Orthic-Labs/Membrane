@@ -41,6 +41,8 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(target.sign.prePackageFiles[0], /[\\/]x86_64-pc-windows-msvc[\\/]release[\\/]membrane-hub\.exe$/);
   assert.doesNotMatch(target.sign.prePackageFiles[0], /[\\/]src-tauri[\\/]target[\\/]/);
   assert.notEqual(target.sign.prePackageFiles[0], target.sign.files[0]);
+  assert.doesNotMatch(target.sign.files[0], /\s/);
+  assert.match(target.sign.files[0], /Membrane_Hub_/);
   assert.deepEqual(target.artifacts, target.sign.files);
   assert.equal(target.installer.artifacts[0].file, target.sign.files[0]);
   assert.equal(target.updater.artifacts[0].file, target.sign.files[0]);
@@ -88,6 +90,8 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(windowsBuild, /managed raw Hub executable/);
   assert.match(windowsBuild, /signed raw Hub executable/);
   assert.match(windowsBuild, /managed NSIS installer/);
+  assert.match(windowsBuild, /generatedInstallerRelative/);
+  assert.match(windowsBuild, /`Membrane_Hub_\$\{packageJson\.version\}_x64-setup\.exe`/);
   assert.match(windowsBuild, /realpathSync\.native\(source\)\.toLowerCase\(\)/);
   assert.match(windowsBuild, /realpathSync\.native\(destination\)\.toLowerCase\(\)/);
   assert.doesNotMatch(windowsBuild, /sign-windows|signtool|Azure/);

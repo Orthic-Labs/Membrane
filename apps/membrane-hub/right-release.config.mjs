@@ -20,7 +20,9 @@ const buildInputs = {
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
-const winInstaller = join(releaseRoot, "bundle", "nsis", `Membrane Hub_${version}_x64-setup.exe`);
+// RightKit's Windows command runner uses cmd.exe. Keep artifact path free of
+// spaces so signing receives one exact argv value rather than a split path.
+const winInstaller = join(releaseRoot, "bundle", "nsis", `Membrane_Hub_${version}_x64-setup.exe`);
 const winRawExe = join(releaseRoot, "membrane-hub.exe");
 
 export default {
