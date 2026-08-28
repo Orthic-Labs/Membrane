@@ -300,8 +300,14 @@ fn cli_composition_reads_blueprint_through_live_ipc_seam() {
         .items
         .as_ref()
         .expect("evidence items");
-    assert_eq!(items[0]["graphState"], "fresh");
-    assert_eq!(items[0]["generationId"], "gen-contract");
+    assert_eq!(
+        items[0]["status"]["result"]["artifacts"]["graphState"],
+        "fresh"
+    );
+    assert_eq!(
+        items[0]["status"]["result"]["artifacts"]["generationId"],
+        "gen-contract"
+    );
     // Parent state remains untouched by child availability.
     assert_eq!(
         snapshot.membrane_state,

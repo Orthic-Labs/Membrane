@@ -657,7 +657,11 @@ mod tests {
 
         let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace), false).unwrap();
         assert_eq!(runtime.port, 47851);
-        assert_eq!(runtime.ort, bin.join("libonnxruntime.dylib"));
+        #[cfg(target_os = "macos")]
+        let expected_ort = "libonnxruntime.dylib";
+        #[cfg(not(target_os = "macos"))]
+        let expected_ort = "libonnxruntime.so";
+        assert_eq!(runtime.ort, bin.join(expected_ort));
 
         let other = temp.path().join("resident/other-service");
         std::fs::write(&other, b"other").unwrap();

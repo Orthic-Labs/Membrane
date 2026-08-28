@@ -1254,6 +1254,7 @@ mod tests {
             })
         );
         assert!(is_expected(body, r"C:\Membrane\membrane.exe"));
+        #[cfg(windows)]
         assert!(is_expected(
             "Command: C:\\Membrane\\membrane.exe\nArgs: stdio-mcp",
             r"\\?\C:\Membrane\membrane.exe"
@@ -1448,7 +1449,10 @@ mod tests {
     fn installed_runtime_is_product_state_on_fixed_port() {
         let (root, port) = installed_runtime(Path::new(r"C:\Users\test\Orthic Labs\Membrane"))
             .expect("installed runtime layout");
-        assert_eq!(root, PathBuf::from(r"C:\Users\test\Orthic Labs\Membrane\state"));
+        assert_eq!(
+            root,
+            Path::new(r"C:\Users\test\Orthic Labs\Membrane").join("state")
+        );
         assert_eq!(port, INSTALLED_PORT);
     }
 
