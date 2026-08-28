@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import test from "node:test";
-import { fixturePath, probes, runM0 } from "./run-m0-baseline-current.mjs";
+import { fixturePath, m0CrossRepoAvailable, probes, runM0 } from "./run-m0-baseline-current.mjs";
 
 test("F13 fixture path resolves after the Roundtable-to-Citadel rename (regression for the ENOENT crash)", () => {
   assert.ok(existsSync(fixturePath), `fixture missing at ${fixturePath}`);
@@ -38,7 +38,7 @@ test("F13 runM0 discloses every case as baseline-undrivable rather than silently
 // forge/adapt suites at current HEAD, on this machine, exactly as the CLI entrypoint does.
 // This is the test that makes "current_green" a live claim instead of a mocked one. It is slower
 // than the rest of this file (cross-repo pnpm/pytest runs) — that cost buys real evidence.
-test("F13 runM0 end-to-end: real cross-repo suites at current HEAD (slow, unmocked)", { timeout: 9 * 60_000 }, () => {
+test("F13 runM0 end-to-end: real cross-repo suites at current HEAD (slow, unmocked)", { timeout: 9 * 60_000, skip: !m0CrossRepoAvailable }, () => {
   const result = runM0();
   assert.equal(result.schema, "membrane.m0-run.v1");
   assert.equal(result.cases.length, 10);

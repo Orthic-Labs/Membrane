@@ -47,6 +47,8 @@ function findClient(start) {
   if (process.env.MEMBRANE_CONTEXT_CLIENT) return process.env.MEMBRANE_CONTEXT_CLIENT;
   let current = path.resolve(start || process.cwd());
   while (true) {
+    const direct = path.join(current, 'mcp', 'client.mjs');
+    if (fs.existsSync(direct)) return direct;
     const candidate = path.join(current, 'membrane', 'mcp', 'client.mjs');
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(current);

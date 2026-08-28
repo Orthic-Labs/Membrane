@@ -16,6 +16,11 @@ const pythonCommand = process.platform === "win32"
 // Keep qualification evidence inside Membrane so a standalone checkout runs identically in CI.
 const fixturePath = join(membraneRoot, "scripts", "fixtures", "fable-m0-false-success-fixtures.json");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
+const forgeSuitePaths = [
+  join(workspaceRoot, "legion/src/packages/arcane/tests/s04-host-event.test.mjs"),
+  join(workspaceRoot, "legion/src/packages/arcane/tests/s01-bridge.test.mjs"),
+];
+const m0CrossRepoAvailable = [...forgeSuitePaths, pythonCommand].every(existsSync);
 
 // Honesty disclosure (read this before trusting `baseline_red`): the `baseline` value below for
 // every case is a literal transcription of the fixture's own `failure` column — the documented
@@ -97,8 +102,7 @@ const suites = {
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",
-    join(workspaceRoot, "legion/src/packages/arcane/tests/s04-host-event.test.mjs"),
-    join(workspaceRoot, "legion/src/packages/arcane/tests/s01-bridge.test.mjs"),
+    ...forgeSuitePaths,
   ], workspaceRoot],
   adapt: [pythonCommand, ["-m", "pytest", join(membraneRoot, "adapt/tests")], workspaceRoot],
 };
@@ -122,7 +126,7 @@ function runSuite(owner) {
   return { owner, status: result.status, signal: result.signal || null, error: result.error?.message || null, output_sha256: `sha256:${sha(output)}`, output_tail: output.slice(-1200) };
 }
 
-export { fixturePath, probes };
+export { fixturePath, m0CrossRepoAvailable, probes };
 
 export function runM0({ runSuiteImpl = runSuite } = {}) {
   const fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
