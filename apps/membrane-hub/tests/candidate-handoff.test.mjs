@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createPortableArchive } from "@rightkit/release/direct-bootstrap.mjs";
@@ -12,6 +12,10 @@ import { materializeCycloneDxSbom, materializeInTotoSlsaProvenance } from "@righ
 const hub = fileURLToPath(new URL("../", import.meta.url));
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const checker = join(hub, "scripts", "release-check-candidate-windows.mjs");
+const filesUnder = (root) => readdirSync(root).flatMap((entry) => {
+  const path = join(root, entry);
+  return statSync(path).isDirectory() ? filesUnder(path) : [path];
+});
 
 test("candidate handoff accepts exact archive & rejects changed bytes", () => {
   const root = mkdtempSync(join(tmpdir(), "membrane-candidate-test-"));
@@ -22,6 +26,23 @@ test("candidate handoff accepts exact archive & rejects changed bytes", () => {
     for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) writeFileSync(join(payload, name), bytes);
     mkdirSync(join(payload, "runtime"));
     writeFileSync(join(payload, "runtime", "runtime.json"), bytes);
+    const hookFiles = [
+      "mcp/hooks/membrane-hook-entrypoint.mjs",
+      "mcp/hooks/membrane-hook-runtime.mjs",
+      "mcp/hooks/membrane-workspace-operations.mjs",
+      "mcp/lib/verification-command.mjs",
+      "mcp/lib/diagnostics-client.mjs",
+      "mcp/host/context-adapter.cjs",
+      "mcp/host/continuity.mjs",
+      "mcp/host/delivery-ledger-store.cjs",
+      "mcp/host/observable-event.cjs",
+      "mcp/host/observable-ingress.cjs",
+      "mcp/context-renderer-lib.cjs",
+    ];
+    for (const name of hookFiles) {
+      mkdirSync(dirname(join(payload, name)), { recursive: true });
+      writeFileSync(join(payload, name), bytes);
+    }
     const archive = createPortableArchive({ sourceDir: payload, outputPath: join(root, "candidate.zip") });
     const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8", windowsHide: true }).stdout.trim();
     const namedArchive = join(root, "membrane-test-windows-x86_64-unsigned.zip");
@@ -48,7 +69,7 @@ test("candidate handoff accepts exact archive & rejects changed bytes", () => {
       startedAt,
       archive: { name: "membrane-test-windows-x86_64-unsigned.zip", size: archive.size, sha256: archive.sha256 },
       evidence,
-      files: Object.fromEntries(["cortex.exe", "membrane-daemon.exe", "membrane-hub.exe", "membrane-tray.exe", "membrane.exe", "runtime/runtime.json"].map((name) => [name, createHash("sha256").update(bytes).digest("hex")])),
+      files: Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")])),
     })}\n`);
     const exact = spawnSync(process.execPath, [checker], { cwd: repo, env: { ...process.env, RIGHT_GIT_ARTIFACT_ROOT: root }, encoding: "utf8", windowsHide: true });
     assert.equal(exact.status, 0, exact.stderr);

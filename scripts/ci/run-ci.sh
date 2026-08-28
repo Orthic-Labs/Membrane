@@ -2,6 +2,7 @@
 set -euo pipefail
 
 pnpm install --frozen-lockfile
+pnpm --dir apps/membrane-hub install --frozen-lockfile
 cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
 pnpm test
 pnpm test:random
