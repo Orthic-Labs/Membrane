@@ -269,17 +269,31 @@ fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), Strin
             stable.display()
         ));
     }
-    let version_root = canonicalize_installed_path(&stable).map_err(|error| {
+    let pointer_target = std::fs::read_link(&stable).map_err(|error| {
         format!(
-            "stable installed path {} is unavailable: {error}",
+            "stable installed path {} is not a readable version pointer: {error}",
             stable.display()
+        )
+    })?;
+    let pointer_target = if pointer_target.is_absolute() {
+        pointer_target
+    } else {
+        stable
+            .parent()
+            .map(|root| root.join(pointer_target))
+            .ok_or_else(|| "stable installed path has no product root".to_string())?
+    };
+    let version_root = std::fs::canonicalize(&pointer_target).map_err(|error| {
+        format!(
+            "installed version target {} is unavailable: {error}",
+            pointer_target.display()
         )
     })?;
     let versions = stable
         .parent()
         .map(|root| root.join("versions"))
         .ok_or_else(|| "stable installed path has no product root".to_string())?;
-    let versions = canonicalize_installed_path(&versions).map_err(|error| {
+    let versions = std::fs::canonicalize(&versions).map_err(|error| {
         format!(
             "installed versions root {} is unavailable: {error}",
             versions.display()
@@ -292,19 +306,6 @@ fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), Strin
         return Err("stable current path does not target one direct installed version".to_string());
     }
     Ok((stable, version_root))
-}
-
-fn canonicalize_installed_path(path: &Path) -> std::io::Result<PathBuf> {
-    std::fs::canonicalize(path).or_else(|original| {
-        #[cfg(windows)]
-        {
-            let text = path.as_os_str().to_string_lossy().replace('/', r"\");
-            if path.is_absolute() && !text.starts_with(r"\\?\") {
-                return std::fs::canonicalize(PathBuf::from(format!(r"\\?\{text}")));
-            }
-        }
-        Err(original)
-    })
 }
 
 fn require_current_health(
