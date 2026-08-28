@@ -75,6 +75,12 @@ export function productionEntrypoints() {
       justification: "Hub Tauri binary main; sole resident lifecycle authority entrypoint.",
     },
     {
+      id: "apps/membrane-tray-windows/src/main.rs",
+      kind: "installed-entrypoint",
+      runtime: "rust",
+      justification: "Installed Windows tray entrypoint; supervises stable-current Hub and daemon processes.",
+    },
+    {
       id: "engine/crates/membrane/src/main.rs",
       kind: "installed-entrypoint",
       runtime: "rust",
