@@ -243,7 +243,7 @@ fn expected_stable_install_root() -> Result<PathBuf, String> {
                 .map(|home| home.join(".local/share"))
         })
         .ok_or_else(|| "user data root is unavailable".to_string())?;
-    Ok(base.join("Orthic Labs/Membrane/current"))
+    Ok(base.join("Orthic Labs").join("Membrane").join("current"))
 }
 
 fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), String> {
@@ -298,7 +298,7 @@ fn canonicalize_installed_path(path: &Path) -> std::io::Result<PathBuf> {
     std::fs::canonicalize(path).or_else(|original| {
         #[cfg(windows)]
         {
-            let text = path.as_os_str().to_string_lossy();
+            let text = path.as_os_str().to_string_lossy().replace('/', r"\");
             if path.is_absolute() && !text.starts_with(r"\\?\") {
                 return std::fs::canonicalize(PathBuf::from(format!(r"\\?\{text}")));
             }
