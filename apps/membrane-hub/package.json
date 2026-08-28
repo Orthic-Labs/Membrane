@@ -19,6 +19,8 @@
     "release:prepare:sidecars:win": "pnpm run build && node scripts/release-build-windows.mjs --prepare-only",
     "release:build:win": "node scripts/release-build-windows.mjs",
     "release:build:portable:win": "node scripts/release-build-portable-windows.mjs",
+    "release:candidate:build:win": "node scripts/release-build-candidate-windows.mjs",
+    "release:candidate:check:win": "node scripts/release-check-candidate-windows.mjs",
     "release:publish:portable:win": "node scripts/publish-portable-release.mjs",
     "release:qualify:win": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/qualification/install-release.ps1"
   },

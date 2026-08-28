@@ -11,6 +11,13 @@ then downloads exact signed native archive from GitHub Releases. R2 stores
 bootstrap only. Provisioned
 RightRelease/R2 infrastructure owns publication; Membrane creates no uploader.
 
+Membrane is public, so `@rightkit/git` GitHub Actions owns native compilation,
+tests, unsigned qualification, package smoke, SBOM/provenance, and unsigned
+release candidates. Protected Windows/macOS hosts consume one exact candidate
+digest and perform signing/notarization, finalization, verification, and upload
+without recompiling. Signing credentials never enter CI; local compilation is
+diagnostic only and cannot establish release proof.
+
 Bootstrap stages a versioned user-local root, journals harness configuration,
 atomically switches stable `current`, adds stable root to user `PATH`, runs
 stable-path `membrane activate`, then verifies exact daemon generation and

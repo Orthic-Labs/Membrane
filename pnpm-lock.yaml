@@ -19,8 +19,8 @@ importers:
         specifier: 0.2.1
         version: 0.2.1
       '@rightkit/git':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.2.5
+        version: 0.2.5
 
   blueprint:
     dependencies:
@@ -161,8 +161,8 @@ packages:
     resolution: {integrity: sha512-7iBNWoO2LmZLw38mVmHu/56O0Pn4lQrnnmbf26knnpyjPVE7XFUou3tJ9r607HRMmFvNJGEGk/WbVEL5x3AIyg==}
     hasBin: true
 
-  '@rightkit/git@0.2.0':
-    resolution: {integrity: sha512-m+RK0EUKAYMuSp+wcoDOEWfMDAGHh5/O7pZB8yYHqCB9W5HOr73j7llBRoUGbNBi81Q8VZr+4JvF6q+b6B5GUQ==}
+  '@rightkit/git@0.2.5':
+    resolution: {integrity: sha512-GvxHXbXhX6V/3d2W49JIC7Nd6qQlY0KGl9Lo8zWJ07BACbe1if+pC3FjVPBwfdJzqChVemCXW4aYYnMXf77lvA==}
     hasBin: true
 
   '@rightkit/hooks@0.1.0':
@@ -646,7 +646,7 @@ snapshots:
 
   '@rightkit/ax@0.2.1': {}
 
-  '@rightkit/git@0.2.0': {}
+  '@rightkit/git@0.2.5': {}
 
   '@rightkit/hooks@0.1.0': {}
 

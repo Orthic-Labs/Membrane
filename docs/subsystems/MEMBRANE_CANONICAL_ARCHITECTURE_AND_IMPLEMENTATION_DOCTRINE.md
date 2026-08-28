@@ -1538,6 +1538,15 @@ sbom-<os>-<arch>.cdx.json
 THIRD_PARTY_NOTICES.md
 ```
 
+Membrane is a public `Orthic-Labs` repository. `@rightkit/git` GitHub Actions
+must perform native Windows/macOS compilation, tests, unsigned qualification,
+package smoke, SBOM/provenance generation, and unsigned release-candidate
+publication on matching hosted runners. Protected local native hosts consume
+one exact candidate digest, then sign/notarize, finalize, verify, and upload it
+without recompiling. CI receives no signing credentials. Local compilation may
+diagnose a failure but is never release proof. Only targets represented by a
+successful candidate may enter finalization.
+
 `release-manifest.json` plus its detached Azure-signed Authenticode catalog is
 the sole release trust authority on Windows. `checksums.json` is convenience
 output whose digest is bound by the signed manifest. The manifest binds product, version, tag, source commit, exact
@@ -1634,9 +1643,11 @@ installation, activation, update, or harness availability. The archive still
 contains native `.exe` files on Windows; “no installer EXE” means no required
 Setup application.
 
-RightRelease owns shared archive naming, manifest schema, signing and key
-rotation, immutable GitHub publication, R2 bootstrap publication, and shared
-update transaction. AX owns Agent Plugins schema, containment, and conformance.
+RightGit owns public native build/test/qualification workflows and unsigned
+candidate handoff. RightRelease owns candidate verification, shared archive
+naming, manifest schema, signing and key rotation, immutable GitHub
+publication, R2 bootstrap publication, and shared update transaction. AX owns
+Agent Plugins schema, containment, and conformance.
 Infrastructure owns R2 buckets, DNS, TLS, cache, and object policy. Membrane owns
 its payload, install roots, activation, daemon health, harness reconciliation,
 and rollback semantics.

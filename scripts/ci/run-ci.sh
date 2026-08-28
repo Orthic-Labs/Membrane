@@ -4,7 +4,8 @@ set -euo pipefail
 pnpm install --frozen-lockfile
 pnpm test
 pnpm test:random
-pnpm test:all
+cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
+node scripts/ci/check-release-identity.mjs
 node scripts/ci/check-generated.mjs
 node scripts/ci/check-network-boundary.mjs
 node scripts/ci/check-lifecycle-conformance.mjs

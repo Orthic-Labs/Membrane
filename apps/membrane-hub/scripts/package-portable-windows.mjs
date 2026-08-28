@@ -23,9 +23,11 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
 const hubArg = process.argv.indexOf("--hub-exe");
 const startedArg = process.argv.indexOf("--started-at");
+const inputArg = process.argv.indexOf("--input-root");
 if (hubArg < 0 || !process.argv[hubArg + 1] || startedArg < 0 || !process.argv[startedArg + 1]) {
   throw new Error("usage: package-portable-windows.mjs --hub-exe <signed membrane-hub.exe> --started-at <ISO-8601>");
 }
+const inputRoot = inputArg >= 0 ? resolve(process.argv[inputArg + 1]) : null;
 
 const output = join(hub, "dist", "portable");
 const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
@@ -34,10 +36,10 @@ const archiveName = `membrane-${pkg.version}-windows-x86_64.zip`;
 const archive = join(output, archiveName);
 const executables = [
   [resolve(process.argv[hubArg + 1]), "membrane-hub.exe"],
-  [join(hub, "src-tauri", "binaries", "cortex-x86_64-pc-windows-msvc.exe"), "cortex.exe"],
-  [join(hub, "src-tauri", "binaries", "membrane-x86_64-pc-windows-msvc.exe"), "membrane.exe"],
-  [join(hub, "src-tauri", "binaries", "membrane-tray-x86_64-pc-windows-msvc.exe"), "membrane-tray.exe"],
-  [join(hub, "src-tauri", "binaries", "membrane-daemon-x86_64-pc-windows-msvc.exe"), "membrane-daemon.exe"],
+  [inputRoot ? join(inputRoot, "cortex.exe") : join(hub, "src-tauri", "binaries", "cortex-x86_64-pc-windows-msvc.exe"), "cortex.exe"],
+  [inputRoot ? join(inputRoot, "membrane.exe") : join(hub, "src-tauri", "binaries", "membrane-x86_64-pc-windows-msvc.exe"), "membrane.exe"],
+  [inputRoot ? join(inputRoot, "membrane-tray.exe") : join(hub, "src-tauri", "binaries", "membrane-tray-x86_64-pc-windows-msvc.exe"), "membrane-tray.exe"],
+  [inputRoot ? join(inputRoot, "membrane-daemon.exe") : join(hub, "src-tauri", "binaries", "membrane-daemon-x86_64-pc-windows-msvc.exe"), "membrane-daemon.exe"],
 ];
 
 function sha256(path) {
@@ -73,7 +75,7 @@ for (const [source, name] of executables) {
   if (!existsSync(source)) throw new Error(`signed executable missing: ${source}`);
   cpSync(source, join(payload, name));
 }
-const runtime = join(hub, "src-tauri", "runtime");
+const runtime = inputRoot ? join(inputRoot, "runtime") : join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 const pluginContract = assemblePortableCore({

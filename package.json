@@ -22,6 +22,8 @@
     "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
     "rightkit:git:sync": "right-git sync .",
     "rightkit:git:drift": "right-git drift .",
+    "release:candidate:build": "pnpm --dir apps/membrane-hub run release:candidate:build:win",
+    "release:candidate:check": "pnpm --dir apps/membrane-hub run release:candidate:check:win",
     "rightkit:ax:plugin": "right-ax plugin validate .",
     "rightkit:ax:static": "right-ax ax static .",
     "rightkit:ax:conformance": "right-ax ax conformance ."
@@ -32,6 +34,6 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/git": "0.2.0"
+    "@rightkit/git": "0.2.5"
   }
 }

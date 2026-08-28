@@ -4,23 +4,38 @@ import test from "node:test";
 
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const release = readFileSync(new URL("../scripts/release-build-portable-windows.mjs", import.meta.url), "utf8");
+const candidateBuild = readFileSync(new URL("../scripts/release-build-candidate-windows.mjs", import.meta.url), "utf8");
+const candidateCheck = readFileSync(new URL("../scripts/release-check-candidate-windows.mjs", import.meta.url), "utf8");
 const packager = readFileSync(new URL("../scripts/package-portable-windows.mjs", import.meta.url), "utf8");
 const finalizer = readFileSync(new URL("../scripts/finalize-portable-release.mjs", import.meta.url), "utf8");
 const publisher = readFileSync(new URL("../scripts/publish-portable-release.mjs", import.meta.url), "utf8");
 
-test("portable Windows lane signs raw app & archives without NSIS", () => {
+test("public CI builds unsigned candidate & protected host seals it without recompiling", () => {
   assert.equal(pkg.scripts["release:build:portable:win"], "node scripts/release-build-portable-windows.mjs");
-  assert.match(release, /release:prepare:sidecars:win/);
+  assert.equal(pkg.scripts["release:candidate:build:win"], "node scripts/release-build-candidate-windows.mjs");
+  assert.equal(pkg.scripts["release:candidate:check:win"], "node scripts/release-check-candidate-windows.mjs");
+  assert.match(candidateBuild, /RIGHT_GIT_ARTIFACT_ROOT/);
+  assert.match(candidateBuild, /GITHUB_ACTIONS/);
+  assert.match(candidateBuild, /Orthic-Labs\/Membrane/);
+  assert.match(candidateBuild, /createPortableArchive/);
+  assert.match(candidateBuild, /materializeCycloneDxSbom/);
+  assert.match(candidateBuild, /materializeInTotoSlsaProvenance/);
+  assert.match(candidateBuild, /"cargo", \["build"/);
+  assert.doesNotMatch(candidateBuild, /sign-windows|right-release/);
+  assert.match(candidateCheck, /candidate archive digest mismatch/);
+  assert.match(candidateCheck, /candidate file closure mismatch/);
+  assert.match(candidateCheck, /candidate evidence digest mismatch/);
+  assert.match(release, /MEMBRANE_CANDIDATE_ROOT/);
+  assert.match(release, /release:candidate:check:win/);
   assert.match(release, /right-release", "sign-windows"/);
-  assert.match(release, /rightkit:package:win", "--", "raw"/);
   assert.match(release, /materializeHardeningEvidence/);
   assert.match(release, /--allow-evidence/);
-  assert.match(release, /runRightReleaseAtRepoRoot\(\["hardening"/);
+  assert.match(release, /right-release\.cmd.*hardening/s);
   assert.match(release, /root: repoRoot/);
   assert.match(release, /engine\/crates\/membrane-adapt\/src\/remediation\.rs:74/);
   assert.match(release, /package-portable-windows\.mjs/);
   assert.match(release, /finalize-portable-release\.mjs/);
-  assert.doesNotMatch(release, /right-release", "build"|rightkit:package:win", "--", "package"/i);
+  assert.doesNotMatch(release, /cargo|tauri|release:prepare:sidecars|rightkit:package/i);
 });
 
 test("portable payload is signed, hashed & includes activation plus Agent Plugins core", () => {
