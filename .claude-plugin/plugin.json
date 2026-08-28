@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "membrane",
+  "version": "0.1.15",
+  "displayName": "Membrane",
+  "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction. Installs the Membrane MCP server and public skill.",
+  "author": {
+    "name": "Orthic Labs"
+  },
+  "homepage": "https://github.com/Orthic-Labs/Membrane",
+  "repository": "https://github.com/Orthic-Labs/Membrane",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "membrane",
+    "context",
+    "mcp",
+    "repository",
+    "memory"
+  ],
+  "mcpServers": {
+    "membrane": {
+      "command": "membrane",
+      "args": [
+        "stdio-mcp"
+      ]
+    }
+  }
+}

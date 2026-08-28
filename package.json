@@ -31,7 +31,7 @@
     "@rightkit/hooks": "0.1.0"
   },
   "devDependencies": {
-    "@rightkit/ax": "0.1.1",
+    "@rightkit/ax": "0.2.1",
     "@rightkit/git": "0.2.0"
   }
 }

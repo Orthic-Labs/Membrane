@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { CLIENT_PROJECTION_KINDS, assemblePortableCore, validatePortableCore } from "@rightkit/ax/plugin/portable-core";
+import { createPortableArchive } from "@rightkit/release/direct-bootstrap.mjs";
+import { materializeCycloneDxSbom, materializeInTotoSlsaProvenance } from "@rightkit/release/supply-chain-evidence.mjs";
 import {
   cpSync,
   existsSync,
@@ -19,13 +22,15 @@ const hub = fileURLToPath(new URL("../", import.meta.url));
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
 const hubArg = process.argv.indexOf("--hub-exe");
-if (hubArg < 0 || !process.argv[hubArg + 1]) {
-  throw new Error("usage: package-portable-windows.mjs --hub-exe <signed membrane-hub.exe>");
+const startedArg = process.argv.indexOf("--started-at");
+if (hubArg < 0 || !process.argv[hubArg + 1] || startedArg < 0 || !process.argv[startedArg + 1]) {
+  throw new Error("usage: package-portable-windows.mjs --hub-exe <signed membrane-hub.exe> --started-at <ISO-8601>");
 }
 
 const output = join(hub, "dist", "portable");
-const payload = join(output, "membrane-windows-x64");
-const archiveName = "membrane-windows-x64.zip";
+const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
+const portableCore = join(output, "agent-plugin-core");
+const archiveName = `membrane-${pkg.version}-windows-x86_64.zip`;
 const archive = join(output, archiveName);
 const executables = [
   [resolve(process.argv[hubArg + 1]), "membrane-hub.exe"],
@@ -60,6 +65,7 @@ function powershell(script, args = []) {
 }
 
 rmSync(payload, { recursive: true, force: true });
+rmSync(portableCore, { recursive: true, force: true });
 rmSync(archive, { force: true });
 mkdirSync(payload, { recursive: true });
 
@@ -70,11 +76,32 @@ for (const [source, name] of executables) {
 const runtime = join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
-cpSync(join(repo, "install.ps1"), join(payload, "install.ps1"));
-for (const entry of ["plugin.json", "mcp.json", "skills"]) {
-  cpSync(join(repo, entry), join(payload, entry), { recursive: true });
+const pluginContract = assemblePortableCore({
+  outputDir: portableCore,
+  pluginManifestPath: join(repo, "plugin.json"),
+  mcpManifestPath: join(repo, "mcp.json"),
+  skills: [{
+    id: "membrane",
+    visibility: "public",
+    sourceRoot: repo,
+    sourceDir: join(repo, "skills", "membrane"),
+  }],
+  clientProjections: CLIENT_PROJECTION_KINDS,
+});
+const pluginValidation = validatePortableCore(portableCore);
+if (!pluginValidation.valid) throw new Error(`Agent Plugins core invalid: ${pluginValidation.errors.join("; ")}`);
+for (const entry of readdirSync(portableCore)) {
+  cpSync(join(portableCore, entry), join(payload, entry), { recursive: true });
 }
+cpSync(join(repo, ".claude-plugin"), join(payload, ".claude-plugin"), { recursive: true });
+cpSync(join(repo, ".codex-plugin"), join(payload, ".codex-plugin"), { recursive: true });
+mkdirSync(join(payload, ".agents", "skills"), { recursive: true });
+cpSync(join(repo, "skills", "membrane"), join(payload, ".agents", "skills", "membrane"), { recursive: true });
+cpSync(join(repo, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
+mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
+cpSync(join(repo, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
 cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
+cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
 
 powershell(
   "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",
@@ -94,6 +121,7 @@ const manifest = {
   os: "windows",
   arch: "x64",
   releaseGeneration: buildInfo.release_generation,
+  agentPlugins: pluginContract,
   files: Object.fromEntries(
     filesUnder(payload)
       .filter((path) => basename(path) !== "release.json")
@@ -102,15 +130,31 @@ const manifest = {
 };
 writeFileSync(join(payload, "release.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-powershell(
-  "$ErrorActionPreference='Stop'; Compress-Archive -Path (Join-Path $args[0] '*') -DestinationPath $args[1] -CompressionLevel Optimal -Force",
-  [payload, archive],
-);
-
-const archiveHash = sha256(archive);
-writeFileSync(`${archive}.sha256`, `${archiveHash}  ${archiveName}\n`);
-writeFileSync(
-  join(output, "checksums.json"),
-  `${JSON.stringify({ schemaVersion: 1, version: pkg.version, assets: { [archiveName]: { sha256: archiveHash } } }, null, 2)}\n`,
-);
-console.log(`${archive}\nsha256:${archiveHash}`);
+const archived = createPortableArchive({ sourceDir: payload, outputPath: archive });
+const fileEvidence = [{ name: archiveName, sha256: archived.sha256, size: archived.size }];
+const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8", windowsHide: true });
+if (git.error || git.status !== 0) throw new Error("source commit resolution failed");
+const sourceCommit = git.stdout.trim();
+if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error(`invalid source commit: ${sourceCommit}`);
+const sbomPath = join(output, "sbom-windows-x86_64.cdx.json");
+const provenancePath = join(output, "provenance-windows-x86_64.intoto.jsonl");
+materializeCycloneDxSbom({
+  outputPath: sbomPath,
+  product: "membrane",
+  version: pkg.version,
+  target: "windows-x86_64",
+  sourceCommit,
+  files: fileEvidence,
+});
+materializeInTotoSlsaProvenance({
+  outputPath: provenancePath,
+  product: "membrane",
+  version: pkg.version,
+  target: "windows-x86_64",
+  sourceCommit,
+  sourceRepository: "https://github.com/Orthic-Labs/Membrane",
+  subjects: fileEvidence,
+  startedAt: process.argv[startedArg + 1],
+});
+cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
+console.log(JSON.stringify({ archive, sha256: archived.sha256, provenancePath, sbomPath }));

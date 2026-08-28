@@ -16,8 +16,8 @@ importers:
         version: 0.1.0
     devDependencies:
       '@rightkit/ax':
-        specifier: 0.1.1
-        version: 0.1.1
+        specifier: 0.2.1
+        version: 0.2.1
       '@rightkit/git':
         specifier: 0.2.0
         version: 0.2.0
@@ -157,8 +157,8 @@ packages:
     resolution: {integrity: sha512-7FNeNl8NCE7aINx7WXiKQrPYZWC/hvrTsmk6zmxbI7LTXE7hVek/n8AfVgpe2y82zl3w0HvCHN0bVKMBoJcC0w==}
     engines: {node: '>= 10.0.0'}
 
-  '@rightkit/ax@0.1.1':
-    resolution: {integrity: sha512-Nh8EWczxyIEJ4TEpkCxp6TpBZUW9+4LxucBtImL6Xv5YO61lDI4dQVHWzrX4TR3pQdFZABynKKn0k9dOvDIZpQ==}
+  '@rightkit/ax@0.2.1':
+    resolution: {integrity: sha512-7iBNWoO2LmZLw38mVmHu/56O0Pn4lQrnnmbf26knnpyjPVE7XFUou3tJ9r607HRMmFvNJGEGk/WbVEL5x3AIyg==}
     hasBin: true
 
   '@rightkit/git@0.2.0':
@@ -644,7 +644,7 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.6.0
       '@parcel/watcher-win32-x64': 2.6.0
 
-  '@rightkit/ax@0.1.1': {}
+  '@rightkit/ax@0.2.1': {}
 
   '@rightkit/git@0.2.0': {}
 

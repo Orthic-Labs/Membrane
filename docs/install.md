@@ -3,10 +3,12 @@
 > See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
 
 Membrane Hub owns desktop activation, runtime supervision, release builds,
-updates, & install cleanup. Primary customer entry is branded R2 bootstrap at
-`https://membrane.orthiclabs.com/install.ps1`; immutable versioned bootstrap
-verifies a detached signed release manifest, then downloads exact signed native
-archive from GitHub Releases. R2 stores bootstrap only. Provisioned
+updates, & install cleanup. Canonical customer entry is branded R2 bootstrap at
+`https://membrane.orthiclabs.com/install.ps1`; Infrastructure must route this
+root URL to product-scoped R2 key `membrane/install.ps1` before it is live.
+Immutable versioned bootstrap verifies a detached signed release manifest,
+then downloads exact signed native archive from GitHub Releases. R2 stores
+bootstrap only. Provisioned
 RightRelease/R2 infrastructure owns publication; Membrane creates no uploader.
 
 Bootstrap stages a versioned user-local root, journals harness configuration,

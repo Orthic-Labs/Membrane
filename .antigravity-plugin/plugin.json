@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "membrane",
+  "description": "Membrane local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction."
+}

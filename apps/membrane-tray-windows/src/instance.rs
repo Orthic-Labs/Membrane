@@ -11,16 +11,19 @@ mod platform {
 
     const OPEN_EVENT_NAME: &str = "Local\\MembraneTrayOpenDashboardV1";
     const ACTIVATE_EVENT_NAME: &str = "Local\\MembraneTrayActivateV1";
+    const REPLACE_EVENT_NAME: &str = "Local\\MembraneTrayReplaceV1";
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum InstanceSignal {
         OpenDashboard,
         Activate,
+        Replace,
     }
 
     pub struct InstanceEvent {
         open_handle: HANDLE,
         activate_handle: HANDLE,
+        replace_handle: HANDLE,
         primary: bool,
     }
 
@@ -45,9 +48,21 @@ mod platform {
                 let _ = unsafe { CloseHandle(open_handle) };
                 return Err(error);
             }
+            let replace_name = REPLACE_EVENT_NAME
+                .encode_utf16()
+                .chain([0])
+                .collect::<Vec<_>>();
+            let replace_handle = unsafe { CreateEventW(null(), 0, 0, replace_name.as_ptr()) };
+            if replace_handle.is_null() {
+                let error = io::Error::last_os_error();
+                let _ = unsafe { CloseHandle(open_handle) };
+                let _ = unsafe { CloseHandle(activate_handle) };
+                return Err(error);
+            }
             Ok(Self {
                 open_handle,
                 activate_handle,
+                replace_handle,
                 primary,
             })
         }
@@ -60,6 +75,7 @@ mod platform {
             let handle = match signal {
                 InstanceSignal::OpenDashboard => self.open_handle,
                 InstanceSignal::Activate => self.activate_handle,
+                InstanceSignal::Replace => self.replace_handle,
             };
             if unsafe { SetEvent(handle) } == 0 {
                 Err(io::Error::last_os_error())
@@ -72,6 +88,7 @@ mod platform {
             let handle = match signal {
                 InstanceSignal::OpenDashboard => self.open_handle,
                 InstanceSignal::Activate => self.activate_handle,
+                InstanceSignal::Replace => self.replace_handle,
             };
             (unsafe { WaitForSingleObject(handle, 0) }) == WAIT_OBJECT_0
         }
@@ -81,6 +98,7 @@ mod platform {
         fn drop(&mut self) {
             let _ = unsafe { CloseHandle(self.open_handle) };
             let _ = unsafe { CloseHandle(self.activate_handle) };
+            let _ = unsafe { CloseHandle(self.replace_handle) };
         }
     }
 }
@@ -93,6 +111,7 @@ mod platform {
     pub enum InstanceSignal {
         OpenDashboard,
         Activate,
+        Replace,
     }
 
     pub struct InstanceEvent;

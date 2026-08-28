@@ -146,6 +146,7 @@ enum HealthObservation {
     Unavailable,
     NotReady,
     Ready { release_generation: String },
+    PriorGeneration { release_generation: String },
     Foreign(String),
 }
 
@@ -186,14 +187,14 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     let initial = probe_health(port, &expected_generation)?;
     let already_running = matches!(initial, HealthObservation::Ready { .. });
     let release_generation = if options.dry_run {
-        match initial {
-            HealthObservation::Ready { release_generation } => release_generation,
-            HealthObservation::Foreign(reason) => return Err(reason),
-            _ => expected_generation.clone(),
-        }
+        require_current_health(initial, &expected_generation)?
     } else if let HealthObservation::Ready { release_generation } = initial {
         release_generation
     } else {
+        if matches!(initial, HealthObservation::PriorGeneration { .. }) {
+            request_resident_replacement(&tray, &workspace_root, port)?;
+            wait_for_shutdown(port, &expected_generation, options.timeout)?;
+        }
         launch_tray(&tray, &workspace_root, port)?;
         wait_for_health(port, &expected_generation, options.timeout)?
     };
@@ -218,6 +219,21 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         persist_receipt(&install_root, &receipt)?;
     }
     Ok(receipt)
+}
+
+fn require_current_health(
+    observation: HealthObservation,
+    expected_generation: &str,
+) -> Result<String, String> {
+    match observation {
+        HealthObservation::Ready { release_generation } => Ok(release_generation),
+        HealthObservation::PriorGeneration { release_generation } => Err(format!(
+            "resident release generation {release_generation} does not match installed generation {expected_generation}"
+        )),
+        HealthObservation::Foreign(reason) => Err(reason),
+        HealthObservation::Unavailable => Err("installed Membrane is not running".to_string()),
+        HealthObservation::NotReady => Err("installed Membrane is not healthy".to_string()),
+    }
 }
 
 fn executable_name(stem: &str) -> String {
@@ -265,9 +281,26 @@ fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
 }
 
 fn launch_tray(tray: &Path, workspace_root: &Path, port: u16) -> Result<(), String> {
+    launch_tray_with_mode(tray, workspace_root, port, "--activate")
+}
+
+fn request_resident_replacement(
+    tray: &Path,
+    workspace_root: &Path,
+    port: u16,
+) -> Result<(), String> {
+    launch_tray_with_mode(tray, workspace_root, port, "--replace")
+}
+
+fn launch_tray_with_mode(
+    tray: &Path,
+    workspace_root: &Path,
+    port: u16,
+    mode: &str,
+) -> Result<(), String> {
     let mut command = Command::new(tray);
     command
-        .arg("--activate")
+        .arg(mode)
         .env("MEMBRANE_WORKSPACE_ROOT", workspace_root)
         .env("MEMBRANE_HTTP_PORT", port.to_string());
     #[cfg(windows)]
@@ -284,6 +317,30 @@ fn launch_tray(tray: &Path, workspace_root: &Path, port: u16) -> Result<(), Stri
         .map_err(|error| format!("launch installed tray {}: {error}", tray.display()))
 }
 
+fn wait_for_shutdown(
+    port: u16,
+    expected_generation: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match probe_health(port, expected_generation)? {
+            HealthObservation::Unavailable => return Ok(()),
+            HealthObservation::Foreign(reason) => return Err(reason),
+            HealthObservation::NotReady
+            | HealthObservation::Ready { .. }
+            | HealthObservation::PriorGeneration { .. } => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "prior Membrane generation did not stop within {}ms",
+                timeout.as_millis()
+            ));
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
 fn wait_for_health(
     port: u16,
     expected_generation: &str,
@@ -294,7 +351,9 @@ fn wait_for_health(
         match probe_health(port, expected_generation)? {
             HealthObservation::Ready { release_generation } => return Ok(release_generation),
             HealthObservation::Foreign(reason) => return Err(reason),
-            HealthObservation::Unavailable | HealthObservation::NotReady => {}
+            HealthObservation::Unavailable
+            | HealthObservation::NotReady
+            | HealthObservation::PriorGeneration { .. } => {}
         }
         if Instant::now() >= deadline {
             return Err(format!(
@@ -394,9 +453,9 @@ fn parse_health_response(
         ));
     };
     if release_generation != expected_generation {
-        return Ok(HealthObservation::Foreign(format!(
-            "resident release generation {release_generation} does not match installed generation {expected_generation}"
-        )));
+        return Ok(HealthObservation::PriorGeneration {
+            release_generation: release_generation.to_string(),
+        });
     }
     if status != 200 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         return Ok(HealthObservation::NotReady);
@@ -951,5 +1010,62 @@ mod tests {
             parse_health_response(foreign, "g1").unwrap(),
             HealthObservation::Foreign(_)
         ));
+        assert_eq!(
+            parse_health_response(ready, "g2").unwrap(),
+            HealthObservation::PriorGeneration {
+                release_generation: "g1".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn activation_receipt_health_keys_are_camel_case() {
+        let receipt = ActivationReceiptV1 {
+            schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
+            install_root: PathBuf::from("current"),
+            membrane_executable: PathBuf::from("current/membrane"),
+            tray_executable: PathBuf::from("current/membrane-tray"),
+            activated_at_unix_ms: 1,
+            dry_run: true,
+            service: ServiceActivationReceipt {
+                service_id: SERVICE_ID.to_string(),
+                port: 43177,
+                release_generation: "sha256:test".to_string(),
+                already_running: true,
+            },
+            clients: Vec::new(),
+        };
+        let value = serde_json::to_value(receipt).unwrap();
+        assert_eq!(value["schemaVersion"], ACTIVATION_RECEIPT_SCHEMA_VERSION);
+        assert_eq!(value["dryRun"], true);
+        assert_eq!(value["service"]["serviceId"], SERVICE_ID);
+        assert_eq!(value["service"]["releaseGeneration"], "sha256:test");
+        assert!(value.get("schema_version").is_none());
+        assert!(value.get("dry_run").is_none());
+    }
+
+    #[test]
+    fn status_requires_exact_ready_resident_generation() {
+        assert_eq!(
+            require_current_health(
+                HealthObservation::Ready {
+                    release_generation: "g2".to_string()
+                },
+                "g2"
+            )
+            .unwrap(),
+            "g2"
+        );
+        assert!(require_current_health(HealthObservation::Unavailable, "g2")
+            .unwrap_err()
+            .contains("not running"));
+        assert!(require_current_health(
+            HealthObservation::PriorGeneration {
+                release_generation: "g1".to_string()
+            },
+            "g2"
+        )
+        .unwrap_err()
+        .contains("does not match"));
     }
 }

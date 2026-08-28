@@ -65,15 +65,21 @@ fn main() -> Result<(), slint::PlatformError> {
 
     let login_launch = args.iter().any(|arg| arg == startup::LOGIN_LAUNCH_ARG);
     let activation_launch = args.iter().any(|arg| arg == "--activate");
+    let replacement_launch = args.iter().any(|arg| arg == "--replace");
     let open_dashboard_on_start = args.iter().any(|arg| arg == "--open-dashboard");
     let instance_event = instance::InstanceEvent::acquire()
         .map_err(|error| slint::PlatformError::Other(error.to_string()))?;
     if !instance_event.is_primary() {
-        if activation_launch {
+        if replacement_launch {
+            let _ = instance_event.signal(instance::InstanceSignal::Replace);
+        } else if activation_launch {
             let _ = instance_event.signal(instance::InstanceSignal::Activate);
         } else if !login_launch {
             let _ = instance_event.signal(instance::InstanceSignal::OpenDashboard);
         }
+        return Ok(());
+    }
+    if replacement_launch {
         return Ok(());
     }
 
@@ -291,6 +297,12 @@ fn main() -> Result<(), slint::PlatformError> {
                         timer_supervisor.borrow_mut().block_startup(reason, now);
                     }
                 };
+            }
+        }
+        if instance_event.take_signal(instance::InstanceSignal::Replace) {
+            timer_supervisor.borrow_mut().begin_drain(now);
+            if let Some(window) = timer_popover.upgrade() {
+                let _ = window.hide();
             }
         }
         if instance_event.take_signal(instance::InstanceSignal::OpenDashboard) {
