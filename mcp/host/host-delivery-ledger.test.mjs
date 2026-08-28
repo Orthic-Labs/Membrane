@@ -75,7 +75,7 @@ test('12 parallel first writers land exactly one record per block', { concurrenc
     const spawnOne = () => new Promise((resolve, reject) => {
       const child = require('node:child_process').spawn(process.execPath, args, { env: { ...process.env, MEMBRANE_DATA_ROOT: root } });
       let out = ''; child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { out += d; });
-      child.on('error', reject); child.on('exit', (code) => resolve({ code, out }));
+      child.on('error', reject); child.on('close', (code) => resolve({ code, out }));
     });
     const results = await Promise.all(Array.from({ length: 12 }, spawnOne));
     for (const r of results) assert.equal(r.code, 0, 'child exited cleanly: ' + r.out);
