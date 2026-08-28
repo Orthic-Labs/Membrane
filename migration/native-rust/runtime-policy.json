@@ -512,6 +512,33 @@
    "notes": "workspace.rs enforces strict v3 workspace configuration; v2 python_executable is accepted only by atomic startup migration and never by native runtime resolution."
   },
   {
+   "id": "tray-native-src",
+   "pattern": "^apps/membrane-tray-windows/src/",
+   "groupBy": "all",
+   "runtime": "rust",
+   "kind": "tray-native-crate",
+   "product_surface": "Tray",
+   "production_reachable": true,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "exception": null,
+   "notes": "Installed native tray supervises stable-current Hub and daemon processes."
+  },
+  {
+   "id": "tray-build-script",
+   "pattern": "^apps/membrane-tray-windows/build\\.rs$",
+   "groupBy": "single",
+   "runtime": "rust",
+   "kind": "native-build-tooling",
+   "product_surface": "Tray/build",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "exception": null,
+   "deletion_or_exclusion_proof": "compile-time resource tooling; absent from installed payload",
+   "notes": "Public CI runs this script while producing the unsigned native candidate."
+  },
+  {
    "id": "hub-scripts",
    "pattern": "^apps/membrane-hub/scripts/",
    "groupBy": "all",
