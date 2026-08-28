@@ -1,6 +1,12 @@
 use membrane_federation::config::{FederationConfig, ProviderConfig};
+use membrane_federation::corrective::{
+    corrective_plan, corrective_trigger, evaluate_sufficiency, CorrectiveRetrievalReceiptV1,
+    SufficiencyContractV1, SufficiencyRequirementV1, SufficiencyStateV1,
+    SUFFICIENCY_CONTRACT_SCHEMA_VERSION, SUFFICIENCY_POLICY,
+};
 use membrane_federation::engine::FederationMetrics;
-use membrane_federation::merge::merge_outputs;
+use membrane_federation::merge::{merge_outputs, merge_outputs_with_strategy, FusionStrategy};
+use membrane_federation::normalize::normalize_provider_output;
 use membrane_protocol::{
     CandidateV1, FederationProviderStatusV1, ProviderId, ProviderOutputV1,
     PROVIDER_OUTPUT_SCHEMA_VERSION,
@@ -57,6 +63,61 @@ fn expected_lanes_are_accounted_before_merge() {
 }
 
 #[test]
+fn active_merge_emits_versioned_fusion_receipt() {
+    let result = merge_outputs(
+        &[ProviderId::Anchors, ProviderId::Blueprint],
+        &[output(ProviderId::Anchors, "anchor-1")],
+        None,
+    )
+    .expect("valid provider lane");
+    assert_eq!(
+        result.fusion_receipt.policy,
+        membrane_protocol::FusionReceiptV1::POLICY
+    );
+    assert!(result
+        .fusion_receipt
+        .decisions
+        .iter()
+        .any(|decision| decision.decision == "selected"));
+    let response = result.response("request", "trace");
+    assert_eq!(
+        response.extensions["fusionReceipt"]["policy"].as_str(),
+        Some(membrane_protocol::FusionReceiptV1::POLICY)
+    );
+}
+
+#[test]
+fn rr_fusion_requires_explicit_strategy_selection() {
+    let outputs = [
+        output(ProviderId::Anchors, "anchor-1"),
+        output(ProviderId::Blueprint, "blueprint-1"),
+    ];
+    let control = merge_outputs(
+        &[ProviderId::Anchors, ProviderId::Blueprint],
+        &outputs,
+        None,
+    )
+    .expect("control merge");
+    assert_eq!(
+        control.fusion_receipt.policy,
+        membrane_protocol::FusionReceiptV1::POLICY
+    );
+    assert_eq!(control.candidates.len(), 2);
+    let rrf = merge_outputs_with_strategy(
+        &[ProviderId::Anchors, ProviderId::Blueprint],
+        &outputs,
+        None,
+        FusionStrategy::Rrf,
+    )
+    .expect("explicit RRF merge");
+    assert_eq!(
+        rrf.fusion_receipt.policy,
+        membrane_protocol::FusionReceiptV1::RRF_POLICY
+    );
+    assert_eq!(rrf.candidates.len(), 1);
+}
+
+#[test]
 fn disabled_configuration_preserves_all_nine_expected_lanes() {
     let config = FederationConfig::new(
         ProviderId::ALL
@@ -88,4 +149,92 @@ fn metrics_are_content_free_and_structured() {
     assert_eq!(metrics.expected_lanes, 9);
     assert_eq!(metrics.candidate_count, 3);
     assert!(!metrics.cancelled);
+}
+
+#[test]
+fn corrective_plan_runs_one_deterministic_acceptable_alternate() {
+    let contract = SufficiencyContractV1 {
+        schema_version: SUFFICIENCY_CONTRACT_SCHEMA_VERSION,
+        policy: SUFFICIENCY_POLICY.to_owned(),
+        requirements: vec![SufficiencyRequirementV1 {
+            id: "repo-evidence".to_owned(),
+            evidence_class: "fixture".to_owned(),
+            acceptable_providers: vec![ProviderId::Blueprint, ProviderId::Cortex],
+            acceptable_source_refs: Vec::new(),
+            minimum_candidates: 1,
+        }],
+        max_corrective_stages: 1,
+    };
+    let blueprint = normalize_provider_output(
+        &ProviderOutputV1 {
+            provider: ProviderId::Blueprint,
+            status: FederationProviderStatusV1::Complete,
+            candidates: Vec::new(),
+            ..output(ProviderId::Blueprint, "unused")
+        },
+        ProviderId::Blueprint,
+    )
+    .expect("blueprint lane normalizes");
+    let cortex = normalize_provider_output(
+        &ProviderOutputV1 {
+            provider: ProviderId::Cortex,
+            status: FederationProviderStatusV1::Complete,
+            candidates: Vec::new(),
+            ..output(ProviderId::Cortex, "unused")
+        },
+        ProviderId::Cortex,
+    )
+    .expect("cortex lane normalizes");
+    let lanes = vec![blueprint, cortex];
+    let assessment = evaluate_sufficiency(
+        &contract,
+        &lanes,
+        &[ProviderId::Blueprint, ProviderId::Cortex],
+    )
+    .expect("contract evaluates");
+    assert_eq!(assessment.state, SufficiencyStateV1::Insufficient);
+    assert_eq!(
+        corrective_trigger(
+            &contract,
+            &assessment,
+            &lanes,
+            &[ProviderId::Blueprint, ProviderId::Cortex],
+        ),
+        Some((ProviderId::Blueprint, "repo-evidence".to_owned()))
+    );
+    assert_eq!(
+        corrective_plan(
+            &contract,
+            &assessment,
+            &lanes,
+            &[ProviderId::Blueprint, ProviderId::Cortex],
+        ),
+        Some((
+            ProviderId::Blueprint,
+            ProviderId::Cortex,
+            "repo-evidence".to_owned(),
+        ))
+    );
+}
+
+#[test]
+fn corrective_receipt_types_second_insufficiency_without_retry() {
+    let assessment = membrane_federation::corrective::SufficiencyAssessmentV1 {
+        schema_version: SUFFICIENCY_CONTRACT_SCHEMA_VERSION,
+        policy: SUFFICIENCY_POLICY.to_owned(),
+        state: SufficiencyStateV1::Insufficient,
+        requirements: Vec::new(),
+    };
+    let receipt = CorrectiveRetrievalReceiptV1::after_stage(
+        assessment,
+        ProviderId::Blueprint,
+        ProviderId::Cortex,
+        "repo-evidence".to_owned(),
+        true,
+        "terminal_insufficient_second_assessment",
+    );
+    assert!(receipt.triggered);
+    assert!(receipt.attempted);
+    assert_eq!(receipt.stage_limit, 1);
+    assert_eq!(receipt.outcome, "terminal_insufficient_second_assessment");
 }

@@ -2,8 +2,10 @@
 //! Blueprint, Ledger, and Adapt. Cortex durable storage remains isolated from
 //! Pull acquisition and Push reduction.
 
+pub mod admission_producer;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
+pub mod background_review;
 pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;
@@ -16,6 +18,7 @@ pub mod doctor;
 pub mod feedback;
 pub mod fleet;
 pub mod freshness;
+pub mod host_observation_ingress;
 pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
@@ -54,6 +57,18 @@ pub use provenance::{
 };
 pub mod push;
 pub mod working_context;
+
+pub use host_observation_ingress::project_joined_effectiveness;
+
+pub use background_review::{
+    execute_background_review, BackgroundReviewCompletion, BackgroundReviewDecision,
+    BackgroundReviewLearner, BackgroundReviewLearnerResult, BackgroundReviewObservationSink,
+    BackgroundReviewProducer, BackgroundReviewProduction, BackgroundReviewProposalSink,
+    BackgroundReviewScheduler, BackgroundReviewSinkError, JsonlBackgroundReviewObservationSink,
+    NoSemanticReviewLearner, CONFIG_PATH_ENV, DEFAULT_CONFIG_RELATIVE_PATH,
+    DEFAULT_OBSERVATIONS_RELATIVE_PATH, MAX_ATTEMPTS, MAX_OBSERVATION_BATCH,
+    MAX_OBSERVATION_FILE_BYTES, MAX_OBSERVATION_RECORD_BYTES, OBSERVATIONS_PATH_ENV,
+};
 
 // Re-export OKF persistence-format utilities through Membrane. Push compression
 // has its own protected-span authority and does not call cortex-format codecs.

@@ -45,7 +45,8 @@ function artifactProof(spec, artifact, live) {
   const recorded = receiptCommit(receipt);
   if (!recorded || recorded === "unknown") throw new Error(`rollout artifact missing commit binding: ${spec.kind}`);
   const expectedCommit = receipt.schema === "membrane.e2e-benchmark-result.v1" ? live.workspaceCommit : live.membraneCommit;
-  if (expectedCommit && recorded !== expectedCommit) throw new Error(`rollout artifact stale: ${spec.kind} (qualified ${recorded}, HEAD is ${expectedCommit})`);
+  if (!expectedCommit) throw new Error(`rollout live commit unavailable: ${spec.kind}`);
+  if (recorded !== expectedCommit) throw new Error(`rollout artifact stale: ${spec.kind} (qualified ${recorded}, HEAD is ${expectedCommit})`);
   return { kind: spec.kind, path: artifact.path, sha256: actual, status: receipt.status, commit: recorded };
 }
 

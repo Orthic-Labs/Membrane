@@ -31,6 +31,62 @@ pub struct PrepEntry {
     pub drop_manifest: Option<compress::DropManifest>,
 }
 
+/// Planner-selected reduction policy for file preparation.
+///
+/// `Control` preserves existing prep behavior. `QueryAware` carries only
+/// planner-supplied query/admission metadata; Push applies it mechanically and
+/// falls back toward source when metadata is not admitted or is stale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PushPolicy {
+    Control,
+    QueryAware(QueryAwarePolicy),
+}
+
+/// Metadata admitted by planner for one query-aware Push pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryAwarePolicy {
+    pub query: String,
+    pub authority_admitted: bool,
+    pub freshness_valid: bool,
+}
+
+impl QueryAwarePolicy {
+    pub fn new(query: impl Into<String>, authority_admitted: bool, freshness_valid: bool) -> Self {
+        Self {
+            query: query.into(),
+            authority_admitted,
+            freshness_valid,
+        }
+    }
+
+    pub fn admitted(query: impl Into<String>) -> Self {
+        Self::new(query, true, true)
+    }
+}
+
+impl PushPolicy {
+    pub fn query_aware(
+        query: impl Into<String>,
+        authority_admitted: bool,
+        freshness_valid: bool,
+    ) -> Self {
+        Self::QueryAware(QueryAwarePolicy::new(
+            query,
+            authority_admitted,
+            freshness_valid,
+        ))
+    }
+}
+
+impl Default for PushPolicy {
+    fn default() -> Self {
+        Self::Control
+    }
+}
+
+/// Compatibility name for callers that describe this as prep policy.
+pub type PrepPolicy = PushPolicy;
+
 /// Query-aware provider entrypoint used after authority/freshness admission.
 pub fn prepare_query_aware(
     request: compression_provider::CompressionRequest,
@@ -124,6 +180,14 @@ fn estimate_tokens(text: &str) -> u64 {
     compress::estimate_tokens(text) as u64
 }
 
+fn query_budget(rate: f32, source_tokens: usize, allotted: Option<usize>) -> usize {
+    allotted.unwrap_or_else(|| {
+        ((source_tokens as f32) * rate.clamp(0.0, 1.0))
+            .ceil()
+            .max(1.0) as usize
+    })
+}
+
 fn outline_token_threshold() -> usize {
     // Leave room in Push's 2,048-token context profile for document title,
     // ancestry, embed prefix, and a safety margin.
@@ -168,7 +232,7 @@ pub fn prep_files(
     rate: f32,
     min_bytes: usize,
 ) -> Vec<PrepEntry> {
-    prep_files_with_budget(out_dir, files, rate, min_bytes, None)
+    prep_files_with_policy(out_dir, files, rate, min_bytes, None, PushPolicy::Control)
 }
 
 /// Budget-aware variant of [`prep_files`]. Budget is allocated proportionally
@@ -179,6 +243,29 @@ pub fn prep_files_with_budget(
     rate: f32,
     min_bytes: usize,
     budget_tokens: Option<usize>,
+) -> Vec<PrepEntry> {
+    prep_files_with_policy(
+        out_dir,
+        files,
+        rate,
+        min_bytes,
+        budget_tokens,
+        PushPolicy::Control,
+    )
+}
+
+/// Prepare files under an explicit planner-selected Push policy.
+///
+/// Existing callers should continue using [`prep_files`] or
+/// [`prep_files_with_budget`] for the control arm. Query-aware reduction is
+/// reachable only through this explicit policy entrypoint.
+pub fn prep_files_with_policy(
+    out_dir: &Path,
+    files: &[PathBuf],
+    rate: f32,
+    min_bytes: usize,
+    budget_tokens: Option<usize>,
+    policy: PushPolicy,
 ) -> Vec<PrepEntry> {
     let _ = std::fs::create_dir_all(out_dir);
     let mut out = Vec::new();
@@ -269,9 +356,28 @@ pub fn prep_files_with_budget(
                     total * estimate_tokens(&src) as usize / eligible_tokens
                 }
             });
-            let sk = allotted
-                .map(|budget| skel::skeletonize_to_budget(orig_path, &src, budget).text)
-                .unwrap_or_else(|| skel::skeletonize(orig_path, &src));
+            let sk = match &policy {
+                PushPolicy::Control => allotted
+                    .map(|budget| skel::skeletonize_to_budget(orig_path, &src, budget).text)
+                    .unwrap_or_else(|| skel::skeletonize(orig_path, &src)),
+                PushPolicy::QueryAware(metadata) => {
+                    let result = prepare_query_aware(compression_provider::CompressionRequest {
+                        source: src.clone(),
+                        path: Some(orig_path.clone()),
+                        query: metadata.query.clone(),
+                        budget_tokens: query_budget(rate, estimate_tokens(&src) as usize, allotted),
+                        authority_admitted: metadata.authority_admitted,
+                        freshness_valid: metadata.freshness_valid,
+                    });
+                    if result.admitted && !result.text.is_empty() {
+                        result.text
+                    } else {
+                        // Admission or freshness uncertainty must move toward
+                        // less reduction, never publish an empty artifact.
+                        src.clone()
+                    }
+                }
+            };
             let (kind, payload) = if sk.trim().is_empty() || sk == src {
                 ("skel-fallback-copy".to_string(), src.clone())
             } else {
@@ -334,9 +440,28 @@ pub fn prep_files_with_budget(
                 total * before_tok as usize / eligible_tokens
             }
         });
-        let compressed = allotted
-            .map(|budget| compress::compress_to_budget(&src, budget).text)
-            .unwrap_or_else(|| compress::compress(&src, rate));
+        let compressed = match &policy {
+            PushPolicy::Control => allotted
+                .map(|budget| compress::compress_to_budget(&src, budget).text)
+                .unwrap_or_else(|| compress::compress(&src, rate)),
+            PushPolicy::QueryAware(metadata) => {
+                let result = prepare_query_aware(compression_provider::CompressionRequest {
+                    source: src.clone(),
+                    path: Some(orig_path.clone()),
+                    query: metadata.query.clone(),
+                    budget_tokens: query_budget(rate, before_tok as usize, allotted),
+                    authority_admitted: metadata.authority_admitted,
+                    freshness_valid: metadata.freshness_valid,
+                });
+                if result.admitted && !result.text.is_empty() {
+                    result.text
+                } else {
+                    // Admission or freshness uncertainty must move toward
+                    // less reduction, never publish an empty artifact.
+                    src.clone()
+                }
+            }
+        };
         let after_tok = estimate_tokens(&compressed);
         let _ = std::fs::write(&prepared_path, &compressed);
         out.push(PrepEntry {
@@ -353,6 +478,19 @@ pub fn prep_files_with_budget(
     }
 
     out
+}
+
+/// Same policy-aware entrypoint with budget named first for callers migrating
+/// from [`prep_files_with_budget`].
+pub fn prep_files_with_budget_and_policy(
+    out_dir: &Path,
+    files: &[PathBuf],
+    rate: f32,
+    min_bytes: usize,
+    budget_tokens: Option<usize>,
+    policy: PushPolicy,
+) -> Vec<PrepEntry> {
+    prep_files_with_policy(out_dir, files, rate, min_bytes, budget_tokens, policy)
 }
 
 #[cfg(test)]
@@ -498,6 +636,62 @@ mod tests {
             );
             assert_eq!(entry.before_bytes, entry.after_bytes);
         }
+    }
+
+    #[test]
+    fn query_aware_policy_reaches_provider_for_prose_and_code() {
+        let temp = tempfile::tempdir().unwrap();
+        let out_dir = temp.path().join("prepared");
+
+        let prose = temp.path().join("notes.txt");
+        std::fs::write(
+            &prose,
+            "ordinary context one\nneedle task entity\nordinary context two\n",
+        )
+        .unwrap();
+        let code = temp.path().join("task.rs");
+        std::fs::write(
+            &code,
+            "fn unrelated() {}\nfn needle_task_entity() {}\nfn trailing() {}\n",
+        )
+        .unwrap();
+
+        let manifest = prep_files_with_policy(
+            &out_dir,
+            &[prose.clone(), code.clone()],
+            0.25,
+            20,
+            Some(5),
+            PushPolicy::QueryAware(QueryAwarePolicy::admitted("needle_task_entity needle")),
+        );
+        assert_eq!(manifest.len(), 2);
+        let prose_output = std::fs::read_to_string(manifest[0].prepared.as_ref().unwrap()).unwrap();
+        let code_output = std::fs::read_to_string(manifest[1].prepared.as_ref().unwrap()).unwrap();
+        assert!(prose_output.contains("needle task entity"));
+        assert!(code_output.contains("needle_task_entity"));
+    }
+
+    #[test]
+    fn query_aware_policy_denial_falls_back_to_source() {
+        let temp = tempfile::tempdir().unwrap();
+        let out_dir = temp.path().join("prepared");
+        let source = "ordinary context\nquery entity\n".repeat(8);
+        let path = temp.path().join("denied.txt");
+        std::fs::write(&path, &source).unwrap();
+
+        let manifest = prep_files_with_policy(
+            &out_dir,
+            std::slice::from_ref(&path),
+            0.1,
+            20,
+            Some(2),
+            PushPolicy::query_aware("query", false, true),
+        );
+        let entry = &manifest[0];
+        let output = std::fs::read_to_string(entry.prepared.as_ref().unwrap()).unwrap();
+        assert_eq!(entry.kind, "compress");
+        assert_eq!(output, source);
+        assert_eq!(entry.before_tok, entry.after_tok);
     }
 
     /// Task 4b parity (per `docs/plans/2026-07-01-context-engine-unification.md`):

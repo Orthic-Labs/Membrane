@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -8,9 +9,22 @@ import test from "node:test";
 import { advanceRollout, commit, STAGES } from "./rollout.mjs";
 
 const MEMBRANE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const WORKSPACE_ROOT = resolve(MEMBRANE_ROOT, "..");
 const REAL_MEMBRANE_COMMIT = commit(MEMBRANE_ROOT);
-const REAL_WORKSPACE_COMMIT = commit(WORKSPACE_ROOT);
+
+function gitFixture() {
+  const root = mkdtempSync(join(tmpdir(), "membrane-rollout-workspace-"));
+  execFileSync("git", ["init", "--quiet"], { cwd: root });
+  execFileSync("git", ["config", "user.email", "ci@membrane.invalid"], { cwd: root });
+  execFileSync("git", ["config", "user.name", "Membrane CI"], { cwd: root });
+  writeFileSync(join(root, "fixture.txt"), "workspace\n");
+  execFileSync("git", ["add", "fixture.txt"], { cwd: root });
+  execFileSync("git", ["commit", "--quiet", "-m", "fixture"], { cwd: root });
+  return { root, commit: commit(root) };
+}
+
+const WORKSPACE = gitFixture();
+const WORKSPACE_ROOT = WORKSPACE.root;
+const REAL_WORKSPACE_COMMIT = WORKSPACE.commit;
 
 const digest = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 function artifact(kind, status, { fingerprintCommit = REAL_MEMBRANE_COMMIT, omitFingerprint = false } = {}) {
@@ -57,9 +71,9 @@ test("E2 rejects a stale qualification artifact bound to a commit that is not HE
 
 test("E2 learning stage binds the benchmark receipt to the live workspace commit, not the membrane commit", () => {
   const stale = benchmarkArtifact("0".repeat(40));
-  assert.throws(() => advanceRollout("tool_enforced", "learning", { artifacts: { benchmark: stale } }), /stale/);
+  assert.throws(() => advanceRollout("tool_enforced", "learning", { artifacts: { benchmark: stale }, workspaceRoot: WORKSPACE_ROOT }), /stale/);
   const fresh = benchmarkArtifact(REAL_WORKSPACE_COMMIT);
-  const receipt = advanceRollout("tool_enforced", "learning", { artifacts: { benchmark: fresh } });
+  const receipt = advanceRollout("tool_enforced", "learning", { artifacts: { benchmark: fresh }, workspaceRoot: WORKSPACE_ROOT });
   assert.equal(receipt.to, "learning");
   assert.equal(receipt.evidence[0].commit, REAL_WORKSPACE_COMMIT);
 });

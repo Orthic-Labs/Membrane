@@ -37,6 +37,29 @@ pub fn open_readonly() -> Option<Connection> {
     Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
 }
 
+/// Resolves the local catalog database path (the content-free admission
+/// ledger — `receipts` / `retrieval_events`), distinct from the cortex
+/// engine DB. `MEMBRANE_CATALOG` overrides; otherwise the same
+/// workspace-relative directory as the cortex engine DB, matching
+/// `membrane_runtime::catalog::resolve_catalog_path_from`'s `WORKSPACE_ROOT`
+/// fallback arm.
+pub fn configured_catalog_db_path() -> PathBuf {
+    std::env::var_os("MEMBRANE_CATALOG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/memory/catalog.db"))
+}
+
+/// Best-effort read-only open of the configured catalog database. `None` on
+/// any failure — missing file, locked database, corrupt header — so callers
+/// fail closed instead of fabricating admission data.
+pub fn open_readonly_catalog() -> Option<Connection> {
+    let path = configured_catalog_db_path();
+    if !path.is_file() {
+        return None;
+    }
+    Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
+}
+
 pub fn now_unix_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -1,6 +1,7 @@
 {
   "bundle": {
     "createUpdaterArtifacts": false,
+    "externalBin": ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"],
     "windows": {
       "allowDowngrades": true,
       "nsis": {

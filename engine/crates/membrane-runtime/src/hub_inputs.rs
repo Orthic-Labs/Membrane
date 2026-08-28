@@ -26,6 +26,9 @@ pub struct LiveSnapshotParts {
     pub inputs: HubInputsV1,
     pub membrane_state: membrane_protocol::MembraneParentState,
     pub subsystems: membrane_protocol::HubSubsystemsV1,
+    /// Additive V1 admission-ledger aggregate. `None` when the catalog
+    /// receipt store is unreadable — never a fabricated zero.
+    pub admission: Option<membrane_protocol::HubAdmissionV1>,
 }
 
 /// Best-effort live read of local Membrane resident's `/health` endpoint,
@@ -68,11 +71,12 @@ pub fn compose_hub_snapshot(
         reason: "observed".into(),
         resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
     }));
-    facade.snapshot_with_subsystems(
+    facade.snapshot_with_admission(
         observed_at_unix_ms,
         parts.inputs,
         Some(parts.membrane_state),
         Some(parts.subsystems),
+        parts.admission,
     )
 }
 
@@ -99,10 +103,12 @@ pub fn snapshot_parts_from_health(
     let subsystems =
         subsystem_inputs_from_health(health, blueprint, &inputs.memory, &inputs.sentinel)
             .subsystems();
+    let admission = crate::admission_producer::build_admission_report();
     LiveSnapshotParts {
         inputs,
         membrane_state: parent,
         subsystems,
+        admission,
     }
 }
 
@@ -120,6 +126,7 @@ pub fn offline_snapshot_parts() -> LiveSnapshotParts {
         inputs,
         membrane_state: membrane_protocol::MembraneParentState::Offline,
         subsystems,
+        admission: None,
     }
 }
 
@@ -666,10 +673,10 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     /// Every test in this module can implicitly read the process-global
-    /// `MEMBRANE_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
-    /// adapters, and sentinel producers. Tests that need a deterministic
-    /// "no database" result hold this lock and point `MEMBRANE_DB_PATH` at a
-    /// guaranteed-missing path so they never race a real workspace database.
+    /// `MEMBRANE_DB_PATH` / `MEMBRANE_CATALOG` / `WORKSPACE_ROOT` env vars
+    /// through the producers. Tests that need deterministic missing stores
+    /// hold this lock and point both explicit paths at guaranteed-missing
+    /// files so they never read real workspace data.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn lock_env() -> MutexGuard<'static, ()> {
@@ -678,18 +685,27 @@ mod tests {
 
     fn with_missing_db<R>(f: impl FnOnce() -> R) -> R {
         let _guard = lock_env();
-        let prior = std::env::var_os("MEMBRANE_DB_PATH");
+        let prior_db = std::env::var_os("MEMBRANE_DB_PATH");
+        let prior_catalog = std::env::var_os("MEMBRANE_CATALOG");
         unsafe {
             std::env::set_var(
                 "MEMBRANE_DB_PATH",
                 "/nonexistent/hub_inputs_test/cortex-engine.db",
             );
+            std::env::set_var(
+                "MEMBRANE_CATALOG",
+                "/nonexistent/hub_inputs_test/catalog.db",
+            );
         }
         let result = f();
         unsafe {
-            match prior {
+            match prior_db {
                 Some(v) => std::env::set_var("MEMBRANE_DB_PATH", v),
                 None => std::env::remove_var("MEMBRANE_DB_PATH"),
+            }
+            match prior_catalog {
+                Some(v) => std::env::set_var("MEMBRANE_CATALOG", v),
+                None => std::env::remove_var("MEMBRANE_CATALOG"),
             }
         }
         result

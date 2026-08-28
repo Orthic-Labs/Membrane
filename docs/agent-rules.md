@@ -51,7 +51,7 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
 - New documentation and current-product code use Pull / Push / Cortex / Blueprint / Ledger / Adapt. Guide is retired; legacy `guide` names exist only at explicit compatibility/history boundaries.
-- Membrane runtime executes only inside the active Hub process; Hub off means no Membrane context (typed `membrane_unavailable { hub_inactive }`).
+- Membrane runtime never runs without a visible tray surface. Runtime executes as a child process of the resident tray app with OS-enforced lifetime coupling; no tray means no Membrane context (typed `membrane_unavailable { hub_inactive }`).
 - Blueprint is independently usable but not independently resident; its watcher runs only under Hub, and Hub-off access is a bounded one-shot operation.
 - A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.
 

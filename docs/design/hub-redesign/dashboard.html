@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Membrane Hub — Overview</title>
+<style>
+/* Membrane Hub · Overview · 1280x800
+   Colour law:  purple = everything interactive (nav, links, chevrons, focus).
+                green / amber / red / grey = verdicts, and nothing else.
+   Verdicts are shapes first: filled / half / hollow / dashed.
+   Unit law:    decisions and sources are never mixed in one composition.
+                Percentages are always of 12,802 decisions. Unconfigured
+                sources are a separate count with no percentage.
+   Tanker: wordmark + page title only. Flat fills, no gradients anywhere. */
+@font-face{font-family:'Tanker';src:url('fonts/Tanker-400.woff2') format('woff2');font-weight:400;font-display:block}
+@font-face{font-family:'Spline Sans Mono';src:url('fonts/SplineSansMono-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Spline Sans Mono';src:url('fonts/SplineSansMono-500.woff2') format('woff2');font-weight:500;font-display:swap}
+
+:root{
+  --ink:#0A090C; --panel:#131117; --rail:#141219; --raised:#221E2B;
+  --edge:#26222E; --edge-strong:#3B3548;
+  --text:#F2EFF6; --dim:#9C96A8; --faint:#6E6879;
+  --accent:#C56BFF; --accent-ink:#12071B; --accent-quiet:#2A1B3A; --accent-dim:#5B3A80;
+  --admit:#3FD98B; --partial:#F0B23C; --refuse:#FF6B73; --silent:#8A8598;
+  --display:'Tanker',system-ui,sans-serif;
+  --ui:-apple-system,BlinkMacSystemFont,'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --mono:'Spline Sans Mono',ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#08070A;display:grid;place-items:center;min-height:100vh;
+     font:13px/1.45 var(--ui);color:var(--text);-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;font-weight:600}
+
+.win{width:1280px;height:800px;background:var(--ink);border-radius:10px;overflow:hidden;
+     display:grid;grid-template-columns:212px minmax(0,1fr);grid-template-rows:46px minmax(0,1fr);
+     grid-template-areas:"brandbar titlebar" "rail body"}
+
+/* ---------- chrome ---------- */
+.brandbar{grid-area:brandbar;background:var(--rail);display:flex;align-items:center;gap:9px;
+          padding:0 16px;border-right:1px solid var(--edge)}
+.mark{width:17px;height:17px;flex:none;background:var(--accent);
+      -webkit-mask:var(--m) center/contain no-repeat;mask:var(--m) center/contain no-repeat}
+.wordmark{font:400 19px/1 var(--display);letter-spacing:.02em}
+.titlebar{grid-area:titlebar;background:var(--rail);border-bottom:1px solid var(--edge);
+          display:flex;align-items:center;gap:14px;padding-left:20px}
+.pagetitle{font:400 22px/1 var(--display);letter-spacing:.02em;padding-top:2px}
+.crumb{font:400 11.5px/1 var(--mono);color:var(--faint)}
+.caption{margin-left:auto;display:flex;align-self:stretch}
+.caption button{width:46px;border:0;background:transparent;color:var(--dim);font:400 12px/1 var(--ui);
+                cursor:pointer;transition:background-color .12s ease,color .12s ease}
+.caption button:hover{background:var(--raised);color:var(--text)}
+.caption button.x:hover{background:#B92D38;color:#fff}
+
+/* ---------- sidebar ---------- */
+.rail{grid-area:rail;background:var(--rail);border-right:1px solid var(--edge);
+      display:flex;flex-direction:column;padding:12px 10px}
+.rail nav{display:grid;gap:2px}
+.rail a{display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:7px;
+        color:var(--dim);text-decoration:none;font-size:13px;
+        transition:background-color .12s ease,color .12s ease}
+.rail a:hover{background:var(--raised);color:var(--text)}
+.rail a.on{background:var(--accent-quiet);color:var(--accent);font-weight:600}
+.rail a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.5;
+          stroke-linecap:round;stroke-linejoin:round}
+.rail hr{border:0;border-top:1px solid var(--edge);margin:11px 10px}
+.railfoot{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--edge);display:grid;gap:9px}
+.railfoot dl{margin:0;display:grid;gap:6px}
+.railfoot dt{font-size:11px;color:var(--faint)}
+.railfoot dd{margin:0;font:400 11.5px/1.35 var(--mono);color:var(--dim);
+             overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tray-btn{margin-top:10px;display:flex;align-items:center;justify-content:center;height:34px;
+          border:1px solid var(--edge-strong);border-radius:8px;background:transparent;cursor:pointer;
+          color:var(--dim);font:inherit;font-size:12.5px;
+          transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.tray-btn:hover{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
+
+/* ---------- verdict chip: shape first, colour second ---------- */
+.v{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;white-space:nowrap;color:var(--silent)}
+.v i{width:9px;height:9px;flex:none;border:1.5px solid currentColor;border-radius:2px;overflow:hidden}
+.v.ok{color:var(--admit)}      .v.ok i{background:currentColor}
+.v.warn{color:var(--partial)}  .v.warn i::before{content:"";display:block;height:50%;background:currentColor}
+.v.bad{color:var(--refuse)}
+.v.off i{border:0;height:1.5px;border-radius:0;background:currentColor}
+.c-ok{color:var(--admit)} .c-warn{color:var(--partial)} .c-bad{color:var(--refuse)} .c-off{color:var(--silent)}
+
+/* ---------- body ---------- */
+.body{grid-area:body;overflow:auto;padding:20px 26px 22px;display:flex;flex-direction:column}
+
+.head{display:flex;align-items:flex-start;gap:20px;margin:2px 0 14px}
+.head .lede{font-size:12.5px;color:var(--faint);margin:5px 0 0}
+.head h2{font-size:19px;letter-spacing:-.015em}
+
+/* trend: a real stacked series with a stated scale, in verdict colours
+   because it encodes verdicts. Not decoration. */
+.trend{margin-left:auto;flex:none}
+.trend .plot{display:flex;align-items:flex-end;gap:3px;height:38px}
+.trend .plot i{width:7px;display:flex;flex-direction:column;justify-content:flex-end;gap:1px}
+.trend .plot b{display:block;border-radius:1px}
+.trend .plot .h{background:var(--partial)}
+.trend .plot .a{background:var(--admit)}
+.trend .axis{display:flex;align-items:center;gap:13px;margin-top:8px;
+             font:400 10.5px/1 var(--mono);color:var(--faint)}
+.trend .axis em{font-style:normal;display:inline-flex;align-items:center;gap:5px}
+.trend .axis em s{width:7px;height:7px;border-radius:2px;display:block;text-decoration:none}
+
+/* ---------- the boundary: four verdicts + the bar, one object ---------- */
+.boundary{border:1px solid var(--edge);border-radius:10px;background:var(--panel);
+          overflow:hidden;margin-bottom:20px}
+.verdicts{display:grid;grid-template-columns:repeat(4,1fr);list-style:none;margin:0;padding:0}
+.verdicts li{border-left:1px solid var(--edge);min-width:0}
+.verdicts li:first-child{border-left:0}
+.verdicts a{display:block;padding:15px 17px;text-decoration:none;color:inherit;
+            transition:background-color .12s ease}
+.verdicts a:hover{background:var(--raised)}
+.verdicts a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.vhead{display:flex;align-items:center;gap:10px;margin-bottom:11px}
+.swatch{width:24px;height:24px;flex:none;border:2px solid currentColor;border-radius:5px;overflow:hidden}
+.swatch.f{background:currentColor}
+.swatch.h::before{content:"";display:block;height:50%;background:currentColor}
+.swatch.d{border-style:dashed}
+.vhead b{font-size:10.5px;letter-spacing:.06em;color:var(--dim);font-weight:600}
+.vhead .go{margin-left:auto;color:var(--accent);font-size:14px;line-height:1}
+.verdicts strong{display:block;font:500 26px/1 var(--mono);letter-spacing:-.03em;color:var(--text)}
+.verdicts em{display:block;margin-top:6px;font-style:normal;font:400 11px/1.3 var(--mono);color:var(--faint);
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.bar-wrap{border-top:1px solid var(--edge);padding:13px 17px 14px}
+.bar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--raised)}
+.bar span{display:block}
+.bar .s-ok{background:var(--admit)} .bar .s-warn{background:var(--partial)} .bar .s-bad{background:var(--refuse)}
+.bar-legend{display:flex;gap:20px;margin:9px 0 0;font:400 11px/1 var(--mono);color:var(--faint)}
+.bar-legend b{font-weight:500;color:var(--dim)}
+.bar-legend .right{margin-left:auto}
+
+/* ---------- needs attention ---------- */
+.sec{display:flex;align-items:baseline;gap:9px;margin:0 0 5px}
+.sec h3{font-size:13px;color:var(--dim);font-weight:600}
+.sec::before{content:"";width:6px;height:6px;flex:none;align-self:center;background:var(--accent);
+             clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+.sec .n{font:500 12px/1 var(--mono);color:var(--partial)}
+.sec .more{margin-left:auto;font-size:12px;color:var(--accent);text-decoration:none}
+.attn{list-style:none;margin:0 0 18px;padding:0}
+.attn li{display:flex;align-items:center;gap:14px;height:45px;border-bottom:1px solid var(--edge)}
+.attn li:first-child{border-top:1px solid var(--edge)}
+.attn .what{font-weight:600;font-size:13px;width:222px;flex:none}
+.attn .why{font:400 11.5px/1 var(--mono);color:var(--dim);flex:1;min-width:0;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn .do{flex:none;font:inherit;font-size:12px;padding:5px 12px;border-radius:7px;cursor:pointer;
+          border:1px solid var(--edge-strong);background:transparent;color:var(--text);
+          transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+.attn .do:hover{background:var(--accent-quiet);border-color:var(--accent);color:var(--accent)}
+.clear{margin:0 0 18px;padding:13px 0;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);
+       color:var(--faint);font-size:13px;display:none;align-items:center;gap:9px}
+
+/* ---------- two panels ---------- */
+.panels{display:grid;grid-template-columns:minmax(0,1.32fr) minmax(0,1fr);gap:12px;margin-top:auto}
+.panel{border:1px solid var(--edge);border-radius:10px;background:var(--panel);padding:14px 16px 6px;min-width:0}
+.panel>header{display:flex;align-items:baseline;gap:9px;margin-bottom:6px}
+.panel h3{font-size:13px;font-weight:600}
+.panel .more{margin-left:auto;font-size:12px;color:var(--accent);text-decoration:none}
+
+.decisions{list-style:none;margin:0;padding:0}
+.decisions li{display:flex;align-items:center;gap:12px;height:36px;border-top:1px solid var(--edge)}
+.decisions li:first-child{border-top:0}
+.decisions time{font:400 11.5px/1 var(--mono);color:var(--faint);width:52px;flex:none}
+.decisions .subj{font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.decisions .rsn{font:400 11.5px/1 var(--mono);color:var(--faint);width:118px;flex:none;
+                overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.decisions .sw{width:11px;height:11px;flex:none;border:1.5px solid currentColor;border-radius:2px;overflow:hidden}
+.decisions .sw.f{background:currentColor}
+.decisions .sw.h::before{content:"";display:block;height:50%;background:currentColor}
+
+/* admitted by source: proportion of the 8,642 admitted, purple ramp so it can
+   never be misread as a verdict */
+.split{list-style:none;margin:0;padding:0}
+.split li{display:grid;grid-template-columns:70px minmax(0,1fr) 50px 44px;align-items:center;gap:10px;
+          height:36px;border-top:1px solid var(--edge)}
+.split li:first-child{border-top:0}
+.split .nm{font-size:12.5px;font-weight:600}
+.split .track{height:7px;border-radius:4px;background:var(--raised);overflow:hidden}
+.split .track b{display:block;height:100%;background:var(--accent-dim);border-radius:4px}
+.split li:first-child .track b{background:var(--accent)}
+.split .ct{font:500 11.5px/1 var(--mono);color:var(--dim);text-align:right}
+.split .pc{font:400 11.5px/1 var(--mono);color:var(--faint);text-align:right}
+
+/* ---------- healthy variant ---------- */
+body[data-state="healthy"] .attn,
+body[data-state="healthy"] .attn-label{display:none}
+body[data-state="healthy"] .clear{display:flex}
+</style>
+</head>
+<body data-state="attention" style="--m:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path d=%22M12 1.6 21.2 6.9v10.2L12 22.4 2.8 17.1V6.9z%22 fill=%22black%22/><path d=%22M12 6.6 16.8 9.4v5.2L12 17.4 7.2 14.6V9.4z%22 fill=%22white%22/></svg>')">
+
+<div class="win">
+
+  <div class="brandbar">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="wordmark">Membrane</span>
+  </div>
+
+  <div class="titlebar">
+    <span class="pagetitle">Overview</span>
+    <span class="crumb">hub.snapshot · schema 1</span>
+    <div class="caption">
+      <button aria-label="Minimise">&#8211;</button>
+      <button aria-label="Maximise">&#9723;</button>
+      <button class="x" aria-label="Close to notification area">&#10005;</button>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <nav aria-label="Hub">
+      <a href="#" class="on"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7"/><rect x="13.5" y="3.5" width="7" height="7"/><rect x="3.5" y="13.5" width="7" height="7"/><rect x="13.5" y="13.5" width="7" height="7"/></svg>Overview</a>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M5.5 3.5h9l4 4v13h-13z"/><path d="M8.5 12h7M8.5 16h4"/></svg>Ledger</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17"/></svg>Sources</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><path d="M10.4 6.9 6.4 15.8M13.6 6.9l4 8.9M7.4 18h9.2"/></svg>Subsystems</a>
+      <hr>
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h11"/></svg>Memories</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.2l3.4 2"/></svg>Sessions</a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Settings</a>
+    </nav>
+    <div class="railfoot">
+      <span class="v ok"><i aria-hidden="true"></i>Boundary active</span>
+      <dl>
+        <dt>Root</dt><dd title="D:\Claude">D:\Claude</dd>
+        <dt>Last decision</dt><dd>2s ago</dd>
+        <dt>Blueprint</dt><dd>generation 41</dd>
+      </dl>
+      <button class="tray-btn">Open tray popover</button>
+    </div>
+  </aside>
+
+  <main class="body">
+
+    <div class="head">
+      <div>
+        <h2>Membrane running</h2>
+        <p class="lede">At a glance. Drill down for detail.</p>
+      </div>
+      <div class="trend">
+        <div class="plot" role="img" aria-label="Admitted versus held back per 10 minutes over the last 2 hours, peak 48">
+          <i><b class="h" style="height:3px"></b><b class="a" style="height:14px"></b></i>
+          <i><b class="h" style="height:4px"></b><b class="a" style="height:17px"></b></i>
+          <i><b class="h" style="height:2px"></b><b class="a" style="height:11px"></b></i>
+          <i><b class="h" style="height:5px"></b><b class="a" style="height:20px"></b></i>
+          <i><b class="h" style="height:3px"></b><b class="a" style="height:15px"></b></i>
+          <i><b class="h" style="height:6px"></b><b class="a" style="height:23px"></b></i>
+          <i><b class="h" style="height:4px"></b><b class="a" style="height:18px"></b></i>
+          <i><b class="h" style="height:5px"></b><b class="a" style="height:14px"></b></i>
+          <i><b class="h" style="height:5px"></b><b class="a" style="height:21px"></b></i>
+          <i><b class="h" style="height:7px"></b><b class="a" style="height:26px"></b></i>
+          <i><b class="h" style="height:4px"></b><b class="a" style="height:20px"></b></i>
+          <i><b class="h" style="height:3px"></b><b class="a" style="height:16px"></b></i>
+          <i><b class="h" style="height:6px"></b><b class="a" style="height:23px"></b></i>
+          <i><b class="h" style="height:8px"></b><b class="a" style="height:29px"></b></i>
+          <i><b class="h" style="height:5px"></b><b class="a" style="height:25px"></b></i>
+          <i><b class="h" style="height:5px"></b><b class="a" style="height:18px"></b></i>
+        </div>
+        <p class="axis">
+          <em><s style="background:var(--admit)"></s>admitted</em>
+          <em><s style="background:var(--partial)"></s>held back</em>
+          <em>peak 48 / 10 min · last 2h</em>
+        </p>
+      </div>
+    </div>
+
+    <div class="boundary">
+      <ul class="verdicts">
+        <li><a href="#">
+          <div class="vhead"><span class="swatch f c-ok" aria-hidden="true"></span><b>ADMITTED</b><span class="go">&#8250;</span></div>
+          <strong>8,642</strong><em>67.5% of decisions</em>
+        </a></li>
+        <li><a href="#">
+          <div class="vhead"><span class="swatch h c-warn" aria-hidden="true"></span><b>PARTIAL</b><span class="go">&#8250;</span></div>
+          <strong>2,031</strong><em>15.9% · budget or freshness</em>
+        </a></li>
+        <li><a href="#">
+          <div class="vhead"><span class="swatch c-bad" aria-hidden="true"></span><b>REFUSED</b><span class="go">&#8250;</span></div>
+          <strong>2,129</strong><em>16.6% · authority or scope</em>
+        </a></li>
+        <li><a href="#">
+          <div class="vhead"><span class="swatch d c-off" aria-hidden="true"></span><b>UNCONFIGURED</b><span class="go">&#8250;</span></div>
+          <strong>40</strong><em>sources · never instrumented</em>
+        </a></li>
+      </ul>
+      <div class="bar-wrap">
+        <div class="bar" role="img" aria-label="Of 12,802 decisions: 8,642 admitted, 2,031 partial, 2,129 refused">
+          <span class="s-ok" style="width:67.5%"></span>
+          <span class="s-warn" style="width:15.9%"></span>
+          <span class="s-bad" style="width:16.6%"></span>
+        </div>
+        <p class="bar-legend">
+          <span><b>12,802</b> decisions at the boundary</span>
+          <span class="right">all time · 40 sources unconfigured, not counted here</span>
+        </p>
+      </div>
+    </div>
+
+    <div class="sec attn-label"><h3>Needs attention</h3><span class="n">3</span><a class="more" href="#">All alerts</a></div>
+    <ul class="attn">
+      <li>
+        <span class="what">Blueprint has no graph</span>
+        <span class="why">graph_missing · nothing admitted from this root is grounded in repository truth</span>
+        <button class="do">Scan root</button>
+      </li>
+      <li>
+        <span class="what">Cortex has 2 contradictions</span>
+        <span class="why">conflicting durable memories awaiting supersession</span>
+        <button class="do">Resolve</button>
+      </li>
+      <li>
+        <span class="what">Ledger is not configured</span>
+        <span class="why">not_instrumented · no document index for this workspace</span>
+        <button class="do">Configure</button>
+      </li>
+    </ul>
+    <p class="clear"><span class="v ok"><i aria-hidden="true"></i></span>Nothing needs attention.</p>
+
+    <div class="panels">
+      <section class="panel">
+        <header><h3>Recent decisions</h3><a class="more" href="#">All decisions &#8250;</a></header>
+        <ul class="decisions">
+          <li><time>2s</time><span class="sw f c-ok" aria-hidden="true"></span>
+              <span class="subj">engine/crates/membrane-runtime/src/planner.rs</span>
+              <span class="rsn">within_scope</span></li>
+          <li><time>18s</time><span class="sw h c-warn" aria-hidden="true"></span>
+              <span class="subj">docs/subsystems/BLUEPRINT_CANONICAL.md §4</span>
+              <span class="rsn">budget_drop</span></li>
+          <li><time>1m</time><span class="sw c-bad" aria-hidden="true"></span>
+              <span class="subj">cortex://memory/8f21c4 — superseded</span>
+              <span class="rsn">authority</span></li>
+          <li><time>2m</time><span class="sw f c-ok" aria-hidden="true"></span>
+              <span class="subj">apps/membrane-hub/src-tauri/src/main.rs</span>
+              <span class="rsn">within_scope</span></li>
+          <li><time>4m</time><span class="sw c-bad" aria-hidden="true"></span>
+              <span class="subj">blueprint://graph/node/1f0a — stale</span>
+              <span class="rsn">freshness</span></li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <header><h3>Admitted by source</h3><a class="more" href="#">All sources &#8250;</a></header>
+        <ul class="split">
+          <li><span class="nm">Blueprint</span><span class="track"><b style="width:47.7%"></b></span>
+              <span class="ct">4,118</span><span class="pc">47.7%</span></li>
+          <li><span class="nm">Ledger</span><span class="track"><b style="width:24.3%"></b></span>
+              <span class="ct">2,101</span><span class="pc">24.3%</span></li>
+          <li><span class="nm">Cortex</span><span class="track"><b style="width:23.0%"></b></span>
+              <span class="ct">1,989</span><span class="pc">23.0%</span></li>
+          <li><span class="nm">Providers</span><span class="track"><b style="width:5.0%"></b></span>
+              <span class="ct">434</span><span class="pc">5.0%</span></li>
+        </ul>
+      </section>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

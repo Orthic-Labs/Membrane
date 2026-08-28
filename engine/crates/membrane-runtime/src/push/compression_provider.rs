@@ -98,16 +98,22 @@ pub fn compress_query_aware(request: &CompressionRequest) -> CompressionResult {
     }
     let text = match kind {
         CompressionContentKind::Json | CompressionContentKind::Table => request.source.clone(),
-        CompressionContentKind::Code if !request.source.lines().any(|line| is_protected(line)) => {
-            request
-                .path
-                .as_deref()
-                .map(|p| {
-                    skel::skeletonize_to_budget(p, &request.source, request.budget_tokens).text
-                })
-                .unwrap_or_else(|| request.source.clone())
+        // Existing protected code remains exact. Query-aware selection may
+        // reduce only code without a pre-existing protected line.
+        CompressionContentKind::Code if request.source.lines().any(is_protected) => {
+            request.source.clone()
         }
-        CompressionContentKind::Code => request.source.clone(),
+        CompressionContentKind::Code if !request.query.trim().is_empty() => {
+            // Query/task terms are protected before any structural reduction.
+            // This keeps query-aware Push faithful even when source is code and
+            // no generic protected marker appears on its own line.
+            prioritize_lines(&request.source, &request.query, request.budget_tokens)
+        }
+        CompressionContentKind::Code => request
+            .path
+            .as_deref()
+            .map(|p| skel::skeletonize_to_budget(p, &request.source, request.budget_tokens).text)
+            .unwrap_or_else(|| request.source.clone()),
         _ => prioritize_lines(&request.source, &request.query, request.budget_tokens),
     };
     let output_tokens = compress::estimate_tokens(&text);
@@ -135,14 +141,11 @@ fn prioritize_lines(source: &str, query: &str, budget: usize) -> String {
             || lower.contains("begin complete read")
     });
     let mut protected = Vec::new();
-    let mut preferred = Vec::new();
     let mut ordinary = Vec::new();
     for (i, line) in lines.iter().enumerate() {
         let lower = line.to_ascii_lowercase();
-        if complete_read || is_protected(line) {
+        if complete_read || is_protected(line) || terms.iter().any(|term| lower.contains(term)) {
             protected.push(i);
-        } else if terms.iter().any(|term| lower.contains(term)) {
-            preferred.push(i);
         } else {
             ordinary.push(i);
         }
@@ -152,7 +155,7 @@ fn prioritize_lines(source: &str, query: &str, budget: usize) -> String {
         .iter()
         .map(|i| compress::estimate_tokens(lines[*i]))
         .sum();
-    for index in preferred.into_iter().chain(ordinary) {
+    for index in ordinary {
         let tokens = compress::estimate_tokens(lines[index]);
         if used + tokens <= budget {
             selected.push(index);
@@ -365,5 +368,19 @@ mod tests {
             freshness_valid: true,
         });
         assert!(prose.text.contains("query hit"));
+    }
+
+    #[test]
+    fn query_terms_are_protected_before_code_reduction() {
+        let result = compress_query_aware(&CompressionRequest {
+            source: "fn unrelated() {}\nfn needle_task() {}\nfn trailing() {}\n".into(),
+            path: Some("task.rs".into()),
+            query: "needle_task".into(),
+            budget_tokens: 1,
+            authority_admitted: true,
+            freshness_valid: true,
+        });
+        assert!(result.admitted);
+        assert!(result.text.contains("needle_task"));
     }
 }

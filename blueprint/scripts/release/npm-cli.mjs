@@ -22,7 +22,7 @@ export function pnpmCliArgs(args) {
     .map((line) => line.trim())
     .find(Boolean);
   if (!wrapper || !existsSync(wrapper)) throw new Error("Provisioned pnpm.CMD not found");
-  const match = readFileSync(wrapper, "utf8").match(/"%~dp0\\([^"\r\n]*\\pnpm\.mjs)"/i);
+  const match = readFileSync(wrapper, "utf8").match(/"%~?dp0%?\\([^"\r\n]*\\pnpm\.mjs)"/i);
   if (!match) throw new Error(`Provisioned pnpm CLI path not found in ${wrapper}`);
   const cli = resolve(dirname(wrapper), match[1]);
   if (!existsSync(cli)) throw new Error(`Provisioned pnpm CLI not found: ${cli}`);

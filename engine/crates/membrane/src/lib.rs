@@ -5,6 +5,7 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
+pub mod activation;
 pub mod cli;
 pub mod cli_parity;
 pub mod dispatch;
@@ -17,6 +18,10 @@ pub mod update;
 
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
+pub use activation::{
+    activate, ActivationOptions, ActivationReceiptV1, ClientActivationReceipt, HarnessClient,
+    ServiceActivationReceipt, ACTIVATION_RECEIPT_SCHEMA_VERSION,
+};
 pub use cli::{run_cli, run_cli_from};
 pub use cli_parity::{check_parity, generate_cli_subcommands, CliParityReport};
 pub use install_tx::{

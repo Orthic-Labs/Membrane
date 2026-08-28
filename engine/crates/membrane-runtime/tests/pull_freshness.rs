@@ -310,13 +310,22 @@ fn blueprint_status_server(
     use std::os::unix::net::UnixListener;
     let listener = UnixListener::bind(endpoint).unwrap();
     std::thread::spawn(move || {
-        for _ in 0..requests {
+        for request_index in 0..requests {
             let (mut stream, _) = listener.accept().unwrap();
             let mut line = String::new();
             BufReader::new(stream.try_clone().unwrap())
                 .read_line(&mut line)
                 .unwrap();
             let request: serde_json::Value = serde_json::from_str(&line).unwrap();
+            let overlay_entries = if request_index < 2 {
+                Vec::new()
+            } else {
+                vec![serde_json::json!({
+                    "path": "app.rs",
+                    "status": " M",
+                    "contentHash": format!("sha256:{}", "c".repeat(64)),
+                })]
+            };
             let response = serde_json::json!({
                 "protocolVersion": 1,
                 "requestId": request["requestId"],
@@ -324,12 +333,20 @@ fn blueprint_status_server(
                 "generation": generation,
                 "result": {
                     "state": "fresh",
+                    "repository": { "revision": head },
                     "manifest": {
                         "complete": true,
                         "generationId": generation,
                         "manifestDigest": format!("sha256:{}", "b".repeat(64)),
                         "repo": { "baseCommit": head },
-                    }
+                    },
+                    "overlay": {
+                        "available": true,
+                        "stable": true,
+                        "entries": overlay_entries,
+                        "commitDistance": 0,
+                        "stageElapsedMs": { "git_status": 0 },
+                    },
                 },
                 "error": null,
             });

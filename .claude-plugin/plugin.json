@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "membrane",
+  "version": "0.1.15",
+  "displayName": "Membrane",
+  "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction. Installs the Membrane MCP server and public skill.",
+  "author": {
+    "name": "Orthic Labs"
+  },
+  "homepage": "https://github.com/Orthic-Labs/Membrane",
+  "repository": "https://github.com/Orthic-Labs/Membrane",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "membrane",
+    "context",
+    "mcp",
+    "repository",
+    "memory"
+  ],
+  "mcpServers": {
+    "membrane": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/membrane.exe",
+      "args": ["stdio-mcp"]
+    }
+  },
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PreCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostCompact": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PreToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostToolUse": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "PostToolUseFailure": [{"matcher": ".*", "hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "TaskCompleted": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe\" \"${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs\""}]}]
+  }
+}

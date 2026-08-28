@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
+  "name": "orthic-labs",
+  "owner": {
+    "name": "Orthic Labs"
+  },
+  "plugins": [
+    {
+      "name": "membrane",
+      "source": "./",
+      "description": "Local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction."
+    }
+  ]
+}

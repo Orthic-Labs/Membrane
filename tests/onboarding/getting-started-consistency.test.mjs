@@ -9,6 +9,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const read = (path) => readFileSync(join(root, path), "utf8");
 const doc = read("docs/getting-started.md");
 const mcp = JSON.parse(read("mcp.json"));
+const claudePlugin = JSON.parse(read(".claude-plugin/plugin.json"));
 const tools = read("engine/crates/membrane-mcp/src/tools.rs");
 const hub = read("engine/crates/membrane-protocol/src/hub.rs");
 const product = read("docs/product.md");
@@ -19,6 +20,24 @@ test("quickstart matches canonical native MCP entrypoint", () => {
   assert.match(doc, /"command": "membrane"/);
   assert.match(doc, /"args": \["stdio-mcp"\]/);
   assert.doesNotMatch(doc, /node mcp\/server\.mjs/);
+});
+
+test("Claude projection is installed-path bound & ships hooks", () => {
+  const server = claudePlugin.mcpServers?.membrane;
+  assert.equal(server?.command, "${CLAUDE_PLUGIN_ROOT}/membrane.exe");
+  assert.deepEqual(server?.args, ["stdio-mcp"]);
+  const hookEvents = ["SessionStart", "UserPromptSubmit", "PreCompact", "PostCompact", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "TaskCompleted", "SessionEnd"];
+  for (const event of hookEvents) {
+    const hooks = claudePlugin.hooks?.[event];
+    assert.ok(Array.isArray(hooks) && hooks.length > 0, event);
+    const command = hooks[0].hooks?.[0]?.command;
+    assert.equal(
+      command,
+      '"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe" "${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs"',
+      event,
+    );
+    assert.doesNotMatch(command, /D:[\\/]Claude|node_modules|(?:^|[\\/])(?:dist|target)(?:[\\/]|$)|python(?:\.exe)?/i);
+  }
 });
 
 test("quickstart states native Windows runtime authority", () => {

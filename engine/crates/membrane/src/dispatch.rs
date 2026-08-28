@@ -56,6 +56,9 @@ pub enum MembraneMode {
     /// `revoke_unowned`, and only removes the ones the runtime
     /// registered. See `crate::uninstall` for the contract.
     Uninstall,
+    /// Activate installed tray/daemon, prove resident identity, & enroll
+    /// native harnesses against installed `membrane stdio-mcp`.
+    Activate,
     MigrateLegacy,
 }
 
@@ -66,6 +69,7 @@ impl MembraneMode {
             MembraneMode::StdioMcp => "stdio-mcp",
             MembraneMode::Install => "install",
             MembraneMode::Uninstall => "uninstall",
+            MembraneMode::Activate => "activate",
             MembraneMode::MigrateLegacy => "migrate-legacy",
         }
     }
@@ -96,6 +100,10 @@ enum Command {
     /// every path the operator names as a `--candidate` unless the
     /// ownership table at `--receipt-root` records it.
     Uninstall(UninstallArgs),
+    /// Activate installed app & register native MCP harnesses.
+    Activate(ActivateArgs),
+    /// Inspect installed service, release identity, & native harness projections.
+    Status(ActivateArgs),
     /// MBR-210: move recognized legacy state without copying or starting a daemon.
     MigrateLegacy(MigrateLegacyArgs),
 }
@@ -165,6 +173,23 @@ struct UninstallArgs {
 }
 
 #[derive(Debug, clap::Args)]
+struct ActivateArgs {
+    /// Installed stable `current` directory. Defaults to the user-local
+    /// product root's stable current path.
+    #[arg(long)]
+    install_root: Option<std::path::PathBuf>,
+    /// Native harness to register. Repeatable; defaults to Codex plus Claude.
+    #[arg(long, value_name = "codex|claude")]
+    client: Vec<String>,
+    /// Bounded resident readiness deadline.
+    #[arg(long, default_value_t = 35_000)]
+    timeout_ms: u64,
+    /// Inspect activation without launching or mutating harness configuration.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+}
+
+#[derive(Debug, clap::Args)]
 struct MigrateLegacyArgs {
     #[arg(long)]
     legacy_root: std::path::PathBuf,
@@ -189,6 +214,7 @@ pub struct ParsedInvocation {
     /// paths the operator asked about, and the dry-run flag. `None` for
     /// every other mode.
     pub uninstall: Option<UninstallInvocation>,
+    pub activation: Option<ActivationInvocation>,
     pub migration: Option<MigrationInvocation>,
 }
 
@@ -211,6 +237,13 @@ pub struct InstallInvocation {
 pub struct UninstallInvocation {
     pub receipt_root: std::path::PathBuf,
     pub candidates: Vec<std::path::PathBuf>,
+    pub dry_run: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivationInvocation {
+    pub install_root: Option<std::path::PathBuf>,
+    pub clients: Vec<String>,
+    pub timeout_ms: u64,
     pub dry_run: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -260,6 +293,7 @@ fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation
                 port: 0,
                 install: None,
                 uninstall: None,
+                activation: None,
                 migration: None,
             })
             .map_err(|error| error.to_string()),
@@ -292,6 +326,7 @@ where
             port: 0,
             install: None,
             uninstall: None,
+            activation: None,
             migration: None,
         });
     }
@@ -307,6 +342,7 @@ where
             port: 0,
             install: None,
             uninstall: None,
+            activation: None,
             migration: None,
         },
         Command::StdioMcp(args) => {
@@ -323,6 +359,7 @@ where
                 port: 0,
                 install: None,
                 uninstall: None,
+                activation: None,
                 migration: None,
             }
         }
@@ -338,6 +375,7 @@ where
                 dry_run: args.dry_run,
             }),
             uninstall: None,
+            activation: None,
             migration: None,
         },
         Command::Uninstall(args) => ParsedInvocation {
@@ -351,6 +389,37 @@ where
                 candidates: args.candidate,
                 dry_run: args.dry_run,
             }),
+            activation: None,
+            migration: None,
+        },
+        Command::Status(args) => ParsedInvocation {
+            mode: MembraneMode::Activate,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: Some(ActivationInvocation {
+                install_root: args.install_root,
+                clients: args.client,
+                timeout_ms: args.timeout_ms,
+                dry_run: true,
+            }),
+            migration: None,
+        },
+        Command::Activate(args) => ParsedInvocation {
+            mode: MembraneMode::Activate,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: Some(ActivationInvocation {
+                install_root: args.install_root,
+                clients: args.client,
+                timeout_ms: args.timeout_ms,
+                dry_run: args.dry_run,
+            }),
             migration: None,
         },
         Command::MigrateLegacy(args) => ParsedInvocation {
@@ -360,6 +429,7 @@ where
             port: 0,
             install: None,
             uninstall: None,
+            activation: None,
             migration: Some(MigrationInvocation {
                 legacy_root: args.legacy_root,
                 target_root: args.target_root,
@@ -464,9 +534,8 @@ pub fn consume_lifecycle_channel() -> Result<Option<LifecycleChannel>, String> {
     validate_lifecycle_hello_shape(&hello)?;
     let declared_root = std::fs::canonicalize(&hello.declared_data_root)
         .map_err(|_| "lifecycle data root unavailable")?;
-    let configured_root = std::env::var_os("WORKSPACE_ROOT")
+    let configured_root = std::env::var_os("MEMBRANE_STATE_ROOT")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::current_dir().ok())
         .and_then(|path| std::fs::canonicalize(path).ok())
         .ok_or("lifecycle configured data root unavailable")?;
     if declared_root != configured_root {
@@ -657,6 +726,35 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("unsupported stdio-mcp framing"));
+    }
+
+    #[test]
+    fn activate_parses_installed_root_clients_and_deadline() {
+        let inv = parse_mode(
+            [
+                "membrane",
+                "activate",
+                "--install-root",
+                r"C:\Membrane",
+                "--client",
+                "codex",
+                "--timeout-ms",
+                "45000",
+            ]
+            .iter()
+            .copied(),
+        )
+        .unwrap();
+        assert_eq!(inv.mode, MembraneMode::Activate);
+        assert_eq!(
+            inv.activation,
+            Some(ActivationInvocation {
+                install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
+                clients: vec!["codex".to_string()],
+                timeout_ms: 45_000,
+                dry_run: false,
+            })
+        );
     }
 
     #[test]

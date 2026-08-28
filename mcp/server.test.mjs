@@ -352,18 +352,20 @@ const ungrantedChildDir = join(catalogWorkspace, "ungranted-child");
 await mkdir(join(grantedChildDir, ".git"), { recursive: true });
 await mkdir(join(ungrantedChildDir, ".git"), { recursive: true });
 const catalogWorkspaceCanonical = await realpath(catalogWorkspace);
+const grantedChildCanonical = await realpath(grantedChildDir);
+const ungrantedChildCanonical = await realpath(ungrantedChildDir);
 const catalog = await buildRepositoryCatalog(catalogWorkspace);
 const catalogScope = (entry) => `scope-${entry.repoId.slice("repo-".length)}`;
 const workspaceEntry = catalog.repositories.find((entry) => entry.repoId === catalog.workspace_id);
-const grantedEntry = catalog.repositories.find((entry) => entry.rootBinding === grantedChildDir);
-const ungrantedEntry = catalog.repositories.find((entry) => entry.rootBinding === ungrantedChildDir);
+const grantedEntry = catalog.repositories.find((entry) => entry.rootBinding === grantedChildCanonical);
+const ungrantedEntry = catalog.repositories.find((entry) => entry.rootBinding === ungrantedChildCanonical);
 const catalogRegistry = join(catalogRoot, "registry.json");
 await writeFile(catalogRegistry, JSON.stringify({
   schema_version: 2,
   bindings: {
     [catalogWorkspaceCanonical]: { repository_id: workspaceEntry.repoId, scope_id: catalogScope(workspaceEntry), provider_config: {}, grant_policy: { level: "write-proposed", child_repository_ids: [grantedEntry.repoId] } },
-    [await realpath(grantedChildDir)]: { repository_id: grantedEntry.repoId, scope_id: catalogScope(grantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
-    [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repoId, scope_id: catalogScope(ungrantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
+    [grantedChildCanonical]: { repository_id: grantedEntry.repoId, scope_id: catalogScope(grantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
+    [ungrantedChildCanonical]: { repository_id: ungrantedEntry.repoId, scope_id: catalogScope(ungrantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
   },
 }), "utf8");
 const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", MEMBRANE_BIN: bogusCortex };
@@ -542,7 +544,15 @@ try {
       jsonrpc: "2.0", id: 21, method: "tools/call",
       params: {
         name: "membrane_context",
-        arguments: { task: "trace context", repository: enrolledRoot, caller: virtualCaller },
+        arguments: {
+          task: "trace context", repository: enrolledRoot, caller: virtualCaller,
+          sufficiencyContract: {
+            schemaVersion: 1,
+            policy: "membrane-sufficiency-v1",
+            requirements: [{ id: "repo-evidence", evidenceClass: "repository_file", acceptableProviders: ["blueprint"], acceptableSourceRefs: ["README.md"], minimumCandidates: 1 }],
+            maxCorrectiveStages: 1,
+          },
+        },
         _meta: { ...modernMeta, traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a" },
       },
     },
@@ -553,6 +563,12 @@ try {
   });
   assert.deepEqual({ traceparent: federateBody.traceparent, tracestate: federateBody.tracestate, baggage: federateBody.baggage }, {
     traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a",
+  });
+  assert.deepEqual(federateBody.sufficiencyContract, {
+    schemaVersion: 1,
+    policy: "membrane-sufficiency-v1",
+    requirements: [{ id: "repo-evidence", evidenceClass: "repository_file", acceptableProviders: ["blueprint"], acceptableSourceRefs: ["README.md"], minimumCandidates: 1 }],
+    maxCorrectiveStages: 1,
   });
   assert.equal(federateHeaders.traceparent, "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future");
   assert.equal(federateHeaders.tracestate, "membrane=server");

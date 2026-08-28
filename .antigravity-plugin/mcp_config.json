@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "membrane": {
+      "command": "membrane",
+      "args": [
+        "stdio-mcp"
+      ]
+    }
+  }
+}

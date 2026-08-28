@@ -46,10 +46,10 @@ Ledger registers, indexes, and resolves document sections without owning documen
 Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-Hub is the sole resident lifecycle authority, and the Membrane runtime executes
-**inside the active Hub process**. There is no standalone Membrane runtime and no
-Hub-supervised Membrane child process. When Hub is inactive there is no Membrane
-runtime and no Membrane context; requests return typed
+The visible tray app is the sole resident lifecycle authority, and the Membrane runtime executes
+inside its headless child daemon with OS-enforced lifetime coupling. There is no standalone or
+orphanable Membrane runtime. When the tray is inactive there is no Membrane runtime and no
+Membrane context; requests return typed
 `membrane_unavailable { reason: hub_inactive, retryable: true }`.
 
 Blueprint is **independently usable but not independently resident**. Its
@@ -101,10 +101,11 @@ retain separate ownership, tests, metrics, and improvement paths:
 | **Ledger** | Register and navigate indexed document sections with hash-bound references. | Registry/navigation/index projections only; no document truth or durable memory. |
 | **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
 
-Membrane Hub is not a seventh axis. It is the sole resident service, process,
-installation, update, and release authority for Membrane runtime. Blueprint
-retains an independently versioned package and protocol, but its continuous
-runtime role is hosted inside Hub and reached through one typed native client.
+Membrane Hub is not a seventh axis. The native tray owns resident lifecycle; its headless child
+daemon hosts Membrane runtime, and the Hub dashboard runs on demand. Installation, update, and
+release remain one Membrane product authority. Blueprint retains an independently versioned
+package and protocol, but its continuous runtime role is hosted inside the tray-owned daemon and
+reached through one typed native client.
 
 The current release-qualified target is Windows x86_64. Other targets are not
 current supported targets until separately qualified and added to canonical
@@ -237,7 +238,7 @@ The architecture must reject scope growth that does not improve the core objecti
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
 | Audit findings | Audit | Consume typed findings |
 | Architectural decisions/plans | Decision/architecture provider | Consume as evidence, never current-code truth |
-| OS startup / resident lifecycle / restart-backoff | Hub | Sole resident service authority; expose readiness/drain/identity; no Membrane child process |
+| OS startup / resident lifecycle / restart-backoff | Native tray | Sole resident lifecycle authority; visibly supervise one headless Membrane child daemon and expose readiness/drain/identity |
 | Agent execution / model routing | Legion / OmniRouter / host | Out of scope |
 | Host conversation compaction | Host | Membrane may supply artifacts/context, not own transcript |
 | Immutable raw reduction artifacts | Membrane | Govern content-addressed recoverability |
@@ -1164,19 +1165,19 @@ Membrane:
 
 Membrane does not traverse the Blueprint graph itself.
 
-The normal machine-to-machine transport is the Hub-hosted Blueprint query role
+The normal machine-to-machine transport is the tray-owned daemon's Blueprint query role
 over local IPC through a long-lived Membrane-side client. Blueprint has no
 independently resident daemon.
 
 ```text
 Membrane
-→ Hub-hosted Blueprint client
+→ tray-owned daemon Blueprint client
 → Blueprint protocol `recall`
 → RecallCircuit
 ```
 
-While Hub is active, normal Membrane requests never create a per-query Node
-process. If Hub is inactive, Membrane returns typed
+While the tray-owned daemon is active, normal Membrane requests never create a per-query Node
+process. If the tray is inactive, Membrane returns typed
 `membrane_unavailable { reason: hub_inactive, retryable: true }` and does not
 fall back to Blueprint. An explicit direct Blueprint request may use the
 bounded one-shot path defined by Blueprint's canon.
@@ -1438,7 +1439,7 @@ Never silently delete the database and regenerate as if nothing happened.
 
 # 15. Runtime responsibility planes and operations
 
-Preserve the three responsibility planes inside the Hub-hosted runtime:
+Preserve the three responsibility planes inside the tray-owned daemon runtime:
 
 ```text
 Application
@@ -1453,12 +1454,12 @@ processes. No fourth plane without a deliberate versioned architecture change.
 
 Owns:
 
-- Hub-side CLI/MCP/API request handling;
+- daemon-side CLI/MCP/API request handling;
 - request routing;
 - typed packets/receipts.
 
 External CLI and stdio MCP executables are stateless transports into this
-Hub-side application plane. They do not host or launch Membrane runtime logic.
+daemon-side application plane. They do not host or launch Membrane runtime logic.
 
 It does not own direct durable storage mutation outside typed APIs.
 
@@ -1466,7 +1467,7 @@ It does not own direct durable storage mutation outside typed APIs.
 
 Owns:
 
-- in-Hub lifecycle coordination;
+- tray/daemon lifecycle coordination;
 - leases and heartbeat;
 - bounded maintenance ownership;
 - drain/shutdown coordination.
@@ -1485,23 +1486,171 @@ Owns:
 
 It does not own network transport.
 
-## Hub boundary
+## Tray, daemon, and Hub boundary
 
-Hub owns:
+Native tray owns:
 
 - start-at-login;
-- the sole resident process lifecycle;
-- installer/updater lifecycle;
-- Hub restart/backoff;
-- the Blueprint watcher/query residency while Hub is active.
+- the sole resident lifecycle and visible status surface;
+- activation/update lifecycle;
+- daemon restart/backoff;
+- the Blueprint watcher/query residency while tray is active.
 
-Hub is the only resident service authority and the only process in which the
-Membrane runtime executes. It owns Membrane service identity, ports, leases,
-readiness, drain, and shutdown. Blueprint owns its package, protocol, store,
-watcher semantics, and query behavior, while Hub owns their resident lifecycle.
-Cortex may expose durable-memory library and CLI operations to Hub, but it does
+Tray is the only resident lifecycle authority. It launches one headless child daemon with
+OS-enforced lifetime coupling; that daemon is the only process in which Membrane runtime executes.
+Tray owns visible status, restart, drain, and shutdown. Daemon owns service identity, ports, leases,
+readiness, and runtime execution. Hub dashboard is on demand and owns neither resident lifecycle nor
+runtime. Blueprint owns its package, protocol, store, watcher semantics, and query behavior, while
+tray owns their resident lifecycle. Cortex may expose durable-memory library and CLI operations to daemon, but it does
 not claim a resident service, service identity, port, lease, or process
 lifecycle.
+
+## Distribution and harness activation
+
+### Public entry point and release authority
+
+Primary customer entry points are branded bootstrap URLs:
+
+```text
+https://membrane.orthiclabs.com/install.ps1
+https://membrane.orthiclabs.com/install.sh
+```
+
+The stable URL serves or redirects to an immutable versioned bootstrap under
+R2. R2 owns bootstrap discovery only and stores no Membrane release payload.
+The versioned bootstrap embeds accepted release-manifest signing-key IDs.
+RightRelease must reuse the provisioned workspace R2/DNS/TLS publication path;
+Membrane must not implement a product-local R2 uploader.
+
+GitHub Releases is the immutable payload authority. Tag `vX.Y.Z` publishes only
+targets actually built, signed, qualified, and supported from this set:
+
+```text
+membrane-X.Y.Z-windows-x86_64.zip
+membrane-X.Y.Z-windows-arm64.zip
+membrane-X.Y.Z-macos-x86_64.tar.gz
+membrane-X.Y.Z-macos-arm64.tar.gz
+release-manifest.json
+release-manifest.cat
+checksums.json
+provenance-<os>-<arch>.intoto.jsonl
+sbom-<os>-<arch>.cdx.json
+THIRD_PARTY_NOTICES.md
+```
+
+Membrane is a public `Orthic-Labs` repository. `@rightkit/git` GitHub Actions
+must perform native Windows/macOS compilation, tests, unsigned qualification,
+package smoke, SBOM/provenance generation, and unsigned release-candidate
+publication on matching hosted runners. Protected local native hosts consume
+one exact candidate digest, then sign/notarize, finalize, verify, and upload it
+without recompiling. CI receives no signing credentials. Local compilation may
+diagnose a failure but is never release proof. Only targets represented by a
+successful candidate may enter finalization.
+
+`release-manifest.json` plus its detached Azure-signed Authenticode catalog is
+the sole release trust authority on Windows. `checksums.json` is convenience
+output whose digest is bound by the signed manifest. The manifest binds product, version, tag, source commit, exact
+asset URL, OS, architecture, size, SHA-256, executable path, native-signature
+policy, provenance digest, SBOM digest, minimum bootstrap version, and signing
+key ID.
+
+Trust order is fixed:
+
+```text
+orthiclabs.com TLS/DNS
+  -> immutable versioned bootstrap with accepted key IDs
+  -> detached release-manifest catalog signature
+  -> exact OS/architecture asset hash
+  -> provenance and SBOM hashes
+  -> native platform signatures
+  -> product activation and exact health
+```
+
+### Transactional install and update
+
+Bootstrap must:
+
+1. detect native OS and architecture, then resolve one exact version;
+2. verify the signed manifest, selected archive, provenance, SBOM, and native binaries;
+3. extract into a versioned user-local staging root;
+4. optionally run activation preflight without mutation;
+5. journal every client projection or configuration change;
+6. atomically switch the stable `current` path to the staged version;
+7. add the stable root to user `PATH`;
+8. run stable-path `membrane activate --install-root <root>`;
+9. verify exact resident daemon identity, release generation, and harness bindings.
+
+Harness registrations always bind the stable `current` executable, never a
+disposable version directory. Failure restores the prior `current` pointer,
+integration journal, and prior healthy generation. Keep the previous successful
+version. Rerunning bootstrap updates; exact version pins are supported;
+downgrade requires an explicit flag. No resident or background updater exists.
+
+`membrane activate` is the single idempotent activation authority. It starts or
+repairs tray-owned residency, waits for exact daemon health, and reconciles
+supported harness registrations to absolute `membrane stdio-mcp` bindings.
+Install scripts and optional graphical packages call this command rather than
+reimplementing registration or lifecycle policy.
+
+### Installed and development isolation
+
+Production exists only under the user-local product root. On Windows its sole
+executable authority is `%LOCALAPPDATA%\Orthic Labs\Membrane\current`; `current`
+targets one direct child of `versions`. Production `PATH`, startup, MCP, hooks,
+and client projections bind only this stable path. Repository, `dist`, `target`,
+`node_modules`, and version-specific executable paths are prohibited production
+bindings. Activation fails closed when its requested root is not stable
+`current`, when `current` does not target one installed version, when resident
+health identifies a development runtime, or when a harness binding escapes
+stable `current`.
+
+Development is explicit and non-authoritative. Each checkout uses origin
+`development`, a deterministic checkout-scoped port, and separate config, data,
+cache, and log roots under `Membrane Dev/<checkout-id>`. Development commands do
+not modify user `PATH`, startup registration, stable `current`, installed state,
+or global harness configuration. Tests use temporary roots. Health and
+activation receipts expose `runtimeOrigin`, stable install root, resolved version
+root, and release generation so installed/dev contamination is observable.
+
+Bootstrap is the only production transition authority: stage and verify one
+immutable version, journal integrations, switch `current`, activate through
+stable path, and require exact installed-origin health plus harness bindings.
+
+### Agent Plugins and client projections
+
+Membrane ships a product-specific Agent Plugins 1.0 core rooted at
+`plugin.json`, with `mcp.json` and only public Membrane skills when such skills
+exist. Private or personal workspace material is prohibited. `mcp.json` invokes
+stable-path `membrane stdio-mcp`. Agent Plugins owns portable skills and MCP
+description only; bootstrap and `membrane activate` own installation, updates,
+enablement, UI, and reconciliation.
+
+Client projections remain thin and native where portable Agent Plugins does not
+cover the client or required surface:
+
+- Claude Code uses its native `.claude-plugin` projection for MCP, hooks, and agents;
+- Codex uses Agent Plugins core plus Codex metadata/policy when required;
+- Cursor uses Agent Plugins core plus a sidecar only for Cursor-specific rules, agents, or hooks;
+- Pi uses its native `.agents/skills` projection;
+- Antigravity uses its native plugin projection.
+
+Activation claims only adapters proven by the current release. Missing adapters
+remain typed unsupported outcomes rather than inferred success.
+
+Membrane is a user-session app, not a Windows Service. Setup EXE, MSI, DMG,
+WinGet, and Homebrew are optional aliases or UI channels; none is required for
+installation, activation, update, or harness availability. The archive still
+contains native `.exe` files on Windows; “no installer EXE” means no required
+Setup application.
+
+RightGit owns public native build/test/qualification workflows and unsigned
+candidate handoff. RightRelease owns candidate verification, shared archive
+naming, manifest schema, signing and key rotation, immutable GitHub
+publication, R2 bootstrap publication, and shared update transaction. AX owns
+Agent Plugins schema, containment, and conformance.
+Infrastructure owns R2 buckets, DNS, TLS, cache, and object policy. Membrane owns
+its payload, install roots, activation, daemon health, harness reconciliation,
+and rollback semantics.
 
 Membrane exposes:
 
@@ -1955,12 +2104,12 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 
 **Rename / modify**
 - `engine/federation/providers/blueprint.py` — final name of the former repository-truth adapter.
-- use a long-lived client to the Hub-hosted Blueprint role for the normal path;
+- use a long-lived client to the tray-owned daemon Blueprint role for the normal path;
 - request generation-bound `RecallCircuit`;
 - validate schema/generation before conversion;
 - convert one complete path into one atomic evidence unit/candidate;
 - obtain code-anchor resolution from Blueprint;
-- remove subprocess fallback from Membrane; Hub unavailability returns typed
+- remove subprocess fallback from Membrane; tray unavailability returns typed
   `membrane_unavailable { hub_inactive }` and invokes no Blueprint one-shot.
 
 **Do not add**
@@ -1994,7 +2143,7 @@ The early slice is complete only when:
 1. multi-signal requirements are deterministic and unioned;
 2. broad fallback is exercised on ambiguity;
 3. outcome rows join to delivered candidate/packet ids;
-4. normal Blueprint recall uses the Hub-hosted Blueprint role and never a
+4. normal Blueprint recall uses the tray-owned daemon Blueprint role and never a
    per-query process;
 5. Blueprint generation mismatch fails closed;
 6. each complete RecallCircuit path stays atomic;
@@ -2137,8 +2286,8 @@ It is done when the product purpose is mechanically true.
 - [ ] Generation mismatch fails closed for Blueprint.
 - [ ] A `no_relevant_seed` Blueprint result emits no fake repository context.
 - [ ] Code anchor relocation/re-anchoring is delegated to Blueprint.
-- [ ] Blueprint recall uses the Hub-hosted client while Hub is active; Membrane
-      has no one-shot fallback when Hub is inactive.
+- [ ] Blueprint recall uses the tray-owned daemon client while tray is active; Membrane
+      has no one-shot fallback when tray is inactive.
 - [ ] Membrane contains no duplicate structural re-anchor implementation.
 - [ ] Unsupported/ambiguous/missing are not collapsed.
 - [ ] Repository evidence remains `data_only`.
@@ -2281,6 +2430,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. Hub is sole resident lifecycle authority and hosts the Membrane runtime in its own process; Blueprint is independently usable but not independently resident.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. The visible native tray is sole resident lifecycle authority; its OS-coupled headless child daemon hosts Membrane runtime, while Hub dashboard runs on demand. Blueprint is independently usable but not independently resident.**
 
 That is the canonical shape.

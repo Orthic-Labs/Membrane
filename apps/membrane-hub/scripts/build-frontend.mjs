@@ -16,6 +16,7 @@ for (const name of PRESENTATION_ASSETS) {
   cpSync(new URL(`../${name}`, import.meta.url), destination);
 }
 cpSync(new URL("../assets/tray", import.meta.url), new URL("assets/tray", output), { recursive: true });
+cpSync(new URL("../assets/mark.svg", import.meta.url), new URL("assets/mark.svg", output));
 cpSync(
   new URL("../node_modules/@tauri-apps/api", import.meta.url),
   new URL("vendor/@tauri-apps/api", output),

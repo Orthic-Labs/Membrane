@@ -32,6 +32,26 @@ fn every_mode_round_trips_through_parse_mode() {
 }
 
 #[test]
+fn activation_defaults_to_inspection_safe_client_projection() {
+    let inv = parse_mode(["membrane", "activate", "--dry-run"].iter().copied())
+        .expect("activate dry-run parses");
+    assert_eq!(inv.mode, MembraneMode::Activate);
+    let activation = inv.activation.expect("activation payload");
+    assert!(activation.clients.is_empty(), "empty means default clients");
+    assert!(activation.dry_run);
+    assert_eq!(activation.timeout_ms, 35_000);
+}
+
+#[test]
+fn status_uses_activation_receipt_without_client_mutation() {
+    let inv = parse_mode(["membrane", "status", "--dry-run"].iter().copied())
+        .expect("status dry-run parses");
+    assert_eq!(inv.mode, MembraneMode::Activate);
+    let activation = inv.activation.expect("status payload");
+    assert!(activation.dry_run);
+}
+
+#[test]
 fn exit_code_table_is_stable_across_modes() {
     use membrane::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
     assert_eq!(DispatchOutcome::Ok.exit_code(), EXIT_OK);

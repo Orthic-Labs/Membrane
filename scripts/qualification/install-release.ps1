@@ -608,12 +608,18 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
   Require ($inventory.entries -is [array] -and $inventory.entries.Count -gt 0) 'installed runtime inventory entries are missing'
   $membraneEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-command' })
   $cortexEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'cortex-cli' })
-  Require ($membraneEntry.Count -eq 1 -and $cortexEntry.Count -eq 1) 'installed runtime inventory sidecar entries are not exact and unique'
+  $trayEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-tray' })
+  $daemonEntry = @($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq 'membrane-daemon' })
+  Require (($membraneEntry.Count -eq 1) -and ($cortexEntry.Count -eq 1) -and ($trayEntry.Count -eq 1) -and ($daemonEntry.Count -eq 1)) 'installed runtime inventory sidecar entries are not exact and unique'
   $membrane = Get-InstalledSidecar $Root 'membrane' $membraneEntry[0]
   $cortex = Get-InstalledSidecar $Root 'cortex' $cortexEntry[0]
+  $tray = Get-InstalledSidecar $Root 'membrane-tray' $trayEntry[0]
+  $daemon = Get-InstalledSidecar $Root 'membrane-daemon' $daemonEntry[0]
   [void](Assert-SignedFile $membrane 'installed membrane native host' $hubPublisher)
   [void](Assert-SignedFile $cortex 'installed cortex native host' $hubPublisher)
-  foreach ($component in @('membrane-command', 'cortex-cli')) {
+  [void](Assert-SignedFile $tray 'installed membrane tray sidecar' $hubPublisher)
+  [void](Assert-SignedFile $daemon 'installed membrane daemon sidecar' $hubPublisher)
+  foreach ($component in @('membrane-command', 'cortex-cli', 'membrane-tray', 'membrane-daemon')) {
     Require (@($inventory.entries | Where-Object { $_.delivery -eq 'externalBin' -and $_.component -eq $component }).Count -eq 1) "installed runtime inventory sidecar entry is missing or duplicated: $component"
   }
   $inventoryEvidence = @(); $seenInventoryPaths = @{}
@@ -623,10 +629,17 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
       $path = switch ([string]$entry.component) {
         'membrane-command' { $membrane; break }
         'cortex-cli' { $cortex; break }
+        'membrane-tray' { $tray; break }
+        'membrane-daemon' { $daemon; break }
         default { throw "installed inventory has unknown external sidecar: $($entry.component)" }
       }
       $relative = $path.Substring($Root.TrimEnd('\').Length).TrimStart('\')
-      $expectedPath = if ($entry.component -eq 'membrane-command') { $membrane } else { $cortex }
+      $expectedPath = switch ([string]$entry.component) {
+        'membrane-command' { $membrane; break }
+        'cortex-cli' { $cortex; break }
+        'membrane-tray' { $tray; break }
+        'membrane-daemon' { $daemon; break }
+      }
       Require ($path -ieq $expectedPath) "installed sidecar path resolution failed: $($entry.component)"
     } else {
       $relative = ([string]$entry.installerPath).Replace('/', '\')
@@ -644,7 +657,7 @@ function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
   $blueprintEntry = @($inventory.entries | Where-Object { $_.component -eq 'blueprint-runtime' -and $_.installerPath -match '(?i)(^|[\\/])lib[\\/]node\.exe$' })
   Require ($blueprintEntry.Count -eq 1) 'installed runtime inventory does not uniquely bind Blueprint node.exe'
   Require ((Hash-File $blueprintNode) -ieq [string]$blueprintEntry[0].sha256) 'installed Blueprint node.exe hash does not match inventory'
-  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; BlueprintNode = $blueprintNode; BlueprintNodeSha256 = [string]$blueprintEntry[0].sha256; BlueprintRuntime = $blueprintRoot; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
+  return [pscustomobject]@{ Hub = $HubExecutable; Membrane = $membrane; Cortex = $cortex; Tray = $tray; Daemon = $daemon; BlueprintNode = $blueprintNode; BlueprintNodeSha256 = [string]$blueprintEntry[0].sha256; BlueprintRuntime = $blueprintRoot; RuntimeInventory = $inventoryPath; RuntimeInventoryEvidence = $inventoryEvidence; Publisher = $hubPublisher }
 }
 
 function Invoke-NativeProcess([string]$Executable, [string]$Arguments, [string]$InputText = '', [string]$WorkingDirectory = $InstallRoot, [hashtable]$Environment = @{}) {

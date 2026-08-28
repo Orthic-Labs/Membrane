@@ -2,9 +2,11 @@
 set -euo pipefail
 
 pnpm install --frozen-lockfile
+pnpm --dir apps/membrane-hub install --frozen-lockfile
+cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
 pnpm test
 pnpm test:random
-pnpm test:all
+node scripts/ci/check-release-identity.mjs
 node scripts/ci/check-generated.mjs
 node scripts/ci/check-network-boundary.mjs
 node scripts/ci/check-lifecycle-conformance.mjs

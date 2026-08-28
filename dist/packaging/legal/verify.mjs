@@ -40,7 +40,7 @@ const pnpmLock = await readFile(resolve(root, manifest.thirdPartyInventory.pnpmL
 const cargoLock = await readFile(resolve(root, manifest.thirdPartyInventory.cargoLockfile), "utf8");
 const jsPackages = [...pnpmLock.matchAll(/^  '?(.*?)'?:\r?\n    resolution:/gm)].map((match) => match[1]);
 const cargoPackages = cargoLock
-  .split("[[package]]\n")
+  .split(/\[\[package\]\]\r?\n/)
   .slice(1)
   .filter((entry) => /^source = "(?:registry\+|git\+)/m.test(entry));
 assert.ok(jsPackages.length > 0, "pnpm lockfile must contain resolved packages");

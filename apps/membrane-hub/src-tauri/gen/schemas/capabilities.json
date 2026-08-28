@@ -1,1 +1,1 @@
-{"hub-local-ui":{"identifier":"hub-local-ui","description":"Allow Membrane Tray & Hub to use their local Tauri command, event, & window bridge.","local":true,"windows":["hub","dashboard"],"permissions":["core:default"]}}
+{"hub-local-ui":{"identifier":"hub-local-ui","description":"Allow on-demand Membrane Hub dashboard to use its local Tauri command & window bridge.","local":true,"windows":["dashboard"],"permissions":["core:default"]}}

@@ -43,17 +43,18 @@ The source document bytes remain authoritative at their canonical source. Ledger
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 
-- Membrane runtime exists **only inside the active Hub process**. There is no
-  standalone Membrane runtime and no Hub-supervised Membrane child process.
+- Membrane runtime exists only inside the headless child daemon of the visible
+  native tray, with OS-enforced lifetime coupling. There is no standalone or
+  orphanable Membrane runtime.
 - There is **no embedded CodeRight Membrane backend**. CodeRight binds to
   Membrane through Hub, or it has no binding.
-- MCP and CLI surfaces are **stateless Hub clients/transports**. They never
+- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
   launch, auto-start, or register a Membrane process.
-- **Hub off → no Membrane context.** Requests return typed
+- **Tray off → no Membrane context.** Requests return typed
   `membrane_unavailable { reason: hub_inactive, retryable: true }`.
 - **Ledger** is the canonical subsystem name; it replaces Guide.
 - Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only under Hub; with Hub off, Blueprint
+  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
   access is an explicit bounded one-shot operation that never daemonizes.
 
 ---

@@ -1,12 +1,13 @@
 {
   "name": "membrane-hub",
-  "version": "0.1.12",
+  "version": "0.1.16",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "node scripts/build-frontend.mjs",
     "dev": "node scripts/dev.mjs",
+    "dev:browser": "node scripts/browser-dev.mjs",
     "test": "node --test tests/*.mjs",
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
     "rightkit:package:win": "node scripts/build-windows-release.mjs",
@@ -15,8 +16,12 @@
     "release:evidence:win": "node scripts/write-windows-release-evidence.mjs",
     "release:doctor": "right-release doctor",
     "release:build:mac": "node scripts/release-build-mac.mjs",
-    "release:prepare:sidecars:win": "pnpm run build && pnpm exec right-release sign-windows src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe && pnpm exec right-release sign-windows --verify-only src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe src-tauri/binaries/membrane-x86_64-pc-windows-msvc.exe",
+    "release:prepare:sidecars:win": "pnpm run build && node scripts/release-build-windows.mjs --prepare-only",
     "release:build:win": "node scripts/release-build-windows.mjs",
+    "release:build:portable:win": "node scripts/release-build-portable-windows.mjs",
+    "release:candidate:build:win": "node scripts/release-build-candidate-windows.mjs",
+    "release:candidate:check:win": "node scripts/release-check-candidate-windows.mjs",
+    "release:publish:portable:win": "node scripts/publish-portable-release.mjs",
     "release:qualify:win": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/qualification/install-release.ps1"
   },
   "dependencies": {
@@ -25,7 +30,8 @@
     "@tauri-apps/plugin-os": "2.3.2"
   },
   "devDependencies": {
-    "@rightkit/release": "0.2.67",
+    "@rightkit/ax": "0.2.1",
+    "@rightkit/release": "0.2.74",
     "@tauri-apps/cli": "2.11.4"
   }
 }

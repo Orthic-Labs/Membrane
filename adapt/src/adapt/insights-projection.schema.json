@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://membrane.local/adapt/src/adapt/insights-projection.schema.json",
+  "title": "Adapt InsightsProjectionV1",
+  "description": "Read-only Insights rows over mined issue snapshots. Source descriptions and timestamps are copied; missing observations retain typed coverage reasons.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rows"],
+  "properties": {
+    "schema_version": {"const": "adapt.insights-projection.v1"},
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issue_id", "family", "canonical_description", "state", "recurrence_count", "episode_ids", "proposal_ids", "first_seen", "last_seen"],
+        "properties": {
+          "issue_id": {"type": "string", "minLength": 1},
+          "family": {"type": "string", "minLength": 1},
+          "canonical_description": {"type": "string"},
+          "state": {"type": "string", "minLength": 1},
+          "recurrence_count": {"type": "integer", "minimum": 0},
+          "episode_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "proposal_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "receipt_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "first_seen": {"type": ["string", "null"]},
+          "last_seen": {"type": ["string", "null"]},
+          "coverage": {"type": "array", "items": {"$ref": "#/definitions/gap"}}
+        }
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "items": {"$ref": "#/definitions/gap"}
+    }
+  },
+  "definitions": {
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "reason"],
+      "properties": {
+        "field": {"type": "string", "minLength": 1},
+        "reason": {"enum": ["not_instrumented", "hub_inactive", "provider_omitted", "host_unsupported"]}
+      }
+    }
+  }
+}

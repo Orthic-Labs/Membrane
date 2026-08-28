@@ -2,8 +2,8 @@
 //!
 //! Per dispatch §G3A + §G5: the authenticated local Membrane gateway
 //! is the SOLE owner of provider fan-out and admission. Clients (Claude,
-//! Codex, MCP) submit only (task, repo_root, client, session, max_tokens,
-//! anchors, scope_grant_id); the gateway invokes provider adapters in
+//! Codex, MCP) submit (task, repo_root, client, session, max_tokens, anchors,
+//! scope_grant_id, remainingContextCeiling); the gateway invokes provider adapters in
 //! parallel, runs the deterministic in-process admission, and emits a
 //! content-free ContextPacket v1 plus per-candidate ContextReceipt v2.
 //!
@@ -25,6 +25,18 @@ use std::time::Instant;
 fn federation_session_id(session: Option<String>) -> String {
     session
         .unwrap_or_else(|| crate::store::opaque_correlation_token("anonymous-session", "session"))
+}
+
+#[derive(Debug)]
+enum NativeRouteError {
+    Internal(String),
+    RequestTime(crate::push::selection::PacketReductionRequestError),
+}
+
+impl From<String> for NativeRouteError {
+    fn from(error: String) -> Self {
+        Self::Internal(error)
+    }
 }
 
 /// Run native federation end-to-end and emit its final planner envelope.
@@ -59,6 +71,7 @@ pub fn run_federate(
         &session_id,
         anchors,
         scope_grant_id.clone(),
+        None,
     );
     let started = Instant::now();
     let (response, native_metrics, freshness) = tokio::runtime::Builder::new_current_thread()
@@ -80,6 +93,7 @@ pub fn run_federate(
             Ok::<_, String>((response, native.metrics_snapshot(), freshness))
         })?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
+    let native_receipts = collect_native_receipts(&response);
     let mut payload = envelope_from_ccs(
         &serde_json::to_string(&ccs)
             .map_err(|error| format!("serialize native candidates: {error}"))?,
@@ -102,6 +116,7 @@ pub fn run_federate(
             "federationMetrics".to_owned(),
             serde_json::json!(native_metrics),
         );
+        merge_native_receipts(fields, native_receipts);
     }
     println!(
         "{}",
@@ -167,10 +182,19 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .get("scopeGrantId")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    let sufficiency_contract = value.get("sufficiencyContract").cloned();
+    let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, task) {
+        Ok(ceiling) => ceiling,
+        Err(error) => {
+            return request_time_refusal(crate::push::selection::PacketReductionRequestError::H8(
+                error,
+            ))
+        }
+    };
     let started = Instant::now();
-    let result = (|| -> Result<Value, String> {
+    let result = (|| -> Result<Value, NativeRouteError> {
         let release_generation = RuntimeReleaseSource::generation()?;
-        let request = native_request(
+        let request = native_request_with_h8(
             task,
             &root,
             max_tokens,
@@ -180,6 +204,8 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             &session,
             anchors,
             scope_grant_id.clone(),
+            sufficiency_contract,
+            &ceiling,
         );
         let bindings = federation_sources::NativeSourceBindings::for_repository(
             &root,
@@ -196,6 +222,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             .freshness_snapshot()
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
         let ccs = native_response_to_ccs(&response, &request, &freshness);
+        let native_receipts = collect_native_receipts(&response);
         let mut payload = envelope_from_ccs(
             &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
             EnvelopeInput {
@@ -213,13 +240,32 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
-        if let Some(fields) = payload.as_object_mut() {
-            fields.insert("transport".to_owned(), Value::String("native".to_owned()));
-            fields.insert(
-                "federationMetrics".to_owned(),
-                serde_json::json!(native_metrics),
-            );
-        }
+        let packet = payload
+            .get("packet")
+            .cloned()
+            .ok_or_else(|| "federation envelope omitted packet".to_owned())
+            .and_then(|packet| {
+                serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet)
+                    .map_err(|error| format!("federation packet is invalid: {error}"))
+            })?;
+        let selection = crate::push::selection::select_packet_for_h8(&packet, &ceiling)
+            .map_err(NativeRouteError::RequestTime)?;
+        let selected_content = selection.selected_representation.content.clone();
+        let fields = payload
+            .as_object_mut()
+            .ok_or_else(|| "federation envelope is not an object".to_owned())?;
+        fields.insert("packet".to_owned(), selected_content);
+        fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+        fields.insert(
+            "federationMetrics".to_owned(),
+            serde_json::json!(native_metrics),
+        );
+        merge_native_receipts(fields, native_receipts);
+        fields.insert(
+            "packetReduction".to_owned(),
+            serde_json::to_value(selection)
+                .map_err(|error| format!("serialize packet reduction selection: {error}"))?,
+        );
         Ok(payload)
     })();
     match result {
@@ -231,7 +277,42 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                     "{\"error\":\"federation envelope serialization failed\"}".to_owned(),
                 )
             }),
-        Err(error) => (502, serde_json::json!({"error": error}).to_string()),
+        Err(NativeRouteError::RequestTime(error)) => request_time_refusal(error),
+        Err(NativeRouteError::Internal(error)) => {
+            (502, serde_json::json!({"error": error}).to_string())
+        }
+    }
+}
+
+fn request_time_refusal(
+    error: crate::push::selection::PacketReductionRequestError,
+) -> (u16, String) {
+    (
+        400,
+        serde_json::json!({
+            "error": "request_time_selection_refused",
+            "kind": error.kind(),
+            "reason": error.to_string(),
+        })
+        .to_string(),
+    )
+}
+
+fn collect_native_receipts(response: &membrane_protocol::FederationResponseV1) -> Value {
+    let mut receipts = serde_json::Map::new();
+    for key in ["fusionReceipt", "correctiveRetrieval"] {
+        if let Some(value) = response.extensions.get(key) {
+            receipts.insert(key.to_owned(), value.clone());
+        }
+    }
+    Value::Object(receipts)
+}
+
+fn merge_native_receipts(fields: &mut serde_json::Map<String, Value>, receipts: Value) {
+    if let Value::Object(receipts) = receipts {
+        for (key, value) in receipts {
+            fields.insert(key, value);
+        }
     }
 }
 
@@ -245,9 +326,23 @@ fn native_request(
     session: &str,
     anchors: Vec<String>,
     scope_grant_id: Option<String>,
+    sufficiency_contract: Option<Value>,
 ) -> membrane_protocol::FederationRequestV1 {
     let repository_root = root.to_string_lossy().into_owned();
     let request_id = crate::store::opaque_correlation_token(task, "federation");
+    let mut extensions = std::collections::BTreeMap::from([
+        (
+            "repositoryId".to_owned(),
+            serde_json::json!(membrane_federation::root::canonical_repository_id(root)),
+        ),
+        (
+            "worktreeRoot".to_owned(),
+            serde_json::json!(repository_root),
+        ),
+    ]);
+    if let Some(contract) = sufficiency_contract {
+        extensions.insert("sufficiencyContract".to_owned(), contract);
+    }
     membrane_protocol::FederationRequestV1 {
         schema_version: membrane_protocol::FEDERATION_REQUEST_SCHEMA_VERSION,
         request_id,
@@ -264,17 +359,41 @@ fn native_request(
         release_generation: Some(release_generation),
         blueprint_generation: None,
         skills_generation: None,
-        extensions: std::collections::BTreeMap::from([
-            (
-                "repositoryId".to_owned(),
-                serde_json::json!(membrane_federation::root::canonical_repository_id(root)),
-            ),
-            (
-                "worktreeRoot".to_owned(),
-                serde_json::json!(repository_root),
-            ),
-        ]),
+        extensions,
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn native_request_with_h8(
+    task: &str,
+    root: &Path,
+    max_tokens: usize,
+    deadline_ms: u64,
+    release_generation: String,
+    client: &str,
+    session: &str,
+    anchors: Vec<String>,
+    scope_grant_id: Option<String>,
+    sufficiency_contract: Option<Value>,
+    ceiling: &membrane_protocol::host_observation::RemainingContextCeilingV1,
+) -> membrane_protocol::FederationRequestV1 {
+    let mut request = native_request(
+        task,
+        root,
+        max_tokens,
+        deadline_ms,
+        release_generation,
+        client,
+        session,
+        anchors,
+        scope_grant_id,
+        sufficiency_contract,
+    );
+    request.extensions.insert(
+        "remainingContextCeiling".to_owned(),
+        serde_json::to_value(ceiling).expect("RemainingContextCeilingV1 is serializable"),
+    );
+    request
 }
 
 fn native_response_to_ccs(
@@ -729,6 +848,95 @@ mod observability_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_request_forwards_explicit_sufficiency_contract_only() {
+        let contract = serde_json::json!({
+            "schemaVersion": 1,
+            "policy": "membrane-sufficiency-v1",
+            "requirements": [{
+                "id": "repository-evidence",
+                "evidenceClass": "repository_file",
+                "acceptableProviders": ["blueprint"],
+                "minimumCandidates": 1
+            }],
+            "maxCorrectiveStages": 1
+        });
+        let with_contract = native_request(
+            "task",
+            Path::new(r"C:\repo"),
+            100,
+            1000,
+            "release".to_owned(),
+            "test",
+            "session",
+            Vec::new(),
+            None,
+            Some(contract.clone()),
+        );
+        assert_eq!(
+            with_contract.extensions.get("sufficiencyContract"),
+            Some(&contract)
+        );
+
+        let without_contract = native_request(
+            "task",
+            Path::new(r"C:\repo"),
+            100,
+            1000,
+            "release".to_owned(),
+            "test",
+            "session",
+            Vec::new(),
+            None,
+            None,
+        );
+        assert!(!without_contract
+            .extensions
+            .contains_key("sufficiencyContract"));
+    }
+
+    #[test]
+    fn native_request_forwards_same_request_h8_ceiling() {
+        let ceiling = membrane_protocol::host_observation::RemainingContextCeilingV1 {
+            schema_version:
+                membrane_protocol::host_observation::REMAINING_CONTEXT_CEILING_SCHEMA_VERSION,
+            ceiling_id: "ceiling-1".to_owned(),
+            session_id: "session-1".to_owned(),
+            task_id: membrane_protocol::host_observation::ObservedFieldV1::complete(
+                "task-1".to_owned(),
+            ),
+            requested_at_unix_ms: 1_700_000_000_000,
+            remaining_tokens: membrane_protocol::host_observation::TokenEstimateV1::complete(
+                membrane_protocol::host_observation::EstimatorBasisV1::new("test", "v1"),
+                128,
+            ),
+            provenance_receipt:
+                membrane_protocol::host_observation::HostObservationProvenanceV1::new(
+                    "receipt-1",
+                    "test-host",
+                    1_700_000_000_000,
+                    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                ),
+        };
+        let request = native_request_with_h8(
+            "task",
+            Path::new(r"C:\repo"),
+            100,
+            1000,
+            "release".to_owned(),
+            "test",
+            "session-1",
+            Vec::new(),
+            None,
+            None,
+            &ceiling,
+        );
+        assert_eq!(
+            request.extensions.get("remainingContextCeiling"),
+            Some(&serde_json::to_value(ceiling).unwrap())
+        );
+    }
 
     #[test] #[rustfmt::skip] fn federation_emits_content_free_cache_prefix_diagnostic() {
         let mut source: Value = serde_json::from_str(include_str!("../../../../../schemas/registry/context-candidate-set.v1.golden.json")).unwrap(); source["generationId"] = serde_json::json!("gen-current"); source["candidates"][0]["sourceKind"] = serde_json::json!("graph");

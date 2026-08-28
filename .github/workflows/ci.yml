@@ -1,12 +1,15 @@
 # Managed by right-git — do not hand-edit. Run `right-git sync` to update.
 # Template: profiles/rust-hybrid/ci.yml | Template version: 1.1.0
-name: ci
-on: [push, pull_request]
+name: membrane-ci
+on:
+  pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
   private-repo-guard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Refuse private repository
         if: ${{ github.event.repository.private }}
@@ -16,17 +19,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest"]
+        os: ["ubuntu-latest", "windows-2025"]
         node: ["22.13"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
-          version: 11.18.0
-      - run: rustup toolchain install stable --profile minimal
+          version: 11.24.0
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: engine
       - run: bash ./scripts/ci/run-ci.sh

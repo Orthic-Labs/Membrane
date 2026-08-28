@@ -459,7 +459,7 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
-  nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
+  nsis_tauri_utils::RunAsUser "$INSTDIR\membrane-tray.exe" ""
 FunctionEnd
 
 ; Uninstaller Pages
@@ -685,6 +685,8 @@ Section Install
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
 
   ; Copy main executable
   File "${MAINBINARYSRCPATH}"
@@ -721,7 +723,17 @@ Section Install
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
   ; Save $INSTDIR in registry for future installations
+  ReadRegStr $R0 SHCTX "${UNINSTKEY}" "InstallLocation"
+  ReadRegStr $R1 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane"
+  ReadRegStr $R2 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
+  ; Architecture B: only visible native tray owns per-user startup.
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
+  ${If} $R0 == ""
+  ${OrIf} $R1 != ""
+  ${OrIf} $R2 != ""
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" "$\"$INSTDIR\membrane-tray.exe$\" --login-launch"
+  ${EndIf}
 
   !if "${INSTALLMODE}" == "both"
     ; Save install mode to be selected by default for the next installation such as updating
@@ -765,6 +777,14 @@ Section Install
     Call CreateOrUpdateStartMenuShortcut
   !insertmacro MUI_STARTMENU_WRITE_END
 
+  ; Retarget an existing desktop shortcut during every upgrade. Creation on a
+  ; fresh interactive install remains finish-page opt-in.
+  IfFileExists "$DESKTOP\${PRODUCTNAME}.lnk" desktop_shortcut_repair
+  IfFileExists "$DESKTOP\${INSTALLIDENTITY}.lnk" desktop_shortcut_repair desktop_shortcut_repair_done
+  desktop_shortcut_repair:
+    Call CreateOrUpdateDesktopShortcut
+  desktop_shortcut_repair_done:
+
   ; Create desktop shortcut for silent and passive installers
   ; because finish page will be skipped
   ${If} $PassiveMode = 1
@@ -775,6 +795,15 @@ Section Install
   !ifmacrodef NSIS_HOOK_POSTINSTALL
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
+
+  ; Installed app is not complete until resident identity is healthy & native
+  ; harnesses resolve the installed stdio command. `membrane activate` ports
+  ; proven setup/ensure/health/rollback mechanisms into one bounded Rust step.
+  DetailPrint "Activating installed Membrane for local harnesses"
+  ExecWait '$"$INSTDIR\membrane.exe$" activate --install-root $"$INSTDIR$"' $R0
+  ${If} $R0 != 0
+    Abort "Membrane activation failed (exit $R0). Installation was not marked successful."
+  ${EndIf}
 
   ; Auto close this page for passive mode
   ${If} $PassiveMode = 1
@@ -790,7 +819,7 @@ Function .onInstSuccess
     ${GetOptions} $CMDLINE "/R" $R0
     ${IfNot} ${Errors}
       ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" "$R0"
+      nsis_tauri_utils::RunAsUser "$INSTDIR\membrane-tray.exe" "$R0"
     ${EndIf}
   ${EndIf}
 FunctionEnd
@@ -822,6 +851,8 @@ Section Uninstall
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
+  !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -865,29 +896,17 @@ Section Uninstall
   ${If} $UpdateMode <> 1
     !insertmacro DeleteAppUserModelId
 
-    ; Remove start menu shortcut
+    ; Remove exact Membrane-owned shortcuts regardless of their pre-B target.
     !insertmacro MUI_STARTMENU_GETFOLDER Application $AppStartMenuFolder
-    !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    Pop $0
-    ${If} $0 = 1
-      !insertmacro UnpinShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
-      Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
-      RMDir "$SMPROGRAMS\$AppStartMenuFolder"
-    ${EndIf}
-    !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    Pop $0
-    ${If} $0 = 1
-      !insertmacro UnpinShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-      Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-    ${EndIf}
+    !insertmacro UnpinShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+    RMDir "$SMPROGRAMS\$AppStartMenuFolder"
+    !insertmacro UnpinShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
 
     ; Remove desktop shortcuts
-    !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    Pop $0
-    ${If} $0 = 1
-      !insertmacro UnpinShortcut "$DESKTOP\${PRODUCTNAME}.lnk"
-      Delete "$DESKTOP\${PRODUCTNAME}.lnk"
-    ${EndIf}
+    !insertmacro UnpinShortcut "$DESKTOP\${PRODUCTNAME}.lnk"
+    Delete "$DESKTOP\${PRODUCTNAME}.lnk"
   ${EndIf}
 
   ; Remove registry information for add/remove programs
@@ -904,7 +923,8 @@ Section Uninstall
   ; If it doesn't exist, it does nothing.
   ; We do this when not updating (to preserve the registry value on updates)
   ${If} $UpdateMode <> 1
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane Tray"
   ${EndIf}
 
   ; Delete app data if the checkbox is selected
@@ -954,91 +974,63 @@ Function un.SkipIfPassive
 FunctionEnd
 
 Function CreateOrUpdateStartMenuShortcut
-  ; We used to use product name as MAINBINARYNAME
-  ; migrate old shortcuts to target the new MAINBINARYNAME
+  ; Architecture B: shortcuts command resident tray to open an authenticated
+  ; dashboard. They must never launch dashboard executable directly.
   StrCpy $R0 0
-
-  ${If} $OldMainBinaryName != ""
-    !insertmacro IsShortcutTarget "$SMPROGRAMS\${INSTALLIDENTITY}.lnk" "$INSTDIR\$OldMainBinaryName"
-    Pop $0
-    ${If} $0 = 1
-      Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-      Rename "$SMPROGRAMS\${INSTALLIDENTITY}.lnk" "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-      !insertmacro SetShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-      !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
-      StrCpy $R0 1
-    ${EndIf}
-  ${EndIf}
-
-  !insertmacro IsShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
-  Pop $0
-  ${If} $0 = 1
-    !insertmacro SetShortcutTarget "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  IfFileExists "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" 0 +2
     StrCpy $R0 1
-  ${EndIf}
-
-  !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
-  Pop $0
-  ${If} $0 = 1
-    !insertmacro SetShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  IfFileExists "$SMPROGRAMS\${PRODUCTNAME}.lnk" 0 +2
     StrCpy $R0 1
-  ${EndIf}
-
-  ${If} $R0 = 1
-    Return
-  ${EndIf}
+  IfFileExists "$SMPROGRAMS\${INSTALLIDENTITY}.lnk" 0 +2
+    StrCpy $R0 1
 
   ; Skip creating shortcut if in update mode or no shortcut mode
   ; but always create if migrating from wix
   ${If} $WixMode = 0
+    ${If} $NoShortcutMode = 1
+      Return
+    ${EndIf}
     ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
+    ${AndIf} $R0 = 0
       Return
     ${EndIf}
   ${EndIf}
 
+  Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\${INSTALLIDENTITY}.lnk"
+
   !if "${STARTMENUFOLDER}" != ""
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
-    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
   !else
-    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   !endif
 FunctionEnd
 
 Function CreateOrUpdateDesktopShortcut
-  ; We used to use product name as MAINBINARYNAME
-  ; migrate old shortcuts to target the new MAINBINARYNAME
-
-  ${If} $OldMainBinaryName != ""
-    !insertmacro IsShortcutTarget "$DESKTOP\${INSTALLIDENTITY}.lnk" "$INSTDIR\$OldMainBinaryName"
-    Pop $0
-    ${If} $0 = 1
-      Delete "$DESKTOP\${PRODUCTNAME}.lnk"
-      Rename "$DESKTOP\${INSTALLIDENTITY}.lnk" "$DESKTOP\${PRODUCTNAME}.lnk"
-      !insertmacro SetShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-      !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
-      Return
-    ${EndIf}
-  ${EndIf}
-
-  !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\$OldMainBinaryName"
-  Pop $0
-  ${If} $0 = 1
-    !insertmacro SetShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
-    Return
-  ${EndIf}
+  StrCpy $R0 0
+  IfFileExists "$DESKTOP\${PRODUCTNAME}.lnk" 0 +2
+    StrCpy $R0 1
+  IfFileExists "$DESKTOP\${INSTALLIDENTITY}.lnk" 0 +2
+    StrCpy $R0 1
 
   ; Skip creating shortcut if in update mode or no shortcut mode
   ; but always create if migrating from wix
   ${If} $WixMode = 0
+    ${If} $NoShortcutMode = 1
+      Return
+    ${EndIf}
     ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
+    ${AndIf} $R0 = 0
       Return
     ${EndIf}
   ${EndIf}
 
-  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+  Delete "$DESKTOP\${INSTALLIDENTITY}.lnk"
+  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 FunctionEnd

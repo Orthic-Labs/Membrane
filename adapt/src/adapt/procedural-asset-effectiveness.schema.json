@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adapt.procedural-asset-effectiveness.v1",
+  "title": "ProceduralAssetEffectivenessV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "assetId", "assessedAt", "exposures", "selections", "applications", "successes", "failures", "correctionsAfterUse", "tokenCostPerTurn", "model", "client", "effectivenessVerdict", "evidenceRefs", "honestyLimit"],
+  "properties": {
+    "schemaVersion": {"const": "adapt.procedural-asset-effectiveness.v1"},
+    "assetId": {"type":"string", "minLength":1}, "assessedAt": {"type":"string", "minLength":1},
+    "sourceIssueId": {"type":"string"}, "sourceProposalId": {"type":"string"},
+    "exposures": {"$ref":"#/$defs/observed"}, "selections": {"$ref":"#/$defs/observed"}, "applications": {"$ref":"#/$defs/observed"}, "successes": {"$ref":"#/$defs/observed"}, "failures": {"$ref":"#/$defs/observed"}, "correctionsAfterUse": {"$ref":"#/$defs/observed"}, "tokenCostPerTurn": {"$ref":"#/$defs/observed"}, "model": {"$ref":"#/$defs/observed"}, "client": {"$ref":"#/$defs/observed"}, "effectivenessVerdict": {"$ref":"#/$defs/observed"}, "evidenceRefs": {"$ref":"#/$defs/observed"}, "honestyLimit": {"type":"string", "minLength":1}
+  },
+  "$defs": {"observed": {"type":"object", "additionalProperties":false, "required":["coverage"], "properties":{"coverage":{"enum":["complete","partial","unavailable"]}, "value":{}, "unavailableReason":{"enum":["not_instrumented","hub_inactive","provider_omitted","host_unsupported"]}}}}
+}

@@ -8,7 +8,7 @@
   "required": ["schema_version", "contract", "proposal_id", "payload_sha256", "payload", "state"],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "const": "1.1.0"
     },
     "contract": {
       "const": "RemediationProposalV1"
@@ -28,6 +28,8 @@
       "required": [
         "record_kind",
         "proposal_kind",
+        "effect",
+        "intervention_target",
         "source_issue_ids",
         "canonical_proposal_text",
         "authority_class",
@@ -49,6 +51,33 @@
             "taste_candidate"
           ],
           "description": "Canonical remediation kinds (section 6.7). taste_candidate is permitted only when separate qualifying user evidence exists."
+        },
+        "effect": {
+          "enum": [
+            "process_change",
+            "guardrail_addition",
+            "documentation_update",
+            "tooling_fix",
+            "taste_candidate"
+          ],
+          "description": "Effect boundary class; it remains orthogonal to intervention_target."
+        },
+        "intervention_target": {
+          "enum": [
+            "model_behavior_policy",
+            "skill_or_procedure",
+            "system_prompt",
+            "tool_description",
+            "tool_implementation",
+            "routing_policy",
+            "context_retrieval",
+            "context_reduction",
+            "orchestration",
+            "guard",
+            "evaluator",
+            "documentation_policy"
+          ],
+          "description": "Surface targeted by the effect; taste_candidate is an effect, never a target."
         },
         "source_issue_ids": {
           "type": "array",

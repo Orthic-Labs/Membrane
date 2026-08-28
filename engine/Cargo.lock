@@ -2418,6 +2418,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.20",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2458,6 +2459,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "gix",
+ "membrane-core",
  "membrane-protocol",
  "membrane-provider-sdk",
  "serde",

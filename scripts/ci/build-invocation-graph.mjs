@@ -75,6 +75,12 @@ export function productionEntrypoints() {
       justification: "Hub Tauri binary main; sole resident lifecycle authority entrypoint.",
     },
     {
+      id: "apps/membrane-tray-windows/src/main.rs",
+      kind: "installed-entrypoint",
+      runtime: "rust",
+      justification: "Installed Windows tray entrypoint; supervises stable-current Hub and daemon processes.",
+    },
+    {
       id: "engine/crates/membrane/src/main.rs",
       kind: "installed-entrypoint",
       runtime: "rust",
@@ -529,7 +535,7 @@ export function buildGraph({ root, trackedFiles, now = new Date(), head = null }
     // Only [dependencies] are runtime edges; [dev-dependencies]/[build-dependencies]
     // never make a crate production-reachable.
     const depRe = /^(\w[\w-]*)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"/gm;
-    const linesC = text.split("\n");
+    const linesC = text.split(/\r?\n/);
     const lineSection = [];
     let cur = "none";
     for (const l of linesC) {

@@ -1165,13 +1165,28 @@ mod tests {
             dir.path(),
         )
         .expect("truncated command");
-        let expected_spill = match truncated.capped.lines().collect::<Vec<_>>().as_slice() {
-            ["o1", "o2", "… 2 lines elided …", "e2", "e3"] => "o1\no2\no3\ne1\ne2\ne3\n",
-            ["e1", "e2", "… 2 lines elided …", "o2", "o3"] => "e1\ne2\ne3\no1\no2\no3\n",
-            lines => panic!("unexpected capture ordering: {lines:?}"),
-        };
         let spill = truncated.spill_path.expect("truncated output spill");
-        assert_eq!(std::fs::read_to_string(&spill).unwrap(), expected_spill);
+        let spilled = std::fs::read_to_string(&spill).unwrap();
+        let spill_lines: Vec<&str> = spilled.lines().collect();
+        // The two lanes are drained by concurrent readers and sequenced on
+        // arrival, so which lane's chunk lands first is not fixed. What is
+        // frozen is that every line survives, each lane keeps its own relative
+        // order, and the capped view is exactly the spill's head and tail.
+        assert_eq!(spill_lines.len(), 6, "spill:\n{spilled}");
+        let lane = |prefix: char| {
+            spill_lines
+                .iter()
+                .copied()
+                .filter(|line| line.starts_with(prefix))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(lane('o'), ["o1", "o2", "o3"], "spill:\n{spilled}");
+        assert_eq!(lane('e'), ["e1", "e2", "e3"], "spill:\n{spilled}");
+        let capped_lines: Vec<&str> = truncated.capped.lines().collect();
+        assert_eq!(capped_lines.len(), 5, "capped:\n{}", truncated.capped);
+        assert_eq!(&capped_lines[..2], &spill_lines[..2]);
+        assert!(capped_lines[2].contains("lines elided"));
+        assert_eq!(&capped_lines[3..], &spill_lines[4..]);
         assert!(spill
             .file_stem()
             .and_then(|name| name.to_str())

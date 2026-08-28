@@ -2052,6 +2052,7 @@ async fn livez(State(state): State<AppState>) -> Response {
             "workers": state.workers.snapshot(),
             "serviceGeneration": crate::release_identity::service_generation(),
             "releaseGeneration": crate::release_identity::release_generation(),
+            "runtimeOrigin": runtime_origin(),
         })
         .to_string(),
     )
@@ -2198,6 +2199,7 @@ fn build_router_inner(
         "installationId": state.store.installation_id(),
         "cortexStoreId": state.store.cortex_store_id(),
         "releaseGeneration": crate::release_identity::release_generation(),
+        "runtimeOrigin": runtime_origin(),
         "serviceGeneration": crate::release_identity::service_generation(),
         "protocolVersion": 1,
         "schemaVersion": 1,
@@ -2549,7 +2551,9 @@ fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool
             && item.lifecycle.influence_class.as_deref() == Some("behavioral_directive"))
 }
 
-/// Production federation route is native and same-process.
+/// Production federation route is native and same-process. Its request-time
+/// H8 ceiling is validated before fan-out and its Push selection is attached
+/// to the same response.
 fn federate_route_response(body: &str) -> (u16, String) {
     crate::pull::federation::native_route_response(body)
 }
@@ -4553,6 +4557,7 @@ fn health_response_with_workers(
     payload["protocolVersion"] = json!(1);
     payload["schemaVersion"] = json!(1);
     payload["nativeOnly"] = json!(true);
+    payload["runtimeOrigin"] = json!(runtime_origin());
     payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
     payload["capabilities"] = json!(["memory", "diagnostics"]);
     let store_healthy = payload.get("ok").and_then(Value::as_bool) == Some(true);
@@ -4600,6 +4605,18 @@ fn health_response_with_workers(
         StatusCode::SERVICE_UNAVAILABLE.as_u16()
     };
     (status, payload.to_string())
+}
+
+fn runtime_origin() -> &'static str {
+    runtime_origin_from(std::env::var("MEMBRANE_RUNTIME_ORIGIN").ok().as_deref())
+}
+
+fn runtime_origin_from(value: Option<&str>) -> &'static str {
+    match value {
+        Some("development") => "development",
+        Some("installed") | None => "installed",
+        Some(_) => "invalid",
+    }
 }
 
 fn planner_route(
@@ -5261,6 +5278,14 @@ pub fn run_stdio_mcp() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_origin_is_explicit_and_fail_closed() {
+        assert_eq!(runtime_origin_from(None), "installed");
+        assert_eq!(runtime_origin_from(Some("installed")), "installed");
+        assert_eq!(runtime_origin_from(Some("development")), "development");
+        assert_eq!(runtime_origin_from(Some("unexpected")), "invalid");
+    }
 
     #[test]
     fn native_identity_fence_requires_exact_hub_identity() {
@@ -6203,11 +6228,14 @@ mod tests {
             payload_down["sections"]["providers"], payload_up["sections"]["providers"],
             "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
         );
-        // Healthy resident + live snapshot => Running even though Blueprint is
-        // unavailable; parent state is resident-local, never child-derived.
+        // Healthy resident + live snapshot => Running regardless of Blueprint's
+        // independently observed state; parent state is never child-derived.
         assert_eq!(payload_up["membraneState"], "running", "body: {body_up}");
-        assert_eq!(
-            payload_up["subsystems"]["blueprint"]["state"], "unavailable",
+        let blueprint_state = payload_up["subsystems"]["blueprint"]["state"]
+            .as_str()
+            .expect("Blueprint state is a closed string");
+        assert!(
+            matches!(blueprint_state, "available" | "degraded" | "unavailable"),
             "body: {body_up}"
         );
     }

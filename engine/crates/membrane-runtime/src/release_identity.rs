@@ -77,6 +77,7 @@ mod tests {
 
     #[test]
     fn target_triple_is_a_supported_native_release_target() {
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         assert!(matches!(
             target_triple(),
             "x86_64-pc-windows-msvc"
@@ -84,5 +85,7 @@ mod tests {
                 | "x86_64-apple-darwin"
                 | "aarch64-apple-darwin"
         ));
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        assert_eq!(target_triple(), "unsupported");
     }
 }

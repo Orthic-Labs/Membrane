@@ -5,9 +5,14 @@
 //! bounded provider scheduling, and deterministic merge are one pipeline.
 
 use crate::config::FederationConfig;
+use crate::corrective::{
+    corrective_plan, corrective_trigger, evaluate_sufficiency, receipt_for_request,
+    validated_contract_for_request, CorrectiveRetrievalReceiptV1, SufficiencyAssessmentV1,
+    SufficiencyStateV1,
+};
 use crate::deadline::{Deadline, SystemClock};
 use crate::freshness::FreshnessBinding;
-use crate::merge::{merge_normalized, MergeError, MergeResult};
+use crate::merge::{merge_normalized_with_strategy, FusionStrategy, MergeError, MergeResult};
 use crate::normalize::{admit_generation, malformed_omission, normalize_provider_output};
 use crate::omission::{generation_omission, missing_lane, warning_from_omission};
 use crate::registry::ProviderRegistry;
@@ -17,7 +22,7 @@ use crate::root::{FilesystemRootSource, RootPathSource};
 use crate::scheduler::{schedule_providers, ProviderTask, ScheduleResult, SchedulerPolicy};
 use membrane_protocol::{
     FederationRequestV1, FederationResponseV1, ProviderDiagnosticsV1, ProviderId,
-    ProviderWarningV1, ReasonCode, WarningSeverity,
+    ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
 };
 use membrane_provider_sdk::{ProviderContext, SourceQuery, SourceSet};
 use std::collections::BTreeMap;
@@ -70,6 +75,7 @@ pub struct FederationEngine {
     release_source: Arc<dyn ReleaseSource + Send + Sync>,
     root_source: Arc<dyn RootPathSource + Send + Sync>,
     scheduler_policy: SchedulerPolicy,
+    fusion_strategy: FusionStrategy,
 }
 
 impl std::fmt::Debug for FederationEngine {
@@ -81,6 +87,7 @@ impl std::fmt::Debug for FederationEngine {
             .field("sources", &self.sources)
             .field("release_source", &"injected")
             .field("scheduler_policy", &self.scheduler_policy)
+            .field("fusion_strategy", &self.fusion_strategy)
             .finish()
     }
 }
@@ -167,11 +174,19 @@ impl FederationEngine {
             release_source: Arc::new(release_source),
             root_source: Arc::new(root_source),
             scheduler_policy: SchedulerPolicy::default(),
+            fusion_strategy: FusionStrategy::default(),
         })
     }
 
     pub fn with_scheduler_policy(mut self, policy: SchedulerPolicy) -> Self {
         self.scheduler_policy = policy;
+        self
+    }
+
+    /// Select a versioned fusion strategy explicitly. The default remains the
+    /// fixed provider/security ordering used by current production.
+    pub fn with_fusion_strategy(mut self, strategy: FusionStrategy) -> Self {
+        self.fusion_strategy = strategy;
         self
     }
 
@@ -181,6 +196,10 @@ impl FederationEngine {
 
     pub fn config(&self) -> &FederationConfig {
         &self.config
+    }
+
+    pub const fn fusion_strategy(&self) -> FusionStrategy {
+        self.fusion_strategy
     }
 
     pub fn sources(&self) -> &SourceSet {
@@ -236,8 +255,13 @@ impl FederationEngine {
             .collect();
         let fatal = CancellationToken::new();
         let tasks = self.provider_tasks(&active, fatal.clone());
-        let schedule =
-            schedule_providers(provider_context, deadline, tasks, self.scheduler_policy).await;
+        let mut schedule = schedule_providers(
+            provider_context.clone(),
+            deadline,
+            tasks,
+            self.scheduler_policy,
+        )
+        .await;
 
         // A provider panic or internal invariant is a composition failure,
         // not a lane-local omission.  Provider task wrappers cancel sibling
@@ -249,7 +273,146 @@ impl FederationEngine {
             ));
         }
 
-        let mut merged = merge_scheduled_outputs(&active, &schedule.outputs, expected_generation);
+        let mut merged = merge_scheduled_outputs(
+            &active,
+            &schedule.outputs,
+            expected_generation,
+            self.fusion_strategy,
+        );
+        let mut corrective_receipt = receipt_for_request(request, &merged.providers, &active);
+        if let Some(contract) = validated_contract_for_request(request) {
+            let initial_assessment = corrective_receipt
+                .sufficiency
+                .clone()
+                .filter(|assessment| assessment.state == SufficiencyStateV1::Insufficient);
+            if let Some(initial_assessment) = initial_assessment {
+                let trigger =
+                    corrective_trigger(&contract, &initial_assessment, &merged.providers, &active);
+                if let Some((trigger_provider, target_provider, target_requirement)) =
+                    corrective_plan(&contract, &initial_assessment, &merged.providers, &active)
+                {
+                    if deadline.is_exhausted(&SystemClock) {
+                        corrective_receipt = CorrectiveRetrievalReceiptV1::after_stage(
+                            initial_assessment,
+                            trigger_provider,
+                            target_provider,
+                            target_requirement,
+                            false,
+                            "terminal_insufficient_deadline_exhausted",
+                        );
+                    } else if provider_context.is_cancelled() {
+                        corrective_receipt = CorrectiveRetrievalReceiptV1::after_stage(
+                            initial_assessment,
+                            trigger_provider,
+                            target_provider,
+                            target_requirement,
+                            false,
+                            "terminal_insufficient_cancelled",
+                        );
+                    } else if estimated_tokens(&merged) >= u64::from(normalized.max_tokens) {
+                        corrective_receipt = CorrectiveRetrievalReceiptV1::after_stage(
+                            initial_assessment,
+                            trigger_provider,
+                            target_provider,
+                            target_requirement,
+                            false,
+                            "terminal_insufficient_budget_exhausted",
+                        );
+                    } else {
+                        let stage_fatal = CancellationToken::new();
+                        let stage_tasks =
+                            self.provider_tasks(&[target_provider], stage_fatal.clone());
+                        let stage = schedule_providers(
+                            provider_context.clone(),
+                            deadline,
+                            stage_tasks,
+                            self.scheduler_policy,
+                        )
+                        .await;
+                        if stage_fatal.is_cancelled() {
+                            return Err(FederationEngineError::Internal(
+                                "provider panic or internal invariant".to_owned(),
+                            ));
+                        }
+                        let attempted = !stage.timings.is_empty();
+                        let mut admitted = false;
+                        let mut budget_rejected = false;
+                        if let Some(correction) = stage
+                            .outputs
+                            .iter()
+                            .find(|output| output.provider == target_provider)
+                            .cloned()
+                        {
+                            let available = u64::from(normalized.max_tokens)
+                                .saturating_sub(estimated_tokens(&merged));
+                            if output_tokens(&correction) <= available {
+                                crate::corrective::append_output(&mut schedule.outputs, correction);
+                                admitted = true;
+                            } else {
+                                budget_rejected = true;
+                                schedule.omissions.push(corrective_omission(
+                                    target_provider,
+                                    ReasonCode::ProviderUnavailable,
+                                    "budget_exhausted",
+                                ));
+                            }
+                        } else if !stage.outputs.is_empty() {
+                            schedule.omissions.push(corrective_omission(
+                                target_provider,
+                                ReasonCode::ProviderMalformed,
+                                "provider_identity_mismatch",
+                            ));
+                        }
+                        schedule
+                            .outputs
+                            .sort_by_key(|output| output.provider.rank());
+                        merged = merge_scheduled_outputs(
+                            &active,
+                            &schedule.outputs,
+                            expected_generation,
+                            self.fusion_strategy,
+                        );
+                        let final_assessment =
+                            evaluate_sufficiency(&contract, &merged.providers, &active)
+                                .unwrap_or_else(|_| initial_assessment.clone());
+                        let outcome = corrective_stage_outcome(
+                            &stage,
+                            admitted,
+                            budget_rejected,
+                            &final_assessment,
+                        );
+                        schedule.omissions.extend(stage.omissions);
+                        schedule.timings.extend(stage.timings);
+                        schedule.deadline_exhausted |= stage.deadline_exhausted;
+                        schedule.cancelled |= stage.cancelled;
+                        corrective_receipt = CorrectiveRetrievalReceiptV1::after_stage(
+                            final_assessment,
+                            trigger_provider,
+                            target_provider,
+                            target_requirement,
+                            attempted,
+                            outcome,
+                        );
+                    }
+                } else if let Some((trigger_provider, target_requirement)) = trigger {
+                    corrective_receipt = CorrectiveRetrievalReceiptV1::terminal_insufficiency(
+                        initial_assessment,
+                        Some(trigger_provider),
+                        None,
+                        Some(target_requirement),
+                        "terminal_insufficient_no_alternate_provider",
+                    );
+                } else {
+                    corrective_receipt = CorrectiveRetrievalReceiptV1::terminal_insufficiency(
+                        initial_assessment,
+                        None,
+                        None,
+                        None,
+                        "terminal_insufficient_no_trigger_lane",
+                    );
+                }
+            }
+        }
         append_schedule_accounting(&mut merged, &schedule);
         for provider in self.config.expected_providers() {
             if let Some(omission) = self.config.disabled_omission(provider) {
@@ -261,6 +424,10 @@ impl FederationEngine {
         let mut response = merged.response(normalized.request_id, normalized.trace_id);
         let metrics = metrics(&started, &active, &schedule, &merged);
         response.diagnostics = Some(diagnostics(&metrics));
+        response.extensions.insert(
+            "correctiveRetrieval".to_owned(),
+            serde_json::to_value(corrective_receipt).unwrap_or(serde_json::Value::Null),
+        );
         Ok(response)
     }
 
@@ -440,6 +607,7 @@ fn merge_scheduled_outputs(
     expected: &[ProviderId],
     outputs: &[membrane_protocol::ProviderOutputV1],
     expected_generation: Option<&str>,
+    strategy: FusionStrategy,
 ) -> MergeResult {
     let mut normalized = Vec::new();
     let mut warnings = Vec::new();
@@ -466,7 +634,7 @@ fn merge_scheduled_outputs(
             }
         }
     }
-    merge_normalized(normalized, warnings, omissions)
+    merge_normalized_with_strategy(normalized, warnings, omissions, strategy)
 }
 
 fn append_schedule_accounting(merged: &mut MergeResult, schedule: &ScheduleResult) {
@@ -483,6 +651,71 @@ fn append_schedule_accounting(merged: &mut MergeResult, schedule: &ScheduleResul
         });
         merged.warnings.push(warning_from_omission(omission));
         merged.omissions.push(omission.clone());
+    }
+}
+
+fn estimated_tokens(merged: &MergeResult) -> u64 {
+    merged
+        .candidates
+        .iter()
+        .map(|candidate| u64::from(candidate.candidate.estimated_tokens))
+        .sum()
+}
+
+fn output_tokens(output: &ProviderOutputV1) -> u64 {
+    output
+        .candidates
+        .iter()
+        .map(|candidate| u64::from(candidate.estimated_tokens))
+        .sum()
+}
+
+fn corrective_omission(
+    provider: ProviderId,
+    reason: ReasonCode,
+    detail_id: &'static str,
+) -> ProviderOmissionV1 {
+    ProviderOmissionV1 {
+        provider,
+        reason,
+        candidate_id: None,
+        detail_id: Some(detail_id.to_owned()),
+        stage: Some("corrective_retrieval".to_owned()),
+    }
+}
+
+fn corrective_stage_outcome(
+    stage: &ScheduleResult,
+    admitted: bool,
+    budget_rejected: bool,
+    assessment: &SufficiencyAssessmentV1,
+) -> &'static str {
+    if stage.deadline_exhausted
+        || stage
+            .omissions
+            .iter()
+            .any(|omission| omission.reason == ReasonCode::ProviderTimeout)
+    {
+        return "terminal_insufficient_deadline_exhausted";
+    }
+    if stage.cancelled
+        || stage
+            .omissions
+            .iter()
+            .any(|omission| omission.reason == ReasonCode::ProviderCancelled)
+    {
+        return "terminal_insufficient_cancelled";
+    }
+    if budget_rejected {
+        return "terminal_insufficient_budget_exhausted";
+    }
+    if !admitted {
+        return "terminal_insufficient_provider_failure";
+    }
+    match assessment.state {
+        SufficiencyStateV1::Sufficient => "corrective_stage_sufficient",
+        SufficiencyStateV1::Insufficient => "terminal_insufficient_second_assessment",
+        SufficiencyStateV1::Unknown => "terminal_insufficient_provider_incomplete",
     }
 }
 

@@ -52,17 +52,18 @@ There are distinct data classes and owners:
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 
-- Membrane runtime exists **only inside the active Hub process**. There is no
-  standalone Membrane runtime and no Hub-supervised Membrane child process.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds to
-  Membrane through Hub, or it has no binding.
-- MCP and CLI surfaces are **stateless Hub clients/transports**. They never
+- Membrane runtime exists only inside the headless child daemon of the visible
+  native tray, with OS-enforced lifetime coupling. There is no standalone or
+  orphanable Membrane runtime.
+- There is **no embedded CodeRight Membrane backend**. CodeRight binds through
+  the active tray-owned daemon, or it has no binding.
+- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
   launch, auto-start, or register a Membrane process.
-- **Hub off → no Membrane context.** Requests return typed
+- **Tray off → no Membrane context.** Requests return typed
   `membrane_unavailable { reason: hub_inactive, retryable: true }`.
 - **Ledger** is the canonical subsystem name; it replaces Guide.
 - Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only under Hub; with Hub off, Blueprint
+  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
   access is an explicit bounded one-shot operation that never daemonizes.
 
 ---
@@ -74,12 +75,12 @@ document that implies a different runtime topology:
 A full CodeRight agent session MUST NOT start without one compatible Membrane capability binding.
 
 The binding is exactly one thing: **a compatible Membrane capability served by
-an active Hub**, selected through the versioned handshake. There is no embedded
+the active tray-owned daemon**, selected through the versioned handshake. There is no embedded
 CodeRight Membrane backend and no second binding mode.
 
 CodeRight must not create two knowledge universes.
 
-If the Hub-served binding later fails, or Hub is not active:
+If the tray-daemon binding later fails, or tray is not active:
 
 - do not open any embedded/local fallback Cortex store;
 - do not dual-write;
@@ -847,88 +848,18 @@ The owning subsystem remains Pull/Ledger/Push.
 
 ---
 
-# 16. Implementation phases
+# 16. Implementation ownership
 
-## C0 — Canonicalize the dependency
+This canonical document defines cross-product ownership, contracts, and acceptance conditions. It
+does not prescribe rollout phases.
 
-Update CodeRight architecture/`sol.md` equivalent:
-
-- Membrane is mandatory capability infrastructure;
-- exactly one backend binding;
-- versioned handshake;
-- no split-brain fallback;
-- full agent execution blocked without a valid binding.
-
-## C1 — Trace identity and span model
-
-Ensure stable ids for:
-
-- session;
-- task;
-- trace;
-- span;
-- model call;
-- tool call;
-- evaluator run;
-- artifact.
-
-## C2 — Membrane context receipt binding
-
-Every model-call span references the exact Membrane context receipt.
-
-## C3 — Direct transcript/event emission
-
-Wire CodeRight runtime events directly to the native transcript/event adapter.
-
-## C4 — Selected-transcript handoff
-
-Expose exact transcript references that a user may explicitly select in Membrane Adapt; do not treat login, UI presence, or host events as Taste authority.
-
-## C5 — ExecutionObservationV1
-
-Add structured observation projection and Membrane/Adapt ingestion.
-
-## C6 — Generic eval store/runtime
-
-Implement or consolidate:
-
-- dataset;
-- case;
-- evaluator;
-- score;
-- experiment;
-- annotation/review;
-- online/offline execution.
-
-Do not rebuild Langfuse/Phoenix wholesale; take the useful primitives.
-
-## C7 — Adapt regression/evaluator seam
-
-Support:
-
-- `RegressionCaseProposal`;
-- `EvaluatorProposal`;
-- review;
-- CodeRight promotion/execution;
-- result callback.
-
-## C8 — Completion-integrity guards
-
-Bind completion claims to actual receipts/artifacts/checks for approved deterministic classes.
-
-## C9 — Adapt review TUI
-
-Expose Taste/Insights review and outcome surfaces.
-
-## C10 — Closed-loop qualification
-
-Run real experiments showing:
-
-- Taste correction-rate change;
-- Insight recurrence change;
-- route/model/harness improvements;
-- context-token/cost effects;
-- no correctness/policy regression.
+- Membrane-owned non-experimental work lives in
+  `docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md` and is scheduled only from verified
+  production-path gaps.
+- CodeRight-owned implementation work lives in CodeRight's repository under its own pending
+  specification.
+- Neither repository may infer landed state from this doctrine; required tests below must bind to
+  each product's real production path.
 
 ---
 
@@ -936,13 +867,13 @@ Run real experiments showing:
 
 ## Startup/backend
 
-- compatible Hub-served binding;
-- Hub inactive at startup — typed `membrane_unavailable { hub_inactive }`, no binding, no spawned process;
-- Hub quits mid-session — binding lost, typed unavailability, no fallback store;
+- compatible tray-daemon binding;
+- tray inactive at startup — typed `membrane_unavailable { hub_inactive }`, no binding, no spawned process;
+- tray quits mid-session — binding lost, typed unavailability, no fallback store;
 - incompatible version;
 - store identity mismatch;
 - backend death;
-- no local fallback after Hub bind;
+- no local fallback after tray-daemon bind;
 - migration-required path.
 
 ## Event/evidence
@@ -979,7 +910,7 @@ Run real experiments showing:
 - raw trace not silently inserted into Cortex;
 - admitted durable record goes to Cortex;
 - document virtual source goes to Ledger only after qualification;
-- no duplicate CodeRight memory DB when the Hub-served Cortex binding is selected.
+- no duplicate CodeRight memory DB when the tray-daemon Cortex binding is selected.
 
 ---
 
@@ -1044,7 +975,7 @@ Do not:
 - make Adapt the generic trace/eval database;
 - make Cortex the generic high-volume observability database;
 - maintain a CodeRight document index competing with Ledger;
-- open any local/embedded memory store after a Hub-served binding is lost;
+- open any local/embedded memory store after a tray-daemon binding is lost;
 - execute unversioned evaluators;
 - tune routing/harness changes on the final held-out benchmark;
 - claim model/harness improvement without baseline comparison.

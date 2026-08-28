@@ -9,7 +9,7 @@ import { runBenchmark } from "./e2e-benchmark.mjs";
 
 const scenarios = ["repository_orientation", "cross_repo_impact", "preference_application", "stale_graph_immediate_edit", "contradiction", "denied_scope", "tool_proof_criteria", "user_correction", "memory_temporal_as_of", "provider_timeout_degradation"];
 const phases = ["turn.observed", "provider.started", "provider.terminal", "candidate.retrieved", "candidate.admitted", "block.rendered", "block.delivered", "turn.outcome", "feedback.recorded"];
-const workspaceRoot = fileURLToPath(new URL("../../", import.meta.url));
+const workspaceRoot = fileURLToPath(new URL("../", import.meta.url));
 
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), "membrane-e2e-"));

@@ -5,6 +5,10 @@ edition.workspace = true
 license-file.workspace = true
 description = "Membrane federation, freshness, planning, and service runtime."
 
+[[bin]]
+name = "membrane-daemon"
+path = "src/bin/membrane-daemon.rs"
+
 [dependencies]
 cortex-store = { path = "../cortex-store" }
 cortex-core = { package = "cortex-core", path = "../cortex-core" }

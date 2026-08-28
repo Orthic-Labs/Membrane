@@ -1,0 +1,17 @@
+{
+  "name": "membrane",
+  "version": "0.1.15",
+  "author": "Orthic Labs",
+  "description": "Membrane is a local-first context service for repository evidence, durable knowledge, document navigation, learning, and reversible reduction.",
+  "license": "SEE LICENSE IN LICENSE",
+  "interface": {
+    "displayName": "Membrane",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Repository context",
+      "Durable knowledge",
+      "MCP tools"
+    ],
+    "defaultPrompt": "Use Membrane for current repository context with source-bound receipts."
+  }
+}

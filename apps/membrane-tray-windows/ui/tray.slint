@@ -1,0 +1,469 @@
+// Windows-native tray popover. Same compact ledger grammar as CodexBar:
+// subject, verdict, evidence, observed, then action rows.
+
+component VerdictGlyph inherits Rectangle {
+    in property <string> kind: "hollow-square";
+    in property <color> tint: #8a8598;
+    width: 14px;
+    height: 14px;
+    background: transparent;
+
+    Rectangle {
+        x: 1px;
+        y: 1px;
+        width: 12px;
+        height: 12px;
+        background: root.kind == "filled-square" ? root.tint : transparent;
+        border-width: root.kind == "hollow-square" || root.kind == "half-square" ? 1px : 0px;
+        border-color: root.tint;
+    }
+    Rectangle {
+        x: 2px;
+        y: 2px;
+        width: root.kind == "half-square" ? 5px : 0px;
+        height: root.kind == "half-square" ? 10px : 0px;
+        background: root.tint;
+    }
+    Rectangle {
+        x: 1px;
+        y: 6px;
+        width: root.kind == "dash" ? 12px : 0px;
+        height: root.kind == "dash" ? 2px : 0px;
+        background: root.tint;
+    }
+}
+
+component StatRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    width: 268px;
+    height: 24px;
+    background: transparent;
+
+    Text {
+        x: 0px;
+        y: 0px;
+        width: 100px;
+        height: 24px;
+        text: root.label;
+        color: #9c96a8;
+        font-family: "Segoe UI Variable";
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 100px;
+        y: 0px;
+        width: 168px;
+        height: 24px;
+        text: root.value;
+        color: #f2eff6;
+        font-family: "Spline Sans Mono";
+        font-size: 10px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Rectangle { x: 0px; y: 23px; width: 268px; height: 1px; background: #3b3548; }
+}
+
+component EvidenceLine inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> emphasis: false;
+    width: 268px;
+    height: 22px;
+    background: transparent;
+
+    Text {
+        x: 0px;
+        y: 0px;
+        width: 72px;
+        height: 22px;
+        text: root.label;
+        color: #9c96a8;
+        font-family: "Segoe UI Variable";
+        font-size: 10px;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 72px;
+        y: 0px;
+        width: 196px;
+        height: 22px;
+        text: root.value;
+        color: root.emphasis ? #f2eff6 : #d7d2df;
+        font-family: "Spline Sans Mono";
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component ActionRow inherits Rectangle {
+    in property <string> label;
+    in property <string> shortcut;
+    in property <bool> interactive: true;
+    callback activated();
+    callback pointer-down();
+    callback pointer-up();
+    callback pointer-cancel();
+    width: 268px;
+    height: 26px;
+    background: root.interactive
+        ? (touch.pressed ? #3a3047 : touch.has-hover ? #342c3d : transparent)
+        : transparent;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: touch.has-hover && root.interactive ? 2px : 0px;
+        height: 26px;
+        background: #c56bff;
+    }
+    Text {
+        x: 8px;
+        y: 0px;
+        width: 188px;
+        height: 26px;
+        text: root.label;
+        color: root.interactive
+            ? (touch.has-hover ? #f2eff6 : #c56bff)
+            : #6e6978;
+        font-family: "Segoe UI Variable";
+        font-size: 12px;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 196px;
+        y: 0px;
+        width: 44px;
+        height: 26px;
+        text: root.shortcut;
+        color: root.interactive ? #9c96a8 : #6e6978;
+        font-family: "Spline Sans Mono";
+        font-size: 10px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 256px;
+        y: 0px;
+        width: 12px;
+        height: 26px;
+        text: "›";
+        color: root.interactive ? #c56bff : #6e6978;
+        font-family: "Segoe UI Variable";
+        font-size: 16px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        clicked => { if (root.interactive) { root.activated(); } }
+        pointer-event(event) => {
+            if (root.interactive) {
+                if (event.kind == PointerEventKind.down) { root.pointer-down(); }
+                if (event.kind == PointerEventKind.up) { root.pointer-up(); }
+                if (event.kind == PointerEventKind.cancel) { root.pointer-cancel(); }
+            }
+        }
+    }
+}
+
+component FirstRunStrip inherits Rectangle {
+    in property <bool> login-enabled;
+    callback toggle-login();
+    callback pointer-down();
+    callback pointer-up();
+    callback pointer-cancel();
+    width: 268px;
+    height: 31px;
+    background: transparent;
+
+    Text {
+        x: 0px;
+        y: 0px;
+        width: 268px;
+        height: 14px;
+        text: "Tray owns runtime · closing tray stops daemon";
+        color: #d7d2df;
+        font-family: "Segoe UI Variable";
+        font-size: 10px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Text {
+        x: 0px;
+        y: 14px;
+        width: 240px;
+        height: 17px;
+        text: root.login-enabled ? "Launch at login · On" : "Launch at login · Off";
+        color: #c56bff;
+        font-family: "Segoe UI Variable";
+        font-size: 11px;
+        vertical-alignment: center;
+    }
+    Text {
+        x: 256px;
+        y: 14px;
+        width: 12px;
+        height: 17px;
+        text: "›";
+        color: #c56bff;
+        font-family: "Segoe UI Variable";
+        font-size: 16px;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+    touch := TouchArea {
+        clicked => { root.toggle-login(); }
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) { root.pointer-down(); }
+            if (event.kind == PointerEventKind.up) { root.pointer-up(); }
+            if (event.kind == PointerEventKind.cancel) { root.pointer-cancel(); }
+        }
+    }
+}
+
+export component TrayPopover inherits Window {
+    callback restart();
+    callback open-dashboard();
+    callback quit();
+    callback toggle-login();
+    callback finish-first-run();
+    callback dismiss();
+    callback pointer-down();
+    callback pointer-up();
+    callback pointer-cancel();
+
+    in property <string> current-state: "Running";
+    in property <string> state-kind: "filled-square";
+    in property <string> reason: "daemon_ready";
+    in property <string> observed: "observed now";
+    in property <string> generation: "generation 1";
+    in property <string> pid: "PID —";
+    in property <string> endpoint: "endpoint —";
+    in property <string> admitted: "Unknown · snapshot_unavailable";
+    in property <string> withheld: "Unknown · snapshot_unavailable";
+    in property <string> budget: "Unknown · snapshot_unavailable";
+    in property <string> snapshot-observed: "Unknown · snapshot_unavailable";
+    in property <bool> can-restart: false;
+    in property <bool> first-run: false;
+    in property <bool> login-enabled: false;
+
+    width: 300px;
+    height: root.first-run ? 336px : 312px;
+    title: "Membrane";
+    background: #2c2c2ef2;
+
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #2c2c2ef2;
+        border-width: 1px;
+        border-color: #4a4551;
+        border-radius: 10px;
+    }
+
+    FocusScope {
+        width: root.width;
+        height: root.height;
+        key-pressed(event) => {
+            if (event.text == "r" || event.text == "R") {
+                if (root.can-restart) { root.restart(); }
+            }
+            if (event.text == "d" || event.text == "D") { root.open-dashboard(); }
+            if (event.text == "q" || event.text == "Q") { root.quit(); }
+            if (event.text == Key.Escape) { root.dismiss(); }
+            accept
+        }
+
+        // Keep pointer guards on complete surface; action controls sit above it.
+        TouchArea {
+            width: root.width;
+            height: root.height;
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) { root.pointer-down(); }
+                if (event.kind == PointerEventKind.up) { root.pointer-up(); }
+                if (event.kind == PointerEventKind.cancel) { root.pointer-cancel(); }
+            }
+        }
+
+        VerdictGlyph {
+            x: 16px;
+            y: 16px;
+            kind: root.state-kind;
+            tint: root.state-kind == "filled-square"
+                ? #3fd98b
+                : root.state-kind == "half-square" ? #f0b23c
+                : root.state-kind == "hollow-square" ? #ff6b73
+                : #8a8598;
+        }
+
+        HorizontalLayout {
+            x: 40px;
+            y: 8px;
+            width: 126px;
+            height: 30px;
+            spacing: 0px;
+            Text {
+                width: 35px;
+                text: "Mem";
+                color: #f2eff6;
+                font-family: "Tanker";
+                font-size: 18px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Text {
+                width: 77px;
+                text: "brane";
+                color: #c56bff;
+                font-family: "Tanker";
+                font-size: 18px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+
+        VerdictGlyph {
+            x: 168px;
+            y: 16px;
+            kind: root.state-kind;
+            tint: root.state-kind == "filled-square"
+                ? #3fd98b
+                : root.state-kind == "half-square" ? #f0b23c
+                : root.state-kind == "hollow-square" ? #ff6b73
+                : #8a8598;
+        }
+        Text {
+            x: 186px;
+            y: 10px;
+            width: 98px;
+            height: 26px;
+            text: root.current-state;
+            color: root.state-kind == "filled-square"
+                ? #3fd98b
+                : root.state-kind == "half-square" ? #f0b23c
+                : root.state-kind == "hollow-square" ? #ff6b73
+                : #8a8598;
+            font-family: "Segoe UI Variable";
+            font-size: 11px;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        Rectangle { x: 16px; y: 45px; width: 268px; height: 1px; background: #3b3548; }
+
+        Text {
+            x: 16px;
+            y: 50px;
+            width: 268px;
+            height: 15px;
+            text: "Admission snapshot";
+            color: #9c96a8;
+            font-family: "Segoe UI Variable";
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+
+        StatRow { x: 16px; y: 66px; label: "Admitted"; value: root.admitted; }
+        StatRow { x: 16px; y: 90px; label: "Withheld"; value: root.withheld; }
+        StatRow { x: 16px; y: 114px; label: "Budget"; value: root.budget; }
+
+        EvidenceLine { x: 16px; y: 141px; label: "Reason"; value: root.reason; emphasis: true; }
+        EvidenceLine { x: 16px; y: 163px; label: "Observed"; value: root.observed; }
+        EvidenceLine { x: 16px; y: 185px; label: "Snapshot"; value: root.snapshot-observed; }
+
+        Rectangle { x: 16px; y: 211px; width: 268px; height: 1px; background: #3b3548; }
+
+        ActionRow {
+            x: 16px;
+            y: 216px;
+            visible: root.first-run == false;
+            label: "Open dashboard";
+            shortcut: "D";
+            activated => { root.open-dashboard(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+        ActionRow {
+            x: 16px;
+            y: 242px;
+            visible: root.first-run == false;
+            label: "Restart daemon";
+            shortcut: "R";
+            interactive: root.can-restart;
+            activated => { root.restart(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+        ActionRow {
+            x: 16px;
+            y: 268px;
+            visible: root.first-run == false;
+            label: "Quit Membrane";
+            shortcut: "Q";
+            activated => { root.quit(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+
+        FirstRunStrip {
+            x: 16px;
+            y: 211px;
+            visible: root.first-run;
+            login-enabled: root.login-enabled;
+            toggle-login => { root.toggle-login(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+        Rectangle {
+            x: 16px;
+            y: 247px;
+            width: 268px;
+            height: 1px;
+            visible: root.first-run;
+            background: #3b3548;
+        }
+        ActionRow {
+            x: 16px;
+            y: 252px;
+            visible: root.first-run;
+            label: "Open dashboard";
+            shortcut: "D";
+            activated => { root.open-dashboard(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+        ActionRow {
+            x: 16px;
+            y: 278px;
+            visible: root.first-run;
+            label: "Quit Membrane";
+            shortcut: "Q";
+            activated => { root.quit(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+        ActionRow {
+            x: 16px;
+            y: 304px;
+            visible: root.first-run;
+            label: "Continue to tray";
+            shortcut: "Esc";
+            activated => { root.finish-first-run(); }
+            pointer-down => { root.pointer-down(); }
+            pointer-up => { root.pointer-up(); }
+            pointer-cancel => { root.pointer-cancel(); }
+        }
+    }
+}
