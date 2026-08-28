@@ -177,8 +177,10 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     let (install_root, version_root) = validate_installed_root(&options.install_root)?;
     let membrane = install_root.join(executable_name("membrane"));
     let tray = install_root.join(executable_name("membrane-tray"));
-    require_file(&membrane, "membrane executable")?;
-    require_file(&tray, "tray executable")?;
+    let runtime_membrane = version_root.join(executable_name("membrane"));
+    let runtime_tray = version_root.join(executable_name("membrane-tray"));
+    require_file(&runtime_membrane, "resolved membrane executable")?;
+    require_file(&runtime_tray, "resolved tray executable")?;
     let (workspace_root, port) = installed_runtime()?;
     let expected_generation = membrane_runtime::release_identity::release_generation();
     let _lock = acquire_lock(&install_root)?;
@@ -191,10 +193,10 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         release_generation
     } else {
         if matches!(initial, HealthObservation::PriorGeneration { .. }) {
-            request_resident_replacement(&tray, &workspace_root, port)?;
+            request_resident_replacement(&runtime_tray, &workspace_root, port)?;
             wait_for_shutdown(port, &expected_generation, options.timeout)?;
         }
-        launch_tray(&tray, &workspace_root, port)?;
+        launch_tray(&runtime_tray, &workspace_root, port)?;
         wait_for_health(port, &expected_generation, options.timeout)?
     };
 
@@ -267,7 +269,7 @@ fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), Strin
             stable.display()
         ));
     }
-    let version_root = std::fs::canonicalize(&stable).map_err(|error| {
+    let version_root = canonicalize_installed_path(&stable).map_err(|error| {
         format!(
             "stable installed path {} is unavailable: {error}",
             stable.display()
@@ -277,7 +279,7 @@ fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), Strin
         .parent()
         .map(|root| root.join("versions"))
         .ok_or_else(|| "stable installed path has no product root".to_string())?;
-    let versions = std::fs::canonicalize(&versions).map_err(|error| {
+    let versions = canonicalize_installed_path(&versions).map_err(|error| {
         format!(
             "installed versions root {} is unavailable: {error}",
             versions.display()
@@ -290,6 +292,19 @@ fn validate_installed_root(requested: &Path) -> Result<(PathBuf, PathBuf), Strin
         return Err("stable current path does not target one direct installed version".to_string());
     }
     Ok((stable, version_root))
+}
+
+fn canonicalize_installed_path(path: &Path) -> std::io::Result<PathBuf> {
+    std::fs::canonicalize(path).or_else(|original| {
+        #[cfg(windows)]
+        {
+            let text = path.as_os_str().to_string_lossy();
+            if path.is_absolute() && !text.starts_with(r"\\?\") {
+                return std::fs::canonicalize(PathBuf::from(format!(r"\\?\{text}")));
+            }
+        }
+        Err(original)
+    })
 }
 
 fn require_current_health(
