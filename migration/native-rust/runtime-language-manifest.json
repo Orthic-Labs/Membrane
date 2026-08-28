@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-28T18:56:55.763Z",
+ "generatedAt": "2026-08-28T19:40:24.288Z",
  "enforcementMode": "sealed",
  "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
  "totals": {
@@ -1552,7 +1552,7 @@
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "a25ab50088aaf1c3f4cdb7a34674b9cdc78812c41399f2884cc133b974668aad"
+   "content_digest": "135a2b81e6355e6ce97c6aafe84900e36583c8477ce5bbb0dc3154c640bde0ad"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -2011,7 +2011,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "8132e7ff6807bd9fbccd36586cfe720b4b56338daa81192a0ae4f0aca3ea15f8"
+   "content_digest": "4baecc71f25b49307ffd8c233bc0d3a1b39c6b8ee696cb6a54e59e0925ef3414"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
