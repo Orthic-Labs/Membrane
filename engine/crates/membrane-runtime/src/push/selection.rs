@@ -4,6 +4,9 @@
 //! into a bounded, content-free reduction ladder, then applies the host's
 //! validated H8 ceiling without inventing capacity.
 
+use crate::push::compression_provider::CompressionRequest;
+use crate::push::prep::{is_code_ext, is_structured_text, PushPolicy};
+use crate::push::{compress, skel, telemetry};
 use cortex_core::planner::{BlockV1, ContextPacketV1};
 use membrane_protocol::host_observation::{
     ObservationCoverageV1, ObservationUnavailableReasonV1, RemainingContextCeilingV1,
@@ -15,6 +18,7 @@ use membrane_protocol::push::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::Path;
 use thiserror::Error;
 
 /// Typed refusal at the request boundary. No missing or non-exact H8 value is
@@ -151,6 +155,17 @@ pub fn build_packet_reduction_plan(
     packet: &ContextPacketV1,
     estimator_basis: membrane_protocol::host_observation::EstimatorBasisV1,
 ) -> Result<PacketReductionPlanV1, PacketReductionRequestError> {
+    build_packet_reduction_plan_with_policy(packet, estimator_basis, &PushPolicy::Control)
+}
+
+/// Policy-aware variant of [`build_packet_reduction_plan`]. `policy` selects
+/// control vs query-aware Push for the `reduced_1` representation only;
+/// `full` and `floor` are unaffected by policy.
+pub fn build_packet_reduction_plan_with_policy(
+    packet: &ContextPacketV1,
+    estimator_basis: membrane_protocol::host_observation::EstimatorBasisV1,
+    policy: &PushPolicy,
+) -> Result<PacketReductionPlanV1, PacketReductionRequestError> {
     if packet.trace_id.trim().is_empty() {
         return Err(PacketReductionRequestError::EmptyPacket("traceId"));
     }
@@ -217,9 +232,9 @@ pub fn build_packet_reduction_plan(
         } else {
             full_tokens
         };
-    let full_content = representation_content(packet, "full", full_tokens)?;
-    let reduced_content = representation_content(packet, "reduced_1", reduced_tokens)?;
-    let floor_content = representation_content(packet, "floor", protected_tokens)?;
+    let full_content = representation_content(packet, "full", full_tokens, policy)?;
+    let reduced_content = representation_content(packet, "reduced_1", reduced_tokens, policy)?;
+    let floor_content = representation_content(packet, "floor", protected_tokens, policy)?;
     let parent_ref = format!("packet://{}", packet.trace_id);
     let plan = PacketReductionPlanV1 {
         schema_version: PacketReductionPlanV1::SCHEMA_VERSION,
@@ -272,7 +287,20 @@ pub fn select_packet_for_h8(
     packet: &ContextPacketV1,
     ceiling: &RemainingContextCeilingV1,
 ) -> Result<PacketReductionSelectionV1, PacketReductionRequestError> {
-    let plan = build_packet_reduction_plan(packet, ceiling.remaining_tokens.basis.clone())?;
+    select_packet_for_h8_with_policy(packet, ceiling, &PushPolicy::Control)
+}
+
+/// Policy-aware variant of [`select_packet_for_h8`]. Production request
+/// handling threads the planner-supplied task/query metadata (when present)
+/// through here so `reduced_1` is built by the same policy the request
+/// selected; callers with no query metadata keep the control arm.
+pub fn select_packet_for_h8_with_policy(
+    packet: &ContextPacketV1,
+    ceiling: &RemainingContextCeilingV1,
+    policy: &PushPolicy,
+) -> Result<PacketReductionSelectionV1, PacketReductionRequestError> {
+    let plan =
+        build_packet_reduction_plan_with_policy(packet, ceiling.remaining_tokens.basis.clone(), policy)?;
     let selected = plan
         .select_for_capacity(ceiling)
         .map_err(PacketReductionRequestError::Selection)?
@@ -329,6 +357,7 @@ fn representation_content(
     packet: &ContextPacketV1,
     representation_id: &str,
     tokens: u64,
+    policy: &PushPolicy,
 ) -> Result<Value, PacketReductionRequestError> {
     let mut selected_packet = packet.clone();
     match representation_id {
@@ -338,18 +367,7 @@ fn representation_content(
                 if block.protected {
                     continue;
                 }
-                let budget = block
-                    .allotted_tokens
-                    .or(block.selected_tokens)
-                    .unwrap_or(block.estimated_tokens);
-                let compressed = crate::push::compress::compress_to_budget_with_options(
-                    &block.text,
-                    budget,
-                    true,
-                );
-                block.text = compressed.text;
-                block.selected_tokens = Some(compressed.output_tokens);
-                block.rendered_tokens = Some(compressed.output_tokens);
+                reduce_block_for_push(block, policy);
             }
         }
         "floor" => selected_packet.blocks.retain(|block| block.protected),
@@ -364,6 +382,95 @@ fn representation_content(
     }
     serde_json::to_value(selected_packet)
         .map_err(|error| PacketReductionRequestError::ContentSerialization(error.to_string()))
+}
+
+/// Classify-then-transform one non-protected `reduced_1` block, mirroring
+/// `prep.rs`'s file dispatch: structured content is copied unchanged, code is
+/// skeletonized (falling back to compression when skeletonization does not
+/// reduce the block), and prose is compressed. `policy` selects control vs
+/// query-aware Push for the code/prose branches only; structured content is
+/// never reduced regardless of policy, since token-dropping structured data
+/// loses syntax and identifiers.
+///
+/// Returns the transform verb applied, for production telemetry.
+fn reduce_block_for_push(block: &mut BlockV1, policy: &PushPolicy) -> &'static str {
+    let before_tokens = selected_or_estimated_tokens(block) as usize;
+    let budget = block
+        .allotted_tokens
+        .or(block.selected_tokens)
+        .unwrap_or(block.estimated_tokens);
+    // Blocks carry no separate content-kind field; the source reference
+    // (a repository-relative path for file-backed candidates) already
+    // carries the extension classification needs, matching how prep.rs
+    // classifies files by path today.
+    let synthetic_path = Path::new(&block.source_ref);
+
+    let verb = if is_structured_text(synthetic_path, &block.text) {
+        "copy-structured"
+    } else if is_code_ext(synthetic_path) {
+        let skeletonized = match policy {
+            PushPolicy::Control => {
+                skel::skeletonize_to_budget(synthetic_path, &block.text, budget).text
+            }
+            PushPolicy::QueryAware(metadata) => query_aware_text(
+                &block.text,
+                synthetic_path,
+                metadata,
+                budget,
+            ),
+        };
+        if skeletonized.trim().is_empty() || skeletonized == block.text {
+            // Skeletonization did not reduce this block (e.g. an unsupported
+            // language extension) — fall back to compression rather than
+            // publishing the block unreduced.
+            let compressed = compress::compress_to_budget_with_options(&block.text, budget, true);
+            block.text = compressed.text;
+            "compress-skel-fallback"
+        } else {
+            block.text = skeletonized;
+            "skel"
+        }
+    } else {
+        block.text = match policy {
+            PushPolicy::Control => {
+                compress::compress_to_budget_with_options(&block.text, budget, true).text
+            }
+            PushPolicy::QueryAware(metadata) => {
+                query_aware_text(&block.text, synthetic_path, metadata, budget)
+            }
+        };
+        "compress"
+    };
+
+    let after_tokens = compress::estimate_tokens(&block.text);
+    block.selected_tokens = Some(after_tokens);
+    block.rendered_tokens = Some(after_tokens);
+    telemetry::record(verb, before_tokens, after_tokens, None, None);
+    verb
+}
+
+/// Query-aware provider call shared by the code and prose branches. Admission
+/// or freshness uncertainty must move toward less reduction, never publish an
+/// empty artifact — mirrors `prep.rs`'s fallback-to-source behavior.
+fn query_aware_text(
+    text: &str,
+    path: &Path,
+    metadata: &crate::push::prep::QueryAwarePolicy,
+    budget: usize,
+) -> String {
+    let result = crate::push::prep::prepare_query_aware(CompressionRequest {
+        source: text.to_owned(),
+        path: Some(path.to_path_buf()),
+        query: metadata.query.clone(),
+        budget_tokens: budget,
+        authority_admitted: metadata.authority_admitted,
+        freshness_valid: metadata.freshness_valid,
+    });
+    if result.admitted && !result.text.is_empty() {
+        result.text
+    } else {
+        text.to_owned()
+    }
 }
 
 fn selected_or_estimated_tokens(block: &BlockV1) -> u64 {
@@ -469,6 +576,143 @@ mod tests {
         assert_eq!(result.plan.representations[2].id, "floor");
         assert_eq!(result.selected_representation.id, "reduced_1");
         assert_eq!(result.selection_receipt.decision, "selected");
+    }
+
+    /// A Rust source block big enough that budget-bounded skeletonization
+    /// (which drops function bodies) actually shrinks it relative to raw
+    /// compression, so the two transforms are distinguishable in a test.
+    fn code_block(id: &str, protected: bool) -> BlockV1 {
+        let mut text = String::new();
+        for n in 0..40 {
+            text.push_str(&format!(
+                "fn function_{n}(value: i32) -> i32 {{\n    let doubled = value * 2;\n    doubled + {n}\n}}\n\n"
+            ));
+        }
+        let selected_tokens = compress::estimate_tokens(&text);
+        BlockV1 {
+            id: id.to_owned(),
+            layer: 1,
+            provider: "test".to_owned(),
+            source_kind: "file".to_owned(),
+            source_ref: format!("crates/example/src/{id}.rs"),
+            source_hash: format!("sha256:{:0<64}", id),
+            trust_class: "trusted".to_owned(),
+            instruction_policy: "data".to_owned(),
+            base_commit: None,
+            overlay_digest: None,
+            freshness_class: None,
+            snapshot_id: None,
+            priority: 1,
+            estimated_tokens: selected_tokens,
+            delivery_stage: None,
+            delivery_class: None,
+            selected_tokens: Some(selected_tokens),
+            // Budget must clear the plain tree-sitter *signature* tier (no
+            // bodies) but stay well under the full source, so this test
+            // distinguishes skeletonization from raw compression rather than
+            // accidentally degrading further to the unsupported-language
+            // path-stub tier.
+            allotted_tokens: Some(
+                compress::estimate_tokens(&skel::skeletonize(
+                    Path::new(&format!("crates/example/src/{id}.rs")),
+                    &text,
+                )) + 16,
+            ),
+            rendered_tokens: None,
+            delivered_chars: None,
+            drop_reason: None,
+            protected,
+            recoverable: true,
+            resolver: format!("resolver://{id}"),
+            text,
+        }
+    }
+
+    #[test]
+    fn code_block_in_reduced_1_is_skeletonized_not_raw_compressed() {
+        let mut packet = packet();
+        packet.blocks = vec![block("protected", true, 32), code_block("ordinary", false)];
+        let result = select_packet_for_h8(&packet, &ceiling()).unwrap();
+        let reduced = &result.plan.representations[1];
+        let reduced_blocks: Vec<cortex_core::planner::BlockV1> =
+            serde_json::from_value(reduced.content["blocks"].clone()).unwrap();
+        let ordinary = reduced_blocks
+            .iter()
+            .find(|b| b.id == "ordinary")
+            .expect("ordinary block present");
+        // Skeletonization drops function bodies (tree-sitter signature
+        // extraction); a plain LLMLingua-style compress pass does not
+        // recognize Rust syntax and would not remove every body wholesale.
+        assert!(
+            !ordinary.text.contains("let doubled"),
+            "expected skeletonization to elide function bodies, got: {}",
+            ordinary.text
+        );
+        assert!(
+            ordinary.text.contains("fn function_0"),
+            "expected skeletonization to keep signatures, got: {}",
+            ordinary.text
+        );
+    }
+
+    #[test]
+    fn protected_spans_survive_reduced_1_with_new_dispatch() {
+        let mut packet = packet();
+        let protected_text = block("protected", true, 32).text;
+        packet.blocks = vec![block("protected", true, 32), code_block("ordinary", false)];
+        let result = select_packet_for_h8(&packet, &ceiling()).unwrap();
+        let reduced_blocks: Vec<cortex_core::planner::BlockV1> =
+            serde_json::from_value(result.plan.representations[1].content["blocks"].clone())
+                .unwrap();
+        let floor_blocks: Vec<cortex_core::planner::BlockV1> =
+            serde_json::from_value(result.plan.representations[2].content["blocks"].clone())
+                .unwrap();
+        for blocks in [&reduced_blocks, &floor_blocks] {
+            let protected_block = blocks
+                .iter()
+                .find(|b| b.id == "protected")
+                .expect("protected block must survive every representation");
+            assert_eq!(protected_block.text, protected_text);
+        }
+    }
+
+    #[test]
+    fn production_selection_emits_telemetry_unconditionally() {
+        let temp = tempfile::tempdir().unwrap();
+        let telemetry_path = temp.path().join("push-telemetry.jsonl");
+        std::env::set_var("MEMBRANE_PUSH_TELEMETRY_PATH", &telemetry_path);
+        let mut packet = packet();
+        packet.blocks = vec![block("protected", true, 32), code_block("ordinary", false)];
+        let _ = select_packet_for_h8(&packet, &ceiling()).unwrap();
+        std::env::remove_var("MEMBRANE_PUSH_TELEMETRY_PATH");
+        let contents = std::fs::read_to_string(&telemetry_path)
+            .expect("production selection must emit telemetry unconditionally");
+        assert!(
+            contents.lines().any(|line| line.contains("\"axis\":\"push\"")),
+            "expected at least one content-free push observation, got: {contents}"
+        );
+    }
+
+    #[test]
+    fn query_aware_policy_reaches_reduced_1_dispatch() {
+        let mut packet = packet();
+        packet.blocks = vec![
+            block("protected", true, 32),
+            code_block("ordinary", false),
+        ];
+        let control = select_packet_for_h8(&packet, &ceiling()).unwrap();
+        let query_aware = select_packet_for_h8_with_policy(
+            &packet,
+            &ceiling(),
+            &PushPolicy::query_aware("function_0", true, true),
+        )
+        .unwrap();
+        // Both must still satisfy plan invariants; policy selection is
+        // reachable and content-free (no query text leaks into the receipt).
+        assert_eq!(control.plan.representations.len(), 3);
+        assert_eq!(query_aware.plan.representations.len(), 3);
+        let receipt_json = serde_json::to_string(&query_aware.selection_receipt).unwrap();
+        assert!(!receipt_json.contains("function_0"));
     }
 
     #[test]

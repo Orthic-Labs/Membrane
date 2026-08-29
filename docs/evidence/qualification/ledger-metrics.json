@@ -1,7 +1,80 @@
 {
   "schemaVersion": 1,
   "axis": "ledger",
-  "status": "fixture-entrypoint-defined",
+  "status": "qualified",
   "entrypoint": "membrane-runtime::ledger",
-  "metrics": ["anchor_resolution", "hash_staleness", "incremental_sync", "recall_determinism", "projection_rebuild"]
+  "metrics": [
+    "anchor_resolution",
+    "hash_staleness",
+    "incremental_sync",
+    "recall_determinism",
+    "projection_rebuild"
+  ],
+  "evaluation": {
+    "corpus": "ledger-eval-v1",
+    "corpusDigestSha256": "c6ef82461acd5540c1512c5bc0ae2857f07b90662b976c53bbfcc61e29434b60",
+    "harness": "engine/crates/membrane-runtime/tests/ledger_eval_v1_harness.rs",
+    "harnessCommand": "cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test ledger_eval_v1_harness -- --nocapture",
+    "commitSha256": "03fe855820c8344270da9922795700ef0730d4b223f5944314eb8552851af395",
+    "commit": "5dd5f6a3fe284679dd514d9648b937f67ab585d4",
+    "tuning": {
+      "tunedOn": "dev",
+      "changesApplied": "none \u2014 default BM25 column weights (path=8.0, title=6.0, heading=5.0, body=1.0, identifier_aliases=4.0) already in ledger::index::recall_fts were evaluated as-is on dev and were decisively ahead of legacy_scan; no weight/normalization changes were made or needed before freezing the candidate for held-out.",
+      "frozenConfig": {
+        "tokenizer": "fts5-unicode61+identifier-cjk-ngrams-v1",
+        "queryNormalizer": "nfkc-casefold-identifiers-v1",
+        "bm25ColumnWeights": {
+          "doc_id": 0.0,
+          "node_id": 0.0,
+          "path": 8.0,
+          "title": 6.0,
+          "heading": 5.0,
+          "body": 1.0,
+          "identifier_aliases": 4.0
+        }
+      }
+    },
+    "dev": {
+      "n": 51,
+      "legacy_scan": {
+        "recallAt1": 0.059,
+        "recallAt5": 0.118,
+        "mrr": 0.0752
+      },
+      "ledger_fts": {
+        "recallAt1": 0.588,
+        "recallAt5": 0.745,
+        "mrr": 0.6422
+      }
+    },
+    "heldout": {
+      "n": 50,
+      "runOnce": true,
+      "legacy_scan": {
+        "recallAt1": 0.08,
+        "recallAt5": 0.14,
+        "mrr": 0.104
+      },
+      "ledger_fts": {
+        "recallAt1": 0.58,
+        "recallAt5": 0.68,
+        "mrr": 0.6037
+      }
+    },
+    "decisionRule": "ledger_fts activates iff heldout.ledger_fts.mrr >= heldout.legacy_scan.mrr AND heldout.ledger_fts.recallAt5 >= heldout.legacy_scan.recallAt5 - 0.02",
+    "decision": "promote",
+    "notes": "Both arms measured via ledger::doc_spine::recall_shadow (production sync + both live recall lanes computed simultaneously; no separate/synthetic code path per arm). legacy_scan (whole-document lexical scan + best-section reselection) underperforms materially on both splits; ledger_fts (BM25 over ledger_node_fts) wins decisively on every headline metric on both dev and heldout, with the largest gap on identifier/exact-section/table/fenced-code categories and expected weakness on negative_no_answer (0.0 recall on both arms/splits, consistent with abstention not being implemented as a scored behavior in either lane) and short_query. MEMBRANE_DOC_PROVIDER_ENABLED (planner federation of the doc candidate provider) is a separate promotion and is left untouched by this qualification.",
+    "qualificationReceipt": {
+      "schemaVersion": "ledger.qualification-receipt.v1",
+      "receiptSource": "membrane-host/ledger-qualification",
+      "hostId": "membrane-eval-harness/ledger-eval-v1",
+      "verifierId": "ledger-eval-v1-harness",
+      "commitSha256": "03fe855820c8344270da9922795700ef0730d4b223f5944314eb8552851af395",
+      "receiptSha256": "c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e",
+      "corpusVersion": "ledger-eval-v1",
+      "corpusSha256": "c6ef82461acd5540c1512c5bc0ae2857f07b90662b976c53bbfcc61e29434b60",
+      "runSha256": "b18eebce79fd2774f57a0bb6d86bdc2a7491b57ea75849921a72764af02651aa",
+      "resultSha256": "1fa41ad294a02e277bbdd68ca7c9f18bed433c7233bee66bf56691f0371d4639"
+    }
+  }
 }

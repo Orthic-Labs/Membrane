@@ -4286,6 +4286,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     "consolidated_count": status.consolidated_count,
                     "pruned_count": status.pruned_count,
                     "quarantined_count": status.quarantined_count,
+                    "duplicate_quarantined_count": status.duplicate_quarantined_count,
                 })
             );
         }

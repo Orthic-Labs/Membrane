@@ -1,3 +1,13 @@
+---
+blueprint:
+  document_id: adr-native-ann-trigger-v1
+  type: decision
+  status: accepted
+  effective_from: 2026-08-23
+  canonical_for: [vector-retrieval, ann-adoption, vector-index]
+  scope: { deployable_units: [engine], branches: [main] }
+---
+
 # ADR: Native ANN trigger
 
 - **Status:** Accepted — retain exact resident VectorIndex

@@ -4244,6 +4244,7 @@ fn route_with_context_ingest_lease(
                     "consolidated_count": status.consolidated_count,
                     "pruned_count": status.pruned_count,
                     "quarantined_count": status.quarantined_count,
+                    "duplicate_quarantined_count": status.duplicate_quarantined_count,
                 })
                 .to_string(),
             ),

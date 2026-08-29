@@ -121,7 +121,7 @@ A capability may not move to `LANDED` on source or unit tests alone.
 
 ---
 
-# 2. Adapt — `intervention_target`
+# 2. Adapt — `intervention_target` and intervention attribution
 
 ## 2.1 Final proposal shape
 
@@ -201,6 +201,88 @@ Issue: verification_claim_without_evidence
   field changes the digest basis, so the schema version increments.
 - The `TasteCandidate` user-evidence gate and the 0.95 precision gate are untouched.
 - `source_issue_ids` is provenance only, never an authority grant.
+
+## 2.5 `InterventionAttributionV1` — the gate between issue and proposal
+
+Semantic authority: Adapt canon §6.9. `intervention_target` names the surface; attribution answers
+why changing that surface would have prevented the observed failures. Nothing in the sealed
+proposal currently answers that; a proposal for a mutable instruction surface is not actionable
+until it does.
+
+```text
+InterventionAttributionV1                        sealed; identity att_<64hex>
+  attribution_id
+  source_issue_id
+  candidate_target                               # InterventionTarget enum member
+  owning_surface_ref?                            # artifact identity where the surface is an artifact
+  current_surface_digest?                        # exact digest of the surface version examined
+  instruction_state
+    missing | wrong | underspecified | already_correct | not_applicable
+  counterfactual_preventability
+    supported | unsupported | unknown
+  alternative_causes[]
+    none | model_variance | routing_failure | infrastructure | product |
+    tool_implementation | evaluator_error | insufficient_evidence
+  support
+    episode_count, independent_session_count, severity, recurrence_rate
+    # each with its own coverage marker; absent evidence is unavailable, never zero
+  activation_evidence_refs[]                     # H4 asset-activation observations (§2.6)
+  evaluator_outcome_refs[]                       # H6; tri-state applicability (§2.7)
+  mutation_eligible                              # derived deterministically from the gates below
+  ineligibility_reason?                          # typed
+  honesty_limit
+  attribution_policy_version
+```
+
+Deterministic eligibility gates (`mutation_eligible = true` requires all):
+
+1. `counterfactual_preventability = supported`, bound to episode evidence and
+   `current_surface_digest`;
+2. `instruction_state ∈ { missing, wrong, underspecified }` for instruction-surface targets —
+   `already_correct` is ineligible for that target (a guard or evaluator target gets its own
+   attribution);
+3. no dominant alternative cause; `insufficient_evidence` in `alternative_causes[]` is ineligible;
+4. `support` meets the family's independent-session threshold;
+5. the proposed change alters the surface's behavioral contract — redundant restatement or hedging
+   is rejected at review.
+
+Constraints:
+
+- Attribution is proposal-class (canon §3.4): a model may draft it; deterministic code binds and
+  gates it. It grants no authority and bypasses no existing proposal, review, precision, or
+  admission gate.
+- A `SealedRemediationProposalV1` whose target is a mutable instruction surface
+  (`skill_or_procedure`, `system_prompt`, `tool_description`, `documentation_policy`) MUST
+  reference a `mutation_eligible` attribution before variant generation (H7) may consume it.
+  Additive `guard` and `evaluator` targets are not blocked by attribution, only informed by it.
+- A stale `current_surface_digest` invalidates the attribution the same way
+  `base_artifact_digest` staleness invalidates a variant: rebase and re-derive.
+
+## 2.6 Asset-activation evidence (H4 extension)
+
+For `skill_or_procedure` discrimination, H4 observations include per-asset mechanical activation
+stages the harness knows directly:
+
+```text
+AssetActivationObservationV1                     # host-emitted, mechanical only
+  asset_id, session_id, turn_id?
+  discovered                                     # present in the host registry
+  trigger_evaluated, trigger_matched             # router/trigger decision as it happened
+  selected, load_result
+  in_context_turn_ids[]                          # from context receipts
+  invoked?                                       # where the asset is invocable
+  provenance_receipt
+```
+
+The host never emits `rule_relevant` or `rule_followed` — those are Adapt semantic assessments
+(invariant P1). The discrimination ladder over these facts is canon §6.9.
+
+## 2.7 Evaluator applicability is three-valued
+
+Evaluator outcomes joined into `support` carry
+`applicable | not_applicable | insufficient_evidence`. `insufficient_evidence` removes the
+observation from the applicable denominator. Forcing every trajectory into a score would launder
+"cannot judge" into a verdict, violating P3/P4.
 
 ---
 
@@ -600,7 +682,7 @@ produces a typed degradation, never silence and never a fallback authority.
 | H1 | stable session / task / trace / span / model-call / tool-call / artifact identity | receipt binding | `not_instrumented` |
 | H2 | normalized transcript events on the transcript adapter | Adapt detectors | degraded episode fidelity |
 | H3 | explicit selected-transcript references (source, hash, span) | Adapt review boundary | no user-selected evidence |
-| H4 | structured execution observations: session mechanics, per-tool and per-asset cost, completion emissions | Adapt mechanical facts | Adapt may not infer them from prose |
+| H4 | structured execution observations: session mechanics, per-tool and per-asset cost, per-asset activation stages (§2.6), completion emissions | Adapt mechanical facts | Adapt may not infer them from prose |
 | H5 | background-job observations for daemon-scheduled learners | §4 observability | learner stays disabled |
 | H6 | evaluation outcomes: dataset, case, evaluator, score, experiment | Adapt effectiveness | no effectiveness verdict |
 | H7 | variant generation, experiment execution and deployment for approved proposals | §6 lineage tail | proposals stay unqualified |
@@ -751,6 +833,8 @@ Only these surviving gaps remain schedulable:
 - wire the daemon to real background semantic inputs and proposal execution;
 - connect Cortex Stage 1 to model output and an authoritative foreground-memory signal;
 - wire caller transport for joinable H4/H6 observations, then implement procedural-asset effectiveness;
+- implement `InterventionAttributionV1` and its eligibility gates (§2.5), then require a
+  mutation-eligible attribution before H7 variant generation for mutable instruction surfaces;
 - provide H7, H9 and H10 host observations before outcome, deployment and closed-loop claims;
 - preserve typed unavailability for every absent source field.
 
@@ -786,6 +870,16 @@ proof. Synthetic fixtures prove mechanics; they do not support product-quality c
 - Every `RemediationEffect` maps to a reachable `proposal_kind`, and every enum member of
   `proposal_kind` is reachable — the test that would have caught `routing_recommendation`.
 - Adding `intervention_target` changes the sealed digest basis and increments the schema version.
+- An attribution with `instruction_state = already_correct` cannot yield `mutation_eligible = true`
+  for that instruction surface.
+- An attribution with `counterfactual_preventability != supported` cannot yield
+  `mutation_eligible = true`.
+- A proposal targeting a mutable instruction surface without a referenced `mutation_eligible`
+  attribution is not consumable by variant generation.
+- A stale `current_surface_digest` invalidates the attribution; adoption on the stale digest fails.
+- A host record asserting `rule_relevant` or `rule_followed` is rejected at the seam.
+- An `insufficient_evidence` evaluator outcome never contributes to the applicable aggregate as
+  success, failure, or zero.
 
 ## Background learning and Cortex
 

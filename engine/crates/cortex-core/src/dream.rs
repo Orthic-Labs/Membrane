@@ -27,7 +27,14 @@ pub struct DreamConsolidatedMemory {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DreamPlan {
     pub consolidated: Vec<DreamConsolidatedMemory>,
-    pub pruned_ids: Vec<String>,
+    /// Exact-duplicate secondaries absorbed into a primary during consolidation.
+    /// These are reversibly quarantined (reason `duplicate_consolidated`), never
+    /// deleted outright — quarantine-before-destructive is a locked invariant.
+    /// The name intentionally no longer says "pruned": nothing here is destroyed
+    /// in this pass.
+    pub duplicate_quarantine_ids: Vec<String>,
+    /// Low-score / never-exposed / expired entries, reversibly quarantined with
+    /// reason `low_effectiveness`.
     pub quarantined_ids: Vec<String>,
 }
 
@@ -39,8 +46,16 @@ pub struct DreamStatus {
     pub shell_allowed: bool,
     pub read_count: usize,
     pub consolidated_count: usize,
+    /// Rows permanently destroyed in this pass. Duplicate consolidation no
+    /// longer deletes anything, so this is 0 unless a future destructive path
+    /// is added — never repurpose it to count quarantines.
     pub pruned_count: usize,
+    /// Low-score / expired quarantines (reason `low_effectiveness`).
     pub quarantined_count: usize,
+    /// Exact-duplicate quarantines (reason `duplicate_consolidated`), counted
+    /// separately from `quarantined_count` so receipts distinguish why a row
+    /// left active recall.
+    pub duplicate_quarantined_count: usize,
 }
 
 impl DreamAgentPolicy {
@@ -74,7 +89,7 @@ pub fn consolidate_dream_memories(entries: &[MemoryEntry], today: &str) -> Dream
     }
 
     let mut consolidated = Vec::new();
-    let mut pruned_ids = BTreeSet::new();
+    let mut duplicate_quarantine_ids = BTreeSet::new();
     let mut quarantined_ids = BTreeSet::new();
     for (_key, mut group) in groups {
         group.sort_by(|a, b| {
@@ -102,16 +117,18 @@ pub fn consolidate_dream_memories(entries: &[MemoryEntry], today: &str) -> Dream
                 source_ids,
                 scope_id: primary.scope_id.clone(),
             });
-            // Only the non-primary duplicates are pruned; the primary is updated
-            // in place under its own id.
+            // Only the non-primary duplicates are absorbed; the primary is updated
+            // in place under its own id. The absorbed secondaries are reversibly
+            // quarantined by the caller, never deleted here.
             for source in group.iter().skip(1) {
-                pruned_ids.insert(source.id.clone());
+                duplicate_quarantine_ids.insert(source.id.clone());
             }
         }
     }
 
-    // Low-value prune — but never prune an id that consolidation just chose as
-    // a write target (a low-score primary is being refreshed, not discarded).
+    // Low-value quarantine — but never quarantine an id that consolidation just
+    // chose as a write target (a low-score primary is being refreshed, not
+    // discarded).
     let targets: BTreeSet<&str> = consolidated.iter().map(|c| c.id.as_str()).collect();
     for entry in entries {
         if entry.score < 0.2 && entry.access_count == 0 && !targets.contains(entry.id.as_str()) {
@@ -121,7 +138,7 @@ pub fn consolidate_dream_memories(entries: &[MemoryEntry], today: &str) -> Dream
 
     DreamPlan {
         consolidated,
-        pruned_ids: pruned_ids.into_iter().collect(),
+        duplicate_quarantine_ids: duplicate_quarantine_ids.into_iter().collect(),
         quarantined_ids: quarantined_ids.into_iter().collect(),
     }
 }
@@ -302,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn dream_merges_duplicate_memories() {
+    fn dream_merges_duplicate_memories_and_routes_secondary_to_quarantine_plan() {
         let plan = consolidate_dream_memories(
             &[
                 entry("a", "Use cargo fmt before cargo test.", 0.8, 3),
@@ -316,8 +333,8 @@ mod tests {
         // The primary keeps its own id — no generated dream- ids.
         assert_eq!(plan.consolidated[0].id, "a");
         assert_eq!(plan.consolidated[0].scope_id, crate::default_scope());
-        assert!(plan.pruned_ids.contains(&"b".to_string()));
-        assert!(!plan.pruned_ids.contains(&"a".to_string()));
+        assert!(plan.duplicate_quarantine_ids.contains(&"b".to_string()));
+        assert!(!plan.duplicate_quarantine_ids.contains(&"a".to_string()));
     }
 
     #[test]
@@ -331,7 +348,7 @@ mod tests {
         );
 
         assert!(plan.consolidated.is_empty());
-        assert!(plan.pruned_ids.is_empty());
+        assert!(plan.duplicate_quarantine_ids.is_empty());
     }
 
     #[test]
@@ -373,7 +390,7 @@ mod tests {
         assert_eq!(plan.consolidated.len(), 1);
         // A date rewrite is a content fix under the SAME id, never a new id.
         assert_eq!(plan.consolidated[0].id, "a");
-        assert!(plan.pruned_ids.is_empty());
+        assert!(plan.duplicate_quarantine_ids.is_empty());
         assert!(plan.consolidated[0].content.contains("2026-06-28"));
         assert!(plan.consolidated[0].content.contains("2026-06-29"));
         assert!(!plan.consolidated[0].content.contains("Yesterday"));
@@ -397,13 +414,13 @@ mod tests {
         let mut ids: Vec<&str> = plan.consolidated.iter().map(|c| c.id.as_str()).collect();
         ids.sort();
         assert_eq!(ids, vec!["x", "y"]);
-        assert!(plan.pruned_ids.is_empty());
+        assert!(plan.duplicate_quarantine_ids.is_empty());
     }
 
     #[test]
-    fn dream_low_value_primary_is_refreshed_not_pruned() {
+    fn dream_low_value_primary_is_refreshed_not_quarantined_as_duplicate() {
         // A low-score primary that consolidation rewrites (date fix) must not land
-        // in the prune list — it is being refreshed, not discarded.
+        // in the duplicate-quarantine list — it is being refreshed, not discarded.
         let plan = consolidate_dream_memories(
             &[entry("frail", "today the cache warmed slowly", 0.1, 0)],
             "2026-06-29",
@@ -411,7 +428,7 @@ mod tests {
 
         assert_eq!(plan.consolidated.len(), 1);
         assert_eq!(plan.consolidated[0].id, "frail");
-        assert!(plan.pruned_ids.is_empty());
+        assert!(plan.duplicate_quarantine_ids.is_empty());
     }
 
     #[test]
@@ -424,7 +441,7 @@ mod tests {
             "2026-06-29",
         );
 
-        assert!(plan.pruned_ids.is_empty());
+        assert!(plan.duplicate_quarantine_ids.is_empty());
         assert_eq!(plan.quarantined_ids, vec!["low"]);
     }
 }

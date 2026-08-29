@@ -56,10 +56,8 @@ pub fn is_mostly_quoted(text: &str) -> bool {
             inside = !inside;
             continue;
         }
-        if c.is_alphanumeric() {
-            if inside {
-                inside_alnum += 1;
-            }
+        if c.is_alphanumeric() && inside {
+            inside_alnum += 1;
         }
     }
     delimiters >= 2 && !inside && inside_alnum > 0

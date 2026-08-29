@@ -1,0 +1,57 @@
+{
+  "schema": "cortex.relevance-spotcheck-query-fixture.v1",
+  "provenance": "Redacted excerpts from real local Pi/Claude user-session prompts; frozen for deterministic harness plumbing only, never used to tune held-out outcomes.",
+  "redaction": "membrane_transcript::redact::redact",
+  "queries": [
+    {
+      "query": "Cortex relevance spot-check harness should replay real queries through native Rust recall",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Blueprint coverage dispositions need a denominator and explicit unsupported file reasons",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Adapt held-out evaluation requires real sessions with redaction and independent labels",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Verify the lifecycle conformance gate against production code rather than stale prose",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Route production packet reduction through structure-aware transforms and emit telemetry",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Run the document navigation evaluation corpus and compare frozen retrieval arms",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Wire the first-party sufficiency contract so corrective retrieval executes end to end",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Preserve query-aware metadata while selecting the reduced context packet",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Add a graph import round-trip without replacing the existing portable export contract",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    },
+    {
+      "query": "Recalibrate relevance thresholds because the previous cosine distribution came from another embedder",
+      "scope": "D--Claude-membrane",
+      "source": "real-session-redacted"
+    }
+  ]
+}

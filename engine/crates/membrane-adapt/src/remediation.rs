@@ -51,8 +51,10 @@ impl RemediationEffect {
 /// requires separate qualifying user evidence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum InterventionTarget {
     ModelBehaviorPolicy,
+    #[default]
     SkillOrProcedure,
     SystemPrompt,
     ToolDescription,
@@ -99,12 +101,6 @@ impl InterventionTarget {
             Self::Evaluator,
             Self::DocumentationPolicy,
         ]
-    }
-}
-
-impl Default for InterventionTarget {
-    fn default() -> Self {
-        Self::SkillOrProcedure
     }
 }
 

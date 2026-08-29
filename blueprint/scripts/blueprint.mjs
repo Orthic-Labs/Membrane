@@ -475,6 +475,256 @@ function archivePathMatches(path, pattern) {
   return new RegExp(`^${escaped}$`).test(normalizedPath);
 }
 
+// --- Structured lifecycle frontmatter -------------------------------------
+//
+// DOCUMENT-LIFECYCLE.md makes the two-line banner a *display* convention and
+// the `blueprint:` frontmatter block the authoritative declaration. Only the
+// banner half was ever implemented, so a document could not declare its own
+// lifecycle, own a stable `document_id`, or supersede a sibling by id.
+// The helpers below read that block without pulling in a YAML dependency:
+// the supported grammar is the documented schema (nested block maps, block
+// sequences, and inline flow lists/maps of scalars).
+
+const FRONTMATTER_FENCE = /^-{3,}\s*$/;
+
+const FRONTMATTER_STATUS_TO_LIFECYCLE = {
+  accepted: "current",
+  draft: "draft",
+  rejected: "rejected",
+  superseded: "superseded",
+};
+
+function stripYamlComment(line) {
+  let quote = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "#" && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i);
+  }
+  return line;
+}
+
+function unquoteYamlScalar(text) {
+  const trimmed = String(text).trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1);
+    }
+  }
+  return trimmed;
+}
+
+function splitFlowCollection(text) {
+  const parts = [];
+  let depth = 0;
+  let quote = null;
+  let current = "";
+  for (const ch of text) {
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "[" || ch === "{") depth += 1;
+    if (ch === "]" || ch === "}") depth -= 1;
+    if (ch === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current);
+  return parts.map((part) => part.trim()).filter(Boolean);
+}
+
+function parseYamlScalar(text) {
+  const trimmed = String(text).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    return splitFlowCollection(trimmed.slice(1, -1)).map(parseYamlScalar);
+  }
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    const object = {};
+    for (const part of splitFlowCollection(trimmed.slice(1, -1))) {
+      const separator = part.indexOf(":");
+      if (separator === -1) continue;
+      object[unquoteYamlScalar(part.slice(0, separator))] = parseYamlScalar(part.slice(separator + 1));
+    }
+    return object;
+  }
+  return unquoteYamlScalar(trimmed);
+}
+
+function yamlItems(lines) {
+  return lines
+    .map((raw) => {
+      const stripped = stripYamlComment(raw);
+      return { indent: stripped.length - stripped.trimStart().length, text: stripped.trim() };
+    })
+    .filter((item) => item.text.length > 0);
+}
+
+function parseYamlSequence(items, cursor, indent) {
+  const list = [];
+  while (cursor < items.length) {
+    const item = items[cursor];
+    if (item.indent < indent || !item.text.startsWith("- ")) break;
+    list.push(parseYamlScalar(item.text.slice(2)));
+    cursor += 1;
+  }
+  return [list, cursor];
+}
+
+function parseYamlMapping(items, cursor, indent) {
+  const map = {};
+  while (cursor < items.length) {
+    const item = items[cursor];
+    if (item.indent < indent) break;
+    if (item.indent > indent) {
+      cursor += 1;
+      continue;
+    }
+    if (item.text.startsWith("- ")) break;
+    const match = /^([^:]+):\s*(.*)$/.exec(item.text);
+    if (!match) break;
+    const key = unquoteYamlScalar(match[1]);
+    const inline = match[2].trim();
+    cursor += 1;
+    if (inline) {
+      map[key] = parseYamlScalar(inline);
+      continue;
+    }
+    const next = items[cursor];
+    if (next && next.indent > indent) {
+      const [value, after] = next.text.startsWith("- ")
+        ? parseYamlSequence(items, cursor, next.indent)
+        : parseYamlMapping(items, cursor, next.indent);
+      map[key] = value;
+      cursor = after;
+    } else {
+      map[key] = null;
+    }
+  }
+  return [map, cursor];
+}
+
+function parseYamlDocument(lines) {
+  const items = yamlItems(lines);
+  if (!items.length) return null;
+  const [value] = items[0].text.startsWith("- ")
+    ? parseYamlSequence(items, 0, items[0].indent)
+    : parseYamlMapping(items, 0, items[0].indent);
+  return value;
+}
+
+/** Return the raw frontmatter lines plus the index where the body starts. */
+function parseFrontmatterBlock(lines) {
+  if (!lines.length) return null;
+  if (!FRONTMATTER_FENCE.test(lines[0].replace(/^\uFEFF/, ""))) return null;
+  for (let i = 1; i < lines.length; i += 1) {
+    if (FRONTMATTER_FENCE.test(lines[i])) return { lines: lines.slice(1, i), bodyStart: i + 1 };
+  }
+  return null;
+}
+
+function yamlStringList(value) {
+  if (value == null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  return [...new Set(list.map((entry) => String(entry).trim()).filter(Boolean))];
+}
+
+/**
+ * Read the normative `blueprint:` lifecycle block from a document's
+ * frontmatter. Returns null when the document declares nothing, so documents
+ * without frontmatter keep their existing behaviour byte for byte.
+ */
+function parseBlueprintFrontmatter(lines) {
+  const block = parseFrontmatterBlock(lines);
+  if (!block) return null;
+  let document;
+  try {
+    document = parseYamlDocument(block.lines);
+  } catch {
+    return null;
+  }
+  const declared = document?.blueprint;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return null;
+
+  const effectiveFrom = String(declared.effective_from ?? "").trim();
+  const scope = declared.scope && typeof declared.scope === "object" && !Array.isArray(declared.scope)
+    ? {
+        deployableUnits: yamlStringList(declared.scope.deployable_units),
+        branches: yamlStringList(declared.scope.branches),
+      }
+    : null;
+  return {
+    documentId: typeof declared.document_id === "string" && declared.document_id.trim()
+      ? declared.document_id.trim()
+      : null,
+    documentType: typeof declared.type === "string" && declared.type.trim()
+      ? declared.type.trim().toLowerCase()
+      : null,
+    declaredStatus: typeof declared.status === "string" && declared.status.trim()
+      ? declared.status.trim().toLowerCase()
+      : null,
+    effectiveFrom: /^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom) ? effectiveFrom : null,
+    supersedes: yamlStringList(declared.supersedes),
+    canonicalFor: yamlStringList(declared.canonical_for),
+    scope,
+  };
+}
+
+/**
+ * Frontmatter supersession runs the other way round from the banner: the
+ * surviving document names what it replaces (`supersedes: [adr-auth-002]`),
+ * so the target's retirement has to be resolved before any claims are
+ * extracted. Scan every doc once and return the index the extractor needs.
+ */
+function buildGovernanceIndex(root, docPaths) {
+  const declared = new Map();
+  const pathByDocumentId = new Map();
+  for (const docPath of docPaths) {
+    let text;
+    try {
+      text = readFileSync(join(root, docPath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = parseBlueprintFrontmatter(text.split(/\r?\n/));
+    if (!parsed) continue;
+    declared.set(docPath, parsed);
+    if (parsed.documentId && !pathByDocumentId.has(parsed.documentId)) {
+      pathByDocumentId.set(parsed.documentId, docPath);
+    }
+  }
+
+  const retiredBy = new Map();
+  for (const [docPath, parsed] of declared) {
+    for (const targetId of parsed.supersedes) {
+      const targetPath = pathByDocumentId.get(targetId);
+      if (!targetPath || targetPath === docPath) continue;
+      if (retiredBy.has(targetPath)) continue;
+      retiredBy.set(targetPath, { supersededBy: docPath, supersededOn: parsed.effectiveFrom });
+    }
+  }
+  return { declared, pathByDocumentId, retiredBy };
+}
+
 function parseDocLifecycle(root, path, lines, allFiles, config) {
   const firstIndex = lines.findIndex((line) => line.trim().length > 0);
   const first = firstIndex >= 0 ? lines[firstIndex].replace(/^\uFEFF/, "").trim() : "";
@@ -530,6 +780,44 @@ function parseDocLifecycle(root, path, lines, allFiles, config) {
     return { status: "archived", supersededBy: null, supersededOn: null };
   }
   return { status: "current" };
+}
+
+/**
+ * Merge the structured declaration with the banner result. A document that
+ * declares nothing is untouched; a document that declares a lifecycle is
+ * governed by it, and the banner is only carried as display evidence.
+ */
+function resolveDocLifecycle(root, path, lines, allFiles, config, declared, retiredBy) {
+  let lifecycle = parseDocLifecycle(root, path, lines, allFiles, config);
+
+  const retirement = retiredBy?.get(path);
+  if (retirement && (lifecycle.status ?? "current") === "current") {
+    lifecycle = {
+      status: "superseded",
+      supersededBy: retirement.supersededBy,
+      supersededOn: retirement.supersededOn ?? null,
+    };
+  }
+
+  if (!declared) return lifecycle;
+
+  const mapped = FRONTMATTER_STATUS_TO_LIFECYCLE[declared.declaredStatus];
+  if (mapped && mapped !== "current" && lifecycle.status === "current") {
+    // A structured non-current declaration retires the document even without a
+    // banner. Drop any invalid-marker noise: the doc is already excluded.
+    lifecycle = { status: mapped, supersededBy: null, supersededOn: declared.effectiveFrom };
+  }
+
+  return {
+    ...lifecycle,
+    documentId: declared.documentId ?? null,
+    documentType: declared.documentType ?? null,
+    declaredStatus: declared.declaredStatus ?? null,
+    effectiveFrom: declared.effectiveFrom ?? null,
+    canonicalFor: declared.canonicalFor ?? [],
+    supersedes: declared.supersedes ?? [],
+    ...(declared.scope ? { scope: declared.scope } : {}),
+  };
 }
 
 function repoFiles(root, config, limit = 0) {
@@ -649,7 +937,7 @@ function sourceSignature(root, config, limit = 0) {
   return xxh3Hex([fileListHash, ...docHashes].join("\n"));
 }
 
-function extractDoc(root, path, allFiles, config) {
+function extractDoc(root, path, allFiles, config, governance = null) {
   const full = join(root, path);
   // Strip the blueprint-generated pointer block from README.md BEFORE line
   // parsing so headings/claims/codeRefs are unaffected by generated content.
@@ -662,7 +950,15 @@ function extractDoc(root, path, allFiles, config) {
     );
   }
   const lines = text.split(/\r?\n/);
-  const lifecycle = parseDocLifecycle(root, path, lines, allFiles, config);
+  const lifecycle = resolveDocLifecycle(
+    root,
+    path,
+    lines,
+    allFiles,
+    config,
+    governance?.declared.get(path) ?? null,
+    governance?.retiredBy,
+  );
   const headings = [];
   const claims = [];
   const codeRefs = new Set();
@@ -781,7 +1077,9 @@ async function build(root, outDir, options = {}) {
   const sourceObservation = gitSourceObservation(root);
   const files = repoFiles(root, config, limit);
   const allFiles = new Set(files);
-  const docs = files.filter(isDoc).map((path) => extractDoc(root, path, allFiles, config));
+  const docPaths = files.filter(isDoc);
+  const governance = buildGovernanceIndex(root, docPaths);
+  const docs = docPaths.map((path) => extractDoc(root, path, allFiles, config, governance));
   const claims = docs.flatMap((doc) => doc.claims);
   const codeRefs = new Map();
   const edges = [];
@@ -815,6 +1113,25 @@ async function build(root, outDir, options = {}) {
     const id = `code.${slug(targetPath)}.${xxh3Hex(targetPath).slice(0, 8)}`;
     codeRefs.set(targetPath, { id, kind: "code_ref", path: targetPath, exists: true });
     edges.push({ from: id, to: doc.id, type: "supersedes" });
+  }
+
+  // Structured supersession: the surviving document names the document_id it
+  // replaces, so the edge points the same way the banner edge does — from the
+  // replacement to the document it retires.
+  const docsByDocumentId = new Map();
+  for (const doc of docs) {
+    const documentId = doc.lifecycle?.documentId;
+    if (documentId && !docsByDocumentId.has(documentId)) docsByDocumentId.set(documentId, doc);
+  }
+  for (const doc of docs) {
+    for (const targetId of doc.lifecycle?.supersedes ?? []) {
+      const targetDoc = docsByDocumentId.get(targetId);
+      if (!targetDoc || targetDoc.id === doc.id) continue;
+      if (edges.some((edge) => edge.type === "supersedes" && edge.from === doc.id && edge.to === targetDoc.id)) {
+        continue;
+      }
+      edges.push({ from: doc.id, to: targetDoc.id, type: "supersedes" });
+    }
   }
 
   const nodes = [
