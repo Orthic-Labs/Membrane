@@ -1,10 +1,24 @@
-# Managed by right-git — do not hand-edit. Run `right-git sync` to update.
+# Managed by right-git — do not hand-edit most of this file. Run `right-git sync`
+# to update the templated `candidate` job. The `installed-qualification` job
+# below is a repo-local addition (not part of the right-git template) that
+# wires scripts/qualification/install-release.ps1 into CI; if right-git sync
+# ever drops it, re-add it from git history rather than losing the gate.
 # Template: profiles/rust-hybrid/release-candidate.yml | Template version: 1.1.0
 # Public CI produces unsigned candidates only. Signing credentials, finalization,
 # release publication, & stable bootstrap publication remain protected-host work.
 name: release-candidate
 on:
   workflow_dispatch:
+    inputs:
+      run_installed_qualification:
+        description: >-
+          Run the real installed-artifact qualification
+          (scripts/qualification/install-release.ps1). Requires a
+          self-hosted Windows runner with signing secrets and a real
+          interactive desktop session (UI-automation tray click). Leave
+          unchecked on hosted runners — it will skip with a typed reason.
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 permissions:
@@ -54,4 +68,80 @@ jobs:
         with:
           name: membrane-unsigned-${{ matrix.os }}-${{ matrix.node }}
           path: ${{ runner.temp }}/membrane/windows-x86_64/**
+          if-no-files-found: error
+  # Real installed-artifact qualification (scripts/qualification/install-release.ps1):
+  # signed tray+daemon install, UI-automation tray click, Blueprint
+  # status/mismatch/one-shot checks. `candidate` above only builds & checks an
+  # UNSIGNED candidate — it cannot exercise this. This job is explicit-dispatch
+  # only, never runs on the tag-push trigger, and requires:
+  #   - a signed installer + a signed previous-version installer to exercise
+  #     current -> previous -> current, plus a release manifest & SBOM
+  #     (secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL /
+  #     _PREVIOUS_INSTALLER_URL / _RELEASE_MANIFEST_URL / _SBOM_URL);
+  #   - a real interactive Windows desktop session for UI automation
+  #     (Shell_TrayWnd / tray popup / renderer window assertions), which
+  #     hosted GitHub-managed Windows runners do not reliably provide — set
+  #     vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL to a self-hosted Windows
+  #     runner label that has one.
+  # Any prerequisite missing skips with a visible typed reason; it never
+  # silently no-ops or reports a fake pass.
+  installed-qualification:
+    needs: [private-repo-guard]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_installed_qualification }}
+    runs-on: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL || 'windows-2025' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check installed-qualification prerequisites
+        id: prereqs
+        shell: pwsh
+        env:
+          INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL }}
+          PREVIOUS_INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL }}
+          RELEASE_MANIFEST_URL: ${{ secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL }}
+          SBOM_URL: ${{ secrets.MEMBRANE_QUALIFICATION_SBOM_URL }}
+          RUNNER_LABEL: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL }}
+        run: |
+          $missing = @()
+          if (-not $env:RUNNER_LABEL) { $missing += "self-hosted Windows runner (vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL) not configured; UI-automation tray checks need a real interactive desktop session hosted runners do not reliably provide" }
+          if (-not $env:INSTALLER_URL) { $missing += "signed installer (secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL) not configured" }
+          if (-not $env:PREVIOUS_INSTALLER_URL) { $missing += "signed previous-version installer (secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL) not configured" }
+          if (-not $env:RELEASE_MANIFEST_URL) { $missing += "release manifest (secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL) not configured" }
+          if (-not $env:SBOM_URL) { $missing += "SBOM (secrets.MEMBRANE_QUALIFICATION_SBOM_URL) not configured" }
+          if ($missing.Count -gt 0) {
+            $reason = $missing -join "; "
+            Write-Host "::warning::installed_qualification_skipped { reason: prerequisites_absent, detail: `"$reason`" }"
+            "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          } else {
+            "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+      - name: Fetch qualification artifacts
+        if: steps.prereqs.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL }}
+          PREVIOUS_INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL }}
+          RELEASE_MANIFEST_URL: ${{ secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL }}
+          SBOM_URL: ${{ secrets.MEMBRANE_QUALIFICATION_SBOM_URL }}
+        run: |
+          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\qualification" | Out-Null
+          Invoke-WebRequest -Uri $env:INSTALLER_URL -OutFile "${{ runner.temp }}\qualification\current.exe"
+          Invoke-WebRequest -Uri $env:PREVIOUS_INSTALLER_URL -OutFile "${{ runner.temp }}\qualification\previous.exe"
+          Invoke-WebRequest -Uri $env:RELEASE_MANIFEST_URL -OutFile "${{ runner.temp }}\qualification\release-manifest.json"
+          Invoke-WebRequest -Uri $env:SBOM_URL -OutFile "${{ runner.temp }}\qualification\sbom.json"
+      - name: Run installed-artifact qualification
+        if: steps.prereqs.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          ./scripts/qualification/install-release.ps1 `
+            -Installer "${{ runner.temp }}\qualification\current.exe" `
+            -PreviousInstaller "${{ runner.temp }}\qualification\previous.exe" `
+            -ReleaseManifest "${{ runner.temp }}\qualification\release-manifest.json" `
+            -Sbom "${{ runner.temp }}\qualification\sbom.json" `
+            -EvidencePath "${{ runner.temp }}\qualification\evidence.json"
+      - name: Upload qualification evidence
+        if: steps.prereqs.outputs.skip != 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: membrane-installed-qualification-evidence
+          path: ${{ runner.temp }}/qualification/evidence.json
           if-no-files-found: error
