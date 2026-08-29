@@ -341,6 +341,41 @@ pub enum MemoryBatchError {
     Persist(String),
 }
 
+/// One near-duplicate comparison hit from the §16.3 pre-filter.
+pub(crate) struct AdmissionNearDuplicateHit {
+    pub existing_id: String,
+    pub similarity: f64,
+    pub exact: bool,
+}
+
+/// §16.3 typed write-admission outcome. Every variant is a SUCCESS: a
+/// duplicate, metadata union, or conflict is a classified disposition, never
+/// a caller-parsed error string. `Err` stays reserved for invalid requests,
+/// storage failures, or unavailable infrastructure.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum AdmissionDispositionV1 {
+    /// No near-duplicate found; a new durable record was created.
+    Inserted { id: String },
+    /// Exact/near-exact content already durable under a different id, and
+    /// the incoming write carried no source/evidence the existing record
+    /// didn't already have. No write occurred.
+    NoOp { existing_id: String },
+    /// Exact/near-exact content already durable, and the incoming write
+    /// carried source/evidence refs the existing record didn't have.
+    /// Provenance was unioned atomically; authority, validity and canonical
+    /// content were not touched.
+    UpdateMetadataOnly { existing_id: String },
+    /// Content is near-identical but not provably the same record (below the
+    /// duplicate floor, at or above the conflict floor). The incoming
+    /// candidate was preserved in quarantine for review — never admitted as
+    /// a second active truth row, never silently discarded.
+    ConflictQuarantined {
+        candidate_id: String,
+        conflicts_with: String,
+        similarity: f64,
+    },
+}
+
 struct TasteCanonicalPoolGuard {
     expected_sha256: String,
     excluded_record_payloads: BTreeMap<String, String>,
@@ -1119,6 +1154,35 @@ fn log_memory_event(
     quantity: usize,
     metadata: Option<&MemoryRecordMetadata>,
 ) -> rusqlite::Result<()> {
+    log_memory_event_with_meta(
+        attribution,
+        conn,
+        event_kind,
+        memory_id,
+        scope_id,
+        context,
+        quantity,
+        metadata,
+        None,
+    )
+}
+
+/// Same as [`log_memory_event`], with an additional typed JSON `meta` payload
+/// for disposition-specific facts (§16.3 admission receipts: existing id,
+/// similarity, candidate id). `meta: None` behaves exactly like
+/// `log_memory_event` — every prior call site is unaffected.
+#[allow(clippy::too_many_arguments)]
+fn log_memory_event_with_meta(
+    attribution: &OperationAttribution,
+    conn: &rusqlite::Connection,
+    event_kind: &str,
+    memory_id: Option<&str>,
+    scope_id: Option<&str>,
+    context: &MemoryEventContext,
+    quantity: usize,
+    metadata: Option<&MemoryRecordMetadata>,
+    meta: Option<serde_json::Value>,
+) -> rusqlite::Result<()> {
     let ts = crate::time::now_iso();
     let session_id = normalized_session(context);
     let trace_id = normalized_trace(context, &format!("legacy-{event_kind}-{ts}"));
@@ -1126,10 +1190,13 @@ fn log_memory_event(
     let mut lifecycle_context = context.clone();
     lifecycle_context.session_id = Some(session_id.clone());
     lifecycle_context.trace_id = Some(trace_id.clone());
+    let meta_json = meta
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "{}".to_string());
     conn.execute(
         "INSERT INTO memory_event_log
          (ts, event_kind, memory_id, surface, session_id, trace_id, scope_id, quantity, meta)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, '{}')",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             ts,
             event_kind,
@@ -1139,6 +1206,7 @@ fn log_memory_event(
             trace_id,
             scope_id,
             quantity as i64,
+            meta_json,
         ],
     )?;
     let legacy_rowid = conn.last_insert_rowid();
@@ -2578,12 +2646,22 @@ impl MemoryStore {
         for (id, reason, event_kind, fail_prefix) in plan
             .duplicate_quarantine_ids
             .iter()
-            .map(|id| (id, "duplicate_consolidated", "curate_quarantine_duplicate", "dream duplicate quarantine"))
-            .chain(
-                plan.quarantined_ids
-                    .iter()
-                    .map(|id| (id, "low_effectiveness", "curate_quarantine", "dream quarantine")),
-            )
+            .map(|id| {
+                (
+                    id,
+                    "duplicate_consolidated",
+                    "curate_quarantine_duplicate",
+                    "dream duplicate quarantine",
+                )
+            })
+            .chain(plan.quarantined_ids.iter().map(|id| {
+                (
+                    id,
+                    "low_effectiveness",
+                    "curate_quarantine",
+                    "dream quarantine",
+                )
+            }))
         {
             let snapshot = tx
                 .query_row(
@@ -2740,6 +2818,96 @@ impl MemoryStore {
                 ))
             })?
             .unwrap_or_default();
+
+        // A row quarantined by the §16.3 admission-conflict path (see
+        // `try_admit_with_record_metadata_observed`) never became active
+        // truth — it was preserved for review, not admitted. Restoring it
+        // with the raw INSERT below would bypass the same duplicate/conflict
+        // scan every other write goes through. Detect that origin from the
+        // `reason` prefix it writes and re-enter full admission instead;
+        // every other quarantine origin (e.g. Dream's staleness quarantine)
+        // keeps the raw restore this function has always done.
+        let quarantine_origin: Option<(String, String, String, String, String)> = self
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, scope_id, tier, source_ids, reason
+                   FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| {
+                self.persist_error(format!(
+                    "quarantine restore lookup failed for {id}: {error}"
+                ))
+            })?;
+        let Some((content, scope_id, tier_json, source_ids_json, reason)) = quarantine_origin
+        else {
+            return Ok(false);
+        };
+        if reason.starts_with("admission_conflict:") {
+            let name = id
+                .strip_prefix(&format!("{scope_id}/"))
+                .unwrap_or(id)
+                .to_string();
+            let tier: MemoryTier = serde_json::from_str(&tier_json).map_err(|e| {
+                self.persist_error(format!("quarantine restore tier invalid for {id}: {e}"))
+            })?;
+            let source_ids: Vec<String> = serde_json::from_str(&source_ids_json).map_err(|e| {
+                self.persist_error(format!(
+                    "quarantine restore source_ids invalid for {id}: {e}"
+                ))
+            })?;
+            let context = MemoryEventContext::new("quarantine_restore");
+            let now = crate::time::now_iso();
+            let disposition = self.try_admit_with_record_metadata_observed(
+                &name,
+                &content,
+                &scope_id,
+                tier,
+                &now,
+                &source_ids,
+                Some(restored_metadata),
+                &context,
+                &MemoryLifecycleInputV1::default(),
+            )?;
+            // `Inserted`/`UpdateMetadataOnly`/`NoOp` all resolve the
+            // candidate into, or against, active truth in `memories` — the
+            // original quarantine row is now stale residue. `ConflictQuarantined`
+            // already rewrote this exact row in place (same id, `ON CONFLICT(id)
+            // DO UPDATE`), so it must not be deleted out from under itself.
+            if !matches!(
+                disposition,
+                AdmissionDispositionV1::ConflictQuarantined { .. }
+            ) {
+                self.db
+                    .lock()
+                    .execute(
+                        "DELETE FROM memory_quarantine WHERE id = ?1",
+                        rusqlite::params![id],
+                    )
+                    .map_err(|e| {
+                        self.persist_error(format!("quarantine cleanup failed for {id}: {e}"))
+                    })?;
+            }
+            self.db
+                .lock()
+                .execute("DELETE FROM deletions WHERE id = ?1", rusqlite::params![id])
+                .map_err(|e| {
+                    self.persist_error(format!("quarantine tombstone cleanup failed for {id}: {e}"))
+                })?;
+            return Ok(true);
+        }
+
         let mut conn = self.db.lock();
         let tx = conn.transaction().map_err(|e| {
             self.persist_error(format!("quarantine restore transaction failed: {e}"))
@@ -7185,14 +7353,81 @@ impl MemoryStore {
         context: &MemoryEventContext,
         lifecycle: &MemoryLifecycleInputV1,
     ) -> Result<String, String> {
+        // Legacy id-returning V1 boundary. `Inserted`/`NoOp`/`UpdateMetadataOnly`
+        // all name a real, ACTIVE, recallable record — returning that id as `Ok`
+        // is honest under the old "id of what you can now recall" contract.
+        // `ConflictQuarantined` is NOT active or recallable: returning its
+        // candidate id as `Ok` would tell a legacy caller a write succeeded
+        // when nothing entered durable truth. That case surfaces as `Err`
+        // instead — legacy callers already treat `Err` as "did not admit",
+        // which is exactly what happened. Callers that need the full typed
+        // disposition (including which existing record it conflicts with, and
+        // the similarity score) should call
+        // [`try_admit_with_record_metadata_observed`] directly.
+        match self.try_admit_with_record_metadata_observed(
+            name,
+            content,
+            scope,
+            tier,
+            updated_at,
+            source_ids,
+            supplied_metadata,
+            context,
+            lifecycle,
+        )? {
+            AdmissionDispositionV1::Inserted { id } => Ok(id),
+            AdmissionDispositionV1::NoOp { existing_id } => Ok(existing_id),
+            AdmissionDispositionV1::UpdateMetadataOnly { existing_id } => Ok(existing_id),
+            AdmissionDispositionV1::ConflictQuarantined {
+                candidate_id,
+                conflicts_with,
+                similarity,
+            } => Err(format!(
+                "admission conflict: {candidate_id} was not admitted as active truth — \
+                 near-identical to {conflicts_with} (similarity {similarity:.3}); the \
+                 candidate is preserved in quarantine for review, not silently discarded"
+            )),
+        }
+    }
+
+    /// §16.3 typed write admission — the primary entry point. `Err` is
+    /// reserved for invalid requests, storage failures, or unavailable
+    /// infrastructure. A duplicate, metadata-only update, or conflict is a
+    /// successful typed [`AdmissionDispositionV1`], never a parse-me string.
+    #[allow(clippy::too_many_arguments)]
+    fn try_admit_with_record_metadata_observed(
+        &self,
+        name: &str,
+        content: &str,
+        scope: &str,
+        tier: MemoryTier,
+        updated_at: &str,
+        source_ids: &[String],
+        supplied_metadata: Option<MemoryRecordMetadata>,
+        context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
+    ) -> Result<AdmissionDispositionV1, String> {
         if updated_at.trim().is_empty() {
             return Err("updated_at is required".into());
         }
         let scope = crate::scope::normalize_scope(scope);
         let id = format!("{scope}/{name}");
+        // Embed before taking the write transaction: the embedder may be slow
+        // and the admission transaction below must stay short. A duplicate,
+        // no-op, or conflict admission wastes one embedding; the fence stays
+        // race-free regardless.
+        let embedding = self.embed_for_write(content)?;
+        let mut conn = self.db.lock();
+        // §16.3 atomicity: same-id lookup, near-duplicate scan, disposition
+        // side-effects and the insert all commit inside ONE immediate
+        // transaction, so two concurrent writers cannot both pass the scan and
+        // create duplicate rows. BEGIN IMMEDIATE takes the write lock up
+        // front; busy_timeout governs cross-process contention.
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| self.persist_error(format!("memory transaction failed: {e}")))?;
         let existing = {
-            let conn = self.db.lock();
-            conn.query_row(
+            tx.query_row(
                 "SELECT access_count, created_at, artifact_family, producer, record_type
                    FROM memories WHERE id = ?1",
                 rusqlite::params![id],
@@ -7219,13 +7454,205 @@ impl MemoryStore {
             .unwrap_or_else(crate::time::now_iso);
         let metadata = supplied_metadata.unwrap_or_else(|| {
             existing
+                .clone()
                 .map(|(_, _, metadata)| metadata)
                 .unwrap_or_default()
         });
+        // §16.3 write-time duplicate/conflict detection: runs BEFORE the durable
+        // upsert, inside the same immediate transaction, so a near-identical
+        // write under a different id yields a typed successful disposition
+        // instead of a second silent record. Same-id rewrites (the update
+        // path) skip the scan entirely — that is governed by
+        // lifecycle/supersession, not the pre-filter.
+        if existing.is_none() {
+            let normalized = Self::normalized_admission_text(content);
+            let near_duplicate = Self::admission_near_duplicate_scan(&tx, &scope, &id, &normalized)
+                .map_err(|error| self.persist_error(error))?;
+            if let Some(hit) = near_duplicate {
+                let is_duplicate =
+                    hit.exact || hit.similarity >= Self::ADMISSION_PREFILTER_DUPLICATE_THRESHOLD;
+                if is_duplicate {
+                    // A different logical id is not provenance by itself: only
+                    // union when the incoming write actually names source/
+                    // evidence refs the existing record does not already have.
+                    let existing_source_ids: Vec<String> = tx
+                        .query_row(
+                            "SELECT source_ids FROM memories WHERE id = ?1",
+                            rusqlite::params![hit.existing_id],
+                            |r| r.get::<_, String>(0),
+                        )
+                        .optional()
+                        .map_err(|e| {
+                            self.persist_error(format!(
+                                "admission dedup source lookup failed for {}: {e}",
+                                hit.existing_id
+                            ))
+                        })?
+                        .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+                        .unwrap_or_default();
+                    let mut union = existing_source_ids;
+                    let mut added_new = false;
+                    for source_id in source_ids {
+                        if !union.iter().any(|existing_id| existing_id == source_id) {
+                            union.push(source_id.clone());
+                            added_new = true;
+                        }
+                    }
+                    if added_new {
+                        // Union provenance atomically; authority, validity and
+                        // canonical content are not touched.
+                        let union_json = serde_json::to_string(&union).map_err(|e| {
+                            self.persist_error(format!("source_ids serialize failed: {e}"))
+                        })?;
+                        let now = crate::time::now_iso();
+                        tx.execute(
+                            "UPDATE memories SET source_ids = ?2, updated_at = ?3 WHERE id = ?1",
+                            rusqlite::params![hit.existing_id, union_json, now],
+                        )
+                        .map_err(|e| {
+                            self.persist_error(format!("admission metadata union failed: {e}"))
+                        })?;
+                        log_memory_event_with_meta(
+                            &self.operation_attribution,
+                            &tx,
+                            "admission_update_metadata_only",
+                            Some(&hit.existing_id),
+                            Some(&scope),
+                            context,
+                            1,
+                            Some(&metadata),
+                            Some(serde_json::json!({
+                                "disposition": "update_metadata_only",
+                                "existing_id": hit.existing_id,
+                                "similarity": hit.similarity,
+                                "exact": hit.exact,
+                                "added_source_ids": source_ids,
+                            })),
+                        )
+                        .map_err(|e| {
+                            self.persist_error(format!("memory admission event failed: {e}"))
+                        })?;
+                        tx.commit().map_err(|e| {
+                            self.persist_error(format!("memory commit failed: {e}"))
+                        })?;
+                        drop(conn);
+                        self.flush_event_outbox()?;
+                        self.clear_last_persist_error();
+                        return Ok(AdmissionDispositionV1::UpdateMetadataOnly {
+                            existing_id: hit.existing_id,
+                        });
+                    }
+                    // Same content, no new evidence: successful no-op. No
+                    // memories row changes, but the disposition itself is a
+                    // durable typed receipt — persisted and committed inside
+                    // the same admission transaction, not silently dropped.
+                    log_memory_event_with_meta(
+                        &self.operation_attribution,
+                        &tx,
+                        "admission_no_op",
+                        Some(&hit.existing_id),
+                        Some(&scope),
+                        context,
+                        1,
+                        Some(&metadata),
+                        Some(serde_json::json!({
+                            "disposition": "no_op",
+                            "existing_id": hit.existing_id,
+                            "similarity": hit.similarity,
+                            "exact": hit.exact,
+                        })),
+                    )
+                    .map_err(|e| {
+                        self.persist_error(format!("memory admission event failed: {e}"))
+                    })?;
+                    tx.commit()
+                        .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
+                    drop(conn);
+                    self.flush_event_outbox()?;
+                    self.clear_last_persist_error();
+                    return Ok(AdmissionDispositionV1::NoOp {
+                        existing_id: hit.existing_id,
+                    });
+                }
+                // Conflict band: near-identical but not provably the same
+                // record. Prevent a second active truth row under a
+                // different id, but never discard the incoming evidence —
+                // preserve it in quarantine, unresolved, for review.
+                let now = crate::time::now_iso();
+                let tier_json =
+                    serde_json::to_string(&tier).unwrap_or_else(|_| "\"Episodic\"".into());
+                let keywords_json =
+                    serde_json::to_string(&keywords_of(&format!("{name} {content}")))
+                        .unwrap_or_else(|_| "[]".into());
+                let source_ids_json = serde_json::to_string(source_ids)
+                    .map_err(|e| self.persist_error(format!("source_ids serialize failed: {e}")))?;
+                let reason = format!(
+                    "admission_conflict:existing={};similarity={:.3}",
+                    hit.existing_id, hit.similarity
+                );
+                tx.execute(
+                    "INSERT INTO memory_quarantine
+                        (id, tier, content, keywords, score, created_at, updated_at, access_count,
+                         embedding, embedding_q, scope_id, content_hash, source_ids, authority,
+                         influence_class, quarantined_at, reason)
+                     VALUES (?1, ?2, ?3, ?4, 0.5, ?5, ?5, 0, NULL, ?6, ?7, ?8, ?9, 'A0', 'unresolved', ?5, ?10)
+                     ON CONFLICT(id) DO UPDATE SET
+                        content = excluded.content, keywords = excluded.keywords,
+                        embedding_q = excluded.embedding_q, source_ids = excluded.source_ids,
+                        quarantined_at = excluded.quarantined_at, reason = excluded.reason",
+                    rusqlite::params![
+                        id,
+                        tier_json,
+                        content,
+                        keywords_json,
+                        now,
+                        embedding_to_quantized_blob(&embedding),
+                        scope,
+                        content_hash(content),
+                        source_ids_json,
+                        reason,
+                    ],
+                )
+                .map_err(|e| {
+                    self.persist_error(format!("admission conflict quarantine failed: {e}"))
+                })?;
+                // The `reason` column on the quarantine row is a human-readable
+                // note (shared with other quarantine origins); the durable TYPED
+                // receipt callers must rely on is this event's `meta`, not that
+                // string — persisted inside the same admission transaction.
+                log_memory_event_with_meta(
+                    &self.operation_attribution,
+                    &tx,
+                    "admission_conflict_quarantined",
+                    Some(&id),
+                    Some(&scope),
+                    context,
+                    1,
+                    Some(&metadata),
+                    Some(serde_json::json!({
+                        "disposition": "conflict_quarantined",
+                        "candidate_id": id,
+                        "conflicts_with": hit.existing_id,
+                        "similarity": hit.similarity,
+                    })),
+                )
+                .map_err(|e| self.persist_error(format!("memory admission event failed: {e}")))?;
+                tx.commit()
+                    .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
+                drop(conn);
+                self.flush_event_outbox()?;
+                self.clear_last_persist_error();
+                return Ok(AdmissionDispositionV1::ConflictQuarantined {
+                    candidate_id: id,
+                    conflicts_with: hit.existing_id,
+                    similarity: hit.similarity,
+                });
+            }
+        }
         let entry = MemoryEntry {
             id: id.clone(),
             tier,
-            embedding: Some(self.embed_for_write(content)?),
+            embedding: Some(embedding),
             content: content.to_string(),
             keywords: keywords_of(&format!("{name} {content}")),
             score: 0.6,
@@ -7233,10 +7660,6 @@ impl MemoryStore {
             access_count: access as u32,
             scope_id: scope,
         };
-        let mut conn = self.db.lock();
-        let tx = conn
-            .transaction()
-            .map_err(|e| self.persist_error(format!("memory transaction failed: {e}")))?;
         self.persist_entry_with_record_lifecycle_on(
             &tx, &entry, updated_at, source_ids, &metadata, lifecycle,
         )?;
@@ -7261,7 +7684,498 @@ impl MemoryStore {
             .unwrap_or_else(|e| e.into_inner())
             .insert(entry);
         self.clear_last_persist_error();
-        Ok(id)
+        Ok(AdmissionDispositionV1::Inserted { id })
+    }
+
+    /// §16.3 deterministic admission pre-filter — write-time duplicate/conflict
+    /// detection on the durable write path (`persist_entry_with_record_lifecycle_on`'s
+    /// id-keyed `ON CONFLICT(id)` admits near-identical content under different ids
+    /// silently otherwise). Exact normalization, a cheap specificity gate, then a
+    /// 4-gram word-shingle Jaccard threshold (MinHash class). No model call; ambiguity
+    /// surfaces as `conflict`, never as a second silent record. Dream's governed
+    /// consolidation path (`persist_entry_with_record_on`) deliberately bypasses this:
+    /// a lifecycle mutation consolidating existing records is not a new admission.
+    pub const ADMISSION_PREFILTER_SCHEMA_VERSION: &str = "membrane.admission-prefilter.v1";
+
+    /// At or above this Jaccard similarity the incoming write adds no information:
+    /// it is a duplicate of the already-durable record.
+    pub const ADMISSION_PREFILTER_DUPLICATE_THRESHOLD: f64 = 0.92;
+
+    /// At or above this threshold but below the duplicate threshold the content is
+    /// near-identical but not provably the same: ambiguous, so `conflict` surfaces
+    /// for review instead of a second silent record or a silent overwrite.
+    pub const ADMISSION_PREFILTER_CONFLICT_THRESHOLD: f64 = 0.80;
+
+    /// Content below this many normalized characters is not specific enough for
+    /// near-duplicate judgment; only an exact normalized match may duplicate it.
+    const ADMISSION_PREFILTER_MIN_SPECIFICITY_CHARS: usize = 24;
+
+    /// Upper bound on candidate rows compared per write, newest first. A bounded
+    /// linear scan keeps the write path O(candidates) with no model call.
+    const ADMISSION_PREFILTER_CANDIDATE_LIMIT: usize = 512;
+
+    /// Word-shingle width for the Jaccard comparison.
+    const ADMISSION_PREFILTER_SHINGLE_WIDTH: usize = 4;
+
+    /// Normalize content for comparison: whitespace-collapsed lowercase. Exact
+    /// normalization first; only near-duplicate work needs more.
+    fn normalized_admission_text(content: &str) -> String {
+        content
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+
+    /// Word-shingle set of the normalized text.
+    fn admission_shingles(normalized: &str) -> HashSet<String> {
+        let words: Vec<&str> = normalized.split(' ').collect();
+        let width = Self::ADMISSION_PREFILTER_SHINGLE_WIDTH;
+        if words.is_empty() {
+            return HashSet::new();
+        }
+        if words.len() <= width {
+            return HashSet::from([normalized.to_owned()]);
+        }
+        words
+            .windows(width)
+            .map(|window| window.join(" "))
+            .collect()
+    }
+
+    fn jaccard(left: &HashSet<String>, right: &HashSet<String>) -> f64 {
+        if left.is_empty() || right.is_empty() {
+            return 0.0;
+        }
+        let intersection = left.intersection(right).count();
+        let union = left.union(right).count();
+        intersection as f64 / union.max(1) as f64
+    }
+
+    /// One near-duplicate scan over the recent durable corpus in the same scope.
+    /// Returns the most similar eligible record when it clears the conflict floor.
+    /// An exact normalized match duplicates at ANY length; the specificity gate
+    /// only bounds the near-duplicate (Jaccard) portion.
+    fn admission_near_duplicate_scan(
+        conn: &rusqlite::Connection,
+        scope_id: &str,
+        incoming_id: &str,
+        incoming_normalized: &str,
+    ) -> Result<Option<AdmissionNearDuplicateHit>, String> {
+        let incoming_shingles = (incoming_normalized.chars().count()
+            >= Self::ADMISSION_PREFILTER_MIN_SPECIFICITY_CHARS)
+            .then(|| Self::admission_shingles(incoming_normalized));
+        let rows: Vec<(String, String)> = conn
+            .prepare(
+                "SELECT id, content FROM memories
+                 WHERE scope_id = ?1 AND id <> ?2 AND lifecycle_state = 'active'
+                 ORDER BY created_at DESC, id DESC LIMIT ?3",
+            )
+            .map_err(|e| format!("admission pre-filter scan failed: {e}"))?
+            .query_map(
+                rusqlite::params![
+                    scope_id,
+                    incoming_id,
+                    Self::ADMISSION_PREFILTER_CANDIDATE_LIMIT as i64,
+                ],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .map_err(|e| format!("admission pre-filter scan failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("admission pre-filter scan failed: {e}"))?;
+        let mut best: Option<(f64, AdmissionNearDuplicateHit)> = None;
+        for (id, content) in rows {
+            let normalized = Self::normalized_admission_text(&content);
+            if normalized == incoming_normalized {
+                return Ok(Some(AdmissionNearDuplicateHit {
+                    existing_id: id,
+                    similarity: 1.0,
+                    exact: true,
+                }));
+            }
+            let Some(incoming_shingles) = &incoming_shingles else {
+                // Specificity gate: trivial content never near-duplicates, it
+                // can only ever be an exact duplicate (handled above).
+                continue;
+            };
+            let similarity =
+                Self::jaccard(incoming_shingles, &Self::admission_shingles(&normalized));
+            if similarity < Self::ADMISSION_PREFILTER_CONFLICT_THRESHOLD {
+                continue;
+            }
+            let hit = AdmissionNearDuplicateHit {
+                existing_id: id,
+                similarity,
+                exact: false,
+            };
+            let better = best
+                .as_ref()
+                .map(|(best_similarity, _)| similarity > *best_similarity)
+                .unwrap_or(true);
+            if better {
+                best = Some((similarity, hit));
+            }
+        }
+        Ok(best.map(|(_, hit)| hit))
+    }
+
+    /// §16.4 governed hard erase. Distinct from the reversible quarantine: the
+    /// payload is provably cleared from every Cortex-owned projection path — the
+    /// durable `memories` row, the `links` projection, any quarantined copy, and
+    /// the deletion tombstone — in one transaction, with a content-free
+    /// lifecycle event recording that the erase happened.
+    pub fn hard_erase(&self, id: &str) -> Result<bool, String> {
+        if id.trim().is_empty() {
+            return Err("hard erase requires a memory id".into());
+        }
+        let mut conn = self.db.lock();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| self.persist_error(format!("hard erase transaction failed: {e}")))?;
+        // A payload may exist only in `memories`, only in `memory_quarantine`
+        // (already relocated by prune or a §16.3 conflict disposition), or
+        // both. Erasure must clear every projection it is found in, so the
+        // existence check spans both tables — `memories` first, since
+        // `artifact_family`/`producer`/`record_type` live only there;
+        // `memory_quarantine` has no equivalent columns, so a quarantine-only
+        // row erases with default metadata.
+        let found = tx
+            .query_row(
+                "SELECT scope_id, artifact_family, producer, record_type FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        MemoryRecordMetadata {
+                            artifact_family: row.get(1)?,
+                            producer: row.get(2)?,
+                            record_type: row.get(3)?,
+                        },
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("hard erase lookup failed for {id}: {e}")))?;
+        let Some((scope_id, metadata)) = (match found {
+            Some(found) => Some(found),
+            None => tx
+                .query_row(
+                    "SELECT scope_id FROM memory_quarantine WHERE id = ?1",
+                    rusqlite::params![id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|e| {
+                    self.persist_error(format!("hard erase quarantine lookup failed for {id}: {e}"))
+                })?
+                .map(|scope_id| (scope_id, MemoryRecordMetadata::default())),
+        }) else {
+            return Ok(false);
+        };
+        // Reversibility ends here by explicit governed act; every payload-bearing
+        // projection this store owns is cleared in the same transaction.
+        tx.execute("DELETE FROM memories WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| self.persist_error(format!("hard erase failed for {id}: {e}")))?;
+        tx.execute(
+            "DELETE FROM memory_quarantine WHERE id = ?1",
+            rusqlite::params![id],
+        )
+        .map_err(|e| {
+            self.persist_error(format!("hard erase quarantine copy failed for {id}: {e}"))
+        })?;
+        tx.execute("DELETE FROM links WHERE src_id = ?1", rusqlite::params![id])
+            .map_err(|e| self.persist_error(format!("hard erase links failed for {id}: {e}")))?;
+        tx.execute("DELETE FROM deletions WHERE id = ?1", rusqlite::params![id])
+            .map_err(|e| {
+                self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
+            })?;
+        let context = MemoryEventContext::new("hard_erase");
+        log_memory_event(
+            &self.operation_attribution,
+            &tx,
+            "hard_erase",
+            Some(id),
+            Some(&scope_id),
+            &context,
+            1,
+            Some(&metadata),
+        )
+        .map_err(|e| self.persist_error(format!("hard erase event failed for {id}: {e}")))?;
+        tx.commit()
+            .map_err(|e| self.persist_error(format!("hard erase commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
+        self.registry
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
+        self.clear_last_persist_error();
+        Ok(true)
+    }
+
+    /// §16.4 backup: dump every Cortex-owned durable payload row (memories +
+    /// quarantine + the link projection) into one versioned, digest-sealed
+    /// envelope. The caller owns the destination bytes; restore consumes exactly
+    /// this envelope.
+    pub fn backup_cortex(&self) -> Result<CortexBackupV1, String> {
+        let conn = self.db.lock();
+        let mut memories = Vec::new();
+        let mut statement = conn
+            .prepare(
+                "SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
+                        embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
+                        source_ids, artifact_family, producer, record_type, authority,
+                        influence_class, lifecycle_state, effective_from_ms, effective_until_ms,
+                        expires_at_ms, review_after_ms, superseded_by, priority_class,
+                        confidence, confidence_basis
+                   FROM memories ORDER BY id",
+            )
+            .map_err(|e| format!("backup read failed: {e}"))?;
+        let rows = statement
+            .query_map([], backup_row_from_row)
+            .map_err(|e| format!("backup read failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("backup read failed: {e}"))?;
+        memories.extend(rows);
+        let mut quarantined = Vec::new();
+        // `memory_quarantine` never carries `artifact_family`/`producer`/
+        // `record_type` — those columns exist only on `memories` (see
+        // migration v0 vs. v19/v20 in cortex-store). Substitute the same
+        // literal defaults `MemoryRecordMetadata::default()` uses so the
+        // column POSITIONS still line up with `backup_row_from_row`, which
+        // reads both queries by the same fixed index layout.
+        let mut statement = conn
+            .prepare(
+                "SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
+                        embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
+                        source_ids, 'memory' AS artifact_family, 'manual' AS producer,
+                        'memory' AS record_type, authority, influence_class, lifecycle_state,
+                        effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms,
+                        superseded_by, priority_class, confidence, confidence_basis
+                   FROM memory_quarantine ORDER BY id",
+            )
+            .map_err(|e| format!("backup quarantine read failed: {e}"))?;
+        let rows = statement
+            .query_map([], backup_row_from_row)
+            .map_err(|e| format!("backup quarantine read failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("backup quarantine read failed: {e}"))?;
+        quarantined.extend(rows);
+        let mut links = Vec::new();
+        let mut statement = conn
+            .prepare("SELECT src_id, dst_slug FROM links ORDER BY src_id, dst_slug")
+            .map_err(|e| format!("backup links read failed: {e}"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(CortexBackupLinkV1 {
+                    src_id: row.get(0)?,
+                    dst_slug: row.get(1)?,
+                })
+            })
+            .map_err(|e| format!("backup links read failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("backup links read failed: {e}"))?;
+        links.extend(rows);
+        drop(statement);
+        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links);
+        Ok(CortexBackupV1 {
+            schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
+            created_at: crate::time::now_iso(),
+            embed_model: self.embedder.model_id().to_owned(),
+            memories,
+            quarantined,
+            links,
+            payload_sha256,
+        })
+    }
+
+    /// §16.4 restore: wipe Cortex-owned durable payload, then restore the exact
+    /// backup envelope in one transaction. The caller proves recall equivalence by
+    /// dumping before wipe, restoring, and comparing recall output — this method
+    /// rebuilds the in-memory registry from the restored rows so public recall
+    /// alone drives that proof.
+    pub fn restore_cortex(&self, backup: &CortexBackupV1) -> Result<usize, String> {
+        if backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported backup schema {}",
+                backup.schema_version
+            ));
+        }
+        let expected = cortex_backup_digest(&backup.memories, &backup.quarantined, &backup.links);
+        if backup.payload_sha256 != expected {
+            return Err("backup payload digest mismatch".into());
+        }
+        let mut conn = self.db.lock();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| self.persist_error(format!("restore transaction failed: {e}")))?;
+        // Wipe first, atomically with the restore: a partial restore never
+        // coexists with stale rows.
+        tx.execute("DELETE FROM memories", [])
+            .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
+        tx.execute("DELETE FROM memory_quarantine", [])
+            .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
+        tx.execute("DELETE FROM links", [])
+            .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
+        for row in &backup.memories {
+            restore_backup_row(&tx, row, false)?;
+        }
+        for row in &backup.quarantined {
+            restore_backup_row(&tx, row, true)?;
+        }
+        for link in &backup.links {
+            tx.execute(
+                "INSERT OR IGNORE INTO links (src_id, dst_slug) VALUES (?1, ?2)",
+                rusqlite::params![link.src_id, link.dst_slug],
+            )
+            .map_err(|e| self.persist_error(format!("restore links failed: {e}")))?;
+        }
+        tx.commit()
+            .map_err(|e| self.persist_error(format!("restore commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
+        self.reload_registry_from_db()?;
+        self.clear_last_persist_error();
+        Ok(backup.memories.len() + backup.quarantined.len())
+    }
+
+    /// Rebuild the in-memory registry from the restored durable rows so recall
+    /// sees exactly what the database sees. Locks are taken db → registry,
+    /// sequentially, matching every other path that touches both.
+    fn reload_registry_from_db(&self) -> Result<(), String> {
+        let rows: Vec<MemoryEntry> = {
+            let conn = self.db.lock();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, tier, content, keywords, score, created_at, access_count,
+                        embedding_q, embedding, scope_id FROM memories ORDER BY id",
+                )
+                .map_err(|e| format!("registry reload read failed: {e}"))?;
+            let collected = stmt
+                .query_map([], |row| {
+                    let embedding_q: Option<Vec<u8>> = row.get(7)?;
+                    let embedding: Option<Vec<u8>> = row.get(8)?;
+                    let embedding = match embedding_q {
+                        Some(blob) => {
+                            Some(quantized_blob_to_embedding(&blob).ok_or_else(|| {
+                                rusqlite::Error::InvalidColumnType(
+                                    7,
+                                    "embedding_q".into(),
+                                    rusqlite::types::Type::Blob,
+                                )
+                            })?)
+                        }
+                        None => embedding.map(|blob| {
+                            if blob.len() % 4 != 0 {
+                                panic!("registry reload found an invalid f32 embedding blob");
+                            }
+                            blob_to_embedding(&blob)
+                        }),
+                    };
+                    Ok(MemoryEntry {
+                        id: row.get(0)?,
+                        tier: serde_json::from_str(&row.get::<_, String>(1)?)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        content: row.get(2)?,
+                        keywords: serde_json::from_str(&row.get::<_, String>(3)?)
+                            .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                        score: row.get(4)?,
+                        created_at: row.get(5)?,
+                        access_count: row.get::<_, i64>(6)?.max(0) as u32,
+                        embedding,
+                        scope_id: row.get(9)?,
+                    })
+                })
+                .map_err(|e| format!("registry reload read failed: {e}"))?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("registry reload read failed: {e}"))?;
+            // Bind before the block ends so `stmt`/`conn` drop after the rows
+            // are fully materialized.
+            collected
+        };
+        let mut registry = self.registry.write().unwrap_or_else(|e| e.into_inner());
+        // Drain by id (remove keeps the resident vector projection coherent),
+        // then insert the restored rows.
+        let existing_ids: Vec<String> = registry
+            .all()
+            .into_iter()
+            .map(|entry| entry.id.clone())
+            .collect();
+        for id in existing_ids {
+            registry.remove(&id);
+        }
+        for entry in rows {
+            registry.insert(entry);
+        }
+        Ok(())
+    }
+
+    /// Frozen interface 1 (§16.1 admission side): route one approved proposal
+    /// into Cortex admission — through the §16.3 pre-filter, so a near-duplicate
+    /// approved proposal resolves to a typed disposition instead of a second
+    /// silent record.
+    pub fn admit_approved_proposal(
+        &self,
+        proposal_id: &str,
+        payload_json: &str,
+    ) -> Result<ApprovedProposalAdmissionV1, StoreError> {
+        if proposal_id.trim().is_empty() {
+            return Err(StoreError::Admission("proposal_id is required".into()));
+        }
+        let payload: serde_json::Value = serde_json::from_str(payload_json).map_err(|error| {
+            StoreError::Admission(format!("proposal payload is not valid JSON: {error}"))
+        })?;
+        let text = payload
+            .get("text")
+            .or_else(|| payload.get("content"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| {
+                StoreError::Admission("proposal payload carries no text or content field".into())
+            })?;
+        let scope = crate::scope::normalize_scope(
+            payload
+                .get("scopeId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("proposed"),
+        );
+        let name = format!(
+            "proposal-{}",
+            &crate::digest::digest_str(proposal_id)[7..39]
+        );
+        // The §16.3 pre-filter owns the duplicate/conflict disposition: run the
+        // same deterministic scan the durable write path runs so an approved
+        // near-duplicate resolves to a typed outcome instead of a second silent
+        // record (or a string-parsed error).
+        let normalized = Self::normalized_admission_text(text);
+        let near_duplicate = {
+            let conn = self.db.lock();
+            Self::admission_near_duplicate_scan(&conn, &scope, &name, &normalized)
+                .map_err(StoreError::Admission)?
+        };
+        if let Some(hit) = near_duplicate {
+            if hit.exact || hit.similarity >= Self::ADMISSION_PREFILTER_DUPLICATE_THRESHOLD {
+                return Ok(ApprovedProposalAdmissionV1::Duplicate {
+                    existing_id: hit.existing_id,
+                });
+            }
+            return Ok(ApprovedProposalAdmissionV1::Conflict {
+                existing_id: hit.existing_id,
+            });
+        }
+        // try_put_* is the one governed Cortex admission path; its typed failure
+        // (embedding unavailable, durable write failed, …) propagates — nothing
+        // silently stays approved-and-unconsumed.
+        self.try_put_observed(
+            &name,
+            text,
+            &scope,
+            MemoryTier::Semantic,
+            &MemoryEventContext::new("proposal_admission"),
+        )
+        .map(|memory_id| ApprovedProposalAdmissionV1::Admitted { memory_id })
+        .map_err(StoreError::Admission)
     }
 
     /// Compatibility wrapper for older call sites. New service/CLI paths should use
@@ -7840,6 +8754,310 @@ fn keywords_of(goal: &str) -> Vec<String> {
         .collect()
 }
 
+/// Frozen interface 1 outcome vocabulary (dispatch packet): an approved proposal
+/// either admits to a new durable record, or resolves against an existing one —
+/// `duplicate` when the content already exists, `conflict` when the pre-filter
+/// found ambiguous near-duplicate content.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case")]
+pub enum ApprovedProposalAdmissionV1 {
+    Admitted { memory_id: String },
+    Duplicate { existing_id: String },
+    Conflict { existing_id: String },
+}
+
+/// Storage-layer failures that are not raw SQLite errors. Kept separate from
+/// `cortex_store::db::StoreError` (the observable-events writer) because this
+/// surface owns admission semantics, not event persistence.
+#[derive(Debug, thiserror::Error)]
+pub enum StoreError {
+    /// The admission write was refused. The message carries the typed
+    /// disposition (`duplicate`/`conflict`) and the existing record id when the
+    /// §16.3 pre-filter produced it.
+    #[error("admission refused: {0}")]
+    Admission(String),
+    /// The durable write itself failed.
+    #[error("durable write failed: {0}")]
+    Durable(String),
+}
+
+const CORTEX_BACKUP_SCHEMA_VERSION: &str = "membrane.cortex-backup.v1";
+
+/// One durable payload row in a §16.4 backup envelope. Column shape mirrors
+/// `memories`/`memory_quarantine` exactly so restore is a faithful reinsert.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CortexBackupRowV1 {
+    pub id: String,
+    pub tier: String,
+    pub content: String,
+    pub keywords: String,
+    pub score: f64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub access_count: i64,
+    pub embedding: Option<Vec<u8>>,
+    pub embedding_q: Option<Vec<u8>>,
+    pub scope_id: String,
+    pub inject_count: i64,
+    pub content_hash: Option<String>,
+    pub embed_model: Option<String>,
+    pub source_ids: String,
+    pub artifact_family: String,
+    pub producer: String,
+    pub record_type: String,
+    pub authority: String,
+    pub influence_class: String,
+    pub lifecycle_state: String,
+    pub effective_from_ms: Option<i64>,
+    pub effective_until_ms: Option<i64>,
+    pub expires_at_ms: Option<i64>,
+    pub review_after_ms: Option<i64>,
+    pub superseded_by: Option<String>,
+    pub priority_class: String,
+    pub confidence: Option<f64>,
+    pub confidence_basis: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CortexBackupLinkV1 {
+    pub src_id: String,
+    pub dst_slug: String,
+}
+
+/// One versioned, digest-sealed Cortex backup envelope.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CortexBackupV1 {
+    pub schema_version: String,
+    pub created_at: String,
+    pub embed_model: String,
+    pub memories: Vec<CortexBackupRowV1>,
+    pub quarantined: Vec<CortexBackupRowV1>,
+    pub links: Vec<CortexBackupLinkV1>,
+    pub payload_sha256: String,
+}
+
+fn backup_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackupRowV1> {
+    Ok(CortexBackupRowV1 {
+        id: row.get(0)?,
+        tier: row.get(1)?,
+        content: row.get(2)?,
+        keywords: row.get(3)?,
+        score: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+        access_count: row.get(7)?,
+        embedding: row.get(8)?,
+        embedding_q: row.get(9)?,
+        scope_id: row.get(10)?,
+        inject_count: row.get(11)?,
+        content_hash: row.get(12)?,
+        embed_model: row.get(13)?,
+        source_ids: row.get(14)?,
+        artifact_family: row.get(15)?,
+        producer: row.get(16)?,
+        record_type: row.get(17)?,
+        authority: row.get(18)?,
+        influence_class: row.get(19)?,
+        lifecycle_state: row.get(20)?,
+        effective_from_ms: row.get(21)?,
+        effective_until_ms: row.get(22)?,
+        expires_at_ms: row.get(23)?,
+        review_after_ms: row.get(24)?,
+        superseded_by: row.get(25)?,
+        priority_class: row.get(26)?,
+        confidence: row.get(27)?,
+        confidence_basis: row.get(28)?,
+    })
+}
+
+/// Canonical backup digest: the payload fields joined with explicit separators
+/// and hashed — restore refuses any envelope that does not reproduce it.
+fn cortex_backup_digest(
+    memories: &[CortexBackupRowV1],
+    quarantined: &[CortexBackupRowV1],
+    links: &[CortexBackupLinkV1],
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"membrane.cortex-backup.v1\0");
+    for section in [memories, quarantined] {
+        for row in section {
+            for field in [
+                &row.id,
+                &row.tier,
+                &row.content,
+                &row.keywords,
+                &row.created_at,
+                &row.updated_at,
+                &row.scope_id,
+                &row.source_ids,
+                &row.artifact_family,
+                &row.producer,
+                &row.record_type,
+                &row.authority,
+                &row.influence_class,
+                &row.lifecycle_state,
+                &row.priority_class,
+            ] {
+                hasher.update(field.as_bytes());
+                hasher.update([0u8]);
+            }
+            hasher.update(row.score.to_string().as_bytes());
+            hasher.update([0u8]);
+            hasher.update(row.access_count.to_string().as_bytes());
+            hasher.update([0u8]);
+            hasher.update(row.inject_count.to_string().as_bytes());
+            hasher.update([0u8]);
+            for bytes in [&row.embedding, &row.embedding_q] {
+                if let Some(bytes) = bytes {
+                    hasher.update(bytes);
+                }
+                hasher.update([0u8]);
+            }
+            for field in [
+                &row.content_hash,
+                &row.embed_model,
+                &row.superseded_by,
+                &row.confidence_basis,
+            ] {
+                if let Some(field) = field {
+                    hasher.update(field.as_bytes());
+                }
+                hasher.update([0u8]);
+            }
+            for field in [
+                row.effective_from_ms,
+                row.effective_until_ms,
+                row.expires_at_ms,
+                row.review_after_ms,
+            ] {
+                if let Some(field) = field {
+                    hasher.update(field.to_string().as_bytes());
+                }
+                hasher.update([0u8]);
+            }
+            if let Some(confidence) = row.confidence {
+                hasher.update(confidence.to_string().as_bytes());
+            }
+            hasher.update([0u8, 0u8]);
+        }
+        hasher.update([0u8, 1u8]);
+    }
+    for link in links {
+        hasher.update(link.src_id.as_bytes());
+        hasher.update([0u8]);
+        hasher.update(link.dst_slug.as_bytes());
+        hasher.update([0u8, 0u8]);
+    }
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+/// Reinsert one backed-up payload row. `quarantined` selects the destination
+/// table; both carry the same column shape.
+fn restore_backup_row(
+    tx: &rusqlite::Transaction<'_>,
+    row: &CortexBackupRowV1,
+    quarantined: bool,
+) -> Result<(), String> {
+    // `memory_quarantine` has no `artifact_family`/`producer`/`record_type`
+    // columns (see the backup-side SELECT above) — the INSERT column list
+    // and named-parameter set must both differ by target table, not just
+    // the literal SQL text.
+    if quarantined {
+        tx.execute(
+            "INSERT INTO memory_quarantine
+             (id, tier, content, keywords, score, created_at, updated_at, access_count,
+              embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
+              source_ids, authority, influence_class,
+              lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
+              review_after_ms, superseded_by, priority_class, confidence, confidence_basis)
+             VALUES
+              (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
+               :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
+               :source_ids, :authority, :influence_class,
+               :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
+               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis)",
+            rusqlite::named_params! {
+                ":id": row.id,
+                ":tier": row.tier,
+                ":content": row.content,
+                ":keywords": row.keywords,
+                ":score": row.score,
+                ":created_at": row.created_at,
+                ":updated_at": row.updated_at,
+                ":access_count": row.access_count,
+                ":embedding": row.embedding,
+                ":embedding_q": row.embedding_q,
+                ":scope_id": row.scope_id,
+                ":inject_count": row.inject_count,
+                ":content_hash": row.content_hash,
+                ":embed_model": row.embed_model,
+                ":source_ids": row.source_ids,
+                ":authority": row.authority,
+                ":influence_class": row.influence_class,
+                ":lifecycle_state": row.lifecycle_state,
+                ":effective_from_ms": row.effective_from_ms,
+                ":effective_until_ms": row.effective_until_ms,
+                ":expires_at_ms": row.expires_at_ms,
+                ":review_after_ms": row.review_after_ms,
+                ":superseded_by": row.superseded_by,
+                ":priority_class": row.priority_class,
+                ":confidence": row.confidence,
+                ":confidence_basis": row.confidence_basis,
+            },
+        )
+        .map_err(|error| format!("backup restore of {} failed: {error}", row.id))?;
+    } else {
+        tx.execute(
+            "INSERT INTO memories
+             (id, tier, content, keywords, score, created_at, updated_at, access_count,
+              embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
+              source_ids, artifact_family, producer, record_type, authority, influence_class,
+              lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
+              review_after_ms, superseded_by, priority_class, confidence, confidence_basis)
+             VALUES
+              (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
+               :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
+               :source_ids, :artifact_family, :producer, :record_type, :authority, :influence_class,
+               :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
+               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis)",
+            rusqlite::named_params! {
+                ":id": row.id,
+                ":tier": row.tier,
+                ":content": row.content,
+                ":keywords": row.keywords,
+                ":score": row.score,
+                ":created_at": row.created_at,
+                ":updated_at": row.updated_at,
+                ":access_count": row.access_count,
+                ":embedding": row.embedding,
+                ":embedding_q": row.embedding_q,
+                ":scope_id": row.scope_id,
+                ":inject_count": row.inject_count,
+                ":content_hash": row.content_hash,
+                ":embed_model": row.embed_model,
+                ":source_ids": row.source_ids,
+                ":artifact_family": row.artifact_family,
+                ":producer": row.producer,
+                ":record_type": row.record_type,
+                ":authority": row.authority,
+                ":influence_class": row.influence_class,
+                ":lifecycle_state": row.lifecycle_state,
+                ":effective_from_ms": row.effective_from_ms,
+                ":effective_until_ms": row.effective_until_ms,
+                ":expires_at_ms": row.expires_at_ms,
+                ":review_after_ms": row.review_after_ms,
+                ":superseded_by": row.superseded_by,
+                ":priority_class": row.priority_class,
+                ":confidence": row.confidence,
+                ":confidence_basis": row.confidence_basis,
+            },
+        )
+        .map_err(|error| format!("backup restore of {} failed: {error}", row.id))?;
+    }
+    Ok(())
+}
+
 fn sanitize_memory_id(value: &str) -> String {
     value
         .trim()
@@ -8407,15 +9625,22 @@ mod tests {
     #[test]
     fn relationship_graph_uses_embedding_neighbors_not_id_tokens() {
         let store = MemoryStore::new();
+        // Distinct (not identical) content so the §16.3 admission pre-filter
+        // never fires: high embedding-trigram similarity (one word differs
+        // out of a long shared sentence) but word-shingle Jaccard well below
+        // the 0.80 conflict floor, preserving this test's actual purpose —
+        // an edge from embedding similarity, not id-token overlap.
         store.put(
             "shared-alpha",
-            "deploy cloudflare worker production",
+            "the deployment team will deploy the cloudflare worker service into \
+             the production environment tonight after the change freeze ends",
             "global",
             MemoryTier::Semantic,
         );
         store.put(
             "different-beta",
-            "deploy cloudflare worker production",
+            "the deployment team will deploy the cloudflare gateway service into \
+             the production environment tonight after the change freeze ends",
             "global",
             MemoryTier::Semantic,
         );
@@ -10776,23 +12001,21 @@ mod tests {
         // ...but it survives, in full, in the reversible quarantine store,
         // tagged with the distinct duplicate reason.
         assert_eq!(m.quarantined_ids(), vec![b.clone()]);
-        let (content, reason): (String, String) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT content, reason FROM memory_quarantine WHERE id = ?1",
-                rusqlite::params![&b],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .expect("quarantined duplicate row must be complete, not deleted");
+        let (content, reason): (String, String) =
+            m.db.lock()
+                .query_row(
+                    "SELECT content, reason FROM memory_quarantine WHERE id = ?1",
+                    rusqlite::params![&b],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .expect("quarantined duplicate row must be complete, not deleted");
         assert_eq!(content, "Duplicate quarantine memory!");
         assert_eq!(reason, "duplicate_consolidated");
 
-        let tombstones: i64 = m
-            .db
-            .lock()
-            .query_row("SELECT COUNT(*) FROM deletions", [], |r| r.get(0))
-            .unwrap();
+        let tombstones: i64 =
+            m.db.lock()
+                .query_row("SELECT COUNT(*) FROM deletions", [], |r| r.get(0))
+                .unwrap();
         assert_eq!(
             tombstones, 0,
             "quarantining a duplicate must not emit a deletion tombstone"
@@ -10822,15 +12045,14 @@ mod tests {
             .unwrap();
 
         m.dream_now("2026-07-10").unwrap();
-        let (primary_content_before, primary_source_ids_before): (String, String) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT content, source_ids FROM memories WHERE id = ?1",
-                rusqlite::params![&a],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
+        let (primary_content_before, primary_source_ids_before): (String, String) =
+            m.db.lock()
+                .query_row(
+                    "SELECT content, source_ids FROM memories WHERE id = ?1",
+                    rusqlite::params![&a],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
 
         assert!(m.restore_quarantined(&b).unwrap());
 
@@ -10839,28 +12061,26 @@ mod tests {
             "restored id must leave quarantine"
         );
         assert!(m.entries(10).iter().any(|entry| entry.id == b));
-        let restored_content: String = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT content FROM memories WHERE id = ?1",
-                rusqlite::params![&b],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let restored_content: String =
+            m.db.lock()
+                .query_row(
+                    "SELECT content FROM memories WHERE id = ?1",
+                    rusqlite::params![&b],
+                    |r| r.get(0),
+                )
+                .unwrap();
         assert_eq!(restored_content, "Restorable duplicate memory!");
 
         // The restored row comes back as its OWN row: the primary's merge
         // (content, id, scope, source_ids) is unchanged by the restore.
-        let (primary_content_after, primary_source_ids_after): (String, String) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT content, source_ids FROM memories WHERE id = ?1",
-                rusqlite::params![&a],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
+        let (primary_content_after, primary_source_ids_after): (String, String) =
+            m.db.lock()
+                .query_row(
+                    "SELECT content, source_ids FROM memories WHERE id = ?1",
+                    rusqlite::params![&a],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
         assert_eq!(primary_content_after, primary_content_before);
         assert_eq!(primary_source_ids_after, primary_source_ids_before);
     }
@@ -10902,16 +12122,18 @@ mod tests {
         let restored = m
             .restore_quarantined(&b)
             .expect("restore must return a typed result, not error, on collision");
-        assert!(!restored, "restore must refuse to overwrite the colliding row");
-        let (content,): (String,) = m
-            .db
-            .lock()
-            .query_row(
-                "SELECT content FROM memories WHERE id = ?1",
-                rusqlite::params![&b],
-                |r| Ok((r.get(0)?,)),
-            )
-            .unwrap();
+        assert!(
+            !restored,
+            "restore must refuse to overwrite the colliding row"
+        );
+        let (content,): (String,) =
+            m.db.lock()
+                .query_row(
+                    "SELECT content FROM memories WHERE id = ?1",
+                    rusqlite::params![&b],
+                    |r| Ok((r.get(0)?,)),
+                )
+                .unwrap();
         assert_eq!(
             content, "A brand new unrelated row.",
             "the colliding row must survive untouched"

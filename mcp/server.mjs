@@ -2,7 +2,6 @@
 // Public Membrane MCP adapter. It deliberately exposes no raw memory CRUD surface.
 
 import { spawn } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -13,7 +12,7 @@ import { bindingFor } from "./project-registry.mjs";
 import { installationBindingFor, installationEnv } from "./installation-binding.mjs";
 import { buildRepositoryCatalog, hasExplicitChildGrant, resolveByAlias } from "./repository-catalog.mjs";
 import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
-import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
+import { eventDbFor, openSharedSqlite, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
@@ -130,7 +129,12 @@ function lifecycleReceipt(operation, status, durableId, eventId, readback) {
   };
 }
 function feedbackReadback(dbPath, eventId, candidateId, outcome, { source, verdictRef } = {}) {
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+  // §19: the read-only readback shares the native runtime's busy_timeout so a
+  // concurrent WAL writer never surfaces as an instant SQLITE_BUSY failure
+  // here. openSharedSqlite(readOnly) deliberately does not attempt
+  // journal-mode changes: WAL is a persistent property of the file set by the
+  // writers.
+  const db = openSharedSqlite(dbPath, { readOnly: true });
   try {
     const canonicalTrace = `trace-${createHash("sha256").update(eventId).digest("hex").slice(0, 32)}`;
     const row = db.prepare("SELECT trace_id, candidate_id, content_sha256, outcome, verified, verdict_ref FROM context_feedback WHERE trace_id = ? AND candidate_id = ?").get(canonicalTrace, candidateId);

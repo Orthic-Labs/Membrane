@@ -82,11 +82,15 @@ pub use federation::{
     FederationError, FederationErrorV1, FederationOmission, FederationOmissionV1,
     FederationProviderStatus, FederationProviderStatusV1, FederationRequest, FederationRequestV1,
     FederationResponse, FederationResponseV1, FederationStatus, FederationValidationError,
-    FreshnessSnapshotV1, ProviderContext, ProviderContextV1, ProviderDiagnosticsV1, ProviderId,
-    ProviderIdV1, ProviderKind, ProviderKindV1, ProviderOmissionV1, ProviderOutput,
-    ProviderOutputV1, ProviderStatusV1, ProviderWarningV1, ReasonCode, ReasonCodeV1,
-    WarningSeverity, FEDERATION_REQUEST_SCHEMA_VERSION, FEDERATION_RESPONSE_SCHEMA_VERSION,
-    PROVIDER_ORDER, PROVIDER_OUTPUT_SCHEMA_VERSION,
+    FreshnessSnapshotV1, InsufficientConfidenceLaneSearchV1, InsufficientConfidenceReasonV1,
+    InsufficientConfidenceStatusV1, InsufficientConfidenceV1, ProviderContext, ProviderContextV1,
+    ProviderDiagnosticsV1, ProviderId, ProviderIdV1, ProviderKind, ProviderKindV1,
+    ProviderOmissionV1, ProviderOutput, ProviderOutputV1, ProviderStatusV1, ProviderWarningV1,
+    PublicationFenceChangeV1, PublicationFenceStatusV1, PublicationFenceV1, ReasonCode,
+    ReasonCodeV1, WarningSeverity, FEDERATION_REQUEST_SCHEMA_VERSION,
+    FEDERATION_RESPONSE_SCHEMA_VERSION, INSUFFICIENT_CONFIDENCE_POLICY,
+    INSUFFICIENT_CONFIDENCE_SCHEMA_VERSION, PROVIDER_ORDER, PROVIDER_OUTPUT_SCHEMA_VERSION,
+    PUBLICATION_FENCE_POLICY, PUBLICATION_FENCE_SCHEMA_VERSION,
 };
 pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{

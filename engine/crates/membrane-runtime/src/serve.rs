@@ -8061,6 +8061,9 @@ mod tests {
     #[test]
     fn graph_route_exposes_real_local_nodes_and_embedding_edges() {
         let store = MemoryStore::new();
+        // Distinct (not identical) content so the §16.3 admission pre-filter
+        // never fires: embedding-similar (one word swapped), but not a
+        // near-duplicate by word-shingle Jaccard.
         store.put(
             "first",
             "deploy cloudflare worker",
@@ -8069,7 +8072,7 @@ mod tests {
         );
         store.put(
             "second",
-            "deploy cloudflare worker",
+            "deploy cloudflare service",
             "global",
             cortex_core::MemoryTier::Semantic,
         );

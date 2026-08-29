@@ -18,9 +18,8 @@ pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
 // tests/ledger_eval_v1_harness.rs, which produced the numbers the receipt's `runSha256` and
 // `resultSha256` are bound to). `ledger_eval_v1_receipt_matches_evidence_file` in
 // tests/ledger_indexing.rs asserts this constant stays in sync with that file.
-const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] = &[
-    "c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e",
-];
+const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] =
+    &["c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LedgerRecallMode {
@@ -607,6 +606,17 @@ fn stable_node_id(
     )
 }
 
+/// §18 section-identity unification: the structural span-hash fingerprint is
+/// a section's identity; slug/ordinal anchors are resolvable aliases, not
+/// identity. The node registry stores that fingerprint as `span_hash` per
+/// row; this helper is the one public extraction for callers that must name
+/// a section structurally (the read-side anchor form lives in
+/// [`crate::ledger::outline`], which resolves `span:<fingerprint>` and bare
+/// fingerprints against live bytes).
+pub fn section_fingerprint(span_hash: &str) -> &str {
+    span_hash
+}
+
 fn ast_node_kind(value: &NodeValue) -> Option<&'static str> {
     match value {
         NodeValue::Paragraph => Some("paragraph"),
@@ -694,7 +704,9 @@ mod trusted_receipt_tests {
         let recorded_receipt_sha256 = value
             .pointer("/evaluation/qualificationReceipt/receiptSha256")
             .and_then(|v| v.as_str())
-            .expect("ledger-metrics.json must record evaluation.qualificationReceipt.receiptSha256");
+            .expect(
+                "ledger-metrics.json must record evaluation.qualificationReceipt.receiptSha256",
+            );
         assert!(
             TRUSTED_LEDGER_FTS_RECEIPTS.contains(&recorded_receipt_sha256),
             "recorded receiptSha256 {recorded_receipt_sha256} is not in TRUSTED_LEDGER_FTS_RECEIPTS"
@@ -704,6 +716,84 @@ mod trusted_receipt_tests {
             1,
             "allowlist should contain exactly the one receipt recorded in ledger-metrics.json; \
              update this test if a second receipt is deliberately added"
+        );
+    }
+}
+
+#[cfg(test)]
+mod section_identity_tests {
+    /// §18 — the index layer's structural fingerprint and the read layer's
+    /// span anchor name the same evidence: the section's exact span bytes.
+    /// Alias (`sec:<slug>:<ordinal>`) reads stay unchanged; fingerprint reads
+    /// resolve to the identical section.
+    use super::section_fingerprint;
+    use crate::ledger::outline::{read_section, span_anchor, DocReadError};
+
+    const DOC: &str = "# Intro\n\nintro paragraph with content.\n\n## Detail\n\ndetail section with specific wording.\n";
+
+    #[test]
+    fn index_span_hash_is_the_section_identity_for_reads() {
+        let hash = crate::ledger::outline::hash(DOC);
+        let alias_read = read_section(
+            "doc://repo/worktree/guide.md",
+            DOC,
+            "sec:detail:1",
+            &hash,
+            12_000,
+        )
+        .expect("alias read");
+        // The fingerprint the index seals on the node row is exactly what the
+        // reader accepts as the structural identity anchor.
+        let fingerprint = section_fingerprint(&alias_read.span.span_hash);
+        let identity_read = read_section(
+            "doc://repo/worktree/guide.md",
+            DOC,
+            &span_anchor(fingerprint),
+            &hash,
+            12_000,
+        )
+        .expect("fingerprint read");
+        assert_eq!(identity_read.anchor_id, "sec:detail:1");
+        assert_eq!(identity_read.span.span_hash, fingerprint);
+        assert_eq!(identity_read.content, alias_read.content);
+    }
+
+    #[test]
+    fn alias_semantics_are_untouched() {
+        let hash = crate::ledger::outline::hash(DOC);
+        assert_eq!(
+            read_section(
+                "doc://repo/worktree/guide.md",
+                DOC,
+                "sec:intro:1",
+                &hash,
+                12_000,
+            )
+            .expect("intro read")
+            .anchor_id,
+            "sec:intro:1"
+        );
+        assert_eq!(
+            read_section(
+                "doc://repo/worktree/guide.md",
+                DOC,
+                "sec:intro:1",
+                "sha256:deadbeef",
+                12_000,
+            )
+            .err(),
+            Some(DocReadError::SourceChanged)
+        );
+        assert_eq!(
+            read_section(
+                "doc://repo/worktree/guide.md",
+                DOC,
+                "sec:absent:7",
+                &hash,
+                12_000,
+            )
+            .err(),
+            Some(DocReadError::Relocated)
         );
     }
 }

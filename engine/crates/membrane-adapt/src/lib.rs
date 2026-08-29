@@ -21,6 +21,7 @@
 
 pub mod adaptive;
 pub mod admission;
+pub mod attribution;
 pub mod authority;
 pub mod benchmark;
 pub mod canonical;

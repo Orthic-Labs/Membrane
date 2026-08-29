@@ -4,6 +4,13 @@
 //! request-bound contract. Candidate source class/ref and lane status are the
 //! only observations used here; missing planner requirements stay typed
 //! unknown and never trigger a fabricated retry.
+//!
+//! First-party corrective retrieval (pending §13.1/§13.2): the first-party
+//! caller (the native `membrane_context` tool) authors the contract and
+//! transports it unchanged; the engine re-evaluates after the single
+//! alternate-lane corrective stage and republishes a typed receipt. The
+//! trigger provider is never retried, and the terminal second insufficiency
+//! stays typed instead of repeating the request.
 
 use crate::normalize::NormalizedProviderOutput;
 use membrane_protocol::{
@@ -19,6 +26,11 @@ pub const SUFFICIENCY_CONTRACT_SCHEMA_VERSION: u32 = 1;
 pub const SUFFICIENCY_POLICY: &str = "membrane-sufficiency-v1";
 pub const MAX_SUFFICIENCY_REQUIREMENTS: usize = 64;
 pub const MAX_CORRECTIVE_STAGES: u32 = 1;
+
+/// Corrective retrieval policy invariant (pending §13.1): the trigger
+/// provider is never retried — the single corrective action targets one
+/// acceptable alternate lane, or it is terminal and typed.
+pub const PROVIDER_NOT_RETRIED_AFTER_TRIGGER_V1: &str = "provider_not_retried_after_trigger_v1";
 
 fn default_max_corrective_stages() -> u32 {
     MAX_CORRECTIVE_STAGES
@@ -134,6 +146,28 @@ impl SufficiencyContractV1 {
             }
         }
         Ok(())
+    }
+
+    /// Choose one acceptable alternate target lane for the bounded
+    /// corrective action, or `None` when no acceptable alternate remains.
+    /// The trigger provider is never selected here (pending §13.1) — a
+    /// missing alternate is terminal, not a same-provider retry.
+    pub fn alternate_target(
+        &self,
+        trigger: ProviderId,
+        requirement_id: &str,
+        expected_providers: &[ProviderId],
+    ) -> Option<ProviderId> {
+        let requirement = self
+            .requirements
+            .iter()
+            .find(|candidate| candidate.id == requirement_id)?;
+        let acceptable: &[ProviderId] = if requirement.acceptable_providers.is_empty() {
+            expected_providers
+        } else {
+            &requirement.acceptable_providers
+        };
+        alternate_provider_for_requirement(expected_providers, trigger, acceptable)
     }
 }
 
@@ -318,6 +352,43 @@ impl CorrectiveRetrievalReceiptV1 {
             outcome: outcome.into(),
         }
     }
+}
+
+impl SufficiencyContractV1 {
+    /// Run the deterministic ingestion pre-filter on an explicit contract
+    /// before the corrective stage may consume it: shape validation, then a
+    /// specificity gate. Never calls a model; an ambiguous contract surfaces
+    /// as a typed acceptance outcome, never as silently ignored requirements.
+    pub fn ingest(&self) -> Result<SufficiencyContractIngestV1, SufficiencyContractError> {
+        // Specificity gate first, then shape validation, so an empty
+        // requirement set is a typed acceptance outcome rather than a
+        // generic validation error. No model call on this path.
+        if self.requirements.is_empty() {
+            return Ok(SufficiencyContractIngestV1 {
+                contract: self.clone(),
+                outcome: ContractAcceptanceV1::InsufficientRequirements,
+            });
+        }
+        self.validate()?;
+        Ok(SufficiencyContractIngestV1 {
+            contract: self.clone(),
+            outcome: ContractAcceptanceV1::Accepted,
+        })
+    }
+}
+
+/// Typed outcome of the deterministic contract ingestion pre-filter. Every
+/// rejected contract is observable; nothing is silently dropped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SufficiencyContractIngestV1 {
+    pub contract: SufficiencyContractV1,
+    pub outcome: ContractAcceptanceV1,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContractAcceptanceV1 {
+    Accepted,
+    InsufficientRequirements,
 }
 
 /// Evaluate planner requirements against exactly the normalized provider

@@ -20,6 +20,9 @@ public final class DaemonSupervisor: ObservableObject {
     private var endpoint: String?
     private var bearerToken: String?
     private var restartWork: DispatchWorkItem?
+    private var lifetimeAgentLabel: String?
+    private var lifetimeAgentPlist: URL?
+    private var lifetimePidFile: URL?
     private let workspaceRoot: String
     private let daemonPath: URL
     private let dashboardPath: URL?
@@ -51,6 +54,16 @@ public final class DaemonSupervisor: ObservableObject {
         do { try child.run() }
         catch { reducer.failed(reason: "daemon_spawn_failed"); publish(); return }
         daemon = child
+        do {
+            if lifetimeAgentLabel == nil { try installLifetimeGuarantee() }
+            try publishDaemonPid(child.processIdentifier)
+        } catch {
+            // Windows refuses to launch outside its kill-on-close job object; macOS
+            // refuses to launch without the launchd kill guarantee for the same reason.
+            reducer.failed(reason: "daemon_lifetime_guarantee_unavailable"); publish()
+            terminateCurrent()
+            return
+        }
         controlWriter = control.fileHandleForWriting
         eventReader = events.fileHandleForReading
         eventReader?.readabilityHandler = { [weak self] handle in
@@ -87,9 +100,16 @@ public final class DaemonSupervisor: ObservableObject {
     }
 
     public func drainAndQuit(completion: @escaping () -> Void) {
-        guard let daemon else { completion(); return }
+        guard let daemon else {
+            removeLifetimeGuarantee()
+            completion(); return
+        }
         reducer.drain(); publish()
         try? send(CommandFrame(sequence: (eventSequence ?? 1) + 1))
+        let finish = { [weak self] in
+            self?.removeLifetimeGuarantee()
+            completion()
+        }
         var completed = false
         let timeout = DispatchWorkItem { [weak self, weak daemon] in
             Task { @MainActor in
@@ -98,7 +118,7 @@ public final class DaemonSupervisor: ObservableObject {
                 if let self, let daemon, daemon.isRunning {
                     self.reducer.failed(reason: "daemon_drain_timeout"); self.publish(); self.terminateCurrent()
                 }
-                completion()
+                finish()
             }
         }
         drainTimeout = timeout
@@ -107,7 +127,7 @@ public final class DaemonSupervisor: ObservableObject {
             daemon.waitUntilExit()
             Task { @MainActor in
                 guard !completed else { return }
-                completed = true; timeout.cancel(); completion()
+                completed = true; timeout.cancel(); finish()
             }
         }
     }
@@ -163,6 +183,9 @@ public final class DaemonSupervisor: ObservableObject {
         }
         publish(); closeCurrentHandles()
         daemon = nil
+        // The supervised daemon is gone: its published pid must not outlive it,
+        // so the kill guarantee can never act on a recycled pid.
+        if let lifetimePidFile { try? FileManager.default.removeItem(at: lifetimePidFile) }
     }
 
     private func scheduleAutomaticRestart() {
@@ -183,6 +206,89 @@ public final class DaemonSupervisor: ObservableObject {
         try? controlWriter?.close(); controlWriter = nil
         exitSource?.cancel(); exitSource = nil
         if kqueueFD >= 0 { close(kqueueFD); kqueueFD = -1 }
+    }
+
+    // launchd kill guarantee — the macOS counterpart of the Windows
+    // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE coupling. A per-tray launchd agent
+    // (KeepAlive, gui domain of this tray session) waits for this tray process
+    // to die, then terminates the last published daemon pid and removes itself.
+    // Unlike the Windows job object this is poll-based (0.2s) and installed just
+    // after spawn: a tray crash inside that install window is covered only if
+    // the daemon honours the LaunchFrame parentPid it receives.
+    private func installLifetimeGuarantee() throws {
+        let trayPid = getpid()
+        let uid = getuid()
+        let label = "app.membrane.tray.kill-guarantee.\(trayPid)"
+        let pidFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("membrane-tray-daemon-\(trayPid).pid")
+        let script = Self.lifetimeGuaranteeScript(trayPid: trayPid, pidFile: pidFile.path,
+                                                  label: label, uid: uid)
+        let plist: [String: Any] = [
+            "Label": label,
+            "ProgramArguments": ["/bin/sh", "-c", script],
+            "KeepAlive": true,
+            "RunAtLoad": true,
+            "ProcessType": "Background",
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        let agentsDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
+        let plistURL = agentsDirectory.appendingPathComponent("\(label).plist")
+        try FileManager.default.createDirectory(at: agentsDirectory, withIntermediateDirectories: true)
+        try data.write(to: plistURL)
+        try? Self.launchctl(["bootout", "gui/\(uid)/\(label)"]) // clear a stale instance before re-bootstrap
+        try Self.launchctl(["bootstrap", "gui/\(uid)", plistURL.path])
+        lifetimeAgentLabel = label
+        lifetimeAgentPlist = plistURL
+        lifetimePidFile = pidFile
+    }
+
+    private func publishDaemonPid(_ pid: Int32) throws {
+        guard let pidFile = lifetimePidFile else {
+            throw NSError(domain: "DaemonSupervisor", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "lifetime guarantee not installed"])
+        }
+        try Data("\(pid)\n".utf8).write(to: pidFile)
+    }
+
+    /// Best-effort removal once the guarantee is discharged (drained daemon, tray
+    /// exiting): a leftover agent self-cleans anyway — it bootouts itself once the
+    /// pid file it reads is gone or names a dead process.
+    private func removeLifetimeGuarantee() {
+        guard let label = lifetimeAgentLabel else { return }
+        try? Self.launchctl(["bootout", "gui/\(getuid())/\(label)"])
+        if let plist = lifetimeAgentPlist { try? FileManager.default.removeItem(at: plist) }
+        if let pidFile = lifetimePidFile { try? FileManager.default.removeItem(at: pidFile) }
+        lifetimeAgentLabel = nil
+        lifetimeAgentPlist = nil
+        lifetimePidFile = nil
+    }
+
+    private static func lifetimeGuaranteeScript(trayPid: Int32, pidFile: String, label: String, uid: UInt32) -> String {
+        """
+        while kill -0 \(trayPid) 2>/dev/null; do sleep 0.2; done
+        daemon=$(cat '\(pidFile)' 2>/dev/null)
+        if [ -n "$daemon" ]; then
+          kill "$daemon" 2>/dev/null
+          sleep 2
+          kill -9 "$daemon" 2>/dev/null
+        fi
+        /bin/launchctl bootout gui/\(uid)/\(label) 2>/dev/null
+        """
+    }
+
+    private static func launchctl(_ arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw NSError(domain: "DaemonSupervisor.launchctl", code: Int(process.terminationStatus),
+                          userInfo: [NSLocalizedDescriptionKey: "launchctl \(arguments.first ?? "") failed"])
+        }
     }
 
     private func publish() { observation = reducer.observation }

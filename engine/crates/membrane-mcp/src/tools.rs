@@ -37,7 +37,7 @@ fn schema(name: &str) -> Value {
     let (required, properties) = match name {
         "membrane_context" => (
             vec!["task", "repository", "caller"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1}}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"}}),
         ),
         "membrane_source_read" => (
             vec![

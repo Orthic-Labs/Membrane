@@ -21,8 +21,10 @@ use crate::request::{NormalizedFederationRequest, RequestValidationError};
 use crate::root::{FilesystemRootSource, RootPathSource};
 use crate::scheduler::{schedule_providers, ProviderTask, ScheduleResult, SchedulerPolicy};
 use membrane_protocol::{
-    FederationRequestV1, FederationResponseV1, ProviderDiagnosticsV1, ProviderId,
-    ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1, ReasonCode, WarningSeverity,
+    FederationRequestV1, FederationResponseV1, InsufficientConfidenceLaneSearchV1,
+    InsufficientConfidenceReasonV1, InsufficientConfidenceStatusV1, InsufficientConfidenceV1,
+    ProviderDiagnosticsV1, ProviderId, ProviderOmissionV1, ProviderOutputV1, ProviderWarningV1,
+    PublicationFenceV1, ReasonCode, WarningSeverity,
 };
 use membrane_provider_sdk::{ProviderContext, SourceQuery, SourceSet};
 use std::collections::BTreeMap;
@@ -47,6 +49,8 @@ pub enum FederationEngineError {
     Freshness(String),
     #[error("scope grant binding failed: {0}")]
     Scope(String),
+    #[error("publication fence refused emission: {0}")]
+    Fence(String),
     #[error("federation internal failure: {0}")]
     Internal(String),
     #[error("federation merge failed: {0}")]
@@ -215,6 +219,14 @@ impl FederationEngine {
         let started = Instant::now();
         let root_source = RootSourceRef(self.root_source.as_ref());
         let normalized = NormalizedFederationRequest::normalize(request, &root_source)?;
+        // Publication fence (pending §17.2): re-validate grant identity,
+        // policy epoch and revocation before grant binding. The engine has
+        // no post-fusion grant source to consult, so the request envelope
+        // must carry the caller's post-fusion re-check; a tripped fence is
+        // refused here and the packet authorized under the superseded grant
+        // is never emitted. A held fence is stamped into the response for
+        // downstream publication seams to preserve.
+        let publication_fence = validated_fence_for_request(request)?;
         let query = source_query(&normalized);
 
         // Owner bindings happen before any provider task is created.
@@ -428,6 +440,22 @@ impl FederationEngine {
             "correctiveRetrieval".to_owned(),
             serde_json::to_value(corrective_receipt).unwrap_or(serde_json::Value::Null),
         );
+        if let Some(fence) = publication_fence {
+            response.extensions.insert(
+                "publicationFence".to_owned(),
+                serde_json::to_value(fence).unwrap_or(serde_json::Value::Null),
+            );
+        }
+        // Typed abstention (pending §17.1): when every active lane searched
+        // and nothing was admitted, publish the typed no-answer envelope
+        // instead of an empty/below-floor candidate list.
+        if response.candidates.is_empty() {
+            response.extensions.insert(
+                "insufficientConfidence".to_owned(),
+                serde_json::to_value(insufficient_confidence_from_merge(&merged, &active))
+                    .unwrap_or(serde_json::Value::Null),
+            );
+        }
         Ok(response)
     }
 
@@ -572,6 +600,67 @@ fn source_query(request: &NormalizedFederationRequest) -> SourceQuery {
             .iter()
             .map(|anchor| anchor.value.clone())
             .collect(),
+    }
+}
+
+/// Read the caller's post-fusion publication fence verdict (pending §17.2)
+/// from the extensible request envelope. A tripped fence is a typed engine
+/// error — the stale-authorized packet is never emitted; an absent fence
+/// means no grant was bound and the fence is a no-op, never a bypass.
+fn validated_fence_for_request(
+    request: &FederationRequestV1,
+) -> Result<Option<PublicationFenceV1>, FederationEngineError> {
+    let Some(value) = request.extensions.get("publicationFence") else {
+        return Ok(None);
+    };
+    let fence = serde_json::from_value::<PublicationFenceV1>(value.clone()).map_err(|error| {
+        FederationEngineError::Fence(format!("invalid publication fence receipt: {error}"))
+    })?;
+    match fence.status {
+        membrane_protocol::PublicationFenceStatusV1::Held => Ok(Some(fence)),
+        membrane_protocol::PublicationFenceStatusV1::PolicyChanged => {
+            Err(FederationEngineError::Fence("policy_changed".to_owned()))
+        }
+    }
+}
+
+/// Typed abstention (pending §17.1) built from content-free merge
+/// accounting: per-lane searched counts come from expected/observed lane
+/// status, never from candidate text.
+fn insufficient_confidence_from_merge(
+    merged: &MergeResult,
+    active: &[ProviderId],
+) -> InsufficientConfidenceV1 {
+    let searched = active
+        .iter()
+        .copied()
+        .map(|provider| InsufficientConfidenceLaneSearchV1 {
+            lane: provider.as_str().to_owned(),
+            searched: merged
+                .providers
+                .iter()
+                .filter(|lane| lane.provider == provider)
+                .map(|lane| lane.candidates.len() as u32)
+                .sum(),
+        })
+        .collect();
+    let expected_active = active.len();
+    let observed = merged.providers.len();
+    let reason = if expected_active == 0 {
+        InsufficientConfidenceReasonV1::NoCandidates
+    } else if observed < expected_active {
+        // At least one expected lane never produced an observation.
+        InsufficientConfidenceReasonV1::NoAuthorizedCandidateAboveThreshold
+    } else {
+        InsufficientConfidenceReasonV1::EvidenceFloor
+    };
+    InsufficientConfidenceV1 {
+        status: InsufficientConfidenceStatusV1::InsufficientConfidence,
+        schema_version: membrane_protocol::INSUFFICIENT_CONFIDENCE_SCHEMA_VERSION,
+        policy: membrane_protocol::INSUFFICIENT_CONFIDENCE_POLICY.to_owned(),
+        searched,
+        reason,
+        suggested_action: InsufficientConfidenceV1::suggested_action_for(reason).map(str::to_owned),
     }
 }
 

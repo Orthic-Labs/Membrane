@@ -62,8 +62,9 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn insert(store: &MemoryStore, id: &str, scope: &str) {
+    let content = format!("synthetic P2 fixture {id}");
     store
-        .try_put(id, "synthetic P2 fixture", scope, MemoryTier::Semantic)
+        .try_put(id, &content, scope, MemoryTier::Semantic)
         .unwrap();
 }
 

@@ -110,6 +110,54 @@ impl DocReadError {
     }
 }
 
+/// §18 section-identity unification: the structural span-hash fingerprint
+/// (the same evidence the node index seals into `ledger_nodes.span_hash` /
+/// `stable_node_id`) is a section's identity; the `sec:<slug>:<ordinal>`
+/// form is a resolvable human alias, not identity. A read may resolve by
+/// alias or by one of these fingerprint anchors:
+///
+/// * `span:<64 hex>` — the explicit span-fingerprint anchor form;
+/// * a bare 64-hex span fingerprint.
+///
+/// A `ledger.node:<hex>` registry-bound node id is NOT accepted at read
+/// time: it binds the registry's document identity and parent node id,
+/// which the reader cannot verify against live bytes, so it is refused
+/// typed (`Relocated`) rather than reinterpreted.
+pub const SPAN_ANCHOR_PREFIX: &str = "span:";
+
+/// The span-fingerprint anchor for one section's `span_hash`.
+pub fn span_anchor(span_hash: &str) -> String {
+    format!("{SPAN_ANCHOR_PREFIX}{span_hash}")
+}
+
+/// Extract a span fingerprint from an anchor when the anchor carries one
+/// (`span:<64hex>` or a bare 64-hex fingerprint). Aliases yield `None`.
+fn span_fingerprint_anchor(anchor: &str) -> Option<&str> {
+    let is_fingerprint =
+        |value: &str| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if let Some(fingerprint) = anchor.strip_prefix(SPAN_ANCHOR_PREFIX) {
+        return is_fingerprint(fingerprint).then_some(fingerprint);
+    }
+    is_fingerprint(anchor).then_some(anchor)
+}
+
+/// Resolve a section by alias first (exact `sec:<slug>:<ordinal>`), then by
+/// structural span fingerprint. Fingerprint ties (identical span bytes in
+/// one document) resolve deterministically to the first section in document
+/// order — the same positional discipline the ordinal alias encodes.
+fn resolve_section_index(sections: &[DocSectionV1], anchor: &str) -> Option<usize> {
+    if let Some(index) = sections
+        .iter()
+        .position(|section| section.anchor_id == anchor)
+    {
+        return Some(index);
+    }
+    let fingerprint = span_fingerprint_anchor(anchor)?;
+    sections
+        .iter()
+        .position(|section| section.span_hash == fingerprint)
+}
+
 pub fn read_section(
     source_ref: &str,
     markdown: &str,
@@ -133,15 +181,11 @@ pub fn read_section_with_cursor(
     if outline.content_hash != expected_hash {
         return Err(DocReadError::SourceChanged);
     }
-    let index = outline
-        .sections
-        .iter()
-        .position(|section| section.anchor_id == anchor)
-        .ok_or(DocReadError::Relocated)?;
+    let index = resolve_section_index(&outline.sections, anchor).ok_or(DocReadError::Relocated)?;
     let section = &outline.sections[index];
     let full = &markdown[section.start_byte..section.end_byte];
     let start = continuation_cursor
-        .map(|cursor| parse_cursor(cursor, anchor, full))
+        .map(|cursor| parse_cursor(cursor, section, full))
         .transpose()?
         .unwrap_or(0);
     let end = start + utf8_prefix_len(&full[start..], max_bytes);
@@ -418,7 +462,7 @@ fn byte_at_line(starts: &[usize], line: usize, fallback: usize) -> usize {
 fn line_for_byte(starts: &[usize], byte: usize) -> usize {
     starts.partition_point(|start| *start <= byte).max(1)
 }
-fn hash(text: &str) -> String {
+pub(crate) fn hash(text: &str) -> String {
     hex::encode(Sha256::digest(text.as_bytes()))
 }
 fn slugify(text: &str) -> String {
@@ -438,9 +482,16 @@ fn slugify(text: &str) -> String {
     }
 }
 
-fn parse_cursor(cursor: &str, anchor: &str, content: &str) -> Result<usize, DocReadError> {
+fn parse_cursor(
+    cursor: &str,
+    section: &DocSectionV1,
+    content: &str,
+) -> Result<usize, DocReadError> {
     let (cursor_anchor, offset) = cursor.rsplit_once(':').ok_or(DocReadError::Relocated)?;
-    if cursor_anchor != anchor {
+    // Continuation cursors mint the section's canonical alias, so a read
+    // resolved by span fingerprint continues against the same section via
+    // its alias — alias and identity name the same section.
+    if cursor_anchor != section.anchor_id {
         return Err(DocReadError::Relocated);
     }
     let offset = offset
@@ -484,4 +535,118 @@ fn utf8_prefix_len(content: &str, max_bytes: usize) -> usize {
         .last()
         .map(|(offset, character)| offset + character.len_utf8())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod identity_tests {
+    use super::*;
+
+    const DOC: &str = "# Alpha\n\nalpha body.\n\n## Beta\n\nbeta body with distinct words.\n\n# Alpha\n\nsecond alpha body.\n";
+
+    fn read(anchor: &str, hash: &str) -> Result<DocReadV1, DocReadError> {
+        read_section("doc://repo/worktree/x.md", DOC, anchor, hash, 12_000)
+    }
+
+    fn read_with_limit(anchor: &str, max_bytes: usize) -> Result<DocReadV1, DocReadError> {
+        read_section(
+            "doc://repo/worktree/x.md",
+            DOC,
+            anchor,
+            &hash(DOC),
+            max_bytes,
+        )
+    }
+
+    fn doc_hash() -> String {
+        hash(DOC)
+    }
+
+    #[test]
+    fn span_fingerprint_resolves_the_same_section_as_the_alias() {
+        let expected = read("sec:beta:1", &doc_hash()).expect("alias read");
+        let by_fingerprint =
+            read(&span_anchor(&expected.span.span_hash), &doc_hash()).expect("fingerprint read");
+        assert_eq!(by_fingerprint.anchor_id, expected.anchor_id);
+        assert_eq!(by_fingerprint.content, expected.content);
+        assert_eq!(by_fingerprint.span.span_hash, expected.span.span_hash);
+    }
+
+    #[test]
+    fn bare_fingerprint_is_also_an_identity_anchor() {
+        let expected = read("sec:alpha:1", &doc_hash()).expect("alias read");
+        let bare = read(&expected.span.span_hash, &doc_hash()).expect("bare fingerprint read");
+        assert_eq!(bare.anchor_id, "sec:alpha:1");
+    }
+
+    #[test]
+    fn duplicate_heading_sections_keep_distinct_aliases_but_resolve_by_span() {
+        // Two `# Alpha` sections: aliases `sec:alpha:1` / `sec:alpha:2` are
+        // positions, not identity; their span fingerprints differ.
+        let first = read("sec:alpha:1", &doc_hash()).expect("first alpha");
+        let second = read("sec:alpha:2", &doc_hash()).expect("second alpha");
+        assert_ne!(first.span.span_hash, second.span.span_hash);
+        assert_ne!(first.content, second.content);
+        let resolved = read(&span_anchor(&second.span.span_hash), &doc_hash()).expect("span read");
+        assert_eq!(resolved.anchor_id, "sec:alpha:2");
+        assert_eq!(resolved.content, second.content);
+    }
+
+    #[test]
+    fn unknown_fingerprint_and_registry_node_ids_are_refused_typed() {
+        // `DocReadV1` carries no `PartialEq`, so the typed error is compared
+        // through `Result::err` instead of the whole read outcome.
+        assert_eq!(
+            read(&span_anchor(&"0".repeat(64)), &doc_hash()).err(),
+            Some(DocReadError::Relocated),
+        );
+        // `ledger.node:<hex>` binds registry identity the reader cannot verify
+        // against live bytes; it is never silently reinterpreted.
+        assert_eq!(
+            read(&format!("ledger.node:{}", "a".repeat(64)), &doc_hash()).err(),
+            Some(DocReadError::Relocated),
+        );
+    }
+
+    #[test]
+    fn alias_resolution_is_unchanged_and_hash_mismatch_still_fails_closed() {
+        let read_ok = read("sec:alpha:1", &doc_hash()).expect("alias read");
+        assert_eq!(read_ok.anchor_id, "sec:alpha:1");
+        assert_eq!(
+            read("sec:alpha:1", "sha256:deadbeef").err(),
+            Some(DocReadError::SourceChanged)
+        );
+        assert_eq!(
+            read("sec:missing:9", &doc_hash()).err(),
+            Some(DocReadError::Relocated)
+        );
+    }
+
+    #[test]
+    fn continuation_from_a_fingerprint_read_carries_the_canonical_alias() {
+        let expected = read("sec:beta:1", &doc_hash()).expect("alias read");
+        let fingerprint_read =
+            read_with_limit(&span_anchor(&expected.span.span_hash), 24).expect("span read");
+        assert!(
+            fingerprint_read.truncated,
+            "24-byte cap truncates this section"
+        );
+        let continuation = fingerprint_read
+            .continuation_cursor
+            .expect("truncated read carries a cursor");
+        assert!(
+            continuation.starts_with("sec:beta:1:"),
+            "cursor mints the canonical alias, got {continuation}"
+        );
+        // The cursor continues the same section when passed with its alias.
+        let continued = read_section_with_cursor(
+            "doc://repo/worktree/x.md",
+            DOC,
+            "sec:beta:1",
+            &doc_hash(),
+            12_000,
+            Some(&continuation),
+        )
+        .expect("continuation resolves");
+        assert_eq!(continued.anchor_id, "sec:beta:1");
+    }
 }

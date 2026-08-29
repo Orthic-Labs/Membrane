@@ -102,6 +102,20 @@ impl InterventionTarget {
             Self::DocumentationPolicy,
         ]
     }
+
+    /// Mutable instruction surfaces per pending doc §2.5: proposals on these
+    /// targets are not actionable until they reference a mutation-eligible
+    /// attribution. Additive `guard`/`evaluator` targets are excluded —
+    /// they are informed by attribution, not blocked by it.
+    pub const fn is_mutable_instruction_surface(self) -> bool {
+        matches!(
+            self,
+            Self::SkillOrProcedure
+                | Self::SystemPrompt
+                | Self::ToolDescription
+                | Self::DocumentationPolicy
+        )
+    }
 }
 
 /// Canonical output kind consumed by host variant generation. The kind names
@@ -671,6 +685,55 @@ pub fn seal_actionable(
         at,
     )
     .map_err(RemediationError::Seal)
+}
+
+/// Consumption gate for host variant generation (H7). A sealed proposal
+/// targeting a mutable instruction surface is not consumable until it is
+/// paired with a mutation-eligible attribution bound to the same target and
+/// to the surface version the caller examined (`examined_surface_digest`).
+/// Additive guard/evaluator targets pass without an attribution. The gate
+/// opens no path by itself: every existing proposal, review, precision, and
+/// admission gate still applies downstream.
+pub fn consumable_for_variant_generation(
+    proposal: &SealedRemediationProposalV1,
+    attribution: Option<&crate::attribution::InterventionAttributionV1>,
+    examined_surface_digest: Option<&str>,
+) -> Result<(), crate::attribution::AttributionGateError> {
+    use crate::attribution::AttributionGateError;
+
+    // Structural validity of the proposal itself; digests are checked, but
+    // the attribution gate is the only new authority-relevant condition.
+    proposal
+        .verify()
+        .map_err(AttributionGateError::InvalidProposal)?;
+    let target = parse_target(&proposal.payload.intervention_target)
+        .ok_or(RemediationSealError::InvalidInterventionTarget)
+        .map_err(AttributionGateError::InvalidProposal)?;
+    if !target.is_mutable_instruction_surface() {
+        return Ok(());
+    }
+    let Some(attribution) = attribution else {
+        return Err(AttributionGateError::AttributionRequired { target });
+    };
+    if attribution.candidate_target != target {
+        return Err(AttributionGateError::AttributionRequired { target });
+    }
+    if examined_surface_digest.is_none() {
+        // The consumer must present the live surface digest; without it
+        // staleness cannot be disproven, so adoption fails typed instead of
+        // passing on an unverifiable claim.
+        return Err(AttributionGateError::NotMutationEligible(
+            crate::attribution::MutationIneligibility::SurfaceDigestUnavailable,
+        ));
+    }
+    attribution
+        .verify()
+        .map_err(AttributionGateError::InvalidAttribution)?;
+    // Adoption failures surface as the typed ineligibility reason so the
+    // caller can rebase and re-derive instead of retrying blind.
+    attribution
+        .confirm_adoption(examined_surface_digest)
+        .map_err(AttributionGateError::NotMutationEligible)
 }
 
 pub const REVIEW_REMEDIATION_EFFECT_BOUNDARY: &str = "requires_human_review";

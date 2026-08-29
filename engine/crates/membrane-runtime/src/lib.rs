@@ -5,13 +5,14 @@
 pub mod admission_producer;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
+pub mod authorization;
 pub mod background_review;
 pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
-pub mod cortex_relevance_spotcheck;
 pub mod code_batch;
+pub mod cortex_relevance_spotcheck;
 pub mod delivery_trace_view;
 pub mod diagnostic_bundle;
 pub mod digest;
@@ -59,6 +60,11 @@ pub use provenance::{
 pub mod push;
 pub mod working_context;
 
+pub use authorization::{
+    authorize as authorize_native_request, intersect_authority, permits_level, AuthorityLevel,
+    AuthorizationDecisionV1, AuthorizationDenial, AuthorizationGate, InstallationRegistryV1,
+    RepositoryBindingV1, AUTHORIZATION_REQUEST_SCHEMA_VERSION, INSTALLATION_AUTHORITY_LEVEL,
+};
 pub use host_observation_ingress::project_joined_effectiveness;
 
 pub use background_review::{
@@ -104,6 +110,7 @@ pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
 };
 pub use store::{
+    ApprovedProposalAdmissionV1, CortexBackupLinkV1, CortexBackupRowV1, CortexBackupV1,
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
     MemoryLifecycleKind, MemoryLifecycleOperation, MemoryLifecycleOperationV1,
     MemoryLifecycleReceiptV1, MemoryPriorityError, MemoryStore, RecallResult, VerifiedMemoryActor,

@@ -17,6 +17,7 @@
 use super::federation_sources::RuntimeReleaseSource;
 use super::{federation_sources, native_federation};
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
+use membrane_protocol::{PublicationFenceStatusV1, PublicationFenceV1};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -107,6 +108,10 @@ pub fn run_federate(
                 accepted_receipt_versions
             },
             scope_grant_present: scope_grant_id.is_some(),
+            // The CLI binds no post-fusion grant snapshot to compare against,
+            // so no fence verdict can be supplied here; enforcement stays on
+            // callers that re-validate (the resident route via the engine).
+            scope_grant_fence: None,
             gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
     )?;
@@ -223,6 +228,14 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
         let ccs = native_response_to_ccs(&response, &request, &freshness);
         let native_receipts = collect_native_receipts(&response);
+        let publication_fence = response
+            .extensions
+            .get("publicationFence")
+            .map(|receipt| {
+                serde_json::from_value::<PublicationFenceV1>(receipt.clone())
+                    .map_err(|error| format!("publication fence receipt invalid: {error}"))
+            })
+            .transpose()?;
         let mut payload = envelope_from_ccs(
             &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
             EnvelopeInput {
@@ -237,6 +250,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                     .map(str::to_owned),
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: scope_grant_id.is_some(),
+                scope_grant_fence: publication_fence,
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
@@ -323,7 +337,7 @@ fn request_time_refusal(
 
 fn collect_native_receipts(response: &membrane_protocol::FederationResponseV1) -> Value {
     let mut receipts = serde_json::Map::new();
-    for key in ["fusionReceipt", "correctiveRetrieval"] {
+    for key in ["fusionReceipt", "correctiveRetrieval", "publicationFence"] {
         if let Some(value) = response.extensions.get(key) {
             receipts.insert(key.to_owned(), value.clone());
         }
@@ -466,8 +480,39 @@ pub struct EnvelopeInput {
     pub packet_char_budget_model: Option<String>,
     pub accepted_receipt_versions: Vec<u32>,
     pub scope_grant_present: bool,
+    /// Publication fence input (pending §17.2). The caller re-validated the
+    /// bound scope grant after fusion and passes the typed verdict here:
+    /// `None` is honest only when no grant was ever bound (scope-free
+    /// request); `Some(tripped)` refuses packet emission fail-closed.
+    pub scope_grant_fence: Option<PublicationFenceV1>,
     /// Wall time spent obtaining the CCS (process spawn or worker roundtrip).
     pub gateway_process_ms: f64,
+}
+
+/// Publication fence for the runtime packet seam (pending §17.2).
+///
+/// Grant identity, policy epoch and revocation are re-checked after fusion,
+/// immediately before packet emission. A tripped fence publishes typed
+/// `policy_changed` and refuses to emit the packet authorized under the
+/// superseded grant; `None` means no grant was bound and the fence is a
+/// no-op, never a silent bypass.
+pub fn fence_packet_emission(
+    fence: Option<PublicationFenceV1>,
+) -> Result<Option<PublicationFenceV1>, String> {
+    match fence {
+        None => Ok(None),
+        Some(fence) => {
+            if matches!(fence.status, PublicationFenceStatusV1::PolicyChanged) {
+                Err(format!(
+                    "publication fenced after fusion: policy_changed ({:?}); \
+                     the stale-authorized packet is not emitted",
+                    fence.change
+                ))
+            } else {
+                Ok(Some(fence))
+            }
+        }
+    }
 }
 
 pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, String> {
@@ -500,6 +545,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
             ));
         }
     }
+    // Publication fence (pending §17.2): the caller re-validated the bound
+    // grant after fusion. A tripped fence refuses packet emission here — the
+    // last admission boundary before the packet reaches a client.
+    fence_packet_emission(input.scope_grant_fence)?;
     let observability = gateway_observability(&raw_value);
     let source_resolution_receipts =
         crate::source_resolution::gate_source_resolutions(&mut raw_value);
@@ -972,6 +1021,7 @@ mod tests {
                 packet_char_budget_model: None,
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: false,
+                scope_grant_fence: None,
                 gateway_process_ms: 0.0,
             },
         )

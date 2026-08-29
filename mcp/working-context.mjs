@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import { openSharedSqlite } from "./proposal-store.mjs";
 
 const MAX_ITEMS = 128;
 const MAX_TOKENS = 8192;
@@ -62,7 +62,9 @@ export function applyTemporalFact(facts, next, { singleValuedPredicates = [] } =
 export class WorkingContextStore {
   constructor(path) {
     this.path = path;
-    this.db = new DatabaseSync(path);
+    // §19: WAL + busy_timeout on every open, identical to the native runtime's
+    // posture, so mixed-stack writers on the shared event DB stay compatible.
+    this.db = openSharedSqlite(path);
     this.db.exec(`CREATE TABLE IF NOT EXISTS membrane_working_context (
       context_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,

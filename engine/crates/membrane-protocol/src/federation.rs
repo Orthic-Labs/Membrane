@@ -13,6 +13,15 @@ use std::time::Duration;
 pub const FEDERATION_REQUEST_SCHEMA_VERSION: u32 = 1;
 pub const PROVIDER_OUTPUT_SCHEMA_VERSION: u32 = 1;
 pub const FEDERATION_RESPONSE_SCHEMA_VERSION: u32 = 1;
+/// Typed abstention (pending §17.1). Emitted instead of below-floor hits when
+/// nothing clears the admission floor; distinct from the string-only
+/// `insufficient_confidence` status on the Cortex/Taste recall path.
+pub const INSUFFICIENT_CONFIDENCE_SCHEMA_VERSION: u32 = 1;
+pub const INSUFFICIENT_CONFIDENCE_POLICY: &str = "membrane-insufficient-confidence-v1";
+/// Publication fence receipt (pending §17.2): grant identity, policy epoch
+/// and revocation re-validated after fusion, immediately before emission.
+pub const PUBLICATION_FENCE_SCHEMA_VERSION: u32 = 1;
+pub const PUBLICATION_FENCE_POLICY: &str = "membrane-publication-fence-v1";
 
 fn deserialize_request_version<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
@@ -311,6 +320,14 @@ impl FederationRequestV1 {
                 return Err(FederationValidationError::InvalidManifestDigest);
             }
         }
+        if let Some(receipt) = self.extensions.get("publicationFence") {
+            let Ok(fence) = serde_json::from_value::<PublicationFenceV1>(receipt.clone()) else {
+                return Err(FederationValidationError::InvalidPublicationFence);
+            };
+            if matches!(fence.status, PublicationFenceStatusV1::PolicyChanged) {
+                return Err(FederationValidationError::PolicyChanged);
+            }
+        }
         Ok(())
     }
 
@@ -351,6 +368,10 @@ pub enum FederationValidationError {
     ProviderOutputSchemaVersion,
     #[error("unsupported federation response schema version")]
     FederationResponseSchemaVersion,
+    #[error("publication fence receipt is invalid")]
+    InvalidPublicationFence,
+    #[error("publication fence tripped: policy changed after grant binding")]
+    PolicyChanged,
 }
 
 /// Internal monotonic budget.  It deliberately has no `Serialize` impl.
@@ -411,6 +432,145 @@ pub struct ProviderContextV1 {
 /// generation provenance belong to their enclosing provider output; there is
 /// deliberately no second candidate schema.
 pub type FederationCandidateV1 = crate::CandidateV1;
+
+/// What changed between grant binding and packet emission (pending §17.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicationFenceChangeV1 {
+    GrantIdentity,
+    PolicyEpoch,
+    Revocation,
+}
+
+impl PublicationFenceChangeV1 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GrantIdentity => "grant_identity",
+            Self::PolicyEpoch => "policy_epoch",
+            Self::Revocation => "revocation",
+        }
+    }
+}
+
+/// Typed fence verdict. `held` is the only passing outcome; every other
+/// status refuses packet emission with the specific change named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicationFenceStatusV1 {
+    Held,
+    PolicyChanged,
+}
+
+/// Content-free fence receipt carried as the `publicationFence` response
+/// extension. Publication refuses to emit a packet authorized under a
+/// superseded grant; this envelope records the check without candidate text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PublicationFenceV1 {
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub policy: String,
+    pub status: PublicationFenceStatusV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<PublicationFenceChangeV1>,
+}
+
+impl PublicationFenceV1 {
+    pub fn held() -> Self {
+        Self {
+            schema_version: PUBLICATION_FENCE_SCHEMA_VERSION,
+            policy: PUBLICATION_FENCE_POLICY.to_owned(),
+            status: PublicationFenceStatusV1::Held,
+            change: None,
+        }
+    }
+
+    pub fn policy_changed(change: PublicationFenceChangeV1) -> Self {
+        Self {
+            schema_version: PUBLICATION_FENCE_SCHEMA_VERSION,
+            policy: PUBLICATION_FENCE_POLICY.to_owned(),
+            status: PublicationFenceStatusV1::PolicyChanged,
+            change: Some(change),
+        }
+    }
+}
+
+/// Per-lane searched counts in a typed abstention (pending §17.1).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InsufficientConfidenceLaneSearchV1 {
+    pub lane: String,
+    pub searched: u32,
+}
+
+/// Why nothing cleared the admission floor (pending §17.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InsufficientConfidenceReasonV1 {
+    NoAuthorizedCandidateAboveThreshold,
+    NoCandidates,
+    EvidenceFloor,
+}
+
+impl InsufficientConfidenceReasonV1 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoAuthorizedCandidateAboveThreshold => "no_authorized_candidate_above_threshold",
+            Self::NoCandidates => "no_candidates",
+            Self::EvidenceFloor => "evidence_floor",
+        }
+    }
+}
+
+/// Typed abstention emitted instead of below-floor hits when nothing clears
+/// the admission floor. This versioned shape is deliberately distinct from
+/// the string-only `insufficient_confidence` status on the Cortex/Taste
+/// recall path; the two must not be unified implicitly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InsufficientConfidenceV1 {
+    pub status: InsufficientConfidenceStatusV1,
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub policy: String,
+    pub searched: Vec<InsufficientConfidenceLaneSearchV1>,
+    pub reason: InsufficientConfidenceReasonV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_action: Option<String>,
+}
+
+/// Literal wire status discriminator: `insufficient_confidence`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InsufficientConfidenceStatusV1 {
+    InsufficientConfidence,
+}
+
+impl InsufficientConfidenceStatusV1 {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InsufficientConfidence => "insufficient_confidence",
+        }
+    }
+}
+
+impl InsufficientConfidenceV1 {
+    /// Deterministic content-free suggested action for the reason, or `None`
+    /// when the reason names no bounded action.
+    pub const fn suggested_action_for(
+        reason: InsufficientConfidenceReasonV1,
+    ) -> Option<&'static str> {
+        match reason {
+            InsufficientConfidenceReasonV1::NoAuthorizedCandidateAboveThreshold => {
+                Some("broaden_scope_or_request_access")
+            }
+            InsufficientConfidenceReasonV1::NoCandidates => Some("reformulate_query"),
+            InsufficientConfidenceReasonV1::EvidenceFloor => Some("add_authoritative_evidence"),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -623,3 +783,9 @@ pub type ProviderContext = ProviderContextV1;
 pub type ProviderOutput = ProviderOutputV1;
 pub type FederationRequest = FederationRequestV1;
 pub type FederationResponse = FederationResponseV1;
+pub type InsufficientConfidenceStatus = InsufficientConfidenceStatusV1;
+pub type InsufficientConfidenceReason = InsufficientConfidenceReasonV1;
+pub type InsufficientConfidenceLaneSearch = InsufficientConfidenceLaneSearchV1;
+pub type PublicationFence = PublicationFenceV1;
+pub type PublicationFenceStatus = PublicationFenceStatusV1;
+pub type PublicationFenceChange = PublicationFenceChangeV1;
