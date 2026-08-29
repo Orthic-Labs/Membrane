@@ -11,8 +11,8 @@ wins and the pending document is corrected.
 
 ## Host neutrality
 
-Both documents specify Membrane's work and Membrane's side of the seam as a **host-neutral
-contract**. Neither names a host implementation or a host repository path. Host requirements appear
+Required Membrane specifications define Membrane's work and Membrane's side of the seam as a
+**host-neutral contract**. They do not name a host implementation or host repository path. Host requirements appear
 as numbered host capabilities (`H1`–`H11`) that any harness may satisfy.
 
 A first-party host implements those capabilities under its own specification in its own repository.
@@ -27,6 +27,8 @@ CodeRight's target shape is split by ownership in
 | Document | Kind | Contents |
 |---|---|---|
 | [MEMBRANE-PENDING-IMPLEMENTATION.md](MEMBRANE-PENDING-IMPLEMENTATION.md) | required | Production-path audit (§0) plus non-experimental target contracts: Adapt `intervention_target`, `InterventionAttributionV1` mutation-eligibility gate, asset activation evidence, asset effectiveness, daemon background review, Cortex Stage 1 Dream, Learning Lineage, insights projection, Pull fusion/corrective retrieval, Push wiring/qualification, `PacketReductionPlanV1`, and host seam `H1`–`H10`. |
+| [ADAPT-HARNESS-EFFICIENCY-INSIGHTS.md](ADAPT-HARNESS-EFFICIENCY-INSIGHTS.md) | required extension | Closes dispatch-graph, per-assignment budget, progress attribution, detector coverage, duplicate execution, role leakage, context amplification, retry/tool/subagent waste & CodeRight H4 evidence gaps exposed by the 2026-08-29 dispatch incident. |
+| [semantic-blueprint-review-pack-v2/README.md](semantic-blueprint-review-pack-v2/README.md) | Fable review pack | Reconciled Sol proposal for source-bound Ledger → Cortex semantic compilation, Pull fusion, Adapt pipeline-efficiency learning, optional local semantic-worker experiment & Blueprint architecture-view hardening. All eight source documents remain pending; no canon or landed-state claim. |
 | [MEMBRANE-SEMANTIC-ADVISOR-EXPERIMENTAL.md](MEMBRANE-SEMANTIC-ADVISOR-EXPERIMENTAL.md) | experimental, optional | Bounded LLM semantic assistance: three phases, corrective-first default posture, recorded-nondeterminism replay, wire contracts, challenge/resume, host capability `H11`. Deletable without affecting the required document. |
 
 ## Start with the production-path audit
