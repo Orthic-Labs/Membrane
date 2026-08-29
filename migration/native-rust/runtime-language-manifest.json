@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-28T20:20:11.557Z",
+ "generatedAt": "2026-08-29T05:12:38.847Z",
  "enforcementMode": "sealed",
  "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
  "totals": {
-  "files": 1190,
+  "files": 1196,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -65,6 +65,7 @@
     "adapt/eval/build_conflict_review_packet.py",
     "adapt/eval/build_delivery_parity_set.py",
     "adapt/eval/build_insights_bench.py",
+    "adapt/eval/build_real_heldout.py",
     "adapt/eval/build_value_set.py",
     "adapt/eval/compare_delivery_graders.py",
     "adapt/eval/compare_taste_outputs.py",
@@ -89,7 +90,7 @@
     "adapt/eval/smoke_production_delivery.py",
     "adapt/eval/validate_insights_bench.py"
    ],
-   "content_digest": "4c49241a60f70c4be3233230138cc6912346eaf829eb24e906a6d2d8f68ec79b"
+   "content_digest": "cb0d1df2b7f00938a085b285152c393d6599996f1944ce17dd1b77653b2fd41c"
   },
   {
    "id": "adapt-runtime-adapt-runtime",
@@ -286,7 +287,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "f3d65aefdf156d4980d5590c3e624ee079f6647610333c02532ad145f1994fb2"
+   "content_digest": "9b4f2a6d32a9d9e06bf079bbe2f2275b453c0767484a79df9e705f2e74bedb48"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -677,6 +678,7 @@
     "blueprint/tests/freshness-observation.test.mjs",
     "blueprint/tests/freshness-receipt.test.mjs",
     "blueprint/tests/freshness-regressions.test.mjs",
+    "blueprint/tests/frontmatter-lifecycle.test.mjs",
     "blueprint/tests/generated-docs.test.mjs",
     "blueprint/tests/generic-ast-walker.test.mjs",
     "blueprint/tests/grammar-manifest.test.mjs",
@@ -787,7 +789,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "882b9429d662fb57e97fba9363f7bab6579011bbdfcef72db3187ecd8afc1dcd"
+   "content_digest": "8808071498822cfb8c043666baf40ce8d1788d3e243a534b89eeb1d92108c0fd"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1076,7 +1078,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "ea8ecf757067be7fdf3e6e3db05bd2552065528bc24a9b4e22b07ee2ccfa275c"
+   "content_digest": "be92a0de4972f6f16ed2a8c5cc1d7e90919437191146b43bf672acf5213a3a01"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1225,12 +1227,13 @@
     "engine/crates/membrane-adapt/tests/insights_pipeline.rs",
     "engine/crates/membrane-adapt/tests/portable_insights_benchmark.rs",
     "engine/crates/membrane-adapt/tests/procedural_effectiveness.rs",
+    "engine/crates/membrane-adapt/tests/real_heldout_corpus.rs",
     "engine/crates/membrane-adapt/tests/remediation_current_contract.rs",
     "engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs",
     "engine/crates/membrane-adapt/tests/taste_contracts.rs",
     "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "5f344098a58073f7df1c7f4607edf200a7fa99e2e7b24fd8c15ac144eb78375e"
+   "content_digest": "491a64bac25128084f16a034eb9650fe7dc123a3e3016da7be4ee2d5c7372de6"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-core",
@@ -1319,7 +1322,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "a32545299975d07bda34b2b90f4548790569d8831f4139721292c78967c5d84a"
+   "content_digest": "3f8dd1ec219b0705be674ddaaed5abe25db9570631fb92e93d87148c8ca324eb"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1460,6 +1463,7 @@
     "engine/crates/membrane-runtime/src/checkpoint.rs",
     "engine/crates/membrane-runtime/src/cli.rs",
     "engine/crates/membrane-runtime/src/code_batch.rs",
+    "engine/crates/membrane-runtime/src/cortex_relevance_spotcheck.rs",
     "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
     "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
     "engine/crates/membrane-runtime/src/digest.rs",
@@ -1530,9 +1534,11 @@
     "engine/crates/membrane-runtime/src/store.rs",
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
+    "engine/crates/membrane-runtime/tests/cortex_relevance_spotcheck.rs",
     "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
     "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
     "engine/crates/membrane-runtime/tests/installation_manifest.rs",
+    "engine/crates/membrane-runtime/tests/ledger_eval_v1_harness.rs",
     "engine/crates/membrane-runtime/tests/ledger_h2_local_replay_gate.rs",
     "engine/crates/membrane-runtime/tests/ledger_indexing.rs",
     "engine/crates/membrane-runtime/tests/ledger_outline.rs",
@@ -1552,7 +1558,7 @@
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "135a2b81e6355e6ce97c6aafe84900e36583c8477ce5bbb0dc3154c640bde0ad"
+   "content_digest": "113d32098d4226b841d4925a914d79dddb3e9dedd006e590ff0e6f7bbb7b3961"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1749,7 +1755,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "d755f1cced844cbda3d70f664e7ef60325408b7d5cfbd52acfa1c50f3dbfe259"
+   "content_digest": "7bc1015db3a7b555bbab166ac957d6ee728bac190e55b2c7a3fb845c354c7650"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2138,7 +2144,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "f5d4dae4e30d0b24e173e2c7db4d15fae74b39203d13a19e8890e8d223323469"
+   "content_digest": "9b8e6f4fa1dbc6d93bb4ee49b500981d12fe610be24bca16aa7a8b43f9695fa9"
   },
   {
    "id": "tests-root-tests-root",

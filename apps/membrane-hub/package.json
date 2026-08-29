@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/release": "0.2.79",
+    "@rightkit/release": "0.2.80",
     "@tauri-apps/cli": "2.11.4"
   }
 }

@@ -56,7 +56,11 @@ const provenance = validateInTotoSlsaProvenance(join(artifactRoot, "provenance-w
 if (!provenance.predicate.buildDefinition.resolvedDependencies[0].uri.endsWith(`@${candidate.sourceCommit}`)) throw new Error("candidate provenance source mismatch");
 const extracted = mkdtempSync(join(tmpdir(), "membrane-candidate-check-"));
 try {
-  const unpack = spawnSync("tar.exe", ["-xf", archive, "-C", extracted], { windowsHide: true });
+  // Resolve the System32 bsdtar explicitly: PATH often finds GNU tar (Git
+  // Bash) first, which reads the colon in an absolute Windows path (C:\...)
+  // as a remote host spec and fails with "Cannot connect to C:".
+  const tarExe = join(process.env.SystemRoot ?? "C:\Windows", "System32", "tar.exe");
+  const unpack = spawnSync(tarExe, ["-xf", archive, "-C", extracted], { windowsHide: true });
   if (unpack.error || unpack.status !== 0) throw new Error("candidate archive extraction failed");
   const walk = (root) => readdirSync(root).flatMap((entry) => {
     const path = join(root, entry);
