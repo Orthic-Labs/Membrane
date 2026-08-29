@@ -69,9 +69,9 @@ execute the specified contract. `NOT AUDITED` means exactly that; it never means
 | RRF fusion | canonical RRF implementation and versioned receipt | same federation path can select `membrane-fusion-rrf-v1` explicitly | focused selection/receipt tests pass; no frozen comparative qualification | `IMPLEMENTED + REACHABLE`; not active by default |
 | Production fusion identity and receipt | every fusion result carries named/versioned strategy data | active fixed-order and selectable RRF paths emit the receipt | focused receipt validation passes | `IMPLEMENTED + REACHABLE` |
 | Typed omission accounting | federation scheduler/normalizer emits `ProviderOmissionV1`; native adapter maps omissions into planner `OmissionV1` | same CLI/resident path above → CCS → `packet.omissions` alongside candidate receipts | not revalidated in this consolidation pass | `REACHABLE`; no sufficiency claim |
-| Corrective retrieval after insufficiency | bounded planner-owned sufficiency contract, evaluator and one-stage plan exist | resident runtime forwards an explicit caller-supplied contract and exposes its receipt; no first-party caller supplies one and no distinct corrective action executes | evaluator and transport tests pass; no production-path qualification | `PARTIAL`: add planner caller, distinct bounded action, then qualify |
+| Corrective retrieval after insufficiency | bounded planner-owned sufficiency contract, evaluator and one-stage alternate-lane plan exist and execute inside `FederationEngine::federate` | resident runtime forwards an explicit caller-supplied contract and exposes its receipt; no first-party caller supplies one — the `membrane_context` tool schema (`additionalProperties: false`) rejects a `sufficiencyContract` field | `corrective-retrieval.json` freezes production-path mechanics qualification (`mechanics-qualified-no-promotion`); no task-success evidence | `PARTIAL`: add planner caller, then qualify for effect |
 | Query-aware Push | query-aware provider plus explicit control/query-aware policy | production `push prep` reaches either policy; control remains default | protected-span and reachability tests pass; no frozen measured baseline | `IMPLEMENTED + REACHABLE`; not qualified |
-| Push qualification baseline | `docs/evidence/qualification/push-metrics.json` names desired metrics | file reports `fixture-entrypoint-defined`; it contains no measured baseline | no frozen measured baseline in that artifact | `NOT QUALIFIED` |
+| Push qualification baseline | `docs/evidence/qualification/push-metrics.json` freezes measured mechanics results (required-evidence retention, protected-span integrity, budget compliance, query-aware reachability) as `mechanics-qualified-no-promotion` | task correctness, latency, resolver restores and corrections remain typed `unavailable` pending host instrumentation | mechanics measured; no comparative baseline that authorizes default-policy promotion | `NOT QUALIFIED FOR PROMOTION` |
 | Deterministic Cortex Dream | `store::dream_now_observed` invokes restricted policy plus deterministic consolidation | CLI `dream_now` and resident `dream_now_observed` call the store path | not revalidated in this consolidation pass | `REACHABLE`; no `LANDED` claim |
 | Sealed remediation proposals and taste gate | sealing, effect mapping, user-evidence and precision gates | production Adapt mine path emits deterministic sealed review proposals | focused unit and current-contract tests pass | `IMPLEMENTED + REACHABLE` |
 | `intervention_target` / `routing_recommendation` | orthogonal target and reachable proposal-kind contracts | production Adapt mine path seals both fields into proposal identity | schema/digest/reachability tests pass | `IMPLEMENTED + REACHABLE` |
@@ -80,6 +80,14 @@ execute the specified contract. `NOT AUDITED` means exactly that; it never means
 | Learning Lineage and Insights projection | read-only receipt graph and projection with typed unavailable joins | production Adapt mine response emits both | deterministic projection tests pass | `IMPLEMENTED + REACHABLE`; host tail remains unavailable |
 | `PacketReductionPlanV1` | validated versioned plan, estimator basis and largest-fit selection | production `push select` accepts an H8 ceiling and returns only a complete published representation; first-party host emits a next-request H8 candidate from real policy and last observed usage | protocol/runtime/host-producer tests pass | `PARTIAL`: request-time refresh and direct host-to-Membrane delivery remain unwired |
 | Host observation seam | H4/H6/H8/H9/H10 versioned shapes, provenance and closed-shape validation | H4/H6 producers and an H8 candidate producer exist in first-party host; bounded Membrane H4/H6/H8 parser and exact-ID H4/H6 lineage join exist; caller transport remains unwired; H9/H10 have no producer | protocol, parser and host producer tests pass where inputs exist | `PARTIAL` |
+| Native-path authorization | full monotone authority intersection (installation × caller × target × child grant × task grant) implemented on the JS MCP surface | traced native path (stdio transport → Hub-resident executor) checks caller self-consistency only; no grant policy, authority level or cross-root denial executes | JS-path authorization tests pass; no native-path authorization tests | `GAP ON TRACED PATH` — highest severity; §15 |
+| Approved-proposal promotion | the proposal table's SQL constraint permits `pending`/`approved`/`rejected`, but no code implements the `pending → approved` transition; `propose` only ever inserts `pending` | no production caller invokes review; nothing sets or reads `approved`; nothing consumes it into durable truth | none — no transition code and no transition tests exist | `UNWIRED`; §16.1 |
+| Cortex write-time duplicate/conflict detection | dedup/supersession logic exists on the retrieval/candidate side only | traced durable write path is an id-keyed upsert; near-identical content under different ids admits silently | store tests pass; no admission-time dedup tests | `GAP ON TRACED PATH`; §16.3 |
+| Cortex erasure and backup/restore | reversible quarantine with transactional restore is landed (`memory_quarantine` table, `restore_quarantined`); hard erase and Cortex data backup/restore have no implementation under any searched name | quarantine preserves payload by design; no traced path clears payload from every Cortex-owned projection | quarantine restore covered; no erasure or backup/restore tests | `GAP ON TRACED PATH` (erasure and backup/restore only); §16.4 |
+| Pull publication fence | scope-grant checks execute at acquisition | no grant/policy re-validation executes before packet emission | none | `GAP ON TRACED PATH`; §17.2 |
+| Typed retrieval abstention | qualification evidence records 0.0 recall on no-answer classes; no abstention shape exists | traced recall paths return below-floor hits instead of a typed no-answer | `ledger-metrics.json` documents the gap | `GAP ON TRACED PATH`; §17.1 |
+| Ledger section identity | structural span-hash node identity exists in the index layer | production section reads resolve slug/ordinal anchors; two identity schemes coexist | ledger resolution tests pass | `PARTIAL`; §18 |
+| Installed-runtime guarantees | Windows job-object lifetime coupling landed; installed-artifact qualification script exists | macOS supervision is app-level only; qualification runs only on manual dispatch; JS store opens lack WAL/busy_timeout | Windows coupling tested; macOS and gating unproven | `PARTIAL`; §19 |
 
 ## 0.2 Not audited by this pass
 
@@ -312,6 +320,11 @@ ProceduralAssetEffectivenessV1
 
 No `state` field. Adapt does not decide whether an asset is active, pinned or archived.
 
+Usage-derived signals are confounded lower bounds: an asset can influence an outcome through
+mere presence in context without a recorded selection or application. Absence of recorded
+application is therefore never, by itself, evidence of ineffectiveness; a negative
+`effectiveness_verdict` requires applicable evaluator outcomes (§2.7), not just low usage counts.
+
 ## 3.2 What Adapt may propose
 
 ```text
@@ -387,6 +400,37 @@ Cortex DETERMINISTIC lifecycle / curation operations
 Determinism plus a governed transition API is what makes the second line safe. A model in the loop
 removes both.
 
+## 4.2 Review-input selection under budget
+
+The aggregate input budget makes episode selection a real decision: `adapt_behavioral_review`
+cannot read every eligible event window, so what enters the bounded review determines what the
+learner can ever propose. Left unspecified, selection degrades silently into recency order and the
+budget is spent on the newest episodes rather than the most informative ones.
+
+```text
+ReviewInputSelectionV1
+  candidate basis: cursor over new, unreviewed events only (§5.1 cursor discipline)
+  scoring:  deterministic novelty/anomaly score per candidate episode against the
+            already-reviewed episode baseline (e.g. nearest-neighbour distance over
+            the existing episode index) — no model call decides what a model call
+            will read
+  selection: top-K by score within the per-run input budget; ties break by recency
+  receipts:  every run records candidates_considered, selected[], and a typed skip
+             reason for the remainder (budget_exhausted | below_novelty_floor);
+             skipped-but-eligible episodes remain eligible for later runs
+  rate:      shares §4 gates; selection never triggers a run by itself
+```
+
+Constraints:
+
+- Selection is mechanical (invariant P1): the score orders candidates; it may not assert an Adapt
+  category or pre-label an episode.
+- A quiet period where nothing clears the novelty floor is reported as such (§7.1 honesty), never
+  padded with low-value episodes to spend the budget.
+- Disposition: pending specification only — no implementation claim. This section exists so the
+  semantic-provider wiring (§0.1 background-review row) lands with a specified input policy
+  instead of an implicit one.
+
 ---
 
 # 5. Cortex — two-stage Dream
@@ -394,7 +438,7 @@ removes both.
 `engine/crates/cortex-core/src/dream.rs` is deterministic native Rust today: same-scope duplicate
 consolidation, stable primary ID and scope preserved, merged source IDs and keywords,
 relative-date normalisation, duplicate secondary removal, low-score quarantine — and it explicitly
-refuses to attribute itself to an LLM (`DreamPolicy::restricted`, guarded by
+refuses to attribute itself to an LLM (`DreamAgentPolicy::restricted`, guarded by
 `deterministic_dream_policy_does_not_claim_an_llm_model`). That is correct and stays as the safe
 first layer.
 
@@ -611,9 +655,12 @@ query-aware Push
 
 at matched attention budgets, measuring task correctness, required-evidence retention,
 protected-span integrity, token reduction, latency, resolver restores and user corrections.
-`docs/evidence/qualification/push-metrics.json` currently names metrics and reports
-`fixture-entrypoint-defined`; it is not measured baseline evidence. First freeze measured control
-results from the active production path, then require query-aware Push to beat or match them.
+`docs/evidence/qualification/push-metrics.json` freezes measured mechanics results
+(`mechanics-qualified-no-promotion`): retention, protected-span integrity, budget compliance and
+query-aware reachability are measured on the production path; task correctness, latency, resolver
+restores and corrections are typed `unavailable` pending host instrumentation. Mechanics evidence
+does not authorize promotion. First freeze measured control results for the task-level metrics,
+then require query-aware Push to beat or match them.
 
 ## 10.3 Ordering policy evaluation
 
@@ -711,6 +758,7 @@ Membrane rejects at the seam rather than admitting at low confidence.
 |---|---|---|
 | `SealedInsightIssueV1` | Adapt | dataset seeds, regression cases, guard targets |
 | `SealedRemediationProposalV1` + `intervention_target` (§2) | Adapt | variant generation input |
+| `InterventionAttributionV1` (§2.5) | Adapt | mutation-eligibility gate H7 must check before consuming a mutable-instruction-surface proposal |
 | Evaluator proposal (`ToolingFix` effect) | Adapt | evaluator to implement and run |
 | Regression-case proposal | Adapt | promotion into the host eval store |
 | Context packet + receipt | Pull | what the model actually saw |
@@ -836,7 +884,18 @@ Only these surviving gaps remain schedulable:
 - implement `InterventionAttributionV1` and its eligibility gates (§2.5), then require a
   mutation-eligible attribution before H7 variant generation for mutable instruction surfaces;
 - provide H7, H9 and H10 host observations before outcome, deployment and closed-loop claims;
-- preserve typed unavailability for every absent source field.
+- preserve typed unavailability for every absent source field;
+- execute the shared authorization gate on the native executor path before wiring any further
+  capability there (§15);
+- connect an approved-proposal consumer into Cortex admission, or declare review out-of-band and
+  make the dead state unreachable (§16.1);
+- add write-time duplicate/conflict detection to the durable write path (§16.3);
+- implement governed hard erase over the existing reversible quarantine and prove backup/restore
+  recall equivalence (§16.4);
+- emit typed abstention on no-answer retrieval and add the pre-publication grant fence (§17);
+- unify Ledger section identity on the structural fingerprint (§18);
+- enforce macOS OS-level lifetime coupling and make installed-artifact qualification a required
+  release gate (§19).
 
 These dependency constraints still apply:
 
@@ -920,9 +979,202 @@ proof. Synthetic fixtures prove mechanics; they do not support product-quality c
   zeroed panel.
 - Learning Lineage renders entirely from existing receipts; it has no writable store.
 
+## Security, durable lifecycle and operations
+
+- A native-path request with an unauthorized or mismatched repository identity is denied by the
+  shared authorization module with the failed gate named; the test fails if the native executor
+  stops calling that module.
+- An approved proposal either reaches Cortex admission through the wired consumer, or the
+  `approved` state is unreachable in production — no third outcome.
+- A near-duplicate durable write under a different id yields a `duplicate` or `conflict`
+  disposition, never a second silent record.
+- Quarantined rows restore transactionally; hard erase leaves no payload in any Cortex-owned
+  projection; backup → wipe → restore proves recall equivalence.
+- A no-answer query publishes typed `insufficient_confidence`, never below-floor hits.
+- A grant or policy-epoch change between admission and emission publishes `policy_changed`; the
+  stale-authorized packet is not emitted.
+
 ---
 
-# 15. Open questions
+# 15. Security — native-path authorization
+
+The audited fact (§0.1): the full monotone authority intersection executes only on the JS MCP
+surface, while the traced native production path validates caller self-consistency alone. A local
+process holding the workspace bearer token can self-declare any repository identity and read or
+write that repository's durable state. This contradicts the locked invariant that repository and
+model text cannot self-authorize, and it is the highest-severity row in this ledger.
+
+```text
+AuthorizationGateV1                     executes before any repository-scoped read or write
+  order:   installation grant → repository scope chain → caller/target binding
+           → authority level (monotone minimum) → cross-root denial
+           → validity interval / revocation
+  sharing: the native executor calls the same authority implementation the JS
+           surface uses — one module, compiled once, never reimplemented
+  failure: typed authorization_denied naming the failed gate; never silent scope
+           widening, never downgrade-and-continue
+  timing:  the gate runs before retrieval scoring and before admission —
+           unauthorized evidence never enters a candidate set to be labelled
+           untrusted later
+```
+
+Constraints:
+
+- Bearer transport authenticates the channel, never the scope. Self-declared identity is a claim
+  to verify against the installation registry, not a grant.
+- No §13 capability may be wired further on the native path until this gate executes there.
+
+---
+
+# 16. Cortex — durable-truth lifecycle completion
+
+## 16.1 Approved-proposal consumer
+
+The `approved` state exists only as a permitted value in the proposal table's SQL constraint: no
+code implements the `pending → approved` transition, no production caller invokes review, and
+nothing converts an approved proposal into a durable record. Either implement review and wire the
+consumer
+(`approved → Cortex admission → durable record with provenance`) or declare review an out-of-band
+act in canon and make the dead state unreachable. An `approved` state nothing reads is a silent
+promise of promotion that never happens.
+
+## 16.2 Temporal validity and supersession
+
+```text
+TemporalValidityV1                      adopted target contract
+  valid_at         authored/asserted time — never defaulted to ingest time
+  recorded_at      ingest time, kept distinct
+  invalid_at?      set when a conflicting admitted record supersedes this one
+  superseded_by?   successor record identity
+```
+
+This contract consolidates temporal machinery that already partially exists rather than starting
+greenfield: the durable `memories` table carries `effective_from_ms`, `effective_until_ms` and an
+actively written `superseded_by` column, and `cortex-store/src/temporal.rs` implements a narrower
+`TemporalFact` store with `valid_from`/`valid_until`/`supersedes` and as-of queries. Adoption means
+unifying those onto this vocabulary, not adding a third scheme beside them.
+
+Supersede, never delete: conflict resolution marks the losing record invalid rather than removing
+it, point-in-time recall (`as_of`) stays answerable, and lineage is queryable per record.
+Deterministic read-time conflict ordering: discard revoked → prefer valid-at-requested-time →
+prefer higher authority → prefer independently verified → surface the unresolved conflict typed.
+Silently blending conflicting records is forbidden.
+
+## 16.3 Write-time duplicate and conflict detection
+
+The durable write path is an id-keyed upsert; the doc-described `duplicate`/`conflict`
+dispositions must become write-time behavior. Adopt a deterministic admission pre-filter — exact
+normalization, a cheap specificity gate, then a near-duplicate similarity threshold
+(MinHash/Jaccard class) — producing `duplicate` or `conflict` dispositions consistent with the
+Cortex canon vocabulary. No model call on the write path; ambiguity surfaces as `conflict`, never
+as a second silent record.
+
+## 16.4 Erasure, quarantine and backup/restore
+
+The canon invariant requires erasure to remove payload from every Cortex-owned projection, cache
+and artifact path. Reversible-quarantine-first is already landed: destructive prunes move full
+rows into the `memory_quarantine` store with transactional list/restore
+(`store::restore_quarantined`), and quarantine-before-destructive is a locked invariant. What is
+missing is the rest: hard erase as a distinct governed operation that provably clears every
+projection path, and Cortex data backup/restore, which ships only with a
+dump → wipe → restore → recall-equivalence proof.
+
+---
+
+# 17. Pull — abstention and publication fence
+
+## 17.1 Typed abstention
+
+```text
+InsufficientConfidenceV1
+  status:            insufficient_confidence
+  searched:          per-lane candidate counts (lexical, semantic, graph, doc)
+  reason:            no_authorized_candidate_above_threshold | no_candidates | evidence_floor
+  suggested_action?
+```
+
+Emitted instead of below-floor hits when nothing clears the admission floor; consumed by the
+sufficiency evaluator (§9) and rendered under the §7.1 honesty contract. This also closes the
+measured no-answer gap in Ledger qualification: a no-answer query returns typed abstention, not
+weak matches.
+
+A string-only `insufficient_confidence` status already exists on the separate Cortex/Taste
+memory-recall path. This contract does not reuse it implicitly: the Pull shape above is versioned
+and typed; the Cortex recall path either adopts the same shape or keeps its status explicitly
+distinct — two spellings of one meaning with different structures is forbidden.
+
+## 17.2 Publication fence
+
+Grant and policy state are re-validated immediately before packet emission: grant identity, policy
+epoch and revocation are checked once more after fusion completes. A change publishes a typed
+`policy_changed` insufficiency; a packet authorized under a superseded grant is never emitted.
+
+## 17.3 Calibrated fusion candidate
+
+A per-query logistic calibration of dense scores fused with lexical logits may enter §8's frame
+only as a third named, versioned strategy under the identical qualification ladder (frozen
+development corpus, one held-out run, production-path proof). It never displaces the
+non-calibration default without that evidence.
+
+---
+
+# 18. Routed subsystem work — Blueprint and Ledger
+
+Spec authority for these lives in their own canons; this ledger records the decision and tracks
+disposition only:
+
+- **Ledger**: unify production section reads on the structural span-hash fingerprint already used
+  by the node index; slug/ordinal anchors become resolvable aliases, not identity.
+- **Ledger**: correct the canon's stale "current weaknesses" list — implementation is ahead of the
+  document.
+- **Blueprint**: adopted directions for the existing re-anchoring and incremental trains —
+  string-based self-describing symbol identity; per-file precompute with query-time stitching;
+  typed per-file staleness status; confidence-tiered edges; an enumerated cache-invalidation
+  matrix.
+
+---
+
+# 19. Operations — installed-runtime guarantees
+
+- macOS lifetime coupling must be OS-enforced (launchd/XPC scoped to the tray session) to match
+  the Windows job-object guarantee. App-level supervision alone leaves an orphan-daemon path that
+  violates "no tray means no Membrane context" on that platform.
+- Installed-artifact qualification becomes a required release-candidate gate, not a
+  manual-dispatch input. A release candidate without that evidence is not a candidate.
+- Every JS-side open of shared SQLite sets the same WAL and busy-timeout pragmas the native
+  runtime sets; mixed-stack writers on one store share one concurrency posture.
+
+---
+
+# 20. Absorption triage register
+
+External prior-art survey (2026-08-29) triaged against this ledger. Adopted items are specified
+above as Membrane contracts; sources are reference material only, never authority.
+
+| Item (origin) | Disposition |
+|---|---|
+| Ordered pre-scoring authorization gate (predecessor archive) | adopted → §15 |
+| Bitemporal validity / supersede-never-delete (graphiti; MemoryOS; codebase-graph) | adopted → §16.2 |
+| Deterministic query-time conflict ordering (predecessor archive) | adopted → §16.2 |
+| Entropy/MinHash write-time dedup pre-filter (graphiti; semantica; mnemon) | adopted → §16.3 |
+| Reversible quarantine erasure (predecessor archive schema-v10) | adopted → §16.4 |
+| Typed abstention contract (predecessor archive; superlocalmemory) | adopted → §17.1 |
+| Per-query calibrated fusion (txtai LogOdds) | adopted as candidate strategy → §17.3 |
+| Surprisal-sampled review-input selection (honcho) | adopted → §4.2 |
+| Usage-signal bias caution (predecessor archive) | adopted → §3.1 |
+| Symbol identity, partial-path stitching, typed staleness, edge confidence, cache-invalidation matrix (SCIP; stack-graphs; GitNexus; infigraph; dependency-cruiser) | routed → Blueprint canon (§18) |
+| Section-identity unification, occurrence model (SCIP) | routed → Ledger canon (§18) |
+| Pinned-commit retrieval eval corpora and metrics (octocode; sense; zep; cognee) | governed by cross-subsystem canon §13; adopt corpus format at each qualification step |
+| Iterative local/global retrieval escalation (graphrag DRIFT) | rejected — §13.1 deliberately fixes one bounded alternate-provider action |
+| Item-level knapsack context packing (lean-ctx) | rejected — representation-level fitting is the decided §11 contract |
+| Execute-code-as-reduction (context-mode) | rejected — outside Push's faithful-reduction boundary |
+| On-demand retrieve-back compression (headroom) | rejected as redundant — recovery markers and resolver refs already provide reversibility; the remaining gap is egress wiring (§0.1) |
+| Per-type decay curves (mnemosyne; memory-lancedb) | deferred — no measured problem; revisit with Dream qualification evidence |
+| Outcome-driven memory-ranking reweighting (caura) | deferred — feedback remains offline-only until H7 outcome joins exist |
+
+---
+
+# 21. Open questions
 
 Genuinely unresolved. Everything else in this document is a decision.
 
