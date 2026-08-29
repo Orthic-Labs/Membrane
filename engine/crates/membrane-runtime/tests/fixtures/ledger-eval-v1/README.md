@@ -281,3 +281,26 @@ can group by `tags` instead of `case_type`.
   numbers exist for this corpus as of authoring time. A future harness
   consuming this corpus is what turns it into promotion evidence; until then
   it is only the frozen query/answer set that harness will run against.
+
+## Running the promotion harness
+
+`tests/ledger_eval_v1_harness.rs` (sibling of this fixture directory, one
+level up) indexes this corpus's real source documents through the production
+Ledger sync/index path (`ledger::doc_spine::sync`) and evaluates every case
+in `cases/dev.jsonl` and `cases/heldout.jsonl` against both recall arms
+(`legacy_scan`, `ledger_fts`) via `ledger::doc_spine::recall_shadow`, which
+always computes both lanes regardless of the persisted activation mode.
+
+```
+cargo test --manifest-path engine/Cargo.toml -p membrane-runtime \
+  --test ledger_eval_v1_harness -- --nocapture
+```
+
+(Prefer the workspace RightKit cargo shim per `docs/agent-rules.md` when
+available; the command above is the plain-`cargo` fallback.) Two tests run:
+`ledger_eval_v1_dev_split_both_arms` (repeatable, for tuning/reporting) and
+`ledger_eval_v1_heldout_split_both_arms` (run exactly once per frozen
+candidate per canon section 12.1 — do not iterate against its output). Each
+prints a `corpus_digest=` line binding the run to the exact manifest/case
+files evaluated, per-arm Recall@1/@5 and MRR, a per-`case_type` breakdown,
+and — for the held-out test — the frozen promotion decision rule's verdict.

@@ -153,7 +153,7 @@ fn patterns() -> &'static DetectorPatterns {
     })
 }
 
-fn user_events<'a>(events: &'a [TranscriptEventV1]) -> Vec<(usize, &'a TranscriptEventV1)> {
+fn user_events(events: &[TranscriptEventV1]) -> Vec<(usize, &TranscriptEventV1)> {
     events
         .iter()
         .enumerate()

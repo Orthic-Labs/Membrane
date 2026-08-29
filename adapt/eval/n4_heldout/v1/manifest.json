@@ -1,0 +1,57 @@
+{
+  "bench_id": "adapt-insights-bench-caabb59c0f53",
+  "built_at": "2026-08-29T00:00:00Z",
+  "heldout_policy": "heldout labels are frozen; detector tuning and heldout benchmark execution are forbidden in this build step",
+  "redaction_contract_version": "real-redaction-v1: production membrane-transcript parsing/redaction first; evaluation export then removes paths, user/home identifiers, emails, URLs, network addresses, task/tool ids, UUIDs, and source/session names",
+  "schema": "adapt.real-heldout-manifest.v1",
+  "splits": {
+    "dev": {
+      "case_count": 8,
+      "families": [
+        "claimed_verified_then_corrected",
+        "degraded_provider_treated_as_success",
+        "guard_firings",
+        "ignored_tool_failure",
+        "stale_terminology_surfacing",
+        "user_swearing",
+        "verification_claim_without_tool_evidence",
+        "visible_frustration"
+      ],
+      "file": "dev.jsonl",
+      "hosts": [
+        "claude_code",
+        "codex",
+        "command_code"
+      ],
+      "sha256": "6c49c3842a490fffeff731db3c604453a57ef82362df5de74ac8af05e4aacdb0"
+    },
+    "heldout": {
+      "case_count": 8,
+      "families": [
+        "claimed_verified_then_corrected",
+        "degraded_provider_treated_as_success",
+        "guard_firings",
+        "ignored_tool_failure",
+        "stale_terminology_surfacing",
+        "user_swearing",
+        "verification_claim_without_tool_evidence",
+        "visible_frustration"
+      ],
+      "file": "heldout.jsonl",
+      "hosts": [
+        "claude_code",
+        "command_code"
+      ],
+      "sha256": "0fce6dab81d74d93423137253a87328f527fcc357317f1b7ef6b526b8eafaba4"
+    }
+  },
+  "stats": {
+    "host_case_counts": {
+      "claude_code": 5,
+      "codex": 2,
+      "command_code": 9
+    },
+    "selection_count": 16,
+    "source_parse_count": 12
+  }
+}

@@ -248,8 +248,13 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                 serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet)
                     .map_err(|error| format!("federation packet is invalid: {error}"))
             })?;
-        let selection = crate::push::selection::select_packet_for_h8(&packet, &ceiling)
-            .map_err(NativeRouteError::RequestTime)?;
+        let push_policy = push_policy_for_request(&value, task);
+        let selection = crate::push::selection::select_packet_for_h8_with_policy(
+            &packet,
+            &ceiling,
+            &push_policy,
+        )
+        .map_err(NativeRouteError::RequestTime)?;
         let selected_content = selection.selected_representation.content.clone();
         let fields = payload
             .as_object_mut()
@@ -281,6 +286,24 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         Err(NativeRouteError::Internal(error)) => {
             (502, serde_json::json!({"error": error}).to_string())
         }
+    }
+}
+
+/// Select control vs query-aware `reduced_1` Push from the same `/federate`
+/// request body the planner already sent. Control remains the default arm:
+/// query-aware is reachable only when the request explicitly opts in via
+/// `pushPolicy: "queryAware"`, carrying the request's own `task` as the
+/// query-admitted metadata. Membrane never derives this from task prose on
+/// its own — the opt-in is an explicit planner signal, not an inference.
+fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushPolicy {
+    let opts_into_query_aware = body
+        .get("pushPolicy")
+        .and_then(Value::as_str)
+        .is_some_and(|policy| policy.eq_ignore_ascii_case("queryAware"));
+    if opts_into_query_aware && !task.trim().is_empty() {
+        crate::push::prep::PushPolicy::query_aware(task.to_owned(), true, true)
+    } else {
+        crate::push::prep::PushPolicy::Control
     }
 }
 

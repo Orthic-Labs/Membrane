@@ -26,7 +26,7 @@ CodeRight's target shape is split by ownership in
 
 | Document | Kind | Contents |
 |---|---|---|
-| [MEMBRANE-PENDING-IMPLEMENTATION.md](MEMBRANE-PENDING-IMPLEMENTATION.md) | required | Production-path audit (§0) plus non-experimental target contracts: Adapt `intervention_target` and asset effectiveness, daemon background review, Cortex Stage 1 Dream, Learning Lineage, insights projection, Pull fusion/corrective retrieval, Push wiring/qualification, `PacketReductionPlanV1`, and host seam `H1`–`H10`. |
+| [MEMBRANE-PENDING-IMPLEMENTATION.md](MEMBRANE-PENDING-IMPLEMENTATION.md) | required | Production-path audit (§0) plus non-experimental target contracts: Adapt `intervention_target`, `InterventionAttributionV1` mutation-eligibility gate, asset activation evidence, asset effectiveness, daemon background review, Cortex Stage 1 Dream, Learning Lineage, insights projection, Pull fusion/corrective retrieval, Push wiring/qualification, `PacketReductionPlanV1`, and host seam `H1`–`H10`. |
 | [MEMBRANE-SEMANTIC-ADVISOR-EXPERIMENTAL.md](MEMBRANE-SEMANTIC-ADVISOR-EXPERIMENTAL.md) | experimental, optional | Bounded LLM semantic assistance: three phases, corrective-first default posture, recorded-nondeterminism replay, wire contracts, challenge/resume, host capability `H11`. Deletable without affecting the required document. |
 
 ## Start with the production-path audit

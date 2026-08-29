@@ -240,7 +240,7 @@ pub fn rule_shape_valid(body: &str) -> bool {
     // directive; a modal inside the condition remains ordinary factual text.
     if let Some((condition, action)) = normalized.split_once(",") {
         if condition.starts_with("when ") {
-            let action_first_word = action.trim().split_whitespace().next().unwrap_or("");
+            let action_first_word = action.split_whitespace().next().unwrap_or("");
             if IMPERATIVE_STARTERS.contains(&action_first_word)
                 || first_person_preference_re().is_match(action.trim())
             {

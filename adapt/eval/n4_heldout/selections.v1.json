@@ -1,0 +1,184 @@
+{
+  "schema": "adapt.real-heldout-selections.v1",
+  "reviewed_at": "2026-08-29T00:00:00Z",
+  "reviewer": "adapt-real-corpus-agent-review",
+  "selection_policy": "Each row names exact evidence event ids produced by the installed native membrane adapt mine path. Dev may be measured; heldout remains frozen and unexecuted.",
+  "selections": [
+    {
+      "selection_id": "dev-claude-ignored-tool-failure",
+      "split": "dev",
+      "host": "claude_code",
+      "source": "${HOME}/.claude/projects/D--Claude-membrane/63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "ignored_tool_failure",
+      "event_ids": ["evt_d420ed271d4d5969e87c0d8b8c35fbbd", "evt_e49d80fb43ed6e2ab3d3600e45764099"],
+      "min_severity": "high",
+      "review_note": "A failed tar invocation is followed directly by an assistant success claim; no correcting tool call appears inside the selected evidence pair."
+    },
+    {
+      "selection_id": "dev-command-guard-firing",
+      "split": "dev",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/c-users-adrds-codex-worktrees-5019-coderight/9639dec5-fac5-4fe4-b8ca-d0916e4fd11b.jsonl",
+      "session_id": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+      "family": "guard_firings",
+      "event_ids": ["evt_3c2b31417a04c0f2d48d102f008d5302"],
+      "min_severity": "low",
+      "review_note": "A real validation guard rejects a dispatch packet with explicit enforcement defects."
+    },
+    {
+      "selection_id": "dev-command-stale-terminology",
+      "split": "dev",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude/d0206aad-a063-4b33-bca4-93333cbb3024.jsonl",
+      "session_id": "d0206aad-a063-4b33-bca4-93333cbb3024",
+      "family": "stale_terminology_surfacing",
+      "event_ids": ["evt_13bb5b122104c344dd19c2402ecfa061"],
+      "min_severity": "low",
+      "review_note": "Assistant presents retired MemRight terminology as the current next implementation surface."
+    },
+    {
+      "selection_id": "dev-codex-user-swearing",
+      "split": "dev",
+      "host": "codex",
+      "source": "${HOME}/.codex/sessions/2026/08/28/rollout-2026-08-28T05-27-31-01a0435b-ac54-75b0-86f4-1c3f68be2d51_01a045a8-4608-7bb3-ab42-128667ef555e.jsonl",
+      "session_id": "01a0435b-ac54-75b0-86f4-1c3f68be2d51",
+      "family": "user_swearing",
+      "event_ids": ["evt_72e75c17ddb347c39026b82422dcf8e6"],
+      "min_severity": "high",
+      "review_note": "Direct user frustration contains profanity after output was placed in the wrong directory."
+    },
+    {
+      "selection_id": "dev-codex-visible-frustration",
+      "split": "dev",
+      "host": "codex",
+      "source": "${HOME}/.codex/sessions/2026/08/27/rollout-2026-08-27T23-18-47-01a04456-b1ae-7793-a6eb-44adf2c06911.jsonl",
+      "session_id": "01a04456-b1ae-7793-a6eb-44adf2c06911",
+      "family": "visible_frustration",
+      "event_ids": ["evt_0858afada6cdc5b6d1049d0700917945"],
+      "min_severity": "medium",
+      "review_note": "User explicitly signals time pressure and that the work is taking too long."
+    },
+    {
+      "selection_id": "dev-claude-verification-without-evidence",
+      "split": "dev",
+      "host": "claude_code",
+      "source": "${HOME}/.claude/projects/D--Claude-coderight/d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "verification_claim_without_tool_evidence",
+      "event_ids": ["evt_48925256b304b4f522797677df09bd27"],
+      "min_severity": "high",
+      "review_note": "Assistant states the canonical document is done without tool evidence in the selected excerpt."
+    },
+    {
+      "selection_id": "dev-command-claimed-then-corrected",
+      "split": "dev",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude-heardright/2856ee4a-5edf-4bbc-ae85-9cbb929d6aa0.jsonl",
+      "session_id": "2856ee4a-5edf-4bbc-ae85-9cbb929d6aa0",
+      "family": "claimed_verified_then_corrected",
+      "event_ids": ["evt_babe2caa5eee7257050589ee8798cd96", "evt_2349e3048084098f6ab436d0ddc3419f"],
+      "min_severity": "high",
+      "review_note": "Assistant claims all fixes verified; the user then reports a still-visible shipped-state defect."
+    },
+    {
+      "selection_id": "dev-command-degraded-as-success",
+      "split": "dev",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude/56cc69a9-ca70-4677-99de-95e83310295b.jsonl",
+      "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+      "family": "degraded_provider_treated_as_success",
+      "event_ids": ["evt_65e96784cc14dcc6c5304df3c6e86758", "evt_8117849c4a33a5730e74f37bd04097bc"],
+      "min_severity": "medium",
+      "review_note": "Native detector identifies a degraded/unavailable marker in the real tool output followed by an unqualified completion statement."
+    },
+    {
+      "selection_id": "heldout-claude-ignored-tool-failure",
+      "split": "heldout",
+      "host": "claude_code",
+      "source": "${HOME}/.claude/projects/D--Claude-viewright/960fda64-9577-4afa-a021-a052eabafa4f.jsonl",
+      "session_id": "960fda64-9577-4afa-a021-a052eabafa4f",
+      "family": "ignored_tool_failure",
+      "event_ids": ["evt_26d37cd1b4e2661106df7dabb5545881", "evt_d9bf9ffabc87f9fae86532ab2c853001"],
+      "min_severity": "high",
+      "review_note": "Frozen heldout: broker tool failure is immediately followed by an assistant claim that patches the deployed copy."
+    },
+    {
+      "selection_id": "heldout-command-guard-firing",
+      "split": "heldout",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/c-users-adrds-codex-worktrees-5019-coderight/9639dec5-fac5-4fe4-b8ca-d0916e4fd11b.jsonl",
+      "session_id": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+      "family": "guard_firings",
+      "event_ids": ["evt_0ac52436e84b844db70fc21f9b955c91"],
+      "min_severity": "low",
+      "review_note": "Frozen heldout: a distinct real validation run is refused with explicit guard defects."
+    },
+    {
+      "selection_id": "heldout-command-stale-terminology",
+      "split": "heldout",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude/ef16b2e5-962f-4736-aa2f-5873810a1a3d.jsonl",
+      "session_id": "ef16b2e5-962f-4736-aa2f-5873810a1a3d",
+      "family": "stale_terminology_surfacing",
+      "event_ids": ["evt_17aa0de840d58bc6c10756b5071a3e31"],
+      "min_severity": "low",
+      "review_note": "Frozen heldout: assistant actively creates a retired MemRight workspace as current implementation."
+    },
+    {
+      "selection_id": "heldout-claude-user-swearing",
+      "split": "heldout",
+      "host": "claude_code",
+      "source": "${HOME}/.claude/projects/D--Claude-coderight/b06e10b7-aef2-45d0-ade1-5e5b23754522.jsonl",
+      "session_id": "b06e10b7-aef2-45d0-ade1-5e5b23754522",
+      "family": "user_swearing",
+      "event_ids": ["evt_2b2d5cf582f2a5f3609e4b653e5e5603"],
+      "min_severity": "high",
+      "review_note": "Frozen heldout: direct user profanity appears in an instruction to stop making excuses and progress the work."
+    },
+    {
+      "selection_id": "heldout-command-visible-frustration",
+      "split": "heldout",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude-heardright/e483966a-c276-4068-bb94-59d3b47173ba.jsonl",
+      "session_id": "e483966a-c276-4068-bb94-59d3b47173ba",
+      "family": "visible_frustration",
+      "event_ids": ["evt_0830156de5445de02615bc32cc92c408"],
+      "min_severity": "medium",
+      "review_note": "Frozen heldout: user reports a recurring inability to click controls and explicitly asks for investigation."
+    },
+    {
+      "selection_id": "heldout-claude-verification-without-evidence",
+      "split": "heldout",
+      "host": "claude_code",
+      "source": "${HOME}/.claude/projects/D--Claude-viewright/960fda64-9577-4afa-a021-a052eabafa4f.jsonl",
+      "session_id": "960fda64-9577-4afa-a021-a052eabafa4f",
+      "family": "verification_claim_without_tool_evidence",
+      "event_ids": ["evt_b233800d1d0d38017524646edb10402d"],
+      "min_severity": "high",
+      "review_note": "Frozen heldout: assistant asserts broker connectivity now works without evidence in the selected excerpt."
+    },
+    {
+      "selection_id": "heldout-command-claimed-then-corrected",
+      "split": "heldout",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude-heardright/2856ee4a-5edf-4bbc-ae85-9cbb929d6aa0.jsonl",
+      "session_id": "2856ee4a-5edf-4bbc-ae85-9cbb929d6aa0",
+      "family": "claimed_verified_then_corrected",
+      "event_ids": ["evt_66801387bad6cb24a1361ec297e1860c", "evt_2349e3048084098f6ab436d0ddc3419f"],
+      "min_severity": "high",
+      "review_note": "Frozen heldout: a detailed fixed-and-verified claim is followed by the user's report that a production readiness defect remains."
+    },
+    {
+      "selection_id": "heldout-command-degraded-as-success",
+      "split": "heldout",
+      "host": "command_code",
+      "source": "${HOME}/.commandcode/projects/d-claude/56cc69a9-ca70-4677-99de-95e83310295b.jsonl",
+      "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+      "family": "degraded_provider_treated_as_success",
+      "event_ids": ["evt_84bb7052bf27d135348369a477038103", "evt_baf62f87f3c5cc7956449ad214790b77"],
+      "min_severity": "medium",
+      "review_note": "Frozen heldout: a separate real degraded/unavailable tool output is followed by an all-green completion statement."
+    }
+  ]
+}

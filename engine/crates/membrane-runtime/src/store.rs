@@ -2008,6 +2008,7 @@ impl MemoryStore {
                 consolidated_count: 0,
                 pruned_count: 0,
                 quarantined_count: 0,
+                duplicate_quarantined_count: 0,
             })),
             embedder_issue,
             writes_enabled,
@@ -2445,6 +2446,7 @@ impl MemoryStore {
             consolidated_count: 0,
             pruned_count: 0,
             quarantined_count: 0,
+            duplicate_quarantined_count: 0,
         };
 
         if policy.shell_allowed {
@@ -2568,54 +2570,21 @@ impl MemoryStore {
             })?;
             consolidated_entries.push(entry);
         }
-        for id in &plan.pruned_ids {
-            let snapshot = tx
-                .query_row(
-                    "SELECT scope_id, artifact_family, producer, record_type
-                       FROM memories WHERE id = ?1",
-                    rusqlite::params![id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            MemoryRecordMetadata {
-                                artifact_family: row.get(1)?,
-                                producer: row.get(2)?,
-                                record_type: row.get(3)?,
-                            },
-                        ))
-                    },
-                )
-                .optional()
-                .map_err(|e| {
-                    self.persist_error(format!("dream prune lookup failed for {id}: {e}"))
-                })?;
-            tx.execute("DELETE FROM memories WHERE id = ?1", rusqlite::params![id])
-                .map_err(|e| self.persist_error(format!("dream prune failed for {id}: {e}")))?;
-            tx.execute(
-                "INSERT INTO deletions (id, deleted_at) VALUES (?1, ?2)
-                 ON CONFLICT(id) DO UPDATE SET deleted_at=excluded.deleted_at",
-                rusqlite::params![id, crate::time::now_iso()],
+        // Reversibly quarantine exact-duplicate secondaries absorbed into a
+        // primary during consolidation, and separately, low-score/expired
+        // entries. Neither list is ever hard-deleted here: quarantine-before-
+        // destructive is a locked invariant — no automated curation permanently
+        // destroys a row in the same pass that judges it.
+        for (id, reason, event_kind, fail_prefix) in plan
+            .duplicate_quarantine_ids
+            .iter()
+            .map(|id| (id, "duplicate_consolidated", "curate_quarantine_duplicate", "dream duplicate quarantine"))
+            .chain(
+                plan.quarantined_ids
+                    .iter()
+                    .map(|id| (id, "low_effectiveness", "curate_quarantine", "dream quarantine")),
             )
-            .map_err(|e| {
-                self.persist_error(format!("dream prune tombstone failed for {id}: {e}"))
-            })?;
-            if let Some((scope_id, metadata)) = snapshot.as_ref() {
-                log_memory_event(
-                    &self.operation_attribution,
-                    &tx,
-                    "curate_prune",
-                    Some(id),
-                    Some(scope_id),
-                    context,
-                    1,
-                    Some(metadata),
-                )
-                .map_err(|e| {
-                    self.persist_error(format!("dream prune event failed for {id}: {e}"))
-                })?;
-            }
-        }
-        for id in &plan.quarantined_ids {
+        {
             let snapshot = tx
                 .query_row(
                     "SELECT scope_id, artifact_family, producer, record_type
@@ -2634,7 +2603,7 @@ impl MemoryStore {
                 )
                 .optional()
                 .map_err(|e| {
-                    self.persist_error(format!("dream quarantine lookup failed for {id}: {e}"))
+                    self.persist_error(format!("{fail_prefix} lookup failed for {id}: {e}"))
                 })?;
             let quarantined_at = crate::time::now_iso();
             tx.execute(
@@ -2648,7 +2617,7 @@ impl MemoryStore {
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
                         source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
                         effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
-                        priority_class, confidence, confidence_basis, ?2, 'low_effectiveness'
+                        priority_class, confidence, confidence_basis, ?2, ?3
                    FROM memories WHERE id = ?1
                  ON CONFLICT(id) DO UPDATE SET
                     tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
@@ -2665,28 +2634,28 @@ impl MemoryStore {
                     confidence=excluded.confidence, confidence_basis=excluded.confidence_basis,
                     quarantined_at=excluded.quarantined_at,
                     reason=excluded.reason",
-                rusqlite::params![id, quarantined_at],
+                rusqlite::params![id, quarantined_at, reason],
             )
             .map_err(|e| {
-                self.persist_error(format!("dream quarantine persist failed for {id}: {e}"))
+                self.persist_error(format!("{fail_prefix} persist failed for {id}: {e}"))
             })?;
             tx.execute("DELETE FROM memories WHERE id = ?1", rusqlite::params![id])
                 .map_err(|e| {
-                    self.persist_error(format!("dream quarantine removal failed for {id}: {e}"))
+                    self.persist_error(format!("{fail_prefix} removal failed for {id}: {e}"))
                 })?;
             if let Some((scope_id, metadata)) = snapshot.as_ref() {
                 log_memory_event(
                     &self.operation_attribution,
                     &tx,
-                    "curate_quarantine",
-                    Some(id),
+                    event_kind,
+                    Some(id.as_str()),
                     Some(scope_id),
                     context,
                     1,
                     Some(metadata),
                 )
                 .map_err(|e| {
-                    self.persist_error(format!("dream quarantine event failed for {id}: {e}"))
+                    self.persist_error(format!("{fail_prefix} event failed for {id}: {e}"))
                 })?;
             }
         }
@@ -2696,7 +2665,7 @@ impl MemoryStore {
         self.flush_event_outbox()?;
         {
             let mut registry = self.registry.write().unwrap_or_else(|e| e.into_inner());
-            for id in &plan.pruned_ids {
+            for id in &plan.duplicate_quarantine_ids {
                 registry.remove(id);
             }
             for id in &plan.quarantined_ids {
@@ -2714,8 +2683,11 @@ impl MemoryStore {
             shell_allowed: policy.shell_allowed,
             read_count: entries.len(),
             consolidated_count: plan.consolidated.len(),
-            pruned_count: plan.pruned_ids.len(),
+            // Duplicate consolidation no longer deletes anything — it quarantines
+            // reversibly (below), so nothing here is destroyed in this pass.
+            pruned_count: 0,
             quarantined_count: plan.quarantined_ids.len(),
+            duplicate_quarantined_count: plan.duplicate_quarantine_ids.len(),
         };
         *self.dream_status.lock().unwrap() = status.clone();
         Ok(status)
@@ -10562,8 +10534,8 @@ mod tests {
             .unwrap();
         m.db.lock()
             .execute_batch(
-                "CREATE TRIGGER fail_dream_tombstone BEFORE INSERT ON deletions
-                 BEGIN SELECT RAISE(ABORT, 'dream tombstone failed'); END;",
+                "CREATE TRIGGER fail_dream_quarantine BEFORE INSERT ON memory_quarantine
+                 BEGIN SELECT RAISE(ABORT, 'dream quarantine failed'); END;",
             )
             .unwrap();
 
@@ -10744,7 +10716,11 @@ mod tests {
     }
 
     #[test]
-    fn dream_now_consolidates_duplicates_and_prunes_low_value_entries() {
+    fn dream_now_consolidates_duplicates_and_quarantines_low_value_entries_reversibly() {
+        // Renamed from the old "...and_prunes_low_value_entries": duplicate
+        // consolidation no longer permanently deletes the absorbed secondary,
+        // so `pruned_count` stays 0 and the duplicate is counted separately
+        // via `duplicate_quarantined_count`.
         let m = MemoryStore::new();
         m.remember("Use cargo fmt before cargo test.", vec!["cargo".into()]);
         m.remember(" use cargo fmt before cargo test! ", vec!["cargo".into()]);
@@ -10755,9 +10731,192 @@ mod tests {
         assert!(status.model.is_empty());
         assert!(!status.shell_allowed);
         assert_eq!(status.consolidated_count, 1);
-        assert!(status.pruned_count >= 1);
+        assert_eq!(
+            status.pruned_count, 0,
+            "no automated curation permanently destroys a row in this pass"
+        );
+        assert!(status.duplicate_quarantined_count >= 1);
         assert!(status.quarantined_count >= 1);
         assert_eq!(m.search("cargo fmt cargo test", 10).len(), 1);
+    }
+
+    #[test]
+    fn dream_quarantines_exact_duplicate_secondary_instead_of_deleting_it() {
+        // (a) A consolidation pass must leave the absorbed secondary row
+        // complete in quarantine, tagged with the duplicate reason — never
+        // hard-deleted.
+        let m = MemoryStore::new();
+        let a = m
+            .try_put(
+                "dup-a",
+                "Duplicate quarantine memory.",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+        let b = m
+            .try_put(
+                "dup-b",
+                "Duplicate quarantine memory!",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+
+        let status = m.dream_now("2026-07-10").unwrap();
+        assert_eq!(status.consolidated_count, 1);
+        assert_eq!(status.duplicate_quarantined_count, 1);
+        assert_eq!(status.pruned_count, 0);
+
+        // The secondary is not in active recall...
+        assert!(m.entries(10).iter().all(|entry| entry.id != b));
+        // ...and the primary is untouched under its own id.
+        assert!(m.entries(10).iter().any(|entry| entry.id == a));
+
+        // ...but it survives, in full, in the reversible quarantine store,
+        // tagged with the distinct duplicate reason.
+        assert_eq!(m.quarantined_ids(), vec![b.clone()]);
+        let (content, reason): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, reason FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![&b],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("quarantined duplicate row must be complete, not deleted");
+        assert_eq!(content, "Duplicate quarantine memory!");
+        assert_eq!(reason, "duplicate_consolidated");
+
+        let tombstones: i64 = m
+            .db
+            .lock()
+            .query_row("SELECT COUNT(*) FROM deletions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            tombstones, 0,
+            "quarantining a duplicate must not emit a deletion tombstone"
+        );
+    }
+
+    #[test]
+    fn dream_restores_a_quarantined_duplicate_intact_without_touching_the_primary() {
+        // (b) Restore brings the quarantined duplicate back intact, and
+        // (c) the primary's merge result is unaffected by the restore.
+        let m = MemoryStore::new();
+        let a = m
+            .try_put(
+                "restore-dup-a",
+                "Restorable duplicate memory.",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+        let b = m
+            .try_put(
+                "restore-dup-b",
+                "Restorable duplicate memory!",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+
+        m.dream_now("2026-07-10").unwrap();
+        let (primary_content_before, primary_source_ids_before): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, source_ids FROM memories WHERE id = ?1",
+                rusqlite::params![&a],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+
+        assert!(m.restore_quarantined(&b).unwrap());
+
+        assert!(
+            m.quarantined_ids().is_empty(),
+            "restored id must leave quarantine"
+        );
+        assert!(m.entries(10).iter().any(|entry| entry.id == b));
+        let restored_content: String = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![&b],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored_content, "Restorable duplicate memory!");
+
+        // The restored row comes back as its OWN row: the primary's merge
+        // (content, id, scope, source_ids) is unchanged by the restore.
+        let (primary_content_after, primary_source_ids_after): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, source_ids FROM memories WHERE id = ?1",
+                rusqlite::params![&a],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(primary_content_after, primary_content_before);
+        assert_eq!(primary_source_ids_after, primary_source_ids_before);
+    }
+
+    #[test]
+    fn restore_of_a_duplicate_fails_typed_on_id_collision_without_overwriting() {
+        // (b, continued) If a row now occupies the quarantined duplicate's
+        // original id, restore must fail typed rather than silently
+        // overwrite the colliding row — the existing restore path's
+        // `ON CONFLICT(id) DO NOTHING` behavior for `memories`.
+        let m = MemoryStore::new();
+        let a = m
+            .try_put(
+                "collide-dup-a",
+                "Collision duplicate memory.",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+        let b = m
+            .try_put(
+                "collide-dup-b",
+                "Collision duplicate memory!",
+                "global",
+                MemoryTier::Episodic,
+            )
+            .unwrap();
+        m.dream_now("2026-07-10").unwrap();
+        assert_eq!(m.quarantined_ids(), vec![b.clone()]);
+
+        // A new row is written back under the quarantined id before restore.
+        m.put(
+            "collide-dup-b",
+            "A brand new unrelated row.",
+            "global",
+            MemoryTier::Episodic,
+        );
+
+        let restored = m
+            .restore_quarantined(&b)
+            .expect("restore must return a typed result, not error, on collision");
+        assert!(!restored, "restore must refuse to overwrite the colliding row");
+        let (content,): (String,) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![&b],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        assert_eq!(
+            content, "A brand new unrelated row.",
+            "the colliding row must survive untouched"
+        );
+        let _ = a;
     }
 
     #[test]

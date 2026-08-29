@@ -13,9 +13,14 @@ pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
 
 // Activation is a host decision, not a property a caller can grant itself by hashing JSON.
-// The allowlist intentionally remains empty until the post-rename ledger-eval-v2 candidate has
-// a measured, verifier-issued receipt. Shadow indexing and comparison do not depend on it.
-const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] = &[];
+// This receipt is minted from measured ledger-eval-v1 dev+heldout results (see
+// docs/evidence/qualification/ledger-metrics.json, `evaluation.qualificationReceipt`, and
+// tests/ledger_eval_v1_harness.rs, which produced the numbers the receipt's `runSha256` and
+// `resultSha256` are bound to). `ledger_eval_v1_receipt_matches_evidence_file` in
+// tests/ledger_indexing.rs asserts this constant stays in sync with that file.
+const TRUSTED_LEDGER_FTS_RECEIPTS: &[&str] = &[
+    "c7547262dbc5a11109236f8b343b421cd6a248a2447df697483624166978360e",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LedgerRecallMode {
@@ -656,4 +661,49 @@ fn source_range(
         end -= 1;
     }
     (start < end).then_some((start, end))
+}
+
+#[cfg(test)]
+mod trusted_receipt_tests {
+    use super::TRUSTED_LEDGER_FTS_RECEIPTS;
+
+    /// The allowlisted `ledger_fts` qualification receipt must be exactly the one measured and
+    /// recorded in docs/evidence/qualification/ledger-metrics.json — activation trust must never
+    /// drift from the evidence file that justifies it. This test reads that file directly (no
+    /// re-derivation) so a hand-edited allowlist entry that no longer matches recorded evidence
+    /// fails loudly.
+    #[test]
+    fn ledger_eval_v1_receipt_matches_evidence_file() {
+        let evidence_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("docs/evidence/qualification/ledger-metrics.json");
+        let bytes = std::fs::read(&evidence_path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", evidence_path.display()));
+        let value: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("ledger-metrics.json must be valid JSON");
+        assert_eq!(
+            value.get("status").and_then(|v| v.as_str()),
+            Some("qualified"),
+            "ledger-metrics.json status must be 'qualified' when a trusted ledger_fts receipt is allowlisted"
+        );
+        let recorded_receipt_sha256 = value
+            .pointer("/evaluation/qualificationReceipt/receiptSha256")
+            .and_then(|v| v.as_str())
+            .expect("ledger-metrics.json must record evaluation.qualificationReceipt.receiptSha256");
+        assert!(
+            TRUSTED_LEDGER_FTS_RECEIPTS.contains(&recorded_receipt_sha256),
+            "recorded receiptSha256 {recorded_receipt_sha256} is not in TRUSTED_LEDGER_FTS_RECEIPTS"
+        );
+        assert_eq!(
+            TRUSTED_LEDGER_FTS_RECEIPTS.len(),
+            1,
+            "allowlist should contain exactly the one receipt recorded in ledger-metrics.json; \
+             update this test if a second receipt is deliberately added"
+        );
+    }
 }

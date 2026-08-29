@@ -94,7 +94,7 @@ pub fn prepare_query_aware(
     compression_provider::compress_query_aware(&request)
 }
 
-fn is_code_ext(path: &Path) -> bool {
+pub(crate) fn is_code_ext(path: &Path) -> bool {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())
@@ -128,7 +128,7 @@ fn is_code_ext(path: &Path) -> bool {
     )
 }
 
-fn is_markdown(path: &Path) -> bool {
+pub(crate) fn is_markdown(path: &Path) -> bool {
     matches!(
         path.extension()
             .and_then(|extension| extension.to_str())
@@ -138,7 +138,7 @@ fn is_markdown(path: &Path) -> bool {
     )
 }
 
-fn is_structured_text(path: &Path, src: &str) -> bool {
+pub(crate) fn is_structured_text(path: &Path, src: &str) -> bool {
     let ext = path
         .extension()
         .and_then(|s| s.to_str())

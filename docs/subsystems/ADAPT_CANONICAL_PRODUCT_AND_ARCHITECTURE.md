@@ -928,6 +928,64 @@ For every automated or manual mitigation that can be linked to an Insight issue,
 - regressions/reopen events;
 - false-positive/dismissal rate.
 
+## 6.9 Intervention attribution — the mutation-eligibility gate
+
+Between a confirmed `InsightIssueV1` and an actionable remediation proposal whose
+`intervention_target` names a mutable instruction surface (skill/procedure, system prompt, tool
+description, documentation policy), Adapt MUST answer a question §6.6 and §6.7 leave open:
+
+> **Why do we believe changing this particular surface would have prevented the observed
+> failures?**
+
+The answer is an explicit attribution record, not an implicit assumption inside the proposal. Its
+semantic requirements:
+
+- **Counterfactual preventability.** An instruction-surface proposal is eligible only when a
+  competent agent following the proposed rule would have avoided the scored failures, and the rule
+  is `missing`, `wrong`, or `underspecified` on the current surface content (bound by digest). A
+  claim of preventability without episode-level evidence is `unknown`, not `supported`.
+- **Already-correct refusal.** When the current surface already demanded the correct behavior, that
+  surface is not the intervention target. The failure attributes elsewhere — model behavior or
+  variance, routing, retrieval/reduction, tooling, product, or evaluator error. A guard or
+  evaluator may still be proposed; those are different targets with their own attributions.
+- **No redundant restatement.** A proposal whose only change restates or hedges guidance the
+  surface already carries is ineligible. The smallest general change that alters the surface's
+  behavioral contract is the only admissible mutation shape.
+- **Alternative-cause accounting.** Attribution must name the plausible non-target causes it
+  considered (model variance, routing failure, infrastructure, product, tool implementation,
+  evaluator error) and why the evidence discriminates against them — or state
+  `insufficient_evidence` and remain ineligible.
+- **Independent support.** Eligibility requires recurrence across independent sessions, not
+  repetition inside one trajectory. Frequency × severity prioritizes; it does not by itself
+  establish preventability.
+
+For `skill_or_procedure` targets, mechanical activation evidence (host capability H4) discriminates
+the surface deterministically before any semantic judgment:
+
+```text
+asset never discovered                  → registry / discovery, not the asset text
+discovered, trigger never matched       → trigger/description surface
+selected, not loaded or not in context  → context_retrieval / context_reduction
+in context, rule present, not followed  → model_behavior_policy, or model variance
+                                          (recurrence across sessions required to
+                                           exclude variance)
+rule followed, failure still occurred   → instruction_state = already_correct;
+                                          the asset text is the wrong target
+```
+
+The host emits only the mechanical stages (discovered, trigger evaluation, selection, load,
+in-context turns). Whether a rule was *relevant* to the failure and whether it was *followed* are
+Adapt semantic assessments and never host-emitted facts (invariant P1).
+
+Evaluator outcomes counted as attribution support use a three-valued applicability domain:
+`applicable | not_applicable | insufficient_evidence`. An `insufficient_evidence` outcome is
+removed from the applicable denominator; it never becomes a success, a failure, or a zero.
+
+Attribution is proposal-class under §3.4: a model may draft it; deterministic code binds it to
+episode evidence, the current surface digest, and the eligibility gates above. Attribution grants
+no authority — a mutation-eligible verdict feeds variant generation (host capability H7) and every
+existing proposal, review, precision, and admission gate still applies.
+
 ---
 
 # 7. Shared admission, integrity, and Cortex contracts
@@ -1742,9 +1800,22 @@ The public README currently reports 59/59 in its full deterministic benchmark su
 
 Adapt should treat exact completion/receipt mismatches as structured evidence. CodeRight may enforce an approved exact guard live; Adapt should learn whether and where the failure recurs.
 
+### Warp Skill Doctor
+
+Warp's skill-doctor workflow is the closest shipping comparator for §6.9's mutation-eligibility
+doctrine: it clusters failures by root cause, prioritizes frequency × severity, verifies findings
+against the actual repository/configuration, requires the smallest general edit justified by
+evidence, and explicitly refuses instruction changes when the instruction already demanded correct
+behavior, when the failure looks like model variance, when the only change would be redundant
+restatement, or when the real owner is product/infra/scorer/code. Its skill-coverage signal
+(installed skill never activated in a failed conversation) motivated the mechanical activation
+evidence in §6.9, refined here into stage-level facts because "didn't trigger → description
+defect" is too aggressive a heuristic. Its scoring architecture (fixed weightings, curved scores,
+letter grades) is product decision, not learning-system architecture, and is not absorbed.
+
 ### Agent-failure research
 
-MAST, coding-agent failure studies, model/client-specific failure research, and other labelled-trajectory work are useful for family taxonomies and held-out evaluation. They do not justify failure labels that cannot be honestly supported by the available evidence.
+MAST, coding-agent failure studies, model/client-specific failure research, and other labelled-trajectory work are useful for family taxonomies and held-out evaluation. They do not justify failure labels that cannot be honestly supported by the available evidence. For causal attribution specifically, Who&When (arXiv:2505.00212) reports that even frontier models attribute the responsible agent in barely half of multi-agent failures and the exact failure step far less — direct empirical support for §6.9's refusal to treat attribution as an automatic oracle.
 
 ## 16.3 Adjacent memory systems
 
@@ -1899,6 +1970,7 @@ The following are the final product shape unless a future architecture amendment
 28. **CI must prevent Adapt/memory conflation from re-entering current documentation.**
 29. **A capability is not landed until the production path exercises it and acceptance evidence qualifies it.**
 30. **Success means fewer repeated corrections and fewer recurring failures without weakening correctness, security, authority, or task performance.**
+31. **A remediation proposal targeting a mutable instruction surface is actionable only after an explicit intervention attribution supports counterfactual preventability on the current surface digest, refuses already-correct/redundant/wrong-owner mutations, and accounts for alternative causes (§6.9).**
 
 # 20. Canonical short copy
 

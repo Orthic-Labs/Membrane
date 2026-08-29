@@ -10,6 +10,7 @@ pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
+pub mod cortex_relevance_spotcheck;
 pub mod code_batch;
 pub mod delivery_trace_view;
 pub mod diagnostic_bundle;

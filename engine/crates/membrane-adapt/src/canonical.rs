@@ -85,7 +85,7 @@ const NUL: u8 = 0u8;
 pub fn normalize_text(text: &str) -> String {
     let mut s = text.trim().to_lowercase();
     while s.contains("  ") || s.contains('\t') || s.contains('\n') {
-        s = s.replace('\t', " ").replace('\n', " ");
+        s = s.replace(['\t', '\n'], " ");
         while s.contains("  ") {
             s = s.replace("  ", " ");
         }

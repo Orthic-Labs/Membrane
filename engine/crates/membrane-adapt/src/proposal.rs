@@ -542,7 +542,7 @@ pub fn build_pending_manifest(
     let mut records = Vec::new();
     for candidate in &candidates {
         let eid = evidence_id(candidate);
-        let mut context_events: Vec<ContextEvent> =
+        let context_events: Vec<ContextEvent> =
             candidate.context_events.iter().map(context_event).collect();
         let mut record = ManifestRecord {
             id: candidate.candidate_id.clone(),

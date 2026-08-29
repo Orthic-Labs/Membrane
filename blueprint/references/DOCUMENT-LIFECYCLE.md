@@ -46,6 +46,31 @@ blueprint:
   canonical_for: [authentication, token-storage]
 ```
 
+### How declared status maps onto `doc.lifecycle`
+
+The frontmatter `status` is the authority; the banner is only rendered for humans. A declared
+status maps onto `doc.lifecycle.status` as:
+
+| frontmatter `status` | `doc.lifecycle.status` | live claims |
+| --- | --- | --- |
+| `accepted` | `current` | included |
+| `draft` | `draft` | excluded |
+| `rejected` | `rejected` | excluded |
+| `superseded` | `superseded` | excluded |
+
+Anything other than `current` leaves the live-input set, so a `draft` or `rejected` decision
+cannot be mistaken for settled guidance. `effective_from` becomes `supersededOn` when a
+declaration retires a document, and a malformed banner no longer emits
+`invalidSupersessionMarkers` noise on a document the structured declaration already retires.
+
+### `supersedes` runs from the survivor
+
+A banner points backwards — the retired document names its replacement. Structured `supersedes`
+points forwards — the surviving document names the `document_id` it replaces. Blueprint resolves
+document ids to paths in a pre-pass, so a document retired this way is excluded from live claims,
+stale-reference findings, Phase-2 queues, generated current docs, and task briefs *before* any
+claim is extracted, and the graph gains the same `supersedes` edge the banner form produces.
+
 ## Newer does not mean more authoritative
 
 Filename dates, frontmatter dates and recent commits are evidence of chronology, not of authority —

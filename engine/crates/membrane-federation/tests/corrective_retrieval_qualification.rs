@@ -231,6 +231,138 @@ async fn dev_corrective_path_runs_exactly_one_alternate_and_remerges() {
     assert_eq!(calls[1].3, calls[2].3);
 }
 
+/// (d) No contract on the request means sufficiency stays `not_evaluated` and
+/// no corrective stage is planned, attempted, or executed — the unchanged
+/// default path.
+#[tokio::test]
+async fn no_contract_leaves_sufficiency_not_evaluated() {
+    let calls = Calls::default();
+    let mut req = request();
+    req.extensions.remove("sufficiencyContract");
+    let response = engine(calls.clone(), true)
+        .federate(&req, CancellationToken::new())
+        .await
+        .unwrap();
+    let receipt = &response.extensions["correctiveRetrieval"];
+    assert_eq!(receipt["triggered"], false);
+    assert_eq!(receipt["attempted"], false);
+    assert_eq!(receipt["outcome"], "not_evaluated_missing_sufficiency_contract");
+    assert!(receipt.get("sufficiency").is_none() || receipt["sufficiency"].is_null());
+
+    // Only the two enabled providers run once each — no corrective stage.
+    let calls = calls.0.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+}
+
+/// (a) A contract already satisfied by the initial merge publishes without
+/// any corrective action: no second call to any provider, and the receipt
+/// records `sufficient` with `triggered: false`.
+#[tokio::test]
+async fn sufficient_initial_merge_publishes_without_corrective_action() {
+    struct AlwaysMatchingProvider {
+        id: ProviderId,
+        calls: Calls,
+    }
+    #[async_trait]
+    impl Provider for AlwaysMatchingProvider {
+        async fn provide(
+            &self,
+            context: &ProviderContext,
+        ) -> Result<ProviderOutputV1, ProviderError> {
+            self.calls.0.lock().unwrap().push((
+                self.id,
+                context.request_id.clone(),
+                context.trace_id.clone(),
+                context.deadline,
+                0,
+            ));
+            Ok(candidate_output(self.id, "already-sufficient"))
+        }
+    }
+
+    let calls = Calls::default();
+    let registrations = ProviderId::ALL
+        .into_iter()
+        .map(|id| {
+            ProviderRegistration::new(
+                id,
+                format!("qualification.{}", id.as_str()),
+                Vec::new(),
+                Arc::new(AlwaysMatchingProvider {
+                    id,
+                    calls: calls.clone(),
+                }),
+            )
+        })
+        .collect();
+    let registry = ProviderRegistry::new(registrations).unwrap();
+    let config = FederationConfig::new(
+        ProviderId::ALL
+            .into_iter()
+            .map(|id| {
+                if matches!(id, ProviderId::Blueprint | ProviderId::Cortex) {
+                    ProviderConfig::enabled(id)
+                } else {
+                    ProviderConfig::disabled(id)
+                }
+            })
+            .collect(),
+    )
+    .unwrap();
+    let sources = SourceSet {
+        freshness: Some(Arc::new(FixtureFreshness)),
+        ..SourceSet::default()
+    };
+    let engine =
+        FederationEngine::with_release_source(registry, config, sources, FixtureRelease).unwrap();
+
+    let mut req = request();
+    req.extensions.insert(
+        "sufficiencyContract".to_owned(),
+        json!({
+            "schemaVersion": 1,
+            "policy": "membrane-sufficiency-v1",
+            "requirements": [{
+                "id": "held-out-fixture",
+                "evidenceClass": "fixture",
+                "acceptableProviders": ["blueprint", "cortex"],
+                "acceptableSourceRefs": [],
+                "minimumCandidates": 1
+            }],
+            "maxCorrectiveStages": 1
+        }),
+    );
+
+    let response = engine
+        .federate(&req, CancellationToken::new())
+        .await
+        .unwrap();
+    let receipt = &response.extensions["correctiveRetrieval"];
+    assert_eq!(receipt["triggered"], false);
+    assert_eq!(receipt["attempted"], false);
+    assert_eq!(receipt["outcome"], "sufficient");
+    assert_eq!(receipt["sufficiency"]["state"], "sufficient");
+
+    // Publishing on an already-sufficient merge must never call any provider
+    // a second time.
+    let calls = calls.0.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.0 == ProviderId::Blueprint)
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.0 == ProviderId::Cortex)
+            .count(),
+        1
+    );
+}
+
 #[tokio::test]
 async fn held_out_terminal_case_attempts_once_then_types_second_insufficiency() {
     let calls = Calls::default();

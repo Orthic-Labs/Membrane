@@ -1,0 +1,871 @@
+{
+  "claimed_verified_then_corrected": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "claimed_verified_then_corrected",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 808645,
+          "byte_start": 807067,
+          "event_id": "evt_1695b139161be6cf940afbbc4aac1c12",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "Done \u2014 the four Fable agents are killed and all four tasks are relaunched on Sonnet with identical prompts (gap sweep, DL lifecycle donors, sandbox/migration/MCP donors, persistence/compaction donors). Only the orchestration in this chat st\u2026"
+        },
+        {
+          "byte_end": 1048503,
+          "byte_start": 1040075,
+          "event_id": "evt_25db664a5bab83b21016aec90c9fb4d5",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "<task-notification>\n<task-id>a107f8c9152eb4ba8</task-id>\n<tool-use-id>toolu_01Q4ko1h5oHQq858tBQq2K4X</tool-use-id>\n<output-file>C:\\Users\\adrds\\AppData\\Local\\Temp\\claude\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897\\tasks\\a107f8c9\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\662d8d01-3611-45b3-b96c-ac635d411a44.jsonl",
+      "session": "662d8d01-3611-45b3-b96c-ac635d411a44",
+      "family": "claimed_verified_then_corrected",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 427452,
+          "byte_start": 425867,
+          "event_id": "evt_ba9f450af7c618ed535cb78a9df50f56",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "662d8d01-3611-45b3-b96c-ac635d411a44",
+          "text": "Clyde audit is back: SHA matches, both Clyde atoms verified, adjudication holds, and it surfaced 4 candidate missed atoms (external-CLI JSONL activity monitor, hook self-registration/health, meeting/fullscreen-aware auto-DND, permission-mod\u2026"
+        },
+        {
+          "byte_end": 469115,
+          "byte_start": 460080,
+          "event_id": "evt_e65bb4812626ab24b0e878b6b0c6d0e8",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "662d8d01-3611-45b3-b96c-ac635d411a44",
+          "text": "<task-notification>\n<task-id>a846fcfdecce37fe2</task-id>\n<tool-use-id>toolu_01So3qxngNLQYXBAErfZbTFe</tool-use-id>\n<output-file>C:\\Users\\adrds\\AppData\\Local\\Temp\\claude\\D--Claude-coderight\\662d8d01-3611-45b3-b96c-ac635d411a44\\tasks\\a846fcfd\u2026"
+        }
+      ]
+    },
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\c-users-adrds-codex-worktrees-5019-coderight\\9ebe7253-cb66-437c-980d-f91e4b5356d3.jsonl",
+      "session": "9ebe7253-cb66-437c-980d-f91e4b5356d3",
+      "family": "claimed_verified_then_corrected",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 4476,
+          "byte_start": 3262,
+          "event_id": "evt_85a5c7271f94cdd731baec478cb3c830",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "9ebe7253-cb66-437c-980d-f91e4b5356d3",
+          "text": "I'll start by reading the canonical ledger entries and inspecting the inherited S:M3 WIP to understand what's already done before deciding the exact seam to finish."
+        },
+        {
+          "byte_end": 346174,
+          "byte_start": 343272,
+          "event_id": "evt_34b63b842494b11c002d540d1b746019",
+          "host": "command_code",
+          "kind": "usermessage",
+          "session_id": "9ebe7253-cb66-437c-980d-f91e4b5356d3",
+          "text": "ATOM: S:M1 \u2014 Exact-one-result-per-tool-call boundary.\r\rDONOR: google-gemini/gemini-cli, commit 812f7a2bcf20b6e80e2e50c3c8fa8e26567bc1e8.\rDonor checkout: C:\\Users\\adrds\\AppData\\Local\\Temp\\coderight-donor-gemini-812f7a2\rREAD donor:\r- packages\u2026"
+        }
+      ]
+    }
+  ],
+  "verification_claim_without_tool_evidence": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "verification_claim_without_tool_evidence",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 1322537,
+          "byte_start": 1321198,
+          "event_id": "evt_48925256b304b4f522797677df09bd27",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "Canon doc done. Now the checker \u2014 bump the pinned totals and add the VG extension set:"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "verification_claim_without_tool_evidence",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 1518993,
+          "byte_start": 1517577,
+          "event_id": "evt_5d2ef6c5cd3afba1dc2d6561241d9551",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "Committed content matches validated content exactly, and the desktop file is clean at HEAD (its stale index entry was the artifact). Pushing:"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "verification_claim_without_tool_evidence",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 808645,
+          "byte_start": 807067,
+          "event_id": "evt_1695b139161be6cf940afbbc4aac1c12",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "Done \u2014 the four Fable agents are killed and all four tasks are relaunched on Sonnet with identical prompts (gap sweep, DL lifecycle donors, sandbox/migration/MCP donors, persistence/compaction donors). Only the orchestration in this chat st\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "verification_claim_without_tool_evidence",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 1360646,
+          "byte_start": 1359211,
+          "event_id": "evt_616e9e327802ec4987d4e6eb71dc16e5",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "Canon [daemon-master-canon-atoms.md](docs/daemon-master-canon-atoms.md) and the checker are updated and verified. Running Oracle completion validation (on Sonnet) before calling it done:"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\a598d6b4-82f7-48fd-af19-a8b4ebfdb534.jsonl",
+      "session": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+      "family": "verification_claim_without_tool_evidence",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 2367597,
+          "byte_start": 2366198,
+          "event_id": "evt_b711c2a31ec5afcac2a70eeb199df149",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+          "text": "The Push/Pull agent handed implementation to a worker and will report when it's done. Waiting on all four work streams."
+        }
+      ]
+    }
+  ],
+  "false_not_found": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "false_not_found",
+      "severity": "medium",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "byte_end": 334657,
+          "byte_start": 244778,
+          "event_id": "evt_6689a2ab44f5ef4eb166d25c56d7199d",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "1\t# CompShop INVENTORY \u2014 daemon lifecycle across all CLI repositories\n2\t\n3\tSource-only inventory of 33 immediate repositories under `repos/cli`. `N/A` means mechanism does not apply because inspected runtime is foreground, in-process, sidec\u2026"
+        },
+        {
+          "byte_end": 357949,
+          "byte_start": 342417,
+          "event_id": "evt_3000d70dbc96ebcf79cea4ff538f3e3e",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "1\t# CompShop gap inventories \u2192 daemon canon reconciliation\n2\t\n3\tDate: 2026-08-29\n4\t\n5\tInputs: `gap-inventories-consolidated.md` (60 rows) & `gap-inventories-dirty.md` (0 dirty conflicts)\n6\t\n7\tBaseline: `docs/daemon-master-canon-atoms.md` at\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\d9652e0b-9345-4183-be9a-16b3ffab9897.jsonl",
+      "session": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+      "family": "false_not_found",
+      "severity": "medium",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "byte_end": 1466151,
+          "byte_start": 1465404,
+          "event_id": "evt_956b208d7273cab220abcbe2e05cedaf",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "minimize_gate not found"
+        },
+        {
+          "byte_end": 1475767,
+          "byte_start": 1474824,
+          "event_id": "evt_1899970d8651276a5f20ca3f9715e93d",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "d9652e0b-9345-4183-be9a-16b3ffab9897",
+          "text": "docs/daemon-master-canon-atoms.md\ntools/check-refactor0-reconciliation.py\nCAND=3ca48d87eb3a55cd5df6bc87bfb9a84282e7315e"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "false_not_found",
+      "severity": "medium",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "byte_end": 3374998,
+          "byte_start": 3336738,
+          "event_id": "evt_55b436ca7f727ee8934058608639ad19",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "1\t# Membrane Subsystem Audit \u2014 2026-08-29\n2\t\n3\t**Method:** seven parallel code-verified reviews (one per subsystem plus runtime/protocol), each\n4\tbound to the repo's own three-fact ethos \u2014 implementation presence / production reachability /\u2026"
+        },
+        {
+          "byte_end": 3385058,
+          "byte_start": 3384221,
+          "event_id": "evt_d0f592ffb226f665aa14b378782d9831",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "0\nengine/crates/membrane-runtime/src/ledger/index.rs"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "false_not_found",
+      "severity": "medium",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "byte_end": 1317883,
+          "byte_start": 1316550,
+          "event_id": "evt_b873280b0eb7929687aa1e4a50421461",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "Junction created for legion <<===>> D:\\Claude\\legion\r\nagent-rules: [Errno 2] No such file or directory: 'D:\\\\Claude\\\\tmp\\\\rightkit-fix-0.2.78\\\\citadel\\\\docs\\\\agent-rules.md'\r\n7ab66bbd fix(right-release): accept managed candidate workflows\nS\u2026"
+        },
+        {
+          "byte_end": 1327432,
+          "byte_start": 1326609,
+          "event_id": "evt_db1fa06d3b7ec8286335c4a495a2751c",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "7\nShell cwd was reset to D:\\Claude\\membrane"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "false_not_found",
+      "severity": "medium",
+      "confidence": 0.8,
+      "evidence": [
+        {
+          "byte_end": 1063172,
+          "byte_start": 1061525,
+          "event_id": "evt_979608a75307ee656e428f159dd099ce",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "at Test.postRun (node:internal/test_runner/test:1542:19)\n      at Test.run (node:internal/test_runner/test:1467:12)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    errno: -4058,\n    code: 'ENOENT',\n  \u2026"
+        },
+        {
+          "byte_end": 1075798,
+          "byte_start": 1073163,
+          "event_id": "evt_29bb6e4ecbbbc145bbf6ec5601c7aa57",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "\u2716 RightKit exposes one current version manifest (0.952ms)\n\u2716 license v2 public vector is identical at every portable consumer boundary (0.2563ms)\n\u2716 viewright follows the signed tiered Right Release contract (0.4361ms)\n\u2716 scraperight follows t\u2026"
+        }
+      ]
+    }
+  ],
+  "false_completion_claim": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\a598d6b4-82f7-48fd-af19-a8b4ebfdb534.jsonl",
+      "session": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+      "family": "false_completion_claim",
+      "severity": "high",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "byte_end": 2268102,
+          "byte_start": 2266457,
+          "event_id": "evt_43f115d053e6cf70dc3e49c8818912c1",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+          "text": "Done \u2014 the full audit is now markdown at [2026-08-29-membrane-subsystem-audit.md](docs/plans/2026-08-29-membrane-subsystem-audit.md) (also attached above). Same content as the artifact: ledger table, per-subsystem detail with fixes, the eig\u2026"
+        },
+        {
+          "byte_end": 2283246,
+          "byte_start": 2282382,
+          "event_id": "evt_667a2a0a4c8818a2486655eda245c26b",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+          "text": "sorry, so 1 to 6 is easy to do, right? Can you start a Sonnet sub-agent now, or multiple Sonnet sub-agents, and give them those things to close? And then you can tell me separately if number 7 is older design, was it not implemented? Can yo\u2026"
+        }
+      ]
+    }
+  ],
+  "repeated_ask": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\a598d6b4-82f7-48fd-af19-a8b4ebfdb534.jsonl",
+      "session": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+      "family": "repeated_ask",
+      "severity": "medium",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "byte_end": 2272533,
+          "byte_start": 2271810,
+          "event_id": "evt_d1c40dd13045f1b1166555f6b8dc1d5f",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-ca\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\a598d6b4-82f7-48fd-af19-a8b4ebfdb534.jsonl",
+      "session": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+      "family": "repeated_ask",
+      "severity": "medium",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "byte_end": 2270666,
+          "byte_start": 2269943,
+          "event_id": "evt_de640bcfcb264aa65e59f979142a04e1",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "a598d6b4-82f7-48fd-af19-a8b4ebfdb534",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-ca\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "repeated_ask",
+      "severity": "medium",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "byte_end": 302480,
+          "byte_start": 301757,
+          "event_id": "evt_6a16e0e02e8ef99a9444264323eec325",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-ca\u2026"
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "repeated_ask",
+      "severity": "medium",
+      "confidence": 0.85,
+      "evidence": [
+        {
+          "byte_end": 831499,
+          "byte_start": 830776,
+          "event_id": "evt_b2e0e25e2fbfc7388300a7578060f041",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-ca\u2026"
+        }
+      ]
+    }
+  ],
+  "user_swearing": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-coderight\\662d8d01-3611-45b3-b96c-ac635d411a44.jsonl",
+      "session": "662d8d01-3611-45b3-b96c-ac635d411a44",
+      "family": "user_swearing",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 532176,
+          "byte_start": 531658,
+          "event_id": "evt_1ee1b567480b78e506e8456b990c06e1",
+          "host": "claude_code",
+          "kind": "usermessage",
+          "session_id": "662d8d01-3611-45b3-b96c-ac635d411a44",
+          "text": "do sonnet ffs"
+        }
+      ]
+    },
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\28\\rollout-2026-08-28T05-27-31-01a0435b-ac54-75b0-86f4-1c3f68be2d51_01a045a8-4608-7bb3-ab42-128667ef555e.jsonl",
+      "session": "01a0435b-ac54-75b0-86f4-1c3f68be2d51",
+      "family": "user_swearing",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 23842,
+          "byte_start": 23379,
+          "event_id": "evt_72e75c17ddb347c39026b82422dcf8e6",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a0435b-ac54-75b0-86f4-1c3f68be2d51",
+          "text": "D:/Claude/coderight/docs/\nplease move it here. why the fuck is it in some random dir?"
+        }
+      ]
+    },
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\28\\rollout-2026-08-28T05-27-31-01a0435b-ac54-75b0-86f4-1c3f68be2d51_01a045a8-4608-7bb3-ab42-128667ef555e.jsonl",
+      "session": "01a0435b-ac54-75b0-86f4-1c3f68be2d51",
+      "family": "user_swearing",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 133402,
+          "byte_start": 132889,
+          "event_id": "evt_03503cedfaab87da18cfcbcd6b46c380",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a0435b-ac54-75b0-86f4-1c3f68be2d51",
+          "text": "each one of you is fucking a little worse than the other. hwo the fuck did you lose 26 items with a 3 way fucking comparison of docs?"
+        }
+      ]
+    },
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\28\\rollout-2026-08-28T02-26-13-01a04502-4bbe-7cc2-9796-a190368e9d63.jsonl",
+      "session": "01a04502-4bbe-7cc2-9796-a190368e9d63",
+      "family": "user_swearing",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 888749,
+          "byte_start": 888199,
+          "event_id": "evt_cc26104c67b2a38d3ecb3020c00ce7e8",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a04502-4bbe-7cc2-9796-a190368e9d63",
+          "text": "ok, you need to fix all those issues. soundcloud as video. no audi/video option for youtuibe. no quality option for video. what did we discuss nad what the fuck did you do?"
+        }
+      ]
+    },
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\28\\rollout-2026-08-28T02-26-08-01a04502-37d7-7d40-ba09-d90327148a7c.jsonl",
+      "session": "01a04502-37d7-7d40-ba09-d90327148a7c",
+      "family": "user_swearing",
+      "severity": "high",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 888753,
+          "byte_start": 888203,
+          "event_id": "evt_b47600f04ed5fe1f450ac03f75716e7a",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a04502-37d7-7d40-ba09-d90327148a7c",
+          "text": "ok, you need to fix all those issues. soundcloud as video. no audi/video option for youtuibe. no quality option for video. what did we discuss nad what the fuck did you do?"
+        }
+      ]
+    }
+  ],
+  "ignored_tool_failure": [
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "ignored_tool_failure",
+      "severity": "critical",
+      "confidence": 0.92,
+      "evidence": [
+        {
+          "byte_end": 611876,
+          "byte_start": 610679,
+          "event_id": "evt_d420ed271d4d5969e87c0d8b8c35fbbd",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "tar version:\ntar (GNU tar) 1.35\n--- abs -f (current) ---\ntar (child): Cannot connect to C: resolve failed\ntar: Child returned status 128\ntar: Error is not recoverable: exiting now\n--- cwd+basename (proposed) ---\nout2.tgz\nsrc/"
+        },
+        {
+          "byte_end": 617925,
+          "byte_start": 616550,
+          "event_id": "evt_e49d80fb43ed6e2ab3d3600e45764099",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "Reproduced exactly, and the fix works. Let me check the Membrane CI run and the RightKit repo state."
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "ignored_tool_failure",
+      "severity": "critical",
+      "confidence": 0.92,
+      "evidence": [
+        {
+          "byte_end": 319121,
+          "byte_start": 316644,
+          "event_id": "evt_1ab3848492455555870d8d9747f01cb9",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "\u2714 fresh Node process emits once, omits same hash, & emits changed/different ledger (229.789ms)\n\u2714 12 parallel first writers land exactly one record per block (154.3354ms)\n\u2714 malicious neighbours fail open without suppressing a legitimate writ\u2026"
+        },
+        {
+          "byte_end": 324121,
+          "byte_start": 322742,
+          "event_id": "evt_5e21ff6d439efbab31f9b14369fe13b9",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "Passing locally isn't proof for a race \u2014 let me stress it, and check the Windows leg of the running CI."
+        }
+      ]
+    },
+    {
+      "host": "claude_code",
+      "path": "C:\\Users\\adrds\\.claude\\projects\\D--Claude-membrane\\63a8126e-af68-4203-be52-9510ebb7b71c.jsonl",
+      "session": "63a8126e-af68-4203-be52-9510ebb7b71c",
+      "family": "ignored_tool_failure",
+      "severity": "critical",
+      "confidence": 0.92,
+      "evidence": [
+        {
+          "byte_end": 1571587,
+          "byte_start": 1570194,
+          "event_id": "evt_239d1e192e8a5d08d790f12d85dbb75e",
+          "host": "claude_code",
+          "kind": "toolresult",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "[{\"conclusion\":\"success\",\"name\":\"private-repo-guard\"},{\"conclusion\":\"failure\",\"name\":\"ci (windows-2025, 22.13)\"},{\"conclusion\":\"success\",\"name\":\"ci (ubuntu-latest, 22.13)\"}]\nci (windows-2025, 22.13)\tRun bash ./scripts/ci/run-ci.sh\t2026-08-2\u2026"
+        },
+        {
+          "byte_end": 1576612,
+          "byte_start": 1575246,
+          "event_id": "evt_965aba9898aa4c8fa11bf7a87ac5647c",
+          "host": "claude_code",
+          "kind": "assistantmessage",
+          "session_id": "63a8126e-af68-4203-be52-9510ebb7b71c",
+          "text": "Ubuntu is now green \u2014 the `'close'` fix worked. Windows failed differently; get the tail:"
+        }
+      ]
+    },
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\d-claude-coderight\\859e2565-6a17-470b-9fff-1259fe54eccf.jsonl",
+      "session": "859e2565-6a17-470b-9fff-1259fe54eccf",
+      "family": "ignored_tool_failure",
+      "severity": "critical",
+      "confidence": 0.92,
+      "evidence": [
+        {
+          "byte_end": 61973,
+          "byte_start": 17892,
+          "event_id": "evt_a6036e53b3ad27cfd2aace8496bc9e36",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "859e2565-6a17-470b-9fff-1259fe54eccf",
+          "text": "[{\"text\": \"Read 1/1 file, 200 lines\\nNote: showing the last 200 lines (lines 165-364 of 364). Use offset=1 to read from the start.\\n165: | F2 Conductor bounded fan-out ready-order (S01) | C3 | KEEP_CODERIGHT | Idiomatic tokio JoinSet; no re\u2026"
+        },
+        {
+          "byte_end": 64162,
+          "byte_start": 61973,
+          "event_id": "evt_068691bc5c0d2858872863dfbaad146f",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "859e2565-6a17-470b-9fff-1259fe54eccf",
+          "text": "Got the implementation ordering at line 359. The spec is solid. The phase order is:\n\n**Phase 1 \u2014 close sol.md P0/P1 on shipped substrate** (WIRE_LIVE/IMPLEMENT_MISSING inside landed domains):\n- E2, E8, E10, E11 (engine completion/cleanup)\n-\u2026"
+        }
+      ]
+    },
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\d-claude-viewright\\a9b4cd56-c47d-40f6-bd89-5188fb314120.jsonl",
+      "session": "a9b4cd56-c47d-40f6-bd89-5188fb314120",
+      "family": "ignored_tool_failure",
+      "severity": "critical",
+      "confidence": 0.92,
+      "evidence": [
+        {
+          "byte_end": 201559,
+          "byte_start": 195607,
+          "event_id": "evt_c443dd2e312cfa16073fbd349f1e72d0",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "a9b4cd56-c47d-40f6-bd89-5188fb314120",
+          "text": "[{\"text\": \"Read 1/1 file, 130 lines\\nNote: showing lines 734-863. More of the file remains. Use offset=864 to continue.\\n734:   return (\\n735:     <div className=\\\"relative flex h-full min-h-0 flex-col bg-ink\\\">\\n736:       <PreviewChrome\\n\u2026"
+        },
+        {
+          "byte_end": 202486,
+          "byte_start": 201559,
+          "event_id": "evt_bc091f2c630e0e3dbc872675482e82e8",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "a9b4cd56-c47d-40f6-bd89-5188fb314120",
+          "text": "Let me check the HtmlSafeBlockEditor Done/Cancel behavior and run the focused test suites."
+        }
+      ]
+    }
+  ],
+  "visible_frustration": [
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\27\\rollout-2026-08-27T23-18-47-01a04456-b1ae-7793-a6eb-44adf2c06911.jsonl",
+      "session": "01a04456-b1ae-7793-a6eb-44adf2c06911",
+      "family": "visible_frustration",
+      "severity": "medium",
+      "confidence": 0.7,
+      "evidence": [
+        {
+          "byte_end": 265683,
+          "byte_start": 265198,
+          "event_id": "evt_0858afada6cdc5b6d1049d0700917945",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a04456-b1ae-7793-a6eb-44adf2c06911",
+          "text": "sorry how long will this take? use subagnets and assign them repos to commit and push, i dont' have all day"
+        }
+      ]
+    },
+    {
+      "host": "codex",
+      "path": "C:\\Users\\adrds\\.codex\\sessions\\2026\\08\\27\\rollout-2026-08-27T23-18-43-01a04456-a008-7003-985c-daa70ef5eb06.jsonl",
+      "session": "01a04456-a008-7003-985c-daa70ef5eb06",
+      "family": "visible_frustration",
+      "severity": "medium",
+      "confidence": 0.7,
+      "evidence": [
+        {
+          "byte_end": 265677,
+          "byte_start": 265192,
+          "event_id": "evt_3f555bd760924c351e9d26adf41ba6cb",
+          "host": "codex",
+          "kind": "usermessage",
+          "session_id": "01a04456-a008-7003-985c-daa70ef5eb06",
+          "text": "sorry how long will this take? use subagnets and assign them repos to commit and push, i dont' have all day"
+        }
+      ]
+    }
+  ],
+  "guard_firings": [
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\c-users-adrds-codex-worktrees-5019-coderight\\9639dec5-fac5-4fe4-b8ca-d0916e4fd11b.jsonl",
+      "session": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+      "family": "guard_firings",
+      "severity": "low",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 70529,
+          "byte_start": 51668,
+          "event_id": "evt_3c2b31417a04c0f2d48d102f008d5302",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+          "text": "[{\"text\": \"Exit code: 1\\nFAIL: 320 dispatch defect(s)\\r\\n- **Acceptance metrics only:** lacks enforceable decision-scope contract\\r\\n- **Alchemist gate:** must be REQUIRED run_id=<uuid> or NOT_REQUIRED: <reason>\\r\\n- **Alchemist verificatio\u2026"
+        }
+      ]
+    },
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\c-users-adrds-codex-worktrees-5019-coderight\\9639dec5-fac5-4fe4-b8ca-d0916e4fd11b.jsonl",
+      "session": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+      "family": "guard_firings",
+      "severity": "low",
+      "confidence": 0.9,
+      "evidence": [
+        {
+          "byte_end": 48832,
+          "byte_start": 29995,
+          "event_id": "evt_0ac52436e84b844db70fc21f9b955c91",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "9639dec5-fac5-4fe4-b8ca-d0916e4fd11b",
+          "text": "[{\"text\": \"Exit code: 1\\nFAIL: 322 dispatch defect(s)\\r\\n- **Acceptance metrics only:** lacks enforceable decision-scope contract\\r\\n- **Alchemist gate:** must be REQUIRED run_id=<uuid> or NOT_REQUIRED: <reason>\\r\\n- **Alchemist verificatio\u2026"
+        }
+      ]
+    }
+  ],
+  "degraded_provider_treated_as_success": [
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\d-claude\\56cc69a9-ca70-4677-99de-95e83310295b.jsonl",
+      "session": "56cc69a9-ca70-4677-99de-95e83310295b",
+      "family": "degraded_provider_treated_as_success",
+      "severity": "medium",
+      "confidence": 0.75,
+      "evidence": [
+        {
+          "byte_end": 291957,
+          "byte_start": 289971,
+          "event_id": "evt_65e96784cc14dcc6c5304df3c6e86758",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+          "text": "[{\"text\": \"\u2714 typedClient maps every unknown identity to 'other', never a new ad-hoc string (1.2479ms)\\n\u2714 self-loading capability follows the typed identity (0.1065ms)\\n\u2714 finalize renders within the effective budget and stamps accounting (0.\u2026"
+        },
+        {
+          "byte_end": 293722,
+          "byte_start": 291957,
+          "event_id": "evt_8117849c4a33a5730e74f37bd04097bc",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+          "text": "Membrane renderer + decision-points: **23/23 pass**. Marking that done and running the three E2E acceptance tests (E2E-2, E2E-6, E2E-8)."
+        }
+      ]
+    },
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\d-claude\\56cc69a9-ca70-4677-99de-95e83310295b.jsonl",
+      "session": "56cc69a9-ca70-4677-99de-95e83310295b",
+      "family": "degraded_provider_treated_as_success",
+      "severity": "medium",
+      "confidence": 0.75,
+      "evidence": [
+        {
+          "byte_end": 529202,
+          "byte_start": 522874,
+          "event_id": "evt_84bb7052bf27d135348369a477038103",
+          "host": "command_code",
+          "kind": "toolresult",
+          "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+          "text": "[{\"text\": \"\u2714 PreToolUse: a broad discovery grep gets a non-blocking membrane_context suggestion (3.6049ms)\\n\u2714 PreToolUse: an exact file target passes with no suggestion (0.6299ms)\\n\u2714 PreToolUse: a non-discovery tool passes untouched (0.4434\u2026"
+        },
+        {
+          "byte_end": 531077,
+          "byte_start": 529202,
+          "event_id": "evt_baf62f87f3c5cc7956449ad214790b77",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "56cc69a9-ca70-4677-99de-95e83310295b",
+          "text": "**58/58 pass.** Sentinel is fully green. Let me update the todos \u2014 the 6.6 time-accounting e2e is now passing too (it needed the debug binary build), so only the final crypt install/verify step remains."
+        }
+      ]
+    }
+  ],
+  "stale_terminology_surfacing": [
+    {
+      "host": "command_code",
+      "path": "C:\\Users\\adrds\\.commandcode\\projects\\d-claude\\d0206aad-a063-4b33-bca4-93333cbb3024.jsonl",
+      "session": "d0206aad-a063-4b33-bca4-93333cbb3024",
+      "family": "stale_terminology_surfacing",
+      "severity": "low",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "byte_end": 188740,
+          "byte_start": 186580,
+          "event_id": "evt_13bb5b122104c344dd19c2402ecfa061",
+          "host": "command_code",
+          "kind": "assistantmessage",
+          "session_id": "d0206aad-a063-4b33-bca4-93333cbb3024",
+          "text": "I've read the three core architecture docs. These are massive \u2014 1178, 808, and 327 lines respectively. Let me now read the MemRight engine spec, federation gateway, and key hook implementations to verify claims against actual code."
+        }
+      ]
+    },
+    {
+      "host": "pi",
+      "path": "C:\\Users\\adrds\\.pi\\agent\\sessions\\--D--Claude-coderight--\\2026-08-26T08-57-13-402Z_bc0de648-0e4f-47ca-bddd-8533f3b2bc77.jsonl",
+      "session": "bc0de648-0e4f-47ca-bddd-8533f3b2bc77",
+      "family": "stale_terminology_surfacing",
+      "severity": "low",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "byte_end": 654498,
+          "byte_start": 582719,
+          "event_id": "evt_d3ad540433791c77c7cf280f94caf700",
+          "host": "pi",
+          "kind": "assistantmessage",
+          "session_id": "bc0de648-0e4f-47ca-bddd-8533f3b2bc77",
+          "text": "# CodeRight `docs/sol.md` Implementation Audit \u2014 Baseline `1962817` \u2192 Working Tree\n\n**Audit type:** independent, read-only, source + diff + reference inspection. No builds, no test execution, no secret access.\n**Inputs:** `docs/sol.md`, `fu\u2026"
+        }
+      ]
+    },
+    {
+      "host": "pi",
+      "path": "C:\\Users\\adrds\\.pi\\agent\\sessions\\--D--Claude-coderight--\\2026-08-26T08-57-13-402Z_bc0de648-0e4f-47ca-bddd-8533f3b2bc77.jsonl",
+      "session": "bc0de648-0e4f-47ca-bddd-8533f3b2bc77",
+      "family": "stale_terminology_surfacing",
+      "severity": "low",
+      "confidence": 0.95,
+      "evidence": [
+        {
+          "byte_end": 790409,
+          "byte_start": 755725,
+          "event_id": "evt_8ff17b536c3a0432e7ef7beeb25fe300",
+          "host": "pi",
+          "kind": "assistantmessage",
+          "session_id": "bc0de648-0e4f-47ca-bddd-8533f3b2bc77",
+          "text": "# Exhaustive Audit \u2014 `docs/sol.md` Implementation vs. Baseline `1962817`\n\n**Mode:** independent, read-only. No files modified, no builds/tests run, no secrets inspected.\n**Baseline:** `196281730618475c58b625de8ae695b5b3fafe33` \u2192 working tre\u2026"
+        }
+      ]
+    }
+  ]
+}

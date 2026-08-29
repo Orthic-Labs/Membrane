@@ -111,7 +111,7 @@ impl OutcomeLedger {
         let entry = OutcomeEntryV1 {
             entry_id: format!(
                 "out-{}",
-                &crate::canonical::sha256_hex(id_src.as_bytes())[..12].to_string()
+                &crate::canonical::sha256_hex(id_src.as_bytes())[..12]
             ),
             issue_id: issue_id.to_string(),
             mitigation_proposal_id: mitigation_proposal_id.to_string(),

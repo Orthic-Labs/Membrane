@@ -15,7 +15,7 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn unhex(value: &str) -> Result<Vec<u8>, PortableTasteError> {
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         return Err(PortableTasteError::SignatureInvalid);
     }
     (0..value.len())
