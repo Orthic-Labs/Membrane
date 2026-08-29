@@ -75,20 +75,20 @@ execute the specified contract. `NOT AUDITED` means exactly that; it never means
 | Deterministic Cortex Dream | `store::dream_now_observed` invokes restricted policy plus deterministic consolidation | CLI `dream_now` and resident `dream_now_observed` call the store path | not revalidated in this consolidation pass | `REACHABLE`; no `LANDED` claim |
 | Sealed remediation proposals and taste gate | sealing, effect mapping, user-evidence and precision gates | production Adapt mine path emits deterministic sealed review proposals | focused unit and current-contract tests pass | `IMPLEMENTED + REACHABLE` |
 | `intervention_target` / `routing_recommendation` | orthogonal target and reachable proposal-kind contracts | production Adapt mine path seals both fields into proposal identity | schema/digest/reachability tests pass | `IMPLEMENTED + REACHABLE` |
-| `InterventionAttributionV1` | a review patch defines sealed attribution identity, support/alternative-cause gates, mutation eligibility and stale-surface invalidation | not landed on the production branch | candidate focused tests cover eligibility exclusions, deterministic identity, stale digest and consumability fence | `PENDING INTEGRATION`; H7 effectiveness remains unavailable |
+| `InterventionAttributionV1` | sealed attribution identity, support/alternative-cause gates, mutation eligibility and stale-surface invalidation are implemented | remediation construction requires eligible attribution for mutable instruction surfaces before producing a consumable proposal | focused Adapt tests cover every eligibility exclusion, deterministic identity, stale digest and consumability fence | `IMPLEMENTED + REACHABLE`; H7 effectiveness remains unavailable |
 | Background review mechanics | fail-closed config, host activity/token gate, bounded jobs, proposal-only learner interface, cancellation, retry, single-flight, typed observations and bounded H5 sink | tray-owned daemon initializes the scheduler and persists H5 receipts, but supplies no real semantic provider, cursor, foreground-memory signal or proposal sink | focused lifecycle, budget, receipt and persistence tests pass | `PARTIAL`: production semantic inputs remain absent |
 | Cortex Stage 1 | proposal-only review and memory-candidate extraction contracts | no production runner supplies model output or authoritative foreground-memory signal | focused validation tests pass | `UNWIRED` |
 | Learning Lineage and Insights projection | read-only receipt graph and projection with typed unavailable joins | production Adapt mine response emits both | deterministic projection tests pass | `IMPLEMENTED + REACHABLE`; host tail remains unavailable |
 | `PacketReductionPlanV1` | validated versioned plan, estimator basis and largest-fit selection | production `push select` accepts an H8 ceiling and returns only a complete published representation; first-party host emits a next-request H8 candidate from real policy and last observed usage | protocol/runtime/host-producer tests pass | `PARTIAL`: request-time refresh and direct host-to-Membrane delivery remain unwired |
 | Host observation seam | H4/H6/H8/H9/H10 versioned shapes, provenance and closed-shape validation | H4/H6 producers and an H8 candidate producer exist in first-party host; bounded Membrane H4/H6/H8 parser and exact-ID H4/H6 lineage join exist; caller transport remains unwired; H9/H10 have no producer | protocol, parser and host producer tests pass where inputs exist | `PARTIAL` |
-| Native-path authorization | a review patch defines Rust `AuthorizationGateV1` for installation, scope-chain, caller/target, monotone authority, cross-root and validity/revocation gates | not landed on the production branch | candidate native tests cover denials and authorized self access; no cross-language conformance fixture proves Rust/JS parity | `PENDING INTEGRATION`; diagnostics carve-out remains; §15 |
-| Approved-proposal promotion | a review patch defines named `pending → approved/rejected` transitions and governed Cortex admission | not landed on the production branch | candidate native review and Cortex lifecycle tests cover terminal decisions, replay, novel admission and duplicate resolution | `PENDING INTEGRATION`; no effectiveness/promotion claim; §16.1 |
-| Cortex write-time duplicate/conflict detection | a review patch defines `AdmissionDispositionV1` and one-transaction, scope-bounded admission | not landed on the production branch | candidate lifecycle tests cover duplicate, conflict, same-id update, short-content specificity and typed receipts; cross-process contention still lacks a dedicated fixture | `PENDING INTEGRATION`; no qualification/policy-promotion claim; §16.3 |
-| Cortex erasure and backup/restore | a review patch defines governed hard erase, digest-sealed backup/restore, registry reload and conflict-aware quarantine restoration | not landed on the production branch | candidate lifecycle tests cover payload erasure, absent ids, quarantine restore, tamper refusal and recall equivalence; explicit link-erasure coverage remains absent | `PENDING INTEGRATION`; external operational exposure also remains pending; §16.4 |
+| Native-path authorization | Rust `AuthorizationGateV1` implements installation, scope-chain, caller/target, monotone authority, cross-root and validity/revocation gates | Hub-resident executor invokes it before every non-diagnostic repository-scoped native read/write | focused native tests cover denials and authorized self access; no cross-language conformance fixture proves Rust/JS parity | `IMPLEMENTED + REACHABLE`; diagnostics carve-out remains; §15 |
+| Approved-proposal promotion | native review implements named `pending → approved/rejected` transitions and governed Cortex admission | native review binds repository/scope, persists one terminal decision and admits only approved payloads | focused native review and Cortex lifecycle tests cover terminal decisions, replay, novel admission and duplicate resolution | `IMPLEMENTED + REACHABLE`; no effectiveness/promotion claim; §16.1 |
+| Cortex write-time duplicate/conflict detection | `AdmissionDispositionV1` and deterministic scope-bounded pre-filter execute in one immediate transaction | every durable write reaches admission; duplicates return existing identity, evidence-bearing repeats update metadata only and conflicts persist outside active recall | focused lifecycle tests cover duplicate, conflict, same-id update, short-content specificity and typed receipts; cross-process contention still lacks a dedicated fixture | `IMPLEMENTED + REACHABLE`; no qualification/policy-promotion claim; §16.3 |
+| Cortex erasure and backup/restore | governed hard erase, digest-sealed backup/restore, registry reload and conflict-aware quarantine restoration are implemented | store operations remove payload-bearing projections, retain a content-free erase event and restore recall transactionally | focused lifecycle tests cover payload erasure, absent ids, quarantine restore, tamper refusal and recall equivalence; explicit link-erasure coverage remains absent | `IMPLEMENTED`; external operational exposure remains pending; §16.4 |
 | Pull publication fence | scope-grant checks execute at acquisition | no grant/policy re-validation executes before packet emission | none | `GAP ON TRACED PATH`; §17.2 |
-| Typed retrieval abstention | a review patch defines versioned `InsufficientConfidenceV1` with typed reason and per-lane searched counts | not landed on the production branch | candidate federation tests cover no-answer and answered paths; frozen no-answer qualification baseline has not been rerun | `PENDING INTEGRATION`; §17.1 |
-| Ledger section identity | a review patch makes section body span-hash canonical while retaining slug/ordinal aliases | not landed on the production branch | candidate outline/index tests cover alias/fingerprint equivalence and duplicate-heading disambiguation; frozen retrieval qualification has not been rerun | `PENDING INTEGRATION`; §18 |
-| Installed-runtime guarantees | Windows job-object coupling remains landed; review patches add macOS launchd coupling and shared JS SQLite posture | candidate macOS and JS changes are not landed on the production branch | candidate JS and macOS tests pass; macOS host behavior is not yet qualified; no RightKit-owned required tag gate exists | `PARTIAL / PENDING INTEGRATION`; §19 |
+| Typed retrieval abstention | versioned `InsufficientConfidenceV1` carries typed reason and per-lane searched counts | active federation emits it whenever no candidate survives admission | focused federation tests cover no-answer and answered paths; frozen no-answer qualification baseline has not been rerun | `IMPLEMENTED + REACHABLE`; §17.1 |
+| Ledger section identity | section body span-hash is canonical while slug/ordinal remain aliases | production outline reads resolve hash and aliases to the same indexed section | focused outline/index tests cover alias/fingerprint equivalence and duplicate-heading disambiguation; frozen retrieval qualification has not been rerun | `IMPLEMENTED + REACHABLE`; §18 |
+| Installed-runtime guarantees | Windows job-object coupling remains landed; macOS tray implements launchd coupling; shared JS SQLite opens match native posture | JS stores use the shared opener; macOS code refuses daemon startup when coupling cannot install | JS 194/194 and macOS Swift 7/7 pass; full macOS host behavior is not yet qualified; no RightKit-owned required tag gate exists | `PARTIAL`; §19 |
 
 ## 0.2 Not audited by this pass
 
@@ -213,11 +213,10 @@ Issue: verification_claim_without_evidence
 
 ## 2.5 `InterventionAttributionV1` — the gate between issue and proposal
 
-A candidate `membrane-adapt::attribution` patch defines attribution identity, support,
-alternative-cause, instruction-state, counterfactual, stale-surface and mutation-eligibility rules
-for remediation construction. It is not landed in this documentation commit; mutable
-instruction-surface proposals remain non-consumable until integration. This targets mechanics,
-not H7 effectiveness.
+Implemented in `membrane-adapt::attribution` and consumed by remediation construction. Attribution
+identity, support, alternative-cause, instruction-state, counterfactual, stale-surface and
+mutation-eligibility rules execute deterministically; mutable instruction-surface proposals
+without eligible attribution are not consumable. This closes mechanics, not H7 effectiveness.
 
 Semantic authority: Adapt canon §6.9. `intervention_target` names the surface; attribution answers
 why changing that surface would have prevented the observed failures. Nothing in the sealed
@@ -890,9 +889,6 @@ Only these surviving gaps remain schedulable:
 - wire caller transport for joinable H4/H6 observations, then implement procedural-asset effectiveness;
 - provide H7, H9 and H10 host observations before outcome, deployment and closed-loop claims;
 - preserve typed unavailability for every absent source field;
-- integrate and independently verify the candidate patches for attribution, native authorization,
-  proposal admission, Cortex dedup/erasure, typed abstention, Ledger section identity and installed
-  runtime guarantees before changing any row above to `IMPLEMENTED`;
 - freeze one JS/Rust authorization conformance corpus and run it against both surfaces (§15);
 - close the diagnostics authorization carve-out: `membrane_diagnostic_*` operations perform
   stateful writes (workspace open/reconcile, mutation begin/seal, baseline capture/update,
@@ -1016,10 +1012,10 @@ proof. Synthetic fixtures prove mechanics; they do not support product-quality c
 
 # 15. Security — native-path authorization
 
-A review patch routes every non-diagnostic repository-scoped request through a Rust gate for
-installation enrollment, scope chain, caller/target binding, monotone authority, cross-root reach
-and validity/revocation. It is not landed in this documentation commit. Bearer possession alone
-must never authorize a declared repository identity.
+Native authorization executes before every non-diagnostic repository-scoped request. The Rust gate
+verifies installation enrollment, scope chain, caller/target binding, monotone authority,
+cross-root reach and validity/revocation before retrieval or admission. Bearer possession alone no
+longer authorizes a declared repository identity.
 
 ```text
 AuthorizationGateV1                     executes before any repository-scoped read or write
@@ -1049,13 +1045,11 @@ Constraints:
 
 ## 16.1 Approved-proposal consumer
 
-Candidate implementation on the native review path. Review names an existing pending proposal, verifies
+Implemented on the native review path. Review names an existing pending proposal, verifies
 repository/scope ownership, permits one terminal `approved` or `rejected` transition and records
 reviewer/time. Approval immediately invokes `MemoryStore::admit_approved_proposal`; novel payloads
 enter Cortex through the governed admission path, while duplicate/conflict outcomes remain typed.
 Admission failure restores the proposal to `pending` rather than stranding an approved row.
-
-This patch is not landed in this documentation commit.
 
 This closes production reachability only. It does not authorize automatic proposal approval or
 claim that promoted proposals improve task outcomes; those remain review and qualification
@@ -1085,7 +1079,7 @@ Silently blending conflicting records is forbidden.
 
 ## 16.3 Write-time duplicate and conflict detection
 
-Candidate implementation on the durable write path. Exact normalization, a specificity gate and bounded
+Implemented on the durable write path. Exact normalization, a specificity gate and bounded
 4-shingle Jaccard scan run scope-locally inside the same immediate transaction as admission.
 Distinct-id duplicates produce typed `no_op` receipts and return the existing active identity;
 repeats carrying explicit new evidence refs produce `update_metadata_only`; ambiguous content
@@ -1096,19 +1090,15 @@ decision, and concurrent writers cannot both pass an unlocked scan.
 Conflict-candidate restoration re-enters this same admission path. The legacy id-returning V1
 boundary never returns a quarantined candidate as if it were active truth.
 
-This patch is not landed in this documentation commit.
-
 ## 16.4 Erasure, quarantine and backup/restore
 
-Candidate store-layer implementation preserves reversible quarantine as the default destructive
+Store-layer implementation preserves reversible quarantine as the default destructive
 path. Explicit `hard_erase` transactionally removes the named payload from active memory,
 quarantine, link and tombstone projections plus the resident registry, while retaining a
 content-free erase event. `backup_cortex` emits a
 versioned digest-sealed envelope; `restore_cortex` rejects tampering, restores active and
 quarantined rows plus links transactionally and reloads the registry. Focused acceptance proves
 backup → governed wipe → restore → recall equivalence.
-
-This patch is not landed in this documentation commit.
 
 Operational exposure of hard erase and backup/restore remains pending. No UI, CLI or unattended
 job may infer authority from these store methods; any future surface must add explicit authorization,
@@ -1128,13 +1118,11 @@ InsufficientConfidenceV1
   suggested_action?
 ```
 
-Candidate protocol and federation implementation emits this instead of below-floor hits when nothing
+Protocol and federation emit this instead of below-floor hits when nothing
 clears the admission floor; consumed by the
 sufficiency evaluator (§9) and rendered under the §7.1 honesty contract. This also closes the
 measured no-answer gap in Ledger qualification: a no-answer query returns typed abstention, not
 weak matches.
-
-This patch is not landed in this documentation commit.
 
 A string-only `insufficient_confidence` status already exists on the separate Cortex/Taste
 memory-recall path. This contract does not reuse it implicitly: the Pull shape above is versioned
@@ -1167,9 +1155,9 @@ non-calibration default without that evidence.
 Spec authority for these lives in their own canons; this ledger records the decision and tracks
 disposition only:
 
-- **Ledger — candidate patch:** section reads accept the structural body span-hash while
-  slug/ordinal anchors remain resolvable aliases. This patch is not landed in this documentation
-  commit; frozen retrieval qualification still needs rerunning before any recall-improvement claim.
+- **Ledger — implemented:** section reads accept the structural body span-hash while slug/ordinal
+  anchors remain resolvable aliases. Frozen retrieval qualification still needs rerunning before
+  any recall-improvement claim.
 - **Blueprint**: adopted directions for the existing re-anchoring and incremental trains —
   string-based self-describing symbol identity; per-file precompute with query-time stitching;
   typed per-file staleness status; confidence-tiered edges; an enumerated cache-invalidation
@@ -1179,16 +1167,15 @@ disposition only:
 
 # 19. Operations — installed-runtime guarantees
 
-- **Candidate patch, awaiting integration and macOS host qualification:** the tray installs a
+- **Implemented, awaiting macOS host qualification:** the tray installs a
   per-session launchd kill guarantee, publishes the supervised daemon PID and refuses startup when coupling cannot install.
   Qualification must prove crash, normal drain, PID cleanup and no-orphan behavior on macOS.
 - **Still pending:** installed-artifact qualification must become a required release-candidate gate.
   Generated workflow must not be hand-edited; add the capability to RightKit ownership, then
   regenerate this repository.
-- **Candidate patch:** every JS-side shared-SQLite open uses the native WAL,
+- **Implemented and verified:** every JS-side shared-SQLite open uses the native WAL,
   `busy_timeout=5000`, `synchronous=NORMAL` and in-memory temp-store posture. Proposal,
-  working-context and readback restart suites exercise that shared opener. It is not landed in this
-  documentation commit.
+  working-context and readback restart suites exercise that shared opener.
 
 ---
 
