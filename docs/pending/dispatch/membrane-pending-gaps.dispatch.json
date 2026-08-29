@@ -1,0 +1,275 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "41036d730764a1032ab96c5424730b5290621196",
+  "sourceArtifact": "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+  "promptArtifact": "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+  "promptDigest": "sha256:942abff2f277d3e95ee48c7c134a918380a38a0dbdaeb203654a64d048c3dd56",
+  "modelRouting": {
+    "modelTier": "MID",
+    "workerProfile": "standard",
+    "routingRationale": "Bounded independent implementation lanes with frozen interfaces; no lane requires cross-lane reasoning beyond the packet"
+  },
+  "objective": "Implement the in-repo schedulable gaps of docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md §13.4: native-path authorization gate (§15), approved-proposal consumer (§16.1), write-time dedup (§16.3), hard erase + backup/restore over existing quarantine (§16.4), typed abstention (§17.1), publication fence (§17.2), first-party sufficiency caller (§13.1), InterventionAttributionV1 (§2.5-§2.7), Ledger section-identity unification (§18), installed-runtime guarantees (§19). Host-side capabilities, semantic provider server, and qualification freezes are explicitly out of scope.",
+  "authority": [
+    "docs/agent-rules.md",
+    "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+    "docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md",
+    "docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md",
+    "docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md",
+    "docs/subsystems/MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md"
+  ],
+  "integrationOwner": "current orchestrator",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/src/authorization.rs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-runtime/src/lib.rs",
+      "engine/crates/membrane-runtime/tests/native_authorization.rs",
+      "engine/crates/membrane-runtime/src/store.rs",
+      "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
+      "engine/crates/membrane-protocol/src/federation.rs",
+      "engine/crates/membrane-protocol/src/lib.rs",
+      "engine/crates/membrane-federation/src/engine.rs",
+      "engine/crates/membrane-federation/src/corrective.rs",
+      "engine/crates/membrane-runtime/src/pull/federation.rs",
+      "engine/crates/membrane-runtime/src/pull/publication.rs",
+      "engine/crates/membrane-mcp/src/tools.rs",
+      "engine/crates/membrane-federation/tests/fence_abstention.rs",
+      "engine/crates/membrane-adapt/src/attribution.rs",
+      "engine/crates/membrane-adapt/src/remediation.rs",
+      "engine/crates/membrane-adapt/src/lib.rs",
+      "engine/crates/membrane-runtime/src/ledger/outline.rs",
+      "engine/crates/membrane-runtime/src/ledger/index.rs",
+      "apps/membrane-tray-macos/Sources/MembraneTrayMacOS/DaemonSupervisor.swift",
+      ".github/workflows/release-candidate.yml",
+      "mcp/proposal-store.mjs",
+      "mcp/working-context.mjs",
+      "mcp/server.mjs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path": "engine/crates/membrane-runtime/src/authorization.rs", "owner": "lane-native-authorization", "operation": "add", "lane": "lane-native-authorization", "finalCheck": "cargo test -p membrane-runtime --test native_authorization"},
+      {"path": "engine/crates/membrane-runtime/src/mcp_executor.rs", "owner": "lane-native-authorization", "operation": "edit", "lane": "lane-native-authorization", "finalCheck": "cargo test -p membrane-runtime --test native_authorization"},
+      {"path": "engine/crates/membrane-runtime/src/lib.rs", "owner": "lane-native-authorization", "operation": "edit", "lane": "lane-native-authorization", "finalCheck": "cargo check -p membrane-runtime"},
+      {"path": "engine/crates/membrane-runtime/tests/native_authorization.rs", "owner": "lane-native-authorization", "operation": "add", "lane": "lane-native-authorization", "finalCheck": "cargo test -p membrane-runtime --test native_authorization"},
+      {"path": "engine/crates/membrane-runtime/src/store.rs", "owner": "lane-cortex-durable-lifecycle", "operation": "edit", "lane": "lane-cortex-durable-lifecycle", "finalCheck": "cargo test -p membrane-runtime --test cortex_lifecycle_gaps"},
+      {"path": "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs", "owner": "lane-cortex-durable-lifecycle", "operation": "add", "lane": "lane-cortex-durable-lifecycle", "finalCheck": "cargo test -p membrane-runtime --test cortex_lifecycle_gaps"},
+      {"path": "engine/crates/membrane-protocol/src/federation.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-protocol"},
+      {"path": "engine/crates/membrane-protocol/src/lib.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo check -p membrane-protocol"},
+      {"path": "engine/crates/membrane-federation/src/engine.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-federation --test fence_abstention"},
+      {"path": "engine/crates/membrane-federation/src/corrective.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-federation --test fence_abstention"},
+      {"path": "engine/crates/membrane-runtime/src/pull/federation.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-runtime pull"},
+      {"path": "engine/crates/membrane-runtime/src/pull/publication.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-runtime pull"},
+      {"path": "engine/crates/membrane-mcp/src/tools.rs", "owner": "lane-pull-fence-abstention", "operation": "edit", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-mcp"},
+      {"path": "engine/crates/membrane-federation/tests/fence_abstention.rs", "owner": "lane-pull-fence-abstention", "operation": "add", "lane": "lane-pull-fence-abstention", "finalCheck": "cargo test -p membrane-federation --test fence_abstention"},
+      {"path": "engine/crates/membrane-adapt/src/attribution.rs", "owner": "lane-adapt-attribution", "operation": "add", "lane": "lane-adapt-attribution", "finalCheck": "cargo test -p membrane-adapt"},
+      {"path": "engine/crates/membrane-adapt/src/remediation.rs", "owner": "lane-adapt-attribution", "operation": "edit", "lane": "lane-adapt-attribution", "finalCheck": "cargo test -p membrane-adapt"},
+      {"path": "engine/crates/membrane-adapt/src/lib.rs", "owner": "lane-adapt-attribution", "operation": "edit", "lane": "lane-adapt-attribution", "finalCheck": "cargo check -p membrane-adapt"},
+      {"path": "engine/crates/membrane-runtime/src/ledger/outline.rs", "owner": "lane-ledger-identity", "operation": "edit", "lane": "lane-ledger-identity", "finalCheck": "cargo test -p membrane-runtime ledger"},
+      {"path": "engine/crates/membrane-runtime/src/ledger/index.rs", "owner": "lane-ledger-identity", "operation": "edit", "lane": "lane-ledger-identity", "finalCheck": "cargo test -p membrane-runtime ledger"},
+      {"path": "apps/membrane-tray-macos/Sources/MembraneTrayMacOS/DaemonSupervisor.swift", "owner": "lane-ops-runtime", "operation": "edit", "lane": "lane-ops-runtime", "finalCheck": "swift build review by integration owner (no macOS runner locally; CI validates)"},
+      {"path": ".github/workflows/release-candidate.yml", "owner": "lane-ops-runtime", "operation": "edit", "lane": "lane-ops-runtime", "finalCheck": "workflow lint + integration owner review of trigger gating"},
+      {"path": "mcp/proposal-store.mjs", "owner": "lane-ops-runtime", "operation": "edit", "lane": "lane-ops-runtime", "finalCheck": "pnpm test:mcp"},
+      {"path": "mcp/working-context.mjs", "owner": "lane-ops-runtime", "operation": "edit", "lane": "lane-ops-runtime", "finalCheck": "pnpm test:mcp"},
+      {"path": "mcp/server.mjs", "owner": "lane-ops-runtime", "operation": "edit", "lane": "lane-ops-runtime", "finalCheck": "pnpm test:mcp"}
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "mcp/authorization.mjs",
+    "sourceInventory": ["mcp/authorization.mjs", "mcp/authorization.test.mjs", "mcp/installation-binding.mjs"],
+    "directPortFirst": true,
+    "targetLanguage": "rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo", "tests", "builds", "generators", "installs", "commits", "pushes", "merges", "expensive-checks"],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "current orchestrator",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return to owning lane or redesign packet before execution"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": [
+        "lane-native-authorization",
+        "lane-cortex-durable-lifecycle",
+        "lane-pull-fence-abstention",
+        "lane-adapt-attribution",
+        "lane-ledger-identity",
+        "lane-ops-runtime"
+      ],
+      "completionChecks": [
+        "integration owner reconciles changed paths against the file-touch ledger",
+        "integration owner runs per-lane focused checks, then pnpm test, pnpm test:mcp, Rust checks via workspace RightKit shim, docs/productization checks",
+        "packet and receipt schemas verified together after the membrane-protocol change"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "lane-native-authorization",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/authorization.rs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "engine/crates/membrane-runtime/src/lib.rs",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "mcp/authorization.mjs",
+        "mcp/authorization.test.mjs",
+        "mcp/installation-binding.mjs",
+        "mcp/server.mjs",
+        "engine/crates/membrane-mcp/src/jsonrpc.rs",
+        "engine/crates/membrane-mcp/src/tools.rs"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs cargo test -p membrane-runtime --test native_authorization after merge; worker runs no check"],
+      "dependencies": []
+    },
+    {
+      "id": "lane-cortex-durable-lifecycle",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/store.rs",
+        "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/cortex-core/src/dream.rs",
+        "engine/crates/cortex-store/src/temporal.rs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs cargo test -p membrane-runtime --test cortex_lifecycle_gaps after merge; worker runs no check"],
+      "dependencies": []
+    },
+    {
+      "id": "lane-pull-fence-abstention",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "engine/crates/membrane-protocol/src/federation.rs",
+        "engine/crates/membrane-protocol/src/lib.rs",
+        "engine/crates/membrane-federation/src/engine.rs",
+        "engine/crates/membrane-federation/src/corrective.rs",
+        "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "engine/crates/membrane-runtime/src/pull/publication.rs",
+        "engine/crates/membrane-mcp/src/tools.rs",
+        "engine/crates/membrane-federation/tests/fence_abstention.rs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "docs/evidence/qualification/ledger-metrics.json",
+        "docs/evidence/qualification/corrective-retrieval.json",
+        "engine/crates/membrane-federation/src/merge.rs",
+        "engine/crates/membrane-federation/src/omission.rs",
+        "engine/crates/membrane-federation/src/scope.rs"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs cargo test -p membrane-federation --test fence_abstention, cargo test -p membrane-protocol, cargo test -p membrane-mcp after merge; worker runs no check"],
+      "dependencies": []
+    },
+    {
+      "id": "lane-adapt-attribution",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "engine/crates/membrane-adapt/src/attribution.rs",
+        "engine/crates/membrane-adapt/src/remediation.rs",
+        "engine/crates/membrane-adapt/src/lib.rs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md",
+        "engine/crates/membrane-adapt/src/lineage.rs"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs cargo test -p membrane-adapt after merge; worker runs no check"],
+      "dependencies": []
+    },
+    {
+      "id": "lane-ledger-identity",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/ledger/outline.rs",
+        "engine/crates/membrane-runtime/src/ledger/index.rs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md",
+        "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+        "engine/crates/membrane-runtime/src/checkpoint.rs"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs cargo test -p membrane-runtime ledger after merge; worker runs no check"],
+      "dependencies": []
+    },
+    {
+      "id": "lane-ops-runtime",
+      "dispatch": "A",
+      "executor": "configured worker",
+      "allowlist": [
+        "apps/membrane-tray-macos/Sources/MembraneTrayMacOS/DaemonSupervisor.swift",
+        ".github/workflows/release-candidate.yml",
+        "mcp/proposal-store.mjs",
+        "mcp/working-context.mjs",
+        "mcp/server.mjs"
+      ],
+      "read": [
+        "docs/pending/dispatch/membrane-pending-gaps.prompt.md",
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "apps/membrane-tray-windows/src/process.rs",
+        "scripts/qualification/install-release.ps1"
+      ],
+      "forbidden": [".git", "secrets"],
+      "checks": ["integration owner runs pnpm test:mcp and workflow lint after merge; macOS build validates in CI; worker runs no check"],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "allowlist-completeness",
+      "lane-disjointness",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "direct-port-priority",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": ["owned path is already dirty", "required private input is missing", "allowlist insufficient for the assigned task"],
+    "returnFields": ["changedPaths", "checks", "blockers", "baselineRevision", "patchDigest"]
+  }
+}
