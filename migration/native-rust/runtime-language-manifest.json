@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T05:13:29.246Z",
+ "generatedAt": "2026-08-30T05:19:39.594Z",
  "enforcementMode": "sealed",
  "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
  "totals": {
@@ -1567,7 +1567,7 @@
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "85489757a1bcb1c34599f48e018bd341a60148dfe37df6d6c728ff5b1393c5d6"
+   "content_digest": "ccd0224a600b1bb198d227b964789f5b73e85cb0e18d75e7d944c3a54a06c6a9"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1764,7 +1764,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "7bc1015db3a7b555bbab166ac957d6ee728bac190e55b2c7a3fb845c354c7650"
+   "content_digest": "21e0c66f22db84dfb434a850aae742c0236403c374c83419235c16c93e910aa3"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",

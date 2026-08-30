@@ -972,10 +972,11 @@ impl Drop for WorkerExecutionGuard {
     }
 }
 
-/// MBR-306: `pub(crate)` (rather than private) so the optional Streamable
-/// HTTP MCP transport (`crate::mcp_http`) sources its bearer token from this
-/// exact credential path instead of minting a parallel one.
-pub(crate) fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
+/// MBR-306: the optional Streamable HTTP MCP transport (`crate::mcp_http`)
+/// sources its bearer token from this exact credential path instead of minting
+/// a parallel one. Creating the fallback file also applies the platform's
+/// owner-only permissions when needed.
+pub fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
     let fallback = db_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))
@@ -1041,19 +1042,33 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         hex(&random[..6])
     ));
 
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options.open(&temp_path).map_err(|error| {
-        format!(
-            "create temporary Cortex API token {}: {error}",
-            temp_path.display()
-        )
-    })?;
+    let mut file = {
+        #[cfg(windows)]
+        {
+            windows_create_owner_only_token_file(&temp_path).map_err(|error| {
+                format!(
+                    "create temporary Cortex API token with owner-only DACL {}: {error}",
+                    temp_path.display()
+                )
+            })?
+        }
+        #[cfg(not(windows))]
+        {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            options.open(&temp_path).map_err(|error| {
+                format!(
+                    "create temporary Cortex API token {}: {error}",
+                    temp_path.display()
+                )
+            })?
+        }
+    };
     let publish = (|| -> Result<(), String> {
         use std::io::Write as _;
         file.write_all(token.as_bytes())
@@ -1081,6 +1096,326 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     }
 }
 
+#[cfg(windows)]
+fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::ffi::OsStrExt as _;
+    use std::os::windows::io::FromRawHandle as _;
+    use std::ptr::null_mut;
+
+    type Handle = *mut std::ffi::c_void;
+    const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
+    const GENERIC_WRITE: u32 = 0x4000_0000;
+    const CREATE_NEW: u32 = 1;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateFileW(
+            name: *const u16,
+            access: u32,
+            share_mode: u32,
+            security: *mut std::ffi::c_void,
+            creation: u32,
+            flags: u32,
+            template: Handle,
+        ) -> Handle;
+    }
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let handle = windows_owner_only_security(|attributes, _dacl| {
+        let handle = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                GENERIC_WRITE,
+                0,
+                attributes,
+                CREATE_NEW,
+                FILE_ATTRIBUTE_NORMAL,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(handle)
+        }
+    })?;
+    // The security descriptor remains owned by `windows_owner_only_security`
+    // until after CreateFileW has returned; the file stores its own SD.
+    Ok(unsafe { std::fs::File::from_raw_handle(handle as _) })
+}
+
+#[cfg(windows)]
+fn windows_harden_existing_token_file(path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt as _;
+    use std::ptr::null_mut;
+
+    type Handle = *mut std::ffi::c_void;
+    const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
+    const READ_CONTROL: u32 = 0x0002_0000;
+    const WRITE_DAC: u32 = 0x0004_0000;
+    const FILE_SHARE_READ: u32 = 0x1;
+    const FILE_SHARE_WRITE: u32 = 0x2;
+    const FILE_SHARE_DELETE: u32 = 0x4;
+    const OPEN_EXISTING: u32 = 3;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+    const SE_FILE_OBJECT: u32 = 1;
+    const DACL_SECURITY_INFORMATION: u32 = 0x0000_0004;
+    const PROTECTED_DACL_SECURITY_INFORMATION: u32 = 0x8000_0000;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateFileW(
+            name: *const u16,
+            access: u32,
+            share_mode: u32,
+            security: *mut std::ffi::c_void,
+            creation: u32,
+            flags: u32,
+            template: Handle,
+        ) -> Handle;
+        fn CloseHandle(handle: Handle) -> i32;
+    }
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn SetSecurityInfo(
+            handle: Handle,
+            object_type: u32,
+            security_info: u32,
+            owner: *mut std::ffi::c_void,
+            group: *mut std::ffi::c_void,
+            dacl: *mut std::ffi::c_void,
+            sacl: *mut std::ffi::c_void,
+        ) -> u32;
+    }
+
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    windows_owner_only_security(|_attributes, dacl| {
+        let handle = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                READ_CONTROL | WRITE_DAC,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                null_mut(),
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(std::io::Error::last_os_error());
+        }
+        let result = unsafe {
+            SetSecurityInfo(
+                handle,
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                dacl,
+                null_mut(),
+            )
+        };
+        let close_result = unsafe { CloseHandle(handle) };
+        if result != 0 {
+            return Err(std::io::Error::from_raw_os_error(result as i32));
+        }
+        if close_result == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
+    })
+}
+
+#[cfg(windows)]
+pub(crate) fn windows_owner_only_security<T>(
+    operation: impl FnOnce(*mut std::ffi::c_void, *mut std::ffi::c_void) -> std::io::Result<T>,
+) -> std::io::Result<T> {
+    use std::mem::{size_of, MaybeUninit};
+    use std::ptr::null_mut;
+
+    #[repr(C)]
+    struct SecurityDescriptor {
+        revision: u8,
+        sbz1: u8,
+        control: u16,
+        owner: *mut std::ffi::c_void,
+        group: *mut std::ffi::c_void,
+        sacl: *mut std::ffi::c_void,
+        dacl: *mut std::ffi::c_void,
+    }
+    #[repr(C)]
+    struct SecurityAttributes {
+        length: u32,
+        descriptor: *mut std::ffi::c_void,
+        inherit_handle: i32,
+    }
+    type Handle = *mut std::ffi::c_void;
+    const TOKEN_QUERY: u32 = 0x0008;
+    const TOKEN_USER: u32 = 1;
+    const SECURITY_DESCRIPTOR_REVISION: u32 = 1;
+    const ACL_REVISION: u32 = 2;
+    const GENERIC_ALL: u32 = 0x1000_0000;
+    const SE_DACL_PROTECTED: u16 = 0x1000;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetCurrentProcess() -> Handle;
+        fn CloseHandle(handle: Handle) -> i32;
+        fn GetLastError() -> u32;
+    }
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn OpenProcessToken(process: Handle, access: u32, token: *mut Handle) -> i32;
+        fn GetTokenInformation(
+            token: Handle,
+            information_class: u32,
+            buffer: *mut std::ffi::c_void,
+            buffer_length: u32,
+            return_length: *mut u32,
+        ) -> i32;
+        fn GetLengthSid(sid: *mut std::ffi::c_void) -> u32;
+        fn InitializeSecurityDescriptor(descriptor: *mut std::ffi::c_void, revision: u32) -> i32;
+        fn SetSecurityDescriptorOwner(
+            descriptor: *mut std::ffi::c_void,
+            owner: *mut std::ffi::c_void,
+            defaulted: i32,
+        ) -> i32;
+        fn InitializeAcl(acl: *mut std::ffi::c_void, length: u32, revision: u32) -> i32;
+        fn AddAccessAllowedAceEx(
+            acl: *mut std::ffi::c_void,
+            revision: u32,
+            ace_flags: u32,
+            access_mask: u32,
+            sid: *mut std::ffi::c_void,
+        ) -> i32;
+        fn SetSecurityDescriptorDacl(
+            descriptor: *mut std::ffi::c_void,
+            dacl_present: i32,
+            dacl: *mut std::ffi::c_void,
+            defaulted: i32,
+        ) -> i32;
+        fn SetSecurityDescriptorControl(
+            descriptor: *mut std::ffi::c_void,
+            bits_of_interest: u16,
+            bits_to_set: u16,
+        ) -> i32;
+    }
+
+    let mut token: Handle = null_mut();
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("open current-user token: {}", std::io::Error::last_os_error()),
+        ));
+    }
+    let mut token_length = 0u32;
+    unsafe {
+        GetTokenInformation(
+            token,
+            TOKEN_USER,
+            null_mut(),
+            0,
+            &mut token_length,
+        );
+    }
+    if token_length == 0 {
+        unsafe { CloseHandle(token) };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("query current-user SID size: Windows error {}", unsafe {
+                GetLastError()
+            }),
+        ));
+    }
+    let mut token_buffer = vec![0u64; (token_length as usize).div_ceil(size_of::<u64>())];
+    let mut returned = 0u32;
+    let token_ok = unsafe {
+        GetTokenInformation(
+            token,
+            TOKEN_USER,
+            token_buffer.as_mut_ptr() as *mut std::ffi::c_void,
+            (token_buffer.len() * size_of::<u64>()) as u32,
+            &mut returned,
+        )
+    } != 0;
+    unsafe { CloseHandle(token) };
+    if !token_ok {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("query current-user SID: {}", std::io::Error::last_os_error()),
+        ));
+    }
+    let token_user = token_buffer.as_ptr() as *const *mut std::ffi::c_void;
+    let sid = unsafe { *token_user };
+    let sid_length = unsafe { GetLengthSid(sid) };
+    if sid_length == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "current-user token returned an invalid SID",
+        ));
+    }
+
+    let acl_length = size_of::<u32>() * 2
+        + (size_of::<u32>() * 3 + sid_length as usize - size_of::<u32>());
+    let mut acl_storage = vec![0u32; acl_length.div_ceil(size_of::<u32>())];
+    let mut descriptor = MaybeUninit::<SecurityDescriptor>::uninit();
+    let descriptor_ptr = descriptor.as_mut_ptr() as *mut std::ffi::c_void;
+    let acl_ptr = acl_storage.as_mut_ptr() as *mut std::ffi::c_void;
+    let check = |ok: i32, operation: &str| {
+        if ok == 0 {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("{operation}: {}", std::io::Error::last_os_error()),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    check(
+        unsafe { InitializeSecurityDescriptor(descriptor_ptr, SECURITY_DESCRIPTOR_REVISION) },
+        "initialize owner-only security descriptor",
+    )?;
+    check(
+        unsafe { SetSecurityDescriptorOwner(descriptor_ptr, sid, 0) },
+        "set owner-only security descriptor owner",
+    )?;
+    check(
+        unsafe { InitializeAcl(acl_ptr, acl_length as u32, ACL_REVISION) },
+        "initialize owner-only DACL",
+    )?;
+    check(
+        unsafe { AddAccessAllowedAceEx(acl_ptr, ACL_REVISION, 0, GENERIC_ALL, sid) },
+        "add current-user owner-only ACE",
+    )?;
+    check(
+        unsafe { SetSecurityDescriptorDacl(descriptor_ptr, 1, acl_ptr, 0) },
+        "attach owner-only DACL",
+    )?;
+    check(
+        unsafe { SetSecurityDescriptorControl(descriptor_ptr, SE_DACL_PROTECTED, SE_DACL_PROTECTED) },
+        "disable DACL inheritance",
+    )?;
+
+    let mut attributes = SecurityAttributes {
+        length: size_of::<SecurityAttributes>() as u32,
+        descriptor: descriptor_ptr,
+        inherit_handle: 0,
+    };
+    operation(
+        &mut attributes as *mut SecurityAttributes as *mut std::ffi::c_void,
+        acl_ptr,
+    )
+}
+
 fn read_token_file(path: &std::path::Path) -> std::io::Result<String> {
     let metadata = std::fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -1096,6 +1431,8 @@ fn read_token_file(path: &std::path::Path) -> std::io::Result<String> {
         permissions.set_mode(0o600);
         std::fs::set_permissions(path, permissions)?;
     }
+    #[cfg(windows)]
+    windows_harden_existing_token_file(path)?;
     let token = std::fs::read_to_string(path)?.trim().to_string();
     if token.is_empty() {
         return Err(std::io::Error::new(

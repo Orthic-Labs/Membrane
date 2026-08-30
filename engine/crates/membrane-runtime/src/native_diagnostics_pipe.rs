@@ -271,12 +271,16 @@ mod windows {
         server: ResidentServer,
     ) {
         while !lifecycle.shutdown_requested() && !server.is_stopping() {
-            let Some(pipe) = create(&name) else {
-                if server.is_stopping() || lifecycle.shutdown_requested() {
-                    break;
+            let pipe = match create(&name) {
+                Ok(pipe) => pipe,
+                Err(error) => {
+                    eprintln!("native diagnostics pipe unavailable: {error}");
+                    if server.is_stopping() || lifecycle.shutdown_requested() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                    continue;
                 }
-                std::thread::sleep(Duration::from_millis(10));
-                continue;
             };
             if !connect(pipe.0, &lifecycle, &server) {
                 continue;
@@ -300,24 +304,31 @@ mod windows {
         lifecycle.shutdown_requested() || server.is_stopping()
     }
 
-    fn create(name: &str) -> Option<Pipe> {
+    fn create(name: &str) -> std::io::Result<Pipe> {
         let wide: Vec<u16> = std::ffi::OsStr::new(name)
             .encode_wide()
             .chain(Some(0))
             .collect();
-        let handle = unsafe {
-            CreateNamedPipeW(
-                wide.as_ptr(),
-                PIPE_ACCESS_DUPLEX,
-                PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
-                1,
-                MAX_NATIVE_DIAGNOSTICS_FRAME_BYTES as u32,
-                MAX_NATIVE_DIAGNOSTICS_FRAME_BYTES as u32,
-                1000,
-                null_mut(),
-            )
-        };
-        (handle != INVALID_HANDLE_VALUE).then_some(Pipe(handle))
+        let handle = crate::serve::windows_owner_only_security(|security, _dacl| {
+            let handle = unsafe {
+                CreateNamedPipeW(
+                    wide.as_ptr(),
+                    PIPE_ACCESS_DUPLEX,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_NOWAIT | PIPE_REJECT_REMOTE_CLIENTS,
+                    1,
+                    MAX_NATIVE_DIAGNOSTICS_FRAME_BYTES as u32,
+                    MAX_NATIVE_DIAGNOSTICS_FRAME_BYTES as u32,
+                    1000,
+                    security,
+                )
+            };
+            if handle == INVALID_HANDLE_VALUE {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(handle)
+            }
+        })?;
+        Ok(Pipe(handle))
     }
 
     fn connect(
