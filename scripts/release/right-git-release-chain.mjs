@@ -1,0 +1,123 @@
+import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repo = fileURLToPath(new URL("../../", import.meta.url));
+const hub = join(repo, "apps", "membrane-hub");
+const version = JSON.parse(readFileSync(join(hub, "package.json"), "utf8")).version;
+const sourceRevision = process.env.RIGHT_GIT_SOURCE_REVISION;
+const unsignedWindows = process.env.RIGHT_GIT_UNSIGNED_CANDIDATE_ROOT;
+const unsignedMac = process.env.RIGHT_GIT_UNSIGNED_CANDIDATE_ROOT;
+const finalizedWindows = process.env.RIGHT_GIT_FINALIZED_WINDOWS_ROOT;
+const finalizedMac = process.env.RIGHT_GIT_FINALIZED_MACOS_ROOT;
+const qualification = process.env.RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT;
+
+function run(command, args, cwd = repo, env = process.env) {
+  const result = spawnSync(command, args, { cwd, env, stdio: "inherit", shell: process.platform === "win32" && command.endsWith(".cmd"), windowsHide: true });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${command} exited ${result.status}`);
+}
+
+function output(command, args, cwd = repo) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf8", windowsHide: true });
+  if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);
+  return result.stdout.trim();
+}
+
+function sha256(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
+function ensureDirectory(path, label) { if (!path) throw new Error(`${label} is required`); mkdirSync(path, { recursive: true }); }
+function copyTree(source, destination) { cpSync(source, destination, { recursive: true, force: true }); }
+function onlyInstaller(root) {
+  const files = readdirSync(root).filter((name) => /-setup\.exe$/i.test(name));
+  if (files.length !== 1) throw new Error(`expected exactly one Windows installer in ${root}; found ${files.length}`);
+  return join(root, files[0]);
+}
+function assertSource() {
+  const head = output("git", ["rev-parse", "HEAD"]);
+  if (!/^[a-f0-9]{40}$/i.test(sourceRevision ?? "") || head !== sourceRevision) throw new Error("RightGit release chain source revision does not match checkout");
+  if (output("git", ["status", "--porcelain"])) throw new Error("RightGit release chain requires clean source");
+  return head;
+}
+
+function finalizeWindows() {
+  if (process.platform !== "win32") throw new Error("Windows finalization requires native Windows host");
+  assertSource();
+  if (!unsignedWindows || !existsSync(join(unsignedWindows, "candidate.json"))) throw new Error("exact unsigned Windows candidate is required");
+  ensureDirectory(finalizedWindows, "RIGHT_GIT_FINALIZED_WINDOWS_ROOT");
+  rmSync(finalizedWindows, { recursive: true, force: true });
+  mkdirSync(finalizedWindows, { recursive: true });
+  const candidate = JSON.parse(readFileSync(join(unsignedWindows, "candidate.json"), "utf8"));
+  if (candidate.target !== "windows-x86_64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned Windows candidate identity mismatch");
+  run("pnpm.cmd", ["--dir", hub, "run", "release:build:portable:win"], repo, { ...process.env, MEMBRANE_CANDIDATE_ROOT: unsignedWindows });
+  const installer = onlyInstaller(unsignedWindows);
+  run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", installer]);
+  run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", "--verify-only", installer]);
+  const manifest = JSON.parse(readFileSync(join(unsignedWindows, "release-manifest.json"), "utf8"));
+  const sbom = JSON.parse(readFileSync(join(unsignedWindows, "sbom.json"), "utf8"));
+  const installerSha256 = sha256(installer);
+  const signing = { status: "signed", contract: "azure-artifact-signing-v1", provider: "RightRelease" };
+  manifest.artifact = { ...manifest.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256 };
+  manifest.signing = signing;
+  sbom.artifact = { ...sbom.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256 };
+  sbom.signing = signing;
+  copyTree(installer, join(finalizedWindows, installer.split(/[\\/]/).pop()));
+  writeFileSync(join(finalizedWindows, "release-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(join(finalizedWindows, "sbom.json"), `${JSON.stringify(sbom, null, 2)}\n`);
+  const portable = join(hub, "dist", "portable");
+  if (!existsSync(portable)) throw new Error("RightKit Windows finalization did not produce portable release inputs");
+  copyTree(portable, join(finalizedWindows, "portable"));
+}
+
+function finalizeMac() {
+  if (process.platform !== "darwin") throw new Error("macOS finalization requires native macOS host");
+  assertSource();
+  if (!unsignedMac || !existsSync(join(unsignedMac, "candidate.json"))) throw new Error("exact unsigned macOS candidate is required");
+  const candidate = JSON.parse(readFileSync(join(unsignedMac, "candidate.json"), "utf8"));
+  if (candidate.target !== "macos-arm64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned macOS candidate identity mismatch");
+  ensureDirectory(finalizedMac, "RIGHT_GIT_FINALIZED_MACOS_ROOT");
+  rmSync(finalizedMac, { recursive: true, force: true });
+  mkdirSync(finalizedMac, { recursive: true });
+  run("pnpm", ["--dir", hub, "run", "release:build:mac"]);
+  const metadata = JSON.parse(output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-hub/src-tauri/Cargo.toml"]));
+  const dmg = join(metadata.target_directory, "aarch64-apple-darwin", "release", "bundle", "dmg", `Membrane Hub_${version}_aarch64.dmg`);
+  if (!existsSync(dmg)) throw new Error(`signed macOS DMG is missing: ${dmg}`);
+  cpSync(dmg, join(finalizedMac, "Membrane-Hub-arm64.dmg"));
+  writeFileSync(join(finalizedMac, "finalization.json"), `${JSON.stringify({ schemaVersion: 1, target: "macos-arm64", sourceRevision, candidateArchive: candidate.archive, artifact: { name: "Membrane-Hub-arm64.dmg", sha256: sha256(dmg) }, notarized: true }, null, 2)}\n`);
+}
+
+function qualifyInstalled() {
+  if (process.platform !== "win32") throw new Error("installed qualification requires protected native Windows host");
+  assertSource();
+  ensureDirectory(qualification, "RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT");
+  const installer = onlyInstaller(finalizedWindows);
+  const manifest = join(finalizedWindows, "release-manifest.json");
+  const sbom = join(finalizedWindows, "sbom.json");
+  const releases = JSON.parse(output("gh", ["api", "repos/Orthic-Labs/Membrane/releases?per_page=100"]));
+  const prior = releases.find((release) => !release.draft && !release.prerelease && release.tag_name !== `v${version}`);
+  const asset = prior?.assets?.find((entry) => /-setup\.exe$/i.test(entry.name));
+  if (!prior || !asset) throw new Error("installed qualification requires one prior signed Windows release installer");
+  const previous = join(qualification, "previous-signed-installer.exe");
+  run("gh", ["api", "-H", "Accept: application/octet-stream", asset.url, "--output", previous]);
+  run("powershell", ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/qualification/install-release.ps1", "-Installer", installer, "-PreviousInstaller", previous, "-ReleaseManifest", manifest, "-Sbom", sbom, "-EvidencePath", join(qualification, "evidence.json")]);
+}
+
+function publishQualified() {
+  if (process.platform !== "win32") throw new Error("qualified publication requires protected native Windows host");
+  assertSource();
+  if (!existsSync(join(qualification, "evidence.json"))) throw new Error("installed qualification evidence is required before publication");
+  const portable = join(finalizedWindows, "portable");
+  if (!existsSync(portable)) throw new Error("finalized portable release inputs are required before publication");
+  const destination = join(hub, "dist", "portable");
+  rmSync(destination, { recursive: true, force: true });
+  copyTree(portable, destination);
+  run("pnpm.cmd", ["--dir", hub, "run", "release:publish:portable:win"]);
+}
+
+const mode = process.argv[2];
+if (mode === "finalize-windows") finalizeWindows();
+else if (mode === "finalize-macos") finalizeMac();
+else if (mode === "qualify-installed") qualifyInstalled();
+else if (mode === "publish-qualified") publishQualified();
+else throw new Error("usage: right-git-release-chain.mjs <finalize-windows|finalize-macos|qualify-installed|publish-qualified>");

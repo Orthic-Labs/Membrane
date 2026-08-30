@@ -23,9 +23,13 @@
     "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
     "rightkit:git:sync": "right-git sync .",
     "rightkit:git:drift": "right-git drift .",
-    "release:candidate:build": "pnpm --dir apps/membrane-hub install --frozen-lockfile && pnpm --dir apps/membrane-hub run release:candidate:artifacts:win",
-    "release:candidate:artifacts": "pnpm --dir apps/membrane-hub run release:candidate:artifacts:win",
-    "release:candidate:check": "pnpm --dir apps/membrane-hub run release:candidate:check:win",
+    "release:candidate:build": "node scripts/release/right-git-candidate.mjs build",
+    "release:candidate:artifacts": "node scripts/release/right-git-candidate.mjs build",
+    "release:candidate:check": "node scripts/release/right-git-candidate.mjs check",
+    "release:finalize:windows": "node scripts/release/right-git-release-chain.mjs finalize-windows",
+    "release:finalize:macos": "node scripts/release/right-git-release-chain.mjs finalize-macos",
+    "release:qualify:installed": "node scripts/release/right-git-release-chain.mjs qualify-installed",
+    "release:publish:qualified": "node scripts/release/right-git-release-chain.mjs publish-qualified",
     "rightkit:ax:plugin": "right-ax plugin validate .",
     "rightkit:ax:static": "right-ax ax static .",
     "rightkit:ax:conformance": "right-ax ax conformance ."
@@ -36,6 +40,6 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/git": "0.2.5"
+    "@rightkit/git": "0.2.11"
   }
 }

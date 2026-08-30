@@ -6,7 +6,7 @@
     "node": ["22.13"]
   },
   "packageManager": "pnpm@11.24.0",
-  "templateVersion": "1.1.0",
+  "templateVersion": "1.4.0",
   "profile": "rust-hybrid",
   "gate": {
     "path": "scripts/ci/run-ci.sh"
@@ -14,7 +14,21 @@
   "candidate": {
     "buildScript": "release:candidate:build",
     "checkScript": "release:candidate:check",
-    "artifactRoot": "membrane/windows-x86_64",
-    "os": ["windows-2025"]
+    "artifactRoot": "membrane-release-candidate",
+    "os": ["windows-2025", "macos-15"],
+    "targets": [
+      { "os": "windows-2025", "platform": "windows", "architecture": "x86_64" },
+      { "os": "macos-15", "platform": "macos", "architecture": "arm64" }
+    ],
+    "signWindows": true,
+    "signMacos": true,
+    "releaseChain": {
+      "windowsFinalizeScript": "release:finalize:windows",
+      "macosFinalizeScript": "release:finalize:macos",
+      "installedQualificationScript": "release:qualify:installed",
+      "publishScript": "release:publish:qualified",
+      "qualificationRunnerVariable": "MEMBRANE_QUALIFICATION_RUNNER_LABEL",
+      "publishSecrets": ["CLOUDFLARE_API_TOKEN"]
+    }
   }
 }
