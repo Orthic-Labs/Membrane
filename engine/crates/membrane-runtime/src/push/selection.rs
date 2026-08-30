@@ -120,19 +120,29 @@ pub fn parse_request_time_h8(
         ));
     }
 
-    if let Some(observed_task) = ceiling.task_id.value.as_deref() {
-        if observed_task.trim().is_empty() {
-            return Err(RequestTimeH8Error::Invalid(
-                "taskId value must not be empty when supplied".to_owned(),
-            ));
+    if ceiling.task_id.coverage != ObservationCoverageV1::Complete {
+        return Err(RequestTimeH8Error::Inexact {
+            coverage: ceiling.task_id.coverage,
+            reason: ceiling.task_id.unavailable_reason,
+        });
+    }
+    let observed_task = ceiling.task_id.value.as_deref().ok_or_else(|| {
+        RequestTimeH8Error::Inexact {
+            coverage: ceiling.task_id.coverage,
+            reason: ceiling.task_id.unavailable_reason,
         }
-        if observed_task != expected_task {
-            return Err(RequestTimeH8Error::IdentityMismatch {
-                field: "taskId",
-                expected: expected_task.to_owned(),
-                observed: observed_task.to_owned(),
-            });
-        }
+    })?;
+    if observed_task.trim().is_empty() {
+        return Err(RequestTimeH8Error::Invalid(
+            "taskId value must not be empty".to_owned(),
+        ));
+    }
+    if observed_task != expected_task {
+        return Err(RequestTimeH8Error::IdentityMismatch {
+            field: "taskId",
+            expected: expected_task.to_owned(),
+            observed: observed_task.to_owned(),
+        });
     }
 
     let estimate = &ceiling.remaining_tokens.estimate;

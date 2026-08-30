@@ -156,6 +156,11 @@ pub struct RepositoryBindingV1 {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_generation: Option<u64>,
     pub revoked_token_generations: Vec<u64>,
+    /// Optional token-grant validity bounds. Missing bounds are unbounded, not
+    /// expired; the values remain raw so the gate can type malformed evidence
+    /// as a Gate 6 denial instead of laundering it into an installation miss.
+    pub not_before: Option<Value>,
+    pub not_after: Option<Value>,
 }
 
 /// The installation registry: every repository binding enrolled on this
@@ -325,6 +330,24 @@ fn parse_binding(root: &str, binding: &Value) -> Result<RepositoryBindingV1, Str
             Some(_) => return Err("child_repository_ids must be an array".into()),
         };
     let token_grant = object.get("token_grant").filter(|grant| grant.is_object());
+    let validity = object
+        .get("validity")
+        .or_else(|| object.get("validity_interval"))
+        .or_else(|| grant_policy.and_then(|policy| policy.get("validity").or_else(|| policy.get("validity_interval"))))
+        .filter(|value| value.is_object());
+    let token_validity = token_grant
+        .and_then(|grant| grant.get("validity").or_else(|| grant.get("validity_interval")))
+        .filter(|value| value.is_object());
+    let interval_value = |key: &str, camel: &str| {
+        token_grant
+            .and_then(|grant| grant.get(key).or_else(|| grant.get(camel)))
+            .or_else(|| token_validity.and_then(|value| value.get(key).or_else(|| value.get(camel))))
+            .or_else(|| validity.and_then(|value| value.get(key).or_else(|| value.get(camel))))
+            .or_else(|| object.get(key).or_else(|| object.get(camel)))
+            .cloned()
+    };
+    let not_before = interval_value("not_before", "notBefore");
+    let not_after = interval_value("not_after", "notAfter");
     let token_generation = match token_grant.and_then(|grant| grant.get("generation")) {
         None => None,
         Some(Value::Number(generation)) => {
@@ -353,7 +376,7 @@ fn parse_binding(root: &str, binding: &Value) -> Result<RepositoryBindingV1, Str
     if let Some(generation) = token_generation {
         if revoked_token_generations
             .iter()
-            .any(|revoked| *revoked >= generation)
+            .any(|revoked| *revoked > generation)
         {
             return Err("token_grant revocations are invalid".into());
         }
@@ -372,6 +395,8 @@ fn parse_binding(root: &str, binding: &Value) -> Result<RepositoryBindingV1, Str
         grant_level,
         token_generation,
         revoked_token_generations,
+        not_before,
+        not_after,
     })
 }
 
@@ -400,6 +425,89 @@ fn same_descriptor(left: &Value, right: &Value) -> bool {
         }
     }
     stable(left) == stable(right)
+}
+
+fn validity_millis(value: &Value) -> Option<i128> {
+    if let Some(value) = value.as_i64() {
+        return Some(value as i128);
+    }
+    let text = value.as_str()?.trim();
+    if let Ok(value) = text.parse::<i128>() {
+        return Some(value);
+    }
+    parse_rfc3339_millis(text)
+}
+
+/// Small dependency-free RFC3339 parser for registry validity bounds. Numeric
+/// values are Unix milliseconds; absent values are deliberately not passed here.
+fn parse_rfc3339_millis(value: &str) -> Option<i128> {
+    let (date, time_zone) = value.split_once('T')?;
+    let (time, offset_minutes) = if let Some(time) = time_zone.strip_suffix('Z') {
+        (time, 0i128)
+    } else {
+        let sign_at = time_zone.rfind(['+', '-'])?;
+        let (time, offset) = time_zone.split_at(sign_at);
+        let sign = if offset.starts_with('-') { -1i128 } else { 1i128 };
+        let (hours, minutes) = offset[1..].split_once(':')?;
+        (time, sign * (hours.parse::<i128>().ok()? * 60 + minutes.parse::<i128>().ok()?))
+    };
+    let (year, month_day) = date.split_once('-')?;
+    let (month, day) = month_day.split_once('-')?;
+    let (hour, minute_second) = time.split_once(':')?;
+    let (minute, second_fraction) = minute_second.split_once(':')?;
+    let (second, fraction) = second_fraction.split_once('.').map_or((second_fraction, "0"), |parts| parts);
+    let year = year.parse::<i128>().ok()?;
+    let month = month.parse::<i128>().ok()?;
+    let day = day.parse::<i128>().ok()?;
+    let hour = hour.parse::<i128>().ok()?;
+    let minute = minute.parse::<i128>().ok()?;
+    let second = second.parse::<i128>().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    // Howard Hinnant's civil-date conversion, expressed with integer math.
+    let adjusted_year = year - if month <= 2 { 1 } else { 0 };
+    let era = adjusted_year.div_euclid(400);
+    let year_of_era = adjusted_year - era * 400;
+    let month_prime = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146097 + day_of_era - 719468;
+    let fraction_millis = if fraction == "0" {
+        0
+    } else {
+        let digits = fraction.chars().take(3).collect::<String>();
+        digits.parse::<i128>().ok()? * 10i128.pow(3u32.saturating_sub(digits.len() as u32))
+    };
+    Some((((days * 24 + hour) * 60 + minute - offset_minutes) * 60 + second) * 1000 + fraction_millis)
+}
+
+fn check_validity(binding: &RepositoryBindingV1, label: &str) -> Result<(), AuthorizationDenial> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| AuthorizationDenial::new(AuthorizationGate::ValidityRevocation, error.to_string()))?
+        .as_millis() as i128;
+    let before = match &binding.not_before {
+        None => None,
+        Some(value) => Some(validity_millis(value).ok_or_else(|| AuthorizationDenial::new(
+            AuthorizationGate::ValidityRevocation,
+            format!("{label} validity not-before is invalid"),
+        ))?),
+    };
+    let after = match &binding.not_after {
+        None => None,
+        Some(value) => Some(validity_millis(value).ok_or_else(|| AuthorizationDenial::new(
+            AuthorizationGate::ValidityRevocation,
+            format!("{label} validity not-after is invalid"),
+        ))?),
+    };
+    if before.is_some_and(|value| now < value) {
+        return Err(AuthorizationDenial::new(AuthorizationGate::ValidityRevocation, format!("{label} grant is not yet valid")));
+    }
+    if after.is_some_and(|value| now >= value) {
+        return Err(AuthorizationDenial::new(AuthorizationGate::ValidityRevocation, format!("{label} grant validity interval has expired")));
+    }
+    Ok(())
 }
 
 fn caller_descriptor(scope_id: &str, declared: Option<&Value>) -> Value {
@@ -626,8 +734,11 @@ pub fn authorize(
         ));
     }
 
-    // Gate 6 — validity interval/revocation: a revoked token generation is a
-    // dead grant; the current generation must be live.
+    // Gate 6 — validity interval/revocation: absent bounds are unbounded;
+    // present bounds and token generations are checked without changing the
+    // shared gate identity or the six-gate order.
+    check_validity(target_binding, "target")?;
+    check_validity(caller_binding, "caller")?;
     if let Some(generation) = target_binding.token_generation {
         if target_binding
             .revoked_token_generations
@@ -658,6 +769,70 @@ pub fn authorize(
         same_root,
         granted_child,
     })
+}
+
+/// Diagnostic identity adds the target root carried by the diagnostic
+/// envelope to the same gate pass. The repository id is still resolved from
+/// the installation registry; projectRoot is never accepted as authority.
+pub fn authorize_diagnostic(
+    request: &AuthorizationRequest<'_>,
+    project_root: &str,
+) -> Result<AuthorizationDecisionV1, AuthorizationDenial> {
+    let decision = authorize(request)?;
+    let registry = load_installation_registry()?;
+    let target = registry
+        .binding_for_repository(&decision.target_repository_id)
+        .ok_or_else(|| AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            format!("target repository {} is not enrolled", decision.target_repository_id),
+        ))?;
+    if !paths_equal_loose(&target.root, project_root) {
+        return Err(AuthorizationDenial::new(
+            AuthorizationGate::CallerTargetBinding,
+            format!("diagnostic project root {project_root} does not match verified target root {}", target.root),
+        ));
+    }
+    Ok(decision)
+}
+
+/// Compatibility envelope for existing diagnostic callers that predate the
+/// explicit `caller` object. It still treats repoId/projectRoot as claims and
+/// derives the scope only from the enrolled registry binding; it never grants
+/// from bearer possession or from the claim itself.
+pub fn authorize_diagnostic_identity(
+    repository_id: &str,
+    project_root: Option<&str>,
+    task_grant_level: Option<&str>,
+    action: &str,
+) -> Result<AuthorizationDecisionV1, AuthorizationDenial> {
+    let registry = load_installation_registry()?;
+    let target = registry.binding_for_repository(repository_id).ok_or_else(|| {
+        AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            format!("diagnostic repository {repository_id} is not enrolled"),
+        )
+    })?;
+    let caller_root = project_root.unwrap_or(&target.root);
+    let caller = registry.binding_for_root(caller_root).ok_or_else(|| {
+        AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            format!("diagnostic root {caller_root} is not enrolled"),
+        )
+    })?;
+    let request = AuthorizationRequest {
+        caller_root,
+        caller_repository_id: repository_id,
+        caller_scope_id: &caller.scope_id,
+        caller_scope_descriptor: None,
+        target_repository: repository_id,
+        task_grant_level,
+        action,
+    };
+    if project_root.is_some() {
+        authorize_diagnostic(&request, caller_root)
+    } else {
+        authorize(&request)
+    }
 }
 
 /// The workspace aggregate must exercise exactly the same per-target

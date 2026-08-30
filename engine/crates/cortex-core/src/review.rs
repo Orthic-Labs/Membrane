@@ -11,6 +11,11 @@ use std::collections::HashSet;
 pub const SEMANTIC_CURATION_PROPOSAL_SCHEMA_VERSION: u32 = 1;
 pub const MEMORY_CANDIDATE_EXTRACTION_SCHEMA_VERSION: u32 = 1;
 pub const SEMANTIC_CURATION_MAX_PROPOSALS: usize = 64;
+pub const REVIEW_INPUT_SELECTION_SCHEMA_VERSION: u32 = 1;
+/// The deterministic floor below which an event is not informative enough to
+/// spend semantic-review budget on.  Selection never assigns semantic meaning
+/// to an event; it only orders mechanical novelty scores.
+pub const REVIEW_INPUT_NOVELTY_FLOOR: f64 = 0.2;
 
 /// Stage 1 semantic review classes. Every value is proposal-only; Cortex
 /// admission remains only path to durable truth.
@@ -118,6 +123,219 @@ pub enum ReviewContractError {
     CandidateSchemaVersion(u32),
     #[error("semantic curation proposal count exceeds the bounded limit")]
     ProposalLimit,
+    #[error("review input selection novelty floor is invalid")]
+    InvalidNoveltyFloor,
+}
+
+/// Mechanical reason an eligible event was not selected for this run.  A
+/// skipped event is not consumed by the cursor and remains eligible later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewInputSelectionSkipReasonV1 {
+    BudgetExhausted,
+    BelowNoveltyFloor,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewInputSelectionCandidateV1 {
+    pub event_id: String,
+    pub seq: u64,
+    pub novelty_score: f64,
+    pub estimated_input_tokens: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewInputSelectionSkippedV1 {
+    pub event_id: String,
+    pub reason: ReviewInputSelectionSkipReasonV1,
+}
+
+/// Receipt for one deterministic input-selection pass.  It is intentionally
+/// content-free: scores order event identities but never label an Adapt
+/// category or otherwise interpret an episode.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviewInputSelectionV1 {
+    pub schema_version: u32,
+    pub candidates_considered: Vec<ReviewInputSelectionCandidateV1>,
+    pub selected: Vec<String>,
+    pub skipped: Vec<ReviewInputSelectionSkippedV1>,
+    pub quiet_period: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReviewInputSelectionResultV1 {
+    pub events: Vec<SessionEvent>,
+    pub receipt: ReviewInputSelectionV1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReviewInputSelectionLimitsV1 {
+    pub max_input_tokens: usize,
+    pub novelty_floor: f64,
+}
+
+impl ReviewInputSelectionLimitsV1 {
+    pub fn validate(self) -> Result<(), ReviewContractError> {
+        if !self.novelty_floor.is_finite() || !(0.0..=1.0).contains(&self.novelty_floor) {
+            return Err(ReviewContractError::InvalidNoveltyFloor);
+        }
+        Ok(())
+    }
+}
+
+/// Select only new events after the stored cursor.  Novelty is nearest-
+/// neighbour distance against the already-reviewed event baseline, computed
+/// locally from canonical payload tokens.  No model or Adapt taxonomy is
+/// involved.
+pub fn select_review_input(
+    cursor: &EventCursor,
+    candidates: &[SessionEvent],
+    reviewed_baseline: &[SessionEvent],
+    limits: ReviewInputSelectionLimitsV1,
+) -> Result<ReviewInputSelectionResultV1, ReviewContractError> {
+    limits.validate()?;
+    if cursor.session_id.trim().is_empty() {
+        return Err(ReviewContractError::EmptyCursorSession);
+    }
+
+    let mut previous_seq = cursor.last_seq;
+    let mut ranked = Vec::new();
+    for event in candidates {
+        if event.session_id != cursor.session_id {
+            return Err(ReviewContractError::CursorSessionMismatch);
+        }
+        if event.seq == 0 {
+            return Err(ReviewContractError::InvalidEventSequence);
+        }
+        if event.seq <= cursor.last_seq {
+            continue;
+        }
+        if event.seq <= previous_seq {
+            return Err(ReviewContractError::UnorderedEvents);
+        }
+        previous_seq = event.seq;
+        let estimated_input_tokens = estimate_tokens(&event.payload.to_string());
+        ranked.push((
+            event,
+            novelty_score(event, reviewed_baseline),
+            estimated_input_tokens,
+        ));
+    }
+
+    let considered = ranked
+        .iter()
+        .map(|(event, score, estimated_input_tokens)| ReviewInputSelectionCandidateV1 {
+            event_id: event.event_id.clone(),
+            seq: event.seq,
+            novelty_score: *score,
+            estimated_input_tokens: *estimated_input_tokens,
+        })
+        .collect::<Vec<_>>();
+    let mut order = (0..ranked.len()).collect::<Vec<_>>();
+    order.sort_by(|left, right| {
+        ranked[*right]
+            .1
+            .partial_cmp(&ranked[*left].1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| ranked[*right].0.seq.cmp(&ranked[*left].0.seq))
+            .then_with(|| ranked[*left].0.event_id.cmp(&ranked[*right].0.event_id))
+    });
+
+    let mut remaining = limits.max_input_tokens;
+    let mut selected_ids = Vec::new();
+    let mut selected_indices = Vec::new();
+    let mut skipped_by_index = vec![None; ranked.len()];
+    let mut above_floor = false;
+    for index in order {
+        let (event, score, estimated_input_tokens) = ranked[index];
+        if score < limits.novelty_floor {
+            skipped_by_index[index] = Some(ReviewInputSelectionSkipReasonV1::BelowNoveltyFloor);
+            continue;
+        }
+        above_floor = true;
+        if estimated_input_tokens <= remaining {
+            remaining -= estimated_input_tokens;
+            selected_ids.push(event.event_id.clone());
+            selected_indices.push(index);
+        } else {
+            skipped_by_index[index] = Some(ReviewInputSelectionSkipReasonV1::BudgetExhausted);
+        }
+    }
+
+    let skipped = ranked
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (event, _, _))| {
+            skipped_by_index[index].map(|reason| ReviewInputSelectionSkippedV1 {
+                event_id: event.event_id.clone(),
+                reason,
+            })
+        })
+        .collect::<Vec<_>>();
+    let events = selected_indices
+        .into_iter()
+        .map(|index| (*ranked[index].0).clone())
+        .collect::<Vec<_>>();
+    // Provider request validation requires event order to remain the source
+    // cursor order, while the receipt preserves score-ranked selection order.
+    let mut events = events;
+    events.sort_by_key(|event| event.seq);
+    Ok(ReviewInputSelectionResultV1 {
+        events,
+        receipt: ReviewInputSelectionV1 {
+            schema_version: REVIEW_INPUT_SELECTION_SCHEMA_VERSION,
+            candidates_considered: considered,
+            selected: selected_ids,
+            skipped,
+            quiet_period: !above_floor,
+        },
+    })
+}
+
+fn novelty_score(candidate: &SessionEvent, baseline: &[SessionEvent]) -> f64 {
+    if baseline.is_empty() {
+        return 1.0;
+    }
+    let candidate_tokens = payload_tokens(candidate);
+    let nearest_similarity = baseline
+        .iter()
+        .map(|event| {
+            if event.content_hash == candidate.content_hash {
+                1.0
+            } else {
+                jaccard_similarity(&candidate_tokens, &payload_tokens(event))
+            }
+        })
+        .fold(0.0, f64::max);
+    (1.0 - nearest_similarity).clamp(0.0, 1.0)
+}
+
+fn payload_tokens(event: &SessionEvent) -> std::collections::BTreeSet<String> {
+    serde_json::to_string(&event.payload)
+        .unwrap_or_default()
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
+}
+
+fn jaccard_similarity(
+    left: &std::collections::BTreeSet<String>,
+    right: &std::collections::BTreeSet<String>,
+) -> f64 {
+    if left.is_empty() && right.is_empty() {
+        return 1.0;
+    }
+    let intersection = left.intersection(right).count() as f64;
+    let union = left.union(right).count() as f64;
+    if union == 0.0 {
+        1.0
+    } else {
+        intersection / union
+    }
 }
 
 impl SemanticCurationProposalV1 {

@@ -17,7 +17,9 @@
 use super::federation_sources::RuntimeReleaseSource;
 use super::{federation_sources, native_federation};
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
-use membrane_protocol::{PublicationFenceStatusV1, PublicationFenceV1};
+use membrane_protocol::{
+    PublicationFenceChangeV1, PublicationFenceStatusV1, PublicationFenceV1,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -74,6 +76,7 @@ pub fn run_federate(
         scope_grant_id.clone(),
         None,
     );
+    let admitted_grant = admitted_publication_grant(&request)?;
     let started = Instant::now();
     let (response, native_metrics, freshness) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -108,10 +111,7 @@ pub fn run_federate(
                 accepted_receipt_versions
             },
             scope_grant_present: scope_grant_id.is_some(),
-            // The CLI binds no post-fusion grant snapshot to compare against,
-            // so no fence verdict can be supplied here; enforcement stays on
-            // callers that re-validate (the resident route via the engine).
-            scope_grant_fence: None,
+            scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
             gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
     )?;
@@ -187,7 +187,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .get("scopeGrantId")
         .and_then(Value::as_str)
         .map(str::to_owned);
-    let sufficiency_contract = value.get("sufficiencyContract").cloned();
+    let sufficiency_contract = planner_authored_sufficiency_contract(&value);
     let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, task) {
         Ok(ceiling) => ceiling,
         Err(error) => {
@@ -212,6 +212,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             sufficiency_contract,
             &ceiling,
         );
+        let admitted_grant = admitted_publication_grant(&request)?;
         let bindings = federation_sources::NativeSourceBindings::for_repository(
             &root,
             scope_grant_id.as_deref(),
@@ -228,14 +229,6 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
         let ccs = native_response_to_ccs(&response, &request, &freshness);
         let native_receipts = collect_native_receipts(&response);
-        let publication_fence = response
-            .extensions
-            .get("publicationFence")
-            .map(|receipt| {
-                serde_json::from_value::<PublicationFenceV1>(receipt.clone())
-                    .map_err(|error| format!("publication fence receipt invalid: {error}"))
-            })
-            .transpose()?;
         let mut payload = envelope_from_ccs(
             &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
             EnvelopeInput {
@@ -250,7 +243,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                     .map(str::to_owned),
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: scope_grant_id.is_some(),
-                scope_grant_fence: publication_fence,
+                scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
@@ -301,6 +294,130 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             (502, serde_json::json!({"error": error}).to_string())
         }
     }
+}
+
+/// A grant snapshot captured before provider fan-out. The policy epoch is a
+/// deterministic fingerprint of the grant policy fields because the runtime
+/// catalog's grant owner exposes no separate mutable epoch column. It is only
+/// compared with the fresh owner read; it is never used as authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PublicationGrantObservation {
+    pub grant_id: String,
+    pub policy_epoch: String,
+    pub revoked: bool,
+}
+
+fn publication_grant_observation(
+    grant: &crate::catalog::ScopeGrant,
+) -> PublicationGrantObservation {
+    let policy_epoch = serde_json::json!({
+        "issuer": &grant.issuer,
+        "client": &grant.client,
+        "repositoryIds": &grant.repository_ids,
+        "permittedEdgeTypes": &grant.permitted_edge_types,
+        "taskId": &grant.task_id,
+        "sessionId": &grant.session_id,
+        "nonce": &grant.nonce,
+        "manifestDigest": &grant.manifest_digest,
+    })
+    .to_string();
+    PublicationGrantObservation {
+        grant_id: grant.id.clone(),
+        policy_epoch,
+        revoked: !grant.permits(),
+    }
+}
+
+/// Compare the admission snapshot with the grant owner's fresh post-fusion
+/// observation. This is the producer of the typed publication verdict; the
+/// caller cannot supply or override it.
+pub fn publication_fence_for_observations(
+    admitted: Option<&PublicationGrantObservation>,
+    current: Option<&PublicationGrantObservation>,
+) -> Result<Option<PublicationFenceV1>, String> {
+    let Some(admitted) = admitted else {
+        return Ok(None);
+    };
+    let Some(current) = current else {
+        return Ok(Some(PublicationFenceV1::policy_changed(
+            PublicationFenceChangeV1::GrantIdentity,
+        )));
+    };
+    if current.grant_id != admitted.grant_id {
+        return Ok(Some(PublicationFenceV1::policy_changed(
+            PublicationFenceChangeV1::GrantIdentity,
+        )));
+    }
+    if current.policy_epoch != admitted.policy_epoch {
+        return Ok(Some(PublicationFenceV1::policy_changed(
+            PublicationFenceChangeV1::PolicyEpoch,
+        )));
+    }
+    if current.revoked != admitted.revoked || current.revoked {
+        return Ok(Some(PublicationFenceV1::policy_changed(
+            PublicationFenceChangeV1::Revocation,
+        )));
+    }
+    Ok(Some(PublicationFenceV1::held()))
+}
+
+fn publication_catalog() -> Result<crate::catalog::ContextCatalog, String> {
+    let path = crate::catalog::default_catalog_path()
+        .map_err(|error| format!("resolve context catalog for publication fence: {error}"))?;
+    crate::catalog::ContextCatalog::open(path)
+        .map_err(|error| format!("open context catalog for publication fence: {error}"))
+}
+
+fn admitted_publication_grant(
+    request: &membrane_protocol::FederationRequestV1,
+) -> Result<Option<PublicationGrantObservation>, String> {
+    let Some(grant_id) = request.scope_grant_id.as_deref() else {
+        return Ok(None);
+    };
+    let catalog = publication_catalog()?;
+    let grant = crate::catalog::lookup_grant(&catalog, grant_id)
+        .map_err(|error| format!("publication fence grant lookup failed: {error}"))?
+        .ok_or_else(|| "publication fence grant missing: scope_grant_missing".to_owned())?;
+    if !grant.permits() {
+        return Err(format!(
+            "publication fence grant admission refused: scope_grant_inactive:{}",
+            grant.status.as_str()
+        ));
+    }
+    Ok(Some(publication_grant_observation(&grant)))
+}
+
+fn post_fusion_publication_fence(
+    admitted: &Option<PublicationGrantObservation>,
+) -> Result<Option<PublicationFenceV1>, String> {
+    let Some(admitted) = admitted.as_ref() else {
+        return publication_fence_for_observations(None, None);
+    };
+    let catalog = publication_catalog()?;
+    let current = crate::catalog::lookup_grant(&catalog, &admitted.grant_id)
+        .map_err(|error| format!("post-fusion publication grant lookup failed: {error}"))?
+        .map(|grant| publication_grant_observation(&grant));
+    publication_fence_for_observations(Some(admitted), current.as_ref())
+}
+
+/// Author a corrective-retrieval contract only from an explicit structured
+/// planner field. Task text is deliberately never inspected: absent planner
+/// requirements preserve the existing `not_evaluated` behavior. An already
+/// authored `sufficiencyContract` remains verbatim on the transport.
+fn planner_authored_sufficiency_contract(body: &Value) -> Option<Value> {
+    if let Some(contract) = body.get("sufficiencyContract") {
+        return Some(contract.clone());
+    }
+    let requirements = body.get("plannerRequirements")?.clone();
+    Some(serde_json::json!({
+        "schemaVersion": 1,
+        "policy": "membrane-sufficiency-v1",
+        "requirements": requirements,
+        "maxCorrectiveStages": body
+            .get("maxCorrectiveStages")
+            .and_then(Value::as_u64)
+            .unwrap_or(1),
+    }))
 }
 
 /// Select control vs query-aware `reduced_1` Push from the same `/federate`
@@ -480,8 +597,8 @@ pub struct EnvelopeInput {
     pub packet_char_budget_model: Option<String>,
     pub accepted_receipt_versions: Vec<u32>,
     pub scope_grant_present: bool,
-    /// Publication fence input (pending §17.2). The caller re-validated the
-    /// bound scope grant after fusion and passes the typed verdict here:
+    /// Publication fence input (pending §17.2). The grant owner re-validated
+    /// the bound scope grant after fusion and passes the typed verdict here:
     /// `None` is honest only when no grant was ever bound (scope-free
     /// request); `Some(tripped)` refuses packet emission fail-closed.
     pub scope_grant_fence: Option<PublicationFenceV1>,
@@ -545,10 +662,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
             ));
         }
     }
-    // Publication fence (pending §17.2): the caller re-validated the bound
-    // grant after fusion. A tripped fence refuses packet emission here — the
-    // last admission boundary before the packet reaches a client.
-    fence_packet_emission(input.scope_grant_fence)?;
+    // Publication fence (pending §17.2): the grant owner re-validated the
+    // bound grant after fusion. A tripped fence refuses packet emission here —
+    // the last admission boundary before the packet reaches a client.
+    let publication_fence = fence_packet_emission(input.scope_grant_fence)?;
     let observability = gateway_observability(&raw_value);
     let source_resolution_receipts =
         crate::source_resolution::gate_source_resolutions(&mut raw_value);
@@ -590,6 +707,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         "structuredEvent": out.structured_event,
         "sourceResolutionReceipts": source_resolution_receipts,
     });
+    if let Some(fence) = publication_fence {
+        payload["publicationFence"] = serde_json::to_value(fence)
+            .map_err(|error| format!("serialize publication fence: {error}"))?;
+    }
     if let Some(packet) = payload.get("packet") {
         payload["cachePrefixDiagnostic"] =
             serde_json::to_value(crate::cache_prefix::diagnose_cache_prefix(packet, None))
@@ -966,6 +1087,26 @@ mod tests {
         assert!(!without_contract
             .extensions
             .contains_key("sufficiencyContract"));
+    }
+
+    #[test]
+    fn planner_authors_contract_only_from_structured_requirements() {
+        let body = serde_json::json!({
+            "task": "the prose must not become a requirement",
+            "plannerRequirements": [{
+                "id": "repo-evidence",
+                "evidenceClass": "repository_file",
+                "acceptableProviders": ["blueprint"],
+                "minimumCandidates": 1
+            }]
+        });
+        let contract = planner_authored_sufficiency_contract(&body).expect("contract authored");
+        assert_eq!(contract["policy"], "membrane-sufficiency-v1");
+        assert_eq!(contract["requirements"][0]["id"], "repo-evidence");
+        assert!(planner_authored_sufficiency_contract(&serde_json::json!({
+            "task": "prose only"
+        }))
+        .is_none());
     }
 
     #[test]

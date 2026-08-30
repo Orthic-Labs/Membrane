@@ -5,15 +5,18 @@
 //! return opaque proposal references only; Cortex writes remain outside it.
 
 use cortex_core::review::{
-    bound_memory_candidate_extraction_window_with_state, validate_memory_candidates_for_window,
-    validate_semantic_curation_proposals, ForegroundMemoryStateV1,
-    MemoryCandidateExtractionDecisionV1, MemoryCandidateExtractionLimitsV1, MemoryCandidateV1,
-    SemanticCurationProposalV1,
+    bound_memory_candidate_extraction_window_with_state, select_review_input,
+    validate_memory_candidates_for_window, validate_semantic_curation_proposals,
+    ForegroundMemoryStateV1, MemoryCandidateExtractionDecisionV1,
+    MemoryCandidateExtractionLimitsV1, MemoryCandidateV1, ReviewInputSelectionLimitsV1,
+    SemanticCurationProposalV1, REVIEW_INPUT_NOVELTY_FLOOR,
 };
 use cortex_core::{EventCursor, SessionEvent};
 use membrane_protocol::background_review::{
     BackgroundReviewCursorV1, BackgroundReviewEventRangeV1,
-    BackgroundReviewForegroundMemoryStateV1, BackgroundReviewProvenanceRefV1,
+    BackgroundReviewForegroundMemoryStateV1, BackgroundReviewInputSelectionCandidateV1,
+    BackgroundReviewInputSelectionSkippedV1, BackgroundReviewInputSelectionSkipReasonV1,
+    BackgroundReviewInputSelectionV1, BackgroundReviewProvenanceRefV1,
     BackgroundReviewSessionEventV1, BackgroundSemanticReviewRequestV1,
     BackgroundSemanticReviewResultV1, BackgroundSemanticReviewStatusV1,
 };
@@ -399,6 +402,9 @@ pub struct BackgroundSemanticReviewInputV1 {
     pub task_id: Option<String>,
     pub cursor: EventCursor,
     pub events: Vec<SessionEvent>,
+    /// Events before the cursor form the deterministic nearest-neighbour
+    /// baseline; they are never candidates for the current run.
+    pub reviewed_baseline: Vec<SessionEvent>,
     pub foreground_memory_state: ForegroundMemoryStateV1,
 }
 
@@ -960,7 +966,28 @@ pub fn build_background_semantic_review_request(
     aggregate_budget_remaining: u64,
     deadline_unix_ms: u64,
 ) -> Result<BackgroundSemanticReviewRequestV1, BackgroundSemanticReviewProviderError> {
-    let events = input.events.iter().map(protocol_event).collect::<Vec<_>>();
+    let (selected_events, review_input_selection) = if job.kind
+        == BackgroundReviewJobKindV1::AdaptBehavioralReview
+    {
+        let max_input_tokens = per_turn_budget_remaining
+            .min(aggregate_budget_remaining)
+            .min(usize::MAX as u64) as usize;
+        let selection = select_review_input(
+            &input.cursor,
+            &input.events,
+            &input.reviewed_baseline,
+            ReviewInputSelectionLimitsV1 {
+                max_input_tokens,
+                novelty_floor: REVIEW_INPUT_NOVELTY_FLOOR,
+            },
+        )
+        .map_err(|error| BackgroundSemanticReviewProviderError::Protocol(error.to_string()))?;
+        let receipt = protocol_selection(&selection.receipt);
+        (selection.events, Some(receipt))
+    } else {
+        (input.events.clone(), None)
+    };
+    let events = selected_events.iter().map(protocol_event).collect::<Vec<_>>();
     let foreground_memory_state = match &input.foreground_memory_state {
         ForegroundMemoryStateV1::Unavailable => {
             BackgroundReviewForegroundMemoryStateV1::Unavailable
@@ -989,6 +1016,7 @@ pub fn build_background_semantic_review_request(
             last_seq: input.cursor.last_seq,
         },
         events,
+        review_input_selection,
         foreground_memory_state,
         per_turn_budget_remaining,
         aggregate_budget_remaining,
@@ -1002,6 +1030,41 @@ pub fn build_background_semantic_review_request(
         .validate()
         .map_err(|error| BackgroundSemanticReviewProviderError::Protocol(error.to_string()))?;
     Ok(request)
+}
+
+fn protocol_selection(
+    selection: &cortex_core::review::ReviewInputSelectionV1,
+) -> BackgroundReviewInputSelectionV1 {
+    BackgroundReviewInputSelectionV1 {
+        schema_version: BackgroundReviewInputSelectionV1::SCHEMA_VERSION,
+        candidates_considered: selection
+            .candidates_considered
+            .iter()
+            .map(|candidate| BackgroundReviewInputSelectionCandidateV1 {
+                event_id: candidate.event_id.clone(),
+                seq: candidate.seq,
+                novelty_score: candidate.novelty_score,
+                estimated_input_tokens: candidate.estimated_input_tokens,
+            })
+            .collect(),
+        selected: selection.selected.clone(),
+        skipped: selection
+            .skipped
+            .iter()
+            .map(|entry| BackgroundReviewInputSelectionSkippedV1 {
+                event_id: entry.event_id.clone(),
+                reason: match entry.reason {
+                    cortex_core::review::ReviewInputSelectionSkipReasonV1::BudgetExhausted => {
+                        BackgroundReviewInputSelectionSkipReasonV1::BudgetExhausted
+                    }
+                    cortex_core::review::ReviewInputSelectionSkipReasonV1::BelowNoveltyFloor => {
+                        BackgroundReviewInputSelectionSkipReasonV1::BelowNoveltyFloor
+                    }
+                },
+            })
+            .collect(),
+        quiet_period: selection.quiet_period,
+    }
 }
 
 fn protocol_event(event: &SessionEvent) -> BackgroundReviewSessionEventV1 {
@@ -1155,6 +1218,29 @@ pub fn execute_background_semantic_review(
         None
     };
 
+    // A mechanical quiet period or exhausted selection budget is a completed
+    // no-op, not permission to ask a semantic provider to invent input.
+    if job.kind == BackgroundReviewJobKindV1::AdaptBehavioralReview
+        && request
+            .review_input_selection
+            .as_ref()
+            .is_some_and(|selection| selection.selected.is_empty())
+    {
+        let _ = scheduler.finish_with_completion(
+            &job.job_id,
+            BackgroundReviewCompletion::Completed,
+            observed_at_unix_ms,
+        );
+        return BackgroundReviewExecutionV1 {
+            schema_version: BackgroundReviewExecutionV1::SCHEMA_VERSION,
+            job_id: job.job_id.clone(),
+            kind: job.kind,
+            status: BackgroundReviewExecutionStatusV1::Proposals,
+            proposals: Vec::new(),
+            reason: None,
+        };
+    }
+
     let result = match provider.execute(&request) {
         Ok(result) => result,
         Err(error) => {
@@ -1285,7 +1371,11 @@ pub fn execute_background_semantic_review(
         );
     }
     if let Some(next_cursor) = result.next_cursor.as_ref() {
-        if refs.is_empty() || cursor_store.advance(next_cursor).is_err() {
+        // Selection may leave a higher-scoring event after an eligible gap.
+        // Never let a provider cursor jump over that skipped event: only the
+        // selected contiguous prefix is consumable in this run.
+        let next_cursor = safe_selected_cursor(&request, next_cursor);
+        if refs.is_empty() || cursor_store.advance(&next_cursor).is_err() {
             return blocked(
                 BackgroundReviewExecutionStatusV1::Failed,
                 BackgroundReviewReasonV1::CursorInputUnavailable,
@@ -1304,6 +1394,35 @@ pub fn execute_background_semantic_review(
         status: BackgroundReviewExecutionStatusV1::Proposals,
         proposals: refs,
         reason: None,
+    }
+}
+
+fn safe_selected_cursor(
+    request: &BackgroundSemanticReviewRequestV1,
+    proposed: &BackgroundReviewCursorV1,
+) -> BackgroundReviewCursorV1 {
+    let Some(selection) = request.review_input_selection.as_ref() else {
+        return proposed.clone();
+    };
+    let selected = selection.selected.iter().map(String::as_str).collect::<HashSet<_>>();
+    let mut contiguous = request.cursor.last_seq;
+    let mut candidates = selection.candidates_considered.iter().collect::<Vec<_>>();
+    candidates.sort_by_key(|candidate| candidate.seq);
+    for candidate in candidates {
+        if candidate.seq != contiguous.saturating_add(1) {
+            if candidate.seq > contiguous {
+                break;
+            }
+            continue;
+        }
+        if !selected.contains(candidate.event_id.as_str()) {
+            break;
+        }
+        contiguous = candidate.seq;
+    }
+    BackgroundReviewCursorV1 {
+        session_id: proposed.session_id.clone(),
+        last_seq: proposed.last_seq.min(contiguous),
     }
 }
 

@@ -28,6 +28,14 @@ const EPOCH = {
   origin: "transactional",
 };
 const OBSERVED_EPOCH = { ...EPOCH, origin: "observed_hook" };
+const VERIFIED_DIAGNOSTIC_BINDING = Object.freeze({
+  root: "/verified/repo",
+  repository_id: "repo-1",
+  scope_id: "scope-1",
+  grant_policy: { level: "write-proposed" },
+});
+const allowAuthorization = async () => VERIFIED_DIAGNOSTIC_BINDING;
+const diagnosticOptions = (options = {}) => ({ authorization: allowAuthorization, ...options });
 
 function requestStub(handler) {
   const calls = [];
@@ -72,43 +80,62 @@ test("toolsets registry maps every diagnostic tool under the diagnostic group", 
 test("handlers pass resident bodies and typed errors through verbatim", async () => {
   const capabilityBody = { providers: [{ providerId: "typescript", costClass: "interactive" }] };
   const success = requestStub(responding(capabilityBody));
-  const ok = await diagnosticsCapability("membrane_diagnostic_capabilities", {}, { request: success });
+  const ok = await diagnosticsCapability("membrane_diagnostic_capabilities", {}, diagnosticOptions({ request: success }));
   assert.equal(ok.delivered, true);
   assert.equal(ok.result, capabilityBody);
   assert.equal(success.calls[0].pathname, "/diagnostics/capabilities");
 
   const failure = requestStub(async () => ({ ok: false, status: 409, error: { code: "epoch_conflict", detail: "expected epoch 5" } }));
-  const denied = await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "begin", repoId: "repo-1", worktreeId: "wt-1" }, { request: failure });
+  const denied = await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "begin", repoId: "repo-1", worktreeId: "wt-1" }, diagnosticOptions({ request: failure }));
   assert.equal(denied.delivered, false);
   assert.deepEqual(denied.error, { code: "epoch_conflict", detail: "expected epoch 5" });
+});
+
+test("unauthorized diagnostics are denied by the named gate before validation or resident dispatch", async () => {
+  const calls = [];
+  const request = async (...args) => { calls.push(args); return { ok: true, status: 200, body: {} }; };
+  const authorization = async (_args, action) => {
+    assert.equal(action, "checkpoint");
+    throw new Error("caller_not_authorized");
+  };
+  const denied = await diagnosticsCapability(
+    "membrane_diagnostic_mutation",
+    { operation: "transmute", repoId: "repo-1", worktreeId: "wt-1" },
+    { request, authorization },
+  );
+  assert.equal(denied.delivered, false);
+  assert.equal(denied.error.code, "authorization_denied");
+  assert.match(denied.error.detail, /caller_not_authorized/);
+  assert.equal(calls.length, 0, "unauthorized requests must not reach the resident");
 });
 
 test("workspace and mutation handlers dispatch to the REST contract paths", async () => {
   const calls = [];
   const request = async (pathname, options) => { calls.push({ pathname, options }); return { ok: true, status: 200, body: { ok: true } }; };
-  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "open", repoId: "repo-1", worktreeId: "wt-1", projectRoot: "/repo" }, { request });
+  const options = diagnosticOptions({ request });
+  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "open", repoId: "repo-1", worktreeId: "wt-1", projectRoot: "/repo" }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/workspace/open");
   assert.deepEqual(calls.at(-1).options.body, { repoId: "repo-1", worktreeId: "wt-1", projectRoot: "/repo" });
-  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "status", repoId: "repo-1", worktreeId: "wt-1" }, { request });
+  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "status", repoId: "repo-1", worktreeId: "wt-1" }, options);
   assert.equal(calls.at(-1).pathname, `/diagnostics/workspace/status?repoId=${encodeURIComponent("repo-1")}&worktreeId=${encodeURIComponent("wt-1")}`);
-  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "reconcile", repoId: "r", worktreeId: "w", manifestDigest: "sha256:m", hashes: [{ path: "a.ts", hash: "sha256:a" }] }, { request });
+  await diagnosticsCapability("membrane_diagnostic_workspace", { operation: "reconcile", repoId: "r", worktreeId: "w", manifestDigest: "sha256:m", hashes: [{ path: "a.ts", hash: "sha256:a" }] }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/reconcile");
-  await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "seal", repoId: "repo-1", worktreeId: "wt-1", epoch: EPOCH }, { request });
+  await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "seal", repoId: "repo-1", worktreeId: "wt-1", epoch: EPOCH }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/mutation/seal");
-  await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "registerObserved", repoId: "repo-1", worktreeId: "wt-1", epoch: OBSERVED_EPOCH }, { request });
+  await diagnosticsCapability("membrane_diagnostic_mutation", { operation: "registerObserved", repoId: "repo-1", worktreeId: "wt-1", epoch: OBSERVED_EPOCH }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/mutation/registerObserved");
-  await diagnosticsCapability("membrane_diagnostic_fence", { snapshot: { schemaVersion: "diagnostics-evidence-snapshot.v1" }, expectedEpoch: OBSERVED_EPOCH, policy: { profileName: "changed-files-zero", policyVersion: "1", policyDigest: "sha256:p", blockingCodes: [], requiredCapabilities: ["syntax"] } }, { request });
+  await diagnosticsCapability("membrane_diagnostic_fence", { snapshot: { schemaVersion: "diagnostics-evidence-snapshot.v1" }, expectedEpoch: OBSERVED_EPOCH, policy: { profileName: "changed-files-zero", policyVersion: "1", policyDigest: "sha256:p", blockingCodes: [], requiredCapabilities: ["syntax"] } }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/fence/evaluate");
-  await diagnosticsCapability("membrane_diagnostic_baseline", { operation: "capture", repoId: "r", worktreeId: "w", name: "pre-refactor" }, { request });
+  await diagnosticsCapability("membrane_diagnostic_baseline", { operation: "capture", repoId: "r", worktreeId: "w", name: "pre-refactor" }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/baseline/capture");
-  await diagnosticsCapability("membrane_diagnostic_provider", { operation: "restart", keyDigest: "digest-1" }, { request });
+  await diagnosticsCapability("membrane_diagnostic_provider", { operation: "restart", keyDigest: "digest-1" }, options);
   assert.equal(calls.at(-1).pathname, "/diagnostics/provider/restart");
   assert.deepEqual(calls.at(-1).options.body, { keyDigest: "digest-1" });
 });
 
 test("handler input validation fails closed with typed codes", async () => {
   const noCalls = requestStub(responding({}));
-  const failing = (name, args) => diagnosticsCapability(name, args, { request: noCalls });
+  const failing = (name, args) => diagnosticsCapability(name, args, diagnosticOptions({ request: noCalls }));
   await assert.rejects(failing("membrane_diagnostic_mutation", { operation: "transmute", repoId: "r", worktreeId: "w" }), /invalid_diagnostic_operation/);
   await assert.rejects(failing("membrane_diagnostic_workspace", { operation: "open", repoId: "", worktreeId: "w", projectRoot: "/repo" }), /invalid_diagnostic_identity/);
   await assert.rejects(failing("membrane_diagnostic_workspace", { operation: "open", repoId: "repo-1", worktreeId: "wt-1" }), /invalid_diagnostic_identity/);
@@ -126,24 +153,24 @@ test("await caches per workspace and get/explain/delta are client-side views", a
   const snapshotBody = { decision, snapshot: { blueprintDelta: { findingsDelta: [] }, aggregateDelta: { issues: [{ issueId: "issue-1", classification: "new" }] } } };
   const snapshots = new Map();
   const request = requestStub(responding(snapshotBody));
-  const awaited = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "await", repoId: "repo-1", worktreeId: "wt-1", policyProfileName: "changed-files-zero", requiredCapabilities: ["type_semantics"], maxCost: "interactive", deadlineMs: 5000 }, { request, snapshots });
+  const awaited = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "await", repoId: "repo-1", worktreeId: "wt-1", policyProfileName: "changed-files-zero", requiredCapabilities: ["type_semantics"], maxCost: "interactive", deadlineMs: 5000 }, diagnosticOptions({ request, snapshots }));
   assert.equal(awaited.delivered, true);
   assert.deepEqual(request.calls[0].options.body, { repoId: "repo-1", worktreeId: "wt-1", policyProfileName: "changed-files-zero", requiredCapabilities: ["type_semantics"], maxCost: "interactive", deadlineMs: 5000 });
 
-  const got = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "get", repoId: "repo-1", worktreeId: "wt-1" }, { request, snapshots });
+  const got = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "get", repoId: "repo-1", worktreeId: "wt-1" }, diagnosticOptions({ request, snapshots }));
   assert.deepEqual(got.result.decision, decision);
-  const explained = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "explain", repoId: "repo-1", worktreeId: "wt-1" }, { request, snapshots });
+  const explained = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "explain", repoId: "repo-1", worktreeId: "wt-1" }, diagnosticOptions({ request, snapshots }));
   assert.equal(explained.result.outcome, "dirty_exact");
   assert.match(explained.result.guidance, /repair first/);
   assert.match(explained.result.note, /cannot clear the fence/);
-  const delta = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "delta", repoId: "repo-1", worktreeId: "wt-1" }, { request, snapshots });
+  const delta = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "delta", repoId: "repo-1", worktreeId: "wt-1" }, diagnosticOptions({ request, snapshots }));
   assert.deepEqual(delta.result.aggregateDelta, snapshotBody.snapshot.aggregateDelta);
 
-  await assert.rejects(diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "get", repoId: "repo-2", worktreeId: "wt-1" }, { request, snapshots }), /snapshot_not_awaited/);
+  await assert.rejects(diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "get", repoId: "repo-2", worktreeId: "wt-1" }, diagnosticOptions({ request, snapshots })), /snapshot_not_awaited/);
 
   const decisionOnly = new Map();
-  await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "await", repoId: "repo-1", worktreeId: "wt-2", policyProfileName: "changed-files-zero" }, { request: requestStub(responding(decision)), snapshots: decisionOnly });
-  const degradedDelta = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "delta", repoId: "repo-1", worktreeId: "wt-2" }, { request: requestStub(responding(decision)), snapshots: decisionOnly });
+  await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "await", repoId: "repo-1", worktreeId: "wt-2", policyProfileName: "changed-files-zero" }, diagnosticOptions({ request: requestStub(responding(decision)), snapshots: decisionOnly }));
+  const degradedDelta = await diagnosticsCapability("membrane_diagnostic_snapshot", { operation: "delta", repoId: "repo-1", worktreeId: "wt-2" }, diagnosticOptions({ request: requestStub(responding(decision)), snapshots: decisionOnly }));
   assert.equal(degradedDelta.result.blueprintDelta, null);
   assert.deepEqual(degradedDelta.result.omissions, [{ code: "snapshot_body_not_cached", detail: "the awaited decision carried no evidence snapshot; delta views need it" }]);
 });

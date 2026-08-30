@@ -5,8 +5,8 @@
 //! stdin is both control channel & parent-lifetime signal. stdout carries only
 //! typed NDJSON events; diagnostics stay on stderr & never include secrets.
 
-use cortex_core::SessionEvent;
-use cortex_store::{AbsorbedStore, MemDb};
+use cortex_core::{ProvenanceRef, SessionEvent};
+use cortex_store::{AbsorbedStore, MemDb, SessionEvent as StoreSessionEvent};
 use membrane_protocol::background_review::{
     BackgroundReviewActivitySignalV1, BackgroundReviewForegroundMemoryStateV1,
     BackgroundReviewJobKindV1, BackgroundReviewReasonV1,
@@ -189,19 +189,30 @@ fn load_background_semantic_input(
     } else {
         Vec::new()
     };
+    // The baseline is read-only context from before the background cursor.
+    // Bound it so selection remains deterministic and cannot turn a review
+    // tick into an unbounded historical read.
+    let baseline_start = cursor.last_seq.saturating_sub(256).saturating_add(1);
+    let reviewed_baseline = if cursor.last_seq >= baseline_start {
+        store
+            .events_range(session_id, baseline_start, cursor.last_seq.saturating_add(1))
+            .map_err(|_| BackgroundReviewReasonV1::CursorInputUnavailable)?
+    } else {
+        Vec::new()
+    };
     let events = stored_events
         .into_iter()
-        .map(|event| {
-            serde_json::to_value(event)
-                .ok()
-                .and_then(|value| serde_json::from_value::<SessionEvent>(value).ok())
-                .ok_or(BackgroundReviewReasonV1::CursorInputUnavailable)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(store_event_to_core)
+        .collect::<Vec<_>>();
+    let reviewed_baseline = reviewed_baseline
+        .into_iter()
+        .map(store_event_to_core)
+        .collect::<Vec<_>>();
     Ok(BackgroundSemanticReviewInputV1 {
         task_id: snapshot.task_id.clone(),
         cursor,
         events,
+        reviewed_baseline,
         foreground_memory_state: match &snapshot.foreground_memory_state {
             BackgroundReviewForegroundMemoryStateV1::Unavailable => {
                 cortex_core::review::ForegroundMemoryStateV1::Unavailable
@@ -224,6 +235,34 @@ fn load_background_semantic_input(
             }
         },
     })
+}
+
+fn store_event_to_core(event: StoreSessionEvent) -> SessionEvent {
+    SessionEvent {
+        schema_version: event.schema_version,
+        session_id: event.session_id,
+        seq: event.seq,
+        event_id: event.event_id,
+        event_type: event.event_type,
+        payload: event.payload,
+        scope_id: event.scope_id,
+        authority: event.authority,
+        influence_class: event.influence_class,
+        lifecycle: event.lifecycle,
+        retention: event.retention,
+        provenance: event
+            .provenance
+            .into_iter()
+            .map(|item| ProvenanceRef {
+                source: item.source,
+                source_event_ids: item.source_event_ids,
+                producer: item.producer,
+            })
+            .collect(),
+        occurred_at_ms: event.occurred_at_ms,
+        recorded_at_ms: event.recorded_at_ms,
+        content_hash: event.content_hash,
+    }
 }
 
 fn main() {

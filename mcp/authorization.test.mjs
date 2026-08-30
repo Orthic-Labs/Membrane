@@ -40,9 +40,10 @@ test("same-target mutation requires the caller's own level, not the admin slot a
   // Explicit task authority => effective = min(installation, caller, target, admin, task).
   const ok = await authorizeTarget({ callerBinding, targetBinding, hasExplicitChildGrant: false, taskGrantLevel: "write-proposed", action: "feedback" });
   assert.equal(ok.effectiveLevel, "write-proposed");
-  // The SN template is fail-closed: an absent task/session grant caps at read-only.
+  // Direct-path parity: an absent task/session grant falls back to the
+  // caller's verified persisted level; the installation ceiling still applies.
   const noTaskGrant = await authorizeTarget({ callerBinding, targetBinding, hasExplicitChildGrant: false, action: "context" });
-  assert.equal(noTaskGrant.effectiveLevel, "read-only");
+  assert.equal(noTaskGrant.effectiveLevel, "write-proposed");
   // A read-only caller stays read-only even with an explicit high task grant.
   const denied = authorizeTarget({
     callerBinding: { repository_id: "repo-a", grant_policy: { level: "read-only" } },
@@ -116,4 +117,83 @@ test("canReachTarget authorizes a granted sibling but omits an ungranted one", a
   // Ungranted sibling is never reachable, even at an admin task grant.
   assert.equal(await canReachTarget({ callerBinding, targetBinding: ungrantedSibling, action: "context", taskGrantLevel: "admin", hasExplicitChildGrant: false }), null);
   assert.equal(await canReachTarget({ callerBinding, targetBinding: ungrantedSibling, action: "feedback", taskGrantLevel: "admin", hasExplicitChildGrant: false }), null);
+});
+
+test("diagnostic authorization denies an unenrolled installation at Gate 1", async () => {
+  await assert.rejects(
+    authorizeTarget({ callerBinding: null, targetBinding: { repository_id: "repo-a" }, action: "context" }),
+    /authorization_denied:installation_grant_denied/,
+  );
+});
+
+test("diagnostic authorization denies a broken scope chain at Gate 2", async () => {
+  await assert.rejects(
+    authorizeTarget({ callerBinding: { grant_policy: { level: "admin" } }, targetBinding: { repository_id: "repo-a" }, action: "context" }),
+    /authorization_denied:repository_scope_chain_denied/,
+  );
+});
+
+test("diagnostic authorization denies mismatched caller identity at Gate 3", async () => {
+  await assert.rejects(
+    authorizeTarget({
+      callerBinding: { repository_id: "repo-a", scope_id: "scope-a", grant_policy: { level: "admin" } },
+      targetBinding: { repository_id: "repo-a", grant_policy: { level: "admin" } },
+      callerIdentity: { repositoryId: "forged", scopeId: "scope-a" }, action: "context",
+    }),
+    /authorization_denied:caller_scope_binding_denied/,
+  );
+});
+
+test("diagnostic authorization denies insufficient monotone authority at Gate 4", async () => {
+  await assert.rejects(
+    authorizeTarget({
+      callerBinding: { repository_id: "repo-a", grant_policy: { level: "read-only" } },
+      targetBinding: { repository_id: "repo-a", grant_policy: { level: "read-only" } },
+      taskGrantLevel: "admin", action: "checkpoint",
+    }),
+    /authorization_denied:caller_not_authorized/,
+  );
+});
+
+test("diagnostic authorization denies cross-root reach at Gate 5", async () => {
+  await assert.rejects(
+    authorizeTarget({
+      callerBinding: { repository_id: "repo-a", grant_policy: { level: "admin" } },
+      targetBinding: { repository_id: "repo-b", grant_policy: { level: "admin" } },
+      taskGrantLevel: "admin", hasExplicitChildGrant: false, action: "context",
+    }),
+    /authorization_denied:cross_root_binding_denied/,
+  );
+});
+
+test("diagnostic authorization denies expired validity at Gate 6", async () => {
+  await assert.rejects(
+    authorizeTarget({
+      callerBinding: { repository_id: "repo-a", grant_policy: { level: "admin" }, token_grant: { generation: 1, not_after: 0 } },
+      targetBinding: { repository_id: "repo-a", grant_policy: { level: "admin" } },
+      taskGrantLevel: "write-proposed", action: "checkpoint",
+    }),
+    /authorization_denied:authorization_revoked/,
+  );
+});
+
+test("diagnostic authorization denies revoked grants at the same Gate 6", async () => {
+  await assert.rejects(
+    authorizeTarget({
+      callerBinding: { repository_id: "repo-a", grant_policy: { level: "admin" }, token_grant: { generation: 2, revoked_generations: [2] } },
+      targetBinding: { repository_id: "repo-a", grant_policy: { level: "admin" } },
+      taskGrantLevel: "write-proposed", action: "checkpoint",
+    }),
+    /authorization_denied:authorization_revoked/,
+  );
+});
+
+test("diagnostic authorization permits verified authorized self access", async () => {
+  const result = await authorizeTarget({
+    callerBinding: { repository_id: "repo-a", scope_id: "scope-a", grant_policy: { level: "write-trusted" }, token_grant: { generation: 1 } },
+    targetBinding: { repository_id: "repo-a", grant_policy: { level: "write-trusted" } },
+    callerIdentity: { repositoryId: "repo-a", scopeId: "scope-a" },
+    taskGrantLevel: "write-proposed", action: "checkpoint",
+  });
+  assert.equal(result.effectiveLevel, "write-proposed");
 });

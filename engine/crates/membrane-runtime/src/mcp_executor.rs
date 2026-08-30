@@ -139,6 +139,13 @@ fn native_action_for(name: &str, arguments: &Value) -> &'static str {
         }
         "membrane_feedback" => "feedback",
         "membrane_knowledge_propose" => "proposal",
+        "membrane_diagnostic_workspace"
+            if arguments.get("operation").and_then(Value::as_str) == Some("status") => "context",
+        "membrane_diagnostic_snapshot"
+            if matches!(
+                arguments.get("operation").and_then(Value::as_str),
+                Some("get" | "explain" | "delta")
+            ) => "context",
         _ => "checkpoint",
     }
 }
@@ -160,6 +167,7 @@ fn authorize_native_request(
         caller_scope_descriptor: arguments.pointer("/caller/scopeDescriptor"),
         target_repository: arguments
             .get("repository")
+            .or_else(|| arguments.get("repoId"))
             .and_then(Value::as_str)
             .unwrap_or(repository),
         task_grant_level: arguments.get("taskGrantLevel").and_then(Value::as_str),
@@ -403,6 +411,17 @@ fn parse<T: serde::de::DeserializeOwned>(
 impl NativeMcpExecutor for RuntimeMcpExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
         let diagnostic = name.starts_with("membrane_diagnostic_");
+        // Only these repository-independent diagnostic views remain outside
+        // AuthorizationGateV1: fence evaluation, capabilities, and provider
+        // list/status. Workspace status and snapshot get/explain/delta are
+        // repository-scoped reads and are gated too.
+        let diagnostic_read_only = matches!(
+            (name, arguments.get("operation").and_then(Value::as_str)),
+            ("membrane_diagnostic_fence", _)
+                | ("membrane_diagnostic_capabilities", _)
+                | ("membrane_diagnostic_provider", Some("list" | "status"))
+        );
+        let gated_diagnostic = diagnostic && !diagnostic_read_only;
         let (root, repository, scope) = if diagnostic {
             let repository = arguments
                 .get("repoId")
@@ -428,6 +447,20 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 Err(result) => return result,
             }
         };
+        let diagnostic_caller = if gated_diagnostic && arguments.get("caller").is_some() {
+            match caller(arguments, name) {
+                Ok(caller) => Some(caller),
+                Err(_) => {
+                    return error(
+                        name,
+                        "authorization_denied",
+                        "caller_scope_binding_denied: caller envelope is invalid",
+                    )
+                }
+            }
+        } else {
+            None
+        };
         if !diagnostic && arguments.get("repository").and_then(Value::as_str) != Some(repository) {
             let code = match name {
                 "membrane_source_read" => "source_read_scope_denied",
@@ -444,13 +477,41 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             return error(name, code, "repository must match caller repositoryId");
         };
         // §15 AuthorizationGateV1: every repository-scoped native request passes the shared
-        // monotone-authority module BEFORE retrieval scoring and before admission — evidence
-        // an unauthorized caller can never reach a candidate set. A failed gate is a typed
-        // authorization denial naming the gate; bearer transport authenticated the channel,
-        // never the scope, so self-declared identity is verified against the installation
-        // registry here, not trusted from the envelope. Diagnostics carry no repository
-        // binding and stay on the self-consistency checks above.
-        if !diagnostic {
+        // monotone-authority module BEFORE retrieval scoring and before admission. Diagnostics
+        // use the caller envelope for the gate and retain repoId/worktreeId only as the
+        // verified target service key; bearer transport authenticates the channel, never scope.
+        if gated_diagnostic {
+            let task_grant = arguments.get("taskGrantLevel").and_then(Value::as_str);
+            let action = native_action_for(name, arguments);
+            let authorization = if let Some((caller_root, caller_repository, caller_scope)) = diagnostic_caller {
+                let project_root = arguments
+                    .get("projectRoot")
+                    .and_then(Value::as_str)
+                    .unwrap_or(caller_root);
+                authorization::authorize_diagnostic(
+                    &AuthorizationRequest {
+                        caller_root,
+                        caller_repository_id: caller_repository,
+                        caller_scope_id: caller_scope,
+                        caller_scope_descriptor: arguments.pointer("/caller/scopeDescriptor"),
+                        target_repository: repository,
+                        task_grant_level: task_grant,
+                        action,
+                    },
+                    project_root,
+                )
+            } else {
+                authorization::authorize_diagnostic_identity(
+                    repository,
+                    arguments.get("projectRoot").and_then(Value::as_str),
+                    task_grant,
+                    action,
+                )
+            };
+            if let Err(denial) = authorization {
+                return error(name, "authorization_denied", format!("{}: {}", denial.code(), denial));
+            }
+        } else if !diagnostic {
             if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope)
             {
                 return error(name, denial.code(), denial.to_string());

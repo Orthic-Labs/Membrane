@@ -6,6 +6,7 @@
 
 use crate::{canonical_json_of, digest_str, HostObservationProvenanceV1};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use thiserror::Error;
 
 /// Current background-review contract version.
@@ -616,6 +617,99 @@ impl BackgroundReviewForegroundMemoryStateV1 {
     }
 }
 
+/// Content-free wire receipt for Cortex's deterministic review-input
+/// selection. Scores order candidates; they do not assign Adapt meaning.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackgroundReviewInputSelectionCandidateV1 {
+    pub event_id: String,
+    pub seq: u64,
+    pub novelty_score: f64,
+    pub estimated_input_tokens: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundReviewInputSelectionSkipReasonV1 {
+    BudgetExhausted,
+    BelowNoveltyFloor,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackgroundReviewInputSelectionSkippedV1 {
+    pub event_id: String,
+    pub reason: BackgroundReviewInputSelectionSkipReasonV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BackgroundReviewInputSelectionV1 {
+    pub schema_version: u32,
+    pub candidates_considered: Vec<BackgroundReviewInputSelectionCandidateV1>,
+    pub selected: Vec<String>,
+    pub skipped: Vec<BackgroundReviewInputSelectionSkippedV1>,
+    pub quiet_period: bool,
+}
+
+impl BackgroundReviewInputSelectionV1 {
+    pub const SCHEMA_VERSION: u32 = BACKGROUND_SEMANTIC_REVIEW_SCHEMA_VERSION;
+
+    fn validate_against_events(
+        &self,
+        events: &[BackgroundReviewSessionEventV1],
+        cursor_last_seq: u64,
+    ) -> Result<(), BackgroundReviewValidationError> {
+        if self.schema_version != Self::SCHEMA_VERSION {
+            return Err(BackgroundReviewValidationError::SchemaVersion(
+                self.schema_version,
+            ));
+        }
+        if self.candidates_considered.len() > BACKGROUND_SEMANTIC_REVIEW_MAX_EVENTS {
+            return Err(BackgroundReviewValidationError::EventLimit);
+        }
+        let mut considered = HashSet::new();
+        let mut sequences = HashSet::new();
+        for candidate in &self.candidates_considered {
+            if candidate.event_id.trim().is_empty()
+                || candidate.seq <= cursor_last_seq
+                || !candidate.novelty_score.is_finite()
+                || !(0.0..=1.0).contains(&candidate.novelty_score)
+            {
+                return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+            }
+            if !considered.insert(candidate.event_id.as_str())
+                || !sequences.insert(candidate.seq)
+            {
+                return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+            }
+        }
+        let mut selected = HashSet::new();
+        for event_id in &self.selected {
+            if !selected.insert(event_id.as_str()) || !considered.contains(event_id.as_str()) {
+                return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+            }
+        }
+        let mut skipped = HashSet::new();
+        for entry in &self.skipped {
+            if !skipped.insert(entry.event_id.as_str())
+                || !considered.contains(entry.event_id.as_str())
+                || selected.contains(entry.event_id.as_str())
+            {
+                return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+            }
+        }
+        if selected.len() + skipped.len() != considered.len() {
+            return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+        }
+        let event_ids = events.iter().map(|event| event.event_id.as_str()).collect::<HashSet<_>>();
+        if event_ids != selected {
+            return Err(BackgroundReviewValidationError::InvalidSelectionReceipt);
+        }
+        Ok(())
+    }
+}
+
 /// Authenticated host-neutral request sent by daemon to one loopback semantic
 /// provider.  It carries no durable-memory authority.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -630,6 +724,8 @@ pub struct BackgroundSemanticReviewRequestV1 {
     pub turn_id: String,
     pub cursor: BackgroundReviewCursorV1,
     pub events: Vec<BackgroundReviewSessionEventV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_input_selection: Option<BackgroundReviewInputSelectionV1>,
     pub foreground_memory_state: BackgroundReviewForegroundMemoryStateV1,
     pub per_turn_budget_remaining: u64,
     pub aggregate_budget_remaining: u64,
@@ -673,6 +769,9 @@ impl BackgroundSemanticReviewRequestV1 {
         for event in &self.events {
             event.validate(&self.session_id, prior_seq)?;
             prior_seq = event.seq;
+        }
+        if let Some(selection) = &self.review_input_selection {
+            selection.validate_against_events(&self.events, self.cursor.last_seq)?;
         }
         self.foreground_memory_state.validate()?;
         if self.restricted_capabilities.is_empty()
@@ -902,6 +1001,8 @@ pub enum BackgroundReviewValidationError {
     CursorAdvanceInvalid,
     #[error("background semantic review returned no proposals")]
     EmptyResult,
+    #[error("background semantic review input-selection receipt is invalid")]
+    InvalidSelectionReceipt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

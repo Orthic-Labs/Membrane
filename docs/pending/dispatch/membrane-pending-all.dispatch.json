@@ -1,0 +1,501 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "a11993d64079bb2060ab360aacd6a26a99cf5938",
+  "sourceArtifact": "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+  "promptArtifact": "docs/pending/dispatch/membrane-pending-all.prompt.md",
+  "promptDigest": "sha256:d9562d2a8a1d9c04bc056a4ba34bc8452acc4f41d513b520d0243bd4d596d566",
+  "modelRouting": {
+    "modelTier": "HIGH",
+    "workerProfile": "luna-gpt-5-6-high",
+    "routingRationale": "Bounded contract-dense Rust implementation against a frozen pending specification; each lane is independently closable and separately verified by the integration owner."
+  },
+  "objective": "Close the code-executable Membrane pending-implementation gaps: post-fusion publication fence production (§17.2), first-party planner sufficiency caller (§13.1), request-time H8 delivery into packet reduction selection (§13.3), background review input selection plus the background semantic provider seam and Cortex Stage 1 wiring (§4.2, §13.2), Cortex temporal validity/supersession unification (§16.2), the diagnostics authorization carve-out (§13.4), and a frozen JS/Rust authorization conformance corpus (§15). Qualification freezes and host capabilities H7/H9/H10 are out of scope.",
+  "authority": [
+    "docs/agent-rules.md",
+    "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+    "docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md",
+    "docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md",
+    "docs/subsystems/MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md"
+  ],
+  "integrationOwner": "current orchestrator",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/src/pull/federation.rs",
+      "engine/crates/membrane-runtime/src/pull/publication.rs",
+      "engine/crates/membrane-runtime/src/push/selection.rs",
+      "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+      "engine/crates/membrane-runtime/src/serve.rs",
+      "engine/crates/membrane-runtime/tests/publication_fence_recheck.rs",
+      "engine/crates/membrane-runtime/tests/request_time_h8.rs",
+      "engine/crates/membrane-protocol/src/background_review.rs",
+      "engine/crates/membrane-runtime/src/background_review.rs",
+      "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+      "engine/crates/cortex-core/src/review.rs",
+      "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
+      "engine/crates/cortex-store/src/temporal.rs",
+      "engine/crates/cortex-store/src/db.rs",
+      "engine/crates/cortex-store/tests/temporal_validity.rs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-runtime/src/authorization.rs",
+      "mcp/authorization.mjs",
+      "mcp/server.mjs",
+      "mcp/authorization.test.mjs",
+      "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
+      "schemas/conformance/authorization-conformance-v1.json",
+      "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
+      "mcp/authorization.conformance.test.mjs",
+      "mcp/diagnostics-tools.test.mjs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {
+        "path": "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/pull/publication.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/push/selection.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/serve.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/publication_fence_recheck.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "create",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --test publication_fence_recheck --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/request_time_h8.rs",
+        "owner": "lane-pull-request-seam",
+        "operation": "edit",
+        "lane": "lane-pull-request-seam",
+        "finalCheck": "cargo test -p membrane-runtime --test request_time_h8 --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-protocol/src/background_review.rs",
+        "owner": "lane-background-learning",
+        "operation": "edit",
+        "lane": "lane-background-learning",
+        "finalCheck": "cargo test -p membrane-protocol --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/background_review.rs",
+        "owner": "lane-background-learning",
+        "operation": "edit",
+        "lane": "lane-background-learning",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+        "owner": "lane-background-learning",
+        "operation": "edit",
+        "lane": "lane-background-learning",
+        "finalCheck": "cargo build -p membrane-runtime --bins --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/cortex-core/src/review.rs",
+        "owner": "lane-background-learning",
+        "operation": "edit",
+        "lane": "lane-background-learning",
+        "finalCheck": "cargo test -p cortex-core --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
+        "owner": "lane-background-learning",
+        "operation": "create",
+        "lane": "lane-background-learning",
+        "finalCheck": "cargo test -p membrane-runtime --test background_semantic_seam --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/cortex-store/src/temporal.rs",
+        "owner": "lane-cortex-temporal",
+        "operation": "edit",
+        "lane": "lane-cortex-temporal",
+        "finalCheck": "cargo test -p cortex-store --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/cortex-store/src/db.rs",
+        "owner": "lane-cortex-temporal",
+        "operation": "edit",
+        "lane": "lane-cortex-temporal",
+        "finalCheck": "cargo test -p cortex-store --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/cortex-store/tests/temporal_validity.rs",
+        "owner": "lane-cortex-temporal",
+        "operation": "create",
+        "lane": "lane-cortex-temporal",
+        "finalCheck": "cargo test -p cortex-store --test temporal_validity --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/authorization.rs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "cargo test -p membrane-runtime --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "mcp/authorization.mjs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "pnpm test:mcp"
+      },
+      {
+        "path": "mcp/server.mjs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "pnpm test:mcp"
+      },
+      {
+        "path": "mcp/authorization.test.mjs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "pnpm test:mcp"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "create",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "cargo test -p membrane-runtime --test diagnostics_authorization --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "schemas/conformance/authorization-conformance-v1.json",
+        "owner": "lane-authorization-conformance",
+        "operation": "create",
+        "lane": "lane-authorization-conformance",
+        "finalCheck": "integration owner runs both conformance runners against the frozen corpus"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
+        "owner": "lane-authorization-conformance",
+        "operation": "create",
+        "lane": "lane-authorization-conformance",
+        "finalCheck": "cargo test -p membrane-runtime --test authorization_conformance --manifest-path engine/Cargo.toml"
+      },
+      {
+        "path": "mcp/authorization.conformance.test.mjs",
+        "owner": "lane-authorization-conformance",
+        "operation": "create",
+        "lane": "lane-authorization-conformance",
+        "finalCheck": "pnpm test:mcp"
+      },
+      {
+        "path": "mcp/diagnostics-tools.test.mjs",
+        "owner": "lane-diagnostics-authorization",
+        "operation": "edit",
+        "lane": "lane-diagnostics-authorization",
+        "finalCheck": "pnpm test:mcp"
+      }
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": false,
+    "sourceImplementation": null,
+    "sourceInventory": [],
+    "directPortFirst": true,
+    "targetLanguage": "rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": [
+      "cargo",
+      "tests",
+      "builds",
+      "generators",
+      "installs",
+      "commits",
+      "pushes",
+      "merges",
+      "expensive-checks"
+    ],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "current orchestrator",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return to owning lane or redesign packet before execution"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": [
+        "lane-pull-request-seam",
+        "lane-background-learning",
+        "lane-cortex-temporal",
+        "lane-diagnostics-authorization"
+      ],
+      "completionChecks": [
+        "cargo test --workspace --manifest-path engine/Cargo.toml",
+        "pnpm test",
+        "pnpm test:mcp",
+        "all changed paths reconcile against the wave A allowlists"
+      ]
+    },
+    {
+      "id": "B",
+      "dependsOn": [
+        "A"
+      ],
+      "lanes": [
+        "lane-authorization-conformance"
+      ],
+      "completionChecks": [
+        "cargo test -p membrane-runtime --test authorization_conformance --manifest-path engine/Cargo.toml",
+        "pnpm test:mcp",
+        "both surfaces produce identical ordered gate verdicts for every frozen corpus case"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "lane-pull-request-seam",
+      "dispatch": "A",
+      "executor": "luna",
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "engine/crates/membrane-runtime/src/pull/publication.rs",
+        "engine/crates/membrane-runtime/src/push/selection.rs",
+        "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/tests/publication_fence_recheck.rs",
+        "engine/crates/membrane-runtime/tests/request_time_h8.rs"
+      ],
+      "read": [
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/membrane-federation/src/engine.rs",
+        "engine/crates/membrane-federation/src/corrective.rs",
+        "engine/crates/membrane-protocol/src/federation.rs",
+        "engine/crates/membrane-protocol/src/push.rs",
+        "engine/crates/membrane-protocol/src/host_observation.rs",
+        "engine/crates/membrane-mcp/src/tools.rs",
+        "engine/crates/membrane-runtime/src/pull/cli.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "secrets",
+        "docs/product.md",
+        "docs/architecture.md",
+        "docs/protocol.md",
+        "docs/product-truth.md"
+      ],
+      "checks": [
+        "integration owner runs cargo test -p membrane-runtime and the two named integration tests after merge; worker runs nothing"
+      ],
+      "dependencies": [],
+      "scope": "§17.2: implement the grant owner's post-fusion second observation. Re-read grant identity, policy epoch and revocation immediately before packet emission on both the CLI and resident routes, construct the PublicationFenceV1 verdict from that observation instead of accepting a caller-supplied one, and pass it into EnvelopeInput::scope_grant_fence. serve.rs currently sets scope_grant_present: true with fence None; that path must produce a real verdict. A tripped fence publishes typed policy_changed and emits nothing. Absent grant stays a typed no-op, never a bypass. §13.1: add the first-party planner caller that authors a SufficiencyContractV1 from planner-owned runtime requirements (never derived from task prose) and supplies it on the existing transport at pull/federation.rs:381; when the planner authors none, sufficiency stays not_evaluated. §13.3: consume the request-time RemainingContextCeilingV1 arriving on the same /federate request, validate provenance, session/task binding and estimator basis, refuse a mismatched or cached ceiling typed, and drive PacketReductionPlanV1::select_for_capacity from it in-request, returning plan, selected representation and selection receipt. Extend tests/request_time_h8.rs for the request-time path and add tests/publication_fence_recheck.rs covering held, policy_changed and no-grant cases."
+    },
+    {
+      "id": "lane-background-learning",
+      "dispatch": "A",
+      "executor": "luna",
+      "allowlist": [
+        "engine/crates/membrane-protocol/src/background_review.rs",
+        "engine/crates/membrane-runtime/src/background_review.rs",
+        "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+        "engine/crates/cortex-core/src/review.rs",
+        "engine/crates/membrane-runtime/tests/background_semantic_seam.rs"
+      ],
+      "read": [
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/cortex-core/src/dream.rs",
+        "engine/crates/cortex-store/src/lib.rs",
+        "engine/crates/membrane-adapt/src/proposal.rs",
+        "engine/crates/membrane-protocol/src/tray_daemon.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "secrets",
+        "docs/product.md",
+        "docs/architecture.md",
+        "docs/protocol.md",
+        "docs/product-truth.md"
+      ],
+      "checks": [
+        "integration owner runs cargo test -p membrane-protocol, -p cortex-core, -p membrane-runtime and cargo build --bins after merge; worker runs nothing"
+      ],
+      "dependencies": [],
+      "scope": "DO NOT REBUILD THE §13.2 SEAM. It already exists: membrane-protocol/src/background_review.rs:623,633,714 defines BackgroundSemanticReviewRequestV1, BackgroundSemanticReviewResultV1 and the foreground_memory_state tri-state; membrane-runtime/src/background_review.rs implements AuthenticatedLoopbackSemanticReviewProvider, loopback-only endpoint parsing, the scheduler, bounded framing and cursor-advance-only-after-sink-success; bin/membrane-daemon.rs:207-214 wires ForegroundMemoryStateV1::{Unavailable, AvailableNoEmission, AvailableEmission} into cortex_core::review. Read all three before writing anything. A second implementation of that seam violates the same section's no-second-model-stack rule. This lane has exactly two deliverables. (a) §4.2: implement ReviewInputSelectionV1, which is genuinely absent — candidates come only from the stored cursor over new unreviewed events; score each candidate deterministically for novelty against the already-reviewed baseline with no model call; select top-K within the per-run input budget with recency tie-break; record candidates_considered, selected[] and a typed skip reason (budget_exhausted | below_novelty_floor) for the remainder; skipped-but-eligible episodes stay eligible for later runs. Selection is mechanical: it never triggers a run by itself, never asserts an Adapt category and never pre-labels an episode. A quiet period where nothing clears the novelty floor is reported as such, never padded with low-value episodes to spend the budget. (b) Wire that selection's output as the candidate source feeding the existing request-construction path, replacing whatever implicit ordering feeds it today, and add the protocol fields the receipt needs. Preserve every existing behavior of the seam: proposal-only semantic results, validation as SemanticCurationProposalV1 or MemoryCandidateV1 before Cortex admission, content-free BackgroundReviewProposalRefV1 observations, cursor advance only after a valid result reaches the proposal sink, skip on available_emission(range), extraction permitted on available_no_emission, fail closed typed on unavailable, lifecycle-only tray-daemon command channel, and hub_inactive semantics. Deterministic Cortex Dream keeps its governed mutation path (§4.1)."
+    },
+    {
+      "id": "lane-cortex-temporal",
+      "dispatch": "A",
+      "executor": "luna",
+      "allowlist": [
+        "engine/crates/cortex-store/src/temporal.rs",
+        "engine/crates/cortex-store/src/db.rs",
+        "engine/crates/cortex-store/tests/temporal_validity.rs"
+      ],
+      "read": [
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/cortex-store/src/lib.rs",
+        "engine/crates/cortex-store/src/time.rs",
+        "engine/crates/cortex-core/src/dream.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "secrets",
+        "docs/product.md",
+        "docs/architecture.md",
+        "docs/protocol.md",
+        "docs/product-truth.md"
+      ],
+      "checks": [
+        "integration owner runs cargo test -p cortex-store and the named integration test after merge; worker runs nothing"
+      ],
+      "dependencies": [],
+      "scope": "§16.2: unify the two existing temporal schemes onto TemporalValidityV1 (valid_at, recorded_at, invalid_at?, superseded_by?). The durable memories table already carries effective_from_ms, effective_until_ms and a written superseded_by column, and temporal.rs implements a narrower TemporalFact store with valid_from/valid_until/supersedes and as-of queries. Adopt one vocabulary across both; do not add a third scheme and do not break existing rows — migrate in place. valid_at is authored/asserted time and must never default to ingest time; recorded_at stays distinct. Conflict resolution supersedes, never deletes: mark the loser invalid, keep as_of point-in-time recall answerable, keep lineage queryable per record. Implement the deterministic read-time conflict ordering exactly: discard revoked, then prefer valid-at-requested-time, then higher authority, then independently verified, then surface the unresolved conflict typed. Silently blending conflicting records is forbidden."
+    },
+    {
+      "id": "lane-diagnostics-authorization",
+      "dispatch": "A",
+      "executor": "luna",
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "engine/crates/membrane-runtime/src/authorization.rs",
+        "mcp/authorization.mjs",
+        "mcp/server.mjs",
+        "mcp/authorization.test.mjs",
+        "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
+        "mcp/diagnostics-tools.test.mjs"
+      ],
+      "read": [
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/membrane-mcp/src/tools.rs",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs",
+        "mcp/lib/diagnostics-client.mjs"
+      ],
+      "forbidden": [
+        ".git",
+        "secrets",
+        "docs/product.md",
+        "docs/architecture.md",
+        "docs/protocol.md",
+        "docs/product-truth.md"
+      ],
+      "checks": [
+        "integration owner runs cargo test -p membrane-runtime and pnpm test:mcp after merge; worker runs nothing"
+      ],
+      "dependencies": [],
+      "scope": "PACKET AMENDMENT (execution round 2): the first attempt correctly BOUND_STOPped. The shared native gate implements Gate 6 as token-generation REVOCATION ONLY (authorization.rs:629) and has no validity-interval/expiry support at all — §15's phrase 'validity interval / revocation' overstates what is built. authorization.rs is therefore now OWNED by this lane and must be extended, not forked: add validity-interval (not-before / not-after) enforcement to the existing Gate 6 alongside revocation, keeping the six-gate order unchanged and the denial typed as the same ValidityRevocation gate identity. Mirror it on the JS surface. Then close the carve-out as follows. §13.4/§15: close the diagnostics authorization carve-out. membrane_diagnostic_* operations perform stateful writes (workspace open/reconcile, mutation begin/seal, baseline capture/update, provider restart) keyed to an envelope-supplied repository identity that bypasses the shared gate on both the JS surface and the native executor. Route every stateful diagnostic operation through the same ordered AuthorizationGateV1 contract used by non-diagnostic repository-scoped requests (installation grant → repository scope chain → caller/target binding → monotone authority → cross-root denial → validity/revocation), binding the envelope identity to verified installation identity rather than trusting the claim. Bearer possession authenticates the channel, never the scope. Failure is typed authorization_denied naming the failed gate — never silent scope widening, never downgrade-and-continue. Read-only diagnostics that touch no repository-scoped state may stay outside the gate only if you state which operations those are in code comments. Cover every denial path on both surfaces."
+    },
+    {
+      "id": "lane-authorization-conformance",
+      "dispatch": "B",
+      "executor": "luna",
+      "allowlist": [
+        "schemas/conformance/authorization-conformance-v1.json",
+        "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
+        "mcp/authorization.conformance.test.mjs"
+      ],
+      "read": [
+        "docs/pending/MEMBRANE-PENDING-IMPLEMENTATION.md",
+        "engine/crates/membrane-runtime/src/authorization.rs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs",
+        "mcp/authorization.mjs",
+        "mcp/authorization.test.mjs"
+      ],
+      "forbidden": [
+        ".git",
+        "secrets",
+        "docs/product.md",
+        "docs/architecture.md",
+        "docs/protocol.md",
+        "docs/product-truth.md"
+      ],
+      "checks": [
+        "integration owner runs both conformance runners against the frozen corpus after merge; worker runs nothing"
+      ],
+      "dependencies": [],
+      "scope": "§15: freeze one cross-language authorization conformance corpus and run it against both surfaces. The corpus is a single versioned JSON file of ordered cases: each case names the request (installation identity, declared repository identity, scope chain, caller/target, requested authority level, action, cross-root reach, validity interval and revocation state) and the expected outcome (allowed, or authorization_denied naming the exact failed gate). Cover every gate in order, monotone-authority minimums, cross-root denial, expired and revoked grants, self-access, and the diagnostics operations as closed by lane-diagnostics-authorization — which is why this lane runs in wave B, after that contract is final. Write one Rust runner and one JS runner that both read the same file verbatim and assert identical ordered verdicts; neither runner may embed its own expectations. Separate implementations without shared fixtures drift even when both local suites are green, so a case present in one runner and absent in the other is a corpus defect."
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "allowlist-completeness",
+      "lane-disjointness",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "direct-port-priority",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": [
+      "owned path is already dirty",
+      "required private input is missing",
+      "a lane's contract conflicts with canon in docs/subsystems/"
+    ],
+    "returnFields": [
+      "changedPaths",
+      "checks",
+      "blockers",
+      "baselineRevision",
+      "patchDigest"
+    ]
+  },
+  "outOfScope": [
+    "host capabilities H7, H9 and H10 and every claim that depends on them",
+    "qualification freezes: RRF vs fixed-order control, query-aware Push promotion, Ledger retrieval rerun, no-answer baseline",
+    "macOS launchd on-host qualification and the RightKit-owned installed-artifact release gate",
+    "same-machine ACL isolation qualification for the api-token file and named pipes",
+    "procedural-asset effectiveness, which requires joinable H4/H6 caller transport first",
+    "the insights panel, which renders only production-backed projections",
+    "docs/pending/semantic-blueprint-review-pack-v2 and ADAPT-HARNESS-EFFICIENCY-INSIGHTS, which are unqualified pending extensions"
+  ]
+}

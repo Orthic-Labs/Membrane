@@ -15,7 +15,7 @@ import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, openSharedSqlite, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
-import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
+import { intersectAuthority, permitsLevel, authorizeTarget, canReachTarget } from "./authorization.mjs";
 import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
@@ -70,13 +70,13 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review. Self-reported outcomes are advisory (non-ranking) unless verdictRef names a resolvable cited verdict.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
-  { name: "membrane_diagnostic_workspace", description: "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance. open binds one canonical absolute projectRoot (design §3 WorkspaceEngineKey); same repo/worktree + different root is a typed conflict, uncanonicalizable root is rejected.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["open", "close", "status", "reconcile"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, projectRoot: { type: "string", minLength: 1, maxLength: 1024, description: "Canonical absolute worktree/project root to bind at open (design §3). Same repo/worktree + different canonical root is a typed conflict; uncanonicalizable root is rejected." }, manifestDigest: { type: "string", minLength: 1, maxLength: 256 }, hashes: { type: "array", minItems: 0, maxItems: 4096, items: { type: "object", required: ["path", "hash"], additionalProperties: false, properties: { path: { type: "string", minLength: 1 }, hash: { type: "string", minLength: 1 } } } } }, oneOf: [{ properties: { operation: { enum: ["open"] } }, required: ["repoId", "worktreeId", "projectRoot"] , not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["close"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["status"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { const: "reconcile" } }, required: ["repoId", "worktreeId", "manifestDigest", "hashes"] }] } },
-  { name: "membrane_diagnostic_mutation", description: "Transactionally begin or seal one coherent mutation batch, or register exact observed resulting bytes (registerObserved with observed_hook origin) for hosts without edit transactions. Seal/register invalidate stale clearance. Never blocks or rolls back writes: the fence gates semantic acceptance, not disk persistence.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId"], additionalProperties: false, properties: { operation: { type: "string", enum: ["begin", "seal", "registerObserved"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, epoch: { type: "object", description: "WorkspaceEpochV1 envelope (workspace-epoch.v1) bound to this repoId/worktreeId; origin transactional for seal, observed_hook for registerObserved." } }, oneOf: [{ properties: { operation: { const: "begin" } }, not: { required: ["epoch"] } }, { properties: { operation: { enum: ["seal", "registerObserved"] } }, required: ["epoch"] }] } },
-  { name: "membrane_diagnostic_snapshot", description: "Await a mutation-bound evidence snapshot plus planner gate decision (the operational fence path), or read get/explain/delta views of the last awaited snapshot cached per repoId:worktreeId in this server process. Events and presentation never clear the fence; only snapshot-await (and resident-side fence evaluation) produces operational decisions. get/explain/delta are cached views, never re-evaluation.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["await", "get", "explain", "delta"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, policyProfileName: { type: "string", minLength: 1, maxLength: 128 }, requiredCapabilities: { type: "array", minItems: 0, maxItems: 8, items: { type: "string", enum: CAPABILITY_VOCABULARY } }, maxCost: { type: "string", enum: COST_CLASSES, description: "Hard acquisition ceiling; defaults to interactive." }, deadlineMs: { type: "integer", minimum: 1, maximum: 60000, description: "Absolute wait budget for await; defaults to 10000." } }, oneOf: [{ properties: { operation: { const: "await" } }, required: ["repoId", "worktreeId", "policyProfileName"] }, { properties: { operation: { enum: ["get", "explain", "delta"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["policyProfileName"] }, { required: ["requiredCapabilities"] }, { required: ["maxCost"] }, { required: ["deadlineMs"] }] } }] } },
+  { name: "membrane_diagnostic_workspace", description: "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance. open binds one canonical absolute projectRoot (design §3 WorkspaceEngineKey); same repo/worktree + different root is a typed conflict, uncanonicalizable root is rejected.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["open", "close", "status", "reconcile"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, projectRoot: { type: "string", minLength: 1, maxLength: 1024, description: "Canonical absolute worktree/project root to bind at open (design §3). Same repo/worktree + different canonical root is a typed conflict; uncanonicalizable root is rejected." }, manifestDigest: { type: "string", minLength: 1, maxLength: 256 }, hashes: { type: "array", minItems: 0, maxItems: 4096, items: { type: "object", required: ["path", "hash"], additionalProperties: false, properties: { path: { type: "string", minLength: 1 }, hash: { type: "string", minLength: 1 } } } } }, oneOf: [{ properties: { operation: { enum: ["open"] } }, required: ["repoId", "worktreeId", "projectRoot"] , not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["close"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["status"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { const: "reconcile" } }, required: ["repoId", "worktreeId", "manifestDigest", "hashes"] }] } },
+  { name: "membrane_diagnostic_mutation", description: "Transactionally begin or seal one coherent mutation batch, or register exact observed resulting bytes (registerObserved with observed_hook origin) for hosts without edit transactions. Seal/register invalidate stale clearance. Never blocks or rolls back writes: the fence gates semantic acceptance, not disk persistence.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId"], additionalProperties: false, properties: { operation: { type: "string", enum: ["begin", "seal", "registerObserved"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, epoch: { type: "object", description: "WorkspaceEpochV1 envelope (workspace-epoch.v1) bound to this repoId/worktreeId; origin transactional for seal, observed_hook for registerObserved." } }, oneOf: [{ properties: { operation: { const: "begin" } }, not: { required: ["epoch"] } }, { properties: { operation: { enum: ["seal", "registerObserved"] } }, required: ["epoch"] }] } },
+  { name: "membrane_diagnostic_snapshot", description: "Await a mutation-bound evidence snapshot plus planner gate decision (the operational fence path), or read get/explain/delta views of the last awaited snapshot cached per repoId:worktreeId in this server process. Events and presentation never clear the fence; only snapshot-await (and resident-side fence evaluation) produces operational decisions. get/explain/delta are cached views, never re-evaluation.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["await", "get", "explain", "delta"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, policyProfileName: { type: "string", minLength: 1, maxLength: 128 }, requiredCapabilities: { type: "array", minItems: 0, maxItems: 8, items: { type: "string", enum: CAPABILITY_VOCABULARY } }, maxCost: { type: "string", enum: COST_CLASSES, description: "Hard acquisition ceiling; defaults to interactive." }, deadlineMs: { type: "integer", minimum: 1, maximum: 60000, description: "Absolute wait budget for await; defaults to 10000." } }, oneOf: [{ properties: { operation: { const: "await" } }, required: ["repoId", "worktreeId", "policyProfileName"] }, { properties: { operation: { enum: ["get", "explain", "delta"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["policyProfileName"] }, { required: ["requiredCapabilities"] }, { required: ["maxCost"] }, { required: ["deadlineMs"] }] } }] } },
   { name: "membrane_diagnostic_fence", description: "Pure Semantic Edit Fence evaluation: sends the exact DiagnosticEvidenceSnapshotV1, expected WorkspaceEpochV1 envelope, and planner-owned GatePolicyProfileV1 to the resident deterministic evaluator and returns DiagnosticGateDecisionV1 verbatim. It invents no policy, performs no provider acquisition, and never clears the resident fence by itself; the coding host enforces the returned decision.", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["snapshot", "expectedEpoch", "policy"], additionalProperties: false, properties: { snapshot: { type: "object", description: "diagnostic-evidence-snapshot.v1 envelope." }, expectedEpoch: { type: "object", description: "workspace-epoch.v1 envelope the snapshot must match exactly." }, policy: { type: "object", description: "Planner-owned GatePolicyProfileV1: profileName, policyVersion, policyDigest, blockingCodes, requiredCapabilities." } } } },
   { name: "membrane_diagnostic_capabilities", description: "Read the resident live-diagnostics capability advertisement: qualified providers, cost classes, and supported semantic capabilities. Read-only.", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: [], additionalProperties: false, properties: {} } },
-  { name: "membrane_diagnostic_baseline", description: "Capture or update a named diagnostics baseline for a workspace session; subsequent snapshot deltas classify issues as new, persistent, resolved, moved, changed, or unknown_baseline against it.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId", "name"], additionalProperties: false, properties: { operation: { type: "string", enum: ["capture", "update"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, name: { type: "string", minLength: 1, maxLength: 128 } } } },
-  { name: "membrane_diagnostic_provider", description: "List qualified providers (capabilities view), read resident supervisor health/status, or restart one supervised engine by workspace-engine key digest. list/status are read-only views; restart is a lifecycle action performed by the resident supervisor.", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["list", "status", "restart"] }, keyDigest: { type: "string", minLength: 1, maxLength: 256, description: "WorkspaceEngineKey digest identifying the engine to restart." } }, oneOf: [{ properties: { operation: { const: "restart" } }, required: ["keyDigest"] }, { properties: { operation: { enum: ["list", "status"] } }, not: { required: ["keyDigest"] } }] } },
+  { name: "membrane_diagnostic_baseline", description: "Capture or update a named diagnostics baseline for a workspace session; subsequent snapshot deltas classify issues as new, persistent, resolved, moved, changed, or unknown_baseline against it.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId", "name"], additionalProperties: false, properties: { operation: { type: "string", enum: ["capture", "update"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, name: { type: "string", minLength: 1, maxLength: 128 } } } },
+  { name: "membrane_diagnostic_provider", description: "List qualified providers (capabilities view), read resident supervisor health/status, or restart one supervised engine by workspace-engine key digest. list/status are read-only views; restart is a lifecycle action performed by the resident supervisor.", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["list", "status", "restart"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, projectRoot: { type: "string", minLength: 1, maxLength: 1024 }, keyDigest: { type: "string", minLength: 1, maxLength: 256, description: "WorkspaceEngineKey digest identifying the engine to restart." } }, oneOf: [{ properties: { operation: { const: "restart" } }, required: ["keyDigest", "repoId", "worktreeId"] }, { properties: { operation: { enum: ["list", "status"] } }, not: { required: ["keyDigest"] } }] } },
 ];
 const TOOLS = TOOL_DEFINITIONS.map((tool) => ({
   ...tool,
@@ -237,22 +237,24 @@ async function authorize(args, action) {
   const sameRootBinding = binding.root === callerBinding.root && binding.repository_id === callerBinding.repository_id && sameDescriptor(binding.scope_descriptor, callerBinding.scope_descriptor);
   // A workspace-root-bound caller may reach a distinct child repository ONLY when the
   // registry's persisted grant_policy.child_repository_ids explicitly names it AND the live
-  // repository catalog agrees that target is actually a child of that same workspace. Every
-  // other cross-root call keeps failing exactly as before.
-  let granted = sameRootBinding;
-  if (!sameRootBinding) {
-    granted = await hasCatalogChildGrant(callerBinding, binding);
-    if (!granted) throw new Error("cross_root_binding_denied");
-  }
-  // The caller must accurately self-report ITS OWN identity -- checked against callerBinding
-  // (the caller's persisted registry entry), not the target's, since a granted cross-repository
-  // call intentionally has binding !== callerBinding.
+  // repository catalog agrees that target is actually a child of that same workspace. The
+  // result is passed to authorizeTarget, which preserves the six-gate order.
+  const granted = sameRootBinding || await hasCatalogChildGrant(callerBinding, binding);
+  // Gate 3 — the caller must accurately self-report ITS OWN identity. This is
+  // checked against callerBinding, never the target binding.
   if (caller.repositoryId !== callerBinding.repository_id || caller.scopeId !== callerBinding.scope_id || !sameDescriptor(callerDescriptor(caller), callerBinding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
-  // MBR-002 / SN-NODE-02: a read-only caller stays read-only even when the target
-  // binding claims a higher (e.g. write-trusted) level; effective privilege is the
-  // exhaustion/intersection, not the target's declared level alone.
-  const effectiveLevel = effectiveAuthorityFor(callerBinding, binding, sameRootBinding, granted, args.taskGrantLevel);
-  if (!permitsLevel(effectiveLevel, action)) throw new Error("caller_not_authorized");
+  // The shared JS gate now performs authority, cross-root, and validity checks
+  // in the same order as native Rust, before this binding is used for work.
+  await authorizeTarget({
+    callerBinding,
+    targetBinding: binding,
+    childGrantLevel: binding.grant_policy?.level || "read-only",
+    taskGrantLevel: args.taskGrantLevel,
+    installationLevel: INSTALLATION_AUTHORITY_LEVEL,
+    action,
+    hasExplicitChildGrant: granted,
+    callerIdentity: caller,
+  });
   return binding;
 }
 
@@ -670,9 +672,63 @@ const FENCE_GUIDANCE = {
 };
 function unknownGuidance() { return "repair the provider/service/config or run an approved V1 verifier; clean claims, completion, and escalation assuming semantic cleanliness stay blocked"; }
 
-export async function diagnosticsCapability(name, args = {}, { request = diagnosticsRequest, snapshots = LAST_SNAPSHOTS } = {}) {
+// The only diagnostic operations outside AuthorizationGateV1 are exactly these
+// repository-independent read-only views: fence (pure evaluation), capabilities,
+// and provider list/status (global advertisement/supervisor health). Workspace
+// status and snapshot get/explain/delta are repository-scoped reads and remain gated.
+const DIAGNOSTIC_READ_ONLY_CARVEOUT = new Set([
+  "membrane_diagnostic_fence",
+  "membrane_diagnostic_capabilities",
+  "membrane_diagnostic_provider:list",
+  "membrane_diagnostic_provider:status",
+]);
+function diagnosticGateAction(name, operation) {
+  return DIAGNOSTIC_READ_ONLY_CARVEOUT.has(`${name}:${operation}`) || DIAGNOSTIC_READ_ONLY_CARVEOUT.has(name)
+    ? null
+    : name === "membrane_diagnostic_snapshot" && ["get", "explain", "delta"].includes(operation) ? "context"
+      : name === "membrane_diagnostic_workspace" && operation === "status" ? "context"
+        : "checkpoint";
+}
+function diagnosticAuthorizationError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const gate = ["installation_grant_denied", "repository_scope_chain_denied", "caller_scope_binding_denied", "caller_not_authorized", "cross_root_binding_denied", "authorization_revoked"]
+    .find((candidate) => message.includes(candidate))
+    || (["root_not_enrolled", "repository_not_enrolled", "target repository"].some((candidate) => message.includes(candidate)) ? "repository_scope_chain_denied" : "installation_grant_denied");
+  return new Error(`authorization_denied:${gate}: ${message}`);
+}
+async function authorizeDiagnostic(args, action) {
+  let caller = args.caller;
+  try {
+    // Existing diagnostics clients carry repoId/projectRoot rather than the
+    // newer caller object. Resolve that claim first, then derive only the
+    // missing scope fields from the verified installation binding.
+    if (!caller) {
+      const enrolled = await bindingFor(args.projectRoot || args.repoId);
+      caller = { root: enrolled.root, repositoryId: enrolled.repository_id, scopeId: enrolled.scope_id, scopeDescriptor: enrolled.scope_descriptor };
+    }
+    if (typeof caller !== "object" || Array.isArray(caller)) throw new Error("caller_scope_binding_denied: caller envelope is invalid");
+    const binding = await authorize({ repository: args.repoId, caller, taskGrantLevel: args.taskGrantLevel }, action);
+    const projectRoot = args.projectRoot || caller.root;
+    if (typeof projectRoot !== "string" || resolve(projectRoot) !== resolve(binding.root)) {
+      throw new Error("caller_scope_binding_denied: diagnostic project root does not match the verified target root");
+    }
+    return binding;
+  } catch (error) {
+    throw diagnosticAuthorizationError(error);
+  }
+}
+
+export async function diagnosticsCapability(name, args = {}, { request = diagnosticsRequest, snapshots = LAST_SNAPSHOTS, authorization = authorizeDiagnostic } = {}) {
   if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("invalid_diagnostic_operation");
   const operation = args.operation;
+  const action = diagnosticGateAction(name, operation);
+  if (action) {
+    try { await authorization(args, action); }
+    catch (error) {
+      const denied = diagnosticAuthorizationError(error);
+      return { delivered: false, status: null, error: { code: "authorization_denied", detail: denied.message } };
+    }
+  }
   const outcome = async (promise) => {
     const response = await promise;
     return response.ok
