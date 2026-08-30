@@ -42,3 +42,10 @@ test("Windows release artifacts derive from canonical Cargo target resolution", 
   assert.match(releaseConfig, /join\(releaseRoot, "membrane-hub\.exe"\)/);
   assert.doesNotMatch(releaseConfig, /const win(?:Installer|RawExe)\s*=\s*["'`][^"'`]*src-tauri[\\/]target[\\/]/);
 });
+
+test("each release candidate materializes Hub dependencies from Hub lockfile", () => {
+  const candidate = read("scripts/release/right-git-candidate.mjs");
+
+  assert.match(candidate, /platform === "windows"[\s\S]*pnpm\.cmd", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+  assert.match(candidate, /platform === "macos"[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+});

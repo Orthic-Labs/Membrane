@@ -102,5 +102,6 @@ if (platform === "windows" && architecture === "x86_64") {
   run("pnpm.cmd", ["--dir", hub, "install", "--frozen-lockfile"]);
   run("pnpm.cmd", ["--dir", hub, "run", mode === "build" ? "release:candidate:artifacts:win" : "release:candidate:check:win"]);
 } else if (platform === "macos" && architecture === "arm64") {
+  run("pnpm", ["--dir", hub, "install", "--frozen-lockfile"]);
   if (mode === "build") materializeMacCandidate(commit); else checkMacCandidate(commit);
 } else throw new Error(`unsupported Membrane candidate target: ${platform}/${architecture}`);
