@@ -1,6 +1,6 @@
 [package]
 name = "membrane-hub"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 [dependencies]
 serde = { version = "1", features = ["derive"] }

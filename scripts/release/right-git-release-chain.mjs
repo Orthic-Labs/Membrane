@@ -34,6 +34,11 @@ function onlyInstaller(root) {
   if (files.length !== 1) throw new Error(`expected exactly one Windows installer in ${root}; found ${files.length}`);
   return join(root, files[0]);
 }
+function onlyMacDmg(root) {
+	const files = readdirSync(root).filter((name) => /\.dmg$/i.test(name));
+	if (files.length !== 1) throw new Error(`expected exactly one macOS DMG in ${root}; found ${files.length}`);
+	return join(root, files[0]);
+}
 function assertSource() {
   const head = output("git", ["rev-parse", "HEAD"]);
   if (!/^[a-f0-9]{40}$/i.test(sourceRevision ?? "") || head !== sourceRevision) throw new Error("RightGit release chain source revision does not match checkout");
@@ -83,8 +88,9 @@ function finalizeMac() {
   const metadata = JSON.parse(output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-hub/src-tauri/Cargo.toml"]));
   const dmg = join(metadata.target_directory, "aarch64-apple-darwin", "release", "bundle", "dmg", `Membrane Hub_${version}_aarch64.dmg`);
   if (!existsSync(dmg)) throw new Error(`signed macOS DMG is missing: ${dmg}`);
-  cpSync(dmg, join(finalizedMac, "Membrane-Hub-arm64.dmg"));
-  writeFileSync(join(finalizedMac, "finalization.json"), `${JSON.stringify({ schemaVersion: 1, target: "macos-arm64", sourceRevision, candidateArchive: candidate.archive, artifact: { name: "Membrane-Hub-arm64.dmg", sha256: sha256(dmg) }, notarized: true }, null, 2)}\n`);
+  const name = `Membrane_Hub_${version}_arm64.dmg`;
+  cpSync(dmg, join(finalizedMac, name));
+  writeFileSync(join(finalizedMac, "finalization.json"), `${JSON.stringify({ schemaVersion: 1, target: "macos-arm64", sourceRevision, candidateArchive: candidate.archive, artifact: { name, sha256: sha256(dmg) }, notarized: true, stapled: true }, null, 2)}\n`);
 }
 
 function qualifyInstalled() {
@@ -113,6 +119,14 @@ function publishQualified() {
   rmSync(destination, { recursive: true, force: true });
   copyTree(portable, destination);
   run("pnpm.cmd", ["--dir", hub, "run", "release:publish:portable:win"]);
+  const dmg = onlyMacDmg(finalizedMac);
+  const finalizationPath = join(finalizedMac, "finalization.json");
+  if (!existsSync(finalizationPath)) throw new Error("macOS finalization receipt is required before publication");
+  const finalization = JSON.parse(readFileSync(finalizationPath, "utf8"));
+  if (finalization.target !== "macos-arm64" || finalization.sourceRevision !== sourceRevision || finalization.notarized !== true || finalization.stapled !== true || finalization.artifact?.name !== dmg.split(/[\\/]/).pop() || finalization.artifact?.sha256 !== sha256(dmg)) {
+    throw new Error("macOS finalization receipt does not bind the exact notarized & stapled DMG");
+  }
+  run("gh", ["release", "upload", `v${version}`, dmg, finalizationPath, "--clobber"]);
 }
 
 const mode = process.argv[2];

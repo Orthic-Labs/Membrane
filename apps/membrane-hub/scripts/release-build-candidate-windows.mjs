@@ -47,13 +47,13 @@ const startedAt = new Date().toISOString();
 rmSync(artifactRoot, { recursive: true, force: true });
 mkdirSync(payload, { recursive: true });
 
-run("cargo", ["build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"]);
-run("cargo", ["build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
-run("cargo", ["build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target]);
+run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"]);
+run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
+run("cargo", ["build", "--locked", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target]);
 
-const cargoTarget = output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "engine/Cargo.toml"]);
+const cargoTarget = output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "engine/Cargo.toml"]);
 const engineTarget = JSON.parse(cargoTarget).target_directory;
-const trayTarget = JSON.parse(output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-tray-windows/Cargo.toml"])).target_directory;
+const trayTarget = JSON.parse(output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-tray-windows/Cargo.toml"])).target_directory;
 const sidecars = [
   [join(engineTarget, target, "release", "cortex.exe"), "cortex.exe"],
   [join(engineTarget, target, "release", "membrane.exe"), "membrane.exe"],
@@ -72,7 +72,7 @@ const candidateEnv = { ...process.env, MEMBRANE_SIDECARS_READY: "1", TAURI_ENV_T
 run("pnpm", ["run", "build"], hub, candidateEnv);
 run("node", ["scripts/stage-runtime.mjs"], hub, candidateEnv);
 run("pnpm", ["exec", "tauri", "build", "--target", target, "--no-bundle", "--config", "src-tauri/tauri.windows.conf.json"], hub, candidateEnv);
-const hubTarget = JSON.parse(output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-hub/src-tauri/Cargo.toml"])).target_directory;
+const hubTarget = JSON.parse(output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-hub/src-tauri/Cargo.toml"])).target_directory;
 const hubExecutable = join(hubTarget, target, "release", "membrane-hub.exe");
 if (!existsSync(hubExecutable)) throw new Error(`candidate executable missing: ${hubExecutable}`);
 const signing = { status: "unsigned", reason: "public_candidate_requires_protected_finalization" };
