@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeEngineReleaseIdentity } from "./release-identity.mjs";
 import { PRESENTATION_ASSETS } from "./presentation-assets.mjs";
+import { sidecarBuildCommand } from "./sidecar-build-command.mjs";
 
 const output = new URL("../dist/", import.meta.url);
 mkdirSync(output, { recursive: true });
@@ -80,8 +81,8 @@ if (process.env.MEMBRANE_SIDECARS_READY === "1") {
 }
 
 function buildSidecars(architectureTarget) {
-  const rightkit = process.env.RIGHTKIT || (process.platform === "win32" ? "rightkit.cmd" : "rightkit");
-  const result = spawnSync(rightkit, ["cargo", "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
+  const command = sidecarBuildCommand();
+  const result = spawnSync(command.command, [...command.prefix, "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
     cwd: repo,
     encoding: "utf8",
     shell: process.platform === "win32",

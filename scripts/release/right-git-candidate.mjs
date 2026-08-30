@@ -56,7 +56,7 @@ function buildMacCandidate() {
   const payload = join(root, "payload");
   rmSync(root, { recursive: true, force: true });
   mkdirSync(payload, { recursive: true });
-  const env = { ...process.env, TAURI_ENV_TARGET_TRIPLE: target };
+  const env = { ...process.env, MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1", TAURI_ENV_TARGET_TRIPLE: target };
   run("pnpm", ["--dir", hub, "run", "build"], repo, env);
   run("node", ["scripts/stage-runtime.mjs"], hub, env);
   run("pnpm", ["--dir", hub, "exec", "tauri", "build", "--target", target, "--no-bundle"], repo, { ...env, MEMBRANE_SIDECARS_READY: "1" });

@@ -48,4 +48,5 @@ test("each release candidate materializes Hub dependencies from Hub lockfile", (
 
   assert.match(candidate, /platform === "windows"[\s\S]*pnpm\.cmd", \["--dir", hub, "install", "--frozen-lockfile"\]/);
   assert.match(candidate, /platform === "macos"[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+  assert.match(candidate, /MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1"/);
 });
