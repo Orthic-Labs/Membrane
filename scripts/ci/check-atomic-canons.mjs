@@ -458,8 +458,8 @@ export function validateAtomicCanons({ write = false } = {}) {
   validatePendingSupport(expectedPending);
   if (write) { writeFileSync(pendingPath, expectedPending, "utf8"); writeFileSync(atomReadmePath, expectedReadme, "utf8"); }
   else {
-    if (readFileSync(pendingPath, "utf8") !== expectedPending) throw new Error("docs/pending/README.md is stale; run checker with --write");
-    if (readFileSync(atomReadmePath, "utf8") !== expectedReadme) throw new Error("docs/canon/README.md is stale; run checker with --write");
+    if (readFileSync(pendingPath, "utf8").replace(/\r\n/g, "\n") !== expectedPending) throw new Error("docs/pending/README.md is stale; run checker with --write");
+    if (readFileSync(atomReadmePath, "utf8").replace(/\r\n/g, "\n") !== expectedReadme) throw new Error("docs/canon/README.md is stale; run checker with --write");
   }
   const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon }))), closedRows = committed.filter((row) => closed(row, row.canon.boundary));
   return { canons: parsed.length, capabilityRows: parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0), atoms: committed.length, exploratory: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0), closed: closedRows.length, open: committed.length - closedRows.length, groups: parsed.reduce((sum, canon) => sum + canon.groups.length, 0), implementations: parsed.reduce((sum, canon) => sum + canon.implementations.length, 0), qualifications: parsed.reduce((sum, canon) => sum + canon.qualifications.length, 0), decisions: parsed.reduce((sum, canon) => sum + canon.decisions.length, 0), preservationRows: inventory.rows.length, legacyAtoms: inventory.legacyAtoms.length, introducedSplits: inventory.splits.length, introducedCapabilities: inventory.introductions.length, specRows: inventory.specRows.length, unclassified: inventory.unclassified.length };

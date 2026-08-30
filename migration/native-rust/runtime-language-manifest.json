@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T19:56:07.462Z",
+ "generatedAt": "2026-08-30T20:02:08.867Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1211,
+  "files": 1213,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1723,7 +1723,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "64e2fd63a0fc2b9795da90a2c50aea0bdb53cf99f5b9c64a5a9cd2125827221f"
+   "content_digest": "debe9492e92045e8fb3c072c445c1704e89c25945e957a1c76afa8f13dd15630"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1759,6 +1759,8 @@
     "apps/membrane-hub/scripts/release-check-candidate-windows.mjs",
     "apps/membrane-hub/scripts/release-identity.mjs",
     "apps/membrane-hub/scripts/runtime-inventory.mjs",
+    "apps/membrane-hub/scripts/sidecar-build-command.mjs",
+    "apps/membrane-hub/scripts/sidecar-build-command.test.mjs",
     "apps/membrane-hub/scripts/sign-macos-runtime.mjs",
     "apps/membrane-hub/scripts/stage-runtime.mjs",
     "apps/membrane-hub/scripts/tray-icons.mjs",
@@ -1766,7 +1768,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "9a514154f7d76eb57e46ef6493fb869f33366922aab3d4d7cfaf76d87ca06e54"
+   "content_digest": "cc7f1da44b275ef8cb051b758258ba3f5eabb61db8a6738869eafac402cef9ee"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2159,7 +2161,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "de337ed671b8cacdf28e29853e0decf201ac24963f7a4b051beccd98539f7285"
+   "content_digest": "1430752be3af6ca3bf3f2fac210d08d6e1eadcabdecadf60f65f57d823ee2d83"
   },
   {
    "id": "tests-root-tests-root",
