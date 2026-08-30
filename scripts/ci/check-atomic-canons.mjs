@@ -9,7 +9,9 @@ const atomDir = path.join(root, "docs", "canon");
 const pendingPath = path.join(root, "docs", "pending", "README.md");
 const atomReadmePath = path.join(atomDir, "README.md");
 const preservationPath = path.join(root, "docs", "provenance", "migrations", "2026-08-30-atomic-canons", "preservation-map.md");
+const reconciliationPath = path.join(root, "docs", "provenance", "migrations", "2026-08-30-atomic-canons", "source-consumer-reconciliation.md");
 const frozenRevision = "d84322c3df182ff1d6ef7ca96fe94aea22273894";
+const legacyAtomRevision = "c6cfbca96e5be1d0f8de8cb9614d6158f57cc948";
 
 const canons = Object.freeze([
   { owner: "Membrane", file: "membrane.md", prefix: "MEM", boundary: "RELEASED" },
@@ -30,6 +32,8 @@ const headers = Object.freeze({
   preservation: ["Legacy key", "Legacy location", "Old ID", "New kind", "Target/parent", "Disposition", "Ambiguity"],
   split: ["Legacy capability", "Retained ID/behavior", "Introduced ID", "Introduced behavior", "Invariant"],
   introduction: ["Introduced ID", "Origin", "Observable behavior", "Authority/evidence"],
+  reconciliation: ["Capability", "State", "Exact source", "Exact consumer", "Residual"],
+  focusedVerification: ["Capability targets", "Focused command", "Direct test evidence", "Result", "Run identity/time"],
 });
 
 const enums = Object.freeze({
@@ -73,6 +77,18 @@ function proofEvidence(value) {
   const freshness = Date.parse(`${match[4]}T00:00:00Z`);
   if (!Number.isFinite(freshness) || freshness > Date.now()) return null;
   return { acceptance: match[1], revision: match[2], receipt: match[3], freshness: match[4] };
+}
+
+const liveLocatorLineCounts = new Map();
+function validateLiveLocators(value, label) {
+  const pattern = /((?:engine|blueprint|scripts|docs|migration|schemas|mcp|clients)\/[A-Za-z0-9_./@+-]+):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)/g;
+  for (const match of value.matchAll(pattern)) {
+    const relative = match[1], absolute = path.join(root, relative);
+    if (!existsSync(absolute)) throw new Error(`${label}: locator path does not exist: ${relative}`);
+    if (!liveLocatorLineCounts.has(relative)) liveLocatorLineCounts.set(relative, readFileSync(absolute, "utf8").replace(/\r\n/g, "\n").split("\n").length);
+    const maximum = Math.max(...match[2].split(",").map((range) => Number.parseInt(range.split("-").at(-1), 10)));
+    if (maximum > liveLocatorLineCounts.get(relative)) throw new Error(`${label}: locator line ${maximum} exceeds ${relative}`);
+  }
 }
 
 function parseCanon(config) {
@@ -128,6 +144,8 @@ function parseCanon(config) {
   for (const row of implementations) {
     if (!enums.Implementation.has(row.State)) throw new Error(`${config.file}:${row.ID}: invalid implementation state ${row.State}`);
     if (!row.Mechanism || !row["Source/donor"] || !row["Reuse mode"] || !row["Production consumer"]) throw new Error(`${config.file}:${row.ID}: incomplete implementation row`);
+    validateLiveLocators(row.Mechanism, `${config.file}:${row.ID}`);
+    validateLiveLocators(row["Production consumer"], `${config.file}:${row.ID}`);
   }
   for (const row of qualifications) {
     if (!enums.Qualification.has(row.State)) throw new Error(`${config.file}:${row.ID}: invalid qualification state ${row.State}`);
@@ -168,12 +186,15 @@ function validateIdentity(parsed) {
       everyId.add(row.ID);
     }
     const implementationTargets = new Map(), qualificationTargets = new Map();
-    for (const row of canon.implementations) for (const target of targets(row["Capability targets"])) implementationTargets.set(target, (implementationTargets.get(target) ?? 0) + 1);
+    for (const row of canon.implementations) {
+      if (row["Reuse mode"] === "RECLASSIFIED_IMPLEMENTATION") continue;
+      for (const target of targets(row["Capability targets"])) implementationTargets.set(target, (implementationTargets.get(target) ?? 0) + 1);
+    }
     for (const row of canon.qualifications) for (const target of targets(row["Capability targets"])) qualificationTargets.set(target, (qualificationTargets.get(target) ?? 0) + 1);
     for (const row of canon.capabilities) {
       if (implementationTargets.get(row.ID) !== 1) throw new Error(`${canon.file}:${row.ID}: expected exactly one implementation row`);
       if (qualificationTargets.get(row.ID) !== 1) throw new Error(`${canon.file}:${row.ID}: expected exactly one qualification row`);
-      const implementation = canon.implementations.find((candidate) => targets(candidate["Capability targets"]).includes(row.ID));
+      const implementation = canon.implementations.find((candidate) => candidate["Reuse mode"] !== "RECLASSIFIED_IMPLEMENTATION" && targets(candidate["Capability targets"]).includes(row.ID));
       const qualification = canon.qualifications.find((candidate) => targets(candidate["Capability targets"]).includes(row.ID));
       if (implementation.State !== row.Implementation) throw new Error(`${canon.file}:${row.ID}: capability/register implementation state differs`);
       if (qualification.State !== row.Qualification) throw new Error(`${canon.file}:${row.ID}: capability/register qualification state differs`);
@@ -187,6 +208,72 @@ function validateIdentity(parsed) {
     }
   }
   return { everyId, capabilityIds };
+}
+
+let focusedAssertionCorpus;
+function focusedProofLooksExact(command, evidence) {
+  if (!/^(?:`)?(?:rightkit cargo test|node --test)\b/.test(command) || /\b(?:TBD|TODO|placeholder|unknown)\b/i.test(evidence)) return false;
+  const candidates = [...evidence.matchAll(/`([^`]+)`/g)]
+    .map((match) => match[1].split("::").at(-1).trim())
+    .filter((candidate) => candidate.length >= 8 && !/^(?:TBD|TODO|placeholder|unknown)$/i.test(candidate));
+  if (!candidates.length) return false;
+  if (focusedAssertionCorpus === undefined) {
+    const testSources = execFileSync("rg", ["--files", "engine/crates", "blueprint/tests", "-g", "*.rs", "-g", "*.mjs"], { cwd: root, encoding: "utf8" })
+      .trim().split(/\r?\n/).filter(Boolean);
+    focusedAssertionCorpus = testSources.map((file) => readFileSync(path.join(root, file), "utf8")).join("\n");
+  }
+  return candidates.some((candidate) => focusedAssertionCorpus.includes(candidate));
+}
+function validateReceiptReferences(parsed) {
+  const receipts = new Map();
+  for (const canon of parsed) for (const row of canon.capabilities) {
+    const proof = proofEvidence(row.Evidence);
+    if (!proof) continue;
+    if (proof.acceptance !== row.ID) throw new Error(`${canon.file}:${row.ID}: acceptance ID mismatch`);
+    const separator = proof.receipt.lastIndexOf("@");
+    const relative = proof.receipt.slice(0, separator), expectedHash = proof.receipt.slice(separator + 1);
+    const absolute = path.join(root, relative);
+    if (!existsSync(absolute)) throw new Error(`${canon.file}:${row.ID}: missing evidence receipt ${relative}`);
+    try { execFileSync("git", ["ls-files", "--error-unmatch", "--", relative], { cwd: root, stdio: "ignore" }); }
+    catch { throw new Error(`${canon.file}:${row.ID}: evidence receipt is not tracked/staged ${relative}`); }
+    try { execFileSync("git", ["cat-file", "-e", `${proof.revision}^{commit}`], { cwd: root, stdio: "ignore" }); }
+    catch { throw new Error(`${canon.file}:${row.ID}: evidence revision is not a commit ${proof.revision}`); }
+    const actualHash = execFileSync("git", ["hash-object", absolute], { cwd: root, encoding: "utf8" }).trim();
+    if (actualHash !== expectedHash) throw new Error(`${canon.file}:${row.ID}: evidence receipt hash drift`);
+    if (!receipts.has(relative)) {
+      const markdown = readFileSync(absolute, "utf8");
+      const rows = markdown.replace(/\r\n/g, "\n").split("\n")
+        .filter((line) => /^\| [A-Z]{3}-\d{3} \| (?:DELIVERED|PARTIAL|MISSING) \|/.test(line))
+        .map((line) => Object.fromEntries(headers.reconciliation.map((name, index) => [name, cells(line)[index]])));
+      const byCapability = new Map();
+      for (const receiptRow of rows) {
+        validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);
+        validateLiveLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`);
+        if (byCapability.has(receiptRow.Capability)) throw new Error(`${relative}: duplicate receipt row ${receiptRow.Capability}`);
+        byCapability.set(receiptRow.Capability, receiptRow);
+      }
+      receipts.set(relative, byCapability);
+    }
+    const receiptRow = receipts.get(relative).get(row.ID);
+    if (!receiptRow) throw new Error(`${canon.file}:${row.ID}: evidence receipt lacks acceptance row`);
+    if (receiptRow.State !== row.Implementation) throw new Error(`${canon.file}:${row.ID}: receipt implementation state differs`);
+    if (row.Implementation === "DELIVERED" && receiptRow.Residual !== "COMPLETE") throw new Error(`${canon.file}:${row.ID}: delivered receipt residual must be COMPLETE`);
+  }
+  const focused = records(readFileSync(reconciliationPath, "utf8"), "## Focused verification", headers.focusedVerification);
+  const focusedById = new Map();
+  const capabilityById = new Map(parsed.flatMap((canon) => canon.capabilities).map((row) => [row.ID, row]));
+  for (const row of focused) {
+    const ids = targets(row["Capability targets"]);
+    if (ids.length !== 1) throw new Error("focused verification receipt must have exactly one capability per row");
+    const id = ids[0];
+    if (capabilityById.get(id)?.Verification !== "FOCUSED_PASS") throw new Error(`focused verification receipt has no matching FOCUSED_PASS state for ${id}`);
+    if (focusedById.has(id)) throw new Error(`focused verification receipt duplicates ${id}`);
+    const proofText = `${row["Focused command"]} ${row["Direct test evidence"]} ${row["Run identity/time"]}`;
+    if (!row["Focused command"] || !row["Direct test evidence"] || !row["Run identity/time"] || !/FOCUSED_PASS/.test(row.Result) || !/0 fail/i.test(`${row.Result} ${row["Run identity/time"]}`)) throw new Error(`focused verification receipt lacks exact successful proof for ${id}`);
+    if (/exact [A-Z]{3}-\d{3} (?:focused|behavior) assertion|focused suites|recorded focused run|exact focused receipts/i.test(proofText) || !focusedProofLooksExact(row["Focused command"], row["Direct test evidence"])) throw new Error(`focused verification receipt uses placeholder or nonexistent proof for ${id}`);
+    focusedById.set(id, row);
+  }
+  for (const canon of parsed) for (const row of canon.capabilities) if (row.Verification === "FOCUSED_PASS" && !focusedById.has(row.ID)) throw new Error(`${canon.file}:${row.ID}: FOCUSED_PASS lacks focused verification receipt`);
 }
 function behavior(byId, id) {
   const row = byId.get(id);
@@ -216,9 +303,9 @@ function validateSemanticOwnership(parsed) {
   if (byId.get("PUL-001")?.Implementation !== "PARTIAL") throw new Error("PUL-001 must remain PARTIAL until deterministic requirement detail lands");
   if (byId.get("PUL-015")?.Implementation !== "PARTIAL") throw new Error("PUL-015 must remain PARTIAL while only shadow activation exists");
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
-  if (byId.get("BPT-045")?.Implementation !== "PARTIAL") throw new Error("BPT-045 must remain PARTIAL until explain/evidence-pack behavior lands");
+  if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
   const exploratory = capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID).sort();
-  const expectedExploratory = ["ADP-039", "BPT-048", "CTX-033", "LDG-023", "PUL-034"];
+  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "LDG-023", "PUL-034"];
   if (JSON.stringify(exploratory) !== JSON.stringify(expectedExploratory)) throw new Error(`exploratory disposition differs: ${exploratory.join(", ")}`);
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
     if (similarity(capabilities[left]["Observable behavior"], capabilities[right]["Observable behavior"]) >= 0.9) throw new Error(`semantic duplicate candidates: ${capabilities[left].ID} & ${capabilities[right].ID}`);
@@ -240,26 +327,61 @@ function validatePreservation(everyId, capabilityIds) {
     if (keys.has(row["Legacy key"])) throw new Error(`preservation map: duplicate key ${row["Legacy key"]}`);
     if (oldIds.has(row["Old ID"])) throw new Error(`preservation map: duplicate old ID ${row["Old ID"]}`);
     keys.add(row["Legacy key"]); oldIds.add(row["Old ID"]);
-    if (!["CAPABILITY", "REFERENCE", "BACKLOG", "EXCLUSION"].includes(row["New kind"])) throw new Error(`preservation map:${row["Legacy key"]}: invalid kind ${row["New kind"]}`);
+    if (!["CAPABILITY", "IMPLEMENTATION", "REFERENCE", "BACKLOG", "EXCLUSION"].includes(row["New kind"])) throw new Error(`preservation map:${row["Legacy key"]}: invalid kind ${row["New kind"]}`);
     for (const target of targets(row["Target/parent"])) if (!everyId.has(target)) throw new Error(`preservation map:${row["Legacy key"]}: unresolved target ${target}`);
   }
-  const mapped = new Set(legacyAtoms.map((row) => row["Target/parent"]));
-  for (const row of legacyAtoms) if (row["New kind"] !== "CAPABILITY" || row["Old ID"] !== row["Target/parent"]) throw new Error(`preservation map reclassifies ${row["Old ID"]} without explicit mapping`);
+  const mapped = new Set(legacyAtoms.flatMap((row) => targets(row["Target/parent"])));
+  for (const row of legacyAtoms) {
+    const locator = /^(.+):(\d+)@([0-9a-f]{40})$/.exec(row["Legacy location"]);
+    if (!locator || locator[3] !== legacyAtomRevision) throw new Error(`preservation map:${row["Legacy key"]}: invalid legacy source locator`);
+    const source = execFileSync("git", ["show", `${legacyAtomRevision}:${locator[1]}`], { cwd: root, encoding: "utf8" }).split(/\r?\n/);
+    if (!source[Number(locator[2]) - 1]?.startsWith(`| ${row["Old ID"]} |`)) throw new Error(`preservation map:${row["Legacy key"]}: source locator does not identify ${row["Old ID"]}`);
+    if (row["Old ID"] === "BPT-022" && row["New kind"] === "IMPLEMENTATION" && row["Target/parent"] === "BPT-030, BPT-031, BPT-032") continue;
+    if (["ADP-037", "ADP-039", "BPT-045"].includes(row["Old ID"]) && row["New kind"] === "REFERENCE") continue;
+    if (row["New kind"] !== "CAPABILITY" || row["Old ID"] !== row["Target/parent"]) throw new Error(`preservation map reclassifies ${row["Old ID"]} without explicit mapping`);
+  }
   const frozenAtomIds = new Set();
   for (const [prefix, count] of [["MEM", 54], ["PUL", 34], ["PSH", 17], ["CTX", 34], ["BPT", 48], ["LDG", 23], ["ADP", 39]]) {
     for (let index = 1; index <= count; index += 1) frozenAtomIds.add(`${prefix}-${String(index).padStart(3, "0")}`);
   }
   if (frozenAtomIds.size !== 249) throw new Error(`frozen atom inventory changed: expected 249, found ${frozenAtomIds.size}`);
-  for (const id of frozenAtomIds) if (!mapped.has(id) || !legacyAtoms.some((row) => row["Old ID"] === id)) throw new Error(`preservation map omits frozen atom ${id}`);
-  if (splits.length !== 12) throw new Error(`atomic split register: expected 12 introduced atoms, found ${splits.length}`);
+  const legacySourceCache = new Map();
+  for (const row of legacyAtoms) {
+    const match = /^(.*):(\d+)@([0-9a-f]{40})$/.exec(row["Legacy location"]);
+    if (!match) throw new Error(`preservation map:${row["Legacy key"]}: malformed legacy atom locator`);
+    const [, sourcePath, sourceLineText, revision] = match;
+    if (revision !== legacyAtomRevision) throw new Error(`preservation map:${row["Legacy key"]}: wrong legacy atom revision ${revision}`);
+    const sourceKey = `${revision}:${sourcePath}`;
+    if (!legacySourceCache.has(sourceKey)) {
+      try { legacySourceCache.set(sourceKey, execFileSync("git", ["show", sourceKey], { cwd: root, encoding: "utf8" }).replace(/\r\n/g, "\n")); }
+      catch { throw new Error(`preservation map:${row["Legacy key"]}: unreachable legacy atom source ${sourceKey}`); }
+    }
+    const sourceLine = Number.parseInt(sourceLineText, 10);
+    const lineCount = legacySourceCache.get(sourceKey).split("\n").length;
+    if (sourceLine < 1 || sourceLine > lineCount) throw new Error(`preservation map:${row["Legacy key"]}: legacy atom line ${sourceLine} exceeds ${lineCount}`);
+  }
+  for (const id of frozenAtomIds) {
+    const reclassified = legacyAtoms.some((row) => row["Old ID"] === id && (
+      (id === "BPT-022" && row["New kind"] === "IMPLEMENTATION")
+      || (["ADP-037", "ADP-039", "BPT-045"].includes(id) && row["New kind"] === "REFERENCE")
+    ));
+    if ((!mapped.has(id) && !reclassified) || !legacyAtoms.some((row) => row["Old ID"] === id)) throw new Error(`preservation map omits frozen atom ${id}`);
+  }
+  const expectedSplitIds = new Set([
+    "MEM-055", "MEM-056", "MEM-057", "MEM-058", "MEM-059", "MEM-060", "MEM-061", "MEM-062", "MEM-063", "MEM-064", "MEM-065", "MEM-066",
+    "PUL-035", "PUL-036", "CTX-035", "CTX-036", "CTX-037", "BPT-049", "BPT-050", "BPT-051", "BPT-052", "BPT-053", "BPT-054", "BPT-055", "BPT-056", "BPT-057", "BPT-060", "LDG-024", "LDG-025", "ADP-040",
+  ]);
+  if (splits.length !== expectedSplitIds.size) throw new Error(`atomic split register: expected ${expectedSplitIds.size} introduced atoms, found ${splits.length}`);
   const introduced = new Set();
   for (const row of splits) {
     if (!frozenAtomIds.has(row["Legacy capability"])) throw new Error(`atomic split register: unknown legacy capability ${row["Legacy capability"]}`);
     if (!row["Retained ID/behavior"].startsWith(row["Legacy capability"])) throw new Error(`atomic split register:${row["Introduced ID"]}: retained behavior loses old ID`);
     if (!capabilityIds.has(row["Introduced ID"]) || frozenAtomIds.has(row["Introduced ID"])) throw new Error(`atomic split register: invalid introduced atom ${row["Introduced ID"]}`);
     if (introduced.has(row["Introduced ID"])) throw new Error(`atomic split register: duplicate introduced atom ${row["Introduced ID"]}`);
+    if (!expectedSplitIds.has(row["Introduced ID"])) throw new Error(`atomic split register: unexpected introduced atom ${row["Introduced ID"]}`);
     introduced.add(row["Introduced ID"]);
   }
+  for (const id of expectedSplitIds) if (!introduced.has(id)) throw new Error(`atomic split register: missing introduced atom ${id}`);
   for (const row of introductions) {
     const id = row["Introduced ID"];
     if (!capabilityIds.has(id) || frozenAtomIds.has(id) || introduced.has(id)) throw new Error(`new capability register: invalid introduced atom ${id}`);
@@ -294,7 +416,7 @@ function pendingMarkdown(parsed, inventory) {
     for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
     lines.push("");
   }
-  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-037`, `ADP-038`, `ADP-039`, `ADP-040` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-045`, `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052` |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
+  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
   return lines.join("\n");
 }
 function atomReadmeMarkdown(parsed, inventory) {
@@ -324,12 +446,13 @@ function validatePendingSupport(markdown) {
   if (JSON.stringify(observed) !== JSON.stringify([...required].sort())) throw new Error(`pending supporting-document inventory differs: ${observed.join(", ")}`);
 }
 
-export const atomicCanonTestHooks = Object.freeze({ proofEvidence, closed, similarity, parseCanon });
+export const atomicCanonTestHooks = Object.freeze({ proofEvidence, focusedProofLooksExact, closed, similarity, parseCanon });
 export function validateAtomicCanons({ write = false } = {}) {
   const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && file !== "README.md").sort();
   const expectedCanonFiles = canons.map((canon) => canon.file).sort();
   if (JSON.stringify(canonFiles) !== JSON.stringify(expectedCanonFiles)) throw new Error(`atomic canon inventory differs: ${canonFiles.join(", ")}`);
   const parsed = canons.map(parseCanon), { everyId, capabilityIds } = validateIdentity(parsed);
+  validateReceiptReferences(parsed);
   validateSemanticOwnership(parsed);
   const inventory = validatePreservation(everyId, capabilityIds), expectedPending = pendingMarkdown(parsed, inventory), expectedReadme = atomReadmeMarkdown(parsed, inventory);
   validatePendingSupport(expectedPending);

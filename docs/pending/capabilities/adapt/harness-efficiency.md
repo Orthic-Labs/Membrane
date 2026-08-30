@@ -1,6 +1,6 @@
 # Adapt Insights — harness-efficiency gap closure
 
-**Status:** pending target-state extension; no landed-state claim
+**Status:** pending target-state extension. `ADP-032` is delivered; `ADP-036` is delivered with verification pending; `ADP-038`, `ADP-040` & committed `ADP-043`–`ADP-064` remain missing; exploratory `ADP-065`–`ADP-071` remain uncommitted.
 
 **Owners:** Each execution host/job owner owns mechanical facts & operational traces (CodeRight for
 harness execution; the tray/daemon job owner for internal background work). Adapt Insights owns
@@ -17,7 +17,7 @@ detector & publish coverage. Unobserved facts stay typed `unavailable`; unknown 
 enter emergent discovery. Absence of a finding means only that no qualified detector fired under
 recorded coverage.
 
-This document extends Adapt atoms `ADP-036`–`ADP-038` & CodeRight target
+This document covers `ADP-036`, `ADP-038`, `ADP-040`, committed `ADP-043`–`ADP-064`, exploratory `ADP-065`–`ADP-071` & CodeRight target
 contracts `CODERIGHT-EVIDENCE-PRODUCTION-FOR-MEMBRANE.md` and
 `CODERIGHT-MEMBRANE-CONTEXT-INTEGRATION.md`. It adds no second trace store, semantic store,
 evaluator platform or authority.
@@ -49,7 +49,7 @@ They do not yet close:
 
 Current native `TranscriptEventV1` cannot close these gaps. It carries text, provenance, spans,
 timestamp & call identity, but no execution graph or provider-usage facts. Native persistent-context
-cost analysis remains separate from native Insights. H4 transport into Adapt remains pending.
+cost analysis remains separate from native Insights. H4/H6 ingress exists; assignment-graph coverage remains partial.
 
 ## 3. Incident evidence — Membrane dispatch wave A, 2026-08-29
 
@@ -207,8 +207,7 @@ It must not equate lines changed, tool calls, elapsed time or silence with value
 
 ### 7.1 Semantic-compilation worker profile
 
-The pending source-bound semantic-compilation review pack adds one internal background-work
-profile. Its execution owner must emit batch/source/compiler identity, per-call usage, resource
+An internal background-work profile would need to emit batch/source/compiler identity, per-call usage, resource
 contention, candidate counts & every Cortex admission terminal state. Adapt then qualifies:
 
 - `duplicate_semantic_batch_execution`;
@@ -219,8 +218,6 @@ contention, candidate counts & every Cortex admission terminal state. Adapt then
 - `semantic_worker_over_budget`;
 - `semantic_compilation_low_yield`.
 
-Exact contract, hard negatives & ownership constraints live in
-`semantic-blueprint-review-pack-v2/04-ADAPT-DOCUMENT-COMPILATION-BOUNDARY-AMENDMENT.md`.
 This does not route generic document extraction through Adapt. Expected abstention, negative-node
 batches, high cache reuse & high rejection rates remain hard negatives unless joined to a budget,
 duplication, terminal-state, interference or qualified-baseline failure.
@@ -326,9 +323,9 @@ recurrence-after-mitigation evidence.
 
 Capability remains pending until all are true:
 
-1. CodeRight persists dispatch graph, assignment contracts, per-call usage, tool effects, progress &
+1. CodeRight completes dispatch graph, assignment contracts, per-call usage, tool effects, progress &
    outcomes in its operational trace store.
-2. CodeRight emits joinable H4 observations with per-field coverage & provenance.
+2. CodeRight completes assignment-graph coverage over existing H4/H6 ingress, with per-field coverage & provenance.
 3. Internal background-job owners emit equivalent typed observations, budgets, terminal outcomes &
    coverage without routing generic traces through Adapt.
 4. Membrane validates & transports H4 without semantic pre-labelling.

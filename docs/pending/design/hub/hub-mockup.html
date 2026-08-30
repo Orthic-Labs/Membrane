@@ -6,10 +6,10 @@
 <title>Membrane Hub redesign mockup</title>
 <style>
 /* ============================================================
-   MEMBRANE HUB static redesign mockup
+   MEMBRANE HUB illustrative static redesign mockup
    HeardRight frameless shell ported; Membrane identity applied.
-   HARD RULES honoured in this file:
-     - zero gradients (no linear-/radial-/conic-gradient anywhere)
+   PROPOSED approval directions shown in this file:
+     - no gradients (no linear-/radial-/conic-gradient anywhere)
      - zero side-stripe borders, zero glow shadows, zero glassmorphism
      - no per-panel uppercase eyebrows
      - no `transition: all`
@@ -303,6 +303,7 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
 </style>
 </head>
 <body>
+<!-- Illustrative design fixtures only: labels, values & every control are non-operative. -->
 <div class="board" style="--mark-src:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path d=%22M12 1.6 21.2 6.9v10.2L12 22.4 2.8 17.1V6.9z%22 fill=%22black%22/><path d=%22M12 6.4 17 9.3v5.4L12 17.6 7 14.7V9.3z%22 fill=%22white%22/></svg>')">
 
 <header>
@@ -426,14 +427,13 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
 </section>
 
 <!-- ══════════════════════════════════════════════════════════
-     PLATE: degraded (the machine's real state today)
+     PLATE: illustrative degraded fixture
      ══════════════════════════════════════════════════════════ -->
 <section class="plate">
-  <h2>Dashboard, degraded (macOS chrome)</h2>
-  <p>This is the state the installed build actually reports right now: the resident service is up,
-     Blueprint has no graph for the enrolled root, and no adapter has ever delivered. The old
-     design said "Degraded" and stopped. Every failure here names the subsystem, prints the typed
-     reason, and offers the one action that clears it.</p>
+  <h2>Dashboard, degraded (illustrative macOS fixture)</h2>
+  <p>Illustrative fixture: resident service is up, Blueprint has no graph for an enrolled root, &
+     no adapter has delivered. Labels, values & actions show desired states; static controls are
+     not operative.</p>
 
   <div class="frame">
   <div class="shell" data-os="mac" style="position:relative">
@@ -527,7 +527,7 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
           <div class="setting">
             <div>
               <b>Launch at login</b>
-              <small>HKCU\…\Run\MembraneHub</small>
+              <small>tray-owned launch-at-login registration</small>
             </div>
             <label class="switch"><input type="checkbox" checked aria-label="Launch Membrane Hub at login"><span></span></label>
           </div>
@@ -543,9 +543,9 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
      PLATE: remaining states
      ══════════════════════════════════════════════════════════ -->
 <section class="plate">
-  <h2>Remaining states</h2>
-  <p>Loading, Hub-inactive, and the disabled control. State completeness is a gate, not a
-     nice-to-have. The shipped build has one happy path and one bare "Offline" card.</p>
+  <h2>Remaining illustrative fixtures</h2>
+  <p>Loading, Hub-inactive & disabled-control fixtures. Labels, values & controls are illustrative,
+     not operative.</p>
 
   <div class="pair">
     <div>
@@ -591,11 +591,9 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
      PLATE: popover, both anchors
      ══════════════════════════════════════════════════════════ -->
 <section class="plate">
-  <h2>Tray popover, anchored per platform</h2>
-  <p>Same ledger grammar at 340px. The arrow and the anchor flip with the platform: the macOS
-     menu bar is at the top of the screen, the Windows notification area is at the bottom. The
-     shipped build anchors <em>below the icon on both</em>, which is why the popover lands
-     off-screen on Windows. See the architecture note.</p>
+  <h2>Tray popover, illustrative platform anchors</h2>
+  <p>Same illustrative ledger grammar at 340px. Anchor orientation differs by platform; this
+     fixture makes no claim about current popover placement.</p>
 
   <div class="pair">
     <div>
@@ -660,10 +658,9 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
      PLATE: tray + first run
      ══════════════════════════════════════════════════════════ -->
 <section class="plate">
-  <h2>Tray icon states, and the Windows overflow problem</h2>
-  <p>One glyph, four tints, plus a shape cue in the tooltip text so the state survives a
-     monochrome or high-contrast tray. Windows 11 files new notification-area icons behind the
-     chevron by default, so the first run has to say where the icon went.</p>
+  <h2>Illustrative tray icon states</h2>
+  <p>One glyph, four tints & a shape cue in tooltip text. These are illustrative state fixtures,
+     not operative tray behavior.</p>
 
   <div class="tray-row" style="margin-bottom:22px">
     <div class="tray-chip"><span class="glyph" style="background:var(--admit)"></span>
@@ -673,7 +670,7 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
     <div class="tray-chip"><span class="glyph" style="background:var(--refuse)"></span>
       <code>membrane-unavailable<br>Membrane · unavailable</code></div>
     <div class="tray-chip"><span class="glyph" style="background:var(--silent)"></span>
-      <code>membrane-offline<br>Membrane · not running ·<br>no cached snapshot</code></div>
+      <code>membrane-inactive<br>Membrane · inactive</code></div>
   </div>
 
   <div class="pair">
@@ -684,7 +681,7 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
         <span class="slot live"></span>
         <time>11:15</time>
       </div>
-      <p class="cap">pinned · the target state after first run</p>
+      <p class="cap">illustrative visible-state fixture</p>
     </div>
     <div>
       <div class="taskbar">
@@ -692,7 +689,7 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
         <span class="slot"></span><span class="slot"></span>
         <time>11:15</time>
       </div>
-      <p class="cap">default · Membrane sits inside the overflow flyout, invisible</p>
+      <p class="cap">illustrative overflow-state fixture</p>
     </div>
   </div>
 
@@ -703,21 +700,21 @@ button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
         <span class="wordmark" style="font-size:19px">Mem<em>brane</em></span>
       </div>
       <h3 style="font:400 24px/1.15 var(--font-display);margin-bottom:8px">Membrane is running in the notification area</h3>
-      <p style="margin:0;color:var(--dim);font-size:13px">Windows put the icon behind the
+      <p style="margin:0;color:var(--dim);font-size:13px">Illustrative first-run copy: Windows may put an icon behind the
          <span style="font-family:var(--font-mono)">^</span> chevron. Drag it onto the taskbar to
          keep status and the Quit action one click away.</p>
-      <p style="margin:8px 0 0;color:var(--dim);font-size:13px">This window opens once. After that
-         the Hub stays out of the way. Open it again from the tray icon or the Start menu.</p>
+      <p style="margin:8px 0 0;color:var(--dim);font-size:13px">Illustrative behavior only: open Hub
+         from its tray surface or application entry point.</p>
       <div class="actions">
         <button class="btn primary">Show me where</button>
         <button class="btn">Got it</button>
       </div>
       <div class="setting" style="margin-top:16px">
-        <div><b>Launch at login</b><small>writes HKCU\…\Run\MembraneHub</small></div>
+        <div><b>Launch at login</b><small>starts tray-owned Hub runtime</small></div>
         <label class="switch"><input type="checkbox" checked aria-label="Launch at login"><span></span></label>
       </div>
     </div>
-    <p class="cap">first run only · persisted behind a first-run marker</p>
+    <p class="cap">illustrative first-run fixture · static controls are not operative</p>
   </div>
 </section>
 

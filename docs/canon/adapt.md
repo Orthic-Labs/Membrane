@@ -1,6 +1,6 @@
 # Adapt atomic capability canon
 
-Normalized from pre-standardization worktree canon inventory based on `d84322c3df182ff1d6ef7ca96fe94aea22273894`. Required delivery boundary: `RELEASED`.
+Normalized from pre-standardization worktree canon inventory based on `c6cfbca96e5be1d0f8de8cb9614d6158f57cc948`. Required delivery boundary: `RELEASED`.
 
 Only committed capability rows count. Implementation, verification, qualification, delivery & evidence remain independent; closure is derived.
 
@@ -8,149 +8,242 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| ADP-G01 | — | Adapt | COMMITTED | 39 committed capabilities; 1 exploratory capability; closure derived from child rows |
+| ADP-G01 | — | Adapt | COMMITTED | 62 committed capabilities; 7 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
 | ID | Parent | Owner | Scope | Observable behavior | Implementation | Verification | Qualification | Delivery | Action | Evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
-| ADP-001 | ADP-G01 | Adapt | COMMITTED | Normalize selected host transcripts/events into stable ordered role/origin/span/digest/provenance observations with typed omissions & no private reasoning. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-001 | ADP-G01 | Adapt | COMMITTED | Normalize selected host transcripts/events into stable ordered role/origin/span/digest/provenance observations with typed omissions & no private reasoning. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-001; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-002 | ADP-G01 | Adapt | COMMITTED | Adapt supported external transcript formats while CodeRight may project native structured events directly. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-003 | ADP-G01 | Adapt | COMMITTED | Bind each Taste candidate to exact transcript/session/event/span/parser/source digest, act, & scope. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-004 | ADP-G01 | Adapt | COMMITTED | Require exact local user review or verified signed adjudication before Taste acceptance. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-005 | ADP-G01 | Adapt | COMMITTED | Classify evidence as user-authoritative, behavioral, diagnostic, or context-only before proposal; never launder lower authority. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-006 | ADP-G01 | Adapt | COMMITTED | Let models propose wording/grouping/clusters/remediation only; deterministic code binds authority, scope, lifecycle, effect, & receipts. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-007 | ADP-G01 | Adapt | COMMITTED | Generate Taste candidates only from qualifying user evidence; model/repository/Insight evidence cannot manufacture preference authority. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-008 | ADP-G01 | Adapt | COMMITTED | Keep standing/scoped/operational/behavioral-decision classes & closed categories distinct; reject episodic/unclassified active Taste. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-009 | ADP-G01 | Adapt | COMMITTED | Fail closed on malformed/unknown narrowing across user/org/repo/path/package/language/framework/task/artifact/model/client/platform/risk/build scope. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-010 | ADP-G01 | Adapt | COMMITTED | Resolve preference precedence deterministically; lower authority cannot repeal higher & same-tier conflict is surfaced. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-003 | ADP-G01 | Adapt | COMMITTED | Bind each Taste candidate to exact transcript/session/event/span/parser/source digest, act, & scope. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-003; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-004 | ADP-G01 | Adapt | COMMITTED | Require exact local user review or verified signed adjudication before Taste acceptance. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-004; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-005 | ADP-G01 | Adapt | COMMITTED | Classify evidence as user-authoritative, behavioral, diagnostic, or context-only before proposal; never launder lower authority. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-005; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-006 | ADP-G01 | Adapt | COMMITTED | Let models propose wording/grouping/clusters/remediation only; deterministic code binds authority, scope, lifecycle, effect, & receipts. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-006; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-007 | ADP-G01 | Adapt | COMMITTED | Generate Taste candidates only from qualifying user evidence; model/repository/Insight evidence cannot manufacture preference authority. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-007; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-008 | ADP-G01 | Adapt | COMMITTED | Keep standing/scoped/operational/behavioral-decision classes & closed categories distinct; reject episodic/unclassified active Taste. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-008; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-009 | ADP-G01 | Adapt | COMMITTED | Fail closed on malformed/unknown narrowing across user/org/repo/path/package/language/framework/task/artifact/model/client/platform/risk/build scope. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-009; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-010 | ADP-G01 | Adapt | COMMITTED | Resolve preference precedence deterministically; lower authority cannot repeal higher & same-tier conflict is surfaced. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-010; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-011 | ADP-G01 | Adapt | COMMITTED | Preserve rejected alternative/counterfactual with correction-derived Taste when safe. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
 | ADP-012 | ADP-G01 | Adapt | COMMITTED | Transition Taste through candidate/active/disputed/deprecated/superseded/retired only by receipted semantic lifecycle. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-013 | ADP-G01 | Adapt | COMMITTED | Compile only tiny active root-scoped standing preferences into bounded always-on core. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-014 | ADP-G01 | Adapt | COMMITTED | Select remaining preferences by structured applicability before semantic search, excluding inactive/conflicting/nonmatching items. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-013 | ADP-G01 | Adapt | COMMITTED | Compile only tiny active root-scoped standing preferences into bounded always-on core. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-013; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-014 | ADP-G01 | Adapt | COMMITTED | Select remaining preferences by structured applicability before semantic search, excluding inactive/conflicting/nonmatching items. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-014; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-015 | ADP-G01 | Adapt | COMMITTED | Emit preference applicability/delivery receipts & accept bounded outcome feedback tied to exact execution identity. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
 | ADP-016 | ADP-G01 | Adapt | COMMITTED | Let user inspect evidence/authority, edit/narrow/deactivate/supersede/delete/export/import preferences through governed review. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-017 | ADP-G01 | Adapt | COMMITTED | Detect known failure families deterministically from exact evidence with family-specific hard negatives & versioned detector contract. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-018 | ADP-G01 | Adapt | COMMITTED | Emit one evidence-bound FailureEpisode with detector, spans, applicability, severity, outcome, & honesty limit. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-019 | ADP-G01 | Adapt | COMMITTED | Form durable issue only from deterministic recurrence; preserve one-offs/applicability & enforce issue lifecycle. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-017 | ADP-G01 | Adapt | COMMITTED | Detect known failure families deterministically from exact evidence with family-specific hard negatives & versioned detector contract. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-017; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-018 | ADP-G01 | Adapt | COMMITTED | Emit one evidence-bound FailureEpisode with detector, spans, applicability, severity, outcome, & honesty limit. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-018; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-019 | ADP-G01 | Adapt | COMMITTED | Form durable issue only from deterministic recurrence; preserve one-offs/applicability & enforce issue lifecycle. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-019; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-020 | ADP-G01 | Adapt | COMMITTED | Discover recurring emergent patterns as inspectable candidate clusters requiring review, positives/hard negatives, holdout, version, & rollback. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-021 | ADP-G01 | Adapt | COMMITTED | State only supported behavioral facts & honesty limits; never claim root cause from recurrence alone. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-022 | ADP-G01 | Adapt | COMMITTED | Keep remediation/guard/evaluator/routing/review/workflow proposal separate from issue & Taste authority. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-023 | ADP-G01 | Adapt | COMMITTED | Require sealed intervention attribution proving current-surface preventability, alternatives, ownership, support, & eligibility. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-024 | ADP-G01 | Adapt | COMMITTED | Classify evaluator applicability as applicable/not-applicable/insufficient-evidence & exclude insufficient from outcome denominator. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-021 | ADP-G01 | Adapt | COMMITTED | State only supported behavioral facts & honesty limits; never claim root cause from recurrence alone. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-021; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-022 | ADP-G01 | Adapt | COMMITTED | Keep remediation/guard/evaluator/routing/review/workflow proposal separate from issue & Taste authority. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-022; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-023 | ADP-G01 | Adapt | COMMITTED | Require sealed intervention attribution proving current-surface preventability, alternatives, ownership, support, & eligibility. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-023; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-024 | ADP-G01 | Adapt | COMMITTED | Classify evaluator applicability as applicable/not-applicable/insufficient-evidence & exclude insufficient from outcome denominator. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-024; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-025 | ADP-G01 | Adapt | COMMITTED | Track mitigation baseline/version/exposure/recurrence/regression/dismissal; optimize recurrence reduction, not finding count. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-026 | ADP-G01 | Adapt | COMMITTED | Seal every meaning/applicability field in immutable canonical payload; mutate lifecycle only through receipts. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-027 | ADP-G01 | Adapt | COMMITTED | Derive stable semantic IDs from meaning+scope; batch apply atomically/idempotently with source/installation-aware receipt. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-028 | ADP-G01 | Adapt | COMMITTED | Reject exact duplicates/cross-semantic grouping, require reviewed measurable grouping or abstain, & preserve conflicts. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-029 | ADP-G01 | Adapt | COMMITTED | Route every accepted Taste/Insight through one typed Cortex admission boundary; dry-run validates without write. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-026 | ADP-G01 | Adapt | COMMITTED | Seal every meaning/applicability field in immutable canonical payload; mutate lifecycle only through receipts. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-026; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-027 | ADP-G01 | Adapt | COMMITTED | Derive stable semantic IDs from meaning+scope; batch apply atomically/idempotently with source/installation-aware receipt. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-027; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-028 | ADP-G01 | Adapt | COMMITTED | Reject exact duplicates/cross-semantic grouping, require reviewed measurable grouping or abstain, & preserve conflicts. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-028; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-029 | ADP-G01 | Adapt | COMMITTED | Route every accepted Taste/Insight through one typed Cortex admission boundary; dry-run validates without write. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-029; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-030 | ADP-G01 | Adapt | COMMITTED | Consume typed CodeRight execution observations for route/model/tool/write/verification/approval/retry/scope/subagent/artifact/completion/retrieval/Push facts. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
 | ADP-031 | ADP-G01 | Adapt | COMMITTED | Consume versioned evaluator/dataset/case/experiment/trace outcomes while CodeRight retains eval execution/storage. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-032 | ADP-G01 | Adapt | COMMITTED | Attribute always-on context cost from visible sources/digests + provider totals, preserving unattributed remainder & inferred labels. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
+| ADP-032 | ADP-G01 | Adapt | COMMITTED | Attribute always-on context cost from visible sources/digests + provider totals, preserving unattributed remainder & inferred labels. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-032; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-033 | ADP-G01 | Adapt | COMMITTED | Convert reviewed confirmed failure into minimal privacy-safe regression-case proposal; external owner adopts/runs it. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
 | ADP-034 | ADP-G01 | Adapt | COMMITTED | Present separate Taste & Insights queues with evidence, scope, recurrence, versions, mitigation, actions, & receipts. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
 | ADP-035 | ADP-G01 | Adapt | COMMITTED | Execute learner semantics inside an admitted background job & write only bounded proposals through proposal sink. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
-| ADP-036 | ADP-G01 | Adapt | COMMITTED | Measure procedural asset effectiveness only from exact joinable activation/evaluation/outcome + target/effect identities; otherwise unavailable. | UNKNOWN | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
-| ADP-037 | ADP-G01 | Adapt | COMMITTED | Detect dispatch/harness efficiency failures: duplicate assignment, role leakage, scope/budget/fanout/context/cache/tool/retry/verification/replan/routing/integration/background waste. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING |
+| ADP-036 | ADP-G01 | Adapt | COMMITTED | Measure procedural asset effectiveness only from exact joinable activation/evaluation/outcome + target/effect identities; otherwise unavailable. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: ADP-036; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | ADP-038 | ADP-G01 | Adapt | COMMITTED | Emit per-assignment detector coverage receipt with observation digest, version, ran/skipped/unavailable/failed state, missing fields & honesty limit. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
-| ADP-039 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic-compiler duplication/recompilation/rejection churn/orphans/interference/budget breach/low yield with abstention/cache/rejection hard negatives. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 | ADP-040 | ADP-G01 | Adapt | COMMITTED | Join detector coverage receipt to exact execution episode, evaluator identity & outcome receipt. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-042 | ADP-G01 | Adapt | COMMITTED | Project read-only lineage graph & typed absent-host gaps. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: ADP-042; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-041 | ADP-G01 | Adapt | COMMITTED | Converge persisted multiwriter preference writes order-independently while retaining conflicts for review. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: ADP-041; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| ADP-043 | ADP-G01 | Adapt | COMMITTED | Detect duplicate assignment execution from exact assignment & worker identities. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-044 | ADP-G01 | Adapt | COMMITTED | Detect orchestrator role leakage into lane-owned execution. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-045 | ADP-G01 | Adapt | COMMITTED | Detect overlapping lane scope across accepted work. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-046 | ADP-G01 | Adapt | COMMITTED | Detect bounded lane budget exceeded from declared limits. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-047 | ADP-G01 | Adapt | COMMITTED | Detect missing required efficiency budget. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-048 | ADP-G01 | Adapt | COMMITTED | Detect fanout without incremental accepted value. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-049 | ADP-G01 | Adapt | COMMITTED | Detect subagent context duplication. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-050 | ADP-G01 | Adapt | COMMITTED | Detect context replay amplification. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-051 | ADP-G01 | Adapt | COMMITTED | Detect cold-cache rebuild waste. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-052 | ADP-G01 | Adapt | COMMITTED | Detect cache invalidation churn. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-053 | ADP-G01 | Adapt | COMMITTED | Detect no-progress model loop. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-054 | ADP-G01 | Adapt | COMMITTED | Detect duplicate tool work. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-055 | ADP-G01 | Adapt | COMMITTED | Detect semantic tool-work overlap. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-056 | ADP-G01 | Adapt | COMMITTED | Detect oversized tool-result replay. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-057 | ADP-G01 | Adapt | COMMITTED | Detect retry-loop cost. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-058 | ADP-G01 | Adapt | COMMITTED | Detect verification churn. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-059 | ADP-G01 | Adapt | COMMITTED | Detect replan churn. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-060 | ADP-G01 | Adapt | COMMITTED | Detect routing cost mismatch. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-061 | ADP-G01 | Adapt | COMMITTED | Detect integration rework caused by lane failure. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-062 | ADP-G01 | Adapt | COMMITTED | Detect stranded worker work. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-063 | ADP-G01 | Adapt | COMMITTED | Detect background learning over budget. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-064 | ADP-G01 | Adapt | COMMITTED | Report assignment efficiency from qualified execution facts. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-065 | ADP-G01 | Adapt | EXPLORATORY | Detect duplicate semantic batch execution. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-066 | ADP-G01 | Adapt | EXPLORATORY | Detect unchanged-node recompilation. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-067 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic candidate rejection churn. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-068 | ADP-G01 | Adapt | EXPLORATORY | Detect orphaned semantic candidate. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-069 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic worker foreground interference. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-070 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic worker over budget. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-071 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic compilation low yield. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 
 ## Implementation register
 
+For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & residual are authoritative in [source-consumer reconciliation receipt](../provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md); preserved legacy cell text is migration history, not evidence.
+
 | ID | Capability targets | Mechanism | Source/donor | Reuse mode | State | Production consumer |
 |---|---|---|---|---|---|---|
-| ADP-I001 | ADP-001 | transcript/adapt ingest modules; normalization tests | Legacy pre-normalization row adapt.md:7 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: —; canon: ADC §3.1; CRI §4; note: No ambient transcript scraping. | ADAPT | UNKNOWN | Native Adapt mine |
-| ADP-I002 | ADP-002 | transcript adapters/host conformance tests | Legacy pre-normalization row adapt.md:8 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-001; canon: ADC §3.1; CRI §4.1; note: Named-host coverage incomplete. | ADAPT | PARTIAL | Adapt intake |
-| ADP-I003 | ADP-003 | Taste evidence/manifest modules; tests | Legacy pre-normalization row adapt.md:9 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-001; canon: ADC §4.3; note: Selected transcript is release-default authority lane. | ADAPT | UNKNOWN | Taste reviewer |
-| ADP-I004 | ADP-004 | CLI review/adjudicate; manifest tests | Legacy pre-normalization row adapt.md:10 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-003; canon: ADC §4.3; note: Local review requires no login. | ADAPT | UNKNOWN | Human/enterprise reviewer |
-| ADP-I005 | ADP-005 | authority/gates tests | Legacy pre-normalization row adapt.md:11 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-001; canon: ADC §4.1–4.4; note: Silent acceptance stays support-only. | ADAPT | UNKNOWN | Taste/Insights gates |
-| ADP-I006 | ADP-006 | model boundary/proposal tests | Legacy pre-normalization row adapt.md:12 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-005; canon: ADC §3.4; note: Background provider reach incomplete. | ADAPT | UNKNOWN | Semantic review job |
-| ADP-I007 | ADP-007 | Taste/authority tests | Legacy pre-normalization row adapt.md:13 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-003–ADP-006; canon: ADC §5.1; note: — | ADAPT | UNKNOWN | Taste review |
-| ADP-I008 | ADP-008 | record/taste contract tests | Legacy pre-normalization row adapt.md:14 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-007; canon: ADC §5.2–5.3; note: Migration labels need firewall. | ADAPT | UNKNOWN | Taste delivery/UI |
-| ADP-I009 | ADP-009 | scope/gates/delivery tests | Legacy pre-normalization row adapt.md:15 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-007–ADP-008; canon: ADC §5.4; note: — | ADAPT | UNKNOWN | Taste admission/delivery |
-| ADP-I010 | ADP-010 | authority/delivery tests | Legacy pre-normalization row adapt.md:16 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-009; canon: ADC §5.5; note: Authored policy outranks learned Taste. | ADAPT | UNKNOWN | Pull/CodeRight delivery |
-| ADP-I011 | ADP-011 | Taste quality tests | Legacy pre-normalization row adapt.md:17 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-007; canon: ADC §5.6; note: Counterfactual production use unclear. | ADAPT | PARTIAL | Future delivery/effectiveness |
-| ADP-I012 | ADP-012 | record/outcomes/lifecycle tests | Legacy pre-normalization row adapt.md:18 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-010, CTX-010; canon: ADC §5.7; note: Reevaluation signal wiring incomplete. | ADAPT | PARTIAL | Taste review/Cortex |
-| ADP-I013 | ADP-013 | delivery tests | Legacy pre-normalization row adapt.md:19 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-009–ADP-010; canon: ADC §5.8; note: Host benefit unqualified. | ADAPT | UNKNOWN | CodeRight/host context |
-| ADP-I014 | ADP-014 | delivery/scope tests | Legacy pre-normalization row adapt.md:20 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-009–ADP-010; canon: ADC §5.8; note: Not generic memory reconstruction. | ADAPT | UNKNOWN | Pull/CodeRight |
-| ADP-I015 | ADP-015 | delivery/outcome tests | Legacy pre-normalization row adapt.md:21 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-013–ADP-014, MEM-024; canon: ADC §5.8, §12.4; CRI §10; note: H9/H10 producer/join incomplete. | ADAPT | PARTIAL | CodeRight/evaluation |
-| ADP-I016 | ADP-016 | CLI API/manifest/Hub launch tests | Legacy pre-normalization row adapt.md:22 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-004, ADP-012; canon: ADC §12.2; note: Complete Hub action execution absent. | ADAPT | PARTIAL | CLI/Hub reviewer |
-| ADP-I017 | ADP-017 | insights detectors; heldout/portable benchmarks | Legacy pre-normalization row adapt.md:23 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-001–ADP-002; canon: ADC §6.4–6.5; note: Host field coverage varies. | ADAPT | UNKNOWN | Insights mine |
-| ADP-I018 | ADP-018 | insights episode/sealed-issue tests | Legacy pre-normalization row adapt.md:24 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-017; canon: ADC §6.2; note: Internal contract. | ADAPT | UNKNOWN | Issue formation/review |
-| ADP-I019 | ADP-019 | recurrence/sealed-issue tests | Legacy pre-normalization row adapt.md:25 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-018; canon: ADC §6.2–6.3; note: Post-mitigation recurrence needs host outcomes. | ADAPT | UNKNOWN | Human review/Hub |
-| ADP-I020 | ADP-020 | adaptive/duplicate/model-boundary tests | Legacy pre-normalization row adapt.md:26 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-018, MEM-053; canon: ADC §6.5; note: Cannot self-promote; real provider/sink incomplete. | ADAPT | PARTIAL | Background semantic review |
-| ADP-I021 | ADP-021 | evidence/sealed-issue tests | Legacy pre-normalization row adapt.md:27 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-018–ADP-019; canon: ADC §6.6; note: — | ADAPT | UNKNOWN | Insight card/remediation |
-| ADP-I022 | ADP-022 | remediation/proposal tests | Legacy pre-normalization row adapt.md:28 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-019; canon: ADC §6.7; note: Proposal never auto-applies. | ADAPT | UNKNOWN | Human reviewer/Legion |
-| ADP-I023 | ADP-023 | attribution/remediation tests | Legacy pre-normalization row adapt.md:29 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-022; canon: ADC §6.9; MPI §2.5–2.7; note: H7 effectiveness absent. | ADAPT | UNKNOWN | Variant generator/host |
-| ADP-I024 | ADP-024 | attribution/outcome/procedural tests | Legacy pre-normalization row adapt.md:30 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-023; canon: ADC §6.9; note: H6 transport dependency open. | ADAPT | UNKNOWN | Attribution/effectiveness |
-| ADP-I025 | ADP-025 | recurrence/outcome tests | Legacy pre-normalization row adapt.md:31 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-019, ADP-023–ADP-024; canon: ADC §6.8, §11.3; note: H7/H9/H10 absent. | ADAPT | PARTIAL | Insights review |
-| ADP-I026 | ADP-026 | seal/canonical/record tests | Legacy pre-normalization row adapt.md:32 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-008–ADP-012; canon: ADC §7.3; note: — | ADAPT | UNKNOWN | Review/Cortex/import |
-| ADP-I027 | ADP-027 | canonical/manifest/multiwriter tests | Legacy pre-normalization row adapt.md:33 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-026; canon: ADC §7.4; note: — | ADAPT | UNKNOWN | CLI/reviewer/Cortex |
-| ADP-I028 | ADP-028 | duplicate/admission/gate tests | Legacy pre-normalization row adapt.md:34 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-027, CTX-005–CTX-007; canon: ADC §7.5; note: Durable terminal vocabulary belongs Cortex. | ADAPT | UNKNOWN | Adapt admission |
-| ADP-I029 | ADP-029 | Adapt admission/apply tests | Legacy pre-normalization row adapt.md:35 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-004, ADP-022, CTX-002; canon: ADC §3.5, §7.1; note: Adapt owns no durable store. | ADAPT | UNKNOWN | Cortex durable store |
-| ADP-I030 | ADP-030 | host observation ingress/evidence tests | Legacy pre-normalization row adapt.md:36 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: MEM-040–MEM-041; canon: ADC §3.7; CRI §4.3–5; note: Caller transport incomplete. | ADAPT | PARTIAL | Detector/attribution |
-| ADP-I031 | ADP-031 | outcomes/benchmark tests | Legacy pre-normalization row adapt.md:37 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-030; canon: ADC §3.8; CRI §4.4, §6; note: Real H7/H9/H10 producers absent. | ADAPT | PARTIAL | Effectiveness |
-| ADP-I032 | ADP-032 | context-cost module/tests | Legacy pre-normalization row adapt.md:38 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: MEM-040–MEM-041; canon: ADC §13; note: Provider totals may be unavailable; never invent zero. | ADAPT | UNKNOWN | Operator/context optimization |
-| ADP-I033 | ADP-033 | proposal/remediation/portable tests | Legacy pre-normalization row adapt.md:39 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-019, ADP-022; canon: CRI §11; note: Cross-repo production path unproven. | ADAPT | PARTIAL | CodeRight evaluator workflow |
-| ADP-I034 | ADP-034 | CLI API/Hub projections | Legacy pre-normalization row adapt.md:40 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-016, ADP-019, ADP-025; canon: ADC §12; CRI §12; note: Trusted Hub action executor absent. | ADAPT | PARTIAL | CodeRight CLI/TUI/Hub |
-| ADP-I035 | ADP-035 | runtime background review + tests | Legacy pre-normalization row adapt.md:41 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: MEM-052–MEM-053; canon: MPI §4, §13.2; note: Real first-party semantic inputs/effect qualification incomplete. | ADAPT | PARTIAL | Tray daemon |
-| ADP-I036 | ADP-036 | procedural effectiveness tests | Legacy pre-normalization row adapt.md:42 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-023–ADP-025, MEM-041; canon: MPI §3; CRI §10; note: H4/H6 caller transport absent. | ADAPT | UNKNOWN | Skills/procedure review |
-| ADP-I037 | ADP-037 | Existing generic detectors/events | Legacy pre-normalization row adapt.md:43 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-017, ADP-030, ADP-036; canon: AHE §7; CRI §10; note: Decided compatible extension; required observation coverage absent. | ADAPT | PARTIAL | CodeRight Insights |
-| ADP-I038 | ADP-038 | No production shape | Legacy pre-normalization row adapt.md:44 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-037; canon: AHE §8; note: Prevents “no issue” from hiding missing telemetry. | ADAPT | MISSING | Hub/reviewer |
-| ADP-I039 | ADP-039 | No production implementation | Legacy pre-normalization row adapt.md:45 (worktree base d84322c3df182ff1d6ef7ca96fe94aea22273894); dependencies: ADP-037–ADP-038, LDG-023, CTX-033; canon: AHE §7.1; frozen `docs/pending/semantic-blueprint-review-pack-v2/04-ADAPT-DOCUMENT-COMPILATION-BOUNDARY-AMENDMENT.md@d84322c3df182ff1d6ef7ca96fe94aea22273894`; note: Depends on semantic compiler. | ADAPT | MISSING | Future semantic compiler operator |
+| ADP-I001 | ADP-001 | `engine/crates/membrane-transcript/src/parser.rs:109-305,321-353` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:2954-2984` |
+| ADP-I002 | ADP-002 | transcript adapters/host conformance tests | Legacy pre-normalization source adapt.md:8@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-001; canon: ADC §3.1; CRI §4.1; note: Named-host coverage incomplete. | ADAPT | PARTIAL | Adapt intake |
+| ADP-I003 | ADP-003 | `engine/crates/membrane-adapt/src/taste.rs:306-371` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:2976-2980,3082-3087` |
+| ADP-I004 | ADP-004 | `engine/crates/membrane-adapt/src/proposal.rs:278-337,339-434,795-832` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:3126-3147,3150-3176` |
+| ADP-I005 | ADP-005 | `engine/crates/membrane-transcript/src/evidence.rs:47-55`; `engine/crates/membrane-adapt/src/taste.rs:330-370` | `EvidenceClass` declares four variants, but Taste extraction assigns `UserBehavioral` unconditionally; classify each eligible evidence item before proposal while preserving non-laundering. | ADAPT | PARTIAL | `engine/crates/membrane-adapt/src/taste.rs:306-371`; `engine/crates/membrane-runtime/src/cli.rs:2976-2980` |
+| ADP-I006 | ADP-006 | `engine/crates/membrane-adapt/src/model_boundary.rs:13-93`; `engine/crates/membrane-adapt/src/admission.rs:401-508` | Wire model job/background provider. | ADAPT | PARTIAL | NONE |
+| ADP-I007 | ADP-007 | `engine/crates/membrane-adapt/src/taste.rs:297-371` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:2976-2980,3082-3087` |
+| ADP-I008 | ADP-008 | `engine/crates/membrane-adapt/src/record.rs:18-109,231-324` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-adapt/src/manifest.rs:372-438`; `engine/crates/membrane-runtime/src/store.rs:6712-6778` |
+| ADP-I009 | ADP-009 | `engine/crates/membrane-adapt/src/scope.rs:12-29,32-146` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:4188-4197`; `engine/crates/membrane-runtime/src/store.rs:5573-5583` |
+| ADP-I010 | ADP-010 | `engine/crates/membrane-adapt/src/authority.rs:227-329`; `engine/crates/membrane-adapt/src/delivery.rs:187-251` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:4221-4245` |
+| ADP-I011 | ADP-011 | Taste quality tests | Legacy pre-normalization source adapt.md:17@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-007; canon: ADC §5.6; note: Counterfactual production use unclear. | ADAPT | PARTIAL | Future delivery/effectiveness |
+| ADP-I012 | ADP-012 | record/outcomes/lifecycle tests | Legacy pre-normalization source adapt.md:18@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-010, CTX-010; canon: ADC §5.7; note: Reevaluation signal wiring incomplete. | ADAPT | PARTIAL | Taste review/Cortex |
+| ADP-I013 | ADP-013 | `engine/crates/membrane-adapt/src/delivery.rs:170-184,254-299` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:4221-4245` |
+| ADP-I014 | ADP-014 | `engine/crates/membrane-adapt/src/delivery.rs:174-299,308-365` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:4188-4245` |
+| ADP-I015 | ADP-015 | delivery/outcome tests | Legacy pre-normalization source adapt.md:21@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-013–ADP-014, MEM-024; canon: ADC §5.8, §12.4; CRI §10; note: H9/H10 producer/join incomplete. | ADAPT | PARTIAL | CodeRight/evaluation |
+| ADP-I016 | ADP-016 | CLI API/manifest/Hub launch tests | Legacy pre-normalization source adapt.md:22@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-004, ADP-012; canon: ADC §12.2; note: Complete Hub action execution absent. | ADAPT | PARTIAL | CLI/Hub reviewer |
+| ADP-I017 | ADP-017 | `engine/crates/membrane-adapt/src/insights/detectors.rs:1-8,1128-1168`; `engine/crates/membrane-adapt/src/benchmark.rs:13-24,179-197` | Detectors & hard-negative guards are live, but no versioned detector-family contract/catalog binds family IDs, semantics, guards & compatibility. | ADAPT | PARTIAL | `engine/crates/membrane-adapt/src/cli_api.rs:165-168`; `engine/crates/membrane-runtime/src/cli.rs:2998` |
+| ADP-I018 | ADP-018 | `engine/crates/membrane-adapt/src/insights/mod.rs:146-248,306-314` | `FailureEpisodeV1` is evidence-bound & honesty-limited but has no applicability field; applicability exists only on later `InsightIssueV1`. | ADAPT | PARTIAL | `engine/crates/membrane-adapt/src/insights/detectors.rs:1130-1168`; `engine/crates/membrane-adapt/src/cli_api.rs:165-176` |
+| ADP-I019 | ADP-019 | `engine/crates/membrane-adapt/src/insights/recurrence.rs:16-103,157-190`; `engine/crates/membrane-adapt/src/insights/sealed_issue.rs:299-327` | Lifecycle lacks host-outcome consumer. | ADAPT | PARTIAL | `engine/crates/membrane-adapt/src/cli_api.rs:165-177` |
+| ADP-I020 | ADP-020 | adaptive/duplicate/model-boundary tests | Legacy pre-normalization source adapt.md:26@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-018, MEM-053; canon: ADC §6.5; note: Cannot self-promote; real provider/sink incomplete. | ADAPT | PARTIAL | Background semantic review |
+| ADP-I021 | ADP-021 | `engine/crates/membrane-adapt/src/insights/mod.rs:19,146-248`; `engine/crates/membrane-adapt/src/insights/recurrence.rs:23-96` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-adapt/src/cli_api.rs:165-177,181-197` |
+| ADP-I022 | ADP-022 | `engine/crates/membrane-adapt/src/remediation.rs:125-178,225-270,748-790` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-adapt/src/cli_api.rs:165-177` |
+| ADP-I023 | ADP-023 | `engine/crates/membrane-adapt/src/attribution.rs:188-305,320-492`; `engine/crates/membrane-adapt/src/remediation.rs:661-736` | Wire sealed attribution, digest, & alternatives into host variant. | ADAPT | PARTIAL | NONE |
+| ADP-I024 | ADP-024 | `engine/crates/membrane-adapt/src/attribution.rs:62-75,107-115,490-499` | Wire outcome classification into host denominator. | ADAPT | PARTIAL | NONE |
+| ADP-I025 | ADP-025 | recurrence/outcome tests | Legacy pre-normalization source adapt.md:31@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-019, ADP-023–ADP-024; canon: ADC §6.8, §11.3; note: H7/H9/H10 absent. | ADAPT | PARTIAL | Insights review |
+| ADP-I026 | ADP-026 | `engine/crates/membrane-adapt/src/seal.rs:23-120`; `engine/crates/membrane-adapt/src/manifest.rs:372-451,501-521` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:5577,5757,6732-6742` |
+| ADP-I027 | ADP-027 | `engine/crates/membrane-adapt/src/canonical.rs:117-144`; `engine/crates/membrane-adapt/src/manifest.rs:523-557,726-854` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:3194-3203`; `engine/crates/membrane-runtime/src/store.rs:6712-6778` |
+| ADP-I028 | ADP-028 | `engine/crates/membrane-adapt/src/duplicate_groups.rs:95-309`; `engine/crates/membrane-adapt/src/proposal.rs:716-750` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:3104-3111,3146-3148` |
+| ADP-I029 | ADP-029 | `engine/crates/membrane-adapt/src/gates.rs:31-96`; `engine/crates/membrane-adapt/src/insights/sealed_issue.rs:329-348` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/store.rs:6712-6778,6789-6889`; `engine/crates/membrane-runtime/src/cli.rs:3183-3207,3209-3250` |
+| ADP-I030 | ADP-030 | host observation ingress/evidence tests | Legacy pre-normalization source adapt.md:36@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: MEM-040–MEM-041; canon: ADC §3.7; CRI §4.3–5; note: Caller transport incomplete. | ADAPT | PARTIAL | Detector/attribution |
+| ADP-I031 | ADP-031 | outcomes/benchmark tests | Legacy pre-normalization source adapt.md:37@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-030; canon: ADC §3.8; CRI §4.4, §6; note: Real H7/H9/H10 producers absent. | ADAPT | PARTIAL | Effectiveness |
+| ADP-I032 | ADP-032 | `engine/crates/membrane-adapt/src/context_cost.rs:156-379,587-820` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-adapt/src/cli_api.rs:32-36`; `engine/crates/membrane-runtime/src/cli.rs:3356` |
+| ADP-I033 | ADP-033 | proposal/remediation/portable tests | Legacy pre-normalization source adapt.md:39@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-019, ADP-022; canon: CRI §11; note: Cross-repo production path unproven. | ADAPT | PARTIAL | CodeRight evaluator workflow |
+| ADP-I034 | ADP-034 | CLI API/Hub projections | Legacy pre-normalization source adapt.md:40@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-016, ADP-019, ADP-025; canon: ADC §12; CRI §12; note: Trusted Hub action executor absent. | ADAPT | PARTIAL | CodeRight CLI/TUI/Hub |
+| ADP-I035 | ADP-035 | runtime background review + tests | Legacy pre-normalization source adapt.md:41@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: MEM-052–MEM-053; canon: MPI §4, §13.2; note: Real first-party semantic inputs/effect qualification incomplete. | ADAPT | PARTIAL | Tray daemon |
+| ADP-I036 | ADP-036 | `engine/crates/membrane-adapt/src/procedural_effectiveness.rs:236-454` | COMPLETE | ADAPT | DELIVERED | `engine/crates/membrane-runtime/src/host_observation_ingress.rs:470-495` |
+| ADP-I038 | ADP-038 | No production shape | Legacy pre-normalization source adapt.md:44@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: ADP-037; canon: AHE §8; note: Prevents “no issue” from hiding missing telemetry. | ADAPT | MISSING | Hub/reviewer |
 | ADP-I040 | ADP-040 | No production join receipt | Split from ADP-038 after atomicity reconciliation; episode/evaluator join closes independently from coverage execution | ADAPT | MISSING | Hub/reviewer |
+| ADP-I042 | ADP-042 | `engine/crates/membrane-adapt/src/lineage.rs:275,308-312,413-422,445,501-512` | COMPLETE | ORIGINAL | DELIVERED | `engine/crates/membrane-adapt/src/cli_api.rs:165-177` → `engine/crates/membrane-runtime/src/cli.rs:2998` |
+| ADP-I041 | ADP-041 | `engine/crates/membrane-adapt/src/multiwriter.rs:63-186` | Sage reconciliation; persisted convergence has no production consumer. | ORIGINAL | PARTIAL | No production consumer |
+| ADP-I043 | ADP-043 | No production implementation | Implement duplicate_assignment_execution detector. | ORIGINAL | MISSING | NONE |
+| ADP-I044 | ADP-044 | No production implementation | Implement orchestrator_role_leakage detector. | ORIGINAL | MISSING | NONE |
+| ADP-I045 | ADP-045 | No production implementation | Implement lane_scope_overlap detector. | ORIGINAL | MISSING | NONE |
+| ADP-I046 | ADP-046 | No production implementation | Implement bounded_lane_budget_exceeded detector. | ORIGINAL | MISSING | NONE |
+| ADP-I047 | ADP-047 | No production implementation | Implement missing_efficiency_budget detector. | ORIGINAL | MISSING | NONE |
+| ADP-I048 | ADP-048 | No production implementation | Implement fanout_without_incremental_value detector. | ORIGINAL | MISSING | NONE |
+| ADP-I049 | ADP-049 | No production implementation | Implement subagent_context_duplication detector. | ORIGINAL | MISSING | NONE |
+| ADP-I050 | ADP-050 | No production implementation | Implement context_replay_amplification detector. | ORIGINAL | MISSING | NONE |
+| ADP-I051 | ADP-051 | No production implementation | Implement cold_cache_rebuild detector. | ORIGINAL | MISSING | NONE |
+| ADP-I052 | ADP-052 | No production implementation | Implement cache_invalidation_churn detector. | ORIGINAL | MISSING | NONE |
+| ADP-I053 | ADP-053 | No production implementation | Implement no_progress_model_loop detector. | ORIGINAL | MISSING | NONE |
+| ADP-I054 | ADP-054 | No production implementation | Implement duplicate_tool_work detector. | ORIGINAL | MISSING | NONE |
+| ADP-I055 | ADP-055 | No production implementation | Implement semantic_tool_work_overlap detector. | ORIGINAL | MISSING | NONE |
+| ADP-I056 | ADP-056 | No production implementation | Implement oversized_tool_result_replay detector. | ORIGINAL | MISSING | NONE |
+| ADP-I057 | ADP-057 | No production implementation | Implement retry_loop_cost detector. | ORIGINAL | MISSING | NONE |
+| ADP-I058 | ADP-058 | No production implementation | Implement verification_churn detector. | ORIGINAL | MISSING | NONE |
+| ADP-I059 | ADP-059 | No production implementation | Implement replan_churn detector. | ORIGINAL | MISSING | NONE |
+| ADP-I060 | ADP-060 | No production implementation | Implement routing_cost_mismatch detector. | ORIGINAL | MISSING | NONE |
+| ADP-I061 | ADP-061 | No production implementation | Implement integration_rework_from_lane_failure detector. | ORIGINAL | MISSING | NONE |
+| ADP-I062 | ADP-062 | No production implementation | Implement stranded_worker_work detector. | ORIGINAL | MISSING | NONE |
+| ADP-I063 | ADP-063 | No production implementation | Implement background_learning_over_budget detector. | ORIGINAL | MISSING | NONE |
+| ADP-I064 | ADP-064 | No production implementation | Implement assignment-efficiency reporting. | ORIGINAL | MISSING | NONE |
+| ADP-I065 | ADP-065 | No production implementation | Hold duplicate_semantic_batch_execution detector. | ORIGINAL | MISSING | NONE |
+| ADP-I066 | ADP-066 | No production implementation | Hold unchanged_node_recompilation detector. | ORIGINAL | MISSING | NONE |
+| ADP-I067 | ADP-067 | No production implementation | Hold semantic_candidate_rejection_churn detector. | ORIGINAL | MISSING | NONE |
+| ADP-I068 | ADP-068 | No production implementation | Hold orphaned_semantic_candidate detector. | ORIGINAL | MISSING | NONE |
+| ADP-I069 | ADP-069 | No production implementation | Hold semantic_worker_foreground_interference detector. | ORIGINAL | MISSING | NONE |
+| ADP-I070 | ADP-070 | No production implementation | Hold semantic_worker_over_budget detector. | ORIGINAL | MISSING | NONE |
+| ADP-I071 | ADP-071 | No production implementation | Hold semantic_compilation_low_yield detector. | ORIGINAL | MISSING | NONE |
 
 ## Qualification ledger
 
 | ID | Capability targets | Acceptance boundary | State | Evidence | Material revision |
 |---|---|---|---|---|---|
-| ADP-Q001 | ADP-001 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q001 | ADP-001 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q002 | ADP-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q003 | ADP-003 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q004 | ADP-004 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q005 | ADP-005 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q006 | ADP-006 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q007 | ADP-007 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q008 | ADP-008 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q009 | ADP-009 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q010 | ADP-010 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q003 | ADP-003 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q004 | ADP-004 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q005 | ADP-005 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q006 | ADP-006 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q007 | ADP-007 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q008 | ADP-008 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q009 | ADP-009 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q010 | ADP-010 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q011 | ADP-011 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q012 | ADP-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q013 | ADP-013 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q014 | ADP-014 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q013 | ADP-013 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q014 | ADP-014 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q015 | ADP-015 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q016 | ADP-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q017 | ADP-017 | Reconcile legacy qualified claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q018 | ADP-018 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q019 | ADP-019 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q017 | ADP-017 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q018 | ADP-018 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q019 | ADP-019 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q020 | ADP-020 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q021 | ADP-021 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q022 | ADP-022 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q023 | ADP-023 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q024 | ADP-024 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q021 | ADP-021 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q022 | ADP-022 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q023 | ADP-023 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q024 | ADP-024 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q025 | ADP-025 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q026 | ADP-026 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q027 | ADP-027 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q028 | ADP-028 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q029 | ADP-029 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q026 | ADP-026 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q027 | ADP-027 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q028 | ADP-028 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q029 | ADP-029 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q030 | ADP-030 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q031 | ADP-031 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q032 | ADP-032 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q032 | ADP-032 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q033 | ADP-033 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q034 | ADP-034 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q035 | ADP-035 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q036 | ADP-036 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q037 | ADP-037 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q036 | ADP-036 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q038 | ADP-038 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q039 | ADP-039 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q040 | ADP-040 | Qualify coverage-to-episode/evaluator join receipt at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q042 | ADP-042 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q041 | ADP-041 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q043 | ADP-043 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q044 | ADP-044 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q045 | ADP-045 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q046 | ADP-046 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q047 | ADP-047 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q048 | ADP-048 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q049 | ADP-049 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q050 | ADP-050 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q051 | ADP-051 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q052 | ADP-052 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q053 | ADP-053 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q054 | ADP-054 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q055 | ADP-055 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q056 | ADP-056 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q057 | ADP-057 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q058 | ADP-058 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q059 | ADP-059 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q060 | ADP-060 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q061 | ADP-061 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q062 | ADP-062 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q063 | ADP-063 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q064 | ADP-064 | Qualify exact reporting behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q065 | ADP-065 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q066 | ADP-066 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q067 | ADP-067 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q068 | ADP-068 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q069 | ADP-069 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q070 | ADP-070 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q071 | ADP-071 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
 | ID | Kind | Capability targets | Decision | Authority/evidence | State |
 |---|---|---|---|---|---|
 | ADP-D001 | REFERENCE | ADP-015, MEM-024 | Adapt owns preference delivery/outcome projection; Membrane owns feedback-strength classification. | Canon reconciliation | RECORDED |
-| ADP-D002 | REFERENCE | ADP-036, ADP-037, ADP-038, ADP-039, ADP-040 | Harness-efficiency specification binds committed harness atoms, exploratory semantic-compiler coverage & split join receipt. | Pending harness-efficiency specification | RECORDED |
+| ADP-D002 | REFERENCE | ADP-036, ADP-038, ADP-040, ADP-043, ADP-044, ADP-045, ADP-046, ADP-047, ADP-048, ADP-049, ADP-050, ADP-051, ADP-052, ADP-053, ADP-054, ADP-055, ADP-056, ADP-057, ADP-058, ADP-059, ADP-060, ADP-061, ADP-062, ADP-063, ADP-064, ADP-065, ADP-066, ADP-067, ADP-068, ADP-069, ADP-070, ADP-071 | Harness-efficiency specification binds atomic harness & semantic-compiler detector coverage plus split join receipt. | Pending harness-efficiency specification | RECORDED |
 | ADP-D003 | EXCLUSION | ADP-001 | Adapt proposes learning artifacts; it never writes durable truth directly or self-authorizes changes. | Current Adapt architecture | RECORDED |
 | ADP-D004 | REFERENCE | ADP-038, ADP-040 | Coverage execution receipt & episode/evaluator join receipt close independently. | Atomicity reconciliation | RECORDED |
-| ADP-D005 | REFERENCE | ADP-039 | Semantic-compiler efficiency detection remains exploratory because current Adapt architecture does not commit frozen proposal. | Frozen semantic compilation proposal | RECORDED |
+| ADP-D005 | REFERENCE | ADP-065, ADP-066, ADP-067, ADP-068, ADP-069, ADP-070, ADP-071 | Semantic-compiler efficiency detectors remain exploratory because current Adapt architecture does not commit frozen proposal. | Frozen semantic compilation proposal | RECORDED |
+| ADP-D006 | REFERENCE | ADP-013, ADP-014 | ADP-013 always-on compile and ADP-014 request-scoped selection are distinct; final sufficiency remains MEM-001. | docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef | RECORDED |
+| ADP-D007 | REFERENCE | ADP-041, ADP-027 | ADP-041 owns multiwriter convergence; ADP-027 owns stable IDs and atomic apply. ADP-041 depends on ADP-027. | docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef | RECORDED |
+| ADP-D008 | REFERENCE | ADP-043, ADP-044, ADP-045, ADP-046, ADP-047, ADP-048, ADP-049, ADP-050, ADP-051, ADP-052, ADP-053, ADP-054, ADP-055, ADP-056, ADP-057, ADP-058, ADP-059, ADP-060, ADP-061, ADP-062, ADP-063 | Preserved ADP-037 legacy alias maps to atomic detector ownership. | Sage split decision | RECORDED |
+| ADP-D009 | REFERENCE | ADP-065, ADP-066, ADP-067, ADP-068, ADP-069, ADP-070, ADP-071 | Preserved ADP-039 legacy alias maps to atomic semantic compiler detector ownership. | Sage split decision | RECORDED |

@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
- "generatedAt": "2026-08-30T16:24:55.901Z",
+ "baselineCommit": "bfdf6a0a922a334264b9ca86a15603f802f3c7b7",
+ "generatedAt": "2026-08-30T19:56:06.643Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -42309,6 +42309,42 @@
   },
   {
    "from": "scripts/ci/build-invocation-graph.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "rg",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
    "reference": "git",
    "kind": "spawn",
    "reason": "bare executable name (PATH-resolved)"

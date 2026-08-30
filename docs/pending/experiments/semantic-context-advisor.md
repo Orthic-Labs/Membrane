@@ -1,6 +1,6 @@
 # Membrane — Semantic Context Advisor (experimental)
 
-**Status:** experimental, optional, pending. Not canon.
+**Status:** experimental, optional, pending specification. Not canon or authority.
 **Scope:** bounded LLM semantic assistance inside Membrane's context plane.
 
 ## This capability is optional by construction
@@ -16,14 +16,13 @@ require Membrane.
 
 ## Document authority
 
-Subordinate to canonical architecture in `docs/architecture/`, & to
-`docs/pending/README.md` for every deterministic mechanism it plugs into.
+This hand-written experiment is subordinate to canonical architecture in `docs/architecture/`.
+The generated `docs/pending/README.md` remains the sole open-work projection. This document does
+not authorize implementation or alter landed behavior.
 
 ## Host neutrality
 
-Same binding rule as the core pending document: this specifies Membrane's work and Membrane's side
-of the seam as a host-neutral contract. Inference execution is a required host capability (`H11`,
-§9), not a named host implementation.
+This proposes a host-neutral seam only; no current host inference capability is assumed.
 
 ## The central invariant
 
@@ -31,12 +30,6 @@ of the seam as a host-neutral contract. Inference execution is a required host c
 
 The LLM may improve **semantic judgment**. It may not establish **authority**.
 
-## What this document replaces
-
-`MEMBRANE-LLM-CONTEXT-PLANE-IMPLEMENTATION.md` (pending), including its §20 restatement of the
-CodeRight boundary — see §12, which cites the seam canon instead of reproducing it.
-
----
 
 # 0. Target-state status
 
@@ -78,13 +71,11 @@ Phase B  candidate semantic assessment
            SHADOW by default
 
 Phase C  corrective retrieval assistance
-           ACTIVE when deterministic sufficiency fails
+           pending; never active by default
 ```
 
-Rationale: Phase B on every ambiguous request puts a full model call on the critical path *before*
-the root model call, turning a context optimisation into a latency tax on otherwise successful
-requests. Phase C runs only after deterministic sufficiency already failed — where a second pass
-was going to be paid for anyway.
+Rationale: no advisor capability is landed. Any activation requires qualification & an explicit
+future policy decision.
 
 Phase B is retained as an architectural capability and may graduate to active for specific cases
 once evaluation demonstrates the economics: very large eligible candidate sets, very tight
@@ -398,7 +389,7 @@ Membrane daemon
         -> ContextInferenceChallengeV1
                  |
                  v
-           host executes model  (capability H11)
+           future host may execute model (no current capability)
                  |
                  v
         ContextInferenceResultV1
@@ -437,13 +428,13 @@ context assembly. Without this the loop is unbounded.
 
 ---
 
-# 9. Host inference capability (H11)
+# 9. Proposed host inference capability
 
 Proposes an experimental extension to current host capability atoms.
 
 ```text
-H11  bounded structured inference execution
-     absent → advisor disabled; deterministic path unaffected
+bounded structured inference execution
+absent → advisor disabled; deterministic path unaffected
 ```
 
 ```text
@@ -501,7 +492,7 @@ Do not put an LLM on every context request.
 Triggers (subject to the §2 default posture):
 
 ```text
-deterministic sufficiency failure        ← the Phase C trigger, active by default
+deterministic sufficiency failure        ← proposed Phase C trigger
 ambiguous task interpretation            cross-provider contradiction
 low retrieval score separation           many semantically similar candidates
 tight packet budget with high volume     high-value task mode
@@ -576,8 +567,8 @@ reproduced here.
 
 This feature adds exactly one requirement to that seam:
 
-> Membrane may issue a bounded semantic-inference challenge; the host may execute it through host
-> inference (H11); Membrane remains the sole validator and the sole context publisher.
+> A future host may execute a bounded semantic-inference challenge; Membrane remains sole validator
+> & context publisher.
 
 ---
 
@@ -636,8 +627,8 @@ Benchmark arms:
 A  deterministic Membrane baseline
 B  A + local/rule query expansion
 C  A + advisor in shadow
-D  A + Phase C active on sufficiency failure       ← the default posture
-E  D + Phase B active
+D  A + Phase C active on sufficiency failure       ← qualification arm only
+E  D + Phase B active                              ← qualification arm only
 ```
 
 Measure: task success, required-evidence recall, irrelevant/contradictory/duplicate context rates,
@@ -660,7 +651,7 @@ Do not make active assistance the default because it looks better on examples.
 
 # 16. Final component set
 
-Final shape contains versioned wire contracts and fixtures, LIVE/REPLAY artifacts, advisor policy,
+Proposed shape contains versioned wire contracts and fixtures, LIVE/REPLAY artifacts, advisor policy,
 input projection, output validation, deterministic fallback, trace-bound challenge/resume,
 Phase C integration with core corrective retrieval, receipts, diagnostics, frozen shadow
 evaluation, evidence-gated Phase B activation, and optional content-minimal Phase A.

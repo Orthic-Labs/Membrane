@@ -8,16 +8,16 @@ Each named subsystem owns one atomic canon. Capability, implementation, qualific
 
 | Canon | Boundary | Committed | Exploratory | Closed | Open |
 |---|---|---:|---:|---:|---:|
-| [Membrane](membrane.md) | RELEASED | 60 | 0 | 0 | 60 |
-| [Pull](pull.md) | RELEASED | 33 | 1 | 0 | 33 |
-| [Push](push.md) | RELEASED | 17 | 0 | 0 | 17 |
-| [Cortex](cortex.md) | RELEASED | 34 | 1 | 0 | 34 |
-| [Blueprint](blueprint.md) | RELEASED | 51 | 1 | 0 | 51 |
-| [Ledger](ledger.md) | RELEASED | 22 | 1 | 0 | 22 |
-| [Adapt](adapt.md) | RELEASED | 39 | 1 | 0 | 39 |
-| **Total** | — | **256** | **5** | **0** | **256** |
+| [Membrane](membrane.md) | RELEASED | 66 | 0 | 0 | 66 |
+| [Pull](pull.md) | RELEASED | 35 | 1 | 0 | 35 |
+| [Push](push.md) | RELEASED | 23 | 0 | 0 | 23 |
+| [Cortex](cortex.md) | RELEASED | 36 | 1 | 0 | 36 |
+| [Blueprint](blueprint.md) | RELEASED | 67 | 1 | 0 | 67 |
+| [Ledger](ledger.md) | RELEASED | 25 | 1 | 0 | 25 |
+| [Adapt](adapt.md) | RELEASED | 62 | 7 | 0 | 62 |
+| **Total** | — | **314** | **11** | **0** | **314** |
 
-Total capability rows: **261**
+Total capability rows: **325**
 
 ## Counting & closure
 
@@ -28,8 +28,8 @@ Closure requires `DELIVERED` implementation, `FOCUSED_PASS` verification, `PASS`
 ## Preservation
 
 Legacy atoms: **249**
-Introduced atomic splits: **12**
-New capabilities after normalization: **0**
+Introduced atomic splits: **30**
+New capabilities after normalization: **50**
 Legacy/specification rows: **479**
 Preserved union: **728/728**
 Unclassified: **0**

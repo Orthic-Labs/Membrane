@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T16:34:56.013Z",
+ "generatedAt": "2026-08-30T19:56:07.462Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -2159,7 +2159,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "ef4a9e5b2aa3b4bbfd8460b1d4d02918200d6b9fcd9084a7d8fdb56e627904f2"
+   "content_digest": "de337ed671b8cacdf28e29853e0decf201ac24963f7a4b051beccd98539f7285"
   },
   {
    "id": "tests-root-tests-root",

@@ -1,6 +1,6 @@
 # The Findings Lane — cheapest-tier deterministic error signal for coding agents
 
-**Status:** design proposal · revision 3 · **phase 0 implemented** in `blueprint/src/lib/findings/`
+**Status:** pending design · Phase 0 landed in `blueprint/src/lib/findings/`; explanation & acceptance evidence pack remain pending.
 **Scope:** Blueprint (tier-0 producer) + Membrane planner (routing/policy) + hook host (transport)
 **Problem owner:** agents that edit code without an editor, then pay a build to find out
 
@@ -73,7 +73,7 @@ at a gate.
 
 | Tier | Mechanism | Typical cost | Catches |
 |---|---|---|---|
-| **0** | Blueprint graph delta | 100–400ms, always warm | unresolved import, symbol not exported, dangling reference, removed export with live consumers, ambiguity, cycles, orphan exports |
+| **0** | Blueprint AST findings | current resident generation | unresolved repository-relative import, missing imported binding, broken named re-export |
 | **1** | Resident scoped check daemon — `cargo check -p <crate>` via bacon-style watcher; `tsc --noEmit` incremental; language equivalents | already computed; agent read is ~free | full type errors in the touched crate/project |
 | **2** | Scoped check, cold | seconds → tens of seconds | same, when the daemon is down or the scope moved |
 | **3** | Workspace check / clippy | tens of seconds | everything type-level, repo-wide |
@@ -111,11 +111,9 @@ You named `cargo build` as the pain. The levers, in order of payoff:
    server. The agent's marginal cost of "am I broken" becomes a file read. This is the single
    biggest win and it is off-the-shelf.
 3. **Scope by dependency graph.** `cargo check -p <crate>` for the touched crate plus its
-   reverse dependencies only. Blueprint's impact query already computes that set — this is
-   what rule `BP010` is for.
-4. **Separate `CARGO_TARGET_DIR` for the check lane.** Otherwise the background checker and
-   the agent's own `cargo test` take turns on the same cargo file lock and each blocks the
-   other. This is a real, commonly-hit failure — plan for it up front.
+   reverse dependencies only. This remains a proposed planner/adapter concern.
+4. **Route checks through RightKit build control.** RightKit owns isolated targets, cache admission,
+   locking & receipts; this design must not set `CARGO_TARGET_DIR` or create a product-local target.
 5. **Cheap profile knobs for dev only:** Cranelift backend for debug codegen, `mold`/`lld`/`wild`
    linker, `debug = 0` or split debuginfo, `CARGO_INCREMENTAL=1`, `sccache` for shared deps.
    Parallel rustc frontend reportedly gives another 15–25% on larger codebases.
@@ -130,7 +128,7 @@ Vue/Svelte/Astro template checkers cannot run on it until ~7.1.
 
 | Concern | Owner |
 |---|---|
-| Tier-0 facts, spans, precision tiers, baseline delta | Blueprint |
+| Tier-0 facts, spans, AST precision, baseline delta | Blueprint |
 | Rule registry, stable IDs, suppressions | Blueprint |
 | Tier routing, budget, advisory vs blocking | Membrane planner |
 | Transport into agent context | Hook host (`mcp/hooks/**`, RightKit dispatch) |
@@ -143,37 +141,22 @@ Tier 1+ adapters are *external processes the planner schedules*, not Blueprint i
 which keeps Blueprint doctrine §2.2 #9/#10 (no live compiler/LSP as a required dependency,
 no generic LSP runtime inside Blueprint) intact.
 
-## 7. Tier-0 rule catalogue
+## 7. Landed Tier-0 rule catalogue
 
 Derived only from graph facts, each with a **precision floor**, each either *block-eligible*
 (provable) or *advisory* (probable).
 
 | ID | Finding | Floor | Class |
 |---|---|---|---|
-| `BP001` | Imported symbol is not exported by the module it resolves to | EXACT | block |
-| `BP002` | Import specifier resolves to no repository file and no package | EXACT | block |
+| `BP001` | Imported symbol is not exported by the module it resolves to | AST | block |
+| `BP002` | Repository-relative import specifier resolves to no repository file | AST | block |
 | `BP003` | Re-export names a binding the target module does not export (barrel break) | AST | block |
-| `BP004` | Export removed or renamed while exact inbound consumers remain, incl. dangling references to a deleted entity | EXACT | block |
-| `BP005` | Same-tier ambiguous export — two resolutions, neither dominates | EXACT | block |
-| `BP006` | Arity/signature drift against exact call sites | SCIP/tier-1 | block |
-| `BP007` | Import cycle introduced among changed files | AST | advisory |
-| `BP008` | Exported symbol with zero inbound edges (orphan export) | AST | advisory |
-| `BP009` | Doc claim now contradicts changed source (Phase 2 truth drift) | existing | advisory |
-| `BP010` | Impact set for this edit — narrowest crate/test/project scope to check | EXACT | routing |
+| — | Future rules | — | Not assigned IDs in this pending design |
 
-`BP008` is the rule you named — "an export nobody imports". Advisory only, and for JS/TS
-**delegate to Knip rather than reimplementing it**; Knip already handles entrypoints,
-`package.json` `exports`/`bin`, and the long tail of legitimate orphans. Emitting it as an
-error would be the fastest way to destroy trust in the channel.
-
-`BP010` is not an error at all and is arguably the most valuable row: it is what turns a
-whole-workspace tier-3 check into a scoped tier-1 one.
-
-Revision 3 note: `BP003` was originally specified as "reference to an entity that no longer
-exists". Building phase 0 showed that finding and `BP004` are the same fact seen from two
-sides, and both need a baseline generation. `BP003` now carries the barrel-re-export break —
-provable from a single snapshot, and the failure mode agents hit most often when moving code
-behind an index file.
+`BP001`–`BP003` are current operative IDs. Their AST floor is deliberate: unsupported,
+ambiguous, open-surface & parse-failed cases are omissions, never findings. Future impact,
+cycle, orphan-export, signature-drift & truth-drift ideas require separate contracts; this
+document assigns none of them a stable ID.
 
 ## 8. The two invariants that decide whether this works
 
@@ -191,31 +174,25 @@ channel or, far worse, "fixes" working code.
 ### 8.2 A finding must be attributable to the agent's own edit
 
 `18 unresolved imports in this repository` is noise. `your last edit made 1 import
-unresolvable` is a fix. Findings are a **delta against a session baseline generation**, using
-Blueprint's named-generation semantic diff and the existing rules baseline. Inherited repo
-debt stays out of the inline channel and remains retrievable on request.
+unresolvable` is a fix. Blueprint now supports named-generation baselines & deltas; edit-hook
+injection remains pending, so inherited debt is not yet filtered from an inline channel.
 
 This is the single thing every hook-folklore `tsc --noEmit` config gets wrong.
 
 ## 9. Delivery
 
-### 9.1 `PostToolUse` on `Write | Edit | MultiEdit | apply_patch` — the squiggle
+### 9.1 Proposed `PostToolUse` injection — the squiggle
 
-The hook table in `mcp/hooks/membrane-hook-runtime.mjs` already dispatches these. The block
-lands in the same tool result, same turn, zero extra tool calls:
+Desired hook transport is pending. A future block could land in an edit result:
 
 ```text
 membrane:findings — 2 new · generation g-8123 · tier0 EXACT · 118ms · tier1 fresh (bacon, 4s ago) clean
   ERROR BP001 src/pull/admit.mjs:14
         imports { admitCandidate } from "./fuse.mjs" — that module exports
         { fuseCandidates, scoreBatch } only
-  WARN  BP004 src/pull/fuse.mjs:88
-        removed export `scoreCandidate`; 3 exact consumers remain
-        → mcp/server.mjs:41, mcp/adapters.mjs:120, tests/fuse.test.mjs:9
-  next  BP010 narrowest verification: pnpm test tests/fuse.test.mjs  (not the full suite)
 ```
 
-### 9.2 `PreToolUse` on tier-3/4/5 `Bash` — the gate
+### 9.2 Proposed `PreToolUse` gate
 
 Where the money is saved. The agent reaches for `cargo build --workspace`; the lane answers
 before the process starts:
@@ -231,11 +208,11 @@ thing *is* the intent.
 
 No successful "done" while block-eligible findings are open on files the session touched.
 
-### 9.4 Pull surface
+### 9.4 Current surfaces
 
-`blueprint findings [--path] [--since-baseline] [--all] [--sarif]` over CLI, service and MCP.
-SARIF conversion already exists at `blueprint/src/lib/sarif.mjs` — stable rule IDs,
-fingerprints, regions, evidence properties. Reuse it; do not invent a second wire shape.
+CLI: `blueprint findings [--path PREFIX] [--limit N] [--json] [--sarif] [--baseline FILE]
+[--write-baseline FILE]`. Resident service: `findings.get`, `findings.baseline.capture`,
+`findings.baseline.list` & `findings.sarif`. SARIF is rendered from same bound finding objects.
 
 ## 10. Noise budget
 
@@ -243,7 +220,7 @@ The channel dies from volume as surely as from false positives.
 
 - **Cap the injection.** Ten findings inline, ranked errors-first, then edited-files-first,
   then new-before-inherited; `+K more` behind the pull tool. Push owns the reduction, reversibly.
-- **Report a fingerprint once.** If the agent saw `BP008` and chose not to act, do not
+- **Report a fingerprint once.** If the agent saw a finding and chose not to act, do not
   re-inject it every turn. Re-surface only on change, plus once at the §9.2 gate.
 - **Degrade typed, never silently.** Cold graph, watcher down, daemon dead, provider crash or
   deadline breach emits `findings: unavailable (reason)` — never an empty list reading as clean.
@@ -259,7 +236,7 @@ The channel dies from volume as surely as from false positives.
 
 ## 12. Build order
 
-0. ~~**Registry + `BP001`/`BP002`/`BP003`**, CLI only.~~ **Done.**
+0. ~~**Registry + `BP001`/`BP002`/`BP003`, CLI, service, baselines, delta & SARIF.**~~ **Landed.**
    `blueprint/src/graph/module-surface.mjs` (AST export/import surface),
    `blueprint/src/lib/findings/` (registry, specifier resolution, detection),
    `blueprint findings` CLI with `--json`/`--sarif`/`--baseline`, 30 tests.
@@ -268,14 +245,14 @@ The channel dies from volume as surely as from false positives.
    (a real broken specifier in `tests/benchmarks/memory/`, confirmed against Node's own
    resolver). Zero false positives on both. Spec:
    [`blueprint/docs/design/BP001-import-binding-resolution.md`](../../../../blueprint/docs/design/BP001-import-binding-resolution.md).
-1. **Baseline delta + overlay incrementality** — findings become edit-scoped.
-2. **`PostToolUse` injection**, dumbest possible payload, through the existing hook table.
+1. **Explanation & frozen acceptance evidence pack.**
+2. **`PostToolUse` injection**, dumbest possible payload, through a compatible hook host.
    *Proof:* the agent fixes it in the same turn without running tests.
-3. **`BP010` impact scoping + tier-1 adapter for one language** (Rust via bacon-ls is the
+3. **Impact scoping + tier-1 adapter for one language** (Rust via bacon-ls is the
    highest-value first target, since Rust is where the build cost actually hurts).
 4. **`PreToolUse` gate** on tier-3/4/5 commands with `block | continue`.
    *Proof:* measured drop in cold `cargo build`/full-suite invocations per session.
-5. **`BP004`/`BP005`**; delegate `BP008` to Knip for JS/TS.
+5. **Future-rule contract**; delegate orphan-export analysis to Knip for JS/TS if adopted.
 6. **Cortex recall of recurring findings + Adapt rule proposals.**
 
 Stop after phase 2 if phase 2 does not change agent behaviour. That is the real gate.

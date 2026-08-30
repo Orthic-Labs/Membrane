@@ -5,8 +5,7 @@
 **Source:** created via `/brand-identity`. The private brand corpus
 (`~/.claude/skills/brand/references/right-suite.md`) has **no Membrane row**; Membrane is an
 unlocked identity, so this document creates one rather than loading one.
-**Constraints given:** Tanker as the primary/display face (suite-wide lock, 2026-07-20), flat
-black and purple, **no gradients under any circumstance**.
+**Proposed approval decisions:** Tanker as primary/display face; flat black & purple; no gradients.
 
 ---
 
@@ -82,8 +81,7 @@ Every ratio below was measured with `color-check`, not estimated.
 
 ### Rules
 
-- **No gradients.** Not in the UI, not in the mark, not in the tray glyph, not in marketing. This
-  is an invariant, not a preference. It also removes the single most common AI-generated-UI tell.
+- **Proposed: no gradients.** Apply across UI, mark, tray glyph & marketing if approved.
 - The accent appears on command, selection and focus. It is never a decorative wash and never
   encodes state — the verdict colours do that.
 - **Colour never carries state alone.** Each verdict is a shape (filled / half / hollow / dash)
@@ -121,10 +119,10 @@ literal machine tokens and must be visually distinct from prose that describes t
 
 ## 5. Mark
 
-The existing hex-brain glyph (`assets/tray/membrane-source@2x.png`) is retained as the source of
+The existing hex-brain glyph (`apps/membrane-hub/assets/tray/membrane-source@2x.png`) is retained as the source of
 shape. It is recoloured to `--accent`, and its status variants are recoloured to the verdict
 tokens. No gradient, no glow, no container tile. Construction rules stay in
-`scripts/tray-icons.mjs`, which already crops to the alpha bounding box; the tray asset set extends
+`apps/membrane-hub/scripts/tray-icons.mjs`, which already crops to the alpha bounding box; the tray asset set extends
 to 16 / 20 / 24 / 32 px for Windows DPI.
 
 **Wordmark:** `Membrane`, one word, Tanker. Per the suite's "Right"-half convention the second half
@@ -157,10 +155,9 @@ failure, not a state.
 
 ## 7. Restrictions
 
-1. No gradients, anywhere, ever.
+1. Proposed: no gradients across product surfaces.
 2. No glassmorphism, no glow shadows, no side-stripe borders, no nested cards.
-3. No tracked uppercase eyebrow above sections. One named kicker as a system is voice; an eyebrow
-   on every panel is AI grammar.
+3. Proposed: avoid tracked uppercase eyebrows above sections; use a named kicker only when approved.
 4. Tanker never appears in list rows, table cells, form labels, menus, or buttons.
 5. The accent never encodes state; the verdict tokens never encode brand.
 6. A verdict without its shape is not a verdict.
