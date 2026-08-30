@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane.internal/schemas/ledger-eval-corpus-case.v1.json",
   "title": "Ledger held-out retrieval evaluation case (v1)",
-  "description": "One machine-checkable query/expected-answer case for the Ledger document-retrieval evaluation corpus described in docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md section 12. Cases are stored as JSON Lines, one object per line, split across train.jsonl / dev.jsonl / heldout.jsonl. This schema describes exactly one line of any of those files.",
+  "description": "One machine-checkable query/expected-answer case for the Ledger document-retrieval evaluation corpus described in docs/current/architecture/subsystems/ledger.md section 12. Cases are stored as JSON Lines, one object per line, split across train.jsonl / dev.jsonl / heldout.jsonl. This schema describes exactly one line of any of those files.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "split", "case_type", "tags", "source_corpus", "query", "query_script", "expected", "notes"],
@@ -48,7 +48,7 @@
     "source_corpus": {
       "type": "string",
       "enum": ["membrane-docs", "research-papers"],
-      "description": "Which of the two required real corpora (canon 12.3: 'real Membrane documentation' plus 'a second real corpus with different authoring style/structure') this case's target document(s) belong to. research-papers = docs/research/papers/** (dense academic PDF-extracted prose, citation-heavy, largely undocumented GFM structure) as the second, structurally different real corpus."
+      "description": "Which of the two required real corpora (canon 12.3: 'real Membrane documentation' plus 'a second real corpus with different authoring style/structure') this case's target document(s) belong to. research-papers = docs/archive/research/legacy-source-corpus/papers/** (dense academic PDF-extracted prose, citation-heavy, largely undocumented GFM structure) as the second, structurally different real corpus."
     },
     "query": {
       "type": "string",

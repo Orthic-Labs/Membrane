@@ -4,24 +4,18 @@ Start here. This folder is organized around reader intent, not history.
 
 ## Architecture authorities
 
-Exactly two documents are normative:
+[Current architecture](current/architecture/) is one normative set:
 
-- [MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md](subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md) — Membrane architecture/implementation authority.
-- [BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md](subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md) — Blueprint repository-truth authority.
+- [Membrane parent architecture](current/architecture/membrane.md)
+- [Blueprint architecture](current/architecture/subsystems/blueprint.md)
+- [Adapt architecture](current/architecture/subsystems/adapt.md)
+- [Ledger architecture](current/architecture/subsystems/ledger.md)
+- [Cross-subsystem evidence contracts](current/architecture/cross-subsystem-evidence.md)
+- [CodeRight integration](current/architecture/integrations/coderight.md)
 
-Derived navigation/reference docs live under [subsystems/](subsystems/):
+[Atomic capability canons](current/atoms/) track landed state by subsystem. [Pending](pending/) indexes only open atoms & supporting specs. Superseded, derived, & historical material lives under [archive](archive/), with deleted-path dispositions in its [preservation map](archive/PRESERVATION.md).
 
-- [SYSTEM.md](subsystems/SYSTEM.md) — Membrane parent-system map.
-- [cortex.md](subsystems/cortex.md) — durable-knowledge reference.
-- [ledger.md](subsystems/ledger.md) — document registry/navigation/index reference (formerly guide.md).
-- [adapt.md](subsystems/adapt.md) — learning/proposal reference.
-- [push.md](subsystems/push.md) — reversible-reduction reference.
-
-Derived subsystem docs cannot override these authorities.
-
-Membrane Hub is sole runtime, desktop install, release-build, publication, &
-cleanup authority. No external product manifest, add-on handoff, or retired
-installer path is active.
+Visible native tray owns resident lifecycle. Tray-owned headless daemon executes runtime. Hub dashboard is on demand.
 
 ## Generated (code-grounded, never hand-edit)
 
@@ -50,11 +44,14 @@ Generated/runtime docs use final greenfield identities: Blueprint for repository
 - [hub/](hub/) — Hub integration/facade material.
 - [agent-rules.md](agent-rules.md) — rules for agents working in this repository.
 - [cli/](cli/), [clients/](clients/), [sdk/](sdk/), [providers/](providers/), [reference/](reference/)
-- [compatibility/release-channels.md](compatibility/release-channels.md), [compression/](compression/), [evaluation/](evaluation/), [benchmarks/](benchmarks/)
+- [compatibility/release-channels.md](compatibility/release-channels.md), [evaluation/](evaluation/), [benchmarks/](benchmarks/)
 - [installation/](installation/), [operations/](operations/), [protocol/](protocol/)
 - [security/](security/), [legal/](legal/), [troubleshooting/](troubleshooting/), [workflows/](workflows/)
 - [fleet/](fleet/), [team/](team/), [membrane/](membrane/), [release/](release/)
 
-## Design & research
+## Current work & records
 
-Current security/product decisions live under [design/](design/). Research & historical evidence stay under [research/](research/) & never override subsystem authorities.
+- Current architecture authorities are listed above; capability atom canons live under [current/atoms/](current/atoms/).
+- Open work lives only under [pending/](pending/).
+- Qualification & release receipts live under [evidence/](evidence/).
+- Superseded documents & historical research live under [archive/](archive/), including [legacy source corpus](archive/research/legacy-source-corpus/).

@@ -5,7 +5,7 @@ implementation. This directory is data authoring only — it contains no
 production code and changes nothing about how Ledger indexes, tokenizes, or
 ranks anything today.
 
-Built against `docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`
+Built against `docs/current/architecture/subsystems/ledger.md`
 section 12 ("Evaluation architecture") and section 18 ("Test architecture" —
 `Quality` row: "real paired held-out corpus and confidence intervals").
 
@@ -179,7 +179,7 @@ can group by `tags` instead of `case_type`.
   prompts, and top-level READMEs. Terse, invariant-heavy, heavily
   cross-referenced prose; GFM headings are used consistently and mean what
   they say.
-- **`research-papers`** (25 cases, 3 documents) — `docs/research/papers/**`,
+- **`research-papers`** (25 cases, 3 documents) — `docs/archive/research/legacy-source-corpus/papers/**`,
   PDF-extracted academic paper text (`converted_by: pymupdf get_text` in
   each file's YAML frontmatter). This is genuinely different authoring
   structure, not a relabeled copy of the same style: citation-dense prose,
@@ -238,7 +238,7 @@ can group by `tags` instead of `case_type`.
   number — testing whether a system conflates "relevant" with "answers the
   question."
 - **One authoring wrinkle worth knowing about, not a limitation of the
-  corpus:** `docs/research/papers/darwin-godel-machine_2505.22954.md`
+  corpus:** `docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md`
   contains a literal embedded NUL byte (confirmed via direct byte
   inspection) yet decodes as valid UTF-8 and reads normally. It was kept
   as-is rather than "cleaned" because it is real content already in the

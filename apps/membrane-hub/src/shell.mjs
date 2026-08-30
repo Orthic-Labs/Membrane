@@ -8,7 +8,7 @@
 // gutter reserved in chrome; Windows renders custom caption controls in the
 // webview. This module only renders/wires the in-webview half of that split —
 // the native decoration mode itself is set in src-tauri (out of scope for this
-// port; see docs/design/hub-redesign/HUB-REDESIGN-AND-TRAY-ARCHITECTURE.md §3.2).
+// port; see docs/current/architecture/adr/tray-daemon-process.md §2).
 
 export async function detectPlatform() {
   try {

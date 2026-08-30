@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("../..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const read = path => readFileSync(join(root, path), "utf8");
 const json = path => JSON.parse(read(path));
-const platformKeys = ["darwin-arm64", "darwin-x64"];
+const platformKeys = ["win32-x64"];
 
 test("generated npm package graph stays Membrane-owned", () => {
   const npm = json("dist/npm/package.json");
@@ -24,7 +25,7 @@ test("generated OCI source contract uses current Membrane coordinate", () => {
 });
 
 test("active install docs do not resurrect retired package or installer authority", () => {
-  const docs = ["docs/README.md", "docs/install.md", "docs/install-npm.md", "docs/install-oci.md", "docs/install-registry.md", "docs/installation/README.md", "docs/hub-handoff.md", "docs/getting-started.md", "docs/compatibility/release-channels.md", "docs/reference/deferred-surfaces.md", "scripts/tools/productization/README.md"].map(read).join("\n");
+  const docs = ["docs/README.md", "docs/install.md", "docs/install-npm.md", "docs/install-oci.md", "docs/install-registry.md", "docs/installation/README.md", "docs/current/architecture/runtime/tray-daemon-contract.md", "docs/getting-started.md", "docs/compatibility/release-channels.md", "docs/pending/README.md", "scripts/tools/productization/README.md"].map(read).join("\n");
   assert.doesNotMatch(docs, /@orthic\/membrane|orthic\.membrane|Orthic owns desktop installation|Orthic desktop installer/i);
   assert.match(docs, /Membrane Hub/);
 });

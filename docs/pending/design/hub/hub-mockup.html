@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Membrane Hub redesign mockup</title>
+<style>
+/* ============================================================
+   MEMBRANE HUB static redesign mockup
+   HeardRight frameless shell ported; Membrane identity applied.
+   HARD RULES honoured in this file:
+     - zero gradients (no linear-/radial-/conic-gradient anywhere)
+     - zero side-stripe borders, zero glow shadows, zero glassmorphism
+     - no per-panel uppercase eyebrows
+     - no `transition: all`
+     - state is never colour alone (shape + label always present)
+   ============================================================ */
+
+/* Tanker = display + wordmark only (native-app.md §5).
+   Chrome/body = system UI face. Evidence/IDs/counts = Spline Sans Mono. */
+@font-face{font-family:'Tanker';src:url('fonts/Tanker-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Spline Sans Mono';src:url('fonts/SplineSansMono.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Spline Sans Mono';src:url('fonts/SplineSansMono.woff2') format('woff2');font-weight:500;font-display:swap}
+
+:root{
+  /* Membrane identity, dark (locked; ratios measured with color-check) */
+  --ink:#0A090C;            /* window ground        OKLCH .143/.007/301 */
+  --panel:#131117;          /* work surfaces                            */
+  --rail:#1A1721;           /* chrome, sidebar, rows                    */
+  --raised:#231F2C;         /* hover / selected                         */
+  --edge:#2C2836;           /* hairlines                                */
+  --edge-strong:#3B3548;    /* focused / active hairlines               */
+  --text:#F2EFF6;           /* 17.45:1 on ink                           */
+  --dim:#9C96A8;            /* 6.94:1 on ink                            */
+  --accent:#C56BFF;         /* 6.55:1 on ink  OKLCH .692/.219/310       */
+  --accent-ink:#12071B;     /* 6.46:1 on accent fill                    */
+
+  /* verdict semantics: each is paired with a SHAPE, never colour alone */
+  --admit:#3FD98B;          /* 10.89:1 */
+  --partial:#F0B23C;        /* 10.53:1 */
+  --refuse:#FF6B73;         /*  7.19:1 */
+  --silent:#8A8598;         /*  5.57:1 */
+
+  --font-display:'Tanker',system-ui,sans-serif;
+  --font-ui:-apple-system,BlinkMacSystemFont,'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;
+  --font-mono:'Spline Sans Mono',ui-monospace,Consolas,monospace;
+
+  --r-sm:5px; --r-md:8px; --r-lg:11px;
+  --chrome-h:46px; --rail-w:216px;
+}
+:root[data-theme="light"]{
+  --ink:#F6F4F8; --panel:#FFFFFF; --rail:#EFECF3; --raised:#E6E2EE;
+  --edge:#E2DEE8; --edge-strong:#CFC8DC;
+  --text:#1A1620;  /* 16.29:1 */
+  --dim:#655F72;   /*  5.60:1 */
+  --accent:#8A2BD6;/*  5.66:1 */ --accent-ink:#FFFFFF; /* 6.18:1 on fill */
+  --admit:#0F7A47; --partial:#8A5A00; --refuse:#C02734; --silent:#6A6478;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:#050406;color:var(--text);font:14px/1.45 var(--font-ui);
+     -webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0}
+
+/* ---------- mockup board furniture (not part of the app) ---------- */
+.board{max-width:1360px;margin:0 auto;padding:40px 28px 96px}
+.board>header{padding-bottom:24px;border-bottom:1px solid #221F29;margin-bottom:34px}
+.board h1{font:400 42px/1 var(--font-display);letter-spacing:.01em}
+.board header p{margin:10px 0 0;color:#8E8899;max-width:62ch}
+.plate{margin:52px 0 0}
+.plate>h2{font:400 24px/1.2 var(--font-display);color:#EDEAF2}
+.plate>p{margin:6px 0 16px;color:#8E8899;max-width:74ch;font-size:13px}
+.frame{border:1px solid #221F29;border-radius:14px;overflow:hidden;background:var(--ink)}
+.frame.narrow{width:392px}
+.pair{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.cap{margin:8px 0 0;font:500 11px/1.4 var(--font-mono);color:#7C7689;letter-spacing:.04em}
+
+/* ============================================================
+   THE SHELL: frameless, fused sidebar
+   Grid: the chrome row and the sidebar share one 216px column,
+   so the sidebar reads as continuous with the window chrome
+   (HeardRight's split-titlebar pattern, ported).
+   ============================================================ */
+.shell{display:grid;grid-template-columns:var(--rail-w) minmax(0,1fr);
+       grid-template-rows:var(--chrome-h) minmax(0,1fr);
+       grid-template-areas:"chrome-l chrome-r" "rail body";
+       height:640px;background:var(--ink)}
+
+/* chrome: left cell (wordmark, sits over the sidebar column) */
+.chrome-l{grid-area:chrome-l;background:var(--rail);display:flex;align-items:center;
+          gap:9px;padding:0 14px;border-right:1px solid var(--edge)}
+/* macOS variant reserves the overlay traffic-light gutter; Windows does not.
+   Never fake traffic lights on Windows (native-app.md §7). */
+.shell[data-os="mac"] .chrome-l{padding-left:78px}
+.mark{width:19px;height:19px;flex:none;background:var(--accent);
+      -webkit-mask:var(--mark-src) center/contain no-repeat;mask:var(--mark-src) center/contain no-repeat}
+.wordmark{font:400 21px/1 var(--font-display);letter-spacing:.005em;white-space:nowrap}
+.wordmark em{font-style:normal;color:var(--accent)}
+
+/* chrome: right cell (page title + caption buttons) */
+.chrome-r{grid-area:chrome-r;background:var(--rail);display:flex;align-items:flex-end;
+          gap:12px;padding:0 0 0 20px;border-bottom:1px solid var(--edge)}
+.page-title{font:400 25px/1 var(--font-display);padding-bottom:9px;white-space:nowrap}
+.chrome-note{padding-bottom:12px;font:400 12px/1 var(--font-ui);color:var(--dim);
+             white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.caption{margin-left:auto;display:flex;align-self:stretch}
+.caption button{width:44px;border:0;background:transparent;color:var(--dim);
+                font:400 13px/1 var(--font-ui);cursor:pointer;
+                transition:background-color .12s ease,color .12s ease}
+.caption button:hover{background:var(--raised);color:var(--text)}
+.caption button.close:hover{background:#C0313C;color:#fff}
+.caption button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+.mac-lights{display:flex;gap:8px;position:absolute;left:20px;top:16px}
+.mac-lights i{width:12px;height:12px;border-radius:50%;display:block}
+
+/* sidebar */
+.rail{grid-area:rail;background:var(--rail);border-right:1px solid var(--edge);
+      display:flex;flex-direction:column;padding:12px 10px 10px}
+.rail nav{display:grid;gap:1px}
+.rail a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r-md);
+        color:var(--dim);text-decoration:none;font-size:13.5px;
+        transition:background-color .12s ease,color .12s ease}
+.rail a:hover{background:var(--raised);color:var(--text)}
+.rail a[aria-current="page"]{background:var(--raised);color:var(--text);font-weight:600}
+.rail a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rail a svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.6}
+.rail-group{margin-top:16px;padding:0 10px 6px;font-size:11px;color:#6F6980;
+            letter-spacing:.02em}
+.rail-foot{margin-top:auto;padding:10px;border-top:1px solid var(--edge);display:grid;gap:7px}
+.rail-foot .sub{font-size:11.5px;color:var(--dim)}
+
+/* body */
+.body{grid-area:body;overflow:auto;padding:22px 24px 28px}
+
+/* ============================================================
+   WORKSPACE SIGNATURE: the admission ledger
+   Every fact Membrane reports is one row of subject / verdict /
+   evidence / observed. The verdict is a shape + a word; the
+   evidence column is the literal typed reason, in mono, never
+   paraphrased. That is the whole interface grammar. The
+   dashboard, the popover and the tray all render the same row.
+   ============================================================ */
+
+/* verdict chip: filled square = admitted, half = degraded,
+   hollow = refused, dash = never configured. */
+.verdict{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;
+         white-space:nowrap;color:var(--dim)}
+.verdict i{width:9px;height:9px;flex:none;border:1.5px solid currentColor;border-radius:2px}
+.verdict.admit{color:var(--admit)}   .verdict.admit i{background:currentColor}
+.verdict.partial{color:var(--partial)}
+.verdict.partial i::before{content:"";display:block;width:100%;height:50%;background:currentColor}
+.verdict.refuse{color:var(--refuse)}  /* hollow: border only */
+.verdict.silent{color:var(--silent)}
+.verdict.silent i{border:0;height:1.5px;width:9px;background:currentColor;border-radius:0}
+
+/* headline: the state of the boundary, right now */
+.state-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:4px}
+.state-head h2{font:400 34px/1 var(--font-display);letter-spacing:.005em}
+.state-head .verdict{font-size:13px;transform:translateY(-3px)}
+.observed{margin:0 0 18px;font:400 12px/1.4 var(--font-mono);color:var(--dim)}
+.observed b{font-weight:500;color:#B4AEC0}
+
+/* counter strip: one hairline row, no boxes, no hero metrics */
+.counters{display:flex;flex-wrap:wrap;gap:0 26px;padding:11px 0 12px;margin:0 0 20px;
+          border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);list-style:none}
+.counters li{display:flex;align-items:baseline;gap:7px}
+.counters b{font:500 19px/1 var(--font-mono);letter-spacing:-.01em}
+.counters span{font-size:12.5px;color:var(--dim)}
+.counters li[data-zero="true"] b{color:var(--silent)}
+
+/* the ledger table (primary work surface) */
+.ledger{width:100%;border-collapse:collapse;font-size:13px}
+.ledger caption{text-align:left;font:400 17px/1.3 var(--font-display);padding:0 0 9px}
+.ledger th{text-align:left;font-weight:500;font-size:11.5px;color:var(--dim);
+           padding:0 12px 8px 0;border-bottom:1px solid var(--edge)}
+.ledger td{padding:10px 12px 10px 0;border-bottom:1px solid var(--edge);vertical-align:top}
+.ledger tbody tr:hover{background:var(--panel)}
+.ledger tbody tr:focus-within{background:var(--panel);outline:2px solid var(--accent);outline-offset:-2px}
+.ledger .subject{font-weight:600}
+.ledger .subject small{display:block;font-weight:400;font-size:11.5px;color:var(--dim);margin-top:2px}
+.ledger .evidence{font:400 12px/1.5 var(--font-mono);color:var(--dim);word-break:break-word}
+.ledger .when{font:400 12px/1.5 var(--font-mono);color:var(--silent);white-space:nowrap}
+.ledger tr.dim td{opacity:.72}
+
+/* secondary column */
+.split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:26px;align-items:start}
+.aside h3{font:400 17px/1.3 var(--font-display);margin-bottom:9px}
+.stack{list-style:none;margin:0;padding:0}
+.stack li{display:flex;align-items:center;justify-content:space-between;gap:12px;
+          padding:9px 0;border-bottom:1px solid var(--edge)}
+.stack li:first-child{border-top:1px solid var(--edge)}
+.stack .name{font-size:13px;text-transform:capitalize}
+.stack .name small{display:block;font:400 11.5px/1.4 var(--font-mono);color:var(--silent);
+                   text-transform:none;margin-top:1px}
+
+/* empty / error / action blocks */
+.notice{border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--panel);
+        padding:16px 17px;margin:0 0 18px}
+.notice h3{font:400 19px/1.25 var(--font-display);margin-bottom:6px}
+.notice p{margin:0;color:var(--dim);font-size:13px;max-width:60ch}
+.notice p+p{margin-top:7px}
+.notice .evidence{font:400 12px/1.5 var(--font-mono);color:var(--dim);margin-top:9px;display:block}
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+button.btn{font:inherit;font-size:13px;padding:7px 13px;border-radius:var(--r-md);cursor:pointer;
+           border:1px solid var(--edge-strong);background:var(--rail);color:var(--text);
+           transition:background-color .12s ease,border-color .12s ease,color .12s ease}
+button.btn:hover{background:var(--raised);border-color:var(--accent)}
+button.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.btn:disabled{cursor:not-allowed;color:var(--silent);border-color:var(--edge);
+                    background:var(--panel);border-style:dashed}
+button.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.btn.primary:hover{background:#D28BFF;border-color:#D28BFF}
+:root[data-theme="light"] button.btn.primary:hover{background:#7A21C2;border-color:#7A21C2}
+
+/* switch (launch at login) */
+.setting{display:flex;align-items:center;justify-content:space-between;gap:16px;
+         border:1px solid var(--edge);border-radius:var(--r-lg);background:var(--panel);
+         padding:13px 15px;margin-top:18px}
+.setting div{min-width:0}
+.setting b{display:block;font-weight:600;font-size:13px}
+.setting small{display:block;font:400 12px/1.5 var(--font-mono);color:var(--dim);margin-top:3px}
+.switch{position:relative;width:38px;height:22px;flex:none}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.switch span{position:absolute;inset:0;border-radius:11px;background:var(--raised);
+             border:1px solid var(--edge-strong);transition:background-color .14s ease,border-color .14s ease}
+.switch span::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;
+                    background:var(--dim);transition:transform .14s ease,background-color .14s ease}
+.switch input:checked+span{background:var(--accent);border-color:var(--accent)}
+.switch input:checked+span::after{transform:translateX(16px);background:var(--accent-ink)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.switch input:disabled+span{opacity:.5;cursor:not-allowed}
+
+/* skeleton (loading state; shape, not a spinner) */
+.skel{background:var(--raised);border-radius:3px;height:11px;display:inline-block}
+@keyframes pulse{50%{opacity:.45}}
+@media (prefers-reduced-motion:no-preference){.skel{animation:pulse 1.4s ease-in-out infinite}}
+
+/* ============================================================
+   POPOVER: anchored to the tray icon, both platforms
+   ============================================================ */
+.pop-stage{position:relative;padding:26px;background:#0E0D11;border:1px solid #221F29;
+           border-radius:14px}
+.pop{width:340px;background:var(--rail);border:1px solid var(--edge);border-radius:var(--r-lg);
+     padding:13px;display:flex;flex-direction:column;gap:11px;position:relative}
+/* The arrow flips with the anchor: menu bar is at the TOP on macOS,
+   the notification area is at the BOTTOM on Windows. */
+.pop::before{content:"";position:absolute;width:11px;height:11px;transform:rotate(45deg);
+             background:var(--rail);border:1px solid var(--edge)}
+.pop[data-anchor="below"]::before{top:-6px;left:calc(50% - 6px);border-right:0;border-bottom:0}
+.pop[data-anchor="above"]::before{bottom:-6px;left:calc(50% - 6px);border-left:0;border-top:0}
+.pop header{display:flex;align-items:flex-start;gap:10px}
+.pop header .mark{width:26px;height:26px;margin-top:1px}
+.pop h2{font:400 21px/1.05 var(--font-display)}
+.pop header .verdict{margin-top:4px}
+.pop .close{margin-left:auto;width:26px;height:26px;border:0;border-radius:var(--r-sm);
+            background:transparent;color:var(--dim);font-size:17px;line-height:1;cursor:pointer;
+            transition:background-color .12s ease,color .12s ease}
+.pop .close:hover{background:var(--raised);color:var(--text)}
+.pop .close:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.pop .rows{list-style:none;margin:0;padding:0}
+.pop .rows li{display:flex;align-items:center;justify-content:space-between;gap:10px;
+              padding:7px 0;border-top:1px solid var(--edge);font-size:12.5px}
+.pop .rows .v{font:400 12px/1.4 var(--font-mono);color:var(--dim);text-align:right;
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.pop footer{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:2px}
+.pop footer .wide{grid-column:1/-1}
+.pop .stamp{font:400 11px/1.4 var(--font-mono);color:var(--silent);margin:0}
+
+/* ============================================================
+   TRAY: icon states and the Windows overflow problem
+   ============================================================ */
+.tray-row{display:flex;gap:26px;flex-wrap:wrap}
+.tray-chip{display:grid;gap:8px;justify-items:center;padding:14px 16px;border:1px solid var(--edge);
+           border-radius:var(--r-lg);background:var(--panel);min-width:132px}
+.tray-chip .glyph{width:22px;height:22px;-webkit-mask:var(--mark-src) center/contain no-repeat;
+                  mask:var(--mark-src) center/contain no-repeat}
+.tray-chip code{font:400 11px/1.4 var(--font-mono);color:var(--dim);text-align:center}
+.taskbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#141318;
+         border:1px solid var(--edge);border-radius:var(--r-md);width:max-content}
+.taskbar .chev{color:var(--dim);font-size:12px}
+.taskbar .slot{width:18px;height:18px;border-radius:3px;background:var(--raised)}
+.taskbar .slot.live{-webkit-mask:var(--mark-src) center/contain no-repeat;
+                    mask:var(--mark-src) center/contain no-repeat;background:var(--admit);border-radius:0}
+.taskbar time{font:400 11px/1 var(--font-mono);color:var(--dim);margin-left:8px}
+
+/* ---------- token sheet ---------- */
+.tokens{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px;
+        list-style:none;margin:0;padding:0}
+.tokens li{border:1px solid var(--edge);border-radius:var(--r-md);overflow:hidden;background:var(--panel)}
+.tokens .chip{height:46px;display:block}
+.tokens dl{margin:0;padding:9px 10px;font:400 11.5px/1.5 var(--font-mono)}
+.tokens dt{color:var(--text)}
+.tokens dd{margin:0;color:var(--dim)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* Tanker is caps-only: confined to .wordmark and .page-title. Every other
+   heading uses the system face so the UI stops shouting. */
+.board h1,.plate>h2,.state-head h2,.ledger caption,.aside h3,.notice h3,.pop h2,
+.frame.narrow h3{font-family:var(--font-ui)!important;font-weight:600!important;
+                 letter-spacing:-.01em!important}
+.board h1{font-size:30px}.plate>h2{font-size:19px}.state-head h2{font-size:22px}
+.pop h2{font-size:18px}
+</style>
+</head>
+<body>
+<div class="board" style="--mark-src:url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><path d=%22M12 1.6 21.2 6.9v10.2L12 22.4 2.8 17.1V6.9z%22 fill=%22black%22/><path d=%22M12 6.4 17 9.3v5.4L12 17.6 7 14.7V9.3z%22 fill=%22white%22/></svg>')">
+
+<header>
+  <h1>Membrane Hub redesign</h1>
+  <p>Static mockup. HeardRight's frameless shell ported (no OS titlebar, sidebar fused into the
+     chrome row); Membrane identity applied; flat colour only. Every state below is one the
+     Hub can actually reach today, and the evidence strings are the typed reasons the snapshot emits.</p>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: dashboard, running (the exemplar)
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Dashboard, running (Windows chrome)</h2>
+  <p>The workspace signature is the <b>admission ledger</b>: subject, verdict, evidence, observed.
+     One grammar for the whole app. The verdict is a shape plus a word, so it survives greyscale
+     and colour-vision deficiency, and the evidence column prints the typed reason verbatim
+     rather than a friendly paraphrase.</p>
+
+  <div class="frame">
+  <div class="shell" data-os="win">
+    <div class="chrome-l">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="wordmark">Mem<em>brane</em></span>
+    </div>
+    <div class="chrome-r">
+      <span class="page-title">Overview</span>
+      <span class="chrome-note">local snapshot · schema 1</span>
+      <div class="caption">
+        <button aria-label="Minimise">&#8211;</button>
+        <button aria-label="Maximise">&#9723;</button>
+        <button class="close" aria-label="Close to notification area">&#10005;</button>
+      </div>
+    </div>
+
+    <aside class="rail">
+      <nav aria-label="Hub sections">
+        <a href="#" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 13h7V4H4zM13 20h7v-9h-7zM4 20h7v-5H4zM13 9h7V4h-7z"/></svg>Overview</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Memories</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h5"/></svg>Ledger</a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>Sources</a>
+      </nav>
+      <p class="rail-group">Machine</p>
+      <nav aria-label="Machine sections">
+        <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20h8"/></svg>Fleet</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M12 3v9l6 3"/><circle cx="12" cy="12" r="9"/></svg>Sessions</a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Settings</a>
+      </nav>
+      <div class="rail-foot">
+        <span class="verdict admit"><i aria-hidden="true"></i>Resident</span>
+        <span class="sub">Membrane service, this machine</span>
+      </div>
+    </aside>
+
+    <main class="body">
+      <div class="state-head">
+        <h2>Membrane running</h2>
+        <span class="verdict admit"><i aria-hidden="true"></i>Live snapshot</span>
+      </div>
+      <p class="observed">observed <b>27 Aug 2026, 11:15</b> · hub.snapshot · age <b>0.4s</b></p>
+
+      <ul class="counters">
+        <li><b>1,284</b><span>durable memories</span></li>
+        <li><b>63</b><span>injections observed</span></li>
+        <li><b>4</b><span>adapters</span></li>
+        <li><b>2</b><span>contradictions</span></li>
+        <li><b>1</b><span>machine</span></li>
+        <li data-zero="true"><b>0</b><span>omissions this hour</span></li>
+      </ul>
+
+      <div class="split">
+        <div>
+          <table class="ledger">
+            <caption>Adapters &amp; delivery</caption>
+            <thead><tr><th>Subject</th><th>Verdict</th><th>Evidence</th><th>Observed</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="subject">Claude Code<small>mcp · stdio</small></td>
+                <td><span class="verdict admit"><i aria-hidden="true"></i>Delivering</span></td>
+                <td class="evidence">41 injections · last packet 6 items</td>
+                <td class="when">11:15:02</td>
+              </tr>
+              <tr>
+                <td class="subject">Codex CLI<small>mcp · stdio</small></td>
+                <td><span class="verdict admit"><i aria-hidden="true"></i>Delivering</span></td>
+                <td class="evidence">22 injections · last packet 3 items</td>
+                <td class="when">11:14:48</td>
+              </tr>
+              <tr>
+                <td class="subject">Cursor<small>mcp · http</small></td>
+                <td><span class="verdict partial"><i aria-hidden="true"></i>Degraded</span></td>
+                <td class="evidence">budget_drop: 2 candidates dropped at attention budget</td>
+                <td class="when">11:12:31</td>
+              </tr>
+              <tr class="dim">
+                <td class="subject">Zed<small>mcp · stdio</small></td>
+                <td><span class="verdict silent"><i aria-hidden="true"></i>Never seen</span></td>
+                <td class="evidence">not_instrumented</td>
+                <td class="when">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="aside">
+          <h3>Subsystems</h3>
+          <ul class="stack">
+            <li><span class="name">Pull<small>fusion + admission</small></span><span class="verdict admit"><i aria-hidden="true"></i>Available</span></li>
+            <li><span class="name">Blueprint<small>generation 41</small></span><span class="verdict admit"><i aria-hidden="true"></i>Available</span></li>
+            <li><span class="name">Cortex<small>2 contradictions</small></span><span class="verdict partial"><i aria-hidden="true"></i>Review</span></li>
+            <li><span class="name">Ledger<small>not_instrumented</small></span><span class="verdict silent"><i aria-hidden="true"></i>Not configured</span></li>
+            <li><span class="name">Adapt<small>schedule missing</small></span><span class="verdict silent"><i aria-hidden="true"></i>Not configured</span></li>
+            <li><span class="name">Push<small>0 reductions</small></span><span class="verdict admit"><i aria-hidden="true"></i>Available</span></li>
+          </ul>
+        </div>
+      </div>
+    </main>
+  </div>
+  </div>
+  <p class="cap">1440×640 · Windows chrome · caption buttons right, no faked traffic lights</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: degraded (the machine's real state today)
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Dashboard, degraded (macOS chrome)</h2>
+  <p>This is the state the installed build actually reports right now: the resident service is up,
+     Blueprint has no graph for the enrolled root, and no adapter has ever delivered. The old
+     design said "Degraded" and stopped. Every failure here names the subsystem, prints the typed
+     reason, and offers the one action that clears it.</p>
+
+  <div class="frame">
+  <div class="shell" data-os="mac" style="position:relative">
+    <div class="mac-lights" aria-hidden="true">
+      <i style="background:#FF5F57"></i><i style="background:#FEBC2E"></i><i style="background:#28C840"></i>
+    </div>
+    <div class="chrome-l">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="wordmark">Mem<em>brane</em></span>
+    </div>
+    <div class="chrome-r">
+      <span class="page-title">Overview</span>
+      <span class="chrome-note">local snapshot · schema 1</span>
+    </div>
+
+    <aside class="rail">
+      <nav aria-label="Hub sections">
+        <a href="#" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 13h7V4H4zM13 20h7v-9h-7zM4 20h7v-5H4zM13 9h7V4h-7z"/></svg>Overview</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Memories</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h5"/></svg>Ledger</a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>Sources</a>
+      </nav>
+      <p class="rail-group">Machine</p>
+      <nav aria-label="Machine sections">
+        <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 20h8"/></svg>Fleet</a>
+        <a href="#"><svg viewBox="0 0 24 24"><path d="M12 3v9l6 3"/><circle cx="12" cy="12" r="9"/></svg>Sessions</a>
+        <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Settings</a>
+      </nav>
+      <div class="rail-foot">
+        <span class="verdict partial"><i aria-hidden="true"></i>Resident, degraded</span>
+        <span class="sub">Membrane service, this machine</span>
+      </div>
+    </aside>
+
+    <main class="body">
+      <div class="state-head">
+        <h2>Membrane degraded</h2>
+        <span class="verdict partial"><i aria-hidden="true"></i>Live snapshot</span>
+      </div>
+      <p class="observed">observed <b>27 Aug 2026, 11:15</b> · hub.snapshot · age <b>0.4s</b></p>
+
+      <div class="notice">
+        <h3>Blueprint has no graph for this root</h3>
+        <p>Pull can still answer from Cortex, but nothing it returns is grounded in repository
+           truth until Blueprint finishes a first scan of <span style="font-family:var(--font-mono)">D:\Claude</span>.</p>
+        <code class="evidence">repositories.state = unavailable · reason = graph_missing</code>
+        <div class="actions">
+          <button class="btn primary">Scan this root</button>
+          <button class="btn">Choose a different root</button>
+        </div>
+      </div>
+
+      <ul class="counters">
+        <li data-zero="true"><b>0</b><span>durable memories</span></li>
+        <li data-zero="true"><b>0</b><span>injections observed</span></li>
+        <li data-zero="true"><b>0</b><span>adapters</span></li>
+        <li data-zero="true"><b>0</b><span>contradictions</span></li>
+        <li><b>1</b><span>machine</span></li>
+        <li data-zero="true"><b>0</b><span>omissions this hour</span></li>
+      </ul>
+
+      <div class="split">
+        <div>
+          <table class="ledger">
+            <caption>Adapters &amp; delivery</caption>
+            <thead><tr><th>Subject</th><th>Verdict</th><th>Evidence</th><th>Observed</th></tr></thead>
+            <tbody>
+              <tr><td colspan="4" style="padding:22px 0 6px">
+                <h3 style="font:400 19px/1.25 var(--font-display);margin-bottom:6px">No client has asked yet</h3>
+                <p style="margin:0;color:var(--dim);font-size:13px;max-width:56ch">
+                  Membrane records a delivery the first time an adapter requests context. Install
+                  the MCP adapter into a client and its first packet appears here with the
+                  receipt that produced it.</p>
+                <div class="actions"><button class="btn">Install an adapter</button></div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="aside">
+          <h3>Subsystems</h3>
+          <ul class="stack">
+            <li><span class="name">Pull<small>no candidates</small></span><span class="verdict partial"><i aria-hidden="true"></i>Degraded</span></li>
+            <li><span class="name">Blueprint<small>graph_missing</small></span><span class="verdict refuse"><i aria-hidden="true"></i>Unavailable</span></li>
+            <li><span class="name">Cortex<small>database empty</small></span><span class="verdict admit"><i aria-hidden="true"></i>Available</span></li>
+            <li><span class="name">Ledger<small>not_instrumented</small></span><span class="verdict silent"><i aria-hidden="true"></i>Not configured</span></li>
+            <li><span class="name">Adapt<small>adapt_schedule_missing</small></span><span class="verdict silent"><i aria-hidden="true"></i>Not configured</span></li>
+            <li><span class="name">Push<small>0 reductions</small></span><span class="verdict admit"><i aria-hidden="true"></i>Available</span></li>
+          </ul>
+
+          <div class="setting">
+            <div>
+              <b>Launch at login</b>
+              <small>HKCU\…\Run\MembraneHub</small>
+            </div>
+            <label class="switch"><input type="checkbox" checked aria-label="Launch Membrane Hub at login"><span></span></label>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  </div>
+  <p class="cap">macOS chrome · 78px overlay gutter reserved for the native traffic lights</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: remaining states
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Remaining states</h2>
+  <p>Loading, Hub-inactive, and the disabled control. State completeness is a gate, not a
+     nice-to-have. The shipped build has one happy path and one bare "Offline" card.</p>
+
+  <div class="pair">
+    <div>
+      <div class="frame narrow" style="padding:20px 22px 24px">
+        <div class="state-head"><h2 style="font-size:28px">Reading snapshot</h2></div>
+        <p class="observed">hub.snapshot · first poll</p>
+        <ul class="counters">
+          <li><b class="skel" style="width:44px"></b><span>durable memories</span></li>
+          <li><b class="skel" style="width:26px"></b><span>adapters</span></li>
+        </ul>
+        <span class="skel" style="width:86%;height:13px"></span><br><br>
+        <span class="skel" style="width:64%;height:13px"></span>
+      </div>
+      <p class="cap">loading · content-shaped, no spinner</p>
+    </div>
+
+    <div>
+      <div class="frame narrow" style="padding:20px 22px 24px">
+        <div class="state-head">
+          <h2 style="font-size:28px">Membrane not running</h2>
+          <span class="verdict refuse"><i aria-hidden="true"></i>No snapshot</span>
+        </div>
+        <p class="observed">last good snapshot <b>26 Aug, 22:41</b> · 12h ago</p>
+        <div class="notice" style="margin-top:16px">
+          <h3>The tray-owned daemon is not hosting Membrane</h3>
+          <p>Membrane runs only inside the tray-owned daemon. With the daemon down there is no context to deliver
+             and adapters receive a typed unavailable answer rather than stale data.</p>
+          <code class="evidence">membrane_unavailable { hub_inactive }</code>
+          <div class="actions"><button class="btn primary">Start Membrane</button>
+            <button class="btn">Copy diagnostics</button></div>
+        </div>
+        <div class="setting" style="margin-top:14px">
+          <div><b>Launch at login</b><small>startup registration unavailable</small></div>
+          <label class="switch"><input type="checkbox" disabled aria-label="Launch at login (unavailable)"><span></span></label>
+        </div>
+      </div>
+      <p class="cap">hub_inactive compatibility reason + disabled control (dashed border, not just faded)</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: popover, both anchors
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Tray popover, anchored per platform</h2>
+  <p>Same ledger grammar at 340px. The arrow and the anchor flip with the platform: the macOS
+     menu bar is at the top of the screen, the Windows notification area is at the bottom. The
+     shipped build anchors <em>below the icon on both</em>, which is why the popover lands
+     off-screen on Windows. See the architecture note.</p>
+
+  <div class="pair">
+    <div>
+      <div class="pop-stage">
+        <div class="pop" data-anchor="below">
+          <header>
+            <span class="mark" aria-hidden="true"></span>
+            <div>
+              <h2>Running</h2>
+              <span class="verdict admit"><i aria-hidden="true"></i>Live snapshot</span>
+            </div>
+            <button class="close" aria-label="Close">&#10005;</button>
+          </header>
+          <ul class="rows">
+            <li><span>Last delivery</span><span class="v">11:15:02 · 6 items</span></li>
+            <li><span>Blueprint</span><span class="v">generation 41</span></li>
+            <li><span>Adapters</span><span class="v">3 of 4 delivering</span></li>
+            <li><span>Omissions</span><span class="v">0 this hour</span></li>
+          </ul>
+          <p class="stamp">observed 11:15:04 · hub.snapshot</p>
+          <footer>
+            <button class="btn">Open Hub</button>
+            <button class="btn">Copy diagnostics</button>
+            <button class="btn wide">Quit Membrane</button>
+          </footer>
+        </div>
+      </div>
+      <p class="cap">macOS · anchored below the menu-bar icon, arrow up</p>
+    </div>
+
+    <div>
+      <div class="pop-stage">
+        <div class="pop" data-anchor="above">
+          <header>
+            <span class="mark" aria-hidden="true" style="background:var(--partial)"></span>
+            <div>
+              <h2>Degraded</h2>
+              <span class="verdict partial"><i aria-hidden="true"></i>Blueprint unavailable</span>
+            </div>
+            <button class="close" aria-label="Close">&#10005;</button>
+          </header>
+          <ul class="rows">
+            <li><span>Last delivery</span><span class="v">never</span></li>
+            <li><span>Blueprint</span><span class="v">graph_missing</span></li>
+            <li><span>Adapters</span><span class="v">0 known</span></li>
+            <li><span>Omissions</span><span class="v">not recorded</span></li>
+          </ul>
+          <p class="stamp">observed 11:15:04 · hub.snapshot</p>
+          <footer>
+            <button class="btn primary wide">Scan D:\Claude</button>
+            <button class="btn">Open Hub</button>
+            <button class="btn">Copy diagnostics</button>
+          </footer>
+        </div>
+      </div>
+      <p class="cap">Windows · anchored above the notification area, arrow down</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: tray + first run
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Tray icon states, and the Windows overflow problem</h2>
+  <p>One glyph, four tints, plus a shape cue in the tooltip text so the state survives a
+     monochrome or high-contrast tray. Windows 11 files new notification-area icons behind the
+     chevron by default, so the first run has to say where the icon went.</p>
+
+  <div class="tray-row" style="margin-bottom:22px">
+    <div class="tray-chip"><span class="glyph" style="background:var(--admit)"></span>
+      <code>membrane-available<br>Membrane · running</code></div>
+    <div class="tray-chip"><span class="glyph" style="background:var(--partial)"></span>
+      <code>membrane-degraded<br>Membrane · degraded ·<br>blueprint graph missing</code></div>
+    <div class="tray-chip"><span class="glyph" style="background:var(--refuse)"></span>
+      <code>membrane-unavailable<br>Membrane · unavailable</code></div>
+    <div class="tray-chip"><span class="glyph" style="background:var(--silent)"></span>
+      <code>membrane-offline<br>Membrane · not running ·<br>no cached snapshot</code></div>
+  </div>
+
+  <div class="pair">
+    <div>
+      <div class="taskbar">
+        <span class="chev">&#94;</span>
+        <span class="slot"></span><span class="slot"></span>
+        <span class="slot live"></span>
+        <time>11:15</time>
+      </div>
+      <p class="cap">pinned · the target state after first run</p>
+    </div>
+    <div>
+      <div class="taskbar">
+        <span class="chev" style="color:var(--partial)">&#94;</span>
+        <span class="slot"></span><span class="slot"></span>
+        <time>11:15</time>
+      </div>
+      <p class="cap">default · Membrane sits inside the overflow flyout, invisible</p>
+    </div>
+  </div>
+
+  <div style="margin-top:26px;max-width:392px">
+    <div class="frame narrow" style="padding:20px 22px 22px">
+      <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">
+        <span class="mark" aria-hidden="true" style="width:22px;height:22px"></span>
+        <span class="wordmark" style="font-size:19px">Mem<em>brane</em></span>
+      </div>
+      <h3 style="font:400 24px/1.15 var(--font-display);margin-bottom:8px">Membrane is running in the notification area</h3>
+      <p style="margin:0;color:var(--dim);font-size:13px">Windows put the icon behind the
+         <span style="font-family:var(--font-mono)">^</span> chevron. Drag it onto the taskbar to
+         keep status and the Quit action one click away.</p>
+      <p style="margin:8px 0 0;color:var(--dim);font-size:13px">This window opens once. After that
+         the Hub stays out of the way. Open it again from the tray icon or the Start menu.</p>
+      <div class="actions">
+        <button class="btn primary">Show me where</button>
+        <button class="btn">Got it</button>
+      </div>
+      <div class="setting" style="margin-top:16px">
+        <div><b>Launch at login</b><small>writes HKCU\…\Run\MembraneHub</small></div>
+        <label class="switch"><input type="checkbox" checked aria-label="Launch at login"><span></span></label>
+      </div>
+    </div>
+    <p class="cap">first run only · persisted behind a first-run marker</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     PLATE: tokens
+     ══════════════════════════════════════════════════════════ -->
+<section class="plate">
+  <h2>Tokens</h2>
+  <p>Every ratio below was measured with <span style="font-family:var(--font-mono)">color-check</span>,
+     not estimated. Flat fills only, and the token sheet contains no gradient stop anywhere.</p>
+  <ul class="tokens">
+    <li><span class="chip" style="background:#0A090C"></span><dl><dt>--ink</dt><dd>#0A090C · L .143</dd></dl></li>
+    <li><span class="chip" style="background:#131117"></span><dl><dt>--panel</dt><dd>#131117</dd></dl></li>
+    <li><span class="chip" style="background:#1A1721"></span><dl><dt>--rail</dt><dd>#1A1721</dd></dl></li>
+    <li><span class="chip" style="background:#231F2C"></span><dl><dt>--raised</dt><dd>#231F2C</dd></dl></li>
+    <li><span class="chip" style="background:#2C2836"></span><dl><dt>--edge</dt><dd>#2C2836</dd></dl></li>
+    <li><span class="chip" style="background:#F2EFF6"></span><dl><dt>--text</dt><dd>17.45:1 on ink</dd></dl></li>
+    <li><span class="chip" style="background:#9C96A8"></span><dl><dt>--dim</dt><dd>6.94:1 on ink</dd></dl></li>
+    <li><span class="chip" style="background:#C56BFF"></span><dl><dt>--accent</dt><dd>6.55:1 · H 310</dd></dl></li>
+    <li><span class="chip" style="background:#3FD98B"></span><dl><dt>--admit</dt><dd>10.89:1 · filled</dd></dl></li>
+    <li><span class="chip" style="background:#F0B23C"></span><dl><dt>--partial</dt><dd>10.53:1 · half</dd></dl></li>
+    <li><span class="chip" style="background:#FF6B73"></span><dl><dt>--refuse</dt><dd>7.19:1 · hollow</dd></dl></li>
+    <li><span class="chip" style="background:#8A8598"></span><dl><dt>--silent</dt><dd>5.57:1 · dash</dd></dl></li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>

@@ -42,9 +42,11 @@ test("Claude projection is installed-path bound & ships hooks", () => {
 
 test("quickstart states native Windows runtime authority", () => {
   assert.match(product, /Current supported target is \*\*Windows\*\*/);
-  assert.match(product, /Membrane Hub.*sole resident service authority/);
+  assert.match(product, /visible native \*\*tray\*\* owns resident lifecycle/);
   assert.match(doc, /signed Windows install/);
-  assert.match(doc, /Membrane Hub owns the resident/);
+  assert.match(doc, /Visible native tray owns resident/);
+  assert.match(doc, /headless child daemon hosts runtime/);
+  assert.match(doc, /Hub dashboard is on demand/);
   assert.match(doc, /Node & Python are development\/test tooling/);
 });
 
@@ -66,7 +68,7 @@ test("Hub-off expectation matches native typed contract", () => {
 
 test("Blueprint lifecycle language preserves installed runtime contract", () => {
   assert.match(doc, /runtime\s+shipped by Membrane installer/);
-  assert.match(doc, /Watcher freshness is Hub-coupled/);
+  assert.match(doc, /Watcher freshness is daemon-coupled/);
   assert.match(doc, /`not_configured`/);
   assert.match(doc, /`degraded`/);
   assert.match(doc, /`blueprint_unavailable`/);

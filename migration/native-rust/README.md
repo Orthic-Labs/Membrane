@@ -2,7 +2,7 @@
 
 **Canonical migration plan:** [`MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md)
 
-**Adapt semantic authority:** [`../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`](../../docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md)
+**Adapt semantic authority:** [`../../docs/current/architecture/subsystems/adapt.md`](../../docs/current/architecture/subsystems/adapt.md)
 
 This directory freezes Membrane's historical executable federation boundary at baseline
 `322855c33e65dc936e3927570451c98e54fb0bd2` for MEM-000. It is migration input,
@@ -43,7 +43,7 @@ first-wins deduplication after native canonical ordering. One monotonic deadline
 flows from ingress through freshness, provider work, merge, and publication.
 
 Blueprint owns repository truth and remains protocol-only to Membrane. Its
-watcher runs only while Hub is active; Hub-off access is an explicit bounded
+watcher runs only inside active tray-owned daemon; tray-off access is an explicit bounded
 one-shot, while resident requests receive typed unavailability. Cortex owns
 durable memory and remains application-API-only.
 Ledger owns its rebuildable document index. Membrane catalog owns grants,

@@ -22,7 +22,7 @@ re-running it.
 `evidence/g2/` (391 files) and `docs/evidence/productization/` (257 files) were
 historical CI receipts referenced only from prose in
 `docs/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md`
-and `docs/reference/deferred-surfaces.md`. No `.mjs`/`.js`/`.py`/`.rs` script,
+and `docs/archive/superseded/reference/deferred-surfaces.md`. No `.mjs`/`.js`/`.py`/`.rs` script,
 `package.json` script, or GitHub Actions workflow read them. They were
 removed from the repo to cut dead weight; the prose that cited them now says
 so explicitly instead of linking to a path that no longer exists.

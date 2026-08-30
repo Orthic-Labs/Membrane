@@ -1,6 +1,6 @@
 """Build the P0.5 portable labelled Insights benchmark (deterministic, local).
 
-Canonical authority: ``docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md``
+Canonical authority: ``docs/current/architecture/subsystems/adapt.md``
 sections 6.4-6.6, 7.3-7.4, 11.2, and plan item P0.5.
 
 Outputs (under ``adapt/eval/insights_bench/v1/``):
@@ -674,7 +674,7 @@ def main() -> int:
         "title": "Adapt Insights portable labelled benchmark (P0.5)",
         "created_at": CREATED_AT,
         "canonical_source": (
-            "docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md "
+            "docs/current/architecture/subsystems/adapt.md "
             "sections 6.4-6.6, 7.3-7.4, 11.2; plan item P0.5"
         ),
         "case_schema": {

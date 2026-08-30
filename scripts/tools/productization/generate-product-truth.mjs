@@ -30,7 +30,7 @@ const TRUTH_JSON = join(REPO_ROOT, "schemas", "registry", "product-truth.json");
 const TRUTH_DOC = join(REPO_ROOT, "docs", "product-truth.md");
 const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
-const MANIFEST = join(REPO_ROOT, "docs", "design", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
+const MANIFEST = join(REPO_ROOT, "docs", "current", "architecture", "current-state-manifest.json");
 const MCP_FIXTURE = join(REPO_ROOT, "migration", "native-rust", "fixtures", "mcp-conformance.v1.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
@@ -68,8 +68,17 @@ function capabilityDeclarations(matrix) {
   if (matrix.cortex_scope !== "durable-memory-only") {
     throw new Error("capability matrix cortex_scope must be durable-memory-only");
   }
-  if (matrix.resident_service_authority !== "hub") {
-    throw new Error("capability matrix resident_service_authority must be hub");
+  if (matrix.resident_service_authority !== "tray") {
+    throw new Error("capability matrix resident_service_authority must be tray");
+  }
+  if (matrix.runtime_execution_host !== "tray-owned-daemon") {
+    throw new Error("capability matrix runtime_execution_host must be tray-owned-daemon");
+  }
+  if (matrix.dashboard_residency !== "on-demand") {
+    throw new Error("capability matrix dashboard_residency must be on-demand");
+  }
+  if (matrix.inactive_reason_compatibility_token !== "hub_inactive") {
+    throw new Error("capability matrix inactive_reason_compatibility_token must preserve hub_inactive");
   }
   return {
     axes: AXIS_IDS,
@@ -77,6 +86,9 @@ function capabilityDeclarations(matrix) {
     currentTarget: matrix.current_target,
     cortexScope: matrix.cortex_scope,
     residentServiceAuthority: matrix.resident_service_authority,
+    runtimeExecutionHost: matrix.runtime_execution_host,
+    dashboardResidency: matrix.dashboard_residency,
+    inactiveReasonCompatibilityToken: matrix.inactive_reason_compatibility_token,
   };
 }
 
@@ -137,6 +149,9 @@ export function renderManifest(manifestText, truth, platforms) {
     currentTarget: truth.currentTarget,
     cortexScope: truth.cortexScope,
     residentServiceAuthority: truth.residentServiceAuthority,
+    runtimeExecutionHost: truth.runtimeExecutionHost,
+    dashboardResidency: truth.dashboardResidency,
+    inactiveReasonCompatibilityToken: truth.inactiveReasonCompatibilityToken,
     mcpToolCount: truth.toolCount,
     mcpTools: truth.tools,
     adapterCount: truth.adapterCount,
@@ -175,7 +190,7 @@ function renderTruthDoc(truth) {
     "|---|---|---|",
     axisLines,
     "",
-    `Current supported target: **${truth.currentTarget}**. Cortex scope: **${truth.cortexScope}**. Resident service authority: **${truth.residentServiceAuthority}** (Membrane Hub).`,
+    `Current supported target: **${truth.currentTarget}**. Cortex scope: **${truth.cortexScope}**. Resident lifecycle authority: **visible native ${truth.residentServiceAuthority}**. Runtime host: **${truth.runtimeExecutionHost}**. Hub dashboard: **${truth.dashboardResidency}**.`,
     "",
   ].join("\n");
 }

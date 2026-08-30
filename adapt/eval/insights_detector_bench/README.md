@@ -7,7 +7,7 @@ This benchmark gives all 33 native Insights detector families emitted by
 `membrane_adapt::insights::detectors::run_all_detectors` a portable,
 checked-in, labelled corpus and reports precision and recall per detector.
 It implements the portable-conformance requirements in
-`docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md` sections 6 and
+`docs/current/architecture/subsystems/adapt.md` sections 6 and
 11.2. It is synthetic conformance evidence, not a real held-out corpus and
 must not be cited as production precision.
 

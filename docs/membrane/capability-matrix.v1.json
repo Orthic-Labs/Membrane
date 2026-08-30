@@ -75,7 +75,10 @@
   ],
   "current_target": "Windows",
   "cortex_scope": "durable-memory-only",
-  "resident_service_authority": "hub",
+  "resident_service_authority": "tray",
+  "runtime_execution_host": "tray-owned-daemon",
+  "dashboard_residency": "on-demand",
+  "inactive_reason_compatibility_token": "hub_inactive",
   "support_tiers": {
     "tier_1": ["Windows"],
     "tier_2_best_effort": []

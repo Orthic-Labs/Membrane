@@ -1,7 +1,7 @@
 // Gate: assert Architecture B (visible native tray parent, headless
 // membrane-daemon child, OS-enforced lifetime coupling; Hub dashboard is an
 // on-demand client with no resident runtime) against CODE facts, not doc
-// prose. See docs/design/hub-redesign/DECISION-PROCESS-ARCHITECTURE.md
+// prose. See docs/current/architecture/adr/tray-daemon-process.md
 // (decided 2026-08-27) and docs/agent-rules.md.
 //
 // Every assertion below is pinned to an exact string/path verified present

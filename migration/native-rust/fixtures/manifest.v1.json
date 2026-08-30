@@ -3,6 +3,10 @@
   "packetId": "MEM-001",
   "corpusId": "membrane-federation-parity-v1",
   "immutable": true,
+  "inputResolution": {
+    "default": {"kind":"git_revision","revision":"cfe43fbd8306f28c3851a039b57e38997fb29461"},
+    "workspaceOverrides": ["docs/archive/architecture/2026-08-22-full-rust-federation-port.md"]
+  },
   "providerOrder": ["anchors", "blueprint", "rules", "live_files", "git", "audit", "architect", "skills", "cortex"],
   "legacyProviderOrder": ["blueprint", "audit", "architect", "cortex", "git", "live", "rules", "anchors", "skills"],
   "requiredDomains": ["request", "provider", "merge", "scope", "generation", "failure", "storage", "backend"],
@@ -16,7 +20,7 @@
   ],
   "allowedDeltas": ["requestId", "traceId", "indexedAt", "temporaryRoot", "elapsedMs", "schedulerCompletionOrder", "redactedDiagnosticDetail"],
   "inputs": [
-    {"path":"docs/plans/2026-08-22-full-rust-federation-port-architecture.md","sha256":"9fb728535d3c9b2927ad2fd9f89f93dea9352a175950b8b35d865cbe9924d7c3"},
+    {"path":"docs/archive/architecture/2026-08-22-full-rust-federation-port.md","sha256":"b7baa9b45ad3d29a4d10aac3aa476487933dc215949761c6098fe7b4d15adb1e"},
     {"path":"engine/fixtures/context-telemetry-registry.json","sha256":"03ab73429cb56a826d900a8aa7f2124c705759bc5aa268d761d6f7a74ee099ce"},
     {"path":"engine/federation/fixtures/equivalence-net-v1.json","sha256":"8f3c3562d7a9018dab975017c29086f07b50e05b92d983dbcbbf048bf8be187b"},
     {"path":"engine/federation/fixtures/freshness-conformance-v1.json","sha256":"95e57b0f1f931f032decc997ab15b159cf136451c11b7b4f0213300ad317bcdd"},

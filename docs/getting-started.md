@@ -2,14 +2,15 @@
 
 This path ends only with a receipt-backed packet. A packet without a receipt is a failed run.
 
-The live path uses the signed Windows install. Membrane Hub owns the resident
-runtime; the MCP client launches only the installed native `membrane` binary.
+The live path uses the signed Windows install. Visible native tray owns resident
+lifecycle; its headless child daemon hosts runtime. Hub dashboard is on demand.
+MCP client launches only installed native `membrane` binary.
 Node & Python are development/test tooling, never installed runtime dependencies.
 
 ## 1. Install & launch (0:00)
 
-Install the signed Windows Membrane Hub release, then launch **Membrane Hub**.
-Wait until Hub reports Membrane **Running**. Hub off means Membrane is unavailable;
+Install signed Windows release, then launch **Membrane tray**.
+Wait until tray reports Membrane **Running**. Tray off means Membrane is unavailable;
 no client or sidecar may start a replacement resident service.
 
 ## 2. Configure MCP (0:45)
@@ -29,7 +30,7 @@ shows the canonical transport:
 }
 ```
 
-`membrane stdio-mcp` is a bounded client process. It talks to active Hub; it
+`membrane stdio-mcp` is a bounded client process. It talks to active tray-owned daemon; it
 does not own Membrane lifecycle or durable storage.
 
 ## 3. Request first packet (1:30)
@@ -51,15 +52,15 @@ timeouts, inaccessible sources, stale evidence, & budget drops remain explicit.
 
 ## 5. Check Blueprint state (3:30)
 
-With Hub running, Blueprint's installed capability is available through runtime
-shipped by Membrane installer. Watcher freshness is Hub-coupled: watcher runs
+With tray running, Blueprint's installed capability is available through runtime
+shipped by Membrane installer. Watcher freshness is daemon-coupled: watcher runs
 only while Membrane runs. An unenrolled repository is `not_configured`; stale or
 incomplete graph evidence is `degraded`; only a live transport/service failure is
 `blueprint_unavailable`.
 
 ## 6. Prove fail-closed lifecycle (4:30)
 
-Exit Membrane Hub, then repeat request. Expected native result is:
+Exit Membrane tray, then repeat request. Expected native result is:
 
 ```json
 {"kind":"membrane_unavailable","reason":"hub_inactive","retryable":true}
@@ -67,7 +68,8 @@ Exit Membrane Hub, then repeat request. Expected native result is:
 
 Client must not fabricate context or start an embedded/one-shot Membrane
 fallback. Blueprint remains independently usable only as a bounded one-shot
-operation; its watcher is not resident while Hub is off.
+operation; its watcher is not resident while tray is off. `hub_inactive` remains
+stable V1 compatibility wording for tray-owned daemon inactivity.
 
 ## Source-checkout verification
 

@@ -2,7 +2,7 @@
 
 Frozen, language-neutral fixtures for per-detector precision/recall scoring of
 Adapt Insights detectors. Canonical authority:
-`docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md` sections 6.4–6.6,
+`docs/current/architecture/subsystems/adapt.md` sections 6.4–6.6,
 7.3–7.4, 11.2, and plan item P0.5.
 
 ## Contents

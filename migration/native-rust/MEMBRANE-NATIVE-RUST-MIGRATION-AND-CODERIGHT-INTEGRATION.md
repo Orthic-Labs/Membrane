@@ -7,8 +7,8 @@
 **Current implementation status reviewed:** integration tree at `51f98189da769ed005c516e2a2ea93e61678e0da` (2026-08-26; see Section 0.1.1)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
-**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, `docs/plans/2026-08-22-full-rust-federation-port-architecture.md` for federation execution and closure, the runtime/process/cutover portions of `docs/design/membrane-live-diagnostics-final-architecture.md` and `docs/plans/membrane-live-diagnostics-final-architecture-revised.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
-**Companion semantic authority:** `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
+**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, archived `docs/archive/architecture/2026-08-22-full-rust-federation-port.md` for federation execution and closure, runtime/process/cutover portions now reconciled into `docs/current/architecture/live-diagnostics.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
+**Companion semantic authority:** `docs/current/architecture/subsystems/adapt.md`
 
 
 ## Scope boundary
@@ -31,7 +31,7 @@ moved to Rust while another canonical subsystem still executes Python or Node.
 The final product therefore obeys all of the following:
 
 1. **Membrane-owned runtime authority, policy, state transitions, storage, and effects execute as native Rust or are declarative data.** Installed Hub presentation may use only the bounded OS-WebView exception in §1.5.
-2. **No installed Membrane-owned runtime implementation requires Python, npm, npx, pip, a virtual environment, or dynamically interpreted Membrane-owned source.** Blueprint's pinned installed runtime is a separately inventoried subsystem component; only Hub may keep its Node service/watcher resident, and direct Hub-off access is one bounded operation. Bounded WebView assets execute in the OS-provided WebView.
+2. **No installed Membrane-owned runtime implementation requires Python, npm, npx, pip, a virtual environment, or dynamically interpreted Membrane-owned source.** Blueprint's pinned installed runtime is a separately inventoried subsystem component; only tray-owned daemon may host its Node service/watcher resident, and direct tray-off access is one bounded operation. Bounded WebView assets execute in OS-provided WebView.
 3. **CodeRight consumes Membrane through exactly one compatible active-Hub binding.** It does not embed a second Membrane backend or open a local fallback store.
 4. **External products and target-project tools are reached only through explicit typed boundaries.** They do not justify an internal language worker.
 5. **Development-only Python/JavaScript is permitted only when it is provably absent from installed execution paths and release artifacts.** Installed JavaScript is limited to §1.5's presentation sandbox plus Blueprint's exact hash-bound runtime tree under its lifecycle contract.
@@ -57,7 +57,7 @@ The audit established this historical state:
 | Live Diagnostics host enforcement | Installed Node hook entrypoint, command classifier, current-worktree manifest, reconciliation client, and completion/test/build fence | Port Membrane-owned enforcement helpers to native Rust; installed host configuration invokes a native adapter; retain JS only as release-excluded differential coverage |
 | MCP server | Generated architecture names `mcp/server.mjs` as source of truth for 17 tools, including seven diagnostic tools; native `membrane-mcp` advertises none because native execution is not implemented | Cut the complete registry-defined production MCP surface to `membrane-mcp` Rust; advertise a tool only when its native executor exists |
 | Context renderer/budget implementation | Generated architecture still names `mcp/context-renderer-lib.cjs` as source of truth, with a Rust mirror | Make Rust authoritative; demote/delete production CJS path |
-| Blueprint | Owns generation/hash-bound D0 findings and remains one of six product axes | Hub-hosted, not independently resident: watcher runs only under Hub, Hub-off access is a bounded one-shot operation; Membrane uses one typed native client, never imports Blueprint internals, and never bootstraps Node |
+| Blueprint | Owns generation/hash-bound D0 findings and remains one of six product axes | Daemon-hosted, not independently resident: watcher runs only inside active tray-owned daemon, tray-off access is a bounded one-shot operation; Membrane uses one typed native client, never imports Blueprint internals, and never bootstraps Node |
 | Python/JS benchmark, migration, and repository-maintenance scripts | Mixed | May remain dev-only with machine-verifiable exclusion from release/runtime |
 | Root CI | Node-oriented; does not itself prove interpreter-free installed operation | Add independent native-only installed-artifact gate |
 
@@ -92,7 +92,7 @@ test is not exact released-package qualification.
 | N5 | **PARTIAL** | Native Adapt source, CLI surfaces, persistence/delivery, & copied source-built-binary qualification have landed. The Python-installed authority runner is deleted; exact installed native qualification remains pending receipts. |
 | N6 | **PARTIAL** | Native MCP/renderer/host-fence implementation has landed; installed conformance, Node-absent, & host-configuration receipts remain pending. |
 | N7 | **PARTIAL** | Federation Python/shadow deletion & configuration cutover implementation have landed; installed deletion & upgrade/rollback receipts remain pending. |
-| N8 | **PARTIAL** | Blueprint packaging/runtime-boundary implementation has landed; Hub-coupled watcher and bounded one-shot availability are defined, while installed receipts remain pending. |
+| N8 | **PARTIAL** | Blueprint packaging/runtime-boundary implementation has landed; daemon-coupled watcher and bounded one-shot availability are defined, while installed receipts remain pending. |
 | N9 | **PARTIAL** | Membrane's strict active-Hub health, identity fence, memory routes, diagnostics pipe, and typed unavailable seams have landed; Membrane-side integration tests & installed receipts remain pending. No CodeRight repository change is in scope. |
 | N10 | **BLOCKED / NOT SEALED** | Native-only seal has not been issued. It still waits for N2 receipt evidence, N5-N9 installed receipts, & remaining Section 17 package/SBOM/process-tree/native-only gates. |
 
@@ -309,7 +309,7 @@ The current product truth enumerates six axes. This section makes their runtime 
 | **Pull** | Rust federation, admission, planner-facing evidence | No Python/Node provider worker; external sources only through typed interfaces |
 | **Push** | Rust reduction/reconstruction/budget logic | Canonical renderer/reconciliation in Rust; CJS mirror cannot remain authoritative |
 | **Cortex** | Existing Rust engine/store | No competing Python memory writer; remote use only through typed client when selected |
-| **Blueprint** | Typed Rust client/interface; Hub-hosted native implementation | Independently usable, not independently resident; watcher only under Hub; Hub-off access is bounded one-shot; absence degrades explicitly |
+| **Blueprint** | Typed Rust client/interface; daemon-hosted native implementation | Independently usable, not independently resident; watcher only inside active tray-owned daemon; tray-off access is bounded one-shot; absence degrades explicitly |
 | **Ledger** | Rust record/index/navigation implementation | No interpreter-backed runtime dependency |
 | **Adapt** | Rust learning subsystem over native transcript + Cortex interfaces | Python package/CLI/shims/scheduler are migration scaffolding only |
 
@@ -507,7 +507,7 @@ It MUST NOT own preference inference or authority decisions. Those belong to Ada
 
 ## 6. Adapt native runtime cutover
 
-`docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md` exclusively defines Taste, Insights, evidence authority, proposal eligibility, lifecycle, evaluation, and feature dependencies. Migration code and this plan MUST consume those contracts rather than restating them.
+`docs/current/architecture/subsystems/adapt.md` exclusively defines Taste, Insights, evidence authority, proposal eligibility, lifecycle, evaluation, and feature dependencies. Migration code and this plan MUST consume those contracts rather than restating them.
 
 Native runtime ownership includes:
 
@@ -986,7 +986,7 @@ configuration contains a legacy interpreter key.
 ### N8 — Close Blueprint packaging/runtime boundary
 
 **Status: PARTIAL — Blueprint packaging/runtime-boundary implementation landed; its watcher is
-Hub-coupled and installed residency receipts remain open.**
+Daemon-coupled and installed residency receipts remain open.**
 
 Implement Section 8.3's Hub-hosted residency and bounded one-shot contract.
 Include the merged D0a/D0b findings surface, named-generation baseline/delta,
@@ -1684,7 +1684,7 @@ After each native cutover, regenerate/update:
 
 - `docs/product-truth.md`;
 - `docs/architecture.md`;
-- `docs/subsystems/adapt.md` / Adapt README;
+- `docs/current/architecture/subsystems/adapt.md` / Adapt README;
 - transcript-contract docs;
 - MCP/host docs;
 - Live Diagnostics architecture, operations, provider, hook, and fence docs;
@@ -1715,7 +1715,7 @@ Load-bearing evidence at that historical baseline included:
 - commit `f602fbbaec1d13629e6b09ca4d6d4c07277ad7ba` — substantial new Python Adapt multi-source transcript learning after the Rust migration decision;
 - commit `7c05b49b6f9ea202116f6829e4f74949a4529592` — prior baseline, adding held-out semantic admission enforcement in Adapt;
 - commit `8a215ac6fab11cc24bb821507057743b7898e09f` — historical audit baseline, adding qualified Live Diagnostics Rust core/providers/contracts, Blueprint D0 findings, seven JS diagnostic MCP tools, and installed Node hook enforcement;
-- `docs/design/membrane-live-diagnostics-final-architecture.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
+- `docs/current/architecture/live-diagnostics.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
 - `engine/crates/membrane-protocol/src/diagnostics.rs` and
   `engine/crates/membrane-runtime/src/{live_diagnostics.rs,live_diagnostics_service.rs,providers/}` — native operational contracts, evaluator, Hub-hosted service module, and qualified providers;
 - `mcp/server.mjs`, `mcp/toolsets.mjs`, `mcp/lib/diagnostics-client.mjs`, and

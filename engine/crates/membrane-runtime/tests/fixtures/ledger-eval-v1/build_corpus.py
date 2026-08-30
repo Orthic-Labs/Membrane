@@ -57,18 +57,18 @@ def T(document, heading=None, quote=None):
 # ---------------------------------------------------------------------------
 # Frequently referenced documents (paths are repo-root relative)
 # ---------------------------------------------------------------------------
-LEDGER_CANON = "docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md"
-LEDGER_REF = "docs/subsystems/ledger.md"
-GUIDE_EVAL = "docs/evaluation/guide.md"
-SYSTEM_MAP = "docs/subsystems/SYSTEM.md"
-PULL_REF = "docs/subsystems/pull.md"
-PUSH_REF = "docs/subsystems/push.md"
-CORTEX_REF = "docs/subsystems/cortex.md"
-ADAPT_REF = "docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md"
-BLUEPRINT_REF = "docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md"
-CODERIGHT_REF = "docs/subsystems/CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md"
-CROSS_SUBSYS = "docs/subsystems/MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md"
-DOCTRINE = "docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md"
+LEDGER_CANON = "docs/current/architecture/subsystems/ledger.md"
+LEDGER_REF = "docs/archive/architecture/derived/subsystems/ledger.md"
+GUIDE_EVAL = "docs/evaluation/ledger.md"
+SYSTEM_MAP = "docs/archive/architecture/derived/system.md"
+PULL_REF = "docs/archive/architecture/derived/subsystems/pull.md"
+PUSH_REF = "docs/archive/architecture/derived/subsystems/push.md"
+CORTEX_REF = "docs/archive/architecture/derived/subsystems/cortex.md"
+ADAPT_REF = "docs/current/architecture/subsystems/adapt.md"
+BLUEPRINT_REF = "docs/current/architecture/subsystems/blueprint.md"
+CODERIGHT_REF = "docs/current/architecture/integrations/coderight.md"
+CROSS_SUBSYS = "docs/current/architecture/cross-subsystem-evidence.md"
+DOCTRINE = "docs/current/architecture/membrane.md"
 ARCHITECTURE = "docs/architecture.md"
 PROTOCOL = "docs/protocol.md"
 PRODUCT = "docs/product.md"
@@ -79,6 +79,7 @@ ROOT_README = "README.md"
 SUPPORT_MATRIX = "docs/support-matrix.md"
 PRICING = "docs/pricing.md"
 HUB_OVERVIEW = "docs/hub/overview.md"
+HUB_README = "docs/hub/README.md"
 HUB_NOTIFICATIONS = "docs/hub/notifications.md"
 BACKUPS = "docs/troubleshooting/backups.md"
 MEMORY_LIFECYCLE = "docs/memory/lifecycle.md"
@@ -87,9 +88,9 @@ INSTALL_REGISTRY = "docs/install-registry.md"
 ROOTS = "docs/installation/roots.md"
 CHECKPOINT = "docs/workflows/checkpoint.md"
 SUPPORT_BOUNDARIES = "docs/support-boundaries.md"
-PAPER_ADAS = "docs/research/papers/automated-design-agentic-systems_2408.08435.md"
-PAPER_MANUS = "docs/research/papers/articles/manus-context-engineering.md"
-PAPER_DGM = "docs/research/papers/darwin-godel-machine_2505.22954.md"
+PAPER_ADAS = "docs/archive/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md"
+PAPER_MANUS = "docs/archive/research/legacy-source-corpus/papers/articles/manus-context-engineering.md"
+PAPER_DGM = "docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md"
 
 # ===========================================================================
 # 1. exact_document  (14: 5 train / 5 dev / 4 heldout)
@@ -132,10 +133,10 @@ add("dev", "exact_document",
     tags=["exact_document"])
 
 add("dev", "exact_document",
-    "Guide qualification entrypoint document",
-    [T(GUIDE_EVAL, "Guide qualification entrypoint")],
+    "Ledger qualification entrypoint document",
+    [T(GUIDE_EVAL, "Ledger qualification entrypoint")],
     tags=["exact_document"],
-    notes="Doc title still uses the retired 'Guide' name; kept as-is because it is the real filename/title in this checkout.")
+    notes="Current qualification entrypoint uses canonical Ledger naming.")
 
 add("dev", "exact_document",
     "checkpoint MCP workflow prompt documentation",
@@ -272,7 +273,7 @@ add("dev", "table_content",
 add("heldout", "table_content",
     "Per the process plane separation table, what does the Control plane write to?",
     [T(ARCHITECTURE, "Process plane separation (MBR-108)",
-       "| Control | supervisor-child, lifecycle frames, lockfile, heartbeat publication | Data | Data |")],
+       "| Control | daemon admission, worker supervision, & health; tray owns process lifecycle externally | Data | Data |")],
     tags=["table_content"])
 
 add("heldout", "table_content",
@@ -291,8 +292,8 @@ add("heldout", "table_content",
 # 4. fenced_code  (9: 3 / 3 / 3)
 # ===========================================================================
 add("train", "fenced_code",
-    "What shell commands install prerequisites in the getting-started guide's first step?",
-    [T(GETTING_STARTED, "1. Install prerequisites (0:00)", "pnpm install\nnode --version\npnpm --version")],
+    "What native command & arguments configure MCP in the getting-started guide?",
+    [T(GETTING_STARTED, "2. Configure MCP (0:45)", '"command": "membrane",\n      "args": ["stdio-mcp"]')],
     tags=["fenced_code"])
 
 add("train", "fenced_code",
@@ -441,14 +442,14 @@ add("heldout", "blockquote",
 # 7. link_reference  (9: 3 / 3 / 3)
 # ===========================================================================
 add("train", "link_reference",
-    "Which document and anchor does the getting-started guide link to for 'Repository posture'?",
-    [T(GETTING_STARTED, "1. Install prerequisites (0:00)", "[README's \"Repository posture\"](../README.md#repository-posture)")],
+    "Which current contract does Hub documentation link for lifecycle conformance?",
+    [T(HUB_README, None, "[tray–daemon runtime contract](../current/architecture/runtime/tray-daemon-contract.md)")],
     tags=["link_reference"],
-    notes="The link target resolves to README.md's 'Repository posture' heading; the source hit is getting-started.md.")
+    notes="The link target resolves to sole current tray–daemon runtime contract.")
 
 add("train", "link_reference",
     "Which file does docs/README.md link to for the document registry/navigation/index reference?",
-    [T(DOCS_README, "Architecture authorities", "[ledger.md](subsystems/ledger.md)")],
+    [T(DOCS_README, "Architecture authorities", "[Ledger architecture](current/architecture/subsystems/ledger.md)")],
     tags=["link_reference"])
 
 add("train", "link_reference",
@@ -462,8 +463,8 @@ add("dev", "link_reference",
     tags=["link_reference"])
 
 add("dev", "link_reference",
-    "Which file does docs/README.md link to for the durable-knowledge reference?",
-    [T(DOCS_README, "Architecture authorities", "[cortex.md](subsystems/cortex.md)")],
+    "Which directory does docs/README.md link for atomic capability state?",
+    [T(DOCS_README, "Architecture authorities", "[Atomic capability canons](current/atoms/)")],
     tags=["link_reference"])
 
 add("dev", "link_reference",
@@ -482,8 +483,8 @@ add("heldout", "link_reference",
     tags=["link_reference"])
 
 add("heldout", "link_reference",
-    "Which document does docs/README.md link to as the derived learning/proposal reference?",
-    [T(DOCS_README, "Architecture authorities", "[adapt.md](subsystems/adapt.md)")],
+    "Which document does docs/README.md link as current Adapt architecture?",
+    [T(DOCS_README, "Architecture authorities", "[Adapt architecture](current/architecture/subsystems/adapt.md)")],
     tags=["link_reference"])
 
 # ===========================================================================
@@ -721,7 +722,7 @@ add("train", "identifier_camel_case",
 
 add("train", "identifier_camel_case",
     "LedgerDb",
-    [T(LEDGER_REF, "Owns", "`LedgerDb` at `cache_root()/guide-index.sqlite3`")],
+    [T(LEDGER_REF, "Owns", "`LedgerDb` at `cache_root()/ledger-index.sqlite3`")],
     tags=["identifier", "camel_case"])
 
 add("train", "identifier_camel_case",
@@ -764,8 +765,8 @@ add("heldout", "identifier_camel_case",
 # 14. identifier_path_fragment  (9: 3 / 3 / 3)
 # ===========================================================================
 add("train", "identifier_path_fragment",
-    "src/guide/doc_spine.rs",
-    [T(LEDGER_CANON, "8.2 Developer-identifier expansion", "src/guide/doc_spine.rs")],
+    "src/ledger/doc_spine.rs",
+    [T(LEDGER_CANON, "8.2 Developer-identifier expansion", "src/ledger/doc_spine.rs")],
     tags=["identifier", "path_fragment"])
 
 add("train", "identifier_path_fragment",
@@ -775,8 +776,8 @@ add("train", "identifier_path_fragment",
     tags=["identifier", "path_fragment"])
 
 add("train", "identifier_path_fragment",
-    "mcp/context-renderer-lib.cjs",
-    [T(ARCHITECTURE, "Cross-provider budget model", "`mcp/context-renderer-lib.cjs`")],
+    "engine/crates/membrane-protocol/src/types.rs",
+    [T(ARCHITECTURE, "Cross-provider budget model", "`engine/crates/membrane-protocol/src/types.rs`")],
     tags=["identifier", "path_fragment"])
 
 add("dev", "identifier_path_fragment",
@@ -805,8 +806,8 @@ add("heldout", "identifier_path_fragment",
     tags=["identifier", "path_fragment"])
 
 add("heldout", "identifier_path_fragment",
-    "docs/reference/deferred-surfaces.md",
-    [T(MEMORY_LIFECYCLE, None, "docs/reference/deferred-surfaces.md")],
+    "docs/archive/superseded/reference/deferred-surfaces.md",
+    [T(MEMORY_LIFECYCLE, None, "docs/archive/superseded/reference/deferred-surfaces.md")],
     tags=["identifier", "path_fragment"])
 
 # ===========================================================================
@@ -843,8 +844,8 @@ add("dev", "short_query",
     tags=["short_query"])
 
 add("heldout", "short_query",
-    "MEMBRANE_PORT",
-    [T(GETTING_STARTED, "6. Force degradation (4:30)", "MEMBRANE_PORT")],
+    "hub_inactive",
+    [T(GETTING_STARTED, "6. Prove fail-closed lifecycle (4:30)", "hub_inactive")],
     tags=["short_query", "identifier"])
 
 add("heldout", "short_query",
@@ -871,8 +872,8 @@ add("train", "multi_section_synthesis",
     match_mode="all_of", tags=["multi_section_synthesis"])
 
 add("train", "multi_section_synthesis",
-    "Using the getting-started guide's steps 4 and 6 together, what do a present receipt and a null packet each mean for acceptance?",
-    [T(GETTING_STARTED, "4. Request first packet (2:30)"), T(GETTING_STARTED, "6. Force degradation (4:30)")],
+    "Using getting-started steps 3 and 6 together, what proves delivery & what proves fail-closed lifecycle?",
+    [T(GETTING_STARTED, "3. Request first packet (1:30)"), T(GETTING_STARTED, "6. Prove fail-closed lifecycle (4:30)")],
     match_mode="all_of", tags=["multi_section_synthesis"])
 
 add("dev", "multi_section_synthesis",
@@ -1011,7 +1012,11 @@ if __name__ == "__main__":
     for doc in sorted(referenced):
         text = doc_cache[doc]
         h = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        corpus = "research-papers-secondary" if doc.startswith("docs/research/papers/") else "membrane-docs-primary"
+        corpus = (
+            "research-papers-secondary"
+            if doc.startswith("docs/archive/research/legacy-source-corpus/papers/")
+            else "membrane-docs-primary"
+        )
         manifest_docs.append({
             "path": doc,
             "sha256": h,

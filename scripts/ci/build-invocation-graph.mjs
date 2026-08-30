@@ -72,13 +72,13 @@ export function productionEntrypoints() {
       id: "apps/membrane-hub/src-tauri/src/main.rs",
       kind: "installed-entrypoint",
       runtime: "rust",
-      justification: "Hub Tauri binary main; sole resident lifecycle authority entrypoint.",
+      justification: "Hub Tauri dashboard entrypoint; on-demand presentation without resident lifecycle authority.",
     },
     {
       id: "apps/membrane-tray-windows/src/main.rs",
       kind: "installed-entrypoint",
       runtime: "rust",
-      justification: "Installed Windows tray entrypoint; supervises stable-current Hub and daemon processes.",
+      justification: "Installed Windows tray entrypoint; sole visible resident lifecycle authority & daemon supervisor.",
     },
     {
       id: "engine/crates/membrane/src/main.rs",
@@ -138,7 +138,7 @@ export function curatedEdges() {
     {
       from: "blueprint/scripts/cli/commands.mjs",
       to: "blueprint/scripts/blueprint-watch.mjs",
-      operation: "Hub-owned Blueprint watcher launch",
+      operation: "tray-owned daemon Blueprint watcher launch",
       boundary: "process",
       evidence: { path: "blueprint/scripts/cli/commands.mjs", symbol: "spawn(process.execPath, [watcherScript, \"start\"])" },
     },
@@ -159,7 +159,7 @@ export function curatedEdges() {
     {
       from: "apps/membrane-hub/src-tauri/src/supervisor.rs",
       to: "engine/crates/membrane-runtime/src/serve.rs",
-      operation: "Hub-owned runtime library call",
+      operation: "legacy Hub adapter runtime library call",
       boundary: "in-process",
       evidence: { path: "apps/membrane-hub/src-tauri/src/supervisor.rs", symbol: "run_hub_runtime" },
     },

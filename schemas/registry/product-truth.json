@@ -51,12 +51,15 @@
   ],
   "cortexScope": "durable-memory-only",
   "currentTarget": "Windows",
+  "dashboardResidency": "on-demand",
   "generatedFrom": [
     "engine/crates/membrane-mcp/src/tools.rs",
     "migration/native-rust/fixtures/mcp-conformance.v1.json",
     "docs/membrane/capability-matrix.v1.json"
   ],
-  "residentServiceAuthority": "hub",
+  "inactiveReasonCompatibilityToken": "hub_inactive",
+  "residentServiceAuthority": "tray",
+  "runtimeExecutionHost": "tray-owned-daemon",
   "schema": "membrane.product-truth.v1",
   "toolCount": 17,
   "tools": [

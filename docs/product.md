@@ -52,7 +52,7 @@ narrative overview; this file carries the source-derived facts.
 | **Ledger** | Navigates indexed document sections with hash-bound references. |
 | **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |
 
-Current supported target is **Windows**. Cortex is **durable-memory-only**; **Membrane Hub** is the sole resident service authority.
+Current supported target is **Windows**. Cortex is **durable-memory-only**; visible native **tray** owns resident lifecycle, **tray-owned-daemon** executes runtime, & Hub dashboard is **on-demand**.
 
 ## Platform status
 

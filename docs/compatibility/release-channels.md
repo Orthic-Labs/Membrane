@@ -7,6 +7,6 @@ unsupported schema versions, unproven compatibility, and downgrades.
 
 No Membrane desktop renderer or updater consumes these descriptors. Release
 channel state is deferred under S-11, and action transport is deferred under
-S-12 in `docs/reference/deferred-surfaces.md`. Membrane Hub may consume either
+S-12 in `docs/archive/superseded/reference/deferred-surfaces.md`. Membrane Hub may consume either
 only under an explicit Hub contract; Membrane does not infer install or update
 policy from channel data.

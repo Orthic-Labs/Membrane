@@ -1,5 +1,5 @@
 //! Live diagnostics engine supervision, workspace epochs, and the semantic edit
-//! fence (design: `docs/design/membrane-live-diagnostics-final-architecture.md`
+//! fence (design: `docs/current/architecture/live-diagnostics.md`
 //! §§2–4, 10–13).
 //!
 //! Membrane Hub owns one [`DiagnosticsSupervisor`] that lazily starts qualified

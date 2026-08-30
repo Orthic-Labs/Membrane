@@ -13,6 +13,7 @@
     "test:random": "node scripts/ci/test-random.mjs",
     "test:all": "rightkit cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast && node scripts/ci/check-release-identity.mjs",
     "test:equivalence": "node scripts/ci/run-equivalence.mjs",
+    "check:atomic-canons": "node scripts/ci/check-atomic-canons.mjs",
     "qualification:prebind-windows-release": "node scripts/qualification/write-prequalification-binding.mjs",
     "qualification:write-windows-platform-evidence": "node scripts/qualification/write-windows-platform-evidence.mjs",
     "qualification:issue-native-only-seal": "node scripts/qualification/issue-native-only-seal.mjs",

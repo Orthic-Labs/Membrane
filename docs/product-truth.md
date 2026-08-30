@@ -44,4 +44,4 @@ Do not hand-edit; regenerate instead. `--check` fails if this file is stale.
 | **Ledger** | `ledger` | Navigates indexed document sections with hash-bound references. |
 | **Adapt** | `adapt` | Mines experience into governed proposals and never writes durable truth directly. |
 
-Current supported target: **Windows**. Cortex scope: **durable-memory-only**. Resident service authority: **hub** (Membrane Hub).
+Current supported target: **Windows**. Cortex scope: **durable-memory-only**. Resident lifecycle authority: **visible native tray**. Runtime host: **tray-owned-daemon**. Hub dashboard: **on-demand**.

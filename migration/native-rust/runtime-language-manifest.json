@@ -1,9 +1,9 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T08:03:00.749Z",
+ "generatedAt": "2026-08-30T10:45:36.268Z",
  "enforcementMode": "sealed",
- "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
+ "policyDigest": "8aa214294b8b36733dbcf11f4dc3f0ff634fb7f6990c2d1361e5354350dda0c5",
  "totals": {
   "files": 1208,
   "rows": 56,
@@ -90,7 +90,7 @@
     "adapt/eval/smoke_production_delivery.py",
     "adapt/eval/validate_insights_bench.py"
    ],
-   "content_digest": "cb0d1df2b7f00938a085b285152c393d6599996f1944ce17dd1b77653b2fd41c"
+   "content_digest": "fd1d4c301fe174c437d8292f8c85ab26ff32c8ddecec24abe1850d6bb96b93ae"
   },
   {
    "id": "adapt-runtime-adapt-runtime",
@@ -243,7 +243,7 @@
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "deletion_or_exclusion_proof": "signed package includes one pinned Blueprint runtime; tray owns resident lifecycle, daemon hosts watcher, and tray-off access is one bounded installed operation",
    "seal_blocker_note": null,
    "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
    "files": [
@@ -301,7 +301,7 @@
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "deletion_or_exclusion_proof": "signed package includes one pinned Blueprint runtime; tray owns resident lifecycle, daemon hosts watcher, and tray-off access is one bounded installed operation",
    "seal_blocker_note": null,
    "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
    "files": [
@@ -479,7 +479,7 @@
    "owner": null,
    "exception": null,
    "parity_fixture": null,
-   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "deletion_or_exclusion_proof": "signed package includes one pinned Blueprint runtime; tray owns resident lifecycle, daemon hosts watcher, and tray-off access is one bounded installed operation",
    "seal_blocker_note": null,
    "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node.",
    "files": [
@@ -1406,7 +1406,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "81553503b26827cf4585a172e912ce2ca727915d0026fac5610a1675eefd7510"
+   "content_digest": "76ab33d23100d3398e09b1fe88d542fb791769e492477b4acef107548d26b946"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1569,7 +1569,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "4b01bd2be4b9649e1cedee4709b272d82ac80b4e799c38be1362df84813eca2d"
+   "content_digest": "84998e9e976b5eeefd09c9767296bbf295e11c66bd96294861c14e4408351287"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -2156,7 +2156,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "9b8e6f4fa1dbc6d93bb4ee49b500981d12fe610be24bca16aa7a8b43f9695fa9"
+   "content_digest": "0f134312ff11ae0a26287a36c1928b6ca906cf86b4846a7693a5804982afc429"
   },
   {
    "id": "tests-root-tests-root",
@@ -2244,7 +2244,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "371c16999914fa171a9e1d0aa84cad0623286734bf16081d8168f3c0be35a48c"
+   "content_digest": "0930106d3c23b04e6524c607c64ad82a3927e38bbbdfe6188fac5da8ca4331ee"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",

@@ -5,7 +5,7 @@ Do not hand-edit; regenerate instead. `node scripts/tools/productization/check-d
 fails if this file is stale.
 
 Component and interface inventory derived from source. Canonical architecture
-lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md` and Blueprint truth semantics live in `docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`.
+lives in `docs/current/architecture/membrane.md` and Blueprint truth semantics live in `docs/current/architecture/subsystems/blueprint.md`.
 
 ## Components
 
@@ -15,7 +15,9 @@ lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOC
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
 | Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |
-| Membrane Hub | `apps/membrane-hub/` | sole resident service, process-lifecycle, install, update, and release authority |
+| Native tray | `apps/membrane-tray-windows/`, `apps/membrane-tray-macos/` | visible resident lifecycle authority & daemon supervisor |
+| Headless daemon | `engine/crates/membrane/` | tray-owned resident runtime executor & local service endpoint |
+| Membrane Hub dashboard | `apps/membrane-hub/` | on-demand presentation client; no resident authority |
 | Cross-provider budget | `engine/crates/membrane-core/` | one native attention budget with explicit lanes; every receipt carries a reconciliation |
 
 ## Interfaces
@@ -76,8 +78,8 @@ Adding a fourth plane is a breaking change to the contract.
 
 | Plane | Owns | Reads from | Writes to |
 |---|---|---|---|
-| Application | Hub-side CLI/API handling and MCP routing; stateless client transports | Data | — |
-| Control | Hub-owned in-process lifecycle, admission, worker supervision, health | Data | Data |
+| Application | CLI/API handling, MCP routing, on-demand Hub views, & stateless client transports | Data | — |
+| Control | daemon admission, worker supervision, & health; tray owns process lifecycle externally | Data | Data |
 | Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |
 
 Rules:
@@ -94,18 +96,18 @@ Rules:
 Mode → plane mapping (single source of truth: `membrane::modes::plane_of`):
 
 - `membrane cli …` → Application
-- active Hub runtime request handling → Application
+- active tray-owned daemon request handling → Application
 - `membrane stdio-mcp` stateless transport → Application
-- Hub in-process lifecycle owner → Control
+- tray-owned daemon runtime control → Control
 
 The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`
 (`Plane`, `PlaneBoundary`, `PLANE_BOUNDARIES`, `plane_for_path`). The golden
 fixture is `schemas/registry/plane-boundaries.v1.golden.json`; the runtime
 classifies a source file into a plane by the crate segment that owns it
 (`membrane-runtime` / `membrane-mcp` / stateless `membrane` → Application,
-Hub supervisor → Control, `cortex-store` → Data). The active Hub hosts all
-resident plane work in-process; bounded stateless clients may execute
-Application adapters but no plane owns a separate resident process.
+tray-owned daemon control → Control, `cortex-store` → Data). The active daemon hosts
+resident plane work; Hub dashboard is on demand, & bounded stateless clients may
+execute Application adapters without acquiring resident authority.
 
 Forbid list (enforced by review at book-end):
 

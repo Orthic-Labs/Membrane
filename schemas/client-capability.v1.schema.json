@@ -35,7 +35,7 @@
     "transport": {
       "type": "string",
       "enum": ["stdio", "loopback"],
-      "description": "Transport the client uses to reach Membrane. stdio = native MCP CLI launches the server as a child process; loopback = client connects to Hub-owned resident port."
+      "description": "Transport the client uses to reach Membrane. stdio = native MCP CLI launches a bounded client process; loopback = client connects to tray-owned daemon port."
     },
     "discoveryMethod": {
       "type": "string",

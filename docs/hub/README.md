@@ -12,4 +12,4 @@ go to the resource doc you need.
 - [notifications.md](notifications.md) — sparse notification state (MBR-711)
 - [sources-explorer.md](sources-explorer.md) — `sources-explorer.v1` repository/provider projection
 
-See [../hub-handoff.md](../hub-handoff.md) for the lifecycle-conformance handoff contract.
+See [tray–daemon runtime contract](../current/architecture/runtime/tray-daemon-contract.md) for lifecycle conformance.

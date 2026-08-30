@@ -1,5 +1,5 @@
 //! Host-facing Live Diagnostics operational capability — design
-//! `docs/design/membrane-live-diagnostics-final-architecture.md` §12 (public
+//! `docs/current/architecture/live-diagnostics.md` §12 (public
 //! operational surface), §11 (host modes), §10 (semantic edit fence), and §14
 //! (storage).
 //!

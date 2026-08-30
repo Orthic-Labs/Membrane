@@ -117,6 +117,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Add rules only after repeated failure; use one imperative plus one pointer, one stable term per concept, & active voice.
 - Run focused checks first, then verification proportional to blast radius.
 - Require concrete behavior or artifact evidence before completion.
+- Emit a structured lifecycle event log with any long-running service, queue, scheduler, or process supervisor; instrumentation is delivery, not separate proof, & a service whose failures cannot be diagnosed from its own output is incomplete.
 
 # Membrane Rules
 
@@ -137,14 +138,14 @@ The Membrane planner owns final context policy.
 
 Read these before architecture or migration work:
 
-1. `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
-2. `docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
-3. `docs/subsystems/ADAPT_CANONICAL_PRODUCT_AND_ARCHITECTURE.md`
-4. `docs/subsystems/LEDGER-MARKDOWN-INDEXING-AND-DOCUMENT-NAVIGATION-CANON.md`
-5. `docs/subsystems/MEMBRANE-CROSS-SUBSYSTEM-IMPROVEMENTS-AND-EVIDENCE-GATES.md`
-6. `docs/subsystems/CODERIGHT-MEMBRANE-OBSERVABILITY-LEARNING-AND-EVAL-INTEGRATION.md`
+1. `docs/current/architecture/membrane.md`
+2. `docs/current/architecture/subsystems/blueprint.md`
+3. `docs/current/architecture/subsystems/adapt.md`
+4. `docs/current/architecture/subsystems/ledger.md`
+5. `docs/current/architecture/cross-subsystem-evidence.md`
+6. `docs/current/architecture/integrations/coderight.md`
 
-`docs/subsystems/SYSTEM.md` and the subsystem reference files are derived navigation aids only.
+Atomic capability state lives under `docs/current/atoms/`; `docs/pending/README.md` is sole pending-work index.
 
 For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `docs/protocol.md`, and `docs/product-truth.md`. Do not hand-edit generated runtime truth to match future architecture.
 
@@ -171,8 +172,8 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
 - New documentation and current-product code use Pull / Push / Cortex / Blueprint / Ledger / Adapt. Guide is retired; legacy `guide` names exist only at explicit compatibility/history boundaries.
-- Membrane runtime executes only inside the active Hub process; Hub off means no Membrane context (typed `membrane_unavailable { hub_inactive }`).
-- Blueprint is independently usable but not independently resident; its watcher runs only under Hub, and Hub-off access is a bounded one-shot operation.
+- Membrane runtime never runs without a visible tray surface. Runtime executes as a child process of the resident tray app with OS-enforced lifetime coupling; no tray means no Membrane context (typed `membrane_unavailable { hub_inactive }`).
+- Blueprint is independently usable but not independently resident; its watcher runs only inside active tray-owned daemon, and tray-off access is a bounded one-shot operation.
 - A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.
 
 ## Boundary discipline

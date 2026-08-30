@@ -25,6 +25,6 @@ tamper and forged-key cases are exercised by
 
 The update path requires finite quiesce, staging verification, atomic directory
 activation, migration, rollback on deterministic failure, and last-step atomic
-receipt publication ([`engine/crates/membrane/src/update.rs`](../../engine/crates/membrane/src/update.rs), [`docs/design/update-dual-signature.md`](../design/update-dual-signature.md)). A
+receipt publication ([`engine/crates/membrane/src/update.rs`](../../engine/crates/membrane/src/update.rs), [update admission](../current/architecture/security/update-admission.md)). A
 remote update channel, key-rotation ceremony, and rollback drill receipt are
 **unavailable**.

@@ -604,7 +604,7 @@
    "packaged": true,
    "target_disposition": "external-typed-service",
    "exception": null,
-   "deletion_or_exclusion_proof": "signed Hub packages one pinned Blueprint runtime; Hub owns resident service/watcher and Hub-off access is one bounded installed operation",
+   "deletion_or_exclusion_proof": "signed package includes one pinned Blueprint runtime; tray owns resident lifecycle, daemon hosts watcher, and tray-off access is one bounded installed operation",
    "notes": "Blueprint remains an independently versioned typed component. Its exact bundled Node scripts/src/watchman runtime is the sole sealed external-interpreter allowance; no Membrane subsystem executes through Node."
   },
   {

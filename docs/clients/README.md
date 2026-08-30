@@ -125,7 +125,7 @@ without breaking clients pinned to v1.
 
 ## See also
 
-- `docs/operations/resident-lifecycle.md` — Hub-owned resident lifecycle frames
+- `docs/current/architecture/runtime/tray-daemon-contract.md` — tray-owned resident lifecycle frames
   that owns the loopback port clients reuse.
 - `docs/installation/contract.md` — the resident ↔ client handshake.
 - `docs/membrane/capability-matrix.v1.json` — the older host capability

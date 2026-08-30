@@ -102,7 +102,7 @@ test("text before the historical marker still fails", () => {
 
 test("path exclusions: canonical spec, research, historical plans", () => {
   assert.equal(isExcludedPath(CANONICAL_SPEC), true);
-  assert.equal(isExcludedPath("docs/research/competitors/adapt-analysis.md"), true);
+  assert.equal(isExcludedPath("docs/archive/research/legacy-source-corpus/competitors/adapt-analysis.md"), true);
   assert.equal(isExcludedPath("adapt/docs/plans/2026-08-24-adapt-alignment-implementation.md"), false);
   assert.equal(isExcludedPath("docs/plans/old.md"), false);
   assert.equal(isExcludedPath("docs/design/old.md"), false);
@@ -110,9 +110,9 @@ test("path exclusions: canonical spec, research, historical plans", () => {
   assert.equal(isExcludedPath("README.md"), false);
   assert.equal(isExcludedPath("adapt/README.md"), false);
   // Windows-style separators are normalized.
-  assert.equal(isExcludedPath("docs\\research\\x.md"), true);
+  assert.equal(isExcludedPath("docs\\archive\\research\\legacy-source-corpus\\x.md"), true);
   assert.equal(isHistoricalPath("docs/plans/x.md"), true);
-  assert.equal(isHistoricalPath("docs/subsystems/adapt.md"), false);
+  assert.equal(isHistoricalPath("docs/current/architecture/subsystems/adapt.md"), true);
 });
 
 test("scan targets inventories the supplied root", () => {
@@ -143,15 +143,15 @@ test("real repository scan is clean", () => {
   const targets = scanTargets();
   assert.ok(targets.includes("README.md"));
   assert.ok(targets.includes("adapt/README.md"));
-  assert.ok(targets.includes("docs/subsystems/adapt.md"));
+  assert.ok(!targets.includes("docs/current/architecture/subsystems/adapt.md"));
   assert.ok(!targets.some((p) => p === CANONICAL_SPEC));
-  assert.ok(!targets.some((p) => p.startsWith("docs/research/")));
-  assert.ok(targets.some((p) => p.startsWith("docs/plans/")));
+  assert.ok(!targets.some((p) => p.startsWith("docs/archive/research/legacy-source-corpus/")));
+  assert.ok(!targets.some((p) => p.startsWith("docs/plans/")));
   assert.deepEqual(targets, [...targets].sort());
   assert.equal(new Set(targets).size, targets.length);
   for (const path of [
     "docs/cli/README.md",
-    "docs/operations/resident-lifecycle.md",
+    "docs/current/architecture/runtime/tray-daemon-contract.md",
     "docs/installation/contract.md",
     "docs/troubleshooting/hub-alerts.md",
   ]) {
