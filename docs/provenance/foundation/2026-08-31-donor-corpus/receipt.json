@@ -1,0 +1,105 @@
+{
+  "schema_version": "foundation-receipt-v1",
+  "protocol_version": "foundation-v1",
+  "status": "complete",
+  "product": "Membrane",
+  "scope": "atomic capability discovery across 26-repository dual-pass corpus plus supplemental OpenKB SOL review",
+  "target_commit": "3ba419002b28e82f8f45d1efd3a27b00d16e0d60",
+  "requirements": [
+    "two independent source-only inventories with no cross-contamination",
+    "collect new atoms only",
+    "reconcile against Membrane canonical capability rows",
+    "project justified atoms into generated pending truth",
+    "exclude implementation comparison, ranking, porting, and code delivery"
+  ],
+  "platforms": [
+    "Windows",
+    "macOS",
+    "Linux",
+    "local service/runtime"
+  ],
+  "corpus": {
+    "manifest": "corpus.json",
+    "manifest_sha256": "d777b6ff3176df1fe664b883999c1331ecdf16cf21323165dbaf2765acd3e49b",
+    "repository_count": 27,
+    "commits": {
+      "abhigyanpatwari__GitNexus": "94f67d79d5ac1e83dd0c7baa7de05c3b9b562439",
+      "caura-ai__caura": "a750d35ea36cc0eb3d742371925e9bc2ed9561fd",
+      "colbymchenry__codegraph": "6a056ec5db35172f9dc348f87b54ea415aa5169e",
+      "cq27-dev__rag-rat": "c8b827554351472b4433fd983df1e023108ff46d",
+      "Egonex-AI__Understand-Anything": "ba450c43425f3de6d43daf76526950ad8ca93536",
+      "emulo": "7f80fd8dc2803d749f51319d5a4664aca3965cc8",
+      "getzep__graphiti": "8b61fce9f003cc3a05e246f6201f8b782dfe6546",
+      "github__codeql": "fa8a2870208efa9356e13adef583e9ef43c70717",
+      "graph-memory-starter": "496a6e9d9b9578943ec5ed34c2780de5a0fa5510",
+      "hindsight": "d2e8fa7286b37012b7e45de8f1b10dc333274918",
+      "honcho": "82a92429b888727b2236820b863256067c7edc80",
+      "intuit__infigraph": "1c3622f120edbbf120d1f89b6555626bb560d73d",
+      "joernio__joern": "9b1de27e1b66aafc7dfd90e09f8996596e1d9ddf",
+      "luuuc__sense": "a4317d50cacabd110eb52941f5d736f346a182a9",
+      "MemTensor__MemOS": "185ebdb925911b55c13b7efe666b74e2e292e484",
+      "mengram": "5449c1cde7e8c1f15c318be951555565855c74cd",
+      "mnemon": "e04c3b5089616ac893313b105fcd4e5c200288ed",
+      "mnemosyne-oss__mnemosyne": "f6916b488e4fc3d520258d45df6d7fdc323b1696",
+      "Muvon__octocode": "f89a24d0280468f904f455998804f307d788e92b",
+      "oracle__opengrok": "238a41f624b47b55095edc035680efafe41a9a07",
+      "oraios__serena": "43ae0211d7f3bba4101cd0552707fa21d37f4c84",
+      "Phoenixrr2113__codebase-graph": "f6f55f99b23aa7b5d08aa0063c8dbeafa4b45a39",
+      "potpie-ai__potpie": "217e51cd8b4ba4905c0f42d6bd6ec0c9aef86717",
+      "qualixar__superlocalmemory": "8548381613e16bfe4726e1ad1ebc6165428ba905",
+      "supermemoryai__supermemory": "9ccd1b64c3dbe7ca66ed43ff052e2a9ea93c90b8",
+      "VectifyAI__OpenKB": "ff54396e575ee6feb0113b631a34caa082b441cc",
+      "volcengine__OpenViking": "2c88269d5440b55456db4209866564d329e6308b"
+    }
+  },
+  "exclusions": [
+    "README, documentation, root Markdown, marketing, issues, and external reports as primary evidence",
+    "generated, build, cache, benchmark, and test-only capability evidence",
+    "implementation comparison, ranking, reuse, licensing, porting, and code implementation"
+  ],
+  "independent_passes": [
+    {
+      "path": "inventory-pass-a.md",
+      "rows": 44,
+      "sha256": "8aa2c4fea6bc8b6b5f540053ab3c5f64871e3644c25a1537ace6e4570d679030",
+      "validator": "PASS"
+    },
+    {
+      "path": "inventory-pass-b.md",
+      "rows": 61,
+      "sha256": "101abd5067ad080485e25dd74faad60c83291a0577925b67d6189522c311ad28",
+      "validator": "PASS"
+    }
+  ],
+  "supplemental_reviews": [
+    {
+      "path": "openkb-sol-review.md",
+      "sha256": "58c05fb20aa92785323fa5f98577ce2196ca4ef62067637df14d81b633ec2653",
+      "repository": "VectifyAI__OpenKB",
+      "commit": "ff54396e575ee6feb0113b631a34caa082b441cc",
+      "reviewer": "SOL-high",
+      "result": "1 exploratory Ledger atom; 0 Blueprint atoms"
+    },
+    {
+      "path": "architecture-corrections-v2-reconciliation.md",
+      "sha256": "2b7de6b713bfac3b463eac7376e237e678be92a1a59f19b99f0a68160f388bd1",
+      "source_sha256": "94e3f2e6acb42bd3004d71c60aed220d188209ceeb398eeb15896a6cbbc6c6d3",
+      "result": "0 new atoms; 6 existing contracts refined; 2 implementation states corrected"
+    }
+  ],
+  "reconciliation": {
+    "path": "reconciliation.md",
+    "sha256": "ae700906abfc907f9fc08adfa372e7e986cbb9c28b097b41818580986a929584",
+    "requested": 27,
+    "evaluated": 27,
+    "inventory_rows": 105,
+    "unresolved": 0,
+    "new_atoms": [
+      "BPT-071",
+      "LDG-027",
+      "LDG-028"
+    ],
+    "dirty_rows_resolved": 2,
+    "dirty_rows_unresolved": 0
+  }
+}

@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| BPT-G01 | — | Blueprint | COMMITTED | 67 committed capabilities; 1 exploratory capability; closure derived from child rows |
+| BPT-G01 | — | Blueprint | COMMITTED | 67 committed capabilities; 2 exploratory capability rows; closure derived from child rows |
 
 ## Capability ledger
 
@@ -82,6 +82,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | BPT-068 | BPT-G01 | Blueprint | COMMITTED | Require an unguessable in-memory session token for every Explorer API request. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: BPT-068; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | BPT-069 | BPT-G01 | Blueprint | COMMITTED | Reject every non-GET Explorer request before route dispatch. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: BPT-069; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | BPT-070 | BPT-G01 | Blueprint | COMMITTED | Never launch a browser child carrying Explorer session URL or token; expose URL only to caller. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: BPT-070; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| BPT-071 | BPT-G01 | Blueprint | EXPLORATORY | Emit typed source-addressed cross-language bridge evidence only for explicit FFI/JNI/cgo/gRPC/PInvoke/WASM/COM seams under declared provider capability; never infer bridges from semantic similarity. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 
 ## Implementation register
 
@@ -158,6 +159,7 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-I068 | BPT-068 | `blueprint/src/lib/http-server.mjs:24,38-39,58` | Generate an in-memory token & enforce timing-safe bearer admission before API dispatch. | ORIGINAL | DELIVERED | `blueprint/src/lib/explorer/index.mjs:4-6` → `blueprint/scripts/cli/commands.mjs:143-158` |
 | BPT-I069 | BPT-069 | `blueprint/src/lib/http-server.mjs:33-35` | Reject non-GET methods with 405 before route dispatch. | ORIGINAL | DELIVERED | `blueprint/src/lib/explorer/index.mjs:4-6` → `blueprint/scripts/cli/commands.mjs:143-158` |
 | BPT-I070 | BPT-070 | `blueprint/src/lib/explorer/index.mjs:1-6`; `blueprint/scripts/cli/commands.mjs:143-158` | Return Explorer URL without spawning a browser process. | ORIGINAL | DELIVERED | `blueprint/scripts/cli/commands.mjs:143-158` |
+| BPT-I071 | BPT-071 | No production provider; candidate requires explicit bridge detectors that emit ordinary generation-bound Blueprint nodes/edges/evidence. | `intuit__infigraph/crates/infigraph-core/src/bridges/mod.rs` at `1c3622f120edbbf120d1f89b6555626bb560d73d`; Foundation donor reconciliation, 2026-08-31 | ADAPT | MISSING | Future Blueprint provider/Recall |
 
 ## Qualification ledger
 
@@ -231,6 +233,7 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-Q068 | BPT-068 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q069 | BPT-069 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q070 | BPT-070 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q071 | BPT-071 | Qualify each supported explicit bridge plus hard negatives on frozen multi-language corpus; require deterministic generation-bound evidence, zero inferred-similarity edges, & incremental/full equivalence | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -247,3 +250,4 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-D009 | REFERENCE | BPT-046, BPT-055, BPT-056, BPT-057, BPT-060 | BPT-046 owns diagnostics; BPT-055 support bundles; BPT-056 recovery; BPT-057 poisoned manifest/plugin refusal; BPT-060 secret-egress prevention. | Sage split clarification | RECORDED |
 | BPT-D010 | REFERENCE | BPT-058, BPT-061, BPT-062, BPT-063 | Update activation, trust admission, rollback, & install-owner delegation are distinct. | Sage split decision | RECORDED |
 | BPT-D011 | REFERENCE | BPT-059, BPT-064, BPT-068, BPT-069, BPT-070 | Explorer shell, loopback binding, API token admission, method enforcement & browser-process isolation close independently. | Sage split decision | RECORDED |
+| BPT-D012 | REFERENCE | BPT-071 | Explicit cross-language seam evidence may be a Blueprint provider capability; general taint/dataflow platforms & similarity-inferred bridges remain excluded. | Foundation donor reconciliation, 2026-08-31 | RECORDED |

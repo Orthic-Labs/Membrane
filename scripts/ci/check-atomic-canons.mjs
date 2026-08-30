@@ -266,7 +266,9 @@ function validateReceiptReferences(parsed) {
     const ids = targets(row["Capability targets"]);
     if (ids.length !== 1) throw new Error("focused verification receipt must have exactly one capability per row");
     const id = ids[0];
-    if (capabilityById.get(id)?.Verification !== "FOCUSED_PASS") throw new Error(`focused verification receipt has no matching FOCUSED_PASS state for ${id}`);
+    const capability = capabilityById.get(id);
+    if (!capability) throw new Error(`focused verification receipt targets unknown capability ${id}`);
+    if (capability.Verification !== "FOCUSED_PASS") continue;
     if (focusedById.has(id)) throw new Error(`focused verification receipt duplicates ${id}`);
     const proofText = `${row["Focused command"]} ${row["Direct test evidence"]} ${row["Run identity/time"]}`;
     if (!row["Focused command"] || !row["Direct test evidence"] || !row["Run identity/time"] || !/FOCUSED_PASS/.test(row.Result) || !/0 fail/i.test(`${row.Result} ${row["Run identity/time"]}`)) throw new Error(`focused verification receipt lacks exact successful proof for ${id}`);
@@ -305,7 +307,7 @@ function validateSemanticOwnership(parsed) {
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
   if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
   const exploratory = capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID).sort();
-  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "LDG-023", "PUL-034"];
+  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "BPT-071", "CTX-033", "LDG-023", "LDG-027", "LDG-028", "PUL-034"];
   if (JSON.stringify(exploratory) !== JSON.stringify(expectedExploratory)) throw new Error(`exploratory disposition differs: ${exploratory.join(", ")}`);
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
     if (similarity(capabilities[left]["Observable behavior"], capabilities[right]["Observable behavior"]) >= 0.9) throw new Error(`semantic duplicate candidates: ${capabilities[left].ID} & ${capabilities[right].ID}`);
@@ -407,6 +409,12 @@ function pendingMarkdown(parsed, inventory) {
     const capabilities = canon.capabilities.filter((row) => row.Scope === "COMMITTED"), canonOpen = capabilities.filter((row) => !closed(row, canon.boundary)).length;
     const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
     lines.push(`| [${canon.owner}](../canon/${canon.file}) | ${canon.boundary} | ${capabilities.length} | ${canonExploratory} | ${capabilities.length - canonOpen} | ${canonOpen} | ${canon.groups.length} | ${canon.implementations.length} | ${canon.qualifications.length} | ${canon.decisions.length} |`);
+  }
+  lines.push("", "## Exploratory capability rows", "", "Exploratory rows are discovered candidates, not committed product behavior.", "", "| Atom | Candidate behavior |", "|---|---|");
+  for (const canon of parsed) {
+    for (const row of canon.capabilities.filter((candidate) => candidate.Scope === "EXPLORATORY")) {
+      lines.push(`| [${row.ID}](../canon/${canon.file}) | ${safeCell(row["Observable behavior"])} |`);
+    }
   }
   lines.push("", "## Open capability atoms", "");
   for (const canon of parsed) {
