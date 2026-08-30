@@ -46,6 +46,7 @@ if (createHash("sha256").update(bytes).digest("hex") !== candidate.archive.sha25
 if (signingStatus !== "signed" && signingStatus !== "unsigned") throw new Error("candidate signing status is invalid");
 const installerRecord = candidate.installer;
 if (!installerRecord?.name || !/^[A-Za-z0-9_.+-]+\.exe$/i.test(installerRecord.name)) throw new Error("candidate installer identity is missing");
+if (!installerRecord.name.toLowerCase().includes(`_${signingStatus}_`)) throw new Error("candidate installer signing label is missing");
 const installer = join(artifactRoot, installerRecord.name);
 if (!existsSync(installer)) throw new Error("candidate installer is missing");
 const installerBytes = readFileSync(installer);

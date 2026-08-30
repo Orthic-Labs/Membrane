@@ -1096,6 +1096,48 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     }
 }
 
+/// Apply the owner-only DACL after object creation so Windows does not retain
+/// a generic-rights mapping in the stored ACE mask.
+#[cfg(windows)]
+pub(crate) fn windows_apply_owner_only_dacl(
+    handle: *mut std::ffi::c_void,
+    object_type: u32,
+    dacl: *mut std::ffi::c_void,
+) -> std::io::Result<()> {
+    const DACL_SECURITY_INFORMATION: u32 = 0x0000_0004;
+    const PROTECTED_DACL_SECURITY_INFORMATION: u32 = 0x8000_0000;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn SetSecurityInfo(
+            handle: *mut std::ffi::c_void,
+            object_type: u32,
+            security_info: u32,
+            owner: *mut std::ffi::c_void,
+            group: *mut std::ffi::c_void,
+            dacl: *mut std::ffi::c_void,
+            sacl: *mut std::ffi::c_void,
+        ) -> u32;
+    }
+
+    let result = unsafe {
+        SetSecurityInfo(
+            handle,
+            object_type,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            dacl,
+            std::ptr::null_mut(),
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::from_raw_os_error(result as i32))
+    }
+}
+
 #[cfg(windows)]
 fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
     use std::os::windows::ffi::OsStrExt as _;
@@ -1105,6 +1147,8 @@ fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Resu
     type Handle = *mut std::ffi::c_void;
     const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
     const GENERIC_WRITE: u32 = 0x4000_0000;
+    const WRITE_DAC: u32 = 0x0004_0000;
+    const SE_FILE_OBJECT: u32 = 1;
     const CREATE_NEW: u32 = 1;
     const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
 
@@ -1119,6 +1163,7 @@ fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Resu
             flags: u32,
             template: Handle,
         ) -> Handle;
+        fn CloseHandle(handle: Handle) -> i32;
     }
 
     let wide: Vec<u16> = path
@@ -1126,11 +1171,11 @@ fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Resu
         .encode_wide()
         .chain(Some(0))
         .collect();
-    let handle = windows_owner_only_security(|attributes, _dacl| {
+    let handle = windows_owner_only_security(|attributes, dacl| {
         let handle = unsafe {
             CreateFileW(
                 wide.as_ptr(),
-                GENERIC_WRITE,
+                GENERIC_WRITE | WRITE_DAC,
                 0,
                 attributes,
                 CREATE_NEW,
@@ -1139,10 +1184,13 @@ fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Resu
             )
         };
         if handle == INVALID_HANDLE_VALUE {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(handle)
+            return Err(std::io::Error::last_os_error());
         }
+        if let Err(error) = windows_apply_owner_only_dacl(handle, SE_FILE_OBJECT, dacl) {
+            unsafe { CloseHandle(handle) };
+            return Err(error);
+        }
+        Ok(handle)
     })?;
     // The security descriptor remains owned by `windows_owner_only_security`
     // until after CreateFileW has returned; the file stores its own SD.

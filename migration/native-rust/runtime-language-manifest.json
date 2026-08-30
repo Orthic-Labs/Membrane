@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T05:19:39.594Z",
+ "generatedAt": "2026-08-30T06:09:01.890Z",
  "enforcementMode": "sealed",
  "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
  "totals": {
-  "files": 1205,
+  "files": 1208,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1538,6 +1538,7 @@
     "engine/crates/membrane-runtime/src/store.rs",
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
+    "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
     "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
     "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
     "engine/crates/membrane-runtime/tests/cortex_relevance_spotcheck.rs",
@@ -1565,9 +1566,10 @@
     "engine/crates/membrane-runtime/tests/push_qualification.rs",
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
-    "engine/crates/membrane-runtime/tests/session_projection.rs"
+    "engine/crates/membrane-runtime/tests/session_projection.rs",
+    "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "ccd0224a600b1bb198d227b964789f5b73e85cb0e18d75e7d944c3a54a06c6a9"
+   "content_digest": "67633930b8062c7ebe8b93da14ee35b2e41ab3c4dc172aa5ef671b9e7e0c5f4e"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1764,7 +1766,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "21e0c66f22db84dfb434a850aae742c0236403c374c83419235c16c93e910aa3"
+   "content_digest": "8682c17e6780d82372e2eea6cc2815f43c8b2e8f4a3d578b3bbc6cee4ad7c60f"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1987,6 +1989,7 @@
     "mcp/adapter-manifest.test.mjs",
     "mcp/adapters.test.mjs",
     "mcp/adapters/provenance/index.test.mjs",
+    "mcp/authorization.conformance.test.mjs",
     "mcp/authorization.test.mjs",
     "mcp/blueprint-capability.test.mjs",
     "mcp/blueprint-readiness.test.mjs",
@@ -2026,7 +2029,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "ca8846c2c2a695a8bfca67c4dd37cd8f04f9a62afe4823407f6819f2b9722b41"
+   "content_digest": "f0ad6ced8538a750fbf7f070c0c6a16d85db608232bbaf46c7ea0c3cbd1df6ff"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",

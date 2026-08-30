@@ -41,7 +41,7 @@
       "declared_repository": "repo-missing",
       "scope_chain": { "caller": "enrolled", "target": "missing" },
       "caller_binding": { "root": "caller", "repository_id": "repo-caller", "scope_id": "scope-caller", "grant_level": "admin", "child_repository_ids": [], "token_generation": 1, "revoked_token_generations": [] },
-      "target_binding": { "root": "missing", "repository_id": "repo-missing", "scope_id": "scope-missing", "grant_level": "admin", "child_repository_ids": [], "token_generation": 1, "revoked_token_generations": [] },
+      "target_binding": { "root": "unknown", "repository_id": "repo-missing", "scope_id": "scope-missing", "grant_level": "admin", "child_repository_ids": [], "token_generation": 1, "revoked_token_generations": [] },
       "request": { "caller_root": "caller", "caller_repository_id": "repo-caller", "caller_scope_id": "scope-caller", "target_repository": "repo-missing", "task_grant_level": "admin", "action": "context" },
       "requested": { "authority_level": "admin", "action": "context" },
       "cross_root_reach": "neither",

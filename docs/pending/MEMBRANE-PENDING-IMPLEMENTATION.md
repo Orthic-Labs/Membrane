@@ -877,6 +877,55 @@ no viable floor or changed capacity fails typed and never becomes a guessed budg
 
 ## 13.4 Remaining dependency constraints
 
+**Status update 2026-08-30.** The items struck below landed on `main` and are verified by GitHub
+CI (ubuntu-latest + windows-2025). Landing means the production path executes the contract with
+focused tests; it is NOT a qualification or promotion claim, and §0.1 dispositions stay
+`IMPLEMENTED + REACHABLE` until frozen acceptance evidence exists.
+
+Closed:
+
+- ~~first-party planner caller for runtime sufficiency requirements~~ — the planner authors
+  `SufficiencyContractV1` from planner-owned requirements, never from task prose; absent contract
+  stays `not_evaluated`. (The ledger previously claimed the `membrane_context` schema rejected the
+  field; it already accepted and transported it.)
+- ~~refresh the first-party H8 candidate at request time and deliver it into
+  `PacketReductionPlanV1` selection~~ — request-time ceiling drives selection in the same request;
+  cached/next-request ceilings, basis mismatch and no-viable-floor all fail typed.
+- ~~wire the daemon to real background semantic inputs~~ — `ReviewInputSelectionV1` (§4.2) is
+  implemented and feeds the existing §13.2 seam. The seam itself already existed; only selection
+  was missing.
+- ~~add a real post-fusion pre-publication grant/policy recheck owned by the grant source (§17.2)~~
+  — the grant owner re-observes identity, epoch and revocation immediately before emission on both
+  routes; a change publishes typed `policy_changed` and emits nothing.
+- ~~freeze one JS/Rust authorization conformance corpus and run it against both surfaces (§15)~~ —
+  18 cases, two runners, matching count assertions.
+- ~~close the diagnostics authorization carve-out~~ — see §15.
+- ~~qualify same-machine ACL isolation for the local trust surface~~ — the bearer file and per-user
+  pipes are owner-only with inheritance disabled on Windows, asserted against real security
+  descriptors.
+- Temporal validity/supersession (§16.2) also landed: one vocabulary across both former schemes,
+  migrated in place, supersede-never-delete, answerable `as_of`, deterministic five-step conflict
+  ordering.
+
+Out of scope on the current machine: macOS launchd on-host qualification. macOS dogfood is not in
+scope; Windows is the qualified surface.
+
+Still open, with the reason each cannot close as code:
+
+- **Qualification freezes** (RRF vs fixed-order control, query-aware Push promotion, Ledger
+  retrieval rerun, no-answer baseline). These need measurement runs against frozen development and
+  held-out corpora, not implementation. Held-out tuning stays forbidden (canon §13.1).
+- **H7, H9 and H10 host observations.** No producer exists, so outcome, deployment and
+  closed-loop claims stay unavailable by construction.
+- **Procedural-asset effectiveness (§3).** Blocked on joinable H4/H6 caller transport.
+- **Installed-artifact release gate (§19).** The candidate build now emits an installer plus
+  hash-bound `membrane.release-evidence.v1` manifest and `membrane.sbom.v1` SBOM, and the
+  release job graph makes qualification gate publication. Two things still block a published
+  release: the workflow change cannot be pushed with a token lacking the `workflow` scope, and
+  signing/finalization remains protected-host work. The capability also still needs to move into
+  RightKit-owned workflow generation, since the qualification job is a repo-local addition that
+  `right-git sync` can drop.
+
 Only these surviving gaps remain schedulable:
 
 - add a first-party planner caller for runtime sufficiency requirements, execute one distinct
@@ -1037,7 +1086,19 @@ Constraints:
   to verify against the installation registry, not a grant.
 - A frozen cross-language conformance corpus is still required. Separate implementations without
   shared fixtures can drift even when both local suites are green.
-- `membrane_diagnostic_*` remains outside this gate on both surfaces and stays a live §13.4 gap.
+- **Corrected 2026-08-30.** The ordered gate above previously overstated Gate 6: the Rust
+  implementation checked token-generation revocation only and had no validity-interval support at
+  all. Validity intervals (not-before / not-after) are now enforced alongside revocation under the
+  same typed `ValidityRevocation` gate identity, on both surfaces; an absent interval means
+  unbounded validity, not denial.
+- **Closed 2026-08-30.** `membrane_diagnostic_*` stateful operations now execute the shared
+  ordered gate on both the native executor and the JS surface, with the envelope-supplied
+  repository identity verified against the installation registry. `fence`, `capabilities`,
+  `provider:list` and `provider:status` remain deliberately ungated as repository-scope-free
+  reads, enumerated in code on both surfaces.
+- **Closed 2026-08-30.** A frozen cross-language conformance corpus
+  (`schemas/conformance/authorization-conformance-v1.json`, 18 cases) is read verbatim by one
+  Rust runner and one JS runner, which assert identical ordered verdicts and matching case counts.
 
 ---
 

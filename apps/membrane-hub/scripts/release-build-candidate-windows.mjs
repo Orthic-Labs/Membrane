@@ -161,11 +161,25 @@ const sbomPath = join(artifactRoot, `sbom-windows-x86_64-${statusSuffix}.cdx.jso
 const provenancePath = join(artifactRoot, `provenance-windows-x86_64-${statusSuffix}.intoto.jsonl`);
 materializeCycloneDxSbom({ outputPath: sbomPath, product: "membrane", version: pkg.version, target: "windows-x86_64", sourceCommit, files: subject });
 materializeInTotoSlsaProvenance({ outputPath: provenancePath, product: "membrane", version: pkg.version, target: "windows-x86_64", sourceCommit, sourceRepository: "https://github.com/Orthic-Labs/Membrane", subjects: subject, startedAt });
+const identityPath = join(hub, "dist", "release-identity.json");
+if (!existsSync(identityPath)) throw new Error(`candidate release identity missing: ${identityPath}`);
+const identity = JSON.parse(readFileSync(identityPath, "utf8"));
+if (!/^[0-9a-f]{64}$/.test(identity.sourceTreeSha256) || identity.releaseGeneration !== `sha256:${identity.sourceTreeSha256}`) {
+  throw new Error("candidate release identity is not hash-bound");
+}
 const installerSha256 = sha256(installerPath);
 const releaseManifest = {
   schema: "membrane.release-evidence.v1",
   product: "Membrane Hub",
-  release: { version: pkg.version, target: "windows-x86_64", artifact_sha256: installerSha256 },
+  release: {
+    tag: `v${pkg.version}`,
+    version: pkg.version,
+    commit: sourceCommit,
+    tree: identity.sourceTreeSha256,
+    generation: identity.sourceTreeSha256,
+    target: "windows-x86_64",
+    artifact_sha256: installerSha256,
+  },
   artifact: { path: installerName, sha256: installerSha256, size: statSync(installerPath).size },
   signing,
 };
