@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { addInstalledBlueprintInventory, RUNTIME_SPECS, runtimeInventory, verifyStagedInventory, verifyUnpackedArtifact, writeRuntimeInventory } from "../scripts/runtime-inventory.mjs";
+import { addInstalledBlueprintInventory, RUNTIME_SPECS, runtimeInventory, runtimeTarget, verifyStagedInventory, verifyUnpackedArtifact, writeRuntimeInventory } from "../scripts/runtime-inventory.mjs";
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "membrane-hub-runtime-"));
@@ -81,7 +81,7 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.match(probes, /WINDOWS_TARGET/);
   assert.match(probes, /blueprintInstalled/);
   assert.match(probes, /blueprint.*lib.*node\.exe/s);
-  assert.doesNotMatch(probes, /aarch64-apple-darwin|externalContract|preStagedResource/);
+  assert.doesNotMatch(probes, /externalContract|preStagedResource/);
   const frontendBuild = readFileSync(new URL("../scripts/build-frontend.mjs", import.meta.url), "utf8");
   assert.match(frontendBuild, /dist\/release-identity\.json/);
   assert.match(frontendBuild, /x86_64-pc-windows-msvc/);
@@ -98,6 +98,25 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   const releaseConfig = readFileSync(new URL("../right-release.config.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(releaseConfig, /src-tauri\/runtime\/\*\*/);
   assert.match(releaseConfig, /\.\.\/\.\.\/blueprint\/scripts\/\*\*/);
+});
+
+test("runtime inventory accepts Windows x64 & macOS arm64 targets, rejecting mismatches", () => {
+  assert.equal(runtimeTarget("x86_64-pc-windows-msvc"), "x86_64-pc-windows-msvc");
+  assert.equal(runtimeTarget("aarch64-apple-darwin"), "aarch64-apple-darwin");
+  assert.throws(() => runtimeTarget("x86_64-unknown-linux-gnu"), /unsupported runtime target/);
+
+  const { root, make } = fixture();
+  try {
+    make(join(root, "membrane-aarch64-apple-darwin"));
+    make(join(root, "cortex-aarch64-apple-darwin"));
+    const macSpecs = specs().filter((spec) => spec.delivery !== "externalBin").concat([
+      { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "membrane-{target}" },
+      { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "cortex-{target}" },
+    ]);
+    const inventory = runtimeInventory({ hubDir: root, target: "aarch64-apple-darwin", specs: macSpecs });
+    assert.equal(inventory.target, "aarch64-apple-darwin");
+    assert.deepEqual(inventory.entries.filter((entry) => entry.delivery === "externalBin").map((entry) => entry.installerPath), ["cortex", "membrane"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("runtime inventory hashes native runtime & rejects missing/extra/retired", () => {

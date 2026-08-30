@@ -51,6 +51,8 @@ function treeDigest(root) {
   return { sha256: hash.digest("hex"), fileCount: files.length };
 }
 const WINDOWS_TARGET = "x86_64-pc-windows-msvc";
+const MACOS_ARM64_TARGET = "aarch64-apple-darwin";
+const SUPPORTED_TARGETS = new Set([WINDOWS_TARGET, MACOS_ARM64_TARGET]);
 const EXTERNAL_BINARIES = new Map([
   ["membrane-command", "membrane"],
   ["cortex-cli", "cortex"],
@@ -68,10 +70,10 @@ function externalBinaryName(entry) {
 // `externalBin` & `tauriBundle` record ownership without
 // copying source or duplicating sidecars/icons into Tauri's resource tree.
 export const RUNTIME_SPECS = [
-  { id: "membrane-tray", component: "membrane-tray", delivery: "externalBin", path: "src-tauri/binaries/membrane-tray-{target}.exe" },
-  { id: "membrane-daemon", component: "membrane-daemon", delivery: "externalBin", path: "src-tauri/binaries/membrane-daemon-{target}.exe" },
-  { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}.exe" },
-  { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "src-tauri/binaries/cortex-{target}.exe" },
+  { id: "membrane-tray", component: "membrane-tray", delivery: "externalBin", targets: [WINDOWS_TARGET], path: "src-tauri/binaries/membrane-tray-{target}.exe" },
+  { id: "membrane-daemon", component: "membrane-daemon", delivery: "externalBin", targets: [WINDOWS_TARGET], path: "src-tauri/binaries/membrane-daemon-{target}.exe" },
+  { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}{extension}" },
+  { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "src-tauri/binaries/cortex-{target}{extension}" },
   { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "../../schemas/operations/membrane-context.v1.schema.json" },
   { id: "push-contract", component: "push", axis: "push", delivery: "resource", path: "../../schemas/compression-receipt.v1.schema.json" },
   { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "../../schemas/memory-lifecycle.v1.schema.json" },
@@ -85,8 +87,13 @@ export const RUNTIME_SPECS = [
   { id: "hub-icons", component: "icons", delivery: "tauriBundle", path: "src-tauri/icons", tree: true },
 ];
 
-function targetFor(value = process.env.TAURI_ENV_TARGET_TRIPLE) { if (value && value !== WINDOWS_TARGET) throw new Error(`Windows target required: ${WINDOWS_TARGET}`); return WINDOWS_TARGET; }
-function concretePath(source, target) { return source.replace("{target}", target); }
+export function runtimeTarget(value = process.env.TAURI_ENV_TARGET_TRIPLE) {
+  const target = value || WINDOWS_TARGET;
+  if (!SUPPORTED_TARGETS.has(target)) throw new Error(`unsupported runtime target: ${target}`);
+  return target;
+}
+function targetExtension(target) { return target === WINDOWS_TARGET ? ".exe" : ""; }
+function concretePath(source, target) { return source.replace("{target}", target).replace("{extension}", targetExtension(target)); }
 function filesAt(root, extensions, { includeIgnored = false } = {}) {
   if (!existsSync(root)) throw new Error(`runtime source missing: ${root}`);
   const files = statSync(root).isFile() ? [root] : readdirSync(root, { recursive: true }).map((name) => join(root, name)).filter((file) => lstatSync(file).isFile());
@@ -100,17 +107,18 @@ function stagePath(spec, source, sourceRoot, target) {
 }
 
 export function runtimeInventory({ hubDir = hub, target, specs = RUNTIME_SPECS } = {}) {
-  const runtimeTarget = targetFor(target);
+  const resolvedTarget = runtimeTarget(target);
   const seen = new Set(); const entries = [];
-  for (const spec of specs) {
+  for (const spec of specs.filter((candidate) => !candidate.targets || candidate.targets.includes(resolvedTarget))) {
     if (seen.has(spec.id)) throw new Error(`duplicate runtime component: ${spec.id}`);
     seen.add(spec.id);
-    const sourceRoot = resolve(hubDir, concretePath(spec.path, runtimeTarget));
+    const sourceRoot = resolve(hubDir, concretePath(spec.path, resolvedTarget));
     if (retired.test(relative(hubDir, sourceRoot))) throw new Error(`retired runtime asset rejected: ${spec.path}`);
     for (const source of filesAt(sourceRoot, spec.extensions)) {
-      const staged = stagePath(spec, source, sourceRoot, runtimeTarget);
+      const staged = stagePath(spec, source, sourceRoot, resolvedTarget);
       if (retired.test(staged)) throw new Error(`retired staged runtime asset rejected: ${staged}`);
-      entries.push({ component: spec.id, ...(spec.axis ? { axis: spec.axis } : {}), ...(spec.invocation ? { invocation: spec.invocation } : {}), ...(spec.profile ? { profile: spec.profile } : {}), ...(spec.transport ? { transport: spec.transport } : {}), delivery: spec.delivery, source: relative(hubDir, source).replaceAll("\\", "/"), stagePath: staged, installerPath: spec.delivery === "externalBin" ? `${spec.component}.exe` : staged, sha256: digest(source) });
+      const installerPath = spec.delivery === "externalBin" ? `${externalBinaryName({ component: spec.id })}${targetExtension(resolvedTarget)}` : staged;
+      entries.push({ component: spec.id, ...(spec.axis ? { axis: spec.axis } : {}), ...(spec.invocation ? { invocation: spec.invocation } : {}), ...(spec.profile ? { profile: spec.profile } : {}), ...(spec.transport ? { transport: spec.transport } : {}), delivery: spec.delivery, source: relative(hubDir, source).replaceAll("\\", "/"), stagePath: staged, installerPath, sha256: digest(source) });
     }
   }
   entries.sort((left, right) => left.stagePath.localeCompare(right.stagePath));
@@ -118,7 +126,7 @@ export function runtimeInventory({ hubDir = hub, target, specs = RUNTIME_SPECS }
   // A tree may contribute many files; an axis is owned once by its component.
   const axisEntries = axes.map((axis) => ({ axis, entries: new Set(entries.filter((entry) => entry.axis === axis).map((entry) => entry.component)).size }));
   if (axisEntries.some(({ entries }) => entries !== 1)) throw new Error(`six-axis runtime ownership ambiguous: ${axisEntries.map(({ axis, entries }) => `${axis}=${entries}`).join(",")}`);
-  return { schemaVersion: 3, app: "membrane-hub", target: runtimeTarget, axes: axisEntries, composition, entries };
+  return { schemaVersion: 3, app: "membrane-hub", target: resolvedTarget, axes: axisEntries, composition, entries };
 }
 
 export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {}) {
@@ -159,9 +167,10 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
     seen.add(relativePath); expected.add(relativePath);
     if (entry.delivery === "externalBin") {
       const binary = externalBinaryName(entry);
-      if (entry.stagePath !== `external-bin/${binary}` || entry.installerPath !== `${binary}.exe`) throw new Error(`runtime external sidecar mapping invalid: ${entry.component}`);
+      const filename = `${binary}${targetExtension(inventory.target)}`;
+      if (entry.stagePath !== `external-bin/${binary}` || entry.installerPath !== filename) throw new Error(`runtime external sidecar mapping invalid: ${entry.component}`);
       const sourceName = entry.source?.replaceAll("\\", "/").split("/").pop();
-      if (sourceName !== `${binary}-${inventory.target}.exe`) throw new Error(`runtime external source mapping invalid: ${entry.source}`);
+      if (sourceName !== `${binary}-${inventory.target}${targetExtension(inventory.target)}`) throw new Error(`runtime external source mapping invalid: ${entry.source}`);
     }
     if (entry.delivery === "resource") {
       if (entry.installerPath !== entry.stagePath || !entry.stagePath.startsWith("resources/" + entry.component + "/")) throw new Error("runtime resource mapping invalid: " + entry.component);
