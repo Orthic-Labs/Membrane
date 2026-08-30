@@ -29,7 +29,8 @@ fn request_text<'a>(request: &'a Value, key: &str, case_id: &str) -> &'a str {
 fn root_path(workspace: &Path, name: &str, case_id: &str) -> PathBuf {
     match name {
         "caller" => workspace.join("caller"),
-        "child" => workspace.join("child"),
+        // Explicit child grants require persisted identity plus live containment.
+        "child" => workspace.join("caller").join("child"),
         "sibling" => workspace.join("sibling"),
         "unknown" => workspace.join("unknown"),
         "none" => workspace.join("none"),
@@ -156,7 +157,7 @@ fn write_registry(case: &Value, temp: &tempfile::TempDir, case_id: &str) -> (Str
     let mut bindings = Map::new();
     if state == "enrolled" {
         let caller_root = root_path(&workspace, caller_root_name, case_id);
-            let mut caller_binding = caller_wrapped
+        let mut caller_binding = caller_wrapped
             .get("binding")
             .cloned()
             .expect("caller binding wrapper");

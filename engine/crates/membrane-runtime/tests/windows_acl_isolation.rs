@@ -31,6 +31,7 @@ mod windows_acl {
     const SE_DACL_PROTECTED: u16 = 0x1000;
     const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
     const GENERIC_ALL: u32 = 0x1000_0000;
+    const FILE_ALL_ACCESS: u32 = 0x001F_01FF;
 
     #[repr(C)]
     struct AclSizeInformation {
@@ -176,7 +177,10 @@ mod windows_acl {
         assert_eq!(header.ace_type, ACCESS_ALLOWED_ACE_TYPE);
         assert_eq!(header.ace_flags, 0, "{object_name} owner ACE is inherited");
         let mask = unsafe { *((ace as *const u8).add(4) as *const u32) };
-        assert_eq!(mask, GENERIC_ALL, "{object_name} owner ACE is not explicit full owner access");
+        assert!(
+            mask == GENERIC_ALL || mask == FILE_ALL_ACCESS,
+            "{object_name} owner ACE is not explicit full owner access: {mask:#010x}"
+        );
         let ace_sid = unsafe { (ace as *mut u8).add(8) as Sid };
         assert_ne!(
             unsafe { EqualSid(owner, ace_sid) },

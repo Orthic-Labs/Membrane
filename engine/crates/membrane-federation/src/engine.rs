@@ -219,13 +219,9 @@ impl FederationEngine {
         let started = Instant::now();
         let root_source = RootSourceRef(self.root_source.as_ref());
         let normalized = NormalizedFederationRequest::normalize(request, &root_source)?;
-        // Publication fence (pending §17.2): re-validate grant identity,
-        // policy epoch and revocation before grant binding. The engine has
-        // no post-fusion grant source to consult, so the request envelope
-        // must carry the caller's post-fusion re-check; a tripped fence is
-        // refused here and the packet authorized under the superseded grant
-        // is never emitted. A held fence is stamped into the response for
-        // downstream publication seams to preserve.
+        // Validate any caller-provided publication-fence observation before
+        // provider execution. Runtime adapters independently re-observe grant
+        // state at the packet-emission boundary (§17.2).
         let publication_fence = validated_fence_for_request(request)?;
         let query = source_query(&normalized);
 
@@ -603,9 +599,8 @@ fn source_query(request: &NormalizedFederationRequest) -> SourceQuery {
     }
 }
 
-/// Read the caller's post-fusion publication fence verdict (pending §17.2)
-/// from the extensible request envelope. A tripped fence is a typed engine
-/// error — the stale-authorized packet is never emitted; an absent fence
+/// Read a caller-provided publication-fence verdict from the extensible
+/// request envelope. A tripped fence is a typed engine error; an absent fence
 /// means no grant was bound and the fence is a no-op, never a bypass.
 fn validated_fence_for_request(
     request: &FederationRequestV1,

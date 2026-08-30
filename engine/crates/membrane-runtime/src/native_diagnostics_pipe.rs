@@ -216,7 +216,6 @@ mod windows {
     const PIPE_NOWAIT: u32 = 0x0000_0001;
     // Local Hub transport only; SMB/remote clients are never peers.
     const PIPE_REJECT_REMOTE_CLIENTS: u32 = 0x0000_0008;
-    const SE_KERNEL_OBJECT: u32 = 6;
     const ERROR_PIPE_CONNECTED: u32 = 535;
     const ERROR_PIPE_LISTENING: u32 = 536;
     const ERROR_NO_DATA: u32 = 232;
@@ -310,7 +309,7 @@ mod windows {
             .encode_wide()
             .chain(Some(0))
             .collect();
-        let handle = crate::serve::windows_owner_only_security(|security, dacl| {
+        let handle = crate::serve::windows_owner_only_security(|security, _dacl| {
             let handle = unsafe {
                 CreateNamedPipeW(
                     wide.as_ptr(),
@@ -324,17 +323,10 @@ mod windows {
                 )
             };
             if handle == INVALID_HANDLE_VALUE {
-                return Err(std::io::Error::last_os_error());
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(handle)
             }
-            if let Err(error) = crate::serve::windows_apply_owner_only_dacl(
-                handle,
-                SE_KERNEL_OBJECT,
-                dacl,
-            ) {
-                unsafe { CloseHandle(handle) };
-                return Err(error);
-            }
-            Ok(handle)
         })?;
         Ok(Pipe(handle))
     }

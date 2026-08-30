@@ -69,7 +69,7 @@ execute the specified contract. `NOT AUDITED` means exactly that; it never means
 | RRF fusion | canonical RRF implementation and versioned receipt | same federation path can select `membrane-fusion-rrf-v1` explicitly | focused selection/receipt tests pass; no frozen comparative qualification | `IMPLEMENTED + REACHABLE`; not active by default |
 | Production fusion identity and receipt | every fusion result carries named/versioned strategy data | active fixed-order and selectable RRF paths emit the receipt | focused receipt validation passes | `IMPLEMENTED + REACHABLE` |
 | Typed omission accounting | federation scheduler/normalizer emits `ProviderOmissionV1`; native adapter maps omissions into planner `OmissionV1` | same CLI/resident path above → CCS → `packet.omissions` alongside candidate receipts | not revalidated in this consolidation pass | `REACHABLE`; no sufficiency claim |
-| Corrective retrieval after insufficiency | bounded planner-owned sufficiency contract, evaluator and one-stage alternate-lane plan exist and execute inside `FederationEngine::federate` | resident runtime forwards an explicit caller-supplied contract and exposes its receipt; no first-party caller supplies one — the `membrane_context` tool schema (`additionalProperties: false`) rejects a `sufficiencyContract` field | `corrective-retrieval.json` freezes production-path mechanics qualification (`mechanics-qualified-no-promotion`); no task-success evidence | `PARTIAL`: add planner caller, then qualify for effect |
+| Corrective retrieval after insufficiency | bounded planner-owned sufficiency contract, evaluator and one-stage alternate-lane plan exist and execute inside `FederationEngine::federate` | first-party planner authors the runtime sufficiency requirements; resident transport forwards the contract and exposes its receipt | `corrective-retrieval.json` freezes production-path mechanics qualification (`mechanics-qualified-no-promotion`); no task-success evidence | `IMPLEMENTED + REACHABLE`; qualify for effect |
 | Query-aware Push | query-aware provider plus explicit control/query-aware policy | production `push prep` reaches either policy; control remains default | protected-span and reachability tests pass; no frozen measured baseline | `IMPLEMENTED + REACHABLE`; not qualified |
 | Push qualification baseline | `docs/evidence/qualification/push-metrics.json` freezes measured mechanics results (required-evidence retention, protected-span integrity, budget compliance, query-aware reachability) as `mechanics-qualified-no-promotion` | task correctness, latency, resolver restores and corrections remain typed `unavailable` pending host instrumentation | mechanics measured; no comparative baseline that authorizes default-policy promotion | `NOT QUALIFIED FOR PROMOTION` |
 | Deterministic Cortex Dream | `store::dream_now_observed` invokes restricted policy plus deterministic consolidation | CLI `dream_now` and resident `dream_now_observed` call the store path | not revalidated in this consolidation pass | `REACHABLE`; no `LANDED` claim |
@@ -79,13 +79,13 @@ execute the specified contract. `NOT AUDITED` means exactly that; it never means
 | Background review mechanics | fail-closed config, host activity/token gate, bounded jobs, proposal-only learner interface, cancellation, retry, single-flight, typed observations and bounded H5 sink | tray-owned daemon initializes the scheduler and persists H5 receipts, but supplies no real semantic provider, cursor, foreground-memory signal or proposal sink | focused lifecycle, budget, receipt and persistence tests pass | `PARTIAL`: production semantic inputs remain absent |
 | Cortex Stage 1 | proposal-only review and memory-candidate extraction contracts | no production runner supplies model output or authoritative foreground-memory signal | focused validation tests pass | `UNWIRED` |
 | Learning Lineage and Insights projection | read-only receipt graph and projection with typed unavailable joins | production Adapt mine response emits both | deterministic projection tests pass | `IMPLEMENTED + REACHABLE`; host tail remains unavailable |
-| `PacketReductionPlanV1` | validated versioned plan, estimator basis and largest-fit selection | production `push select` accepts an H8 ceiling and returns only a complete published representation; first-party host emits a next-request H8 candidate from real policy and last observed usage | protocol/runtime/host-producer tests pass | `PARTIAL`: request-time refresh and direct host-to-Membrane delivery remain unwired |
+| `PacketReductionPlanV1` | validated versioned plan, estimator basis and largest-fit selection | first-party host refreshes H8 at request time and the same request drives selection of one complete published representation | protocol/runtime/host-producer tests pass | `IMPLEMENTED + REACHABLE`; no measured qualification claim |
 | Host observation seam | H4/H6/H8/H9/H10 versioned shapes, provenance and closed-shape validation | H4/H6 producers and an H8 candidate producer exist in first-party host; bounded Membrane H4/H6/H8 parser and exact-ID H4/H6 lineage join exist; caller transport remains unwired; H9/H10 have no producer | protocol, parser and host producer tests pass where inputs exist | `PARTIAL` |
-| Native-path authorization | Rust `AuthorizationGateV1` implements installation, scope-chain, caller/target, monotone authority, cross-root and validity/revocation gates | Hub-resident executor invokes it before every non-diagnostic repository-scoped native read/write | focused native tests cover denials and authorized self access; no cross-language conformance fixture proves Rust/JS parity | `IMPLEMENTED + REACHABLE`; diagnostics carve-out remains; §15 |
+| Native-path authorization | Rust `AuthorizationGateV1` implements installation, scope-chain, caller/target, monotone authority, cross-root and validity/revocation gates | Hub-resident executor and JS surface invoke the ordered gate for repository-scoped native and diagnostic operations | focused tests plus one frozen 18-case JS/Rust conformance corpus cover ordered verdict parity | `IMPLEMENTED + REACHABLE`; §15 |
 | Approved-proposal promotion | native review implements named `pending → approved/rejected` transitions and governed Cortex admission | native review binds repository/scope, persists one terminal decision and admits only approved payloads | focused native review and Cortex lifecycle tests cover terminal decisions, replay, novel admission and duplicate resolution | `IMPLEMENTED + REACHABLE`; no effectiveness/promotion claim; §16.1 |
 | Cortex write-time duplicate/conflict detection | `AdmissionDispositionV1` and deterministic scope-bounded pre-filter execute in one immediate transaction | every durable write reaches admission; duplicates return existing identity, evidence-bearing repeats update metadata only and conflicts persist outside active recall | focused lifecycle tests cover duplicate, conflict, same-id update, short-content specificity and typed receipts; cross-process contention still lacks a dedicated fixture | `IMPLEMENTED + REACHABLE`; no qualification/policy-promotion claim; §16.3 |
 | Cortex erasure and backup/restore | governed hard erase, digest-sealed backup/restore, registry reload and conflict-aware quarantine restoration are implemented | store operations remove payload-bearing projections, retain a content-free erase event and restore recall transactionally | focused lifecycle tests cover payload erasure, absent ids, quarantine restore, tamper refusal and recall equivalence; explicit link-erasure coverage remains absent | `IMPLEMENTED`; external operational exposure remains pending; §16.4 |
-| Pull publication fence | scope-grant checks execute at acquisition | no grant/policy re-validation executes before packet emission | none | `GAP ON TRACED PATH`; §17.2 |
+| Pull publication fence | grant identity, policy epoch and revocation are re-observed after fusion | both runtime publication routes fence packet emission and return typed `policy_changed` when state changed | focused publication-fence tests cover held and changed observations | `IMPLEMENTED + REACHABLE`; §17.2 |
 | Typed retrieval abstention | versioned `InsufficientConfidenceV1` carries typed reason and per-lane searched counts | active federation emits it whenever no candidate survives admission | focused federation tests cover no-answer and answered paths; frozen no-answer qualification baseline has not been rerun | `IMPLEMENTED + REACHABLE`; §17.1 |
 | Ledger section identity | section body span-hash is canonical while slug/ordinal remain aliases | production outline reads resolve hash and aliases to the same indexed section | focused outline/index tests cover alias/fingerprint equivalence and duplicate-heading disambiguation; frozen retrieval qualification has not been rerun | `IMPLEMENTED + REACHABLE`; §18 |
 | Installed-runtime guarantees | Windows job-object coupling remains landed; macOS tray implements launchd coupling; shared JS SQLite opens match native posture | JS stores use the shared opener; macOS code refuses daemon startup when coupling cannot install | JS 194/194 and macOS Swift 7/7 pass; full macOS host behavior is not yet qualified; no RightKit-owned required tag gate exists | `PARTIAL`; §19 |
@@ -433,9 +433,8 @@ Constraints:
   category or pre-label an episode.
 - A quiet period where nothing clears the novelty floor is reported as such (§7.1 honesty), never
   padded with low-value episodes to spend the budget.
-- Disposition: pending specification only — no implementation claim. This section exists so the
-  semantic-provider wiring (§0.1 background-review row) lands with a specified input policy
-  instead of an implicit one.
+- Disposition: implemented selection mechanics. Real semantic provider, cursor, authoritative
+  foreground-memory signal and proposal sink remain absent (§0.1 background-review row).
 
 ---
 
@@ -598,8 +597,8 @@ Held-out tuning is forbidden (canon §13.1). Report uncertainty, not only point 
 Retrieval should be evaluated, and a poor first retrieval should be able to trigger a bounded
 corrective action. Production federation already emits typed provider omissions and the planner
 records admission/budget decisions. Federation can now evaluate an explicit planner-supplied
-sufficiency contract and plan one corrective stage. Resident transport forwards that contract and
-receipt. A first-party planner caller and a distinct corrective action still have to be connected;
+sufficiency contract and plan one corrective stage. The first-party planner authors the contract;
+resident transport forwards it and its receipt. Effectiveness remains qualification work;
 repeating the same request against the same provider is forbidden.
 
 ```text
@@ -877,9 +876,9 @@ no viable floor or changed capacity fails typed and never becomes a guessed budg
 
 ## 13.4 Remaining dependency constraints
 
-**Status update 2026-08-30.** The items struck below landed on `main` and are verified by GitHub
-CI (ubuntu-latest + windows-2025). Landing means the production path executes the contract with
-focused tests; it is NOT a qualification or promotion claim, and §0.1 dispositions stay
+**Status update 2026-08-30.** The items struck below landed on `main`. This reconciliation repairs
+their two remaining conformance checks. Landing means the production path executes the contract
+with focused tests; it is NOT a qualification or promotion claim, and §0.1 dispositions stay
 `IMPLEMENTED + REACHABLE` until frozen acceptance evidence exists.
 
 Closed:
@@ -891,9 +890,9 @@ Closed:
 - ~~refresh the first-party H8 candidate at request time and deliver it into
   `PacketReductionPlanV1` selection~~ — request-time ceiling drives selection in the same request;
   cached/next-request ceilings, basis mismatch and no-viable-floor all fail typed.
-- ~~wire the daemon to real background semantic inputs~~ — `ReviewInputSelectionV1` (§4.2) is
-  implemented and feeds the existing §13.2 seam. The seam itself already existed; only selection
-  was missing.
+- ~~implement deterministic background review-input selection~~ — `ReviewInputSelectionV1` (§4.2)
+  now feeds the existing §13.2 seam. Real semantic provider, cursor, foreground signal and proposal
+  sink remain open.
 - ~~add a real post-fusion pre-publication grant/policy recheck owned by the grant source (§17.2)~~
   — the grant owner re-observes identity, epoch and revocation immediately before emission on both
   routes; a change publishes typed `policy_changed` and emits nothing.
@@ -918,38 +917,24 @@ Still open, with the reason each cannot close as code:
 - **H7, H9 and H10 host observations.** No producer exists, so outcome, deployment and
   closed-loop claims stay unavailable by construction.
 - **Procedural-asset effectiveness (§3).** Blocked on joinable H4/H6 caller transport.
-- **Installed-artifact release gate (§19).** The candidate build now emits an installer plus
-  hash-bound `membrane.release-evidence.v1` manifest and `membrane.sbom.v1` SBOM, and the
-  release job graph makes qualification gate publication. Two things still block a published
-  release: the workflow change cannot be pushed with a token lacking the `workflow` scope, and
-  signing/finalization remains protected-host work. The capability also still needs to move into
-  RightKit-owned workflow generation, since the qualification job is a repo-local addition that
-  `right-git sync` can drop.
+- **Installed-artifact release gate (§19).** Candidate build emits an installer plus hash-bound
+  `membrane.release-evidence.v1` manifest and `membrane.sbom.v1` SBOM; the repo-local job graph gates
+  publication on installed qualification. No signed installed artifact has been qualified or
+  published. Gate ownership must still move into RightKit workflow generation so `right-git sync`
+  cannot drop it.
 
 Only these surviving gaps remain schedulable:
 
-- add a first-party planner caller for runtime sufficiency requirements, execute one distinct
-  bounded corrective action, and qualify it;
+- qualify bounded corrective retrieval for task effect;
 - freeze measured fixed-order and Push controls, then qualify RRF and query-aware reduction;
-- refresh the first-party H8 candidate at request time and deliver it directly into
-  `PacketReductionPlanV1` selection;
-- wire the daemon to real background semantic inputs and proposal execution;
+- wire the daemon to real background semantic inputs, cursor and proposal execution;
 - connect Cortex Stage 1 to model output and an authoritative foreground-memory signal;
 - wire caller transport for joinable H4/H6 observations, then implement procedural-asset effectiveness;
 - provide H7, H9 and H10 host observations before outcome, deployment and closed-loop claims;
 - preserve typed unavailability for every absent source field;
-- freeze one JS/Rust authorization conformance corpus and run it against both surfaces (§15);
-- close the diagnostics authorization carve-out: `membrane_diagnostic_*` operations perform
-  stateful writes (workspace open/reconcile, mutation begin/seal, baseline capture/update,
-  provider restart) keyed to an envelope-supplied repository identity that bypasses the shared
-  gate on both the JS surface and the native executor; bind them to verified installation
-  identity or route them through the §15 gate;
-- qualify same-machine ACL isolation for the local trust surface: the `api-token` bearer file
-  (Unix mode 0600; Windows DACL unproven) and the per-user named pipes (remote clients rejected;
-  same-machine user isolation not explicitly qualified);
-- add a real post-fusion pre-publication grant/policy recheck owned by the grant source (§17.2);
 - qualify macOS launchd lifetime coupling on-host and move the installed-artifact tag gate into
-  RightKit-owned workflow generation (§19).
+  RightKit-owned workflow generation; qualify one native signed installed artifact before
+  publication (§19).
 
 These dependency constraints still apply:
 
@@ -1084,8 +1069,8 @@ Constraints:
 
 - Bearer transport authenticates the channel, never the scope. Self-declared identity is a claim
   to verify against the installation registry, not a grant.
-- A frozen cross-language conformance corpus is still required. Separate implementations without
-  shared fixtures can drift even when both local suites are green.
+- One frozen 18-case cross-language conformance corpus is read verbatim by both implementations;
+  matching case-count assertions prevent silent fixture omission.
 - **Corrected 2026-08-30.** The ordered gate above previously overstated Gate 6: the Rust
   implementation checked token-generation revocation only and had no validity-interval support at
   all. Validity intervals (not-before / not-after) are now enforced alongside revocation under the
@@ -1196,11 +1181,10 @@ Target contract: grant and policy state are re-validated immediately before pack
 identity, policy epoch and revocation are checked once more after fusion completes; a change
 publishes typed `policy_changed`, and a packet authorized under a superseded grant is never emitted.
 
-Current code validates a caller-supplied `PublicationFenceV1` before provider execution and stamps a
-held receipt into the response. That makes malformed/tripped receipts typed, but it is not the
-required post-fusion recheck and cannot detect a policy change occurring during federation. This
-section remains pending until the grant owner supplies or executes the second observation at the
-publication boundary.
+Runtime grant ownership records the admitted observation, re-observes grant identity, policy epoch
+and revocation after fusion, and supplies that result to both packet-emission routes. A changed
+observation returns typed `policy_changed` and emits no packet. Federation still validates any
+caller-supplied fence before provider execution as an earlier independent guard.
 
 ## 17.3 Calibrated fusion candidate
 
@@ -1231,9 +1215,10 @@ disposition only:
 - **Implemented, awaiting macOS host qualification:** the tray installs a
   per-session launchd kill guarantee, publishes the supervised daemon PID and refuses startup when coupling cannot install.
   Qualification must prove crash, normal drain, PID cleanup and no-orphan behavior on macOS.
-- **Still pending:** installed-artifact qualification must become a required release-candidate gate.
-  Generated workflow must not be hand-edited; add the capability to RightKit ownership, then
-  regenerate this repository.
+- **Repo-local gate implemented; ownership and execution pending:** release publication depends on
+  installed qualification, but the gate must move into RightKit workflow generation and this
+  repository must be regenerated. A native signed installed artifact still needs real
+  qualification before publication.
 - **Implemented and verified:** every JS-side shared-SQLite open uses the native WAL,
   `busy_timeout=5000`, `synchronous=NORMAL` and in-memory temp-store posture. Proposal,
   working-context and readback restart suites exercise that shared opener.

@@ -37,10 +37,10 @@ CodeRight's target shape is split by ownership in
 reachability, and production-bound qualification evidence. It never infers absence from an
 identifier search or promotes doctrine prose into landed-state evidence.
 
-Current traced findings include an unwired RRF implementation, unwired query-aware Push, and an
-unwired sealed-remediation path. Active provider merge uses fixed provider/security ordering, not
-the standalone RRF implementation. These are wiring and qualification problems, not greenfield
-implementations.
+Current traced findings include reachable RRF, query-aware Push and sealed-remediation paths whose
+promotion/effect claims still require frozen qualification. Fixed provider/security ordering remains
+the active fusion control. Background semantic inputs, host observation transport and installed
+native qualification remain real wiring or execution gaps, not greenfield replacements.
 
 §0.2 names what has **not** been audited. Absence from the table means unverified, not absent.
 
