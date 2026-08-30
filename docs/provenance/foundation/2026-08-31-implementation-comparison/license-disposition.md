@@ -1,0 +1,9 @@
+# Foundation Stage 4 — reuse & license disposition
+
+Only 3 reuse-bearing material gaps are in scope. Membrane project policy derives from its proprietary `LICENSE`; third-party terms control copied components. Each gap uses behavioral reimplementation because donor code does not fit Membrane authority, provenance, lifecycle, or qualification boundaries; direct copy is unnecessary.
+
+| Atom/mechanism | Repository | Observed license/SPDX | Evidence location | Obligations | Permitted reuse actions |
+|---|---|---|---|---|---|
+| BPT-071 — explicit cross-language bridge detection | intuit__infigraph | Apache-2.0 | `intuit__infigraph/LICENSE` & `intuit__infigraph/NOTICE` at `1c3622f120edbbf120d1f89b6555626bb560d73d`; Membrane `LICENSE` | Copied/derivative code would require Apache-2.0 license, copyright, attribution, NOTICE preservation, modification notices, & patent/trademark compliance. | `BEHAVIORAL_REIMPLEMENT`; `REFERENCE_ONLY` for this handoff. Direct copy is licensed with obligations but unnecessary. |
+| LDG-027 — evidence-bound future-question projection | graph-memory-starter | MIT | `graph-memory-starter/LICENSE` at `496a6e9d9b9578943ec5ed34c2780de5a0fa5510`; Membrane `LICENSE` | Copied/substantial code would require MIT copyright & permission notice preservation. | `BEHAVIORAL_REIMPLEMENT`; `REFERENCE_ONLY` for this handoff. Direct copy is licensed with notice retention but unnecessary. |
+| LDG-028 — raw-preserving hash-bound document conversion | VectifyAI__OpenKB | Apache-2.0 | `VectifyAI__OpenKB/LICENSE` at `ff54396e575ee6feb0113b631a34caa082b441cc`; Membrane `LICENSE` | Copied/derivative code would require Apache-2.0 license, copyright, attribution, modification notices, & patent/trademark compliance; preserve NOTICE only if donor distribution supplies one. | `BEHAVIORAL_REIMPLEMENT`; `REFERENCE_ONLY` for this handoff. Direct copy is licensed with obligations but unnecessary. |

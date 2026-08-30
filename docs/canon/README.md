@@ -12,10 +12,10 @@ Each named subsystem owns one atomic canon. Capability, implementation, qualific
 | [Pull](pull.md) | RELEASED | 35 | 1 | 0 | 35 |
 | [Push](push.md) | RELEASED | 23 | 0 | 0 | 23 |
 | [Cortex](cortex.md) | RELEASED | 36 | 1 | 0 | 36 |
-| [Blueprint](blueprint.md) | RELEASED | 67 | 2 | 0 | 67 |
-| [Ledger](ledger.md) | RELEASED | 25 | 3 | 0 | 25 |
+| [Blueprint](blueprint.md) | RELEASED | 68 | 1 | 0 | 68 |
+| [Ledger](ledger.md) | RELEASED | 27 | 1 | 0 | 27 |
 | [Adapt](adapt.md) | RELEASED | 62 | 7 | 0 | 62 |
-| **Total** | — | **314** | **14** | **0** | **314** |
+| **Total** | — | **317** | **11** | **0** | **317** |
 
 Total capability rows: **328**
 

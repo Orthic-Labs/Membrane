@@ -307,7 +307,7 @@ function validateSemanticOwnership(parsed) {
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
   if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
   const exploratory = capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID).sort();
-  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "BPT-071", "CTX-033", "LDG-023", "LDG-027", "LDG-028", "PUL-034"];
+  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "LDG-023", "PUL-034"];
   if (JSON.stringify(exploratory) !== JSON.stringify(expectedExploratory)) throw new Error(`exploratory disposition differs: ${exploratory.join(", ")}`);
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
     if (similarity(capabilities[left]["Observable behavior"], capabilities[right]["Observable behavior"]) >= 0.9) throw new Error(`semantic duplicate candidates: ${capabilities[left].ID} & ${capabilities[right].ID}`);

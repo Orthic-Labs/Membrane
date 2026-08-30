@@ -7,10 +7,10 @@ test("normalized canon inventory is complete & generated indexes are current", (
   assert.deepEqual(validateAtomicCanons(), {
     canons: 7,
     capabilityRows: 328,
-    atoms: 314,
-    exploratory: 14,
+    atoms: 317,
+    exploratory: 11,
     closed: 0,
-    open: 314,
+    open: 317,
     groups: 7,
     implementations: 329,
     qualifications: 328,

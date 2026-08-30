@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| BPT-G01 | — | Blueprint | COMMITTED | 67 committed capabilities; 2 exploratory capability rows; closure derived from child rows |
+| BPT-G01 | — | Blueprint | COMMITTED | 68 committed capabilities; 1 exploratory capability row; closure derived from child rows |
 
 ## Capability ledger
 
@@ -82,7 +82,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | BPT-068 | BPT-G01 | Blueprint | COMMITTED | Require an unguessable in-memory session token for every Explorer API request. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: BPT-068; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | BPT-069 | BPT-G01 | Blueprint | COMMITTED | Reject every non-GET Explorer request before route dispatch. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: BPT-069; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | BPT-070 | BPT-G01 | Blueprint | COMMITTED | Never launch a browser child carrying Explorer session URL or token; expose URL only to caller. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: BPT-070; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
-| BPT-071 | BPT-G01 | Blueprint | EXPLORATORY | Emit typed source-addressed cross-language bridge evidence only for explicit FFI/JNI/cgo/gRPC/PInvoke/WASM/COM seams under declared provider capability; never infer bridges from semantic similarity. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| BPT-071 | BPT-G01 | Blueprint | COMMITTED | Emit typed source-addressed cross-language bridge evidence only for explicit FFI/JNI/cgo/gRPC/PInvoke/WASM/COM seams under declared provider capability; never infer bridges from semantic similarity. | MISSING | PENDING | PENDING | LOCAL | ADAPT | PENDING |
 
 ## Implementation register
 
@@ -250,4 +250,4 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-D009 | REFERENCE | BPT-046, BPT-055, BPT-056, BPT-057, BPT-060 | BPT-046 owns diagnostics; BPT-055 support bundles; BPT-056 recovery; BPT-057 poisoned manifest/plugin refusal; BPT-060 secret-egress prevention. | Sage split clarification | RECORDED |
 | BPT-D010 | REFERENCE | BPT-058, BPT-061, BPT-062, BPT-063 | Update activation, trust admission, rollback, & install-owner delegation are distinct. | Sage split decision | RECORDED |
 | BPT-D011 | REFERENCE | BPT-059, BPT-064, BPT-068, BPT-069, BPT-070 | Explorer shell, loopback binding, API token admission, method enforcement & browser-process isolation close independently. | Sage split decision | RECORDED |
-| BPT-D012 | REFERENCE | BPT-071 | Explicit cross-language seam evidence may be a Blueprint provider capability; general taint/dataflow platforms & similarity-inferred bridges remain excluded. | Foundation donor reconciliation, 2026-08-31 | RECORDED |
+| BPT-D012 | REFERENCE | BPT-071 | Commit donor-proven explicit cross-language seam gap as pending Blueprint provider work; general taint/dataflow platforms & similarity-inferred bridges remain excluded. | `docs/provenance/foundation/2026-08-31-implementation-comparison/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |

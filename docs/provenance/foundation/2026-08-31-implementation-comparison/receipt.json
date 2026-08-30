@@ -1,0 +1,53 @@
+{
+  "schema_version": "foundation-comparison-receipt-v1",
+  "protocol_version": "foundation-v1-stage5-gap-projection",
+  "product": "Membrane",
+  "current_product_commit": "29adfc8e2fe5a2d43ed25634a91ebec3bb4070d3",
+  "frozen_at": "2026-08-31",
+  "corpus": {
+    "manifest_path": "docs/provenance/foundation/2026-08-31-implementation-comparison/corpus.json",
+    "manifest_sha256": "260090acc0100c70c8b969c746a952d510c1ca0ed849ee74edae492d0d83c766",
+    "repositories": 27,
+    "exact_commits_recorded": true,
+    "all_heads_matched_during_comparison": true
+  },
+  "artifacts": {
+    "comparison_pass_a": {
+      "path": "docs/provenance/foundation/2026-08-31-implementation-comparison/comparison-pass-a.md",
+      "sha256": "9d47280c1190ee7225b5b394bdce3f670ef294f3471c20f1e449a864fea5b5e3"
+    },
+    "comparison_pass_b": {
+      "path": "docs/provenance/foundation/2026-08-31-implementation-comparison/comparison-pass-b.md",
+      "sha256": "dec0e035a0063596ebfc492ee4f3edd5e9c36f58318e4c4f69acbeeef5716af6"
+    },
+    "reconciliation": {
+      "path": "docs/provenance/foundation/2026-08-31-implementation-comparison/reconciliation.md",
+      "sha256": "4da8c37cb861593d2660c494fdecdfe3ca4f4990abd6452e14d9517fe5295631"
+    },
+    "license_disposition": {
+      "path": "docs/provenance/foundation/2026-08-31-implementation-comparison/license-disposition.md",
+      "sha256": "a96b2ff56ca70e05ba1f432be7c8a88238247659e6ad5dde1c2d2216cf35905b"
+    },
+    "gap_handoff": {
+      "path": "docs/provenance/foundation/2026-08-31-implementation-comparison/gap-handoff.md",
+      "sha256": "a03732bdfdc86dd27d458db34c99ea0b74488c663811b16f7cc4af3a7440a2f4"
+    }
+  },
+  "result": {
+    "requested": 328,
+    "evaluated": 328,
+    "material_gaps": 3,
+    "material_gap_atoms": ["BPT-071", "LDG-027", "LDG-028"],
+    "unresolved_no_proven_winner": 325,
+    "excluded": 0,
+    "promoted_to_committed_pending": 3
+  },
+  "verification": {
+    "pass_a_stage3_validator": "PASS",
+    "pass_b_stage3_validator": "PASS",
+    "reconciliation_final_validator": "PASS",
+    "gap_handoff_validator": "PASS",
+    "atomic_canon_generator": "PASS: 328 rows, 317 committed, 11 exploratory, 317 open, 728 preserved, 0 unclassified",
+    "atomic_canon_tests": "PASS: 4/4"
+  }
+}

@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| LDG-G01 | — | Ledger | COMMITTED | 25 committed capabilities; 3 exploratory capability rows; closure derived from child rows |
+| LDG-G01 | — | Ledger | COMMITTED | 27 committed capabilities; 1 exploratory capability row; closure derived from child rows |
 
 ## Capability ledger
 
@@ -40,8 +40,8 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | LDG-024 | LDG-G01 | Ledger | COMMITTED | Persist document alias history across resolution changes. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: LDG-024; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | LDG-025 | LDG-G01 | Ledger | COMMITTED | Project Ledger session records without conflating them with document projections. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: LDG-025; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | LDG-026 | LDG-G01 | Ledger | COMMITTED | Admit only confined, canonical worktree document references before resolution. | DELIVERED | PENDING | PENDING | PUSHED | VERIFY | Acceptance: LDG-026; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
-| LDG-027 | LDG-G01 | Ledger | EXPLORATORY | Retrieve current sections through source-derived future-question aliases only when exact section/revision/span-hash evidence resolves; aliases remain non-authoritative retrieval metadata & invalidate on source drift. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
-| LDG-028 | LDG-G01 | Ledger | EXPLORATORY | Normalize granted non-Markdown document formats deterministically into hash-bound Markdown input while retaining raw-source resolution, converter/version/config provenance, & typed loss/omission accounting; exclude media ingestion. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| LDG-027 | LDG-G01 | Ledger | COMMITTED | Retrieve current sections through source-derived future-question aliases only when exact section/revision/span-hash evidence resolves; aliases remain non-authoritative retrieval metadata & invalidate on source drift. | MISSING | PENDING | PENDING | LOCAL | ADAPT | PENDING |
+| LDG-028 | LDG-G01 | Ledger | COMMITTED | Normalize granted non-Markdown document formats deterministically into hash-bound Markdown input while retaining raw-source resolution, converter/version/config provenance, & typed loss/omission accounting; exclude media ingestion. | MISSING | PENDING | PENDING | LOCAL | ADAPT | PENDING |
 
 ## Implementation register
 
@@ -120,6 +120,6 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | LDG-D003 | REFERENCE | LDG-023 | Semantic structural-evidence producer remains exploratory because current Ledger architecture does not commit frozen proposal. | Frozen semantic compilation proposal | RECORDED |
 | LDG-D004 | REFERENCE | LDG-005, LDG-006, LDG-026 | Ledger resolution owns typed outcomes; LDG-026 owns WorktreeDocRef admission. | Sage split decision | RECORDED |
 | LDG-D005 | REFERENCE | LDG-026, PSH-002 | WorktreeDocRef admission belongs LDG-026; AnchorRef transport remains PSH-002. | Sage split decision | RECORDED |
-| LDG-D006 | REFERENCE | LDG-027 | Evidence-bound write-time aliases are not request-time query rewriting; keep them exploratory until measured lexical/structural deficiency & shadow qualification justify promotion. | Foundation donor reconciliation, 2026-08-31 | RECORDED |
+| LDG-D006 | REFERENCE | LDG-027 | Evidence-bound write-time aliases are not request-time query rewriting; commit donor-proven gap as pending, but keep feature inactive until shadow qualification proves measured lexical/structural benefit without no-answer regression. | `docs/provenance/foundation/2026-08-31-implementation-comparison/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
 | LDG-D007 | REFERENCE | LDG-006, LDG-023 | Change notices carry refs, not source content; consumers resolve current authority, while unavailable observation remains distinct from missing/denied evidence. | Architecture corrections V2 reconciliation, 2026-08-31 | RECORDED |
-| LDG-D008 | EXCLUSION | LDG-028 | Document-format normalization may produce hash-bound Markdown input, but media ingestion, page rendering, stochastic structure generation, & multimedia embedding remain outside Ledger. | OpenKB supplemental SOL review, 2026-08-31 | RECORDED |
+| LDG-D008 | EXCLUSION | LDG-028 | Commit donor-proven document-normalization gap as pending; media ingestion, page rendering, stochastic structure generation, & multimedia embedding remain outside Ledger. | `docs/provenance/foundation/2026-08-31-implementation-comparison/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
