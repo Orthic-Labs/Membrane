@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-29T05:12:38.847Z",
+ "generatedAt": "2026-08-30T04:40:16.292Z",
  "enforcementMode": "sealed",
  "policyDigest": "4b1ff6c9898ace6d3e456a0ad21906c30be93e4582eeb3d615f128d4454ab365",
  "totals": {
-  "files": 1196,
+  "files": 1205,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -956,7 +956,7 @@
     "engine/crates/cortex/tests/public_api_signature.rs",
     "engine/crates/cortex/tests/skill_read_test.rs"
    ],
-   "content_digest": "72954017cef3216d6075cc09cb636c393d6da45b57633027fc15469a8924d91a"
+   "content_digest": "339a3bcceadbd1da374fc06e62064651c877ca65320e95400e5296f77383c0a5"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",
@@ -1078,7 +1078,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "be92a0de4972f6f16ed2a8c5cc1d7e90919437191146b43bf672acf5213a3a01"
+   "content_digest": "a0e1cda1916656b87e717d31e2e6eec01a2a1c45fc9d582fcbf860a5f83284de"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1130,9 +1130,10 @@
     "engine/crates/cortex-store/src/team_sync.rs",
     "engine/crates/cortex-store/src/temporal.rs",
     "engine/crates/cortex-store/src/time.rs",
-    "engine/crates/cortex-store/src/transcript.rs"
+    "engine/crates/cortex-store/src/transcript.rs",
+    "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "6f884d0de2a7663849d57e32fb2fa8ae97b44343c7cf5ca70aea8314ebda7eba"
+   "content_digest": "046e9121cacc132f6829006e4b4b78eff05e0858eea1c3674ed0eaa847cc8f10"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -1191,6 +1192,7 @@
    "files": [
     "engine/crates/membrane-adapt/src/adaptive.rs",
     "engine/crates/membrane-adapt/src/admission.rs",
+    "engine/crates/membrane-adapt/src/attribution.rs",
     "engine/crates/membrane-adapt/src/authority.rs",
     "engine/crates/membrane-adapt/src/benchmark.rs",
     "engine/crates/membrane-adapt/src/canonical.rs",
@@ -1233,7 +1235,7 @@
     "engine/crates/membrane-adapt/tests/taste_contracts.rs",
     "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "491a64bac25128084f16a034eb9650fe7dc123a3e3016da7be4ee2d5c7372de6"
+   "content_digest": "d8c393ea86705a840b5857a862b6aa56ac7f5e67ef09f3be0f3ee08d25cc1ff9"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-core",
@@ -1310,6 +1312,7 @@
     "engine/crates/membrane-federation/src/skill_ranker.rs",
     "engine/crates/membrane-federation/tests/corrective_retrieval_qualification.rs",
     "engine/crates/membrane-federation/tests/engine_contract.rs",
+    "engine/crates/membrane-federation/tests/fence_abstention.rs",
     "engine/crates/membrane-federation/tests/fusion_qualification.rs",
     "engine/crates/membrane-federation/tests/provider_anchors.rs",
     "engine/crates/membrane-federation/tests/provider_architect.rs",
@@ -1322,7 +1325,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "3f8dd1ec219b0705be674ddaaed5abe25db9570631fb92e93d87148c8ca324eb"
+   "content_digest": "47f0ce866598c9a9a3aec84c6343bb39161697656d2a95171bb828d14869ee10"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1351,7 +1354,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "cb491de98cc9b0fc8932932a882374aac1809402ca901bbea23a1f32572cb6c3"
+   "content_digest": "de9e63d1f439a6e2641c0bf6d63cddc9e2bcbcc6bc5f84de25ffe523d0796b31"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1403,7 +1406,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "eaa96232430fa26f0b70db6d8acb38971016128d3478179d566221a602410be5"
+   "content_digest": "81553503b26827cf4585a172e912ce2ca727915d0026fac5610a1675eefd7510"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1456,6 +1459,7 @@
     "engine/crates/membrane-runtime/src/admission_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
+    "engine/crates/membrane-runtime/src/authorization.rs",
     "engine/crates/membrane-runtime/src/background_review.rs",
     "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
     "engine/crates/membrane-runtime/src/cache_prefix.rs",
@@ -1534,7 +1538,10 @@
     "engine/crates/membrane-runtime/src/store.rs",
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
+    "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
+    "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
     "engine/crates/membrane-runtime/tests/cortex_relevance_spotcheck.rs",
+    "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
     "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
     "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
     "engine/crates/membrane-runtime/tests/installation_manifest.rs",
@@ -1548,7 +1555,9 @@
     "engine/crates/membrane-runtime/tests/ledger_spine.rs",
     "engine/crates/membrane-runtime/tests/ledger_spine_equivalence.rs",
     "engine/crates/membrane-runtime/tests/ledger_spine_shadow_replay_corpus.rs",
+    "engine/crates/membrane-runtime/tests/native_authorization.rs",
     "engine/crates/membrane-runtime/tests/paths.rs",
+    "engine/crates/membrane-runtime/tests/publication_fence_recheck.rs",
     "engine/crates/membrane-runtime/tests/pull_catalog.rs",
     "engine/crates/membrane-runtime/tests/pull_freshness.rs",
     "engine/crates/membrane-runtime/tests/pull_memory_provider.rs",
@@ -1558,7 +1567,7 @@
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs"
    ],
-   "content_digest": "113d32098d4226b841d4925a914d79dddb3e9dedd006e590ff0e6f7bbb7b3961"
+   "content_digest": "85489757a1bcb1c34599f48e018bd341a60148dfe37df6d6c728ff5b1393c5d6"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1917,7 +1926,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "7c883a271af2c599bf7c5f9c1d2e28b3d9cded726abfe80bce0477d9f410cbe5"
+   "content_digest": "99d176d194327cbe3288e480f5f681d21e4e7062ef5f0c7c579d64fab60eece0"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -1957,7 +1966,7 @@
    "files": [
     "mcp/server.mjs"
    ],
-   "content_digest": "9a0cdda94714cc66c9deb9146c655fade1f49486a2a766acb334148e1a43007c"
+   "content_digest": "243e02cdaf1fbf782a52cdc94f21e56426b2f803c6ba20965b739cf0715ce4d4"
   },
   {
    "id": "mcp-tests-mcp-tests",
@@ -2017,7 +2026,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "4baecc71f25b49307ffd8c233bc0d3a1b39c6b8ee696cb6a54e59e0925ef3414"
+   "content_digest": "ca8846c2c2a695a8bfca67c4dd37cd8f04f9a62afe4823407f6819f2b9722b41"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
