@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T10:45:36.268Z",
+ "generatedAt": "2026-08-30T15:47:26.912Z",
  "enforcementMode": "sealed",
  "policyDigest": "8aa214294b8b36733dbcf11f4dc3f0ff634fb7f6990c2d1361e5354350dda0c5",
  "totals": {
-  "files": 1208,
+  "files": 1212,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1723,7 +1723,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "670e0c2348a83f7e348f125507ca2f50a40445510bbb6b83f9d2ce45e5568620"
+   "content_digest": "76446564a6a3019b2b3b06ca098ad1d649c2589e6159683b01304e8aa99f404e"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1766,7 +1766,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "8682c17e6780d82372e2eea6cc2815f43c8b2e8f4a3d578b3bbc6cee4ad7c60f"
+   "content_digest": "6815e64b11b2d958d2952b2eb52722acef9b5c9cfa0228707d4fa17853640073"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2092,6 +2092,8 @@
     "scripts/ci/build-invocation-graph.mjs",
     "scripts/ci/check-adapt-ontology.mjs",
     "scripts/ci/check-adapt-ontology.test.mjs",
+    "scripts/ci/check-atomic-canons.mjs",
+    "scripts/ci/check-atomic-canons.test.mjs",
     "scripts/ci/check-generated.mjs",
     "scripts/ci/check-invocation-graph.mjs",
     "scripts/ci/check-invocation-graph.test.mjs",
@@ -2137,6 +2139,8 @@
     "scripts/release/orchestrate-release.mjs",
     "scripts/release/registry/tool-contract-coverage.mjs",
     "scripts/release/registry/verify-server-json.mjs",
+    "scripts/release/right-git-candidate.mjs",
+    "scripts/release/right-git-release-chain.mjs",
     "scripts/release/verify-mcp-registry.mjs",
     "scripts/release/verify-oci-release.mjs",
     "scripts/release/verify-platform-artifacts.mjs",
@@ -2156,7 +2160,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "0f134312ff11ae0a26287a36c1928b6ca906cf86b4846a7693a5804982afc429"
+   "content_digest": "404b3da2e48ec22c821afdc03d361f6b0ed9d18a2efea8afc257f1a093656a86"
   },
   {
    "id": "tests-root-tests-root",
