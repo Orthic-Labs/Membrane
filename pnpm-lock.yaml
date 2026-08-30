@@ -22,8 +22,8 @@ importers:
         specifier: 0.2.14
         version: 0.2.14
       '@rightkit/release':
-        specifier: 0.2.84
-        version: 0.2.84
+        specifier: 0.2.85
+        version: 0.2.85
 
   blueprint:
     dependencies:
@@ -172,8 +172,8 @@ packages:
     resolution: {integrity: sha512-6+SjBp5YABYqxMH6l2BC0ZTrIdDmTBSzvpuHyHvw3mT8Sf5FSgCYo1zVo28AQ+BsHfWkJN+S4JlirIrhTIc0mg==}
     hasBin: true
 
-  '@rightkit/release@0.2.84':
-    resolution: {integrity: sha512-apn4AcoSChfk37Svcgcm/Wo8NCXkLMsGOWu/Dt7+eJ79CGZgH++DYnnD1x89t5W0vYA1wXwC5yE1VUKwhxOB3g==}
+  '@rightkit/release@0.2.85':
+    resolution: {integrity: sha512-q00KPqjCguNeru0uhrii9UXHS2eny40S86yoHeTAj8gb8bm3PTy4kltTAm3HSRIfup5irG6IJsexjbma5Hkd2A==}
     hasBin: true
 
   accepts@2.0.0:
@@ -657,7 +657,7 @@ snapshots:
 
   '@rightkit/hooks@0.1.0': {}
 
-  '@rightkit/release@0.2.84': {}
+  '@rightkit/release@0.2.85': {}
 
   accepts@2.0.0:
     dependencies:
