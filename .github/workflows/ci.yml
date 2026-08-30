@@ -19,7 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "windows-2025"]
+        # Full validation stays on one Windows runner; release-candidate
+        # validates every native target before it builds that target.
+        os: ["windows-2025"]
         node: ["22.13"]
     runs-on: ${{ matrix.os }}
     steps:
