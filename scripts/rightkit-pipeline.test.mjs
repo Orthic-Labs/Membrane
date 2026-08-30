@@ -44,9 +44,22 @@ test("Windows release artifacts derive from canonical Cargo target resolution", 
 });
 
 test("each release candidate materializes Hub dependencies from Hub lockfile", () => {
-  const candidate = read("scripts/release/right-git-candidate.mjs");
+	const candidate = read("scripts/release/right-git-candidate.mjs");
+	const windows = read("apps/membrane-hub/scripts/release-build-candidate-windows.mjs");
 
-  assert.match(candidate, /platform === "windows"[\s\S]*pnpm\.cmd", \["--dir", hub, "install", "--frozen-lockfile"\]/);
-  assert.match(candidate, /platform === "macos"[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
-  assert.match(candidate, /MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1"/);
+	assert.match(candidate, /platform === "windows"[\s\S]*pnpm\.cmd", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+	assert.match(candidate, /platform === "macos"[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+	assert.match(candidate, /MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1"/);
+	assert.match(candidate, /allowGeneratedSchemaOutput: mode === "check"/);
+	assert.match(candidate, /apps\/membrane-hub\/src-tauri\/gen\//);
+	assert.match(windows, /cargo", \["build", "--locked"/);
+	assert.match(windows, /cargo", \["metadata", "--locked"/);
+});
+
+test("qualified publication uploads exact notarized macOS DMG beside Windows release assets", () => {
+	const chain = read("scripts/release/right-git-release-chain.mjs");
+
+	assert.match(chain, /notarized: true, stapled: true/);
+	assert.match(chain, /macOS finalization receipt does not bind the exact notarized & stapled DMG/);
+	assert.match(chain, /gh", \["release", "upload", `v\$\{version\}`, dmg, finalizationPath, "--clobber"\]/);
 });

@@ -40,9 +40,14 @@ function filesUnder(directory) {
   });
 }
 
-function assertContext() {
-  if (!root || !platform || !architecture) throw new Error("RightGit candidate platform, architecture, and artifact root are required");
-  if (git(["status", "--porcelain"])) throw new Error("candidate source must be clean");
+function assertContext({ allowGeneratedSchemaOutput = false } = {}) {
+	if (!root || !platform || !architecture) throw new Error("RightGit candidate platform, architecture, and artifact root are required");
+	const changedPaths = git(["status", "--porcelain"])
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => line.slice(3).trim());
+	const unexpectedPaths = changedPaths.filter((path) => !allowGeneratedSchemaOutput || !path.startsWith("apps/membrane-hub/src-tauri/gen/"));
+	if (unexpectedPaths.length) throw new Error(`candidate source must be clean: ${unexpectedPaths.join(", ")}`);
   const commit = git(["rev-parse", "HEAD"]);
   if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "Orthic-Labs/Membrane" || process.env.GITHUB_SHA !== commit) {
     throw new Error("release candidates may be built only by exact-source Orthic-Labs/Membrane GitHub Actions");
@@ -97,7 +102,7 @@ function checkMacCandidate(commit) {
 
 const mode = process.argv[2];
 if (!new Set(["build", "check"]).has(mode)) throw new Error("usage: right-git-candidate.mjs <build|check>");
-const commit = assertContext();
+const commit = assertContext({ allowGeneratedSchemaOutput: mode === "check" });
 if (platform === "windows" && architecture === "x86_64") {
   run("pnpm.cmd", ["--dir", hub, "install", "--frozen-lockfile"]);
   run("pnpm.cmd", ["--dir", hub, "run", mode === "build" ? "release:candidate:artifacts:win" : "release:candidate:check:win"]);
