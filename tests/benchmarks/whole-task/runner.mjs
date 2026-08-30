@@ -14,7 +14,7 @@
 // guard below forces "source-ready" for fixture corpora regardless of what
 // the caller-supplied executor returns, so a fixture self-test can never be
 // mistaken for, or reported as, a real measured product benchmark. This
-// mirrors docs/evaluation/whole-task-benchmark.md: "status: source-ready
+// mirrors docs/reference/evaluation/whole-task-benchmark.md: "status: source-ready
 // describes this protocol only and can never produce PASS."
 
 import { createHash } from 'node:crypto';

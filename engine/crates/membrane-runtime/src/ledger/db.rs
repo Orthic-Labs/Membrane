@@ -122,7 +122,7 @@ impl LedgerDb {
     ///
     /// Before opening, retires any pre-rename `guide-index.sqlite3` left behind by an
     /// install predating the Guide -> Ledger cutover (see
-    /// `docs/current/architecture/subsystems/ledger.md` section 2.4
+    /// `docs/architecture/subsystems/ledger.md` section 2.4
     /// and the "Migration" runtime contract). Ledger state is a rebuildable projection of
     /// the registered document sources (Locked invariant 1), and the renamed
     /// `guide_doc_*` -> `ledger_doc_*` tables mean the legacy file cannot be reused

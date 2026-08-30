@@ -17,5 +17,5 @@ membrane-provider-sdk = "0.1"
 membrane-protocol = "0.1"
 ```
 
-See [`docs/sdk/publishing.md`](https://github.com/Orthic-Labs/Membrane/blob/main/docs/sdk/publishing.md)
+See [`docs/reference/sdk/publishing.md`](https://github.com/Orthic-Labs/Membrane/blob/main/docs/reference/sdk/publishing.md)
 for release metadata & compatibility policy.

@@ -11,7 +11,7 @@
 //!
 //! This crate owns no transport; every test below supplies its own injected
 //! closure, matching the "thin, transport-injected client" contract in
-//! `docs/sdk/README.md`.
+//! `docs/reference/sdk/README.md`.
 
 use membrane_client::{MembraneClient, ProtocolResult, CONTEXT_OPERATION, SOURCE_READ_OPERATION};
 use serde_json::{json, Map, Value};

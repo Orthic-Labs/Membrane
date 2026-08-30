@@ -34,7 +34,7 @@
 //! - **Auditable.** Every call that gets past the three fail-closed gates appends exactly one
 //!   content-free row recording what was decided and why, whether or not it was admitted. Local
 //!   audit export is reading this ledger back; shipping it anywhere remains an explicit
-//!   integration gate, same as `docs/team/policy-sync.md` already states for transport.
+//!   integration gate, same as `docs/reference/team/policy-sync.md` already states for transport.
 
 use crate::MemDb;
 use membrane_protocol::TeamPolicySyncV1;

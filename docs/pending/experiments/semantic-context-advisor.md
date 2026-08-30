@@ -16,7 +16,7 @@ require Membrane.
 
 ## Document authority
 
-Subordinate to canonical architecture in `docs/current/architecture/`, & to
+Subordinate to canonical architecture in `docs/architecture/`, & to
 `docs/pending/README.md` for every deterministic mechanism it plugs into.
 
 ## Host neutrality
@@ -571,7 +571,7 @@ aggressive representation (core doc §11).
 # 12. Host integration
 
 The canonical host↔Membrane ownership and runtime boundary is defined by
-`docs/current/architecture/integrations/coderight.md`. It is not
+`docs/architecture/integrations/coderight.md`. It is not
 reproduced here.
 
 This feature adds exactly one requirement to that seam:

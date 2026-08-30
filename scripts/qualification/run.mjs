@@ -14,7 +14,7 @@
 // running Membrane service, signed release-evidence manifest) and are meant
 // to run manually at the Book gate on macOS — never during task
 // implementation and never as part of an automated pipeline. See
-// docs/evaluation/mbr801-run-harness.md.
+// docs/reference/evaluation/mbr801-run-harness.md.
 //
 // The Book gate invokes:
 //

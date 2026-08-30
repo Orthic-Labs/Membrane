@@ -10,19 +10,19 @@ Open/unproven: **256**
 Preserved legacy/spec rows: **728**
 Unclassified preserved rows: **0**
 
-Atomic state lives in `docs/current/atoms/*.md`; preservation state lives in `docs/provenance/migrations/2026-08-30-atomic-canons/preservation-map.md`. This file is sole pending-work index & is derived from both.
+Atomic state lives in `docs/canon/*.md`; preservation state lives in `docs/provenance/migrations/2026-08-30-atomic-canons/preservation-map.md`. This file is sole pending-work index & is derived from both.
 
 ## Canon summary
 
 | Subsystem | Boundary | Committed | Exploratory | Closed | Open | Groups | Implementations | Qualifications | Decisions |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| [Membrane](../current/atoms/membrane.md) | RELEASED | 60 | 0 | 0 | 60 | 1 | 60 | 60 | 7 |
-| [Pull](../current/atoms/pull.md) | RELEASED | 33 | 1 | 0 | 33 | 1 | 34 | 34 | 4 |
-| [Push](../current/atoms/push.md) | RELEASED | 17 | 0 | 0 | 17 | 1 | 17 | 17 | 2 |
-| [Cortex](../current/atoms/cortex.md) | RELEASED | 34 | 1 | 0 | 34 | 1 | 35 | 35 | 4 |
-| [Blueprint](../current/atoms/blueprint.md) | RELEASED | 51 | 1 | 0 | 51 | 1 | 52 | 52 | 5 |
-| [Ledger](../current/atoms/ledger.md) | RELEASED | 22 | 1 | 0 | 22 | 1 | 23 | 23 | 3 |
-| [Adapt](../current/atoms/adapt.md) | RELEASED | 39 | 1 | 0 | 39 | 1 | 40 | 40 | 5 |
+| [Membrane](../canon/membrane.md) | RELEASED | 60 | 0 | 0 | 60 | 1 | 60 | 60 | 7 |
+| [Pull](../canon/pull.md) | RELEASED | 33 | 1 | 0 | 33 | 1 | 34 | 34 | 4 |
+| [Push](../canon/push.md) | RELEASED | 17 | 0 | 0 | 17 | 1 | 17 | 17 | 2 |
+| [Cortex](../canon/cortex.md) | RELEASED | 34 | 1 | 0 | 34 | 1 | 35 | 35 | 4 |
+| [Blueprint](../canon/blueprint.md) | RELEASED | 51 | 1 | 0 | 51 | 1 | 52 | 52 | 5 |
+| [Ledger](../canon/ledger.md) | RELEASED | 22 | 1 | 0 | 22 | 1 | 23 | 23 | 3 |
+| [Adapt](../canon/adapt.md) | RELEASED | 39 | 1 | 0 | 39 | 1 | 40 | 40 | 5 |
 
 ## Open capability atoms
 
@@ -30,292 +30,292 @@ Atomic state lives in `docs/current/atoms/*.md`; preservation state lives in `do
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [MEM-001](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-002](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-003](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-004](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-005](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-006](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-007](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-008](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-009](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-010](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-011](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-012](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-013](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-014](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-015](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-016](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-017](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-018](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-019](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-020](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-021](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-022](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-023](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-024](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-025](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-026](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-027](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-028](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-029](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-030](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-031](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-032](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-033](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-034](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-035](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-036](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-037](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-038](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-039](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-040](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-041](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-042](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-043](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-044](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-045](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-046](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-047](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-048](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-049](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-050](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-051](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-052](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-053](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-054](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-055](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-056](../current/atoms/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-057](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-058](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-059](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [MEM-060](../current/atoms/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-001](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-002](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-003](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-004](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-005](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-006](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-007](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-008](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-009](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-010](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-011](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-012](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-013](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-014](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-015](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-016](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-017](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-018](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-019](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-020](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-021](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-022](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-023](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-024](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-025](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-026](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-027](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-028](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-029](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-030](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-031](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-032](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-033](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-034](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-035](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-036](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-037](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-038](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-039](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-040](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-041](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-042](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-043](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-044](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-045](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-046](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-047](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-048](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-049](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-050](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-051](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-052](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-053](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-054](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-055](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-056](../canon/membrane.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-057](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-058](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-059](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [MEM-060](../canon/membrane.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Pull
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [PUL-001](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-002](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-003](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-004](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-005](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-006](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-007](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-008](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-009](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-010](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-011](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-012](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-013](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-014](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-015](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-016](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-017](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-018](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-019](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-020](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-021](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-022](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-023](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-024](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-025](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-026](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-027](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-028](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-029](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-030](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-031](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-032](../current/atoms/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-033](../current/atoms/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-001](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-002](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-003](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-004](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-005](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-006](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-007](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-008](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-009](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-010](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-011](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-012](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-013](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-014](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-015](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-016](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-017](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-018](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-019](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-020](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-021](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-022](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-023](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-024](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-025](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-026](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-027](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-028](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-029](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-030](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-031](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-032](../canon/pull.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-033](../canon/pull.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Push
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [PSH-001](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-002](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-003](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-004](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-005](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-006](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-007](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-008](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-009](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-010](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-011](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-012](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-013](../current/atoms/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-014](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-015](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-016](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PSH-017](../current/atoms/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-001](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-002](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-003](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-004](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-005](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-006](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-007](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-008](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-009](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-010](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-011](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-012](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-013](../canon/push.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-014](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-015](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-016](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PSH-017](../canon/push.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Cortex
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [CTX-001](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-002](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-003](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-004](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-005](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-006](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-007](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-008](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-009](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-010](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-011](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-012](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-013](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-014](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-015](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-016](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-017](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-018](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-019](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-020](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-021](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-022](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-023](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-024](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-025](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-026](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-027](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-028](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-029](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-030](../current/atoms/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-031](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-032](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-034](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-035](../current/atoms/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-001](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-002](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-003](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-004](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-005](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-006](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-007](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-008](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-009](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-010](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-011](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-012](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-013](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-014](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-015](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-016](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-017](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-018](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-019](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-020](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-021](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-022](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-023](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-024](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-025](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-026](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-027](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-028](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-029](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-030](../canon/cortex.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-031](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-032](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-034](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-035](../canon/cortex.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Blueprint
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [BPT-001](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-002](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-003](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-004](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-005](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-006](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-007](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-008](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-009](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-010](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-011](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-012](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-013](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-014](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-015](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-016](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-017](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-018](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-019](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-020](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-021](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-022](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-023](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-024](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-025](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-026](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-027](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-028](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-029](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-030](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-031](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-032](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-033](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-034](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-035](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-036](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-037](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-038](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-039](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-040](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-041](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-042](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-043](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-044](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-045](../current/atoms/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-046](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-047](../current/atoms/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-049](../current/atoms/blueprint.md) | QUALIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-050](../current/atoms/blueprint.md) | QUALIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-051](../current/atoms/blueprint.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [BPT-052](../current/atoms/blueprint.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-001](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-002](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-003](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-004](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-005](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-006](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-007](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-008](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-009](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-010](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-011](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-012](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-013](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-014](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-015](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-016](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-017](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-018](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-019](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-020](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-021](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-022](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-023](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-024](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-025](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-026](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-027](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-028](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-029](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-030](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-031](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-032](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-033](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-034](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-035](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-036](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-037](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-038](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-039](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-040](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-041](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-042](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-043](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-044](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-045](../canon/blueprint.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-046](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-047](../canon/blueprint.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-049](../canon/blueprint.md) | QUALIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-050](../canon/blueprint.md) | QUALIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-051](../canon/blueprint.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [BPT-052](../canon/blueprint.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Ledger
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [LDG-001](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-002](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-003](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-004](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-005](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-006](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-007](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-008](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-009](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-010](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-011](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-012](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-013](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-014](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-015](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-016](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-017](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-018](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-019](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-020](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-021](../current/atoms/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [LDG-022](../current/atoms/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-001](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-002](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-003](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-004](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-005](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-006](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-007](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-008](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=STALE; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-009](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-010](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-011](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-012](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-013](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-014](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-015](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-016](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-017](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-018](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-019](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-020](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-021](../canon/ledger.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [LDG-022](../canon/ledger.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ### Adapt
 
 | Atom | Action | Deficit |
 |---|---|---|
-| [ADP-001](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-002](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-003](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-004](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-005](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-006](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-007](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-008](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-009](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-010](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-011](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-012](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-013](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-014](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-015](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-016](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-017](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-018](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-019](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-020](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-021](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-022](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-023](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-024](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-025](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-026](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-027](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-028](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-029](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-030](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-031](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-032](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-033](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-034](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-035](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-036](../current/atoms/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-037](../current/atoms/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-038](../current/atoms/adapt.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [ADP-040](../current/atoms/adapt.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-001](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-002](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-003](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-004](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-005](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-006](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-007](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-008](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-009](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-010](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-011](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-012](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-013](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-014](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-015](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-016](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-017](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-018](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-019](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-020](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-021](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-022](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-023](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-024](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-025](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-026](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-027](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-028](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-029](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-030](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-031](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-032](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-033](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-034](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-035](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-036](../canon/adapt.md) | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-037](../canon/adapt.md) | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-038](../canon/adapt.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-040](../canon/adapt.md) | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ## Preserved supporting specifications
 

@@ -21,7 +21,7 @@
 //!   2. deserializes + re-serializes to the **identical canonical bytes**, and
 //!   3. yields the **same `sha256:` digest** in Rust and in TypeScript.
 //!
-//! See `docs/protocol/source-of-truth.md` for the full contract story.
+//! See `docs/reference/protocol/source-of-truth.md` for the full contract story.
 
 pub mod background_review;
 pub mod canonical;

@@ -8,7 +8,7 @@
 ![writes](https://img.shields.io/badge/writes-opt--in%2C%20manifest--gated-df6428?style=flat-square&labelColor=111318)
 ![runtime](https://img.shields.io/badge/runtime-native%20Rust-df6428?style=flat-square&labelColor=111318)
 
-Canonical semantics: [`../docs/current/architecture/subsystems/adapt.md`](../docs/current/architecture/subsystems/adapt.md). Runtime cutover: [`../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md).
+Canonical semantics: [`../docs/architecture/subsystems/adapt.md`](../docs/architecture/subsystems/adapt.md). Runtime cutover: [`../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md).
 
 It does not retrain the model, and it does not save private chain-of-thought. It learns things like *"always run focused tests before reporting a broad build complete"* — and refuses to learn things like *"the service is down today."*
 

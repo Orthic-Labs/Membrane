@@ -69,8 +69,8 @@
 //! ```
 //!
 //! The `membrane-testkit` crate supplies the golden Blueprint and Cortex
-//! fixture sets, and the `docs/examples/providers/{blueprint,cortex}_example`
-//! crates show two reference adapters. See `docs/providers/README.md` for
+//! fixture sets, and the `docs/reference/examples/providers/{blueprint,cortex}_example`
+//! crates show two reference adapters. See `docs/reference/providers/README.md` for
 //! the full adapter-authoring guide.
 
 pub mod batch;

@@ -26,9 +26,9 @@ const current = new Map(specs.map((spec) => [spec.path, spec.render()]));
 
 test("extractLocalLinks keeps local targets and drops URLs/anchors", () => {
   const links = extractLocalLinks(
-    "[a](docs/product.md) [b](https://example.com/x) [c](#section) [d](docs/architecture.md#flow) [e](mailto:x@y.z)",
+    "[a](docs/product/README.md) [b](https://example.com/x) [c](#section) [d](docs/architecture/runtime-truth.md#flow) [e](mailto:x@y.z)",
   );
-  assert.deepEqual(links, ["docs/architecture.md", "docs/product.md"]);
+  assert.deepEqual(links, ["docs/architecture/runtime-truth.md", "docs/product/README.md"]);
 });
 
 test("generated-doc evaluator passes on current renders", () => {
@@ -52,13 +52,13 @@ test("generated-doc evaluator fails on a stale doc", () => {
 });
 
 test("README link evaluator passes when every local link resolves", () => {
-  const failures = evaluateReadmeLinks("[docs](docs/product-truth.md)", () => true);
+  const failures = evaluateReadmeLinks("[docs](docs/reference/product-truth.md)", () => true);
   assert.deepEqual(failures, []);
 });
 
 test("README link evaluator fails on a deliberately broken link", () => {
   const failures = evaluateReadmeLinks(
-    "[good](docs/product-truth.md) [bad](docs/no-such-file.md)",
+    "[good](docs/reference/product-truth.md) [bad](docs/no-such-file.md)",
     (target) => target !== "docs/no-such-file.md",
   );
   assert.equal(failures.length, 1);

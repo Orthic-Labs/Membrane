@@ -127,7 +127,7 @@ for (const [source, destination] of hookFiles) {
   cpSync(from, join(payload, destination));
 }
 cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
-cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
+cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
 
 powershell(
   "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",
@@ -182,5 +182,5 @@ materializeInTotoSlsaProvenance({
   subjects: fileEvidence,
   startedAt: process.argv[startedArg + 1],
 });
-cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
+cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
 console.log(JSON.stringify({ archive, sha256: archived.sha256, provenancePath, sbomPath }));

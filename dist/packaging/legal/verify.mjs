@@ -7,7 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const manifest = JSON.parse(await readFile(resolve(root, "dist/packaging/legal/manifest.json"), "utf8"));
 const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"));
 const documentKinds = new Set(["eula", "privacy", "third-party-notices"]);
-const expectedPaths = new Set(["docs/legal/EULA.txt", "docs/legal/PRIVACY.md", "docs/legal/THIRD-PARTY-NOTICES.txt"]);
+const expectedPaths = new Set(["docs/product/legal/EULA.txt", "docs/product/legal/PRIVACY.md", "docs/product/legal/THIRD-PARTY-NOTICES.txt"]);
 
 assert.equal(manifest.schemaVersion, 1);
 assert.equal(manifest.product, "Membrane");
@@ -29,9 +29,9 @@ for (const document of manifest.packageDocuments) {
 assert.equal(manifest.distributionBinding.status, "unconfigured");
 assert.equal(manifest.distributionBinding.requiredForRelease, true);
 
-const eula = await readFile(resolve(root, "docs/legal/EULA.txt"), "utf8");
-const privacy = await readFile(resolve(root, "docs/legal/PRIVACY.md"), "utf8");
-const notices = await readFile(resolve(root, "docs/legal/THIRD-PARTY-NOTICES.txt"), "utf8");
+const eula = await readFile(resolve(root, "docs/product/legal/EULA.txt"), "utf8");
+const privacy = await readFile(resolve(root, "docs/product/legal/PRIVACY.md"), "utf8");
+const notices = await readFile(resolve(root, "docs/product/legal/THIRD-PARTY-NOTICES.txt"), "utf8");
 assert.match(eula, /Orthic Labs Source Use License v1\.0/);
 assert.match(privacy, /persists?[^.]{0,80}scope-grant[^.]{0,80}(token|digest)/i);
 

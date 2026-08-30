@@ -1,6 +1,6 @@
 //! MBR-912: machine-checkable, fail-closed release-channel compatibility
 //! policy. This is the enforcement point, not just documentation of one --
-//! `release/channels/README.md` and `docs/compatibility/release-channels.md`
+//! `release/channels/README.md` and `docs/product/compatibility/release-channels.md`
 //! describe the shape and intent in prose; this module is the code a
 //! caller (a future Hub/CLI admission path, or this crate's own tests)
 //! actually runs to get an admit/refuse decision.

@@ -57,40 +57,40 @@ def T(document, heading=None, quote=None):
 # ---------------------------------------------------------------------------
 # Frequently referenced documents (paths are repo-root relative)
 # ---------------------------------------------------------------------------
-LEDGER_CANON = "docs/current/architecture/subsystems/ledger.md"
-LEDGER_REF = "docs/archive/architecture/derived/subsystems/ledger.md"
-GUIDE_EVAL = "docs/evaluation/ledger.md"
-SYSTEM_MAP = "docs/archive/architecture/derived/system.md"
-PULL_REF = "docs/archive/architecture/derived/subsystems/pull.md"
-PUSH_REF = "docs/archive/architecture/derived/subsystems/push.md"
-CORTEX_REF = "docs/archive/architecture/derived/subsystems/cortex.md"
-ADAPT_REF = "docs/current/architecture/subsystems/adapt.md"
-BLUEPRINT_REF = "docs/current/architecture/subsystems/blueprint.md"
-CODERIGHT_REF = "docs/current/architecture/integrations/coderight.md"
-CROSS_SUBSYS = "docs/current/architecture/cross-subsystem-evidence.md"
-DOCTRINE = "docs/current/architecture/membrane.md"
-ARCHITECTURE = "docs/architecture.md"
-PROTOCOL = "docs/protocol.md"
-PRODUCT = "docs/product.md"
+LEDGER_CANON = "docs/architecture/subsystems/ledger.md"
+LEDGER_REF = "docs/research/legacy-source-corpus/derived-architecture/subsystems/ledger.md"
+GUIDE_EVAL = "docs/reference/evaluation/ledger.md"
+SYSTEM_MAP = "docs/research/legacy-source-corpus/derived-architecture/system.md"
+PULL_REF = "docs/research/legacy-source-corpus/derived-architecture/subsystems/pull.md"
+PUSH_REF = "docs/research/legacy-source-corpus/derived-architecture/subsystems/push.md"
+CORTEX_REF = "docs/research/legacy-source-corpus/derived-architecture/subsystems/cortex.md"
+ADAPT_REF = "docs/architecture/subsystems/adapt.md"
+BLUEPRINT_REF = "docs/architecture/subsystems/blueprint.md"
+CODERIGHT_REF = "docs/architecture/integrations/coderight.md"
+CROSS_SUBSYS = "docs/architecture/cross-subsystem-evidence.md"
+DOCTRINE = "docs/architecture/membrane.md"
+ARCHITECTURE = "docs/architecture/runtime-truth.md"
+PROTOCOL = "docs/reference/protocol/README.md"
+PRODUCT = "docs/product/README.md"
 DOCS_README = "docs/README.md"
-GETTING_STARTED = "docs/getting-started.md"
-CHANGELOG = "docs/CHANGELOG.md"
+GETTING_STARTED = "docs/product/getting-started.md"
+CHANGELOG = "docs/reference/release/CHANGELOG.md"
 ROOT_README = "README.md"
-SUPPORT_MATRIX = "docs/support-matrix.md"
-PRICING = "docs/pricing.md"
-HUB_OVERVIEW = "docs/hub/overview.md"
-HUB_README = "docs/hub/README.md"
-HUB_NOTIFICATIONS = "docs/hub/notifications.md"
-BACKUPS = "docs/troubleshooting/backups.md"
-MEMORY_LIFECYCLE = "docs/memory/lifecycle.md"
-RESOURCES = "docs/protocol/resources.md"
-INSTALL_REGISTRY = "docs/install-registry.md"
-ROOTS = "docs/installation/roots.md"
-CHECKPOINT = "docs/workflows/checkpoint.md"
-SUPPORT_BOUNDARIES = "docs/support-boundaries.md"
-PAPER_ADAS = "docs/archive/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md"
-PAPER_MANUS = "docs/archive/research/legacy-source-corpus/papers/articles/manus-context-engineering.md"
-PAPER_DGM = "docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md"
+SUPPORT_MATRIX = "docs/product/support/matrix.md"
+PRICING = "docs/product/support/pricing.md"
+HUB_OVERVIEW = "docs/product/hub/overview.md"
+HUB_README = "docs/product/hub/README.md"
+HUB_NOTIFICATIONS = "docs/product/hub/notifications.md"
+BACKUPS = "docs/product/troubleshooting/backups.md"
+MEMORY_LIFECYCLE = "docs/product/memory/lifecycle.md"
+RESOURCES = "docs/reference/protocol/resources.md"
+INSTALL_REGISTRY = "docs/product/installation/registry.md"
+ROOTS = "docs/product/installation/roots.md"
+CHECKPOINT = "docs/product/workflows/checkpoint.md"
+SUPPORT_BOUNDARIES = "docs/product/support/boundaries.md"
+PAPER_ADAS = "docs/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md"
+PAPER_MANUS = "docs/research/legacy-source-corpus/papers/articles/manus-context-engineering.md"
+PAPER_DGM = "docs/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md"
 
 # ===========================================================================
 # 1. exact_document  (14: 5 train / 5 dev / 4 heldout)
@@ -237,7 +237,7 @@ add("heldout", "exact_section",
 add("train", "table_content",
     "What support tier does the windows/cursor installed-path pair have in the support matrix?",
     [T(SUPPORT_MATRIX, "Support-tier matrix",
-       "| windows | cursor | installed-path | unavailable | no current commit/release-generation to verify against (release evidence not yet published) |")],
+       "| windows | cursor | installed-path | unavailable | windows receipt unavailable |")],
     tags=["table_content"])
 
 add("train", "table_content",
@@ -309,7 +309,7 @@ add("train", "fenced_code",
 add("dev", "fenced_code",
     "What are the two deterministic offline fixture commands at the end of the getting-started guide?",
     [T(GETTING_STARTED, "Deterministic offline fixture",
-       "node docs/examples/quickstart/run.mjs\nnode docs/examples/quickstart/run.mjs --degraded")],
+       "node docs/reference/examples/quickstart/run.mjs\nnode docs/reference/examples/quickstart/run.mjs --degraded")],
     tags=["fenced_code"])
 
 add("dev", "fenced_code",
@@ -376,8 +376,8 @@ add("heldout", "list_item",
     tags=["list_item"])
 
 add("heldout", "list_item",
-    "What does docs/README.md list under 'Core runtime/reference surfaces'?",
-    [T(DOCS_README, "Core runtime/reference surfaces", "- [memory/](memory/) — landed memory lifecycle/runtime material.")],
+    "Where does docs/README.md place landed memory documentation?",
+    [T(DOCS_README, "Layout", "[memory](product/memory/)")],
     tags=["list_item"])
 
 add("heldout", "list_item",
@@ -443,48 +443,48 @@ add("heldout", "blockquote",
 # ===========================================================================
 add("train", "link_reference",
     "Which current contract does Hub documentation link for lifecycle conformance?",
-    [T(HUB_README, None, "[tray–daemon runtime contract](../current/architecture/runtime/tray-daemon-contract.md)")],
+    [T(HUB_README, None, "[tray–daemon runtime contract](../../architecture/runtime/tray-daemon-contract.md)")],
     tags=["link_reference"],
     notes="The link target resolves to sole current tray–daemon runtime contract.")
 
 add("train", "link_reference",
     "Which file does docs/README.md link to for the document registry/navigation/index reference?",
-    [T(DOCS_README, "Architecture authorities", "[Ledger architecture](current/architecture/subsystems/ledger.md)")],
+    [T(DOCS_README, "Architecture authorities", "[Ledger architecture](architecture/subsystems/ledger.md)")],
     tags=["link_reference"])
 
 add("train", "link_reference",
     "Which schema file does the checkpoint prompt document cite as its source of truth?",
-    [T(CHECKPOINT, "Source of truth", "[`schemas/registry/prompts/checkpoint.v1.json`](../../schemas/registry/prompts/checkpoint.v1.json)")],
+    [T(CHECKPOINT, "Source of truth", "[`schemas/registry/prompts/checkpoint.v1.json`](../../../schemas/registry/prompts/checkpoint.v1.json)")],
     tags=["link_reference"])
 
 add("dev", "link_reference",
     "Which document does the README link to for the full support-tier matrix table?",
-    [T(ROOT_README, "Support tier matrix", "[docs/support-matrix.md](docs/support-matrix.md)")],
+    [T(ROOT_README, "Support tier matrix", "[docs/product/support/matrix.md](docs/product/support/matrix.md)")],
     tags=["link_reference"])
 
 add("dev", "link_reference",
     "Which directory does docs/README.md link for atomic capability state?",
-    [T(DOCS_README, "Architecture authorities", "[Atomic capability canons](current/atoms/)")],
+    [T(DOCS_README, "Architecture authorities", "[Atomic capability canons](canon/)")],
     tags=["link_reference"])
 
 add("dev", "link_reference",
     "Which generated doc does the root README cite as the source of truth for the 17 MCP tools?",
-    [T(ROOT_README, "Inside", "[docs/product-truth.md](docs/product-truth.md)")],
+    [T(ROOT_README, "Inside", "[docs/reference/product-truth.md](docs/reference/product-truth.md)")],
     tags=["link_reference"])
 
 add("heldout", "link_reference",
-    "Which test file does docs/protocol/resources.md cite as the MBR-303 prompt-parity precedent?",
+    "Which test file does docs/reference/protocol/resources.md cite as the MBR-303 prompt-parity precedent?",
     [T(RESOURCES, "Cross-references", "`tests/mcp-prompts/prompts.parity.test.mjs`")],
     tags=["link_reference"])
 
 add("heldout", "link_reference",
-    "Which document does docs/pricing.md link to for the public-facing support-boundary summary?",
-    [T(PRICING, "No invented commercial claims", "[`support-boundaries.md`](support-boundaries.md)")],
+    "Which document does pricing documentation link to for the public-facing support-boundary summary?",
+    [T(PRICING, "No invented commercial claims", "[`boundaries.md`](boundaries.md)")],
     tags=["link_reference"])
 
 add("heldout", "link_reference",
     "Which document does docs/README.md link as current Adapt architecture?",
-    [T(DOCS_README, "Architecture authorities", "[Adapt architecture](current/architecture/subsystems/adapt.md)")],
+    [T(DOCS_README, "Architecture authorities", "[Adapt architecture](architecture/subsystems/adapt.md)")],
     tags=["link_reference"])
 
 # ===========================================================================
@@ -892,7 +892,7 @@ add("dev", "multi_section_synthesis",
     match_mode="all_of", tags=["multi_section_synthesis"])
 
 add("heldout", "multi_section_synthesis",
-    "According to both README.md and docs/product.md, what does the 'Guide' (now Ledger) axis do?",
+    "According to both README.md and docs/product/README.md, what does the 'Guide' (now Ledger) axis do?",
     [T(ROOT_README, "Six axes"), T(PRODUCT, "Six axes")],
     match_mode="all_of", tags=["multi_section_synthesis", "naming_drift"],
     notes="Both generated/handwritten docs still say 'Guide' rather than 'Ledger' at the time of this corpus snapshot; a correct system should treat them as the same renamed subsystem per agent-rules.md.")
@@ -903,7 +903,7 @@ add("heldout", "multi_section_synthesis",
     match_mode="all_of", tags=["multi_section_synthesis"])
 
 add("heldout", "multi_section_synthesis",
-    "Combine the cross-provider budget table and the process-plane table in docs/architecture.md: which plane enforces the global ceiling, and what does a resolver-backed block consume?",
+    "Combine the cross-provider budget table and the process-plane table in docs/architecture/runtime-truth.md: which plane enforces the global ceiling, and what does a resolver-backed block consume?",
     [T(ARCHITECTURE, "Cross-provider budget model"), T(ARCHITECTURE, "Process plane separation (MBR-108)")],
     match_mode="all_of", tags=["multi_section_synthesis"])
 
@@ -1014,7 +1014,9 @@ if __name__ == "__main__":
         h = hashlib.sha256(text.encode("utf-8")).hexdigest()
         corpus = (
             "research-papers-secondary"
-            if doc.startswith("docs/archive/research/legacy-source-corpus/papers/")
+            if doc.startswith("docs/research/legacy-source-corpus/papers/")
+            else "historical-reference-secondary"
+            if doc.startswith("docs/research/legacy-source-corpus/derived-architecture/")
             else "membrane-docs-primary"
         )
         manifest_docs.append({

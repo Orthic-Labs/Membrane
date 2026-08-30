@@ -11414,8 +11414,8 @@
    "status": "mapped"
   },
   {
-   "legacyId": "membrane:docs/examples/quickstart/run.mjs",
-   "currentPath": "docs/examples/quickstart/run.mjs",
+   "legacyId": "membrane:docs/reference/examples/quickstart/run.mjs",
+   "currentPath": "docs/reference/examples/quickstart/run.mjs",
    "legacyDisposition": "dev-only",
    "legacyTargetPacket": "MEM-000",
    "canonicalManifestRow": "docs-examples-docs-examples",

@@ -5,7 +5,7 @@ implementation. This directory is data authoring only — it contains no
 production code and changes nothing about how Ledger indexes, tokenizes, or
 ranks anything today.
 
-Built against `docs/current/architecture/subsystems/ledger.md`
+Built against `docs/architecture/subsystems/ledger.md`
 section 12 ("Evaluation architecture") and section 18 ("Test architecture" —
 `Quality` row: "real paired held-out corpus and confidence intervals").
 
@@ -77,7 +77,7 @@ that requires a **new** held-out set (or a documented, versioned exception),
 not a second pass over this one.
 
 Splitting is disjoint by case, not by document: a handful of documents (most
-prominently the Ledger canon itself, and `docs/installation/roots.md`) are
+prominently the Ledger canon itself, and `docs/product/installation/roots.md`) are
 referenced by cases in more than one split, because a real evaluation corpus
 for a specific subsystem's canon is necessarily going to ask many independent
 questions about that subsystem's own canonical document. No single document
@@ -179,7 +179,7 @@ can group by `tags` instead of `case_type`.
   prompts, and top-level READMEs. Terse, invariant-heavy, heavily
   cross-referenced prose; GFM headings are used consistently and mean what
   they say.
-- **`research-papers`** (25 cases, 3 documents) — `docs/archive/research/legacy-source-corpus/papers/**`,
+- **`research-papers`** (25 cases, 3 documents) — `docs/research/legacy-source-corpus/papers/**`,
   PDF-extracted academic paper text (`converted_by: pymupdf get_text` in
   each file's YAML frontmatter). This is genuinely different authoring
   structure, not a relabeled copy of the same style: citation-dense prose,
@@ -221,7 +221,7 @@ can group by `tags` instead of `case_type`.
   Definition-of-Done checkbox, a documented-but-not-yet-executed module
   rename, and the live `Guide` -> `Ledger` naming-migration window itself
   (agent-rules.md: *"Guide is retired; `guide`-named code/paths are pending
-  rename, not a second name"* — yet `README.md` and `docs/product.md` both
+  rename, not a second name"* — yet `README.md` and `docs/product/README.md` both
   still say `Guide` in their six-axes tables at the time of this snapshot).
   That last pair of cases is intentionally reused for a `multi_section_synthesis`
   case too (`LEDG-EVAL-0140`) because it is simultaneously the corpus's
@@ -238,7 +238,7 @@ can group by `tags` instead of `case_type`.
   number — testing whether a system conflates "relevant" with "answers the
   question."
 - **One authoring wrinkle worth knowing about, not a limitation of the
-  corpus:** `docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md`
+  corpus:** `docs/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md`
   contains a literal embedded NUL byte (confirmed via direct byte
   inspection) yet decodes as valid UTF-8 and reads normally. It was kept
   as-is rather than "cleaned" because it is real content already in the

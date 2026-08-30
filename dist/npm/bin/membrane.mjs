@@ -21,10 +21,10 @@ export class SigningTrustNotConfiguredError extends Error {}
 // outside this task's allowlist) actually owns and rotates. The default
 // fails closed instead of silently accepting an unverifiable signature;
 // callers with a real configured trust root pass their own
-// `verifySignature` (see docs/install-npm.md).
+// `verifySignature` (see docs/product/installation/npm.md).
 async function defaultVerifySignature() {
   throw new SigningTrustNotConfiguredError(
-    "declared gap: no trusted Membrane signing key is configured in @membrane/membrane; artifact signature verification cannot proceed. Signing-key trust is a release gate (see docs/install-npm.md), not something this package fabricates.",
+    "declared gap: no trusted Membrane signing key is configured in @membrane/membrane; artifact signature verification cannot proceed. Signing-key trust is a release gate (see docs/product/installation/npm.md), not something this package fabricates.",
   );
 }
 
@@ -46,7 +46,7 @@ export async function runInstall({ platform = process.platform, arch = process.a
     native = await loader(target.packageName);
   } catch (error) {
     throw new PlatformPackageMissingError(
-      `declared gap: optional platform package ${target.packageName} is not installed for ${target.key}. Native artifact production and publication remain release gates (see docs/install-npm.md). Underlying error: ${error.message}`,
+      `declared gap: optional platform package ${target.packageName} is not installed for ${target.key}. Native artifact production and publication remain release gates (see docs/product/installation/npm.md). Underlying error: ${error.message}`,
     );
   }
   if (!native || typeof native !== "object" || !native.artifact || !native.metadata) {

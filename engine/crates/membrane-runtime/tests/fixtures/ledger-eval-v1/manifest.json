@@ -97,183 +97,183 @@
   "documents": [
     {
       "path": "README.md",
-      "sha256": "60a286a4a4e10a563e8d4db499ade4afeda06b6832def02cd6dd13da6f311215",
-      "bytes": 9794,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/CHANGELOG.md",
-      "sha256": "735ddc5e6849a2d7aa8e2057070b0397fee39f47e37736eb605ab6eea9dea678",
-      "bytes": 2609,
+      "sha256": "78199353f5fb406ad7b9589287f52ee64d1419a383f729955945eb986673d148",
+      "bytes": 9932,
       "corpus": "membrane-docs-primary"
     },
     {
       "path": "docs/README.md",
-      "sha256": "340b49ca9f6e33ec425e9607f2de75b398f92d3cfb5e249aa786f0ace760162a",
-      "bytes": 3268,
+      "sha256": "7e8a8d2cae6f42f14dc422b8722c72868391f0caede3262d4ef47dacd78b1cd2",
+      "bytes": 4031,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/architecture.md",
-      "sha256": "03a45bcf10883be9f5b71e5a1f7e8f3d1eef5ea11970f7002ae7eec362343ced",
-      "bytes": 6218,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/architecture/derived/subsystems/cortex.md",
-      "sha256": "5270a0ae44e420620e36d49fc46eea1842790e739dc4c88badf06a7c90553595",
-      "bytes": 4039,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/architecture/derived/subsystems/ledger.md",
-      "sha256": "667fcb40154c9c459e88746fbf42dfd2778351ff064209f0f6eaa2571908e4c8",
-      "bytes": 4366,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/architecture/derived/subsystems/pull.md",
-      "sha256": "33778a1e2a77595e01d7067971514390c4d14a91973ea9e785ad21fe24f83b1e",
-      "bytes": 1708,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/architecture/derived/subsystems/push.md",
-      "sha256": "0d39e4c16c91cd578e71a0bf6847182270e0761e1bc6427ff379a3ec259f4e2b",
-      "bytes": 4548,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/architecture/derived/system.md",
-      "sha256": "8e5c65e3d7b80e3ed27a0ee750c279583fb9f19fd30bb19a744f259126ddf622",
-      "bytes": 5471,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/archive/research/legacy-source-corpus/papers/articles/manus-context-engineering.md",
-      "sha256": "e1384dc51b3b00010fa6ae9f5116d4ea851ccb853f3171f61ac6309894ff2d98",
-      "bytes": 15444,
-      "corpus": "research-papers-secondary"
-    },
-    {
-      "path": "docs/archive/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md",
-      "sha256": "bafaf1a249291715b0a13339d509bc296606d61d792853e133604cac32b827a3",
-      "bytes": 119253,
-      "corpus": "research-papers-secondary"
-    },
-    {
-      "path": "docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md",
-      "sha256": "8e2d680ea277d6a073b08ed9f504d6e57ce09eb824f6b3ddb7e1fcf0ec44d614",
-      "bytes": 233560,
-      "corpus": "research-papers-secondary"
-    },
-    {
-      "path": "docs/current/architecture/integrations/coderight.md",
+      "path": "docs/architecture/integrations/coderight.md",
       "sha256": "a32a0c5d7dbd486692ee9eabeb773992d58263840c3a0c065f413d5f8d80c6f4",
       "bytes": 23844,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/current/architecture/membrane.md",
-      "sha256": "cb7bf69a86fd45dcf46790b0623ee49a77eb1c7d4752fbc9b879b3d9ceefc19d",
-      "bytes": 80444,
+      "path": "docs/architecture/membrane.md",
+      "sha256": "fb0eeb3090aba16961f346de352503422f0d74ab4ef0b0e547c906228d047acb",
+      "bytes": 80449,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/current/architecture/subsystems/blueprint.md",
-      "sha256": "69c9171603c97e9364e4a094e24fe7ce9be7198f67b8063697eb01107ec934ab",
-      "bytes": 80680,
+      "path": "docs/architecture/runtime-truth.md",
+      "sha256": "5499e96262067704c71e318322d088359bdbec2cfefdc41e66122d9707aa1475",
+      "bytes": 6202,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/current/architecture/subsystems/ledger.md",
+      "path": "docs/architecture/subsystems/blueprint.md",
+      "sha256": "419c46d85546ebcfd39b08d7e171bac9b516e58a99d97b2cb46786ca0d0a3c86",
+      "bytes": 80694,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/architecture/subsystems/ledger.md",
       "sha256": "07ad52d5bd5aff9fc0be734e5801f5968371c7c944d7b5d012109f685d25aa44",
       "bytes": 34882,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/evaluation/ledger.md",
-      "sha256": "3454737fe9415bcac4f97ca71442393f81afc784ccea6ca450e328512f7484f3",
-      "bytes": 396,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/getting-started.md",
-      "sha256": "3c10bdfcd871d39e3482ad2aacb1a72173380526aeb0523b9a918bb0d0355133",
-      "bytes": 3233,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/hub/README.md",
-      "sha256": "a3866cf3c302041952fea2aedf7bda82540588f1f50873be711718ce8ae41629",
-      "bytes": 992,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/hub/overview.md",
-      "sha256": "8ad875f7fbacb9c89b91931e81a5d2ce50ccf94221a4f09a18b4b236468b0aa6",
-      "bytes": 703,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/install-registry.md",
-      "sha256": "8486b6ea9da8c1a5293735f2cd9baf1db42c5f49d7a19e52fb53a4b4dee799ab",
-      "bytes": 5736,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/installation/roots.md",
-      "sha256": "130d0f597e4180952a54c0b5880b391a998f4ba79584d0d45560947e80a32e06",
-      "bytes": 5126,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/memory/lifecycle.md",
-      "sha256": "1f8787e150c40e9856504a1cf72defc9d9fe8676a2c350ecd6deb069b6542363",
-      "bytes": 600,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/pricing.md",
-      "sha256": "a109cbda21c85d0fd7093e4d744b121780e25b5281a2442f035ba7ff4fe2fbbf",
-      "bytes": 2161,
-      "corpus": "membrane-docs-primary"
-    },
-    {
-      "path": "docs/product.md",
+      "path": "docs/product/README.md",
       "sha256": "923890bcf29bd0efa2ede00002d49420d49e3e7c087a9900b07a78e1e18d9087",
       "bytes": 2440,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/protocol.md",
-      "sha256": "f40d540d4bb54e7272efef14a19e1cc804436ba676565357e6172c77ec891d8d",
-      "bytes": 1686,
+      "path": "docs/product/getting-started.md",
+      "sha256": "61d3c6c68b5e4708516f316f28b1ec2dd182ef986065c53f4268b27644d2ba09",
+      "bytes": 3253,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/protocol/resources.md",
-      "sha256": "8230784053f74709ad4e42e3975ff0bb40ff85d15086f86a6c8c37fa7a0bc99a",
-      "bytes": 10951,
+      "path": "docs/product/hub/README.md",
+      "sha256": "93b8b7e612090a6700138f17f91061c008db63ef2b7cdee977e42a88625e0ad6",
+      "bytes": 987,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/support-matrix.md",
-      "sha256": "4a03e3eb7241f0f2e6150236242e5d1780e49519799b45016ea24eadcd975f22",
-      "bytes": 1928,
+      "path": "docs/product/hub/overview.md",
+      "sha256": "8ad875f7fbacb9c89b91931e81a5d2ce50ccf94221a4f09a18b4b236468b0aa6",
+      "bytes": 703,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/troubleshooting/backups.md",
+      "path": "docs/product/installation/registry.md",
+      "sha256": "fec4a46e93be2602a93c393f2fca834738dafd03f1650949845994954cfa411b",
+      "bytes": 5741,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/product/installation/roots.md",
+      "sha256": "130d0f597e4180952a54c0b5880b391a998f4ba79584d0d45560947e80a32e06",
+      "bytes": 5126,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/product/memory/lifecycle.md",
+      "sha256": "1f8787e150c40e9856504a1cf72defc9d9fe8676a2c350ecd6deb069b6542363",
+      "bytes": 600,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/product/support/matrix.md",
+      "sha256": "9e00ab799b3575cc30d941534f32ba1261b041d7510fefce278d213e52595f68",
+      "bytes": 1608,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/product/support/pricing.md",
+      "sha256": "0120dfb89b51b4e2caf74bef15ed07fc01fb59cf2f230228c99ca6e560599ce3",
+      "bytes": 2145,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/product/troubleshooting/backups.md",
       "sha256": "dc0e2a52db9c6c8510aa31cef33902a4e44c9019522e2efe510514826776f0e6",
       "bytes": 562,
       "corpus": "membrane-docs-primary"
     },
     {
-      "path": "docs/workflows/checkpoint.md",
-      "sha256": "88b34133c14db1cbdf2fa327d0cd082ca15b0dc84f3490c56040a9cc54f596a4",
-      "bytes": 2345,
+      "path": "docs/product/workflows/checkpoint.md",
+      "sha256": "79d1800fd664b2fdab7ca074ec436888605740a7e20b39125ed1f090e7a56bec",
+      "bytes": 2348,
       "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/reference/evaluation/ledger.md",
+      "sha256": "3454737fe9415bcac4f97ca71442393f81afc784ccea6ca450e328512f7484f3",
+      "bytes": 396,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/reference/protocol/README.md",
+      "sha256": "f40d540d4bb54e7272efef14a19e1cc804436ba676565357e6172c77ec891d8d",
+      "bytes": 1686,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/reference/protocol/resources.md",
+      "sha256": "5bf7d0e9030b3956c9c7e2f2b9a10678955d2b16f0edc358d67f584c04777bab",
+      "bytes": 10971,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/reference/release/CHANGELOG.md",
+      "sha256": "735ddc5e6849a2d7aa8e2057070b0397fee39f47e37736eb605ab6eea9dea678",
+      "bytes": 2609,
+      "corpus": "membrane-docs-primary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/derived-architecture/subsystems/cortex.md",
+      "sha256": "5270a0ae44e420620e36d49fc46eea1842790e739dc4c88badf06a7c90553595",
+      "bytes": 4039,
+      "corpus": "historical-reference-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/derived-architecture/subsystems/ledger.md",
+      "sha256": "667fcb40154c9c459e88746fbf42dfd2778351ff064209f0f6eaa2571908e4c8",
+      "bytes": 4366,
+      "corpus": "historical-reference-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/derived-architecture/subsystems/pull.md",
+      "sha256": "33778a1e2a77595e01d7067971514390c4d14a91973ea9e785ad21fe24f83b1e",
+      "bytes": 1708,
+      "corpus": "historical-reference-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/derived-architecture/subsystems/push.md",
+      "sha256": "0d39e4c16c91cd578e71a0bf6847182270e0761e1bc6427ff379a3ec259f4e2b",
+      "bytes": 4548,
+      "corpus": "historical-reference-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/derived-architecture/system.md",
+      "sha256": "8e5c65e3d7b80e3ed27a0ee750c279583fb9f19fd30bb19a744f259126ddf622",
+      "bytes": 5471,
+      "corpus": "historical-reference-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/papers/articles/manus-context-engineering.md",
+      "sha256": "e1384dc51b3b00010fa6ae9f5116d4ea851ccb853f3171f61ac6309894ff2d98",
+      "bytes": 15444,
+      "corpus": "research-papers-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md",
+      "sha256": "bafaf1a249291715b0a13339d509bc296606d61d792853e133604cac32b827a3",
+      "bytes": 119253,
+      "corpus": "research-papers-secondary"
+    },
+    {
+      "path": "docs/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md",
+      "sha256": "8e2d680ea277d6a073b08ed9f504d6e57ce09eb824f6b3ddb7e1fcf0ec44d614",
+      "bytes": 233560,
+      "corpus": "research-papers-secondary"
     }
   ]
 }

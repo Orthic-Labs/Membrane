@@ -62,7 +62,7 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 - **Blueprint** — repository truth and evidence graph.
 - **Ledger** — hash-bound document navigation.
 - **Adapt** — governed experience-to-knowledge proposals.
-- **MCP server** — seventeen tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`, `membrane_diagnostic_workspace`, `membrane_diagnostic_mutation`, `membrane_diagnostic_snapshot`, `membrane_diagnostic_fence`, `membrane_diagnostic_capabilities`, `membrane_diagnostic_baseline`, `membrane_diagnostic_provider`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
+- **MCP server** — seventeen tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`, `membrane_diagnostic_workspace`, `membrane_diagnostic_mutation`, `membrane_diagnostic_snapshot`, `membrane_diagnostic_fence`, `membrane_diagnostic_capabilities`, `membrane_diagnostic_baseline`, `membrane_diagnostic_provider`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/reference/product-truth.md](docs/reference/product-truth.md).
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to providers in parallel.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
 - **Membrane Hub** — sole runtime, desktop build, release, installer, updater, service-supervision, icon, & legal-asset authority.
@@ -105,14 +105,14 @@ The free/local operational boundary does not condition local correctness on paym
 or telemetry. It is not a license grant. Paid support and prices are **unavailable**; team sync, fleet,
 policy, managed updates, and optional telemetry are **undecided**. Any future
 paid capability must never gate local safety, authority, receipts, updates, or
-export. See [pricing](docs/pricing.md), [support policy](docs/support-policy.md),
-and [public support boundaries](docs/support-boundaries.md).
+export. See [pricing](docs/product/support/pricing.md), [support policy](docs/product/support/policy.md),
+and [public support boundaries](docs/product/support/boundaries.md).
 
 ## Repository truth docs
-- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
-- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
-- [Operations](docs/operations.md) — run and verify the product-truth surface (generated, code-grounded)
-- [Protocol](docs/protocol.md) — MCP tool contract and behavior (generated, code-grounded)
+- [Product overview](docs/product/README.md) — what this is and does (generated, code-grounded)
+- [Runtime architecture truth](docs/architecture/runtime-truth.md) — landed components, flows, interfaces (generated, code-grounded)
+- [Operations](docs/product/operations/README.md) — run and verify product truth (generated, code-grounded)
+- [Protocol](docs/reference/protocol/README.md) — MCP tool contract and behavior (generated, code-grounded)
 
 Gate: `node scripts/tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
 <!-- blueprint:docs:end -->
@@ -122,7 +122,7 @@ Gate: `node scripts/tools/productization/check-docs.mjs --check` fails on a brok
 
 Generated from current MBR-801 installed-path conformance receipts — 0 of 10
 platform/client pairs currently qualified. Full table, tiers, and reasons:
-[docs/support-matrix.md](docs/support-matrix.md) (also machine-readable at `docs/support-matrix.json`).
+[docs/product/support/matrix.md](docs/product/support/matrix.md) (also machine-readable at `docs/product/support/matrix.json`).
 This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`
 fields are all written by `node scripts/tools/productization/generate-support-matrix.mjs`
 from the same receipts; none of them is hand-maintained.

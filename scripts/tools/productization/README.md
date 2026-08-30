@@ -27,12 +27,12 @@ Reads:
   produced by `node scripts/qualification/run.mjs` and validated here through
   the existing `scripts/qualification/verify-mbr801-evidence.mjs` (never
   re-implemented).
-- `docs/clients/support-matrix.v1.json` — the MBR-206 client registry, for the
+- `docs/reference/clients/support-matrix.v1.json` — the MBR-206 client registry, for the
   canonical client-id universe. Read-only; this generator never writes it.
 
 Emits:
 
-- `docs/support-matrix.md` and `docs/support-matrix.json` — the platform ×
+- `docs/product/support/matrix.md` and `docs/product/support/matrix.json` — the platform ×
   client × feature tier table (`qualified` or `unavailable`, with a reason;
   never a fabricated `unsupported` state).
 - The `<!-- support-matrix:start -->` / `<!-- support-matrix:end -->` block in
@@ -77,7 +77,7 @@ Emits:
 
 - `schemas/registry/clients.capabilities.v1.json` — capability envelopes
   conforming to `schemas/client-capability.v1.schema.json`.
-- `docs/clients/support-matrix.v1.json` — the client × operation
+- `docs/reference/clients/support-matrix.v1.json` — the client × operation
   matrix conforming to `schemas/client-support-matrix.v1.schema.json`.
 
 Both artifacts are byte-stable across runs. The script refuses to emit
@@ -132,7 +132,7 @@ the six axes (`pull`, `push`, `cortex`, `blueprint`, `ledger`, `adapt`), current
 supported target (`macOS`), Cortex scope (`durable-memory-only`), and resident
 service authority (`hub`). `generate-product-truth.mjs` validates these
 declarations and renders them into `schemas/registry/product-truth.json`,
-`docs/product-truth.md`, and generated product docs. Drift or an incomplete
+`docs/reference/product-truth.md`, and generated product docs. Drift or an incomplete
 declaration fails generation and `--check`.
 
 ## Book-mode note

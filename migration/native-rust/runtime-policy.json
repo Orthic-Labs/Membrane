@@ -52,7 +52,7 @@
     "adapt/src/adapt/"
    ],
    "generatedTruthGlobs": [
-    "docs/product-truth.md"
+    "docs/reference/product-truth.md"
    ],
    "nativeOwner": "engine/crates/membrane-adapt"
   },
@@ -63,7 +63,7 @@
     "continuity/transcript/"
    ],
    "generatedTruthGlobs": [
-    "docs/product-truth.md"
+    "docs/reference/product-truth.md"
    ],
    "nativeOwner": "engine/crates/membrane-transcript"
   },
@@ -74,8 +74,8 @@
     "mcp/server.mjs"
    ],
    "generatedTruthGlobs": [
-    "docs/product-truth.md",
-    "docs/architecture.md",
+    "docs/reference/product-truth.md",
+    "docs/architecture/runtime-truth.md",
     "mcp.json"
    ],
    "nativeOwner": "engine/crates/membrane-mcp"
@@ -88,8 +88,8 @@
     "mcp/decision-points-lib.cjs"
    ],
    "generatedTruthGlobs": [
-    "docs/product-truth.md",
-    "docs/architecture.md"
+    "docs/reference/product-truth.md",
+    "docs/architecture/runtime-truth.md"
    ],
    "nativeOwner": "engine/crates/membrane-core"
   },
@@ -101,7 +101,7 @@
     "engine/federation/providers/"
    ],
    "generatedTruthGlobs": [
-    "docs/product-truth.md"
+    "docs/reference/product-truth.md"
    ],
    "nativeOwner": "engine/crates/membrane-federation"
   }
@@ -694,7 +694,7 @@
   },
   {
    "id": "docs-examples",
-   "pattern": "^docs/examples/",
+   "pattern": "^docs/reference/examples/",
    "groupBy": "all",
    "runtime": "rust",
    "kind": "doc-example",

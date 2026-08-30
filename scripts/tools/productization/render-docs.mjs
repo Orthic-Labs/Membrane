@@ -1,7 +1,7 @@
 // MBR-1001 — Deterministic renderers for the generated product docs and the
 // README link inventory.
 //
-// docs/product.md, docs/architecture.md, docs/operations.md, and docs/protocol.md
+// Generated product, runtime-truth, operations, & protocol documents
 // are DERIVED artifacts: every claim in them (tool count, adapter list, platform
 // status) is rendered from the same product truth that
 // scripts/tools/productization/generate-product-truth.mjs computes from live source
@@ -51,7 +51,7 @@ function derivedFromLines(truth) {
   return truth.generatedFrom.map((source) => `- \`${source}\``);
 }
 
-/** docs/product.md — what the product is and does, grounded in source truth. */
+/** docs/product/README.md — what the product is and does, grounded in source truth. */
 export function renderProductDoc(truth, platforms) {
   return [
     "# Membrane — product overview (generated)",
@@ -90,7 +90,7 @@ export function renderProductDoc(truth, platforms) {
   ].join("\n");
 }
 
-/** docs/architecture.md — components, flows, and interfaces at the truth level. */
+/** docs/architecture/runtime-truth.md — landed components, flows, and interfaces. */
 export function renderArchitectureDoc(truth, platforms) {
   return [
     "# Membrane — architecture (generated)",
@@ -98,7 +98,7 @@ export function renderArchitectureDoc(truth, platforms) {
     GENERATED_BY,
     "",
     "Component and interface inventory derived from source. Canonical architecture",
-    "lives in `docs/current/architecture/membrane.md` and Blueprint truth semantics live in `docs/current/architecture/subsystems/blueprint.md`.",
+    "lives in `docs/architecture/membrane.md` and Blueprint truth semantics live in `docs/architecture/subsystems/blueprint.md`.",
     "",
     "## Components",
     "",
@@ -221,7 +221,7 @@ function platformSentence(platforms) {
   return `Supported platforms are **${tier1}** (tier 1).${bestEffort}`;
 }
 
-/** docs/operations.md — build, run, and verify the product docs surface. */
+/** docs/product/operations/README.md — build, run, and verify the product docs surface. */
 export function renderOperationsDoc(truth, platforms) {
   return [
     "# Membrane — operations (generated)",
@@ -261,16 +261,16 @@ export function renderOperationsDoc(truth, platforms) {
     "## Hub alerts & reasons",
     "",
     "Hub is read-only: an alert never authorizes an in-place repair. Use the canonical",
-    "[Hub alert runbook](troubleshooting/hub-alerts.md), which maps every stable reason",
+    "[Hub alert runbook](../troubleshooting/hub-alerts.md), which maps every stable reason",
     "to its precise entry, smallest safe first action, and repair boundary. Topic runbooks",
-    "cover [diagnostics](troubleshooting/diagnostics.md), [backups](troubleshooting/backups.md),",
-    "[migrations](troubleshooting/migrations.md), [update rollback](troubleshooting/update-rollback.md),",
-    "and [support bundles](troubleshooting/support-bundles.md).",
+    "cover [diagnostics](../troubleshooting/diagnostics.md), [backups](../troubleshooting/backups.md),",
+    "[migrations](../troubleshooting/migrations.md), [update rollback](../troubleshooting/update-rollback.md),",
+    "and [support bundles](../troubleshooting/support-bundles.md).",
     "",
   ].join("\n");
 }
 
-/** docs/protocol.md — the MCP tool surface contract. */
+/** docs/reference/protocol/README.md — the MCP tool surface contract. */
 export function renderProtocolDoc(truth, platforms) {
   return [
     "# Membrane — protocol (generated)",

@@ -24,10 +24,11 @@ test('runCli with no --salt/--holdout-commitment degrades explicitly rather than
   assert.equal(result.reason, 'holdout-not-configured');
 });
 
-test('runCli with a committed salt but the default fixture corpus stays source-ready, never complete', async () => {
+test('runCli fails closed when a pinned bakeoff input has drifted', async () => {
   const salt = 'cli-test-salt-value-1';
   const result = await runCli(['--salt', salt, '--holdout-commitment', commitSalt(salt)], {
     execute: async () => ({ success: true, latencyMs: 1, tokens: 1, cacheHit: false, costUsd: 0 }),
   });
-  assert.equal(result.status, 'source-ready');
+  assert.equal(result.status, 'degraded');
+  assert.equal(result.reason, 'bakeoff-reference-unavailable');
 });

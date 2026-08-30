@@ -7,7 +7,7 @@
 //
 // Emits:
 //   schemas/registry/clients.capabilities.v1.json       (capability envelopes, schema client-capability.v1)
-//   docs/clients/support-matrix.v1.json           (cartesian client x operation matrix)
+//   docs/reference/clients/support-matrix.v1.json           (cartesian client x operation matrix)
 //
 // Both artifacts are byte-stable across runs: identical inputs produce byte-identical
 // outputs (sorted keys, no timestamps in the canonical content, trailing newline).
@@ -28,7 +28,7 @@ const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const REGISTRY = join(REPO_ROOT, "schemas", "registry", "clients.yaml");
 const OPERATION_INDEX = join(REPO_ROOT, "schemas", "registry", "operations", "operations-index.v1.golden.json");
 const CAPABILITIES_OUT = join(REPO_ROOT, "schemas", "registry", "clients.capabilities.v1.json");
-const MATRIX_OUT = join(REPO_ROOT, "docs", "clients", "support-matrix.v1.json");
+const MATRIX_OUT = join(REPO_ROOT, "docs", "reference", "clients", "support-matrix.v1.json");
 
 /**
  * Minimal YAML parser supporting the exact dialect used in schemas/registry/clients.yaml:

@@ -3,7 +3,7 @@
   "id": "mbr804-whole-task-corpus",
   "version": "1",
   "fixture": true,
-  "note": "Synthetic fixture corpus, not a downloaded or licensed dataset. Every case below is an authored scenario description used to exercise the whole-task runner and holdout protocol at task-implementation time. A real corpus (versioned separately, with its own id/version/sha256) is required before this protocol can produce a status: complete receipt — see docs/evaluation/whole-task-benchmark.md.",
+  "note": "Synthetic fixture corpus, not a downloaded or licensed dataset. Every case below is an authored scenario description used to exercise the whole-task runner and holdout protocol at task-implementation time. A real corpus (versioned separately, with its own id/version/sha256) is required before this protocol can produce a status: complete receipt — see docs/reference/evaluation/whole-task-benchmark.md.",
   "cases": [
     { "id": "wt-001", "category": "task_success", "scenario": "repository_orientation", "prompt": "Fixture: orient in a fresh repository and report top-level structure." },
     { "id": "wt-002", "category": "task_success", "scenario": "cross_repo_impact", "prompt": "Fixture: identify cross-repository impact of an interface change." },

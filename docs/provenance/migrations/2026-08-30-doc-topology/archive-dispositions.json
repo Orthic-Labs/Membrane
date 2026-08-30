@@ -1,0 +1,1342 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+  "scope": "Every deleted docs/archive path in staged topology diff.",
+  "entries": [
+    {
+      "oldPath": "docs/archive/architecture/derived/subsystems/adapt.md",
+      "headBlob": "eb26c0c24f6698295f647306c11e0ec9a92f9617",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/subsystems/adapt.md"
+    },
+    {
+      "oldPath": "docs/archive/architecture/derived/subsystems/cortex.md",
+      "headBlob": "a546eb0345ec9a6640c505e974a152bc2557b7ef",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/subsystems/cortex.md"
+    },
+    {
+      "oldPath": "docs/archive/architecture/derived/subsystems/ledger.md",
+      "headBlob": "15a22317d3180037d6118b6751c43a2bf10b5a50",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/subsystems/ledger.md"
+    },
+    {
+      "oldPath": "docs/archive/architecture/derived/subsystems/pull.md",
+      "headBlob": "c71d973d757080b15bdd65c0efef5ff9e3e7b5d1",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/subsystems/pull.md"
+    },
+    {
+      "oldPath": "docs/archive/architecture/derived/subsystems/push.md",
+      "headBlob": "763bfc459eeffd35a6514ec485a543a2ee899fe2",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/subsystems/push.md"
+    },
+    {
+      "oldPath": "docs/archive/architecture/derived/system.md",
+      "headBlob": "ff3199a11b02e3d9d0ddc9ea67b2cff11860a85e",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/derived-architecture/system.md"
+    },
+    {
+      "oldPath": "docs/archive/audits/2026-08-29-membrane-subsystem-audit.md",
+      "headBlob": "962955178da367eb8a0e21c03f87db7982ea420a",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "962955178da367eb8a0e21c03f87db7982ea420a"
+      }
+    },
+    {
+      "oldPath": "docs/archive/design/2026-08-27-hub-redesign.md",
+      "headBlob": "0f8a484da36ab1159119089e0097cd31b81c1c8e",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "0f8a484da36ab1159119089e0097cd31b81c1c8e"
+      }
+    },
+    {
+      "oldPath": "docs/archive/evidence/2026-08-25-membrane-lane-handoff.md",
+      "headBlob": "d58008b519d9853cf95f849eaf2baab7ffb4b2a6",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "d58008b519d9853cf95f849eaf2baab7ffb4b2a6"
+      }
+    },
+    {
+      "oldPath": "docs/archive/evidence/execution/2026-08-29/membrane-pending-all.receipt.json",
+      "headBlob": "4996749b8a3d31b53e361c0dc6506ad01deb3e07",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "4996749b8a3d31b53e361c0dc6506ad01deb3e07"
+      }
+    },
+    {
+      "oldPath": "docs/archive/evidence/execution/2026-08-29/membrane-pending-gaps.receipt.json",
+      "headBlob": "65b8df1a4819d3a221bc41b0a0788ba1c164675b",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "65b8df1a4819d3a221bc41b0a0788ba1c164675b"
+      }
+    },
+    {
+      "oldPath": "docs/archive/evidence/vector-backend/round1/lane-advanced-mac/NOTES.md",
+      "headBlob": "a9cf5ccc2157b8db5f709bddcc47540f01a2b8ea",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "a9cf5ccc2157b8db5f709bddcc47540f01a2b8ea"
+      }
+    },
+    {
+      "oldPath": "docs/archive/evidence/vector-backend/round1/lane-simd-mac/NOTES.md",
+      "headBlob": "e7c9ea49cdb6dc81020f67bde1aa471906f96b1f",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "e7c9ea49cdb6dc81020f67bde1aa471906f96b1f"
+      }
+    },
+    {
+      "oldPath": "docs/archive/execution/2026-08-29/membrane-pending-all.dispatch.json",
+      "headBlob": "d7c3b03f06b07ab3b230f46ffa99a557841d2eb4",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "d7c3b03f06b07ab3b230f46ffa99a557841d2eb4"
+      }
+    },
+    {
+      "oldPath": "docs/archive/execution/2026-08-29/membrane-pending-all.prompt.md",
+      "headBlob": "18fe02687d9af097eecc4095bc25e90da6455dfb",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "18fe02687d9af097eecc4095bc25e90da6455dfb"
+      }
+    },
+    {
+      "oldPath": "docs/archive/execution/2026-08-29/membrane-pending-gaps.dispatch.json",
+      "headBlob": "eac1662ebbbd7b2f90c8bdd8df4bad6f37aeee91",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "eac1662ebbbd7b2f90c8bdd8df4bad6f37aeee91"
+      }
+    },
+    {
+      "oldPath": "docs/archive/execution/2026-08-29/membrane-pending-gaps.prompt.md",
+      "headBlob": "e24cd594ce0800c25ae06802240d4488d7d24d6e",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "e24cd594ce0800c25ae06802240d4488d7d24d6e"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/2026-08-29-membrane-pending-implementation.md",
+      "headBlob": "e1ade5d1dde6abfd67bd0041af2d7a60320d4689",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "e1ade5d1dde6abfd67bd0041af2d7a60320d4689"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/00-OVERVIEW-SOURCE-BOUND-SEMANTIC-COMPILATION.md",
+      "headBlob": "8e9cc375dccfdb0a23b35263d301f95a038cb58e",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "8e9cc375dccfdb0a23b35263d301f95a038cb58e"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/01-LEDGER-SEMANTIC-PRODUCER-AMENDMENT.md",
+      "headBlob": "edd8bc37bee0a4dd8f84f6dc09510c518d6f5091",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "edd8bc37bee0a4dd8f84f6dc09510c518d6f5091"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/02-CORTEX-DOCUMENT-SEMANTIC-KNOWLEDGE-AMENDMENT.md",
+      "headBlob": "8a4f8ff9858e973b5fe02902519adf8dbe746575",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "8a4f8ff9858e973b5fe02902519adf8dbe746575"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/03-PULL-SEMANTIC-AND-SOURCE-FUSION-AMENDMENT.md",
+      "headBlob": "640ae6c2feec08975b26fe5ef83d0acde9beea2c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "640ae6c2feec08975b26fe5ef83d0acde9beea2c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/04-ADAPT-DOCUMENT-COMPILATION-BOUNDARY-AMENDMENT.md",
+      "headBlob": "4cd4ad3948158eda193491c0d188e6b8e50fa4d8",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "4cd4ad3948158eda193491c0d188e6b8e50fa4d8"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/05-EXPERIMENT-LOCAL-SEMANTIC-WORKER.md",
+      "headBlob": "86234a909811ab73cdfb4b14f45e74857c6bcedc",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "86234a909811ab73cdfb4b14f45e74857c6bcedc"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/06-BLUEPRINT-ARCHIFY-ABSORPTION-AMENDMENT.md",
+      "headBlob": "5d488a7e01d34b825872a0450f36dffabb16f569",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "5d488a7e01d34b825872a0450f36dffabb16f569"
+      }
+    },
+    {
+      "oldPath": "docs/archive/pending/semantic-blueprint-review-pack-v2/README.md",
+      "headBlob": "842142e5edfe5b22b1e6b74663135be1b34e06c0",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "842142e5edfe5b22b1e6b74663135be1b34e06c0"
+      }
+    },
+    {
+      "oldPath": "docs/archive/research/2026-08-27-codexbar-port-assessment.md",
+      "headBlob": "26049fdf99f125cb2bd6d5381d8a7b51e3c51271",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "26049fdf99f125cb2bd6d5381d8a7b51e3c51271"
+      }
+    },
+    {
+      "oldPath": "docs/archive/research/2026-08-28-packaging-daemon-inventory.md",
+      "headBlob": "2a2cac2543803fb3da1f95e50335c34d7d880e7c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "2a2cac2543803fb3da1f95e50335c34d7d880e7c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/README.md",
+      "headBlob": "dfa3d913a00e674a73008307017365910ed2db03",
+      "disposition": "relocated_revised",
+      "target": "docs/research/legacy-source-corpus/README.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/artifacts/Applying-Knowledge-Graphs-semantic-archive.html",
+      "headBlob": "d55c2d578cfa6039bae293c3e15977ac4a252921",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/artifacts/Applying-Knowledge-Graphs-semantic-archive.html"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/artifacts/Applying-Knowledge-Graphs.md",
+      "headBlob": "1e5193893ef43fcd4915689a1d9f9e1cd70365a7",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/artifacts/Applying-Knowledge-Graphs.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/CORPUS-INDEX.md",
+      "headBlob": "ae2f9ab5aef60e112621b1009c814687135318b3",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/CORPUS-INDEX.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/guide-matrix.md",
+      "headBlob": "b973840c72f3a3cf943dea2efb328a31c40cadd8",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/guide-matrix.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/pull-matrix.md",
+      "headBlob": "80d78d9238d9b6be060a09fc539256535fc2b372",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/pull-matrix.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/push-matrix.md",
+      "headBlob": "39f69e6144fc6204b9a67f58883e9899e092d152",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/push-matrix.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/sources/MEMBRANE-ABSORPTION-LEDGER.md",
+      "headBlob": "c7b1d40e86bdda0289d10900135559d786b25975",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/sources/MEMBRANE-ABSORPTION-LEDGER.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/sources/MEMBRANE-CANONICAL-MASTER-IMPROVEMENT-GUIDE.md",
+      "headBlob": "fbcffc47c550c41c913d7306217541dcc3ae672a",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/sources/MEMBRANE-CANONICAL-MASTER-IMPROVEMENT-GUIDE.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/competitors/sources/MEMBRANE-IMPLEMENTATION-GUIDE.md",
+      "headBlob": "26ddb899990d7f0ba3b192f1e6e40d3ab5e4ec06",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/competitors/sources/MEMBRANE-IMPLEMENTATION-GUIDE.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/2026-08-context-learning-attribution-references.md",
+      "headBlob": "9a553e11dcb8099379fbea4f57e5e8f1c18f07e5",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/2026-08-context-learning-attribution-references.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/README.md",
+      "headBlob": "cc84315b531028d0462e4cfea96c6e805d104b77",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/README.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/agentic-context-engineering.md",
+      "headBlob": "eef9f247df72edf2aefcdb7965ade840260aa5bd",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/agentic-context-engineering.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/agentic-file-system.md",
+      "headBlob": "fd6770ead760c32670c008fa9bad4fbe408c2e4d",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/agentic-file-system.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/context-compression-strategies.md",
+      "headBlob": "421f80025c33fbfae0c99e465ed834dc5b860e3b",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/context-compression-strategies.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/context-engineering-sessions-memory.md",
+      "headBlob": "453c8f6a61eb1fb2d092f8084389fa81b9f826f2",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/context-engineering-sessions-memory.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/context-rot.md",
+      "headBlob": "73713bbc03f9deeb2f48fadeafbd0c2761a6317f",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/context-rot.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/GAM_fig_1.png",
+      "headBlob": "8c4c42ad55f050b026be8865b40079a238e3f49e",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/GAM_fig_1.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/GAM_fig_2.png",
+      "headBlob": "5ef96380f1c11fadb29f25097f83703cd7c66094",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/GAM_fig_2.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/GAM_fig_3.png",
+      "headBlob": "389fe38c513526cd89a0f001a584fa3a987bb758",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/GAM_fig_3.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/ace 1.png",
+      "headBlob": "9862361a117b5b4bcefa3a040728edfe7c49e516",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/ace 1.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/ace 2.png",
+      "headBlob": "f7e0057c2592539f157b538c5ea262abbca28474",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/ace 2.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/afs_fig_1.jpeg",
+      "headBlob": "4b170c674af5fad6bad1f08307042be66fc74268",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/afs_fig_1.jpeg"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/afs_fig_2.jpeg",
+      "headBlob": "fd172fa9fc4cca0d83cf3525554084a8c363506a",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/afs_fig_2.jpeg"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/afs_fig_3.jpeg",
+      "headBlob": "4aeb6f45507c3b97ababcd0b3b57e8c044f153fc",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/afs_fig_3.jpeg"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/amem_fig_1.jpeg",
+      "headBlob": "4e767c029f88f223be7b2b45b500979c446868d0",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/amem_fig_1.jpeg"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/figure 5.png",
+      "headBlob": "166f0da10f8c4229b0da168529be94dafc66eb5f",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/figure 5.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/longllmlingua_framework.png",
+      "headBlob": "0a8b8665ec995fc1869ecda1c6be60efd43fd595",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/longllmlingua_framework.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/longllmlingua_perplexity.png",
+      "headBlob": "d2cfdff2b341085981a02a3bb115697ee5e54101",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/longllmlingua_perplexity.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/memagent_fig_1.png",
+      "headBlob": "daf8644915f7a70f8c0588c5ae48c9f42f8b19b0",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/memagent_fig_1.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/figures/table 1.png",
+      "headBlob": "af65c7f6cc1b177a688d9f71644a91b7ecc01deb",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/figures/table 1.png"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/gam-vs-context-rot.md",
+      "headBlob": "ecdcd4d17479ce7d4e3e58b5c193b4796a3dbc7d",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/gam-vs-context-rot.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/longllmlingua.md",
+      "headBlob": "d340973208d0a86f503aaa50c4ae1a7d99ab1cec",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/longllmlingua.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/mem1.md",
+      "headBlob": "4b439053c25036df2685276f60182280e06fa25c",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/mem1.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/memagent.md",
+      "headBlob": "c55cea4614232461f63f112bcca7aec8c8fd50c9",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/memagent.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/more-academic-papers.md",
+      "headBlob": "baf56c7b7e3dda85a0a4c6df8f9991aef966bf9f",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/more-academic-papers.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/notes/sptc-speculative-programmatic-tool-calling.md",
+      "headBlob": "1f2b9956eb56b9dcd9b73bebe80d650a95d39192",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/notes/sptc-speculative-programmatic-tool-calling.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2005.11401_Retrieval_Augmented_Generation_for_Knowledge_Intensive_NLP.md",
+      "headBlob": "0f3f47710f7d26db53f0697abf336bb4119f426a",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2005.11401_Retrieval_Augmented_Generation_for_Knowledge_Intensive_NLP.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2307.03172_Lost_in_the_Middle.md",
+      "headBlob": "e00ae3d35f742d73b00fa8ab9f3758c69832b373",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2307.03172_Lost_in_the_Middle.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2309.06180_PagedAttention_vLLM.md",
+      "headBlob": "22d008e1ea9b695831f35ed22821a8b539c7c051",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2309.06180_PagedAttention_vLLM.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2310.08560_MemGPT_Towards_LLMs_as_Operating_Systems.md",
+      "headBlob": "743c6114a18a6809d339fda24b03e6a20fef368a",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2310.08560_MemGPT_Towards_LLMs_as_Operating_Systems.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2310.11511_Self_RAG.md",
+      "headBlob": "14436bdee62c395e544a9e3e87c93e5c0867fbbf",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2310.11511_Self_RAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2401.15884_Corrective_RAG_CRAG.md",
+      "headBlob": "b4e690efdbe8c8b51126e76ffabfb10422a7a285",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2401.15884_Corrective_RAG_CRAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2408.08067_RAGChecker.md",
+      "headBlob": "68dbe186ad51335dad83070ff401861df37f18da",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2408.08067_RAGChecker.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2408.08921_Graph_Retrieval_Augmented_Generation_Survey.md",
+      "headBlob": "1046349eea2a5c80e58e1a5c5cf213f2d90e3348",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2408.08921_Graph_Retrieval_Augmented_Generation_Survey.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2410.08821_DeepNote_Note_Centric_Deep_RAG.md",
+      "headBlob": "7926cefd1301ddd8296b2c70b6f32e599745138e",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2410.08821_DeepNote_Note_Centric_Deep_RAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2412.15605_Dont_Do_RAG_Cache_Augmented_Generation.md",
+      "headBlob": "cf8a4cd16f4c4a54dce670fc1627d4772a0c15dd",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2412.15605_Dont_Do_RAG_Cache_Augmented_Generation.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2501.00309_Retrieval_Augmented_Generation_with_Graphs_Survey.md",
+      "headBlob": "192cb4a8b15048e296c4d4f322afb8851858367e",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2501.00309_Retrieval_Augmented_Generation_with_Graphs_Survey.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2501.11759_Poison_RAG_Adversarial_Data_Poisoning.md",
+      "headBlob": "eafde3fdc8b3442a8701607d59769200e0784145",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2501.11759_Poison_RAG_Adversarial_Data_Poisoning.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2501.13958_Survey_GraphRAG_for_Customized_LLMs.md",
+      "headBlob": "a02dd613660e79378191960423d6e1d05a799f51",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2501.13958_Survey_GraphRAG_for_Customized_LLMs.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2502.01142_DeepRAG_MDP_Adaptive_Retrieval.md",
+      "headBlob": "bcf23426953bd2e1d5985d9e87e75f349ac2bce5",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2502.01142_DeepRAG_MDP_Adaptive_Retrieval.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2502.11101_CacheFocus_Dynamic_Cache_Re_Positioning_for_RAG.md",
+      "headBlob": "c329034d831537f723b94a1a2db0971b2fc4d346",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2502.11101_CacheFocus_Dynamic_Cache_Re_Positioning_for_RAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2502.11127_G_Safeguard_Topology_Guided_Security_for_LLM_MAS.md",
+      "headBlob": "18f03b3f6d3311aea5fa2c8c78fb139c0ee6e2b3",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2502.11127_G_Safeguard_Topology_Guided_Security_for_LLM_MAS.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2503.21760_MemInsight_Autonomous_Memory_Augmentation.md",
+      "headBlob": "abc76f6eda593b497e628cc741bbef0d63708f38",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2503.21760_MemInsight_Autonomous_Memory_Augmentation.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2504.10046_GraphCodeAgent_Dual_Graph_Guided_LLM_Agent.md",
+      "headBlob": "303cbba15dd66670349e2579c643e1fa11954681",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2504.10046_GraphCodeAgent_Dual_Graph_Guided_LLM_Agent.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2504.12560_CDF_RAG_Causal_Dynamic_Feedback.md",
+      "headBlob": "a852fdb86d34f3380a4f8de2675c097e31c57bbd",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2504.12560_CDF_RAG_Causal_Dynamic_Feedback.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2504.15909_Synergizing_RAG_and_Reasoning_Systematic_Review.md",
+      "headBlob": "efd0aad63a0f3c0993ee9aaf181b51f1446904ba",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2504.15909_Synergizing_RAG_and_Reasoning_Systematic_Review.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2505.06569_MacRAG_Multi_Scale_Adaptive_Context_RAG.md",
+      "headBlob": "c987953217355210a586b943fc5aa76f10e15fe9",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2505.06569_MacRAG_Multi_Scale_Adaptive_Context_RAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2506.00054_RAG_Comprehensive_Survey.md",
+      "headBlob": "e9c781b7ea073158661ba5bc6b8dc4b42cc6f6cd",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2506.00054_RAG_Comprehensive_Survey.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2506.04202_TracLLM_Context_Traceback_Long_Context_LLMs.md",
+      "headBlob": "304e27a4031902179b7448123719aa131d8f6e39",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2506.04202_TracLLM_Context_Traceback_Long_Context_LLMs.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2507.03226_Efficient_KG_Construction_and_Retrieval_for_RAG.md",
+      "headBlob": "61da46e3c32d53e9430f8ae9494c1ee536b2231d",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2507.03226_Efficient_KG_Construction_and_Retrieval_for_RAG.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2507.04127_BYOKG_RAG_Multi_Strategy_Graph_Retrieval.md",
+      "headBlob": "87861cda6edbbe891930cb2702cdba6f1af3f22b",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2507.04127_BYOKG_RAG_Multi_Strategy_Graph_Retrieval.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2507.16585_LLMxCPG_Code_Property_Graph_Guided_LLMs.md",
+      "headBlob": "8067e03aaa33c4ffbdec5faf611771887bc6d4dc",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2507.16585_LLMxCPG_Code_Property_Graph_Guided_LLMs.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2509.25257_RANGER_Repository_Level_Agent_for_Graph_Enhanced_Retrieval.md",
+      "headBlob": "64454934471b7e71fbeaebb9cde445e72bebc81b",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2509.25257_RANGER_Repository_Level_Agent_for_Graph_Enhanced_Retrieval.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2510.17925_SpecAgent_Speculative_Retrieval_and_Forecasting_for_Code_Completion.md",
+      "headBlob": "bf33d3c86566e0ef0244abb1ab9c98280f3f63c9",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2510.17925_SpecAgent_Speculative_Retrieval_and_Forecasting_for_Code_Completion.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2511.07328_Q_RAG_Value_Based_Multistep_Retrieval.md",
+      "headBlob": "3a7a0ad7296c3be1cf3f11ecace5b7a0789d33eb",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2511.07328_Q_RAG_Value_Based_Multistep_Retrieval.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2512.05470_Everything_is_Context_Agentic_File_System.md",
+      "headBlob": "a07897ee422d3994a187838d53e65212c016f587",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2512.05470_Everything_is_Context_Agentic_File_System.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2603.16169_Open_Source_CRAG_Reproduction_and_Explainability.md",
+      "headBlob": "dc93237c5635f2454ca2d4e1b2b82f80454638c8",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2603.16169_Open_Source_CRAG_Reproduction_and_Explainability.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/2607.24882_Agent_Retrieval_Bench.md",
+      "headBlob": "8cd195524f682edfd8193e02d93d1f0c8ed43027",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/2607.24882_Agent_Retrieval_Bench.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/MANIFEST.md",
+      "headBlob": "79a398ecbd3e6c83885ca5f5b787f739a5ca6084",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/MANIFEST.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/a-mem-agentic-memory_2502.12110.md",
+      "headBlob": "c0d35b7304fb102a56f33d339ee909bf446220c7",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/a-mem-agentic-memory_2502.12110.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/articles/anthropic-effective-context-engineering.md",
+      "headBlob": "3645cbd9510441c0bee948b0e199d7f4b30a9f5f",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/articles/anthropic-effective-context-engineering.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/articles/chroma-context-rot.md",
+      "headBlob": "c2a1524426083a5faa61aa5ed03952493122e7b7",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/articles/chroma-context-rot.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/articles/manus-context-engineering.md",
+      "headBlob": "67166dc07ada918f6d33c46fac07a1c939df3abb",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/articles/manus-context-engineering.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md",
+      "headBlob": "1591a4c6097d547737fb4d274ba633d15d5aef06",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/automated-design-agentic-systems_2408.08435.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/codeact-executable-code-actions_2402.01030.md",
+      "headBlob": "d2960d65551d9c13369e5b4ec270779a8484ae7e",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/codeact-executable-code-actions_2402.01030.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/complexity-trap-observation-masking_2508.21433.md",
+      "headBlob": "c19af037df0e0512226808f9cb459c2c86954489",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/complexity-trap-observation-masking_2508.21433.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md",
+      "headBlob": "b53e7879527693a6af3439cf2b398c775d4e2537",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/darwin-godel-machine_2505.22954.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/evo-memory-self-evolving-memory-benchmark_2511.20857.md",
+      "headBlob": "f08d41202d0e438d9bda9a0989e1c56a5bf61941",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/evo-memory-self-evolving-memory-benchmark_2511.20857.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/google-context-engineering-sessions-memory.md",
+      "headBlob": "c9c2186078bc42b0559f5fc7651f7c2460ebe21c",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/google-context-engineering-sessions-memory.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/memory-os-of-ai-agent_2506.06326.md",
+      "headBlob": "b80f3e103fd3d0b8dbe6309aa97b8b454d2f473c",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/memory-os-of-ai-agent_2506.06326.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/memorybank-long-term-memory_2305.10250.md",
+      "headBlob": "abccf678def655d21e843ab2416915fa94062276",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/memorybank-long-term-memory_2305.10250.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/memos-memory-os-for-ai-system_2507.03724.md",
+      "headBlob": "d8d202b08edc38665a1ca5250d68c15ca3f89cdf",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/memos-memory-os-for-ai-system_2507.03724.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/multi-agent-evolving-orchestration_2505.19591.md",
+      "headBlob": "6aed7036032fa1f66c968ddd412b76e699a16f1c",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/multi-agent-evolving-orchestration_2505.19591.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/omni-epic_2405.15568.md",
+      "headBlob": "cc1696c2c429fa4d8919cae40ec75e74dcac79ee",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/omni-epic_2405.15568.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/ontology-embedding-survey_2406.10964.md",
+      "headBlob": "96b51ff6bbe464833e35074b54c878027a017275",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/ontology-embedding-survey_2406.10964.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/recursive-language-models_2512.24601.md",
+      "headBlob": "38b52339f390a430744b16833a9ad73c8445cbb2",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/recursive-language-models_2512.24601.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/titans-memorize-at-test-time_2501.00663.md",
+      "headBlob": "a69f54200db71e3ca3078a03e027da6d8f701cb0",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/titans-memorize-at-test-time_2501.00663.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/papers/zep-temporal-knowledge-graph_2501.13956.md",
+      "headBlob": "074d1a1e954ad924229052d9661cbe841decaec2",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/papers/zep-temporal-knowledge-graph_2501.13956.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/00-MASTER-SYNTHESIS.md",
+      "headBlob": "b5ef0664931578e2b364f3b777c3674cc2fe8ccf",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/00-MASTER-SYNTHESIS.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/01-MEMBRANE-GAP-ANALYSIS.md",
+      "headBlob": "90a9f6986821562cd8af9f6578306d0ea8df2e1a",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/01-MEMBRANE-GAP-ANALYSIS.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/02-MEMBRANE-IMPROVEMENTS.md",
+      "headBlob": "3d3f05d2c8b770d72aebef00871795da1056eba6",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/02-MEMBRANE-IMPROVEMENTS.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/03-BUILD-PLAN.md",
+      "headBlob": "f1988e7462bd21f0169f69307a50fac207cf78b2",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/03-BUILD-PLAN.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/INDEX.md",
+      "headBlob": "55ba0d9ec18da45cf26caea07be402758f1f79dd",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/INDEX.md"
+    },
+    {
+      "oldPath": "docs/archive/research/legacy-source-corpus/synthesis/NOTE-FOR-BLUEPRINT-AGENT.md",
+      "headBlob": "b81b5fe90ab8f7437637bf51aad2fedfb22a7aff",
+      "disposition": "relocated_exact",
+      "target": "docs/research/legacy-source-corpus/synthesis/NOTE-FOR-BLUEPRINT-AGENT.md"
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/assets/orthic/v0.1.11/Orthic_0.1.11_x64-setup.exe",
+      "headBlob": "f7bf84ca5894058225cf0681d66cd0750cd0f921",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "f7bf84ca5894058225cf0681d66cd0750cd0f921"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/assets/orthic/v0.1.11/orthic-0.1.11-win-SHA256SUMS.txt",
+      "headBlob": "f87b01215b2c38d2500cbe87b442a85bba122e50",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "f87b01215b2c38d2500cbe87b442a85bba122e50"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/assets/orthic/v0.1.11/orthic-0.1.11-win-release-manifest.json",
+      "headBlob": "6d71e934be78320c2535e745a2717510f62c0803",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "6d71e934be78320c2535e745a2717510f62c0803"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/local-inputs/orthic-current-staged.patch",
+      "headBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/local-inputs/orthic-staged.patch",
+      "headBlob": "a14df3e4148583202466eb6f652aed288bd0889b",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "a14df3e4148583202466eb6f652aed288bd0889b"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/local-inputs/orthic-unstaged.patch",
+      "headBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/manifest.json",
+      "headBlob": "4160c52f0c861a63027658010118d6e9bfe0a8ff",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "4160c52f0c861a63027658010118d6e9bfe0a8ff"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/annotated-tags.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/branch-protections.json",
+      "headBlob": "0a9e5cee0c74403c5f3eb735f10930c9778ed690",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "0a9e5cee0c74403c5f3eb735f10930c9778ed690"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/branches.json",
+      "headBlob": "068b6dd9e3d78adf8f93c8a19f978902a8e386e4",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "068b6dd9e3d78adf8f93c8a19f978902a8e386e4"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/issue-comments.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/issues.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/labels.json",
+      "headBlob": "c4772605a07919a5e243a55dbd5655e3fcaa6cff",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "c4772605a07919a5e243a55dbd5655e3fcaa6cff"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/milestones.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/properties.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/pull-review-comments.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/pulls.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/refs.json",
+      "headBlob": "7b58213abc32961cc1f6c9b10f71eab5ca20ba51",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "7b58213abc32961cc1f6c9b10f71eab5ca20ba51"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/releases.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/repository.json",
+      "headBlob": "394f0778031debbb959587bb07f690237c0b6d59",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "394f0778031debbb959587bb07f690237c0b6d59"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/reviews.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/rulesets.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/adapt/tags.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/annotated-tags.json",
+      "headBlob": "43babf95ad58821d827f84a3169984765f86c6e2",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "43babf95ad58821d827f84a3169984765f86c6e2"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/branch-protections.json",
+      "headBlob": "ed78f7f7977017c965a0f4d88fe6ae782816691e",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "ed78f7f7977017c965a0f4d88fe6ae782816691e"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/branches.json",
+      "headBlob": "c259d522092af78b8b00e5bae4fef6d7b65cf9c5",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "c259d522092af78b8b00e5bae4fef6d7b65cf9c5"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/issue-comments.json",
+      "headBlob": "684f2d6055c13f65194ab67f044743a0b77832b1",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "684f2d6055c13f65194ab67f044743a0b77832b1"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/issues.json",
+      "headBlob": "2d353c77e46737e6bbfe5a2c73fd62663d92c5db",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "2d353c77e46737e6bbfe5a2c73fd62663d92c5db"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/labels.json",
+      "headBlob": "90896005f6e4ba8787216417afae5cb3b551e9cf",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "90896005f6e4ba8787216417afae5cb3b551e9cf"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/milestones.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/properties.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/pull-review-comments.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/pulls.json",
+      "headBlob": "b229a335b3a90ce263f621bc92266351de18a584",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "b229a335b3a90ce263f621bc92266351de18a584"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/refs.json",
+      "headBlob": "bff26f73ba696df1fd1c802624f7a14c15aae23e",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "bff26f73ba696df1fd1c802624f7a14c15aae23e"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/releases.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/repository.json",
+      "headBlob": "ec679c19371daa6aa358da4d1c925f5e9926e526",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "ec679c19371daa6aa358da4d1c925f5e9926e526"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/reviews.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/rulesets.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/cortex/tags.json",
+      "headBlob": "4385e33228607fc10575d6eeb2b27d70d2da5f56",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "4385e33228607fc10575d6eeb2b27d70d2da5f56"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/annotated-tags.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/branch-protections.json",
+      "headBlob": "7f9f40a0d88ca37ac863badef8a4b3baa7cdf55c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "7f9f40a0d88ca37ac863badef8a4b3baa7cdf55c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/branches.json",
+      "headBlob": "9f180a663b74464c3b1784096c3918d049dc7ada",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "9f180a663b74464c3b1784096c3918d049dc7ada"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/issue-comments.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/issues.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/labels.json",
+      "headBlob": "aa05b8957fc50e59b69a57bc08a298c16ffdae85",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "aa05b8957fc50e59b69a57bc08a298c16ffdae85"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/milestones.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/properties.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/pull-review-comments.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/pulls.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/refs.json",
+      "headBlob": "cd3bd992617febcddce7a6d8d222d74016479a74",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "cd3bd992617febcddce7a6d8d222d74016479a74"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/releases.json",
+      "headBlob": "1848cf171765b5b1dc4abb45b20ece1bdf0d21e5",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "1848cf171765b5b1dc4abb45b20ece1bdf0d21e5"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/repository.json",
+      "headBlob": "c0fd8a91b3bf8d9674643d306f33577e6005735f",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "c0fd8a91b3bf8d9674643d306f33577e6005735f"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/reviews.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/rulesets.json",
+      "headBlob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "fe51488c7066f6687ef680d6bfaa4f7768ef205c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/orthic/tags.json",
+      "headBlob": "f4173555977e429cd1343bdbe5081087a1092a7b",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "f4173555977e429cd1343bdbe5081087a1092a7b"
+      }
+    },
+    {
+      "oldPath": "docs/archive/retired-repositories/metadata/projects.json",
+      "headBlob": "08f7c5573352f7ec42e3a8ce76b9811ff8e92768",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "08f7c5573352f7ec42e3a8ce76b9811ff8e92768"
+      }
+    },
+    {
+      "oldPath": "docs/archive/superseded/operations/hub-handoff.md",
+      "headBlob": "d0de3a9924c3a5c5c57bae04ca6ad442b1afb36c",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "d0de3a9924c3a5c5c57bae04ca6ad442b1afb36c"
+      }
+    },
+    {
+      "oldPath": "docs/archive/superseded/operations/watcher-lifecycle.md",
+      "headBlob": "b2f671d1e1f6d86f1b833706435d0b45b3cc990f",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "b2f671d1e1f6d86f1b833706435d0b45b3cc990f"
+      }
+    },
+    {
+      "oldPath": "docs/archive/superseded/reference/deferred-surfaces.md",
+      "headBlob": "974f92e6d569c34d4d01c1fd970fb0b6a1ae4bb9",
+      "disposition": "removed_retained_in_git",
+      "retainedInGit": {
+        "commit": "0b032f7f9d8df25eab572c8cbbe0127f75d62b48",
+        "blob": "974f92e6d569c34d4d01c1fd970fb0b6a1ae4bb9"
+      }
+    }
+  ]
+}

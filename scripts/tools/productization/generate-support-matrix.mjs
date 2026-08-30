@@ -6,13 +6,13 @@
 // generator reuses the existing MBR-801 validator
 // (scripts/qualification/verify-mbr801-evidence.mjs) rather than
 // re-implementing conformance logic, and writes the SAME generated matrix
-// into every surface this task owns: docs/support-matrix.md, docs/support-matrix.json,
+// into every surface this task owns: docs/product/support/matrix.md & matrix.json,
 // a generated block in README.md, and the per-target platformReceipt fields
 // in server.json (the MCP Registry server descriptor). A platform/client pair
 // with no current, verified receipt renders "unavailable" — never "qualified"
 // and never silently omitted.
 //
-// Client universe: read (never written) from docs/clients/support-matrix.v1.json,
+// Client universe: read (never written) from docs/reference/clients/support-matrix.v1.json,
 // the MBR-206 client registry — this generator adds no second, competing
 // client list.
 //
@@ -24,7 +24,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { verifyMbr801Evidence } from "../../qualification/verify-mbr801-evidence.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -37,7 +37,7 @@ const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
 /** The canonical, generated (MBR-206) client id list. Read-only dependency. */
 export function clientUniverse(repoRoot) {
-  const matrix = readJson(join(repoRoot, "docs", "clients", "support-matrix.v1.json"));
+  const matrix = readJson(join(repoRoot, "docs", "reference", "clients", "support-matrix.v1.json"));
   return [...new Set(matrix.cells.map((cell) => cell.client))].sort();
 }
 
@@ -152,7 +152,7 @@ export function renderReadmeBlock(matrix) {
     "",
     `Generated from current MBR-801 installed-path conformance receipts — ${qualified} of ${matrix.rows.length}`,
     "platform/client pairs currently qualified. Full table, tiers, and reasons:",
-    "[docs/support-matrix.md](docs/support-matrix.md) (also machine-readable at `docs/support-matrix.json`).",
+    "[docs/product/support/matrix.md](docs/product/support/matrix.md) (also machine-readable at `docs/product/support/matrix.json`).",
     "This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`",
     "fields are all written by `node scripts/tools/productization/generate-support-matrix.mjs`",
     "from the same receipts; none of them is hand-maintained.",
@@ -220,8 +220,8 @@ export function generate({ repoRoot = root, commit, releaseGeneration, receiptPa
   };
   const matrix = buildMatrix({ commit: currentCommit, releaseGeneration: releaseGeneration ?? null, clients, receiptPaths: paths });
 
-  writeFileSync(join(repoRoot, "docs", "support-matrix.json"), `${JSON.stringify(matrix, null, 2)}\n`);
-  writeFileSync(join(repoRoot, "docs", "support-matrix.md"), render(matrix));
+  writeFileSync(join(repoRoot, "docs", "product", "support", "matrix.json"), `${JSON.stringify(matrix, null, 2)}\n`);
+  writeFileSync(join(repoRoot, "docs", "product", "support", "matrix.md"), render(matrix));
 
   const readmePath = join(repoRoot, "README.md");
   writeFileSync(readmePath, spliceReadme(readFileSync(readmePath, "utf8"), renderReadmeBlock(matrix)));
@@ -239,7 +239,7 @@ export function generate({ repoRoot = root, commit, releaseGeneration, receiptPa
   return matrix;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
   const value = (name) => {
     const index = args.indexOf(name);

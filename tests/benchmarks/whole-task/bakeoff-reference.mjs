@@ -1,6 +1,6 @@
 // MBR-804 — immutable reference to the already-completed vector-backend
 // bakeoff (MBR-509 lineage: docs/plans/2026-08-01-vector-backend-bakeoff-harness.md,
-// docs/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md).
+// docs/reference/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md).
 //
 // This module never re-runs the bakeoff: no cargo, no python harness, no
 // process spawn. It only reads the four artifacts the completed bakeoff
@@ -11,7 +11,7 @@
 //
 // The `config` hash below is independently reproducible: it equals the
 // `configSha256` field recorded verbatim in the pre-existing macOS bakeoff
-// host receipt (docs/benchmarks/vector-backend/round1/mac/receipt.json), which
+// host receipt (docs/reference/benchmarks/vector-backend/round1/mac/receipt.json), which
 // this module also loads below.
 
 import { createHash } from 'node:crypto';
@@ -27,10 +27,10 @@ export const BAKEOFF_REFERENCE = Object.freeze({
   artifacts: Object.freeze({
     config: Object.freeze({ path: 'engine/vector-bakeoff/config/round1-v1.json', sha256: 'ad34773d194597444f07b2a12b0ac40c647476d1483d4122a9f571ad1def6bdf' }),
     input: Object.freeze({ path: 'engine/vector-bakeoff/fixtures/smoke-v1.manifest.json', sha256: '47ac47476f38a7afbeb3a456f248c952e4e08e72aad146db195959d784fa1461' }),
-    receipt: Object.freeze({ path: 'docs/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md', sha256: '87b2fed1917fe7497a855801dd4c84364a483aa4644331cdfcc9d04192c66ce4' }),
+    receipt: Object.freeze({ path: 'docs/reference/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md', sha256: '87b2fed1917fe7497a855801dd4c84364a483aa4644331cdfcc9d04192c66ce4' }),
   }),
   hosts: Object.freeze({
-    macos: Object.freeze({ path: 'docs/benchmarks/vector-backend/round1/mac/receipt.json', sha256: 'aff470ac410dd0c468d5706181665728a41766c7fe6789e64f0fae4a067f79d6' }),
+    macos: Object.freeze({ path: 'docs/reference/benchmarks/vector-backend/round1/mac/receipt.json', sha256: 'aff470ac410dd0c468d5706181665728a41766c7fe6789e64f0fae4a067f79d6' }),
   }),
 });
 

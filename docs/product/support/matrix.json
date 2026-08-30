@@ -1,0 +1,91 @@
+{
+  "schema": "membrane.support-tier-matrix.v1",
+  "generatedFrom": {
+    "commit": "0b032f7f",
+    "releaseGeneration": null,
+    "source": "scripts/qualification/run.mjs + scripts/qualification/verify-mbr801-evidence.mjs",
+    "receiptDirectory": "docs/evidence/qualification/mbr801"
+  },
+  "rows": [
+    {
+      "platform": "macos",
+      "client": "claude",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
+    },
+    {
+      "platform": "macos",
+      "client": "codex",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
+    },
+    {
+      "platform": "macos",
+      "client": "cursor",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
+    },
+    {
+      "platform": "macos",
+      "client": "generic_mcp",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
+    },
+    {
+      "platform": "macos",
+      "client": "windsurf",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
+    },
+    {
+      "platform": "windows",
+      "client": "claude",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "windows receipt unavailable",
+      "receipt": null
+    },
+    {
+      "platform": "windows",
+      "client": "codex",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "windows receipt unavailable",
+      "receipt": null
+    },
+    {
+      "platform": "windows",
+      "client": "cursor",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "windows receipt unavailable",
+      "receipt": null
+    },
+    {
+      "platform": "windows",
+      "client": "generic_mcp",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "windows receipt unavailable",
+      "receipt": null
+    },
+    {
+      "platform": "windows",
+      "client": "windsurf",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "reason": "windows receipt unavailable",
+      "receipt": null
+    }
+  ]
+}

@@ -2,8 +2,8 @@
 // MBR-1001 — Generated product docs and README link gate.
 //
 // One manually invoked command (no CI in this repository) that fails when:
-//   1. any generated product doc (docs/product.md, docs/architecture.md,
-//      docs/operations.md, docs/protocol.md) is missing or stale against the
+//   1. any generated product doc under docs/product/, docs/architecture/, or
+//      docs/reference/ is missing or stale against the
 //      source-derived renderers in scripts/tools/productization/render-docs.mjs,
 //   2. any local markdown link in README.md points at an absent file, or
 //   3. the MBR-013 product-truth artifacts are stale (delegated to
@@ -35,10 +35,10 @@ const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
 /** Generated docs this gate owns, with their renderers. */
 export function generatedDocSpecs(truth, platforms) {
   return [
-    { path: join(REPO_ROOT, "docs", "product.md"), render: () => renderProductDoc(truth, platforms) },
-    { path: join(REPO_ROOT, "docs", "architecture.md"), render: () => renderArchitectureDoc(truth, platforms) },
-    { path: join(REPO_ROOT, "docs", "operations.md"), render: () => renderOperationsDoc(truth, platforms) },
-    { path: join(REPO_ROOT, "docs", "protocol.md"), render: () => renderProtocolDoc(truth, platforms) },
+    { path: join(REPO_ROOT, "docs", "product", "README.md"), render: () => renderProductDoc(truth, platforms) },
+    { path: join(REPO_ROOT, "docs", "architecture", "runtime-truth.md"), render: () => renderArchitectureDoc(truth, platforms) },
+    { path: join(REPO_ROOT, "docs", "product", "operations", "README.md"), render: () => renderOperationsDoc(truth, platforms) },
+    { path: join(REPO_ROOT, "docs", "reference", "protocol", "README.md"), render: () => renderProtocolDoc(truth, platforms) },
   ];
 }
 

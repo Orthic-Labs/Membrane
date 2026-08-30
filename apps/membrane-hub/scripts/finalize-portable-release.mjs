@@ -70,7 +70,7 @@ const bootstrapValidation = validatePowerShellBootstrap(bootstrap, {
 if (!bootstrapValidation.valid) throw new Error(`bootstrap invalid: ${bootstrapValidation.errors.join("; ")}`);
 const bootstrapPath = join(output, "install.ps1");
 writeFileSync(bootstrapPath, bootstrap);
-cpSync(join(repo, "docs", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
+cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
 const publicationPlan = planBootstrapPublication({
   product: "membrane",
   bootstrapVersion: pkg.version,

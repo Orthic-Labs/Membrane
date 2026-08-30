@@ -2,7 +2,7 @@
 //! and Semantic Edit Fence gate decisions.
 //!
 //! Implements the wire shapes of
-//! `docs/current/architecture/live-diagnostics.md` (§4 identity
+//! `docs/architecture/live-diagnostics.md` (§4 identity
 //! model, §5 contracts, §8 coverage/convergence, §9 correlation). These are
 //! *operational* schemas: they never mutate Membrane's frozen public V1 context
 //! shapes, the Membrane planner remains the sole gate-policy owner, and

@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T15:47:26.912Z",
+ "generatedAt": "2026-08-30T16:34:56.013Z",
  "enforcementMode": "sealed",
- "policyDigest": "8aa214294b8b36733dbcf11f4dc3f0ff634fb7f6990c2d1361e5354350dda0c5",
+ "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1212,
+  "files": 1211,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -90,7 +90,7 @@
     "adapt/eval/smoke_production_delivery.py",
     "adapt/eval/validate_insights_bench.py"
    ],
-   "content_digest": "fd1d4c301fe174c437d8292f8c85ab26ff32c8ddecec24abe1850d6bb96b93ae"
+   "content_digest": "86dcdab8229baefb0203b2b3a29ae51a9351648e1a5f2eead4ba78f0d57b1bb4"
   },
   {
    "id": "adapt-runtime-adapt-runtime",
@@ -856,7 +856,7 @@
     "dist/npm/bin/membrane.mjs",
     "dist/npm/index.mjs"
    ],
-   "content_digest": "6c68abe3c3296db4e7c3f6c31a99d6517e5b07dd6242cc5305d6b3cb8dd2a418"
+   "content_digest": "a81875ab65ca58feec4cfa1b0eebdb06fe55e7c31461596009ad2b6948c40af2"
   },
   {
    "id": "dist-python-client-sdk-dist-python-client-sdk",
@@ -899,7 +899,7 @@
     "dist/packaging/legal/verify.mjs",
     "dist/release/channels/compatibility-policy.mjs"
    ],
-   "content_digest": "2044dfecc3ed4dfcb15cc2a4efc202644f29a3eee27f941474f446e955aabda0"
+   "content_digest": "a1ac1e8be024296572d84caff9b4e9fc79c9e3728585d76738f3f8a180c08897"
   },
   {
    "id": "docs-examples-docs-examples",
@@ -917,13 +917,13 @@
    "seal_blocker_note": null,
    "notes": "",
    "files": [
-    "docs/examples/providers/blueprint_example/src/lib.rs",
-    "docs/examples/providers/blueprint_example/src/main.rs",
-    "docs/examples/providers/cortex_example/src/lib.rs",
-    "docs/examples/providers/cortex_example/src/main.rs",
-    "docs/examples/quickstart/run.mjs"
+    "docs/reference/examples/providers/blueprint_example/src/lib.rs",
+    "docs/reference/examples/providers/blueprint_example/src/main.rs",
+    "docs/reference/examples/providers/cortex_example/src/lib.rs",
+    "docs/reference/examples/providers/cortex_example/src/main.rs",
+    "docs/reference/examples/quickstart/run.mjs"
    ],
-   "content_digest": "e605f7f3439226ecab9afd06a2bd86f3b14783043bd6bdacc6824e76283dc7ce"
+   "content_digest": "83130f0f94f23c1f355208fb79406ba6ed119971d9d345bff485ca00e7a33108"
   },
   {
    "id": "engine-cortex-bin-crate-engine/crates/cortex",
@@ -1015,7 +1015,7 @@
     "engine/crates/membrane-client/tests/compat.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "41d63e6bf1ffaa50a90dac95f75abab90c151e778b6ff02343a18f8d494629d1"
+   "content_digest": "830ad546b69062f60359669bb3e59336259cd3ee996fb182a9b4827faf8f0e34"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1133,7 +1133,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "046e9121cacc132f6829006e4b4b78eff05e0858eea1c3674ed0eaa847cc8f10"
+   "content_digest": "2f35dc3f6160abe79385b916c2e0f7ef5887586084e95999adecf0c821714ab3"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -1172,7 +1172,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "48f75cd03cf2fa41eb0475c73e7029576109afce8391aaa24b20f2d2846840ed"
+   "content_digest": "3a30208ac3e5c7693b0183118e54564c675655ff46b7277b162cb6dbb974b289"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1406,7 +1406,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "76ab33d23100d3398e09b1fe88d542fb791769e492477b4acef107548d26b946"
+   "content_digest": "dc055130500fcd9692fdc4dbc3dd4b87e83a327d3b13c876b2e0dcf0f9f78bdb"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1436,7 +1436,7 @@
     "engine/crates/membrane-provider-sdk/tests/conformance.rs",
     "engine/crates/membrane-provider-sdk/tests/downstream_fixture.rs"
    ],
-   "content_digest": "7b425b39a5406fb1c52849b56c1bc96ddb5a9231bef86de3fb501ec0ebf135d7"
+   "content_digest": "39edac12fc86b08c159a49c496eabf41db6eff7ec436b00badfaa173019a4b56"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-runtime",
@@ -1569,7 +1569,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "84998e9e976b5eeefd09c9767296bbf295e11c66bd96294861c14e4408351287"
+   "content_digest": "cc2215dde5ad6e80aed8e2627b7acabf4672cd41b362c9c5c80bb81210edb539"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1723,7 +1723,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "76446564a6a3019b2b3b06ca098ad1d649c2589e6159683b01304e8aa99f404e"
+   "content_digest": "64e2fd63a0fc2b9795da90a2c50aea0bdb53cf99f5b9c64a5a9cd2125827221f"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1766,7 +1766,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "6815e64b11b2d958d2952b2eb52722acef9b5c9cfa0228707d4fa17853640073"
+   "content_digest": "9a514154f7d76eb57e46ef6493fb869f33366922aab3d4d7cfaf76d87ca06e54"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1928,7 +1928,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "99d176d194327cbe3288e480f5f681d21e4e7062ef5f0c7c579d64fab60eece0"
+   "content_digest": "047cd27861830f40d321f2f83c7336001218c3dab2ddb14ce537bf6e2a0d4a48"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -2029,7 +2029,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "f0ad6ced8538a750fbf7f070c0c6a16d85db608232bbaf46c7ea0c3cbd1df6ff"
+   "content_digest": "df6761994a27ace6c2513fd558255a3b2cab5f8989eb98dd41b5c66fded1db1f"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -2088,7 +2088,6 @@
    "seal_blocker_note": null,
    "notes": "Repository-only CI, qualification, and release tooling; never installed runtime.",
    "files": [
-    "scripts/archive-retired-repositories.mjs",
     "scripts/ci/build-invocation-graph.mjs",
     "scripts/ci/check-adapt-ontology.mjs",
     "scripts/ci/check-adapt-ontology.test.mjs",
@@ -2160,7 +2159,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "404b3da2e48ec22c821afdc03d361f6b0ed9d18a2efea8afc257f1a093656a86"
+   "content_digest": "ef4a9e5b2aa3b4bbfd8460b1d4d02918200d6b9fcd9084a7d8fdb56e627904f2"
   },
   {
    "id": "tests-root-tests-root",
@@ -2248,7 +2247,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "0930106d3c23b04e6524c607c64ad82a3927e38bbbdfe6188fac5da8ca4331ee"
+   "content_digest": "452ca676ae3b4d5cc4c11aca53a0a25cc3e22de041fee8805084bbfe500662f4"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",

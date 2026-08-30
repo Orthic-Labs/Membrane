@@ -15,5 +15,5 @@ packet = client.context({"task": "inspect"})
 
 Full contract, compatibility-test pointers, and the distribution-boundary
 policy that keeps this package a client SDK and never the core application:
-see `docs/sdk/python.md` and `docs/sdk/python-publishing.md` in the Membrane
+see `docs/reference/sdk/python.md` and `docs/reference/sdk/python-publishing.md` in the Membrane
 repository root.

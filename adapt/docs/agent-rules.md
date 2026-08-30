@@ -5,7 +5,7 @@ Adapt is Membrane's governed behavioral-learning subsystem. Taste proposes user-
 It never retrains models or stores private chain-of-thought.
 
 ## Canonical sources
-- Read `../docs/current/architecture/subsystems/adapt.md` for Adapt semantics, Taste/Insights authority, lifecycle, evaluation, and feature dependencies.
+- Read `../docs/architecture/subsystems/adapt.md` for Adapt semantics, Taste/Insights authority, lifecycle, evaluation, and feature dependencies.
 - Read `../migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` for runtime/process cutover, packaging, deletion, and sequencing.
 - Read `README.md` as a current implementation projection.
 - Read `docs/architecture.md` for components and flows.

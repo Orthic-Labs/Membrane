@@ -60,9 +60,9 @@ resident lifecycle; no second product-service label or binary exists.
 This is **MBR-201 / MBR-203 / MBR-208** — active, not abandoned. Its install
 assets exist and ship, but product mode is not yet the deployed runtime
  anywhere; workspace mode is what machines actually run today. See
-[`docs/operations/resident-lifecycle.md`](resident-lifecycle.md) for the
+[`docs/product/operations/resident-lifecycle.md`](resident-lifecycle.md) for the
 in-process resident lifecycle, and
-[`docs/installation/contract.md`](../installation/contract.md) for the
+[`docs/product/installation/contract.md`](../installation/contract.md) for the
 per-mode installation manifest contract that both topologies must satisfy.
 
 ## The one rule

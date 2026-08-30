@@ -2,7 +2,7 @@
 
 **Canonical migration plan:** [`MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`](MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md)
 
-**Adapt semantic authority:** [`../../docs/current/architecture/subsystems/adapt.md`](../../docs/current/architecture/subsystems/adapt.md)
+**Adapt semantic authority:** [`../../docs/architecture/subsystems/adapt.md`](../../docs/architecture/subsystems/adapt.md)
 
 This directory freezes Membrane's historical executable federation boundary at baseline
 `322855c33e65dc936e3927570451c98e54fb0bd2` for MEM-000. It is migration input,

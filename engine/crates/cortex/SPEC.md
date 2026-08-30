@@ -8,7 +8,7 @@ with a Rust-owned Cortex library & CLI projection inside Membrane. Anyone can em
 `cortex` is the durable subsystem: store + scope model + scoring + ingest + CLI. CR-the-app keeps using
 `coderight-memory` in-process (single scope); the workspace uses Membrane resident's authenticated
 loopback contract, so hooks need no independent Cortex service.
-Current capability canon: `docs/current/atoms/cortex.md`; parent architecture: `docs/current/architecture/membrane.md`.
+Current capability canon: `docs/canon/cortex.md`; parent architecture: `docs/architecture/membrane.md`.
 
 ## Parity checklist (vs mem.py)
 

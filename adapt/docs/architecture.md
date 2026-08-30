@@ -1,7 +1,7 @@
 # Adapt — implementation architecture
 
 This is a current, non-normative implementation map. Product semantics come from
-[`../../docs/current/architecture/subsystems/adapt.md`](../../docs/current/architecture/subsystems/adapt.md).
+[`../../docs/architecture/subsystems/adapt.md`](../../docs/architecture/subsystems/adapt.md).
 
 Adapt's production owner is native Rust. `membrane-transcript` discovers and
 normalizes supported host transcripts; `membrane-adapt` owns Taste and Insights

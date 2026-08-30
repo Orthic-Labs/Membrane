@@ -27,10 +27,10 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
 const TRUTH_JSON = join(REPO_ROOT, "schemas", "registry", "product-truth.json");
-const TRUTH_DOC = join(REPO_ROOT, "docs", "product-truth.md");
+const TRUTH_DOC = join(REPO_ROOT, "docs", "reference", "product-truth.md");
 const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
-const MANIFEST = join(REPO_ROOT, "docs", "current", "architecture", "current-state-manifest.json");
+const MANIFEST = join(REPO_ROOT, "docs", "architecture", "current-state-manifest.json");
 const MCP_FIXTURE = join(REPO_ROOT, "migration", "native-rust", "fixtures", "mcp-conformance.v1.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
@@ -129,10 +129,10 @@ function renderTruthJson(truth) {
 /** Map of generated doc path -> rendered content. */
 export function renderGeneratedDocs(truth, platforms) {
   return new Map([
-    [join(REPO_ROOT, "docs", "product.md"), renderProductDoc(truth, platforms)],
-    [join(REPO_ROOT, "docs", "architecture.md"), renderArchitectureDoc(truth, platforms)],
-    [join(REPO_ROOT, "docs", "operations.md"), renderOperationsDoc(truth, platforms)],
-    [join(REPO_ROOT, "docs", "protocol.md"), renderProtocolDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "product", "README.md"), renderProductDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "architecture", "runtime-truth.md"), renderArchitectureDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "product", "operations", "README.md"), renderOperationsDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "reference", "protocol", "README.md"), renderProtocolDoc(truth, platforms)],
   ]);
 }
 
@@ -223,10 +223,10 @@ export function evaluateReadmeAgainstTruth(readmeText, truth, { docPresent = tru
   if (missing.length || extra.length) {
     failures.push(`README tool list drift: missing=[${missing.join(",")}] extra=[${extra.join(",")}]`);
   }
-  if (!readmeText.includes("docs/product-truth.md")) {
-    failures.push("README does not link the generated product-truth doc (docs/product-truth.md)");
+  if (!readmeText.includes("docs/reference/product-truth.md")) {
+    failures.push("README does not link the generated product-truth doc (docs/reference/product-truth.md)");
   }
-  if (!docPresent) failures.push("README-linked generated doc absent: docs/product-truth.md");
+  if (!docPresent) failures.push("README-linked generated doc absent: docs/reference/product-truth.md");
   return failures;
 }
 /** Run the book-gate product-truth check. Returns { ok, failures: [] }. */

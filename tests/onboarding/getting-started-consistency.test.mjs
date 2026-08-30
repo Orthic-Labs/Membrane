@@ -1,4 +1,4 @@
-// Native installed-path anti-drift checks for docs/getting-started.md.
+// Native installed-path anti-drift checks for docs/product/getting-started.md.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const read = (path) => readFileSync(join(root, path), "utf8");
-const doc = read("docs/getting-started.md");
+const doc = read("docs/product/getting-started.md");
 const mcp = JSON.parse(read("mcp.json"));
 const claudePlugin = JSON.parse(read(".claude-plugin/plugin.json"));
 const tools = read("engine/crates/membrane-mcp/src/tools.rs");
 const hub = read("engine/crates/membrane-protocol/src/hub.rs");
-const product = read("docs/product.md");
+const product = read("docs/product/README.md");
 
 test("quickstart matches canonical native MCP entrypoint", () => {
   assert.equal(mcp.mcpServers.membrane.command, "membrane");
@@ -76,8 +76,8 @@ test("Blueprint lifecycle language preserves installed runtime contract", () => 
 });
 
 test("offline fixture remains explicitly synthetic", () => {
-  assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs/);
-  assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs --degraded/);
-  assert.ok(existsSync(join(root, "docs/examples/quickstart/run.mjs")));
+  assert.match(doc, /node docs\/reference\/examples\/quickstart\/run\.mjs/);
+  assert.match(doc, /node docs\/reference\/examples\/quickstart\/run\.mjs --degraded/);
+  assert.ok(existsSync(join(root, "docs/reference/examples/quickstart/run.mjs")));
   assert.match(doc, /evidenceAuthority: synthetic/);
 });

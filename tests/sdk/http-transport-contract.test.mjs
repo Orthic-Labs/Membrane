@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { join } from "node:path";
 
-// MBR-308: mechanical drift check between docs/sdk/http-transport.md (the
+// MBR-308: mechanical drift check between docs/reference/sdk/http-transport.md (the
 // wire-contract reference an SDK caller reads to build an HTTP transport
 // function) and the real MBR-306 transport source plus its published
 // schema. If a header name, the route, or a denial code changes in the
@@ -22,26 +22,26 @@ function constString(source, constName) {
 test("http-transport.md names the same path and headers as mcp_http.rs", async () => {
   const [source, doc] = await Promise.all([
     read("engine/crates/membrane-runtime/src/mcp_http.rs"),
-    read("docs/sdk/http-transport.md"),
+    read("docs/reference/sdk/http-transport.md"),
   ]);
   const path = constString(source, "MCP_HTTP_PATH");
   const installationHeader = constString(source, "INSTALLATION_HEADER");
   const sessionHeader = constString(source, "SESSION_HEADER");
   for (const literal of [path, installationHeader, sessionHeader]) {
-    assert.ok(doc.includes(literal), `docs/sdk/http-transport.md must name ${literal}`);
+    assert.ok(doc.includes(literal), `docs/reference/sdk/http-transport.md must name ${literal}`);
   }
 });
 
 test("http-transport.md names every denial code the schema defines", async () => {
   const [schemaText, doc] = await Promise.all([
     read("schemas/http-mcp-security.v1.schema.json"),
-    read("docs/sdk/http-transport.md"),
+    read("docs/reference/sdk/http-transport.md"),
   ]);
   const schema = JSON.parse(schemaText);
   const denialCodes = schema.properties.denial.enum;
   assert.ok(Array.isArray(denialCodes) && denialCodes.length > 0);
   for (const code of denialCodes) {
-    assert.ok(doc.includes(code), `docs/sdk/http-transport.md must name denial code ${code}`);
+    assert.ok(doc.includes(code), `docs/reference/sdk/http-transport.md must name denial code ${code}`);
   }
 });
 

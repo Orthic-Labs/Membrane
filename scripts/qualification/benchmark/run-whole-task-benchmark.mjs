@@ -2,7 +2,7 @@
 // scripts/qualification/benchmark/run-whole-task-benchmark.mjs — MBR-804 CLI.
 //
 // Wires CLI flags to benchmarks/whole-task/runner.mjs. This is the manual,
-// Book-gate-time entrypoint referenced by docs/evaluation/whole-task-benchmark.md;
+// Book-gate-time entrypoint referenced by docs/reference/evaluation/whole-task-benchmark.md;
 // it never runs automatically, never downloads a dataset, and never reruns
 // the vector bakeoff. Every real-execution dependency (the corpus, the
 // commit-reveal holdout salt, the Mac host receipt, the per-case

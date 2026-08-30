@@ -8,15 +8,15 @@
   "packageDocuments": [
     {
       "kind": "eula",
-      "path": "docs/legal/EULA.txt"
+      "path": "docs/product/legal/EULA.txt"
     },
     {
       "kind": "privacy",
-      "path": "docs/legal/PRIVACY.md"
+      "path": "docs/product/legal/PRIVACY.md"
     },
     {
       "kind": "third-party-notices",
-      "path": "docs/legal/THIRD-PARTY-NOTICES.txt"
+      "path": "docs/product/legal/THIRD-PARTY-NOTICES.txt"
     }
   ],
   "distributionBinding": {

@@ -1,6 +1,6 @@
 {
   "bench_id": "adapt-insights-bench-3329d6699a06",
-  "canonical_source": "docs/current/architecture/subsystems/adapt.md sections 6.4-6.6, 7.3-7.4, 11.2; plan item P0.5",
+  "canonical_source": "docs/architecture/subsystems/adapt.md sections 6.4-6.6, 7.3-7.4, 11.2; plan item P0.5",
   "canonicalization": {
     "bench_id_rule": "'adapt-insights-bench-' + sha256(p0.5|v1|schema_version|created_at|sorted families)[:12]",
     "case_id_rule": "'ibc_' + payload_sha256",

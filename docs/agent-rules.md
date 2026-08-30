@@ -17,16 +17,16 @@ The Membrane planner owns final context policy.
 
 Read these before architecture or migration work:
 
-1. `docs/current/architecture/membrane.md`
-2. `docs/current/architecture/subsystems/blueprint.md`
-3. `docs/current/architecture/subsystems/adapt.md`
-4. `docs/current/architecture/subsystems/ledger.md`
-5. `docs/current/architecture/cross-subsystem-evidence.md`
-6. `docs/current/architecture/integrations/coderight.md`
+1. `docs/architecture/membrane.md`
+2. `docs/architecture/subsystems/blueprint.md`
+3. `docs/architecture/subsystems/adapt.md`
+4. `docs/architecture/subsystems/ledger.md`
+5. `docs/architecture/cross-subsystem-evidence.md`
+6. `docs/architecture/integrations/coderight.md`
 
-Atomic capability state lives under `docs/current/atoms/`; `docs/pending/README.md` is sole pending-work index.
+Atomic capability state lives under `docs/canon/`; `docs/pending/README.md` is sole pending-work index.
 
-For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `docs/protocol.md`, and `docs/product-truth.md`. Do not hand-edit generated runtime truth to match future architecture.
+For landed behavior, read generated `docs/product/README.md`, `docs/architecture/runtime-truth.md`, `docs/reference/protocol/README.md`, and `docs/reference/product-truth.md`. Do not hand-edit generated runtime truth to match future architecture.
 
 ## Commands
 

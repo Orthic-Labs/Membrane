@@ -2,7 +2,7 @@
 
 Membrane runtime never runs without a visible tray surface (Architecture B,
 decided 2026-08-27 — see
-`docs/current/architecture/adr/tray-daemon-process.md`). Three
+`docs/architecture/adr/tray-daemon-process.md`). Three
 processes, two resident:
 
 - **Native tray app** (resident, parent) — the tray icon and popover. It

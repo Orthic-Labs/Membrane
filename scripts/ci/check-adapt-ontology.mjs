@@ -2,7 +2,7 @@
 // P0.2 — Adapt ontology terminology regression gate.
 //
 // Fails when current-product docs describe Adapt, Taste, or Insights as memory,
-// per docs/current/architecture/subsystems/adapt.md §§14 (P0.2)
+// per docs/architecture/subsystems/adapt.md §§14 (P0.2)
 // and 15 (terminology firewall). Allowed: Cortex/agent/host memory wording and
 // text after the §15.5 historical-terminology marker in explicitly historical
 // files only. Plans, design records, and archives are scanned and must carry
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 /** The canonical spec enumerates forbidden phrases; scanning it would self-report. */
-export const CANONICAL_SPEC = "docs/current/architecture/subsystems/adapt.md";
+export const CANONICAL_SPEC = "docs/architecture/subsystems/adapt.md";
 
 const FORBIDDEN_PATTERNS = [
   { pattern: /\bcontinuous coding-taste memory\b/i, label: "continuous coding-taste memory" },
@@ -39,12 +39,13 @@ const HISTORICAL_MARKER = /Historical terminology:.*predates the canonical Adapt
 export const HISTORICAL_PATH_PREFIXES = [
   "adapt/docs/plans/",
   "docs/archive/",
+  "docs/research/",
   "docs/design/",
   "docs/plans/",
-  "docs/archive/research/legacy-source-corpus/",
+  "docs/research/legacy-source-corpus/",
 ];
 
-export const EXCLUDED_PATH_PREFIXES = ["docs/archive/research/legacy-source-corpus/"];
+export const EXCLUDED_PATH_PREFIXES = ["docs/research/legacy-source-corpus/"];
 
 export const PRIMARY_OVERVIEWS = ["adapt/README.md"];
 

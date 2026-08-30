@@ -7,8 +7,8 @@
 **Current implementation status reviewed:** integration tree at `51f98189da769ed005c516e2a2ea93e61678e0da` (2026-08-26; see Section 0.1.1)
 **Baseline federation cutover commit:** `5a9175b9518ca6d36dca3c7c176bddeca070f5e3`
 **Audience:** Membrane, Adapt, transcript, Cortex, Blueprint, Hub, CodeRight, host-adapter, build, CI, and release-engineering implementers
-**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, archived `docs/archive/architecture/2026-08-22-full-rust-federation-port.md` for federation execution and closure, runtime/process/cutover portions now reconciled into `docs/current/architecture/live-diagnostics.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
-**Companion semantic authority:** `docs/current/architecture/subsystems/adapt.md`
+**Supersedes:** `MEMBRANE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md` dated 2026-08-22, `MEMBRANE-LEGION-ABSORPTION-BRIEF.md` for Membrane work, archived `docs/archive/architecture/2026-08-22-full-rust-federation-port.md` for federation execution and closure, runtime/process/cutover portions now reconciled into `docs/architecture/live-diagnostics.md`, conflicting Membrane portions of bounded dispatch plans, and any documentation that treats a Python/Node Membrane-owned runtime path as a valid final state. Live Diagnostics capability semantics remain reference input unless canonical subsystem doctrine says otherwise.
+**Companion semantic authority:** `docs/architecture/subsystems/adapt.md`
 
 
 ## Scope boundary
@@ -507,7 +507,7 @@ It MUST NOT own preference inference or authority decisions. Those belong to Ada
 
 ## 6. Adapt native runtime cutover
 
-`docs/current/architecture/subsystems/adapt.md` exclusively defines Taste, Insights, evidence authority, proposal eligibility, lifecycle, evaluation, and feature dependencies. Migration code and this plan MUST consume those contracts rather than restating them.
+`docs/architecture/subsystems/adapt.md` exclusively defines Taste, Insights, evidence authority, proposal eligibility, lifecycle, evaluation, and feature dependencies. Migration code and this plan MUST consume those contracts rather than restating them.
 
 Native runtime ownership includes:
 
@@ -1682,9 +1682,9 @@ Generated product truth describes what currently ships; it does not override the
 
 After each native cutover, regenerate/update:
 
-- `docs/product-truth.md`;
-- `docs/architecture.md`;
-- `docs/current/architecture/subsystems/adapt.md` / Adapt README;
+- `docs/reference/product-truth.md`;
+- `docs/architecture/runtime-truth.md`;
+- `docs/architecture/subsystems/adapt.md` / Adapt README;
 - transcript-contract docs;
 - MCP/host docs;
 - Live Diagnostics architecture, operations, provider, hook, and fence docs;
@@ -1704,8 +1704,8 @@ acceptance checklist.
 
 Load-bearing evidence at that historical baseline included:
 
-- `docs/product-truth.md` — six axes include Adapt and current MCP truth lists 17 tools, including seven diagnostic tools;
-- `docs/architecture.md` — current generated source of truth still names `mcp/server.mjs` and `mcp/context-renderer-lib.cjs` on production surfaces;
+- `docs/reference/product-truth.md` — six axes include Adapt and current MCP truth lists 17 tools, including seven diagnostic tools;
+- `docs/architecture/runtime-truth.md` — current generated source of truth still names `mcp/server.mjs` and `mcp/context-renderer-lib.cjs` on production surfaces;
 - commit `5a9175b9518ca6d36dca3c7c176bddeca070f5e3` — production federation route made native/same-process while Python worker retained only for shadow qualification;
 - `engine/crates/membrane-federation/` — native federation implementation;
 - `engine/federation/` — still-present Python legacy implementation;
@@ -1715,7 +1715,7 @@ Load-bearing evidence at that historical baseline included:
 - commit `f602fbbaec1d13629e6b09ca4d6d4c07277ad7ba` — substantial new Python Adapt multi-source transcript learning after the Rust migration decision;
 - commit `7c05b49b6f9ea202116f6829e4f74949a4529592` — prior baseline, adding held-out semantic admission enforcement in Adapt;
 - commit `8a215ac6fab11cc24bb821507057743b7898e09f` — historical audit baseline, adding qualified Live Diagnostics Rust core/providers/contracts, Blueprint D0 findings, seven JS diagnostic MCP tools, and installed Node hook enforcement;
-- `docs/current/architecture/live-diagnostics.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
+- `docs/architecture/live-diagnostics.md` — exact mutation/evidence/fence ownership, no-false-clean contract, host enforcement, Hub lifecycle, and no-seventh-subsystem authority;
 - `engine/crates/membrane-protocol/src/diagnostics.rs` and
   `engine/crates/membrane-runtime/src/{live_diagnostics.rs,live_diagnostics_service.rs,providers/}` — native operational contracts, evaluator, Hub-hosted service module, and qualified providers;
 - `mcp/server.mjs`, `mcp/toolsets.mjs`, `mcp/lib/diagnostics-client.mjs`, and

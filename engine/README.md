@@ -25,5 +25,5 @@ rightkit cargo test --workspace --features fastembed
 ## Docs
 
 - Crate contract: [crates/cortex/SPEC.md](crates/cortex/SPEC.md)
-- Membrane architecture: [canonical doctrine](../docs/current/architecture/membrane.md)
-- Cortex ownership: [atomic capability canon](../docs/current/atoms/cortex.md)
+- Membrane architecture: [canonical doctrine](../docs/architecture/membrane.md)
+- Cortex ownership: [atomic capability canon](../docs/canon/cortex.md)

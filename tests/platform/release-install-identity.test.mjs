@@ -25,7 +25,7 @@ test("generated OCI source contract uses current Membrane coordinate", () => {
 });
 
 test("active install docs do not resurrect retired package or installer authority", () => {
-  const docs = ["docs/README.md", "docs/install.md", "docs/install-npm.md", "docs/install-oci.md", "docs/install-registry.md", "docs/installation/README.md", "docs/current/architecture/runtime/tray-daemon-contract.md", "docs/getting-started.md", "docs/compatibility/release-channels.md", "docs/pending/README.md", "scripts/tools/productization/README.md"].map(read).join("\n");
+  const docs = ["docs/README.md", "docs/product/installation/install.md", "docs/product/installation/npm.md", "docs/product/installation/oci.md", "docs/product/installation/registry.md", "docs/product/installation/README.md", "docs/architecture/runtime/tray-daemon-contract.md", "docs/product/getting-started.md", "docs/product/compatibility/release-channels.md", "docs/pending/README.md", "scripts/tools/productization/README.md"].map(read).join("\n");
   assert.doesNotMatch(docs, /@orthic\/membrane|orthic\.membrane|Orthic owns desktop installation|Orthic desktop installer/i);
   assert.match(docs, /Membrane Hub/);
 });
