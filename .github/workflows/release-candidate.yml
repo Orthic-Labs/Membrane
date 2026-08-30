@@ -1,11 +1,10 @@
-# Managed by right-git — do not hand-edit most of this file. Run `right-git sync`
-# to update the templated `candidate` job. The `installed-qualification` job
-# below is a repo-local addition (not part of the right-git template) that
-# wires scripts/qualification/install-release.ps1 into CI; if right-git sync
-# ever drops it, re-add it from git history rather than losing the gate.
-# Template: profiles/rust-hybrid/release-candidate.yml | Template version: 1.1.0
-# Public CI produces unsigned candidates only. Signing credentials, finalization,
-# release publication, & stable bootstrap publication remain protected-host work.
+# Managed by right-git — do not hand-edit the templated `candidate` job. Run
+# `right-git sync` to update that job. The finalization, installed-qualification,
+# and publish jobs are repo-local additions; if sync drops them, restore them
+# from git history. Pending §19 moves this capability into RightKit generation.
+# Public CI creates only an explicitly-labelled unsigned candidate. Signing,
+# finalization, qualification, release publication, and stable bootstrap
+# publication run on the protected Windows host.
 name: release-candidate
 on:
   workflow_dispatch:
@@ -14,9 +13,8 @@ on:
         description: >-
           Run the real installed-artifact qualification
           (scripts/qualification/install-release.ps1). Requires a
-          self-hosted Windows runner with signing secrets and a real
-          interactive desktop session (UI-automation tray click). Leave
-          unchecked on hosted runners — it will skip with a typed reason.
+          self-hosted Windows runner with signing configuration and a real
+          interactive desktop session.
         type: boolean
         default: false
   push:
@@ -63,85 +61,313 @@ jobs:
         run: pnpm run release:candidate:check
         env:
           RIGHT_GIT_ARTIFACT_ROOT: ${{ runner.temp }}/membrane/windows-x86_64
-      - name: Upload unsigned candidate handoff
+      - name: Mark candidate as unsigned until protected finalization
+        shell: pwsh
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/membrane/windows-x86_64
+        run: |
+          if (-not (Test-Path -LiteralPath $env:ARTIFACT_ROOT -PathType Container)) { throw "candidate artifact root is missing: $env:ARTIFACT_ROOT" }
+          Set-Content -LiteralPath (Join-Path $env:ARTIFACT_ROOT 'UNSIGNED-CANDIDATE.txt') -Value 'This candidate is unsigned. It is not a customer release.' -NoNewline
+      - name: Upload explicitly-labelled unsigned candidate handoff
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: membrane-unsigned-${{ matrix.os }}-${{ matrix.node }}
+          name: membrane-UNSIGNED-windows-release-candidate
           path: ${{ runner.temp }}/membrane/windows-x86_64/**
           if-no-files-found: error
-  # Real installed-artifact qualification (scripts/qualification/install-release.ps1):
-  # signed tray+daemon install, UI-automation tray click, Blueprint
-  # status/mismatch/one-shot checks. `candidate` above only builds & checks an
-  # UNSIGNED candidate — it cannot exercise this. This job is explicit-dispatch
-  # only, never runs on the tag-push trigger, and requires:
-  #   - a signed installer + a signed previous-version installer to exercise
-  #     current -> previous -> current, plus a release manifest & SBOM
-  #     (secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL /
-  #     _PREVIOUS_INSTALLER_URL / _RELEASE_MANIFEST_URL / _SBOM_URL);
-  #   - a real interactive Windows desktop session for UI automation
-  #     (Shell_TrayWnd / tray popup / renderer window assertions), which
-  #     hosted GitHub-managed Windows runners do not reliably provide — set
-  #     vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL to a self-hosted Windows
-  #     runner label that has one.
-  # Any prerequisite missing skips with a visible typed reason; it never
-  # silently no-ops or reports a fake pass.
-  installed-qualification:
-    needs: [private-repo-guard]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_installed_qualification }}
+  # This is protected-host work. It consumes the candidate handoff, then uses
+  # the existing RightKit Windows release machinery to create signed installer
+  # and portable-release inputs. It also creates the small manifest/SBOM pair
+  # consumed by install-release.ps1 without replacing RightKit evidence.
+  finalization:
+    needs: [candidate]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL || 'windows-2025' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check installed-qualification prerequisites
-        id: prereqs
+      - name: Download candidate handoff from this workflow run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: membrane-UNSIGNED-windows-release-candidate
+          path: ${{ runner.temp }}/release-finalization/candidate
+      - name: Check protected-host prerequisites
         shell: pwsh
         env:
-          INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL }}
-          PREVIOUS_INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL }}
-          RELEASE_MANIFEST_URL: ${{ secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL }}
-          SBOM_URL: ${{ secrets.MEMBRANE_QUALIFICATION_SBOM_URL }}
           RUNNER_LABEL: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL }}
+          CANDIDATE_ROOT: ${{ runner.temp }}/release-finalization/candidate
         run: |
-          $missing = @()
-          if (-not $env:RUNNER_LABEL) { $missing += "self-hosted Windows runner (vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL) not configured; UI-automation tray checks need a real interactive desktop session hosted runners do not reliably provide" }
-          if (-not $env:INSTALLER_URL) { $missing += "signed installer (secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL) not configured" }
-          if (-not $env:PREVIOUS_INSTALLER_URL) { $missing += "signed previous-version installer (secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL) not configured" }
-          if (-not $env:RELEASE_MANIFEST_URL) { $missing += "release manifest (secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL) not configured" }
-          if (-not $env:SBOM_URL) { $missing += "SBOM (secrets.MEMBRANE_QUALIFICATION_SBOM_URL) not configured" }
-          if ($missing.Count -gt 0) {
-            $reason = $missing -join "; "
-            Write-Host "::warning::installed_qualification_skipped { reason: prerequisites_absent, detail: `"$reason`" }"
-            "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          } else {
-            "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if (-not $env:RUNNER_LABEL) {
+            throw 'release_finalization_failed { reason: prerequisites_absent, detail: "qualification_runner_missing: set vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL to a self-hosted Windows runner with an interactive desktop session" }'
           }
-      - name: Fetch qualification artifacts
-        if: steps.prereqs.outputs.skip != 'true'
+          $marker = Join-Path $env:CANDIDATE_ROOT 'UNSIGNED-CANDIDATE.txt'
+          if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) {
+            throw 'release_finalization_failed { reason: prerequisites_absent, detail: "candidate_identity_missing: expected the explicitly-labelled unsigned candidate handoff" }'
+          }
+          function HostEnv([string]$Name) {
+            foreach ($Scope in @('Process', 'User', 'Machine')) {
+              $Value = [Environment]::GetEnvironmentVariable($Name, $Scope)
+              if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
+            }
+            return $null
+          }
+          $metadata = HostEnv 'AZURE_ARTIFACT_SIGNING_METADATA'
+          if (-not $metadata) { $metadata = HostEnv 'AZURE_SIGNING_METADATA' }
+          if (-not $metadata) {
+            $missing = @()
+            foreach ($Name in @('AZURE_ARTIFACT_SIGNING_ENDPOINT', 'AZURE_ARTIFACT_SIGNING_ACCOUNT', 'AZURE_ARTIFACT_SIGNING_PROFILE')) {
+              if (-not (HostEnv $Name)) { $missing += $Name }
+            }
+            if ($missing.Count -gt 0) {
+              throw "release_finalization_failed { reason: prerequisites_absent, detail: \"signing_configuration_missing: set the protected-host environment variables $($missing -join ', ') or AZURE_ARTIFACT_SIGNING_METADATA\" }"
+            }
+          }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.13
+          package-manager-cache: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.24.0
+      - name: Install release tooling
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir apps/membrane-hub install --frozen-lockfile
+      - name: Build and sign the Windows installer
+        run: pnpm --dir apps/membrane-hub run release:build:win
+      - name: Finalize portable release inputs from the candidate
+        run: pnpm --dir apps/membrane-hub run release:build:portable:win
+        env:
+          MEMBRANE_CANDIDATE_ROOT: ${{ runner.temp }}/release-finalization/candidate
+      - name: Bind qualification manifest and SBOM to the signed installer
         shell: pwsh
         env:
+          FINAL_ROOT: ${{ runner.temp }}/release-finalization
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $sealedInstallers = @(Get-ChildItem -LiteralPath '.right-release\sealed' -Filter '*-setup.exe' -File -Recurse -ErrorAction SilentlyContinue)
+          if ($sealedInstallers.Count -ne 1) { throw "release_finalization_failed { reason: artifacts_incomplete, detail: \"signed_installer_missing_or_ambiguous: found $($sealedInstallers.Count)\" }" }
+          $identityPath = 'apps/membrane-hub/dist/release-identity.json'
+          if (-not (Test-Path -LiteralPath $identityPath -PathType Leaf)) { throw "release_finalization_failed { reason: artifacts_incomplete, detail: \"release_identity_missing: $identityPath\" }" }
+          $package = Get-Content -Raw -LiteralPath 'apps/membrane-hub/package.json' | ConvertFrom-Json
+          if ($env:TAG_NAME -ne "v$($package.version)") { throw "release_finalization_failed { reason: identity_mismatch, detail: \"tag=$env:TAG_NAME package=v$($package.version)\" }" }
+          $identity = Get-Content -Raw -LiteralPath $identityPath | ConvertFrom-Json
+          $installer = $sealedInstallers[0]
+          $installerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          $qualificationRoot = Join-Path $env:FINAL_ROOT 'qualification'
+          $installerRoot = Join-Path $env:FINAL_ROOT 'installer'
+          New-Item -ItemType Directory -Force -Path $qualificationRoot, $installerRoot | Out-Null
+          Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path $installerRoot $installer.Name)
+          $signature = "$($installer.FullName).sig"
+          if (Test-Path -LiteralPath $signature -PathType Leaf) { Copy-Item -LiteralPath $signature -Destination (Join-Path $installerRoot ([IO.Path]::GetFileName($signature))) }
+          $release = [ordered]@{
+            tag = $env:TAG_NAME
+            version = [string]$package.version
+            commit = (& git rev-parse HEAD).Trim()
+            tree = [string]$identity.sourceTreeSha256
+            generation = ([string]$identity.releaseGeneration -replace '^sha256:', '')
+            target = 'windows-x86_64'
+            artifact_sha256 = $installerHash
+          }
+          $manifest = [ordered]@{
+            schema = 'membrane.release-evidence.v1'
+            release = $release
+            artifact = [ordered]@{ path = $installer.Name; sha256 = $installerHash }
+          }
+          $sbom = [ordered]@{
+            schema = 'membrane.sbom.v1'
+            product = 'Membrane Hub'
+            release = $env:TAG_NAME
+            artifact = [ordered]@{ path = $installer.Name; sha256 = $installerHash }
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $qualificationRoot 'release-manifest.json') -Encoding utf8
+          $sbom | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $qualificationRoot 'sbom.json') -Encoding utf8
+          $portable = 'apps/membrane-hub/dist/portable'
+          if (-not (Test-Path -LiteralPath $portable -PathType Container)) { throw 'release_finalization_failed { reason: bootstrap_inputs_missing, detail: "portable release finalization did not produce dist/portable" }' }
+          Copy-Item -LiteralPath $portable -Destination (Join-Path $env:FINAL_ROOT 'portable') -Recurse -Force
+      - name: Upload signed release inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: membrane-signed-windows-release-inputs
+          path: ${{ runner.temp }}/release-finalization/**
+          if-no-files-found: error
+  # On a tag this job is mandatory. A failed finalization still reaches this
+  # job through always() so the failure retains an installed-qualification
+  # typed reason instead of becoming a skipped release gate. Manual dispatch
+  # remains a non-gating URL-based escape hatch.
+  installed-qualification:
+    needs: [candidate, finalization]
+    if: ${{ always() && needs.candidate.result == 'success' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.run_installed_qualification)) }}
+    runs-on: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL || 'windows-2025' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download candidate from this workflow run
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: membrane-UNSIGNED-windows-release-candidate
+          path: ${{ runner.temp }}/qualification/candidate
+      - name: Download same-run signed release inputs
+        if: ${{ github.event_name == 'push' && needs.finalization.result == 'success' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: membrane-signed-windows-release-inputs
+          path: ${{ runner.temp }}/qualification/release
+      - name: Prepare qualification inputs
+        id: prepare
+        shell: pwsh
+        env:
+          IS_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+          FINALIZATION_RESULT: ${{ needs.finalization.result }}
+          RUNNER_LABEL: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL }}
+          RELEASE_ROOT: ${{ runner.temp }}/qualification/release
+          QUALIFICATION_ROOT: ${{ runner.temp }}/qualification
           INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL }}
           PREVIOUS_INSTALLER_URL: ${{ secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL }}
           RELEASE_MANIFEST_URL: ${{ secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL }}
           SBOM_URL: ${{ secrets.MEMBRANE_QUALIFICATION_SBOM_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CURRENT_TAG: ${{ github.ref_name }}
         run: |
-          New-Item -ItemType Directory -Force -Path "${{ runner.temp }}\qualification" | Out-Null
-          Invoke-WebRequest -Uri $env:INSTALLER_URL -OutFile "${{ runner.temp }}\qualification\current.exe"
-          Invoke-WebRequest -Uri $env:PREVIOUS_INSTALLER_URL -OutFile "${{ runner.temp }}\qualification\previous.exe"
-          Invoke-WebRequest -Uri $env:RELEASE_MANIFEST_URL -OutFile "${{ runner.temp }}\qualification\release-manifest.json"
-          Invoke-WebRequest -Uri $env:SBOM_URL -OutFile "${{ runner.temp }}\qualification\sbom.json"
+          New-Item -ItemType Directory -Force -Path $env:QUALIFICATION_ROOT | Out-Null
+          if ($env:IS_TAG -eq 'true') {
+            $missing = @()
+            if (-not $env:RUNNER_LABEL) { $missing += 'qualification_runner_missing: set vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL to a self-hosted Windows runner with an interactive desktop session' }
+            if (-not (Test-Path -LiteralPath (Join-Path $env:QUALIFICATION_ROOT 'candidate\UNSIGNED-CANDIDATE.txt') -PathType Leaf)) { $missing += 'candidate_handoff_missing: the unsigned candidate from this workflow run was not downloaded' }
+            if ($env:FINALIZATION_RESULT -ne 'success') { $missing += 'signing_finalization_missing: protected RightKit Windows finalization did not complete' }
+            if ($missing.Count -gt 0) {
+              $detail = $missing -join '; '
+              throw "installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: \"$detail\" }"
+            }
+            $installer = @(Get-ChildItem -LiteralPath (Join-Path $env:RELEASE_ROOT 'installer') -Filter '*-setup.exe' -File)
+            $manifest = Join-Path $env:RELEASE_ROOT 'qualification\release-manifest.json'
+            $sbom = Join-Path $env:RELEASE_ROOT 'qualification\sbom.json'
+            if ($installer.Count -ne 1 -or -not (Test-Path -LiteralPath $manifest -PathType Leaf) -or -not (Test-Path -LiteralPath $sbom -PathType Leaf)) {
+              throw 'installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: "release_inputs_missing: same-run signed installer, release manifest, and SBOM are required" }'
+            }
+            $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+            try { $releases = @(Invoke-RestMethod -Headers $headers -Uri "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/releases?per_page=100") }
+            catch { throw "installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: \"previous_release_lookup_failed: $($_.Exception.Message)\" }" }
+            $previous = @($releases | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -ne $env:CURRENT_TAG } | Select-Object -First 1)
+            if ($previous.Count -ne 1) { throw 'installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: "previous_signed_release_missing: no prior non-draft release is available" }' }
+            $previousAsset = @($previous[0].assets | Where-Object { $_.name -match '(?i)(setup|installer).*\.exe$' } | Select-Object -First 1)
+            if ($previousAsset.Count -ne 1) { throw 'installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: "previous_signed_installer_missing: the prior release has no signed installer asset" }' }
+            $previousPath = Join-Path $env:QUALIFICATION_ROOT 'previous.exe'
+            try { Invoke-WebRequest -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/octet-stream' } -Uri $previousAsset[0].url -OutFile $previousPath }
+            catch { throw "installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: \"previous_signed_installer_download_failed: $($_.Exception.Message)\" }" }
+            $currentSignature = Get-AuthenticodeSignature -LiteralPath $installer[0].FullName
+            $previousSignature = Get-AuthenticodeSignature -LiteralPath $previousPath
+            if ($currentSignature.Status -ne 'Valid' -or $previousSignature.Status -ne 'Valid') {
+              throw "installed_qualification_failed: installed_qualification_skipped { reason: prerequisites_absent, detail: \"signing_finalization_missing: current=$($currentSignature.Status); previous=$($previousSignature.Status)\" }"
+            }
+            "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "current=$($installer[0].FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "previous=$previousPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "manifest=$manifest" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "sbom=$sbom" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+          $missing = @()
+          if (-not $env:RUNNER_LABEL) { $missing += 'self-hosted Windows runner (vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL) not configured; UI automation needs a real interactive desktop session' }
+          if (-not $env:INSTALLER_URL) { $missing += 'signed installer (secrets.MEMBRANE_QUALIFICATION_INSTALLER_URL) not configured' }
+          if (-not $env:PREVIOUS_INSTALLER_URL) { $missing += 'signed previous-version installer (secrets.MEMBRANE_QUALIFICATION_PREVIOUS_INSTALLER_URL) not configured' }
+          if (-not $env:RELEASE_MANIFEST_URL) { $missing += 'release manifest (secrets.MEMBRANE_QUALIFICATION_RELEASE_MANIFEST_URL) not configured' }
+          if (-not $env:SBOM_URL) { $missing += 'SBOM (secrets.MEMBRANE_QUALIFICATION_SBOM_URL) not configured' }
+          if ($missing.Count -gt 0) {
+            $reason = $missing -join '; '
+            Write-Host "::warning::installed_qualification_skipped { reason: prerequisites_absent, detail: \"$reason\" }"
+            "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+          Invoke-WebRequest -Uri $env:INSTALLER_URL -OutFile (Join-Path $env:QUALIFICATION_ROOT 'current.exe')
+          Invoke-WebRequest -Uri $env:PREVIOUS_INSTALLER_URL -OutFile (Join-Path $env:QUALIFICATION_ROOT 'previous.exe')
+          Invoke-WebRequest -Uri $env:RELEASE_MANIFEST_URL -OutFile (Join-Path $env:QUALIFICATION_ROOT 'release-manifest.json')
+          Invoke-WebRequest -Uri $env:SBOM_URL -OutFile (Join-Path $env:QUALIFICATION_ROOT 'sbom.json')
+          "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "current=$(Join-Path $env:QUALIFICATION_ROOT 'current.exe')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "previous=$(Join-Path $env:QUALIFICATION_ROOT 'previous.exe')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "manifest=$(Join-Path $env:QUALIFICATION_ROOT 'release-manifest.json')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "sbom=$(Join-Path $env:QUALIFICATION_ROOT 'sbom.json')" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Run installed-artifact qualification
-        if: steps.prereqs.outputs.skip != 'true'
+        if: steps.prepare.outputs.skip != 'true'
         shell: pwsh
         run: |
           ./scripts/qualification/install-release.ps1 `
-            -Installer "${{ runner.temp }}\qualification\current.exe" `
-            -PreviousInstaller "${{ runner.temp }}\qualification\previous.exe" `
-            -ReleaseManifest "${{ runner.temp }}\qualification\release-manifest.json" `
-            -Sbom "${{ runner.temp }}\qualification\sbom.json" `
+            -Installer "${{ steps.prepare.outputs.current }}" `
+            -PreviousInstaller "${{ steps.prepare.outputs.previous }}" `
+            -ReleaseManifest "${{ steps.prepare.outputs.manifest }}" `
+            -Sbom "${{ steps.prepare.outputs.sbom }}" `
             -EvidencePath "${{ runner.temp }}\qualification\evidence.json"
       - name: Upload qualification evidence
-        if: steps.prereqs.outputs.skip != 'true'
+        if: steps.prepare.outputs.skip != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: membrane-installed-qualification-evidence
           path: ${{ runner.temp }}/qualification/evidence.json
           if-no-files-found: error
+  publish:
+    needs: [installed-qualification]
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.installed-qualification.result == 'success' }}
+    runs-on: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL || 'windows-2025' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: membrane-signed-windows-release-inputs
+          path: ${{ runner.temp }}/release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: membrane-installed-qualification-evidence
+          path: ${{ runner.temp }}/release/qualification-evidence
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.13
+          package-manager-cache: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.24.0
+      - name: Check publication prerequisites before any release mutation
+        shell: pwsh
+        env:
+          RUNNER_LABEL: ${{ vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RELEASE_ROOT: ${{ runner.temp }}/release
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if (-not $env:RUNNER_LABEL) { throw 'release_publication_failed { reason: prerequisites_absent, detail: "qualification_runner_missing: set vars.MEMBRANE_QUALIFICATION_RUNNER_LABEL" }' }
+          if (-not $env:CLOUDFLARE_API_TOKEN) { throw 'release_publication_failed { reason: prerequisites_absent, detail: "bootstrap_publication_missing: set secret CLOUDFLARE_API_TOKEN" }' }
+          $installer = @(Get-ChildItem -LiteralPath (Join-Path $env:RELEASE_ROOT 'installer') -Filter '*-setup.exe' -File)
+          $manifest = Join-Path $env:RELEASE_ROOT 'qualification\release-manifest.json'
+          $sbom = Join-Path $env:RELEASE_ROOT 'qualification\sbom.json'
+          $evidence = @(Get-ChildItem -LiteralPath (Join-Path $env:RELEASE_ROOT 'qualification-evidence') -Filter 'evidence.json' -File)
+          if ($installer.Count -ne 1 -or -not (Test-Path -LiteralPath $manifest -PathType Leaf) -or -not (Test-Path -LiteralPath $sbom -PathType Leaf) -or $evidence.Count -ne 1) { throw 'release_publication_failed { reason: artifacts_incomplete, detail: "expected one signed installer, qualification manifest, SBOM, and installed qualification evidence" }' }
+          if (Test-Path -LiteralPath (Join-Path $env:RELEASE_ROOT 'candidate\UNSIGNED-CANDIDATE.txt') -PathType Leaf) { Write-Host 'Unsigned candidate handoff retained as provenance; it is not a publication asset.' }
+      - name: Install publication tooling
+        run: pnpm --dir apps/membrane-hub install --frozen-lockfile
+      - name: Publish signed portable release and stable bootstrap through RightKit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RELEASE_ROOT: ${{ runner.temp }}/release
+        run: |
+          New-Item -ItemType Directory -Force -Path 'apps/membrane-hub/dist' | Out-Null
+          if (Test-Path -LiteralPath 'apps/membrane-hub/dist/portable') { Remove-Item -LiteralPath 'apps/membrane-hub/dist/portable' -Recurse -Force }
+          Copy-Item -LiteralPath (Join-Path $env:RELEASE_ROOT 'portable') -Destination 'apps/membrane-hub/dist/portable' -Recurse -Force
+          pnpm --dir apps/membrane-hub run release:publish:portable:win
+      - name: Attach installer qualification inputs and evidence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ROOT: ${{ runner.temp }}/release
+          TAG_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          $installer = @(Get-ChildItem -LiteralPath (Join-Path $env:RELEASE_ROOT 'installer') -Filter '*-setup.exe' -File)
+          $manifest = Join-Path $env:RELEASE_ROOT 'qualification\release-manifest.json'
+          $sbom = Join-Path $env:RELEASE_ROOT 'qualification\sbom.json'
+          $evidence = @(Get-ChildItem -LiteralPath (Join-Path $env:RELEASE_ROOT 'qualification-evidence') -Filter 'evidence.json' -File)
+          gh release upload $env:TAG_NAME $installer[0].FullName $manifest $sbom $evidence[0].FullName --repo $env:REPOSITORY --clobber
