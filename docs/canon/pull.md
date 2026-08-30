@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| PUL-G01 | — | Pull | COMMITTED | 35 committed capabilities; 1 exploratory capability; closure derived from child rows |
+| PUL-G01 | — | Pull | COMMITTED | 38 committed capabilities; 1 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
@@ -50,6 +50,9 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-034 | PUL-G01 | Pull | EXPLORATORY | Fuse exact Ledger evidence with document-derived Cortex knowledge while retaining distinct provenance & verification policy. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 | PUL-035 | PUL-G01 | Pull | COMMITTED | Re-observe resolver availability immediately before publication so unavailable resolution cannot be emitted. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: PUL-035; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | PUL-036 | PUL-G01 | Pull | COMMITTED | Reconcile publication authorization inputs immediately before emission so a changed reconciliation blocks packet output. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: PUL-036; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| PUL-037 | PUL-G01 | Pull | COMMITTED | Suppress unchanged evidence already delivered to the same scoped session within a bounded horizon; emit typed suppression & restore eligibility on content change, expiry, unknown state, or explicit refresh. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| PUL-039 | PUL-G01 | Pull | COMMITTED | Preserve one versioned byte-stable reusable packet prefix across equivalent requests without changing membership, authority, freshness, or required coverage. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| PUL-040 | PUL-G01 | Pull | COMMITTED | Place admitted evidence by versioned semantic placement class without changing membership, authority, rank, or atomic grouping. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
 
 ## Implementation register
 
@@ -91,6 +94,9 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-I034 | PUL-034 | No production seam | Legacy pre-normalization source pull.md:40@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948; dependencies: LDG-023, CTX-033; canon: MCA ownership; frozen `docs/pending/semantic-blueprint-review-pack-v2/03-PULL-SEMANTIC-AND-SOURCE-FUSION-AMENDMENT.md@c6cfbca96e5be1d0f8de8cb9614d6158f57cc948`; note: Orchestration/admission unresolved. | ADAPT | MISSING | Future semantic document context |
 | PUL-I035 | PUL-035 | `engine/crates/membrane-runtime/src/source_resolution.rs:118-181` | No immediate prepublication re-observation. | RECONCILE | PARTIAL | `engine/crates/membrane-runtime/src/pull/federation.rs:670-672` |
 | PUL-I036 | PUL-036 | `engine/crates/membrane-runtime/src/pull/federation.rs:334-400` | Only grant ID, epoch, & revocation; no full reconciliation input. | RECONCILE | PARTIAL | `engine/crates/membrane-runtime/src/pull/federation.rs:101-114,232-246,635-712` |
+| PUL-I037 | PUL-037 | No generic production served-set suppression; current rules delivery ledger changes repeated rules from inline to reference only. | `docs/provenance/foundation/2026-08-31-master-atom-intake/pull-review.md`; donor behavior remains reference-only pending exact license revalidation. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Pull selection/publication path |
+| PUL-I039 | PUL-039 | Current cache-prefix path diagnoses finalized order but receives no prior packet & chooses no invariant prefix. | `docs/provenance/foundation/2026-08-31-master-atom-intake/pull-review.md`; archive PackMind mechanism is reference-only. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Pull planner/packet receipt path |
+| PUL-I040 | PUL-040 | No production semantic placement policy; Push only preserves planner-selected order. | `docs/architecture/membrane.md`; `docs/provenance/foundation/2026-08-31-master-atom-intake/pull-review.md` | ORIGINAL | MISSING | Future Pull planner/final renderer path |
 
 ## Qualification ledger
 
@@ -132,6 +138,9 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-Q034 | PUL-034 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q035 | PUL-035 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q036 | PUL-036 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q037 | PUL-037 | Qualify session/restart/expiry/refresh/content-change recovery, typed omission, required-coverage preservation, & whole-task non-regression at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q039 | PUL-039 | Qualify stable policy/version, prior-packet compatibility, prefix reuse, required-evidence invariance, disable rollback, & released host/model non-regression | PENDING | PENDING | LOCAL |
+| PUL-Q040 | PUL-040 | Qualify semantic classes, membership/authority invariance, atomic grouping, cache-prefix interaction, flag rollback, & released host/model non-regression | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -142,3 +151,4 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-D003 | EXCLUSION | PUL-021 | Provider-local scores never become cross-provider truth; blind fan-out & stale publication remain excluded. | Current Pull architecture | RECORDED |
 | PUL-D004 | REFERENCE | PUL-034 | Semantic document/source fusion remains exploratory because current Pull architecture does not commit frozen proposal. | Frozen semantic compilation proposal | RECORDED |
 | PUL-D005 | REFERENCE | PUL-001, PUL-004, PUL-019, PUL-020, PUL-031, PUL-033 | Deterministic mechanisms run through bounded sufficiency/correction first; optional semantic assistance remains receipt-visible, validated, bounded, & unable to alter authority. | Architecture corrections V2 reconciliation, 2026-08-31 | RECORDED |
+| PUL-D006 | REFERENCE | PUL-037, PUL-039, PUL-040 | Commit bounded cross-turn suppression, reusable-prefix policy, & semantic placement as independent Pull behaviors; PUL-038 archive bundle maps to existing Ledger expansion/representation registers. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |

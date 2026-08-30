@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| ADP-G01 | — | Adapt | COMMITTED | 62 committed capabilities; 7 exploratory capability; closure derived from child rows |
+| ADP-G01 | — | Adapt | COMMITTED | 64 committed capabilities; 7 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
@@ -83,6 +83,8 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | ADP-069 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic worker foreground interference. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 | ADP-070 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic worker over budget. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
 | ADP-071 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic compilation low yield. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING |
+| ADP-072 | ADP-G01 | Adapt | COMMITTED | When evidence is insufficient for safe proposal formation, ask one evidence-bound clarification question, persist nonmutating clarification state, bind one human answer, & resume same lineage only while target evidence remains current. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
+| ADP-073 | ADP-G01 | Adapt | COMMITTED | Maintain at most one apply-eligible pending proposal per semantic target & target version; concurrent proposals merge, supersede, or surface typed conflict without duplicate mutation. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
 
 ## Implementation register
 
@@ -159,6 +161,8 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-I069 | ADP-069 | No production implementation | Hold semantic_worker_foreground_interference detector. | ORIGINAL | MISSING | NONE |
 | ADP-I070 | ADP-070 | No production implementation | Hold semantic_worker_over_budget detector. | ORIGINAL | MISSING | NONE |
 | ADP-I071 | ADP-071 | No production implementation | Hold semantic_compilation_low_yield detector. | ORIGINAL | MISSING | NONE |
+| ADP-I072 | ADP-072 | No production clarification request, persistent nonmutating state, answer binding, or same-lineage resume path. | `docs/provenance/foundation/2026-08-31-master-atom-intake/adapt-review.md`; donor mechanisms require behavioral reimplementation. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Adapt review & host interaction path |
+| ADP-I073 | ADP-073 | Proposal stores do not enforce semantic-target plus target-version exclusion across concurrent writers. | `docs/provenance/foundation/2026-08-31-master-atom-intake/adapt-review.md`; donor mechanisms require behavioral reimplementation. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Adapt proposal registry |
 
 ## Qualification ledger
 
@@ -233,6 +237,8 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-Q069 | ADP-069 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q070 | ADP-070 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q071 | ADP-071 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q072 | ADP-072 | Qualify one bound question, unsupported-host behavior, restart/resume, answer authority, lineage, cancellation, stale-target refusal, & no candidate before answer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q073 | ADP-073 | Qualify same-target conflict, merge/supersede, distinct-target concurrency, crash/retry idempotency, lock release, & separation from Cortex/target apply at RELEASED boundary | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -248,3 +254,4 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-D008 | REFERENCE | ADP-043, ADP-044, ADP-045, ADP-046, ADP-047, ADP-048, ADP-049, ADP-050, ADP-051, ADP-052, ADP-053, ADP-054, ADP-055, ADP-056, ADP-057, ADP-058, ADP-059, ADP-060, ADP-061, ADP-062, ADP-063 | Preserved ADP-037 legacy alias maps to atomic detector ownership. | Sage split decision | RECORDED |
 | ADP-D009 | REFERENCE | ADP-065, ADP-066, ADP-067, ADP-068, ADP-069, ADP-070, ADP-071 | Preserved ADP-039 legacy alias maps to atomic semantic compiler detector ownership. | Sage split decision | RECORDED |
 | ADP-D010 | REFERENCE | ADP-022, ADP-036 | Stable asset name does not prove exact loaded content; proposal kind/effect/target independence requires compatibility validation rather than one-way derivation. | Architecture corrections V2 reconciliation, 2026-08-31 | RECORDED |
+| ADP-D011 | REFERENCE | ADP-072, ADP-073, ADP-004, ADP-007, ADP-016, ADP-027, ADP-041 | Commit clarification persistence & target-version proposal exclusion as distinct missing behaviors; merge archive AFA-009/AFA-028 clarification semantics into ADP-072. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |

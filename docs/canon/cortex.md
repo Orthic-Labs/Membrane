@@ -8,7 +8,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| CTX-G01 | — | Cortex | COMMITTED | 36 committed capabilities; 1 exploratory capability; closure derived from child rows |
+| CTX-G01 | — | Cortex | COMMITTED | 37 committed capabilities; 1 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
@@ -51,6 +51,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | CTX-035 | CTX-G01 | Cortex | COMMITTED | Evaluate utility eligibility before admitting a durable candidate without replacing novelty, conflict or lifecycle gates. | MISSING | PENDING | PENDING | LOCAL | RECONCILE_EVIDENCE | PENDING |
 | CTX-036 | CTX-G01 | Cortex | COMMITTED | Restore a durable backup transactionally, refuse tampered input, and preserve recall equivalence. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: CTX-036; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | CTX-037 | CTX-G01 | Cortex | COMMITTED | Import durable Cortex records through an explicit import path. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: CTX-037; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| CTX-038 | CTX-G01 | Cortex | COMMITTED | Declare every bounded recall/list/explain/relationship result `exact` or `lower_bound` with machine-readable causes & knowable considered/returned/dropped counts. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
 
 ## Implementation register
 
@@ -93,6 +94,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | CTX-I035 | CTX-035 | No admission-time utility eligibility gate found; only post-hoc `utility_recall_score` at recall time (`engine/crates/membrane-runtime/src/store.rs:88-91,4619,4675`) | Split from CTX-002 after atomicity reconciliation; utility closes independently from pre-gate, novelty, conflict & lifecycle; admission path (`engine/crates/membrane-runtime/src/store.rs:7393-7690`) implements novelty/near-duplicate/conflict-quarantine gates only, no separate utility gate | ADAPT | MISSING | Native writer/Adapt |
 | CTX-I036 | CTX-036 | `engine/crates/membrane-runtime/src/store.rs:7992-8039` | No production surface. | RECONCILE | PARTIAL | NONE (tests only) |
 | CTX-I037 | CTX-037 | `engine/crates/membrane-runtime/src/cli.rs:1412-1503` | COMPLETE | RECONCILE | DELIVERED | `engine/crates/membrane-runtime/src/cli.rs:4883-4886` |
+| CTX-I038 | CTX-038 | No shared completeness envelope; native memory adapter discards N+1 omissions & can assert complete on bounded results. | `docs/provenance/foundation/2026-08-31-master-atom-intake/cortex-review.md`; GitNexus evidence is PolyForm Noncommercial reference only. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Cortex CLI/service/native Pull adapter path |
 
 ## Qualification ledger
 
@@ -135,6 +137,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | CTX-Q035 | CTX-035 | Prove utility eligibility through durable admission production path at RELEASED boundary | PENDING | PENDING | LOCAL |
 | CTX-Q036 | CTX-036 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | CTX-Q037 | CTX-037 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| CTX-Q038 | CTX-038 | Qualify exact/lower-bound causes & counts for empty, capped, filtered, stale, unavailable, unresolved, & failed results with byte-equivalent CLI/service/Pull semantics at RELEASED boundary | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -145,3 +148,4 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | CTX-D003 | REFERENCE | CTX-002, CTX-005, CTX-006, CTX-007, CTX-008, CTX-010, CTX-035 | Pre-gate, exact/near duplicate, conflict/quarantine, lifecycle & utility gates close independently. | Atomicity reconciliation | RECORDED |
 | CTX-D004 | REFERENCE | CTX-033 | Document-derived semantic knowledge remains exploratory because current Cortex architecture does not commit frozen proposal. | Frozen semantic compilation proposal | RECORDED |
 | CTX-D005 | REFERENCE | CTX-033 | Late asynchronous success grants no authority: exact source-generation/content fence must still match at Cortex admission. | Architecture corrections V2 reconciliation, 2026-08-31 | RECORDED |
+| CTX-D006 | REFERENCE | CTX-038, PUL-019, PUL-031 | Cortex owns truthful lane-local completeness; Pull retains cross-provider sufficiency, admission, publication, & final omission receipts. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |

@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "archive": {
+    "path": "D:/Downloads/master_atom_list.zip",
+    "sha256": "5413F1DF0EA80C8A335098E6CA7E9BD23234CA1DCF8DE63B5700E1DA6E88D82D",
+    "target_revision": "29adfc8e2fe5a2d43ed25634a91ebec3bb4070d3"
+  },
+  "comparison_revision": "a9a4afb3eeaf4ee00869e8c303c50f810632f273",
+  "method": "six isolated subsystem inventories plus two independent cross-subsystem candidate challenges",
+  "counts": {
+    "requested": 336,
+    "evaluated": 336,
+    "report_new_candidates": 21,
+    "accepted_new_atoms": 7,
+    "reclassified_new_candidates": 14,
+    "excluded": 35,
+    "unresolved": 0
+  },
+  "accepted_ids": ["PUL-037", "PUL-039", "PUL-040", "PSH-024", "CTX-038", "ADP-072", "ADP-073"],
+  "truth_corrections": ["PSH-002", "PSH-003"],
+  "authority": "explicit user promotion authority, 2026-08-31"
+}

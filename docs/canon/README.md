@@ -9,15 +9,15 @@ Each named subsystem owns one atomic canon. Capability, implementation, qualific
 | Canon | Boundary | Committed | Exploratory | Closed | Open |
 |---|---|---:|---:|---:|---:|
 | [Membrane](membrane.md) | RELEASED | 66 | 0 | 0 | 66 |
-| [Pull](pull.md) | RELEASED | 35 | 1 | 0 | 35 |
-| [Push](push.md) | RELEASED | 23 | 0 | 0 | 23 |
-| [Cortex](cortex.md) | RELEASED | 36 | 1 | 0 | 36 |
+| [Pull](pull.md) | RELEASED | 38 | 1 | 0 | 38 |
+| [Push](push.md) | RELEASED | 24 | 0 | 0 | 24 |
+| [Cortex](cortex.md) | RELEASED | 37 | 1 | 0 | 37 |
 | [Blueprint](blueprint.md) | RELEASED | 68 | 1 | 0 | 68 |
 | [Ledger](ledger.md) | RELEASED | 27 | 1 | 0 | 27 |
-| [Adapt](adapt.md) | RELEASED | 62 | 7 | 0 | 62 |
-| **Total** | — | **317** | **11** | **0** | **317** |
+| [Adapt](adapt.md) | RELEASED | 64 | 7 | 0 | 64 |
+| **Total** | — | **324** | **11** | **0** | **324** |
 
-Total capability rows: **328**
+Total capability rows: **335**
 
 ## Counting & closure
 
@@ -29,7 +29,7 @@ Closure requires `DELIVERED` implementation, `FOCUSED_PASS` verification, `PASS`
 
 Legacy atoms: **249**
 Introduced atomic splits: **30**
-New capabilities after normalization: **53**
+New capabilities after normalization: **60**
 Legacy/specification rows: **479**
 Preserved union: **728/728**
 Unclassified: **0**

@@ -8,15 +8,15 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| PSH-G01 | — | Push | COMMITTED | 23 committed capabilities; 0 exploratory capability; closure derived from child rows |
+| PSH-G01 | — | Push | COMMITTED | 24 committed capabilities; 0 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
 | ID | Parent | Owner | Scope | Observable behavior | Implementation | Verification | Qualification | Delivery | Action | Evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
 | PSH-001 | PSH-G01 | Push | COMMITTED | Cap command output to deterministic head/tail, spill omitted bytes, & emit recoverable anchor. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-001; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
-| PSH-002 | PSH-G01 | Push | COMMITTED | Restore exact spilled output by opaque anchor from confined artifact storage. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-002; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
-| PSH-003 | PSH-G01 | Push | COMMITTED | Skeletonize supported source/structured files under budget while preserving structure, identifiers, & protected spans. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-003; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| PSH-002 | PSH-G01 | Push | COMMITTED | Restore exact spilled output by opaque anchor from confined artifact storage. | PARTIAL | STALE | PENDING | PUSHED | REPAIR_WIRE | PENDING |
+| PSH-003 | PSH-G01 | Push | COMMITTED | Skeletonize supported source/structured files under budget while preserving structure, identifiers, & protected spans. | PARTIAL | STALE | PENDING | PUSHED | REPAIR_WIRE | PENDING |
 | PSH-004 | PSH-G01 | Push | COMMITTED | Apply extractive bounded text compression with deterministic fallback/passthrough. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-004; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | PSH-005 | PSH-G01 | Push | COMMITTED | Externalize raw input content-addressably before lossy reduction & verify recovery marker. | PARTIAL | PENDING | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-005; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | PSH-006 | PSH-G01 | Push | COMMITTED | Batch-prepare files into reversible artifact-backed representations under one shared budget without source mutation. | PARTIAL | PENDING | PENDING | PUSHED | RECONCILE_EVIDENCE | Acceptance: PSH-006; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
@@ -37,14 +37,15 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PSH-021 | PSH-G01 | Push | COMMITTED | Execute adapters without shell expansion & sanitize inherited Git environment. | PARTIAL | PENDING | PENDING | PUSHED | REPAIR_WIRE | Acceptance: PSH-021; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | PSH-022 | PSH-G01 | Push | COMMITTED | Accept only strict canonical `mr://anchor/` reference syntax. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: PSH-022; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
 | PSH-023 | PSH-G01 | Push | COMMITTED | Refuse expired spill anchors before restoration. | DELIVERED | FOCUSED_PASS | PENDING | PUSHED | VERIFY | Acceptance: PSH-023; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef; Freshness: 2026-08-30 |
+| PSH-024 | PSH-G01 | Push | COMMITTED | Resolve an opaque recovery anchor to an exact bounded line/index/field/key selection; invalid or unsupported selectors return full exact restore or typed miss. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING |
 
 ## Implementation register
 
 | ID | Capability targets | Mechanism | Source/donor | Reuse mode | State | Production consumer |
 |---|---|---|---|---|---|---|
 | PSH-I001 | PSH-001 | `engine/crates/membrane-runtime/src/push/runc.rs:447-522,772-815,853-869` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-runtime/src/cli.rs:3646-3680 |
-| PSH-I002 | PSH-002 | `engine/crates/membrane-runtime/src/serve.rs:414-452` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-runtime/src/serve.rs:3099-3101 |
-| PSH-I003 | PSH-003 | `engine/crates/membrane-runtime/src/push/skel.rs:133-262` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-runtime/src/cli.rs:3508-3519; engine/crates/membrane-runtime/src/push/prep.rs:361-362 |
+| PSH-I002 | PSH-002 | `engine/crates/membrane-runtime/src/serve.rs:414-452` restores stored content but does not invoke marker source-digest verification before success. | Repair live resolver using existing verifier; archive secondwind restore path is Apache-2.0 reference. | ADAPT | PARTIAL | engine/crates/membrane-runtime/src/serve.rs:3099-3101 |
+| PSH-I003 | PSH-003 | `engine/crates/membrane-runtime/src/push/skel.rs:133-262` skeletonizes source; structured inputs remain exact-copy & lack qualified record/log/embedded codecs. | `docs/provenance/foundation/2026-08-31-master-atom-intake/push-review.md`; codec candidates remain implementation alternatives under this contract. | ADAPT | PARTIAL | engine/crates/membrane-runtime/src/cli.rs:3508-3519; engine/crates/membrane-runtime/src/push/prep.rs:361-362 |
 | PSH-I004 | PSH-004 | `engine/crates/membrane-runtime/src/push/compress.rs:32-63,318-408,491-565` | COMPLETE | ADAPT | DELIVERED | engine/crates/membrane-runtime/src/cli.rs:3575; engine/crates/membrane-runtime/src/serve.rs:4800; engine/crates/membrane-runtime/src/push/prep.rs:446 |
 | PSH-I005 | PSH-005 | `engine/crates/membrane-runtime/src/push/compress.rs:111-260; engine/crates/membrane-runtime/src/push/runc.rs:447-522` | General lossy paths do not externalize raw-first/verify marker. | ADAPT | PARTIAL | engine/crates/membrane-runtime/src/cli.rs:3646-3680 |
 | PSH-I006 | PSH-006 | `engine/crates/membrane-runtime/src/push/prep.rs:229-493` | CLI-only; not shared packet planner/host budget. | ADAPT | PARTIAL | engine/crates/membrane-runtime/src/cli.rs:3454-3468,3593-3622 |
@@ -65,6 +66,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PSH-I021 | PSH-021 | `engine/crates/membrane-runtime/src/push/runc.rs:819-850` | Direct argv execution removes GIT_* & forces GIT_PAGER; CLI still uses shell-backed run_capped. | ORIGINAL | PARTIAL | NONE |
 | PSH-I022 | PSH-022 | `engine/crates/membrane-runtime/src/ledger/identifier.rs:89-125` | COMPLETE | ORIGINAL | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:414-426` → `engine/crates/membrane-runtime/src/serve.rs:3100` |
 | PSH-I023 | PSH-023 | `engine/crates/membrane-runtime/src/serve.rs:432-443` | COMPLETE | ORIGINAL | DELIVERED | `engine/crates/membrane-runtime/src/serve.rs:3100` |
+| PSH-I024 | PSH-024 | No production selector grammar or bounded partial-restore path; current `/expand` is full restore only. | secondwind `crates/optimize/src/select.rs#select` at archive-pinned revision; Apache-2.0 reviewed adaptation. | DIRECT_PORT | MISSING | Future `/expand` exact-selector path |
 
 ## Qualification ledger
 
@@ -93,6 +95,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PSH-Q021 | PSH-021 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PSH-Q022 | PSH-022 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PSH-Q023 | PSH-023 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PSH-Q024 | PSH-024 | Qualify line/index/field/key grammar, exact selection, bounds, malformed selectors, typed misses, full-restore fallback, confinement, & RELEASED resolver parity | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -102,3 +105,4 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PSH-D002 | EXCLUSION | PSH-003 | Push never becomes a second planner or eligibility authority. | Current Push architecture | RECORDED |
 | PSH-D003 | REFERENCE | PSH-011, PSH-012 | PSH-011 selects fitting representation; PSH-012 refuses invalid capacity. | docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@d3816e9cb78f56c64356a2683f7d6698390fc3ef | RECORDED |
 | PSH-D004 | REFERENCE | PSH-018, PSH-020, PSH-021 | Adapter grammar, path confinement, & no-shell/environment controls are distinct Push execution safeguards. | Sage split decision | RECORDED |
+| PSH-D005 | REFERENCE | PSH-001, PSH-002, PSH-003, PSH-005, PSH-006, PSH-011, PSH-013, PSH-014, PSH-016, PSH-024, PUL-023, PUL-027, PUL-037 | Commit exact bounded partial restore as one new Push behavior; route archive command/codec/exemption/fidelity/dedupe/final-cost candidates to existing capability implementations, qualifications, or planner ownership. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
