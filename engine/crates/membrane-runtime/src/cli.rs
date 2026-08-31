@@ -225,28 +225,26 @@ fn run_skill_read(
             causes.push("privacy_value_unavailable");
         }
         let exact = causes.is_empty();
-        eprintln!(
-            "{}",
-            serde_json::json!({
+        let receipt = serde_json::json!({
+            "schemaVersion": 1,
+            "name": name,
+            "source": "disk",
+            "storedBodyHash": stored_hash,
+            "resolvedBodyHash": resolved_hash,
+            "restoredPrivacyValues": restored,
+            "unresolvedPrivacyValues": unresolved,
+            "completeness": {
                 "schemaVersion": 1,
-                "name": name,
-                "source": "disk",
-                "storedBodyHash": stored_hash,
-                "resolvedBodyHash": resolved_hash,
-                "restoredPrivacyValues": restored,
-                "unresolvedPrivacyValues": unresolved,
-                "completeness": {
-                    "schemaVersion": 1,
-                    "state": if exact { "exact" } else { "lower_bound" },
-                    "causes": causes,
-                    "consideredCount": if truncated { max_chars + 1 } else { resolved_chars },
-                    "returnedCount": bounded.chars().count(),
-                    "droppedCount": usize::from(truncated),
-                    "countsExact": exact,
-                }
-            })
-        );
+                "state": if exact { "exact" } else { "lower_bound" },
+                "causes": causes,
+                "consideredCount": if truncated { max_chars + 1 } else { resolved_chars },
+                "returnedCount": bounded.chars().count(),
+                "droppedCount": usize::from(truncated),
+                "countsExact": exact,
+            }
+        });
         write_skill_body(&name, &bounded)?;
+        eprintln!("{receipt}");
         emit_skill_resolved(&ws, &name, &resolved_hash, "disk", bounded.len());
         return Ok(());
     }
@@ -257,20 +255,18 @@ fn run_skill_read(
                 if store.skill_from_db(&name).is_some() {
                     let resolved =
                         store.skill_read_bounded(&name, max_chars, &privacy_values)?;
-                    let mut receipt =
-                        serde_json::to_value(&resolved).map_err(|error| error.to_string())?;
-                    receipt
-                        .as_object_mut()
-                        .ok_or_else(|| "skill-read engine receipt must be an object".to_owned())?
-                        .insert(
-                            "source".to_owned(),
-                            serde_json::Value::String("engine".to_owned()),
-                        );
-                    eprintln!(
-                        "{}",
-                        serde_json::to_string(&receipt).map_err(|error| error.to_string())?
-                    );
+                    let receipt = serde_json::json!({
+                        "schemaVersion": resolved.schema_version,
+                        "name": &resolved.name,
+                        "source": "engine",
+                        "storedBodyHash": &resolved.stored_body_hash,
+                        "resolvedBodyHash": &resolved.resolved_body_hash,
+                        "restoredPrivacyValues": resolved.restored_privacy_values,
+                        "unresolvedPrivacyValues": resolved.unresolved_privacy_values,
+                        "completeness": &resolved.completeness,
+                    });
                     write_skill_body(&name, &resolved.body)?;
+                    eprintln!("{receipt}");
                     emit_skill_resolved(
                         &ws,
                         &name,

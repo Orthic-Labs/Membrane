@@ -1,3 +1,5 @@
+use flate2::write::DeflateEncoder;
+use flate2::Compression;
 use membrane_runtime::ledger::{
     doc_spine,
     document_conversion::{
@@ -13,6 +15,7 @@ use membrane_runtime::ledger::{
     query_alias::recall_query_aliases_shadow,
     LedgerDb,
 };
+use std::io::Write as _;
 
 fn fixture() -> (tempfile::TempDir, LedgerDb, String, String) {
     let root = tempfile::tempdir().unwrap();
@@ -423,6 +426,155 @@ fn pdf_and_docx_conversion_feed_granted_ingest_with_raw_provenance() {
         .any(|hit| hit.doc_id == artifact.doc_id));
 }
 
+#[test]
+fn docx_zip_parser_accepts_deflate_descriptors_and_rejects_malformed_archives() {
+    let xml = br#"<?xml version="1.0"?><w:document xmlns:w="x"><w:body><w:p><w:r><w:t>Deflated DOCX guidance is retained.</w:t></w:r></w:p></w:body></w:document>"#;
+    let docx = deflated_zip_with_descriptors(&[("word/document.xml", xml)]);
+    let grant = DocumentConversionGrantV1::new(
+        [DocumentInputFormatV1::Docx],
+        docx.len(),
+    );
+    let converted = convert_granted_document(
+        &grant,
+        DocumentConversionInputV1 {
+            source_ref: "doc://grant/import/deflated.docx".to_owned(),
+            format: DocumentInputFormatV1::Docx,
+            raw_input: docx.clone(),
+        },
+    )
+    .unwrap();
+    assert!(converted
+        .markdown
+        .contains("Deflated DOCX guidance is retained."));
+    assert_eq!(converted.converter.version, "zip-wordprocessingml-v1");
+
+    let central = docx
+        .windows(4)
+        .position(|window| window == b"PK\x01\x02")
+        .unwrap();
+    let mut method_mismatch = docx.clone();
+    method_mismatch[central + 10] = 0;
+    assert!(matches!(
+        convert_granted_document(
+            &grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/method-mismatch.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: method_mismatch,
+            },
+        ),
+        Err(DocumentConversionErrorV1::InvalidInput { .. })
+    ));
+
+    let eocd = docx
+        .windows(4)
+        .rposition(|window| window == b"PK\x05\x06")
+        .unwrap();
+    let mut bad_central_offset = docx.clone();
+    bad_central_offset[eocd + 16] = bad_central_offset[eocd + 16].wrapping_add(1);
+    assert!(matches!(
+        convert_granted_document(
+            &grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/bad-offset.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: bad_central_offset,
+            },
+        ),
+        Err(DocumentConversionErrorV1::InvalidInput { .. })
+    ));
+
+    let descriptor = docx
+        .windows(4)
+        .position(|window| window == b"PK\x07\x08")
+        .unwrap();
+    let mut trailing_data = docx.clone();
+    const TRAILING_LEN: usize = 64;
+    trailing_data.splice(descriptor..descriptor, [0xaa; TRAILING_LEN]);
+    let shifted_descriptor = descriptor + TRAILING_LEN;
+    let shifted_central = central + TRAILING_LEN;
+    let shifted_eocd = eocd + TRAILING_LEN;
+    let compressed_size = u32::from_le_bytes(
+        trailing_data[shifted_central + 20..shifted_central + 24]
+            .try_into()
+            .unwrap(),
+    ) + TRAILING_LEN as u32;
+    trailing_data[shifted_descriptor + 8..shifted_descriptor + 12]
+        .copy_from_slice(&compressed_size.to_le_bytes());
+    trailing_data[shifted_central + 20..shifted_central + 24]
+        .copy_from_slice(&compressed_size.to_le_bytes());
+    let central_offset = u32::from_le_bytes(
+        trailing_data[shifted_eocd + 16..shifted_eocd + 20]
+            .try_into()
+            .unwrap(),
+    ) + TRAILING_LEN as u32;
+    trailing_data[shifted_eocd + 16..shifted_eocd + 20]
+        .copy_from_slice(&central_offset.to_le_bytes());
+    let trailing_grant =
+        DocumentConversionGrantV1::new([DocumentInputFormatV1::Docx], trailing_data.len());
+    assert!(matches!(
+        convert_granted_document(
+            &trailing_grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/trailing-deflate.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: trailing_data,
+            },
+        ),
+        Err(DocumentConversionErrorV1::InvalidInput { .. })
+    ));
+
+    let mut forged_small_size = docx.clone();
+    forged_small_size[descriptor + 12..descriptor + 16].copy_from_slice(&1u32.to_le_bytes());
+    forged_small_size[central + 24..central + 28].copy_from_slice(&1u32.to_le_bytes());
+    assert!(matches!(
+        convert_granted_document(
+            &grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/forged-small-size.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: forged_small_size,
+            },
+        ),
+        Err(DocumentConversionErrorV1::InvalidInput { .. })
+    ));
+
+    let mut corrupt_crc = docx.clone();
+    corrupt_crc[central + 16] ^= 0xff;
+    assert!(matches!(
+        convert_granted_document(
+            &grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/corrupt-crc.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: corrupt_crc,
+            },
+        ),
+        Err(DocumentConversionErrorV1::InvalidInput { .. })
+    ));
+
+    let bomb_xml = format!(
+        "<?xml version=\"1.0\"?><w:document xmlns:w=\"x\"><w:body><w:p><w:r><w:t>{}</w:t></w:r></w:p></w:body></w:document>",
+        "x".repeat(256 * 1024)
+    );
+    let bomb = deflated_zip_with_descriptors(&[("word/document.xml", bomb_xml.as_bytes())]);
+    let bomb_grant = DocumentConversionGrantV1::new(
+        [DocumentInputFormatV1::Docx],
+        bomb.len(),
+    );
+    assert!(matches!(
+        convert_granted_document(
+            &bomb_grant,
+            DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/bomb.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: bomb,
+            },
+        ),
+        Err(DocumentConversionErrorV1::OutputTooLarge { .. })
+    ));
+}
+
 fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut output = Vec::new();
     let mut central = Vec::new();
@@ -452,6 +604,66 @@ fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
         central.extend_from_slice(&0u16.to_le_bytes());
         central.extend_from_slice(&crc.to_le_bytes());
         central.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u32.to_le_bytes());
+        central.extend_from_slice(&offset.to_le_bytes());
+        central.extend_from_slice(name.as_bytes());
+    }
+    let central_offset = output.len() as u32;
+    output.extend_from_slice(&central);
+    output.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    output.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    output.extend_from_slice(&(central.len() as u32).to_le_bytes());
+    output.extend_from_slice(&central_offset.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output
+}
+
+fn deflated_zip_with_descriptors(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut output = Vec::new();
+    let mut central = Vec::new();
+    for (name, data) in entries {
+        let offset = output.len() as u32;
+        let crc = crc32(data);
+        let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(data).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let flags = 0x0808u16;
+        output.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        output.extend_from_slice(&20u16.to_le_bytes());
+        output.extend_from_slice(&flags.to_le_bytes());
+        output.extend_from_slice(&8u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&0u32.to_le_bytes());
+        output.extend_from_slice(&0u32.to_le_bytes());
+        output.extend_from_slice(&0u32.to_le_bytes());
+        output.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(name.as_bytes());
+        output.extend_from_slice(&compressed);
+        output.extend_from_slice(&0x0807_4b50u32.to_le_bytes());
+        output.extend_from_slice(&crc.to_le_bytes());
+        output.extend_from_slice(&(compressed.len() as u32).to_le_bytes());
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+
+        central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&flags.to_le_bytes());
+        central.extend_from_slice(&8u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&crc.to_le_bytes());
+        central.extend_from_slice(&(compressed.len() as u32).to_le_bytes());
         central.extend_from_slice(&(data.len() as u32).to_le_bytes());
         central.extend_from_slice(&(name.len() as u16).to_le_bytes());
         central.extend_from_slice(&0u16.to_le_bytes());

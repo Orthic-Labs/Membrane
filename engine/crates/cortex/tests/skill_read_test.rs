@@ -39,6 +39,7 @@ fn skill_read_resolves_body_and_guards_traversal() {
     assert_eq!(receipt["source"], "disk");
     assert_eq!(receipt["storedBodyHash"], body_hash);
     assert_eq!(receipt["resolvedBodyHash"], body_hash);
+    assert!(receipt.get("body").is_none());
     let rows: Vec<serde_json::Value> = fs::read_to_string(&event_path)
         .unwrap()
         .lines()
@@ -171,6 +172,7 @@ fn skill_read_serves_from_engine_without_skills_directory() {
         receipt["resolvedBodyHash"],
         hex::encode(Sha256::digest(body.as_bytes()))
     );
+    assert!(receipt.get("body").is_none());
     let row: serde_json::Value =
         serde_json::from_str(fs::read_to_string(&event_path).unwrap().trim()).unwrap();
     assert_eq!(row["event"], "skill_resolved");
@@ -290,12 +292,16 @@ fn skill_read_does_not_emit_when_stdout_delivery_fails() {
         .env("MEMBRANE_SKILL_EVENT_PATH", &event_path)
         .args(["skill-read", "demo", "--root", tmp.to_str().unwrap()])
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     drop(child.stdout.take());
-    let status = child.wait().unwrap();
-    assert!(!status.success());
+    let output = child.wait_with_output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("write stdout"));
+    assert!(!stderr.contains("\"schemaVersion\""));
+    assert!(!stderr.contains("\"source\":\"disk\""));
     assert!(!event_path.exists());
 
     let _ = fs::remove_dir_all(&tmp);

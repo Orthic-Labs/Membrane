@@ -3,11 +3,10 @@
 //! Conversion retains raw input in its result. Media never enters document text. Ledger owns
 //! this rebuildable normalization receipt, not source truth or durable storage.
 
-use flate2::read::DeflateDecoder;
+use flate2::{Decompress, FlushDecompress, Status};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::io::Read;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -428,9 +427,20 @@ fn extract_zip_entry(
     wanted_name: &[u8],
     output_limit: usize,
 ) -> Result<Vec<u8>, DocumentConversionErrorV1> {
+    #[derive(Clone, Copy)]
+    struct CentralEntry {
+        flags: u16,
+        method: u16,
+        crc: u32,
+        compressed_size: usize,
+        uncompressed_size: usize,
+        local_offset: usize,
+    }
+
     const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
     const CENTRAL_SIGNATURE: &[u8; 4] = b"PK\x01\x02";
     const LOCAL_SIGNATURE: &[u8; 4] = b"PK\x03\x04";
+    const DATA_DESCRIPTOR_SIGNATURE: &[u8; 4] = b"PK\x07\x08";
     let search_start = archive.len().saturating_sub(65_557);
     let eocd = (search_start..archive.len().saturating_sub(3))
         .rev()
@@ -456,6 +466,12 @@ fn extract_zip_entry(
             detail: "docx_central_directory_out_of_bounds".to_owned(),
         }
     })?;
+    if central_end != eocd {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_central_directory_eocd_mismatch".to_owned(),
+        });
+    }
+    let mut wanted = None;
     for _ in 0..entry_count {
         if cursor + 46 > central_end
             || archive.get(cursor..cursor + 4) != Some(CENTRAL_SIGNATURE.as_slice())
@@ -483,91 +499,218 @@ fn extract_zip_entry(
                 detail: "docx_central_entry_out_of_bounds".to_owned(),
             })?;
         if archive.get(name_start..name_start + name_len) == Some(wanted_name) {
+            if wanted.is_some() {
+                return Err(DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_duplicate_document_xml".to_owned(),
+                });
+            }
             if flags & 0x0001 != 0 {
                 return Err(DocumentConversionErrorV1::InvalidInput {
                     detail: "docx_encrypted_entry_unsupported".to_owned(),
                 });
             }
-            if uncompressed_size > output_limit {
-                return Err(DocumentConversionErrorV1::OutputTooLarge {
-                    actual: uncompressed_size,
-                    maximum: output_limit,
-                });
-            }
-            let local_header_end = local_offset.checked_add(30).ok_or_else(|| {
-                DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_local_entry_out_of_bounds".to_owned(),
-                }
-            })?;
-            if local_header_end > archive.len()
-                || archive.get(local_offset..local_offset + 4)
-                    != Some(LOCAL_SIGNATURE.as_slice())
-            {
+            if flags & !0x080e != 0 {
                 return Err(DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_local_entry_invalid".to_owned(),
+                    detail: format!("docx_zip_flags_unsupported:{flags:#06x}"),
                 });
             }
-            let local_name_len = usize::from(read_u16(archive, local_offset + 26)?);
-            let local_extra_len = usize::from(read_u16(archive, local_offset + 28)?);
-            let data_start = local_offset
-                .checked_add(30)
-                .and_then(|value| value.checked_add(local_name_len))
-                .and_then(|value| value.checked_add(local_extra_len))
-                .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_local_entry_out_of_bounds".to_owned(),
-                })?;
-            let data_end = data_start.checked_add(compressed_size).filter(|end| *end <= archive.len()).ok_or_else(|| {
-                DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_compressed_entry_out_of_bounds".to_owned(),
-                }
-            })?;
-            let compressed = &archive[data_start..data_end];
-            let mut output = Vec::with_capacity(uncompressed_size.min(output_limit));
-            match method {
-                0 if compressed.len() <= output_limit => output.extend_from_slice(compressed),
-                0 => {
-                    return Err(DocumentConversionErrorV1::OutputTooLarge {
-                        actual: compressed.len(),
-                        maximum: output_limit,
-                    });
-                }
-                8 => {
-                    DeflateDecoder::new(compressed)
-                        .take(output_limit.saturating_add(1) as u64)
-                        .read_to_end(&mut output)
-                        .map_err(|error| DocumentConversionErrorV1::InvalidInput {
-                            detail: format!("docx_deflate:{error}"),
-                        })?;
-                }
-                unsupported => {
-                    return Err(DocumentConversionErrorV1::InvalidInput {
-                        detail: format!("docx_compression_unsupported:{unsupported}"),
-                    });
-                }
-            }
-            if output.len() > output_limit {
-                return Err(DocumentConversionErrorV1::OutputTooLarge {
-                    actual: output.len(),
-                    maximum: output_limit,
-                });
-            }
-            if output.len() != uncompressed_size {
-                return Err(DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_uncompressed_size_mismatch".to_owned(),
-                });
-            }
-            if zip_crc32(&output) != expected_crc {
-                return Err(DocumentConversionErrorV1::InvalidInput {
-                    detail: "docx_crc_mismatch".to_owned(),
-                });
-            }
-            return Ok(output);
+            wanted = Some(CentralEntry {
+                flags,
+                method,
+                crc: expected_crc,
+                compressed_size,
+                uncompressed_size,
+                local_offset,
+            });
         }
         cursor = next;
     }
-    Err(DocumentConversionErrorV1::InvalidInput {
+    if cursor != central_end {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_central_entry_count_mismatch".to_owned(),
+        });
+    }
+    let entry = wanted.ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
         detail: "docx_document_xml_missing".to_owned(),
-    })
+    })?;
+    if entry.uncompressed_size > output_limit {
+        return Err(DocumentConversionErrorV1::OutputTooLarge {
+            actual: entry.uncompressed_size,
+            maximum: output_limit,
+        });
+    }
+    let local_header_end = entry.local_offset.checked_add(30).ok_or_else(|| {
+        DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_entry_out_of_bounds".to_owned(),
+        }
+    })?;
+    if local_header_end > archive.len()
+        || archive.get(entry.local_offset..entry.local_offset + 4)
+            != Some(LOCAL_SIGNATURE.as_slice())
+    {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_entry_invalid".to_owned(),
+        });
+    }
+    let local_flags = read_u16(archive, entry.local_offset + 6)?;
+    let local_method = read_u16(archive, entry.local_offset + 8)?;
+    if local_flags != entry.flags || local_method != entry.method {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_central_method_or_flags_mismatch".to_owned(),
+        });
+    }
+    let local_crc = read_u32(archive, entry.local_offset + 14)?;
+    let local_compressed_size = read_u32(archive, entry.local_offset + 18)?;
+    let local_uncompressed_size = read_u32(archive, entry.local_offset + 22)?;
+    let descriptor = entry.flags & 0x0008 != 0;
+    if (!descriptor
+        && (local_crc != entry.crc
+            || usize::try_from(local_compressed_size).unwrap_or(usize::MAX)
+                != entry.compressed_size
+            || usize::try_from(local_uncompressed_size).unwrap_or(usize::MAX)
+                != entry.uncompressed_size))
+        || (descriptor
+            && ((local_crc != 0 && local_crc != entry.crc)
+                || (local_compressed_size != 0
+                    && usize::try_from(local_compressed_size).unwrap_or(usize::MAX)
+                        != entry.compressed_size)
+                || (local_uncompressed_size != 0
+                    && usize::try_from(local_uncompressed_size).unwrap_or(usize::MAX)
+                        != entry.uncompressed_size)))
+    {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_central_size_or_crc_mismatch".to_owned(),
+        });
+    }
+    let local_name_len = usize::from(read_u16(archive, entry.local_offset + 26)?);
+    let local_extra_len = usize::from(read_u16(archive, entry.local_offset + 28)?);
+    let local_name_start = entry.local_offset + 30;
+    let data_start = local_name_start
+        .checked_add(local_name_len)
+        .and_then(|value| value.checked_add(local_extra_len))
+        .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_entry_out_of_bounds".to_owned(),
+        })?;
+    if archive.get(local_name_start..local_name_start + local_name_len) != Some(wanted_name) {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_local_central_name_mismatch".to_owned(),
+        });
+    }
+    let data_end = data_start
+        .checked_add(entry.compressed_size)
+        .filter(|end| *end <= central_end)
+        .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_compressed_entry_out_of_bounds".to_owned(),
+        })?;
+    if descriptor {
+        let descriptor_start = if archive.get(data_end..data_end + 4)
+            == Some(DATA_DESCRIPTOR_SIGNATURE.as_slice())
+        {
+            data_end + 4
+        } else {
+            data_end
+        };
+        let descriptor_end = descriptor_start.checked_add(12).filter(|end| *end <= central_end).ok_or_else(|| {
+            DocumentConversionErrorV1::InvalidInput {
+                detail: "docx_data_descriptor_out_of_bounds".to_owned(),
+            }
+        })?;
+        if read_u32(archive, descriptor_start)? != entry.crc
+            || usize::try_from(read_u32(archive, descriptor_start + 4)?).unwrap_or(usize::MAX)
+                != entry.compressed_size
+            || usize::try_from(read_u32(archive, descriptor_start + 8)?).unwrap_or(usize::MAX)
+                != entry.uncompressed_size
+            || descriptor_end > central_end
+        {
+            return Err(DocumentConversionErrorV1::InvalidInput {
+                detail: "docx_data_descriptor_mismatch".to_owned(),
+            });
+        }
+    }
+    let compressed = &archive[data_start..data_end];
+    let mut output = Vec::with_capacity(entry.uncompressed_size.min(output_limit));
+    let mut compressed_consumed = None;
+    match entry.method {
+        0 if compressed.len() <= output_limit => output.extend_from_slice(compressed),
+        0 => {
+            return Err(DocumentConversionErrorV1::OutputTooLarge {
+                actual: compressed.len(),
+                maximum: output_limit,
+            });
+        }
+        8 => {
+            let mut decoder = Decompress::new(false);
+            let mut input_offset = 0usize;
+            let mut chunk = [0u8; 8192];
+            loop {
+                let before_in = decoder.total_in();
+                let before_out = decoder.total_out();
+                let status = decoder
+                    .decompress(
+                        &compressed[input_offset..],
+                        &mut chunk,
+                        FlushDecompress::Finish,
+                    )
+                    .map_err(|error| DocumentConversionErrorV1::InvalidInput {
+                        detail: format!("docx_deflate:{error}"),
+                    })?;
+                let consumed = usize::try_from(decoder.total_in() - before_in).map_err(|_| {
+                    DocumentConversionErrorV1::InvalidInput {
+                        detail: "docx_deflate_input_count_overflow".to_owned(),
+                    }
+                })?;
+                let produced = usize::try_from(decoder.total_out() - before_out).map_err(|_| {
+                    DocumentConversionErrorV1::InvalidInput {
+                        detail: "docx_deflate_output_count_overflow".to_owned(),
+                    }
+                })?;
+                input_offset = input_offset.saturating_add(consumed);
+                output.extend_from_slice(&chunk[..produced]);
+                if output.len() > output_limit {
+                    return Err(DocumentConversionErrorV1::OutputTooLarge {
+                        actual: output.len(),
+                        maximum: output_limit,
+                    });
+                }
+                if status == Status::StreamEnd {
+                    break;
+                }
+                if consumed == 0 && produced == 0 {
+                    return Err(DocumentConversionErrorV1::InvalidInput {
+                        detail: "docx_deflate_incomplete".to_owned(),
+                    });
+                }
+            }
+            compressed_consumed = Some(input_offset);
+        }
+        unsupported => {
+            return Err(DocumentConversionErrorV1::InvalidInput {
+                detail: format!("docx_compression_unsupported:{unsupported}"),
+            });
+        }
+    }
+    if output.len() > output_limit {
+        return Err(DocumentConversionErrorV1::OutputTooLarge {
+            actual: output.len(),
+            maximum: output_limit,
+        });
+    }
+    if compressed_consumed.is_some_and(|consumed| consumed != compressed.len()) {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_deflate_trailing_data".to_owned(),
+        });
+    }
+    if output.len() != entry.uncompressed_size {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_uncompressed_size_mismatch".to_owned(),
+        });
+    }
+    if zip_crc32(&output) != entry.crc {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_crc_mismatch".to_owned(),
+        });
+    }
+    Ok(output)
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, DocumentConversionErrorV1> {
