@@ -64,6 +64,7 @@ test("macOS release is signed & notarized through RightRelease before stapling",
   const packageJson = JSON.parse(read("apps/membrane-hub/package.json"));
   const buildMac = read("apps/membrane-hub/scripts/build-mac-release.mjs");
   const finalizeMac = read("apps/membrane-hub/scripts/release-build-mac.mjs");
+  const releaseChain = read("scripts/release/right-git-release-chain.mjs");
 
   assert.match(releaseConfig, /mac:\s*\{[\s\S]*signingContract: "macos-developer-id-notarized-portable-v1"/);
   assert.match(releaseConfig, /prePackage: \{ cmd: "pnpm", args: \["run", "rightkit:prepackage:mac"\] \}/);
@@ -75,6 +76,7 @@ test("macOS release is signed & notarized through RightRelease before stapling",
   assert.match(finalizeMac, /\["stapler", "staple", dmg\]/);
   assert.match(finalizeMac, /\["stapler", "validate", dmg\]/);
   assert.match(finalizeMac, /"spctl"/);
+  assert.match(releaseChain, /release:build:mac"\], repo, \{ \.\.\.process\.env, MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1" \}/);
 });
 
 test("candidate source check accepts Tauri's same-byte manifest rewrite & rejects real source drift", () => {

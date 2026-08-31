@@ -7,7 +7,7 @@ import { materializeHardeningEvidence } from "@rightkit/release/hardening-eviden
 if (process.platform !== "win32") throw new Error("portable Windows release must run on Windows");
 const hub = fileURLToPath(new URL("../", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const hardeningScan = fileURLToPath(new URL("../node_modules/@rightkit/release/hardeningscan.mjs", import.meta.url));
+const hardeningScan = fileURLToPath(import.meta.resolve("@rightkit/release/hardeningscan.mjs"));
 const candidateRoot = process.env.MEMBRANE_CANDIDATE_ROOT;
 if (!candidateRoot) throw new Error("MEMBRANE_CANDIDATE_ROOT must identify downloaded CI candidate artifact");
 const manifestPath = join(candidateRoot, "candidate.json");
