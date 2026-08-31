@@ -17,6 +17,10 @@ $ErrorActionPreference = 'Stop'
 # Native command diagnostics are checked through explicit exit codes below;
 # keep non-fatal Git warnings from becoming terminating PowerShell errors.
 $PSNativeCommandUseErrorActionPreference = $false
+# Qualification can be launched by Windows PowerShell from a pwsh-hosted CI
+# step. Pin the host-native security module so an inherited pwsh module path
+# cannot make Windows PowerShell select its incompatible PowerShell 7 copy.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force -ErrorAction Stop
 Add-Type -AssemblyName System.Net.Http
 $script:HubProcess = $null
 # Keep qualification isolated from checkout-local runtimes while retaining
