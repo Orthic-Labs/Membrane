@@ -110,9 +110,12 @@ test("candidate source check accepts Tauri's same-byte manifest rewrite & reject
 	}
 });
 
-test("qualified publication uploads exact notarized macOS DMG beside Windows release assets", () => {
+test("qualification uses hosted-gh-compatible prior download & publication uploads both installers", () => {
 	const chain = read("scripts/release/right-git-release-chain.mjs");
 
+	assert.match(chain, /gh", \["release", "download", prior\.tag_name/);
+	assert.doesNotMatch(chain, /"gh", \["api"[^\n]*"--output"/);
+	assert.match(chain, /gh", \["release", "upload", `v\$\{version\}`, installer, "--clobber"\]/);
 	assert.match(chain, /notarized: true, stapled: true/);
 	assert.match(chain, /macOS finalization receipt does not bind the exact notarized & stapled DMG/);
 	assert.match(chain, /gh", \["release", "upload", `v\$\{version\}`, dmg, finalizationPath, "--clobber"\]/);

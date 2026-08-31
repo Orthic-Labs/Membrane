@@ -104,8 +104,12 @@ function qualifyInstalled() {
   const prior = releases.find((release) => !release.draft && !release.prerelease && release.tag_name !== `v${version}`);
   const asset = prior?.assets?.find((entry) => /-setup\.exe$/i.test(entry.name));
   if (!prior || !asset) throw new Error("installed qualification requires one prior signed Windows release installer");
+  if (asset.name !== asset.name.split(/[\\/]/).pop()) throw new Error("prior signed Windows release installer name is unsafe");
   const previous = join(qualification, "previous-signed-installer.exe");
-  run("gh", ["api", "-H", "Accept: application/octet-stream", asset.url, "--output", previous]);
+  const downloaded = join(qualification, asset.name);
+  run("gh", ["release", "download", prior.tag_name, "--repo", "Orthic-Labs/Membrane", "--pattern", asset.name, "--dir", qualification, "--clobber"]);
+  if (!existsSync(downloaded)) throw new Error("prior signed Windows release installer download is missing");
+  cpSync(downloaded, previous, { force: true });
   run("powershell", ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/qualification/install-release.ps1", "-Installer", installer, "-PreviousInstaller", previous, "-ReleaseManifest", manifest, "-Sbom", sbom, "-EvidencePath", join(qualification, "evidence.json")]);
 }
 
@@ -119,6 +123,8 @@ function publishQualified() {
   rmSync(destination, { recursive: true, force: true });
   copyTree(portable, destination);
   run("pnpm.cmd", ["--dir", hub, "run", "release:publish:portable:win"]);
+  const installer = onlyInstaller(finalizedWindows);
+  run("gh", ["release", "upload", `v${version}`, installer, "--clobber"]);
   const dmg = onlyMacDmg(finalizedMac);
   const finalizationPath = join(finalizedMac, "finalization.json");
   if (!existsSync(finalizationPath)) throw new Error("macOS finalization receipt is required before publication");
