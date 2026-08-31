@@ -129,6 +129,42 @@ test("framework facts stay absent without explicit gates & seam comments never b
   }
 });
 
+test("production generation preserves JS same-tier ambiguity without promoting a candidate", () => {
+  const root = fixture({
+    "src/main.ts": "import { choose } from './choice';\nexport const result = choose();\n",
+    "src/choice.ts": "export function choose() { return 'ts'; }\n",
+    "src/choice.js": "export function choose() { return 'js'; }\n",
+  });
+  try {
+    const generation = buildGraphGeneration(root);
+    const ambiguous = generation.edges.find((edge) => edge.kind === "IMPORTS"
+      && edge.source === "file:src/main.ts"
+      && edge.specifier === "./choice");
+    assert.ok(ambiguous, "ambiguous import evidence is retained");
+    assert.equal(ambiguous.target, null);
+    assert.equal(ambiguous.resolved, false);
+    assert.equal(ambiguous.confidenceTier, "UNRESOLVED");
+    assert.equal(ambiguous.resolutionStatus, "AMBIGUOUS");
+    assert.equal(ambiguous.reason, "ambiguous_extension");
+    assert.deepEqual(ambiguous.candidates, ["src/choice.js", "src/choice.ts"]);
+    const claim = ambiguous.providerResolutions.find((item) => item.provider === "blueprint-modules");
+    assert.equal(claim.status, "AMBIGUOUS");
+    assert.equal(claim.reason, "ambiguous_extension");
+    assert.deepEqual(claim.candidates, ["src/choice.js", "src/choice.ts"]);
+    assert.ok(claim.evidence[0].contentHash);
+    assert.equal(generation.augmentation.providers.modules.ambiguous, 1);
+    assert.ok(!generation.edges.some((edge) => edge.kind === "IMPORTS"
+      && edge.source === "file:src/main.ts"
+      && ["file:src/choice.js", "file:src/choice.ts"].includes(edge.target)));
+    const candidateSymbolIds = new Set(generation.nodes
+      .filter((node) => ["src/choice.js", "src/choice.ts"].includes(node.path))
+      .map((node) => node.id));
+    assert.ok(!generation.edges.some((edge) => edge.kind === "CALLS" && candidateSymbolIds.has(edge.target)));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("incremental file build emits same local provider facts without seam CALLS", () => {
   const root = fixture({
     "infra/main.tf": "resource \"aws_queue\" \"jobs\" {}\n",

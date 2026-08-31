@@ -3,6 +3,7 @@
 //! Pull acquisition and Push reduction.
 
 pub mod admission_producer;
+pub mod adapt;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod authorization;

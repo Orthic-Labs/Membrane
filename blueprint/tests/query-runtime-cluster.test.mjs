@@ -10,10 +10,11 @@ import { decomposeChangeRisk } from "../src/graph/analytics/index.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { resolveSeeds } from "../src/graph/seed-resolver.mjs";
 import { buildGraphGeneration, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { changesSinceReference, createSnapshot } from "../src/graph/snapshots.mjs";
 import { closeStore, openStore, openStoreReadOnly, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { routeFederatedQuery } from "../src/lib/federation/index.mjs";
-import { evaluateConvergenceOracle } from "../watchman/reconcile.mjs";
+import { evaluateConvergenceOracle, reconcile } from "../watchman/reconcile.mjs";
 
 const CLI = join(import.meta.dirname, "..", "scripts", "blueprint.mjs");
 
@@ -61,6 +62,49 @@ test("convergence oracle compares live source leaves with sealed incremental sta
       const mismatch = evaluateConvergenceOracle(db, scanSourcesPublic(root).files, { eventGapOverride: false });
       assert.equal(mismatch.converged, false);
       assert.deepEqual(mismatch.mismatches.changed, ["src/a.js"]);
+      writeFileSync(join(root, "src/a.js"), "export const a = 1;\n");
+      db.prepare("INSERT INTO watch_state(key,value) VALUES ('domains_pending','compiler_python') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+      const domainPending = evaluateConvergenceOracle(db, scanSourcesPublic(root).files, { eventGapOverride: false });
+      assert.equal(domainPending.converged, false);
+      assert.deepEqual(domainPending.domainsPending, ["compiler_python"]);
+    } finally { closeStore(db); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("snapshot, generation & treeish projections contain semantic node and edge deltas", async () => {
+  const root = repo({
+    ".gitignore": ".agent/\n",
+    "src/a.js": "export const a = 1;\n",
+    "src/b.js": "export const b = 1;\n",
+  }, { git: true });
+  try {
+    execFileSync("git", ["add", "docs/architecture.md", "docs/product.md"], { cwd: root, stdio: "ignore" });
+    execFileSync("git", ["commit", "--quiet", "-m", "generated projections"], { cwd: root, stdio: "ignore" });
+    execFileSync(process.execPath, [CLI, "build", "--out", ".agent"], { cwd: root, stdio: "ignore" });
+    let db = openStore(join(root, ".agent/graph/graph.db"));
+    let baseGeneration;
+    try {
+      baseGeneration = readManifestEnvelope(db).generationId;
+      createSnapshot(db, "semantic-base", root);
+    } finally { closeStore(db); }
+    const baseTreeish = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+    writeFileSync(join(root, "src/b.js"), "import { a } from './a.js';\nexport const b = a;\n");
+    execFileSync("git", ["add", "src/b.js"], { cwd: root, stdio: "ignore" });
+    execFileSync("git", ["commit", "--quiet", "-m", "semantic change"], { cwd: root, stdio: "ignore" });
+    db = openStore(join(root, ".agent/graph/graph.db"));
+    try {
+      await reconcile(db, root, { outDir: ".agent" });
+      for (const projection of [
+        changesSinceReference(db, root, { snapshot: "semantic-base" }),
+        changesSinceReference(db, root, { generation: baseGeneration }),
+        changesSinceReference(db, root, { treeish: { base: baseTreeish, head: "HEAD" } }),
+      ]) {
+        assert.equal(projection.authority, "history_reference_only");
+        assert.ok(projection.semanticDelta.nodes.changed.length > 0);
+        assert.ok(projection.semanticDelta.edges.added.length > 0);
+        assert.ok(projection.semanticDelta.nodes.changed.every((change) => change.before.evidence.length > 0 && change.after.evidence.length > 0));
+        assert.ok(projection.semanticDelta.edges.added.every((change) => change.after.evidence.length > 0));
+      }
     } finally { closeStore(db); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

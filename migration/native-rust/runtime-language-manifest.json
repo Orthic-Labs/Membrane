@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-31T04:32:38.010Z",
+ "generatedAt": "2026-08-31T04:47:04.692Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -468,7 +468,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "7acbf5b320b53c3a0056fb1b2e7ef79e661616b5bfccf8bc24c622ef506a6fa1"
+   "content_digest": "eec391f246d9241d399a860526a138433dfd95d7c13682769c421ce78822a8dc"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -491,7 +491,7 @@
     "blueprint/watchman/repo-actor.mjs",
     "blueprint/watchman/supervisor.mjs"
    ],
-   "content_digest": "f8ab8dcc5914a5d169edcf55d4a7371dcbb65682af7b14dff8a4641b972f80a2"
+   "content_digest": "97ac5677d5625b7598368d829f04902b3ec9cc9bb481ab43f3b8ac803918ee4d"
   },
   {
    "id": "blueprint-development-blueprint/action",
@@ -794,7 +794,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "6ac350bb7b71f362680f614520517df5eaa543e5cdd58382ac527ada4827a1c7"
+   "content_digest": "4af4ce40ef7acf9624e29412de6368170928e5b5c5a4e4b2afab10890ed32c0d"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1242,7 +1242,7 @@
     "engine/crates/membrane-adapt/tests/taste_contracts.rs",
     "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "d4b72251a494b51ee866ae1fd7e6614a7d41291c1ac37ff7037b86b636ce198f"
+   "content_digest": "ddcd1c2990c7711724276ebb52a019c0962af291147f24a32b54c8341542dafb"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-core",
@@ -1332,7 +1332,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "6e0a7fe9a96e4b91cace8f503c0d6dd36a0579b127cdc2b814810577782fea76"
+   "content_digest": "6adfb69769ffcde1df358f7c57cedaa6e92fc54c974eb12a261184dc47d0258c"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1413,7 +1413,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "9c4460e267ed863f7d13766abc6ca8926471ad7cf12be97171c990dd7c4f6aa7"
+   "content_digest": "6257ff1117f6d12a95094aa2853c7d81ab095c9cf73c6c80cdf1f090f2e305c3"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1580,7 +1580,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "8996f0027313f000218864b69bd101333afc8b03c1f5304d07fdafc54bbecc62"
+   "content_digest": "6e7190b327a1b8b9ad82a3be3815d9837c1c2bce9a4fc1aa4e58b693397a2cf0"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

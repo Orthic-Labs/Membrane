@@ -84,7 +84,7 @@ export function evaluateConvergenceOracle(db, sourceFiles, { traversalTruncated 
     .split(",").map((value) => value.trim()).filter(Boolean).sort();
   const eventGap = eventGapOverride ?? (db.prepare("SELECT value FROM watch_state WHERE key='event_gap'").get()?.value === "1");
   const mismatches = Object.freeze({ changed: delta.changed, added: delta.added, removed: delta.removed });
-  const converged = !traversalTruncated && !eventGap && pendingEvents === 0
+  const converged = !traversalTruncated && !eventGap && pendingEvents === 0 && domainsPending.length === 0
     && mismatches.changed.length === 0 && mismatches.added.length === 0 && mismatches.removed.length === 0;
   return Object.freeze({
     schemaVersion: 1,

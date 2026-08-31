@@ -27,6 +27,7 @@ pub struct NativeFederation {
     freshness: Arc<dyn FreshnessSource>,
     last_freshness: Arc<Mutex<Option<membrane_protocol::FreshnessSnapshotV1>>>,
     cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    temporal_queries: Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
 }
 
 impl std::fmt::Debug for NativeFederation {
@@ -41,6 +42,7 @@ impl std::fmt::Debug for NativeFederation {
 impl NativeFederation {
     pub fn new(bindings: NativeSourceBindings) -> Result<Self, String> {
         let cancellations = bindings.cancellations.clone();
+        let temporal_queries = bindings.temporal_queries.clone();
         let blueprint = bindings
             .blueprint
             .clone()
@@ -132,6 +134,7 @@ impl NativeFederation {
             freshness,
             last_freshness: Arc::new(Mutex::new(None)),
             cancellations,
+            temporal_queries,
         })
     }
 
@@ -152,6 +155,15 @@ impl NativeFederation {
         cancellation: CancellationToken,
     ) -> Result<FederationResponseV1, String> {
         let cancelled = cancellation.is_cancelled();
+        let temporal_query = request
+            .extensions
+            .get("cortexTemporalQuery")
+            .cloned()
+            .map(|value| {
+                serde_json::from_value::<cortex_store::TemporalFactQuery>(value)
+                    .map_err(|error| format!("invalid cortexTemporalQuery: {error}"))
+            })
+            .transpose()?;
         let query = SourceQuery {
             request_id: request.request_id.clone(),
             repository_id: membrane_federation::root::canonical_repository_id(Path::new(
@@ -185,9 +197,17 @@ impl NativeFederation {
         if let Ok(mut tokens) = self.cancellations.lock() {
             tokens.insert(request.request_id.clone(), cancellation.clone());
         }
+        if let Some(temporal_query) = temporal_query {
+            if let Ok(mut queries) = self.temporal_queries.lock() {
+                queries.insert(request.request_id.clone(), temporal_query);
+            }
+        }
         let response = self.engine.federate(request, cancellation).await;
         if let Ok(mut tokens) = self.cancellations.lock() {
             tokens.remove(&request.request_id);
+        }
+        if let Ok(mut queries) = self.temporal_queries.lock() {
+            queries.remove(&request.request_id);
         }
         match &response {
             Ok(value) => self.metrics.record(metric_status(value, cancelled)),

@@ -619,6 +619,14 @@ enum PushCmd {
 
 #[derive(Subcommand)]
 enum AdaptCmd {
+    /// Execute one sealed model-proposal lifecycle transition. This never
+    /// writes durable knowledge; Apply remains separate admission authority.
+    ProposalPlan {
+        #[arg(long)]
+        store: PathBuf,
+        #[arg(long)]
+        input: PathBuf,
+    },
     /// Normalize transcripts & mine deterministic Taste/Insights evidence.
     Mine {
         #[arg(required = true)]
@@ -3084,6 +3092,15 @@ fn run_adapt(
     use membrane_adapt::cli_api;
 
     match command {
+        AdaptCmd::ProposalPlan { store, input } => {
+            let request: crate::adapt::AdaptProposalPlanRequestV1 = read_adapt_json(&input)?;
+            let plan = crate::adapt::execute_adapt_proposal_plan(&store, request)
+                .map_err(|error| format!("execute Adapt proposal plan: {error}"))?;
+            print_adapt_json(&serde_json::json!({
+                "contract": crate::adapt::ADAPT_PROPOSAL_SERVICE_CONTRACT,
+                "plan": plan,
+            }))
+        }
         AdaptCmd::Mine {
             transcripts,
             host,
@@ -5571,6 +5588,27 @@ mod tests {
             super::Cmd::Adapt {
                 command: super::AdaptCmd::ContextCost { ref input }
             } if input == Path::new("trusted-host-observations.json")
+        ));
+    }
+
+    #[test]
+    fn adapt_proposal_plan_is_a_live_cli_route_with_explicit_store_and_input() {
+        assert!(super::Cli::try_parse_from(["membrane", "adapt", "proposal-plan"]).is_err());
+        let parsed = super::Cli::try_parse_from([
+            "membrane",
+            "adapt",
+            "proposal-plan",
+            "--store",
+            "plans.json",
+            "--input",
+            "transition.json",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Adapt {
+                command: super::AdaptCmd::ProposalPlan { ref store, ref input }
+            } if store == Path::new("plans.json") && input == Path::new("transition.json")
         ));
     }
 

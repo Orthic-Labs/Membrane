@@ -42,6 +42,8 @@ pub struct NativeSourceBindings {
     pub blueprint_contextual: Option<Arc<dyn ContextualBlueprintSource>>,
     pub release: Option<RuntimeReleaseSource>,
     pub(crate) cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    pub(crate) temporal_queries:
+        Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
 }
 
 impl std::fmt::Debug for NativeSourceBindings {
@@ -80,6 +82,7 @@ impl NativeSourceBindings {
             endpoint,
         ))));
         let cancellations = Arc::new(Mutex::new(HashMap::new()));
+        let temporal_queries = Arc::new(Mutex::new(HashMap::new()));
 
         Ok(Self {
             audit: Some(Arc::new(EmptyAuditSource)),
@@ -90,6 +93,7 @@ impl NativeSourceBindings {
             memory: Some(Arc::new(RuntimeMemorySource {
                 store: store.clone(),
                 cancellations: cancellations.clone(),
+                temporal_queries: temporal_queries.clone(),
             })),
             scope_grant: Some(Arc::new(RuntimeScopeGrantSource {
                 catalog,
@@ -100,6 +104,7 @@ impl NativeSourceBindings {
             blueprint_contextual: Some(blueprint),
             release: Some(RuntimeReleaseSource),
             cancellations,
+            temporal_queries,
         })
     }
 
@@ -215,6 +220,7 @@ impl DecisionRecordSource for EmptyDecisionSource {
 struct RuntimeMemorySource {
     store: crate::MemoryStore,
     cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    temporal_queries: Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
 }
 
 impl MemoryCandidateSource for RuntimeMemorySource {
@@ -229,6 +235,7 @@ impl MemoryCandidateSource for RuntimeMemorySource {
     {
         let store = self.store.clone();
         let cancellations = self.cancellations.clone();
+        let temporal_queries = self.temporal_queries.clone();
         let query = query.clone();
         Box::pin(async move {
             let cancellation = cancellations
@@ -237,13 +244,18 @@ impl MemoryCandidateSource for RuntimeMemorySource {
                 .and_then(|tokens| tokens.get(&query.request_id).cloned())
                 .unwrap_or_default();
             let descriptor = crate::scope::ScopeDescriptorV1::filesystem(&query.repository_root);
-            let payload = crate::pull::federation::memory_candidates_payload_for_descriptor_cancellable(
+            let temporal = temporal_queries
+                .lock()
+                .ok()
+                .and_then(|queries| queries.get(&query.request_id).cloned());
+            let payload = crate::pull::federation::memory_candidates_payload_for_descriptor_cancellable_with_temporal(
                 &store,
                 &query.task,
                 &descriptor,
                 64,
                 Some(Path::new(&query.repository_root)),
                 &cancellation,
+                temporal,
             )
             .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
             let generation = query
@@ -278,10 +290,7 @@ impl MemoryCandidateSource for RuntimeMemorySource {
             let warnings = completeness
                 .causes
                 .iter()
-                .map(|cause| SourceWarning {
-                    code: cause.clone(),
-                    detail_id: Some(query.request_id.clone()),
-                })
+                .map(|cause| cortex_completeness_warning(cause, &query.request_id))
                 .collect();
             Ok(SourceResponse {
                 value: candidates,
@@ -290,6 +299,19 @@ impl MemoryCandidateSource for RuntimeMemorySource {
                 warnings,
             })
         })
+    }
+}
+
+fn cortex_completeness_warning(cause: &str, request_id: &str) -> SourceWarning {
+    let code = match cause {
+        "cancelled" => "cancelled",
+        "temporal_scope_rejected" => "scope_grant_invalid",
+        "temporal_unavailable" | "completeness_unavailable" => "provider_unavailable",
+        _ => "provider_failed",
+    };
+    SourceWarning {
+        code: code.to_owned(),
+        detail_id: Some(format!("{cause}:{request_id}")),
     }
 }
 
@@ -530,5 +552,102 @@ impl DeliveryLedger for RuntimeDeliveryLedger {
                 },
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cortex_competitive_temporal_gaps_map_to_typed_provider_reasons() {
+        let scope = cortex_completeness_warning("temporal_scope_rejected", "request-1");
+        assert_eq!(scope.code, "scope_grant_invalid");
+        assert_eq!(
+            scope.detail_id.as_deref(),
+            Some("temporal_scope_rejected:request-1")
+        );
+        let unavailable = cortex_completeness_warning("temporal_unavailable", "request-2");
+        assert_eq!(unavailable.code, "provider_unavailable");
+        let cancelled = cortex_completeness_warning("cancelled", "request-3");
+        assert_eq!(cancelled.code, "cancelled");
+    }
+
+    #[test]
+    fn cortex_competitive_native_memory_source_emits_requested_temporal_candidate() {
+        let store = crate::MemoryStore::new();
+        store.put(
+            "release-memory",
+            "release channel operational procedure",
+            "global",
+            cortex_core::MemoryTier::Semantic,
+        );
+        store
+            .temporal_facts()
+            .record(
+                cortex_store::TemporalFact {
+                    fact_id: "native-release-channel".to_owned(),
+                    subject: "release".to_owned(),
+                    predicate: "channel".to_owned(),
+                    object: serde_json::json!("stable"),
+                    scope_id: "global".to_owned(),
+                    authority: "A1".to_owned(),
+                    veracity: "supported".to_owned(),
+                    observed_at: "2026-08-31T00:00:00Z".to_owned(),
+                    valid_from: "2026-08-31T00:00:00Z".to_owned(),
+                    valid_until: None,
+                    expires_at: None,
+                    supersedes: None,
+                },
+                true,
+            )
+            .unwrap();
+        let request_id = "native-temporal-request".to_owned();
+        let cancellation = CancellationToken::new();
+        let cancellations = Arc::new(Mutex::new(HashMap::from([(
+            request_id.clone(),
+            cancellation,
+        )])));
+        let temporal_queries = Arc::new(Mutex::new(HashMap::from([(
+            request_id.clone(),
+            cortex_store::TemporalFactQuery {
+                scope_chain: vec!["global".to_owned()],
+                subject: "release".to_owned(),
+                predicate: "channel".to_owned(),
+                as_of: "2026-08-31T12:00:00Z".to_owned(),
+            },
+        )])));
+        let source = RuntimeMemorySource {
+            store,
+            cancellations,
+            temporal_queries,
+        };
+        let repository = tempfile::tempdir().unwrap();
+        let query = SourceQuery {
+            request_id,
+            repository_id: "repository:test".to_owned(),
+            repository_root: repository.path().to_string_lossy().into_owned(),
+            task: "release channel operational procedure".to_owned(),
+            session_id: "session-test".to_owned(),
+            generation: Some("generation-test".to_owned()),
+            anchors: Vec::new(),
+        };
+        let response = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(source.candidates(&query))
+            .unwrap();
+        let temporal = response
+            .value
+            .iter()
+            .find(|candidate| candidate.id == "memory:temporal:native-release-channel")
+            .expect("native Cortex source must emit requested temporal fact");
+        assert_eq!(temporal.candidate.source_kind, "memory");
+        assert_eq!(temporal.candidate.instruction_policy, "data_only");
+        assert!(!temporal.candidate.recoverable);
+        let fact: serde_json::Value = serde_json::from_str(&temporal.candidate.text).unwrap();
+        assert_eq!(fact["factId"], "native-release-channel");
+        assert_eq!(fact["object"], "stable");
     }
 }

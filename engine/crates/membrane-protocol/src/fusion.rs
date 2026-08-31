@@ -42,7 +42,7 @@ impl FusionReceiptV1 {
     pub const SCHEMA_VERSION: u32 = 1;
     /// Versioned legacy fixed-order control strategy.
     pub const POLICY: &'static str = "membrane-fusion-fixed-v1";
-    /// Versioned production RRF strategy.
+    /// Versioned bounded RRF experiment; activation requires qualification.
     pub const RRF_POLICY: &'static str = "membrane-fusion-rrf-v1";
     pub const FALLBACK_POLICY: &'static str = "fixed-lanes-v1";
     pub const RRF_FALLBACK_POLICY: &'static str = "single-arm-preserve-v1";

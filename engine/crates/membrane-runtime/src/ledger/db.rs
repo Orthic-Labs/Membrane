@@ -108,6 +108,32 @@ CREATE TABLE IF NOT EXISTS ledger_query_aliases (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_query_aliases_generation
   ON ledger_query_aliases(doc_id, ledger_generation);
+CREATE TABLE IF NOT EXISTS ledger_query_alias_evidence (
+    doc_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    evidence_quote TEXT NOT NULL,
+    evidence_start_byte INTEGER NOT NULL,
+    evidence_end_byte INTEGER NOT NULL,
+    evidence_sha256 TEXT NOT NULL,
+    PRIMARY KEY(doc_id, node_id, alias)
+);
+CREATE TABLE IF NOT EXISTS ledger_document_conversions (
+    doc_id TEXT PRIMARY KEY,
+    source_ref TEXT NOT NULL,
+    input_format TEXT NOT NULL,
+    raw_input BLOB NOT NULL,
+    raw_sha256 TEXT NOT NULL,
+    markdown TEXT NOT NULL,
+    markdown_sha256 TEXT NOT NULL,
+    converter TEXT NOT NULL,
+    converter_version TEXT NOT NULL,
+    config_digest TEXT NOT NULL,
+    losses_json TEXT NOT NULL,
+    omissions_json TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    ledger_generation INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS ledger_index_publications (
     doc_id TEXT PRIMARY KEY,
     content_hash TEXT NOT NULL,
@@ -276,6 +302,8 @@ mod tests {
         assert!(names.iter().any(|name| name == "ledger_nodes"));
         assert!(names.iter().any(|name| name == "ledger_link_targets"));
         assert!(names.iter().any(|name| name == "ledger_query_aliases"));
+        assert!(names.iter().any(|name| name == "ledger_query_alias_evidence"));
+        assert!(names.iter().any(|name| name == "ledger_document_conversions"));
         assert!(names.iter().any(|name| name == "ledger_node_fts"));
         assert!(names.iter().any(|name| name == "ledger_activation"));
         assert!(!names.iter().any(|name| name == "memories"));
@@ -342,6 +370,8 @@ mod tests {
         assert!(names.iter().any(|name| name == "ledger_node_fts"));
         assert!(names.iter().any(|name| name == "ledger_link_targets"));
         assert!(names.iter().any(|name| name == "ledger_query_aliases"));
+        assert!(names.iter().any(|name| name == "ledger_query_alias_evidence"));
+        assert!(names.iter().any(|name| name == "ledger_document_conversions"));
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM ledger_doc_artifacts", [], |row| {
                 row.get(0)

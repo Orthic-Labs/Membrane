@@ -43,6 +43,54 @@ test("JS module resolver resolves relative, extensionless, and index paths", () 
   }
 });
 
+test("JS module resolver abstains on same-tier extension and index ambiguity", () => {
+  const root = mkdtempSync(join(tmpdir(), "blueprint-resolve-ambiguous-"));
+  try {
+    mkdirSync(join(root, "src", "lib"), { recursive: true });
+    writeFileSync(join(root, "src", "choice.ts"), "export const value = 'ts';\n");
+    writeFileSync(join(root, "src", "choice.js"), "export const value = 'js';\n");
+    writeFileSync(join(root, "src", "lib", "index.ts"), "export const value = 'ts';\n");
+    writeFileSync(join(root, "src", "lib", "index.js"), "export const value = 'js';\n");
+
+    const extension = resolveModuleSpecifier({
+      specifier: "./choice",
+      fromFile: join(root, "src", "main.ts"),
+      repoRoot: root,
+    });
+    assert.equal(extension.resolved, null);
+    assert.equal(extension.status, "AMBIGUOUS");
+    assert.equal(extension.reason, "ambiguous_extension");
+    assert.deepEqual(new Set(extension.candidates), new Set([
+      join(root, "src", "choice.ts"),
+      join(root, "src", "choice.js"),
+    ]));
+
+    const index = resolveModuleSpecifier({
+      specifier: "./lib",
+      fromFile: join(root, "src", "main.ts"),
+      repoRoot: root,
+    });
+    assert.equal(index.resolved, null);
+    assert.equal(index.status, "AMBIGUOUS");
+    assert.equal(index.reason, "ambiguous_index");
+    assert.deepEqual(new Set(index.candidates), new Set([
+      join(root, "src", "lib", "index.ts"),
+      join(root, "src", "lib", "index.js"),
+    ]));
+
+    const exact = resolveModuleSpecifier({
+      specifier: "./choice.js",
+      fromFile: join(root, "src", "main.ts"),
+      repoRoot: root,
+    });
+    assert.equal(exact.status, "RESOLVED");
+    assert.equal(exact.resolutionTier, "exact");
+    assert.equal(exact.resolved, join(root, "src", "choice.js"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("JS module resolver resolves bare specifiers through node_modules", () => {
   const root = mkdtempSync(join(tmpdir(), "blueprint-resolve-bare-"));
   try {

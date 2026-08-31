@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v2";
+pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v3";
 pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
@@ -163,6 +163,10 @@ pub(crate) fn replace_document_index_tx(
         [input.doc_id],
     )?;
     tx.execute(
+        "DELETE FROM ledger_query_alias_evidence WHERE doc_id=?1",
+        [input.doc_id],
+    )?;
+    tx.execute(
         "DELETE FROM ledger_query_aliases WHERE doc_id=?1",
         [input.doc_id],
     )?;
@@ -249,6 +253,7 @@ pub(crate) fn replace_document_index_tx(
             &section.anchor_id,
             &section.heading,
             body,
+            section.start_byte,
             input.source_revision,
             &section.span_hash,
             input.generation,

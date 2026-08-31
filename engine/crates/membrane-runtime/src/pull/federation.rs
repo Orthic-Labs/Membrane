@@ -188,6 +188,22 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .and_then(Value::as_str)
         .map(str::to_owned);
     let sufficiency_contract = planner_authored_sufficiency_contract(&value);
+    let temporal_query = match value.get("cortexTemporalQuery") {
+        Some(query) => match serde_json::from_value::<cortex_store::TemporalFactQuery>(query.clone())
+        {
+            Ok(query) => Some(query),
+            Err(error) => {
+                return (
+                    400,
+                    serde_json::json!({
+                        "error": format!("invalid cortexTemporalQuery: {error}")
+                    })
+                    .to_string(),
+                )
+            }
+        },
+        None => None,
+    };
     let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, task) {
         Ok(ceiling) => ceiling,
         Err(error) => {
@@ -199,7 +215,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
     let started = Instant::now();
     let result = (|| -> Result<Value, NativeRouteError> {
         let release_generation = RuntimeReleaseSource::generation()?;
-        let request = native_request_with_h8(
+        let mut request = native_request_with_h8(
             task,
             &root,
             max_tokens,
@@ -212,6 +228,13 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             sufficiency_contract,
             &ceiling,
         );
+        if let Some(temporal_query) = temporal_query.clone() {
+            request.extensions.insert(
+                "cortexTemporalQuery".to_owned(),
+                serde_json::to_value(temporal_query)
+                    .map_err(|error| format!("serialize cortexTemporalQuery: {error}"))?,
+            );
+        }
         let admitted_grant = admitted_publication_grant(&request)?;
         let bindings = federation_sources::NativeSourceBindings::for_repository(
             &root,
@@ -807,6 +830,20 @@ pub fn memory_candidates_payload(
 /// recall pass, not `consider_entries`/`partition`) has no other omission source to report.
 const OMISSION_REASON_CEILING_TRUNCATED: &str = "ceiling_truncated";
 
+enum CortexCandidateHit {
+    Memory(cortex_core::MemoryEntry, f32),
+    Temporal(cortex_store::TemporalFact, f32),
+}
+
+impl CortexCandidateHit {
+    fn omission_id(&self) -> String {
+        match self {
+            Self::Memory(entry, _) => format!("memory:role:{}", entry.id),
+            Self::Temporal(fact, _) => format!("memory:temporal:{}", fact.fact_id),
+        }
+    }
+}
+
 /// Descriptor-aware candidate surface. Virtual scope ancestry is exact and opaque; a legacy
 /// string is deliberately represented as a filesystem descriptor by the compatibility wrapper.
 pub fn memory_candidates_payload_for_descriptor(
@@ -823,6 +860,7 @@ pub fn memory_candidates_payload_for_descriptor(
         max_candidates,
         repo_root,
         None,
+        None,
     )
 }
 
@@ -834,6 +872,26 @@ pub fn memory_candidates_payload_for_descriptor_cancellable(
     repo_root: Option<&Path>,
     cancellation: &tokio_util::sync::CancellationToken,
 ) -> Result<serde_json::Value, String> {
+    memory_candidates_payload_for_descriptor_cancellable_with_temporal(
+        store,
+        task,
+        descriptor,
+        max_candidates,
+        repo_root,
+        cancellation,
+        None,
+    )
+}
+
+pub fn memory_candidates_payload_for_descriptor_cancellable_with_temporal(
+    store: &crate::MemoryStore,
+    task: &str,
+    descriptor: &crate::scope::ScopeDescriptorV1,
+    max_candidates: usize,
+    repo_root: Option<&Path>,
+    cancellation: &tokio_util::sync::CancellationToken,
+    temporal: Option<cortex_store::TemporalFactQuery>,
+) -> Result<serde_json::Value, String> {
     memory_candidates_payload_for_descriptor_inner(
         store,
         task,
@@ -841,6 +899,7 @@ pub fn memory_candidates_payload_for_descriptor_cancellable(
         max_candidates,
         repo_root,
         Some(cancellation),
+        temporal,
     )
 }
 
@@ -851,6 +910,7 @@ fn memory_candidates_payload_for_descriptor_inner(
     max_candidates: usize,
     repo_root: Option<&Path>,
     cancellation: Option<&tokio_util::sync::CancellationToken>,
+    temporal: Option<cortex_store::TemporalFactQuery>,
 ) -> Result<serde_json::Value, String> {
     // Canonicalize whatever the caller sent (raw filesystem path, slug, or `global`) into the full
     // visibility chain: self + ancestor scopes that hold rows + global. Before 2026-07-16 this
@@ -870,25 +930,61 @@ fn memory_candidates_payload_for_descriptor_inner(
     // an N+1 request are the same top-N a request for exactly N would have returned (ranking is
     // deterministic; see `recall_scored`'s doc comment), so this changes zero user-visible output.
     let probe_limit = max_candidates.saturating_add(1);
-    let (mut hits, mut stage_elapsed, mut completeness) = if let Some(cancellation) = cancellation {
-        let (hits, elapsed, completeness) = store.recall_scored_detailed_timed_cancellable(
-            task,
-            probe_limit,
-            &scopes,
-            true,
-            cancellation,
-        );
+    let (mut hits, mut stage_elapsed, mut completeness): (
+        Vec<CortexCandidateHit>,
+        crate::store::RecallStageElapsed,
+        crate::store::CortexCompletenessV1,
+    ) = if let Some(cancellation) = cancellation {
+        if temporal.is_some() {
+            let page = store.recall_typed_bounded(
+                task,
+                probe_limit,
+                &scopes,
+                temporal,
+                true,
+                cancellation,
+            );
+            (
+                page.items
+                    .into_iter()
+                    .map(|item| match item {
+                        crate::store::RecallResult::Memory { entry, score } => {
+                            CortexCandidateHit::Memory(entry, score)
+                        }
+                        crate::store::RecallResult::Temporal { fact, score } => {
+                            CortexCandidateHit::Temporal(fact, score)
+                        }
+                    })
+                    .collect(),
+                crate::store::RecallStageElapsed::default(),
+                page.completeness,
+            )
+        } else {
+            let (hits, elapsed, completeness) = store.recall_scored_detailed_timed_cancellable(
+                task,
+                probe_limit,
+                &scopes,
+                true,
+                cancellation,
+            );
+            (
+                hits.into_iter()
+                    .map(|hit| CortexCandidateHit::Memory(hit.entry, hit.score))
+                    .collect(),
+                elapsed,
+                completeness,
+            )
+        }
+    } else {
+        let (hits, elapsed) = store.recall_scored_timed(task, probe_limit, &scopes);
+        let completeness = crate::store::CortexCompletenessV1::exact(hits.len(), hits.len(), 0);
         (
             hits.into_iter()
-                .map(|hit| (hit.entry, hit.score))
+                .map(|(entry, score)| CortexCandidateHit::Memory(entry, score))
                 .collect(),
             elapsed,
             completeness,
         )
-    } else {
-        let (hits, elapsed) = store.recall_scored_timed(task, probe_limit, &scopes);
-        let completeness = crate::store::CortexCompletenessV1::exact(hits.len(), hits.len(), 0);
-        (hits, elapsed, completeness)
     };
     stage_elapsed.recall_ms += scope_ms;
     let dropped_by_ceiling = if hits.len() > max_candidates {
@@ -917,40 +1013,67 @@ fn memory_candidates_payload_for_descriptor_inner(
     let rank_started = Instant::now();
     let candidates: Vec<serde_json::Value> = hits
         .iter()
-        .map(|(e, score)| {
-            let preview = memory_preview(&e.content);
-            serde_json::json!({
-                "id": format!("memory:role:{}", e.id),
-                "layer": 7,
-                "sourceKind": "memory",
-                "sourceRef": e.scope_id.clone(),
-                "sourceHash": sha256_hex(&e.content),
-                "trustClass": "agent_verified",
-                "instructionPolicy": "data_only",
-                "providerScore": score.clamp(0.0, 1.0),
-                // `structural` is the key the planner's memory-relevance gate reads
-                // (planner.rs: structural<=0 && lexical<0.85 -> memory_low_relevance). Emit the
-                // cosine relevance as structural so real hits clear the gate.
-                "scoreComponents": {"structural": score.clamp(0.0, 1.0), "relevance": score.clamp(0.0, 1.0)},
-                "estimatedTokens": std::cmp::max(1, preview.chars().count() / 4),
-                "protected": false,
-                "exact": false,
-                "recoverable": true,
-                "resolver": format!("cortex get {}", e.id),
-                "text": preview,
-            })
+        .map(|hit| match hit {
+            CortexCandidateHit::Memory(e, score) => {
+                let preview = memory_preview(&e.content);
+                serde_json::json!({
+                    "id": format!("memory:role:{}", e.id),
+                    "layer": 7,
+                    "sourceKind": "memory",
+                    "sourceRef": e.scope_id.clone(),
+                    "sourceHash": sha256_hex(&e.content),
+                    "trustClass": "agent_verified",
+                    "instructionPolicy": "data_only",
+                    "providerScore": score.clamp(0.0, 1.0),
+                    "scoreComponents": {"structural": score.clamp(0.0, 1.0), "relevance": score.clamp(0.0, 1.0)},
+                    "estimatedTokens": std::cmp::max(1, preview.chars().count() / 4),
+                    "protected": false,
+                    "exact": false,
+                    "recoverable": true,
+                    "resolver": format!("cortex get {}", e.id),
+                    "text": preview,
+                })
+            }
+            CortexCandidateHit::Temporal(fact, score) => {
+                let text = serde_json::to_string(fact).unwrap_or_else(|_| "{}".to_owned());
+                serde_json::json!({
+                    "id": format!("memory:temporal:{}", fact.fact_id),
+                    "layer": 7,
+                    "sourceKind": "memory",
+                    "sourceRef": fact.scope_id,
+                    "sourceHash": sha256_hex(&text),
+                    "trustClass": "agent_verified",
+                    "instructionPolicy": "data_only",
+                    "providerScore": score.clamp(0.0, 1.0),
+                    "scoreComponents": {"temporal": score.clamp(0.0, 1.0)},
+                    "estimatedTokens": std::cmp::max(1, text.chars().count() / 4),
+                    "protected": false,
+                    "exact": true,
+                    "recoverable": false,
+                    "resolver": format!("cortex-temporal:inline:{}", fact.fact_id),
+                    "text": text,
+                })
+            }
         })
         .collect();
-    let omissions: Vec<serde_json::Value> = dropped_by_ceiling
+    let mut omissions: Vec<serde_json::Value> = dropped_by_ceiling
         .iter()
-        .map(|(e, _score)| {
+        .map(|hit| {
             serde_json::json!({
-                "id": format!("memory:role:{}", e.id),
+                "id": hit.omission_id(),
                 "layer": 7,
                 "reason": OMISSION_REASON_CEILING_TRUNCATED,
             })
         })
         .collect();
+    omissions.extend(completeness.causes.iter().filter_map(|cause| {
+        (!matches!(cause.as_str(), "ceiling_truncated" | "temporal_ceiling_truncated"))
+            .then(|| serde_json::json!({
+                "id": format!("memory:temporal-omission:{cause}"),
+                "layer": 7,
+                "reason": cause,
+            }))
+    }));
     stage_elapsed.rank_ms += rank_started.elapsed().as_secs_f64() * 1000.0;
 
     // F11: reuse the freshness verdict machinery `/freshness` already exposes rather than
@@ -1115,6 +1238,19 @@ mod observability_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cortex_competitive_native_route_rejects_malformed_temporal_extension_before_fanout() {
+        let repository = tempfile::tempdir().unwrap();
+        let body = serde_json::json!({
+            "task": "release channel",
+            "repo": repository.path().to_string_lossy().into_owned(),
+            "cortexTemporalQuery": {"subject": "release"}
+        });
+        let response = native_route_response(&body.to_string());
+        assert_eq!(response.0, 400);
+        assert!(response.1.contains("invalid cortexTemporalQuery"));
+    }
 
     #[test]
     fn native_request_forwards_explicit_sufficiency_contract_only() {
@@ -1432,5 +1568,37 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&serde_json::json!("cancelled")));
+    }
+
+    #[test]
+    fn cortex_competitive_temporal_scope_rejection_preserves_memory_fallback_and_typed_omission() {
+        let store = crate::MemoryStore::new();
+        let _ = store.remember("release fallback fixture", vec![]);
+        let payload = memory_candidates_payload_for_descriptor_cancellable_with_temporal(
+            &store,
+            "release fallback fixture",
+            &crate::scope::ScopeDescriptorV1::filesystem("global"),
+            4,
+            None,
+            &tokio_util::sync::CancellationToken::new(),
+            Some(cortex_store::TemporalFactQuery {
+                scope_chain: vec!["unauthorized-scope".to_owned()],
+                subject: "release".to_owned(),
+                predicate: "channel".to_owned(),
+                as_of: "2026-08-31T12:00:00Z".to_owned(),
+            }),
+        )
+        .unwrap();
+        assert!(payload["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|candidate| candidate["id"].as_str().is_some_and(|id| id.starts_with("memory:role:"))));
+        assert!(payload["omissions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|omission| omission["reason"] == "temporal_scope_rejected"));
+        assert_eq!(payload["completeness"]["state"], "lower_bound");
     }
 }

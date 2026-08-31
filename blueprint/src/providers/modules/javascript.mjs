@@ -1,25 +1,55 @@
 // D28: JS/TS module resolvers — ESM/CJS/TS path resolution from repository
 // files only. Deterministic and fixture-backed.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const TS_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"];
 const EXTENSIONS = [".js", ".mjs", ".cjs", ".json"];
 
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function resolvedCandidate(path, resolutionTier) {
+  return { resolved: path, status: "RESOLVED", candidates: [path], resolutionTier };
+}
+
+function ambiguousCandidates(candidates, reason, resolutionTier) {
+  return {
+    resolved: null,
+    status: "AMBIGUOUS",
+    reason,
+    candidates: [...candidates].sort((left, right) => left.localeCompare(right)),
+    resolutionTier,
+  };
+}
+
+function unresolvedCandidate(reason = "missing") {
+  return { resolved: null, status: "UNRESOLVED", reason, candidates: [] };
+}
+
 function tryResolveFile(baseDir, specifier, extensions) {
   const candidate = resolve(baseDir, specifier);
-  if (existsSync(candidate)) return candidate;
-  for (const ext of extensions) {
-    const withExt = `${candidate}${ext}`;
-    if (existsSync(withExt)) return withExt;
+  if (isFile(candidate)) return resolvedCandidate(candidate, "exact");
+
+  const extensionCandidates = extensions.map((ext) => `${candidate}${ext}`).filter(isFile);
+  if (extensionCandidates.length === 1) return resolvedCandidate(extensionCandidates[0], "extension");
+  if (extensionCandidates.length > 1) {
+    return ambiguousCandidates(extensionCandidates, "ambiguous_extension", "extension");
   }
+
   const index = join(candidate, "index");
-  for (const ext of extensions) {
-    const withIndex = `${index}${ext}`;
-    if (existsSync(withIndex)) return withIndex;
+  const indexCandidates = extensions.map((ext) => `${index}${ext}`).filter(isFile);
+  if (indexCandidates.length === 1) return resolvedCandidate(indexCandidates[0], "index");
+  if (indexCandidates.length > 1) {
+    return ambiguousCandidates(indexCandidates, "ambiguous_index", "index");
   }
-  return null;
+  return unresolvedCandidate();
 }
 
 function inside(root, target) {
@@ -47,22 +77,26 @@ export function extractJavaScriptModuleSpecifiers(text) {
 }
 
 export function resolveModuleSpecifier({ specifier, fromFile, repoRoot = null, isTypeScript = true }) {
-  if (!specifier || !fromFile) return { resolved: null, reason: "missing_input" };
+  if (!specifier || !fromFile) return unresolvedCandidate("missing_input");
   const absolute = resolve(specifier);
   if (absolute === specifier) {
     // Absolute path: only repo-confined resolution is permitted.
-    if (repoRoot && !inside(resolve(repoRoot), absolute)) return { resolved: null, reason: "outside_repo" };
-    return existsSync(absolute) ? { resolved: absolute, reason: "absolute" } : { resolved: null, reason: "missing" };
+    if (repoRoot && !inside(resolve(repoRoot), absolute)) return unresolvedCandidate("outside_repo");
+    return isFile(absolute)
+      ? { ...resolvedCandidate(absolute, "exact"), reason: "absolute" }
+      : unresolvedCandidate();
   }
   if (specifier.startsWith(".") || specifier.startsWith("/")) {
     const extensions = isTypeScript ? TS_EXTENSIONS : EXTENSIONS;
-    const resolved = tryResolveFile(dirname(fromFile), specifier, extensions);
-    if (resolved && repoRoot && !inside(resolve(repoRoot), resolved)) return { resolved: null, reason: "outside_repo" };
-    return resolved ? { resolved, reason: "relative" } : { resolved: null, reason: "missing" };
+    const result = tryResolveFile(dirname(fromFile), specifier, extensions);
+    if (repoRoot && result.candidates.some((candidate) => !inside(resolve(repoRoot), candidate))) {
+      return unresolvedCandidate("outside_repo");
+    }
+    return result.status === "RESOLVED" ? { ...result, reason: "relative" } : result;
   }
   // Bare specifier: resolve through node_modules from the file's directory.
   const nodeModules = findNodeModules(dirname(fromFile));
-  if (!nodeModules) return { resolved: null, reason: "no_node_modules" };
+  if (!nodeModules) return unresolvedCandidate("no_node_modules");
   const parts = specifier.split("/");
   const packageName = specifier.startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
   const packageDir = join(nodeModules, packageName);
@@ -70,16 +104,19 @@ export function resolveModuleSpecifier({ specifier, fromFile, repoRoot = null, i
   if (existsSync(packageJson)) {
     let pkg;
     try { pkg = JSON.parse(readFileSync(packageJson, "utf8")); }
-    catch { return { resolved: null, reason: "invalid_package_json" }; }
+    catch { return unresolvedCandidate("invalid_package_json"); }
     const entry = pkg.module ?? pkg.main ?? "index.js";
-    const resolved = tryResolveFile(packageDir, entry, [".js", ".mjs", ".cjs", ".json"]);
-    if (resolved) return repoRoot && !inside(resolve(repoRoot), resolved)
-      ? { resolved: null, reason: "outside_repo" }
-      : { resolved, reason: "package" };
+    const result = tryResolveFile(packageDir, entry, [".js", ".mjs", ".cjs", ".json"]);
+    if (result.status === "AMBIGUOUS") return result;
+    if (result.resolved) return repoRoot && !inside(resolve(repoRoot), result.resolved)
+      ? unresolvedCandidate("outside_repo")
+      : { ...result, reason: "package" };
   }
   const direct = tryResolveFile(nodeModules, specifier, [".js", ".mjs", ".cjs", ".json"]);
-  if (direct && repoRoot && !inside(resolve(repoRoot), direct)) return { resolved: null, reason: "outside_repo" };
-  return direct ? { resolved: direct, reason: "bare" } : { resolved: null, reason: "missing" };
+  if (repoRoot && direct.candidates.some((candidate) => !inside(resolve(repoRoot), candidate))) {
+    return unresolvedCandidate("outside_repo");
+  }
+  return direct.status === "RESOLVED" ? { ...direct, reason: "bare" } : direct;
 }
 
 function findNodeModules(dir) {

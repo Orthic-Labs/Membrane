@@ -1603,7 +1603,6 @@ impl MemoryStore {
         }
         let temporal_slots = usize::from(temporal.is_some())
             * (limit / 5).clamp(1, 8).min(limit.saturating_sub(1));
-        let memory_slots = limit.saturating_sub(temporal_slots);
         let mut items = Vec::with_capacity(limit);
         let mut causes = Vec::new();
         let mut considered = 0usize;
@@ -1639,6 +1638,9 @@ impl MemoryStore {
             }
         }
 
+        // Return unused temporal capacity to ordinary memory recall so opting
+        // into the auxiliary arm never weakens local-first fallback coverage.
+        let memory_slots = limit.saturating_sub(items.len());
         let (memory_hits, _, memory_completeness) = self
             .recall_scored_detailed_timed_cancellable(
                 query,
@@ -8766,7 +8768,8 @@ impl MemoryStore {
         let mut statement = conn
             .prepare(sql)
             .map_err(|error| self.persist_error(format!("bounded memory list prepare failed: {error}")))?;
-        let probe = limit.saturating_add(1);
+        let probe = i64::try_from(limit.saturating_add(1))
+            .map_err(|_| "memory list limit exceeds SQLite integer range".to_owned())?;
         let rows = statement
             .query_map(rusqlite::params![scope, probe], |row| {
                 Ok((
@@ -9770,10 +9773,12 @@ mod tests {
                 .count(),
             1
         );
-        assert!(page
+        let memory_count = page
             .items
             .iter()
-            .any(|item| matches!(item, RecallResult::Memory { .. })));
+            .filter(|item| matches!(item, RecallResult::Memory { .. }))
+            .count();
+        assert!((1..=4).contains(&memory_count));
     }
 
     #[test]

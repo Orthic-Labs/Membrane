@@ -339,9 +339,8 @@ pub fn link_targets(db: &LedgerDb, doc_id: &str) -> Result<Vec<LedgerLinkTargetV
         .map_err(|error| error.to_string())?;
     Ok(rows
         .into_iter()
-        .filter_map(|(link, repository_root, path, content_hash)| {
-            let live = std::fs::read(Path::new(&repository_root).join(path)).ok()?;
-            (digest(&live) == content_hash).then_some(link)
+        .filter_map(|(link, _repository_root, _path, _content_hash)| {
+            document_is_live(&conn, &link.source_doc_id).then_some(link)
         })
         .collect())
 }
@@ -721,6 +720,20 @@ fn resolve_registered_target(
 }
 
 fn document_is_live(conn: &Connection, doc_id: &str) -> bool {
+    let converted = conn.query_row(
+        "SELECT conversion.raw_input,conversion.raw_sha256
+         FROM ledger_document_conversions conversion
+         JOIN ledger_doc_artifacts artifact ON artifact.doc_id=conversion.doc_id
+         WHERE conversion.doc_id=?1 AND conversion.raw_sha256=artifact.content_hash
+           AND conversion.source_revision=artifact.revision
+           AND conversion.ledger_generation=artifact.index_generation
+           AND artifact.lifecycle_state='active'",
+        [doc_id],
+        |row| Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, String>(1)?)),
+    );
+    if let Ok((raw, expected)) = converted {
+        return digest(&raw) == expected;
+    }
     let current = conn.query_row(
         "SELECT repository_root,path,content_hash FROM ledger_doc_artifacts
          WHERE doc_id=?1 AND lifecycle_state='active'",

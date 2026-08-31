@@ -17,7 +17,7 @@ import { extractDockerfileFacts, extractSqlFacts, profileForPath } from "./schem
 import { extractTerraformFacts } from "./iac/terraform.mjs";
 import { bridgeSeamProvider } from "./bridges/seams.mjs";
 
-const MODULE_PROVIDER = Object.freeze({ id: "blueprint-modules", version: "exact-first-v1" });
+const MODULE_PROVIDER = Object.freeze({ id: "blueprint-modules", version: "exact-first-v2" });
 const FRAMEWORK_PROVIDER = Object.freeze({ id: "blueprint-frameworks", version: "gated-evidence-v1" });
 const SQL_PROVIDER = Object.freeze({ id: "blueprint-sql", version: "schema-facts-v1" });
 const TERRAFORM_PROVIDER = Object.freeze({ id: "blueprint-terraform", version: "resource-facts-v1" });
@@ -88,25 +88,101 @@ function resolveModule(record, file, root) {
     : resolveModuleSpecifier({ specifier: record.specifier, fromFile, repoRoot: root, isTypeScript: /\.[cm]?tsx?$/.test(file.path) });
 }
 
+function moduleCandidatePaths(result, root) {
+  return (result.candidates ?? [])
+    .filter((candidate) => inside(root, candidate))
+    .map((candidate) => normalizePath(relative(root, candidate)))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function abstainFromAmbiguousImport(generation, file, record, candidatePaths, ambiguityReason, protectedTargets) {
+  const sourceId = `file:${file.path}`;
+  const candidateTargets = new Set(candidatePaths.map((path) => `file:${path}`));
+  let unresolvedEdge = generation.edges.find((edge) => edge.kind === "IMPORTS"
+    && edge.source === sourceId
+    && edge.target === null
+    && edge.specifier === record.specifier);
+
+  for (const edge of generation.edges) {
+    if (edge.kind !== "IMPORTS" || edge.source !== sourceId || !candidateTargets.has(edge.target)) continue;
+    if (protectedTargets.has(edge.target)) continue;
+    edge.id = `edge:IMPORTS:${sourceId}->unresolved:${record.specifier}`;
+    edge.target = null;
+    edge.confidence = tierConfidence(EDGE_CONFIDENCE_TIERS.UNRESOLVED);
+    edge.confidenceTier = EDGE_CONFIDENCE_TIERS.UNRESOLVED;
+    edge.resolved = false;
+    edge.specifier = record.specifier;
+    edge.reason = ambiguityReason;
+    edge.resolutionStatus = "AMBIGUOUS";
+    edge.candidates = candidatePaths;
+    unresolvedEdge ??= edge;
+  }
+
+  const sourceSymbols = new Set(generation.nodes
+    .filter((node) => node.kind === "symbol" && node.path === file.path)
+    .map((node) => node.id));
+  const candidateSymbols = new Set(generation.nodes
+    .filter((node) => node.kind === "symbol" && candidatePaths.includes(node.path))
+    .map((node) => node.id));
+  for (let index = generation.edges.length - 1; index >= 0; index -= 1) {
+    const edge = generation.edges[index];
+    if (!["CALLS", "TESTS"].includes(edge.kind)) continue;
+    if (edge.confidenceTier !== EDGE_CONFIDENCE_TIERS.CROSS_FILE_HEURISTIC) continue;
+    if (sourceSymbols.has(edge.source) && candidateSymbols.has(edge.target)) generation.edges.splice(index, 1);
+  }
+
+  if (unresolvedEdge) return unresolvedEdge;
+  const edge = {
+    id: `edge:IMPORTS:${sourceId}->unresolved:${record.specifier}:${MODULE_PROVIDER.id}:${record.line}`,
+    kind: "IMPORTS",
+    source: sourceId,
+    target: null,
+    confidence: tierConfidence(EDGE_CONFIDENCE_TIERS.UNRESOLVED),
+    confidenceTier: EDGE_CONFIDENCE_TIERS.UNRESOLVED,
+    resolved: false,
+    specifier: record.specifier,
+    reason: ambiguityReason,
+    resolutionStatus: "AMBIGUOUS",
+    candidates: candidatePaths,
+    provider: MODULE_PROVIDER.id,
+    factProvider: MODULE_PROVIDER,
+    evidence: evidence(file, record.line),
+  };
+  generation.edges.push(edge);
+  return edge;
+}
+
 function addModuleEvidence(generation, files, root, selectedFiles = files) {
   const fileByPath = new Map(files.map((file) => [normalizePath(file.path), file]));
   let resolved = 0;
   let unresolved = 0;
+  let ambiguous = 0;
   for (const file of selectedFiles) {
-    for (const record of moduleRecords(file)) {
-      const result = resolveModule(record, file, root);
+    const outcomes = moduleRecords(file).map((record) => ({ record, result: resolveModule(record, file, root) }));
+    const protectedTargets = new Set(outcomes
+      .filter(({ result }) => result.status !== "AMBIGUOUS" && result.resolved && inside(root, result.resolved))
+      .map(({ result }) => `file:${normalizePath(relative(root, result.resolved))}`));
+    for (const { record, result } of outcomes) {
       const targetPath = result.resolved && inside(root, result.resolved) ? normalizePath(relative(root, result.resolved)) : null;
       const targetFile = targetPath ? fileByPath.get(targetPath) : null;
-      const existing = generation.edges.find((edge) => edge.kind === "IMPORTS"
-        && edge.source === `file:${file.path}`
-        && (targetFile ? edge.target === `file:${targetPath}` : edge.target === null && edge.specifier === record.specifier));
+      const candidatePaths = moduleCandidatePaths(result, root);
+      const existing = result.status === "AMBIGUOUS"
+        ? abstainFromAmbiguousImport(generation, file, record, candidatePaths, result.reason, protectedTargets)
+        : generation.edges.find((edge) => edge.kind === "IMPORTS"
+          && edge.source === `file:${file.path}`
+          && (targetFile ? edge.target === `file:${targetPath}` : edge.target === null && edge.specifier === record.specifier));
+      const status = result.status === "AMBIGUOUS"
+        ? "AMBIGUOUS"
+        : targetFile ? "RESOLVED" : "UNRESOLVED";
       const claim = {
         provider: MODULE_PROVIDER.id,
         version: MODULE_PROVIDER.version,
         language: record.language,
         specifier: record.specifier,
-        status: targetFile ? "RESOLVED" : "UNRESOLVED",
+        status,
         reason: targetFile ? result.reason : result.reason ?? "resolved_target_not_in_generation",
+        candidates: candidatePaths,
+        resolutionTier: result.resolutionTier ?? null,
         evidence: evidence(file, record.line),
       };
       if (existing) {
@@ -130,11 +206,12 @@ function addModuleEvidence(generation, files, root, selectedFiles = files) {
           evidence: evidence(file, record.line),
         });
       }
-      if (targetFile) resolved += 1;
+      if (status === "RESOLVED") resolved += 1;
+      else if (status === "AMBIGUOUS") ambiguous += 1;
       else unresolved += 1;
     }
   }
-  return { provider: MODULE_PROVIDER.id, resolved, unresolved };
+  return { provider: MODULE_PROVIDER.id, resolved, unresolved, ambiguous };
 }
 
 function addDomainFact(generation, provider, file, category, name, line, edgeKind, attributes = {}) {

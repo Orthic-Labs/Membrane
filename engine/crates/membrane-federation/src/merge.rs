@@ -2,8 +2,8 @@
 //!
 //! Merge is intentionally boring: normalize and admit lanes first, group by
 //! stable identity, collapse exact duplicates, omit conflicts, then apply the
-//! selected deterministic strategy. Bounded RRF is production default; fixed
-//! provider/security order remains an explicit comparison control.
+//! selected deterministic strategy. Qualified fixed order remains default;
+//! bounded RRF stays an explicit named/versioned experiment.
 
 use crate::normalize::{normalize_provider_output, NormalizedCandidate, NormalizedProviderOutput};
 use crate::omission::{
@@ -21,19 +21,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Deterministic fusion strategy selected by the composition owner.
 ///
-/// RRF is production default. Fixed order remains an explicit comparison and
-/// recovery control; neither strategy can admit a provider or make final
-/// Membrane packet-selection decisions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Fixed order remains qualified default. RRF must be selected explicitly;
+/// neither strategy can admit a provider or make final Membrane
+/// packet-selection decisions.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FusionStrategy {
+    #[default]
     FixedOrder,
     Rrf,
-}
-
-impl Default for FusionStrategy {
-    fn default() -> Self {
-        Self::Rrf
-    }
 }
 
 impl FusionStrategy {
@@ -340,7 +335,7 @@ fn fuse_fixed_normalized(
     )
 }
 
-/// Run bounded core RRF as production fusion.
+/// Run bounded core RRF as explicit qualification/experiment fusion.
 /// Federation owns provider eligibility; core owns rank fusion and receipt
 /// decisions.
 fn fuse_rrf_normalized(

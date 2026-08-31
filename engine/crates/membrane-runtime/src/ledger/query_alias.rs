@@ -23,6 +23,10 @@ pub struct QueryAliasShadowHitV1 {
     pub source_revision: String,
     pub span_hash: String,
     pub ledger_generation: i64,
+    pub evidence_quote: String,
+    pub evidence_start_byte: usize,
+    pub evidence_end_byte: usize,
+    pub evidence_sha256: String,
 }
 
 pub(crate) fn replace_node_aliases_tx(
@@ -30,39 +34,18 @@ pub(crate) fn replace_node_aliases_tx(
     doc_id: &str,
     node_id: &str,
     anchor_id: &str,
-    heading: &str,
+    _heading: &str,
     body: &str,
+    section_start_byte: usize,
     source_revision: &str,
     span_hash: &str,
     generation: i64,
 ) -> rusqlite::Result<()> {
-    let mut aliases = Vec::new();
     let mut seen = BTreeSet::new();
-    for line in body.lines() {
-        let line = line
-            .trim()
-            .trim_start_matches(|character: char| {
-                matches!(character, '#' | '-' | '*' | '>' | ' ')
-            })
-            .trim();
-        if line.ends_with('?') && line.len() <= 240 {
-            if seen.insert(line.to_owned()) {
-                aliases.push((line.to_owned(), 1.0f64, "source_question"));
-            }
+    for fact in declarative_fact_aliases(body) {
+        if !seen.insert(fact.alias.clone()) {
+            continue;
         }
-    }
-    let heading = heading.trim();
-    if !heading.is_empty() && !matches!(heading, "preamble" | "_frontmatter") {
-        let alias = if heading.ends_with('?') {
-            heading.to_owned()
-        } else {
-            format!("{heading}?")
-        };
-        if seen.insert(alias.clone()) {
-            aliases.push((alias, 0.65f64, "heading_question"));
-        }
-    }
-    for (alias, weight, derivation) in aliases {
         tx.execute(
             "INSERT INTO ledger_query_aliases (
                 doc_id,node_id,anchor_id,alias,weight,derivation,source_revision,span_hash,
@@ -72,12 +55,27 @@ pub(crate) fn replace_node_aliases_tx(
                 doc_id,
                 node_id,
                 anchor_id,
-                alias,
-                weight,
-                derivation,
+                fact.alias,
+                fact.weight,
+                fact.derivation,
                 source_revision,
                 span_hash,
                 generation,
+            ],
+        )?;
+        tx.execute(
+            "INSERT INTO ledger_query_alias_evidence (
+                doc_id,node_id,alias,evidence_quote,evidence_start_byte,evidence_end_byte,
+                evidence_sha256
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            rusqlite::params![
+                doc_id,
+                node_id,
+                fact.alias,
+                fact.quote,
+                (section_start_byte + fact.start_byte) as i64,
+                (section_start_byte + fact.end_byte) as i64,
+                hex::encode(Sha256::digest(fact.quote.as_bytes())),
             ],
         )?;
     }
@@ -108,12 +106,22 @@ pub fn recall_query_aliases_shadow(
                 "SELECT alias.doc_id,alias.node_id,alias.anchor_id,alias.alias,alias.weight,
                         alias.derivation,alias.source_revision,alias.span_hash,
                         alias.ledger_generation,artifact.repository_root,artifact.path,
-                        artifact.content_hash
+                        artifact.content_hash,evidence.evidence_quote,
+                        evidence.evidence_start_byte,evidence.evidence_end_byte,
+                        evidence.evidence_sha256,conversion.raw_input,conversion.markdown
                  FROM ledger_query_aliases alias
                  JOIN ledger_nodes node
                    ON node.doc_id=alias.doc_id AND node.node_id=alias.node_id
                  JOIN ledger_doc_artifacts artifact ON artifact.doc_id=alias.doc_id
                  JOIN ledger_index_publications publication ON publication.doc_id=alias.doc_id
+                 JOIN ledger_query_alias_evidence evidence
+                   ON evidence.doc_id=alias.doc_id AND evidence.node_id=alias.node_id
+                  AND evidence.alias=alias.alias
+                 LEFT JOIN ledger_document_conversions conversion
+                   ON conversion.doc_id=alias.doc_id
+                  AND conversion.raw_sha256=artifact.content_hash
+                  AND conversion.source_revision=artifact.revision
+                  AND conversion.ledger_generation=artifact.index_generation
                  WHERE artifact.lifecycle_state='active' AND artifact.sensitivity='normal'
                    AND alias.source_revision=artifact.revision
                    AND alias.source_revision=node.source_revision
@@ -140,6 +148,12 @@ pub fn recall_query_aliases_shadow(
                     row.get::<_, String>(9)?,
                     row.get::<_, String>(10)?,
                     row.get::<_, String>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, i64>(13)?,
+                    row.get::<_, i64>(14)?,
+                    row.get::<_, String>(15)?,
+                    row.get::<_, Option<Vec<u8>>>(16)?,
+                    row.get::<_, Option<String>>(17)?,
                 ))
             })
             .map_err(|error| error.to_string())?;
@@ -163,10 +177,33 @@ pub fn recall_query_aliases_shadow(
                 repository_root,
                 path,
                 content_hash,
+                evidence_quote,
+                evidence_start_byte,
+                evidence_end_byte,
+                evidence_sha256,
+                converted_raw,
+                converted_markdown,
             )| {
-                let source_path = Path::new(&repository_root).join(path);
-                let live = std::fs::read(source_path).ok()?;
-                if hex::encode(Sha256::digest(&live)) != content_hash {
+                let evidence_bytes = if let (Some(raw), Some(markdown)) =
+                    (converted_raw, converted_markdown)
+                {
+                    if hex::encode(Sha256::digest(&raw)) != content_hash {
+                        return None;
+                    }
+                    markdown.into_bytes()
+                } else {
+                    let source_path = Path::new(&repository_root).join(path);
+                    let live = std::fs::read(source_path).ok()?;
+                    if hex::encode(Sha256::digest(&live)) != content_hash {
+                        return None;
+                    }
+                    live
+                };
+                let start = evidence_start_byte as usize;
+                let end = evidence_end_byte as usize;
+                if evidence_bytes.get(start..end) != Some(evidence_quote.as_bytes())
+                    || hex::encode(Sha256::digest(evidence_quote.as_bytes())) != evidence_sha256
+                {
                     return None;
                 }
                 let normalized_alias = normalize_query(&alias);
@@ -185,6 +222,10 @@ pub fn recall_query_aliases_shadow(
                     source_revision: revision,
                     span_hash: span,
                     ledger_generation: generation,
+                    evidence_quote,
+                    evidence_start_byte: start,
+                    evidence_end_byte: end,
+                    evidence_sha256,
                 })
             },
         )
@@ -198,4 +239,65 @@ pub fn recall_query_aliases_shadow(
     });
     hits.truncate(k);
     Ok(hits)
+}
+
+struct DeclarativeAlias {
+    alias: String,
+    quote: String,
+    start_byte: usize,
+    end_byte: usize,
+    weight: f64,
+    derivation: &'static str,
+}
+
+fn declarative_fact_aliases(body: &str) -> Vec<DeclarativeAlias> {
+    let mut output = Vec::new();
+    let mut line_offset = 0usize;
+    for line_with_newline in body.split_inclusive('\n') {
+        let line = line_with_newline
+            .trim_end_matches(|character| matches!(character, '\r' | '\n'));
+        let mut sentence_start = 0usize;
+        for (period, _) in line.match_indices('.') {
+            let raw = &line[sentence_start..=period];
+            let leading = raw.len() - raw.trim_start().len();
+            let quote = raw.trim();
+            let start = line_offset + sentence_start + leading;
+            sentence_start = period + 1;
+            if quote.len() < 8 || quote.len() > 320 || quote.contains('?') {
+                continue;
+            }
+            let statement = quote.trim_end_matches('.').trim();
+            let lower = statement.to_ascii_lowercase();
+            let (separator, question_word, derivation) =
+                if let Some(index) = lower.find(" is ") {
+                    (index, "What is", "declarative_copula_is")
+                } else if let Some(index) = lower.find(" are ") {
+                    (index, "What are", "declarative_copula_are")
+                } else {
+                    continue;
+                };
+            let subject = statement[..separator]
+                .trim()
+                .trim_start_matches(|character: char| matches!(character, '-' | '*' | '>' | '#'))
+                .trim();
+            if subject.len() < 2
+                || subject.len() > 120
+                || subject
+                    .chars()
+                    .any(|character| matches!(character, '[' | ']' | '(' | ')' | ':'))
+            {
+                continue;
+            }
+            output.push(DeclarativeAlias {
+                alias: format!("{question_word} {subject}?"),
+                quote: quote.to_owned(),
+                start_byte: start,
+                end_byte: start + quote.len(),
+                weight: 1.0,
+                derivation,
+            });
+        }
+        line_offset += line_with_newline.len();
+    }
+    output
 }

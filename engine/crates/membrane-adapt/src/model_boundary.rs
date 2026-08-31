@@ -8,12 +8,21 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::authority::{Origin, PrecedenceTier};
+use crate::record::{InfluenceClass, RecordClass};
+use crate::scope::ScopeDimensions;
+use crate::seal::{
+    SemanticPayloadV1, ADMISSION_POLICY_VERSION, PROVENANCE_CONTRACT_VERSION,
+    REDACTION_CONTRACT_VERSION, SEAL_CONTRACT_VERSION,
+};
+
 /// Errors that arise when untrusted model proposals are misused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelProposalError {
     UnboundEvidence,
     AuthorityEscalationAttempted,
     ScopeBeyondEvidence,
+    InvalidDeterministicContext,
 }
 
 impl std::fmt::Display for ModelProposalError {
@@ -30,6 +39,9 @@ impl std::fmt::Display for ModelProposalError {
             }
             ModelProposalError::ScopeBeyondEvidence => {
                 write!(f, "model proposal declared scope broader than evidence")
+            }
+            ModelProposalError::InvalidDeterministicContext => {
+                write!(f, "deterministic proposal binding context is invalid")
             }
         }
     }
@@ -77,6 +89,33 @@ pub struct ModelRemediationTextProposal {
     pub text: String,
 }
 
+/// Trusted-host evidence available to deterministic proposal binding. Model
+/// output cannot construct authority, scope, effect, lifecycle, or receipts
+/// through this type's evidence fields.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerifiedModelEvidenceV1 {
+    pub event_id: String,
+    pub excerpt_sha256: String,
+    pub source_evidence_digest: String,
+    pub origin: Origin,
+    pub scope: String,
+    pub scope_dimensions: ScopeDimensions,
+}
+
+/// Deterministic host policy applied after model wording is verified against
+/// selected evidence. Model hints are intentionally absent from every
+/// authority-bearing field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeterministicProposalBindingV1 {
+    pub evidence: Vec<VerifiedModelEvidenceV1>,
+    pub category: String,
+    pub record_class: Option<RecordClass>,
+    pub machine_binding: Option<String>,
+    pub canonical_pool_sha256: String,
+    pub validator_receipt_id: String,
+    pub validator_receipt_sha256: String,
+}
+
 impl ModelExtractionProposal {
     /// Verify that every claimed evidence binding exists and each excerpt
     /// digest matches a selected user transcript event. Returns the list
@@ -104,6 +143,102 @@ impl ModelExtractionProposal {
             return Err(ModelProposalError::UnboundEvidence);
         }
         Ok(verified)
+    }
+
+    /// Convert verified model wording into sealed semantics using trusted-host
+    /// policy only. Category/scope hints never cross this boundary.
+    pub fn bind_deterministically(
+        &self,
+        binding: &DeterministicProposalBindingV1,
+    ) -> Result<SemanticPayloadV1, ModelProposalError> {
+        use std::collections::{BTreeMap, BTreeSet};
+
+        if self.proposer_id.trim().is_empty()
+            || self.rule_text.trim().is_empty()
+            || binding.category.trim().is_empty()
+            || binding.canonical_pool_sha256.trim().is_empty()
+            || binding.validator_receipt_id.trim().is_empty()
+            || binding.validator_receipt_sha256.trim().is_empty()
+        {
+            return Err(ModelProposalError::InvalidDeterministicContext);
+        }
+        let first_evidence = binding
+            .evidence
+            .first()
+            .ok_or(ModelProposalError::UnboundEvidence)?;
+        if first_evidence.scope.trim().is_empty() {
+            return Err(ModelProposalError::InvalidDeterministicContext);
+        }
+        let raw_dimensions = first_evidence
+            .scope_dimensions
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let scope_dimensions = ScopeDimensions::normalize(&raw_dimensions)
+            .map_err(|_| ModelProposalError::InvalidDeterministicContext)?;
+        let selected = binding
+            .evidence
+            .iter()
+            .map(|value| (value.event_id.clone(), value.excerpt_sha256.clone()))
+            .collect::<Vec<_>>();
+        let evidence_ids = binding
+            .evidence
+            .iter()
+            .map(|value| value.event_id.as_str())
+            .collect::<BTreeSet<_>>();
+        if evidence_ids.len() != binding.evidence.len()
+            || binding.evidence.iter().any(|value| {
+                value.scope != first_evidence.scope
+                    || value.scope_dimensions != first_evidence.scope_dimensions
+            })
+        {
+            return Err(ModelProposalError::ScopeBeyondEvidence);
+        }
+        let verified_ids = self.verify_bindings(&selected)?;
+        let unique_ids = verified_ids.iter().collect::<BTreeSet<_>>();
+        if unique_ids.len() != verified_ids.len() {
+            return Err(ModelProposalError::InvalidDeterministicContext);
+        }
+        let mut source_evidence_digests = Vec::with_capacity(verified_ids.len());
+        for event_id in verified_ids {
+            let evidence = binding
+                .evidence
+                .iter()
+                .find(|value| value.event_id == event_id)
+                .ok_or(ModelProposalError::UnboundEvidence)?;
+            if evidence.source_evidence_digest.trim().is_empty() {
+                return Err(ModelProposalError::InvalidDeterministicContext);
+            }
+            if !crate::authority::evaluate_origin(evidence.origin, &self.bound_evidence_excerpt)
+                .admitted
+            {
+                return Err(ModelProposalError::AuthorityEscalationAttempted);
+            }
+            source_evidence_digests.push(evidence.source_evidence_digest.clone());
+        }
+        source_evidence_digests.sort();
+        source_evidence_digests.dedup();
+
+        Ok(SemanticPayloadV1 {
+            seal_contract_version: SEAL_CONTRACT_VERSION.into(),
+            record_kind: "preference".into(),
+            category: crate::canonical::normalize_text(&binding.category),
+            canonical_text: crate::canonical::normalize_text(&self.rule_text),
+            scope: first_evidence.scope.trim().into(),
+            scope_dimensions,
+            authority_tier: PrecedenceTier::ProvisionalCandidate,
+            authority_effect: crate::authority::classify_authority_effect(&self.rule_text),
+            influence_class: InfluenceClass::Provisional,
+            record_class: binding.record_class,
+            machine_binding: binding.machine_binding.clone(),
+            source_evidence_digests,
+            canonical_pool_sha256: binding.canonical_pool_sha256.clone(),
+            admission_policy_version: ADMISSION_POLICY_VERSION.into(),
+            validator_receipt_id: binding.validator_receipt_id.clone(),
+            validator_receipt_sha256: binding.validator_receipt_sha256.clone(),
+            redaction_contract_version: REDACTION_CONTRACT_VERSION.into(),
+            provenance_contract_version: PROVENANCE_CONTRACT_VERSION.into(),
+        })
     }
 }
 

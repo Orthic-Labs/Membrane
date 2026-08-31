@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
+use std::io::Read;
+use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,8 +15,24 @@ pub enum DocumentInputFormatV1 {
     PlainText,
     Html,
     Json,
+    Docx,
+    Pdf,
     Media(String),
     Other(String),
+}
+
+impl DocumentInputFormatV1 {
+    pub fn storage_name(&self) -> String {
+        match self {
+            Self::PlainText => "plain_text".to_owned(),
+            Self::Html => "html".to_owned(),
+            Self::Json => "json".to_owned(),
+            Self::Docx => "docx".to_owned(),
+            Self::Pdf => "pdf".to_owned(),
+            Self::Media(media_type) => format!("media:{media_type}"),
+            Self::Other(format) => format!("other:{format}"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -49,7 +67,7 @@ impl DocumentConversionGrantV1 {
             .map(|format| format!("{format:?}"))
             .collect::<Vec<_>>()
             .join("\0");
-        digest(format!("ledger.document-conversion.v1\0{formats}\0{}", self.max_raw_bytes).as_bytes())
+        digest(format!("ledger.document-conversion.v2\0{formats}\0{}", self.max_raw_bytes).as_bytes())
     }
 }
 
@@ -84,6 +102,7 @@ pub enum ConversionLossV1 {
 #[serde(rename_all = "snake_case")]
 pub enum ConversionOmissionV1 {
     EmbeddedMediaExcluded { count: usize },
+    CompressedPdfStreamExcluded { count: usize },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -114,6 +133,10 @@ pub enum DocumentConversionErrorV1 {
     UnsupportedFormat { format: String },
     #[error("invalid_input")]
     InvalidInput { detail: String },
+    #[error("converter_unavailable")]
+    ConverterUnavailable { converter: String },
+    #[error("conversion_output_too_large")]
+    OutputTooLarge { actual: usize, maximum: usize },
 }
 
 /// Convert one explicitly granted input; default grant denies every format.
@@ -148,7 +171,11 @@ pub fn convert_granted_document(
     }
     let mut omissions = Vec::new();
     let (markdown, converter, version) = match &input.format {
-        DocumentInputFormatV1::PlainText => (text, "ledger.plain-text", "1"),
+        DocumentInputFormatV1::PlainText => (
+            text,
+            "ledger.plain-text".to_owned(),
+            "1".to_owned(),
+        ),
         DocumentInputFormatV1::Json => {
             let value: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
                 DocumentConversionErrorV1::InvalidInput {
@@ -160,7 +187,11 @@ pub fn convert_granted_document(
                     detail: format!("json:{error}"),
                 }
             })?;
-            (format!("```json\n{normalized}\n```\n"), "ledger.json", "1")
+            (
+                format!("```json\n{normalized}\n```\n"),
+                "ledger.json".to_owned(),
+                "1".to_owned(),
+            )
         }
         DocumentInputFormatV1::Html => {
             let (normalized, media_count, had_markup) = normalize_html(&text);
@@ -170,7 +201,42 @@ pub fn convert_granted_document(
             if media_count > 0 {
                 omissions.push(ConversionOmissionV1::EmbeddedMediaExcluded { count: media_count });
             }
-            (normalized, "ledger.html-text", "1")
+            (
+                normalized,
+                "ledger.html-text".to_owned(),
+                "1".to_owned(),
+            )
+        }
+        DocumentInputFormatV1::Pdf => {
+            let (normalized, media_count, compressed_count) = normalize_pdf(&input.raw_input)?;
+            losses.push(ConversionLossV1::FormattingFlattened);
+            if media_count > 0 {
+                omissions.push(ConversionOmissionV1::EmbeddedMediaExcluded { count: media_count });
+            }
+            if compressed_count > 0 {
+                omissions.push(ConversionOmissionV1::CompressedPdfStreamExcluded {
+                    count: compressed_count,
+                });
+            }
+            (
+                normalized,
+                "ledger.pdf-literal-text".to_owned(),
+                "1".to_owned(),
+            )
+        }
+        DocumentInputFormatV1::Docx => {
+            let output_limit = grant.max_raw_bytes.saturating_mul(8).min(16 * 1024 * 1024);
+            let (normalized, media_count, tar_version) =
+                normalize_docx(&input.raw_input, output_limit)?;
+            losses.push(ConversionLossV1::FormattingFlattened);
+            if media_count > 0 {
+                omissions.push(ConversionOmissionV1::EmbeddedMediaExcluded { count: media_count });
+            }
+            (
+                normalized,
+                "ledger.docx-wordprocessingml".to_owned(),
+                tar_version,
+            )
         }
         DocumentInputFormatV1::Other(format) => {
             return Err(DocumentConversionErrorV1::UnsupportedFormat {
@@ -181,7 +247,7 @@ pub fn convert_granted_document(
     };
     let markdown_sha256 = digest(markdown.as_bytes());
     Ok(ConvertedDocumentV1 {
-        schema_version: "ledger.converted-document.v1".to_owned(),
+        schema_version: "ledger.converted-document.v2".to_owned(),
         source_ref: input.source_ref,
         format: input.format,
         raw_input: input.raw_input,
@@ -189,8 +255,8 @@ pub fn convert_granted_document(
         markdown,
         markdown_sha256,
         converter: ConverterProvenanceV1 {
-            converter: converter.to_owned(),
-            version: version.to_owned(),
+            converter,
+            version,
             config_digest: grant.config_digest(),
         },
         losses,
@@ -263,6 +329,241 @@ fn normalize_html(html: &str) -> (String, usize, bool) {
         .collect::<Vec<_>>()
         .join("\n\n");
     (format!("{normalized}\n"), media_count, had_markup)
+}
+
+fn normalize_pdf(raw: &[u8]) -> Result<(String, usize, usize), DocumentConversionErrorV1> {
+    if !raw.starts_with(b"%PDF-") {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "pdf_header_missing".to_owned(),
+        });
+    }
+    let text = String::from_utf8_lossy(raw);
+    let media_count = text.match_indices("/Subtype /Image").count();
+    let compressed_count = text.match_indices("/FlateDecode").count();
+    let bytes = text.as_bytes();
+    let mut fragments = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] != b'(' {
+            index += 1;
+            continue;
+        }
+        let mut value = String::new();
+        let mut cursor = index + 1;
+        let mut depth = 1usize;
+        while cursor < bytes.len() && depth > 0 {
+            match bytes[cursor] {
+                b'\\' if cursor + 1 < bytes.len() => {
+                    cursor += 1;
+                    value.push(match bytes[cursor] {
+                        b'n' => '\n',
+                        b'r' => '\r',
+                        b't' => '\t',
+                        byte => byte as char,
+                    });
+                }
+                b'(' => {
+                    depth += 1;
+                    value.push('(');
+                }
+                b')' => {
+                    depth -= 1;
+                    if depth > 0 {
+                        value.push(')');
+                    }
+                }
+                byte => value.push(byte as char),
+            }
+            cursor += 1;
+        }
+        let operator = String::from_utf8_lossy(&bytes[cursor..bytes.len().min(cursor + 16)]);
+        let operator = operator.trim_start();
+        if depth == 0 && (operator.starts_with("Tj") || operator.starts_with("TJ")) {
+            let value = value.trim();
+            if !value.is_empty() {
+                fragments.push(value.to_owned());
+            }
+        }
+        index = cursor.max(index + 1);
+    }
+    if fragments.is_empty() {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "pdf_no_extractable_literal_text".to_owned(),
+        });
+    }
+    Ok((format!("{}\n", fragments.join("\n\n")), media_count, compressed_count))
+}
+
+fn normalize_docx(
+    raw: &[u8],
+    output_limit: usize,
+) -> Result<(String, usize, String), DocumentConversionErrorV1> {
+    if raw.len() < 4 || &raw[..4] != b"PK\x03\x04" {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_zip_header_missing".to_owned(),
+        });
+    }
+    let tar_version_output = tar_command()
+        .arg("--version")
+        .output()
+        .map_err(|_| DocumentConversionErrorV1::ConverterUnavailable {
+            converter: "tar".to_owned(),
+        })?;
+    let tar_version = String::from_utf8_lossy(&tar_version_output.stdout)
+        .lines()
+        .next()
+        .unwrap_or("tar-version-unknown")
+        .trim()
+        .to_owned();
+    let hash = digest(raw);
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temp_path = std::env::temp_dir().join(format!(
+        "membrane-ledger-docx-{}-{}-{}.docx",
+        std::process::id(),
+        &hash[..16],
+        nonce
+    ));
+    std::fs::write(&temp_path, raw).map_err(|error| DocumentConversionErrorV1::InvalidInput {
+        detail: format!("docx_temp_write:{error}"),
+    })?;
+    let child = tar_command()
+        .arg("-xOf")
+        .arg(&temp_path)
+        .arg("word/document.xml")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(_) => {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(DocumentConversionErrorV1::ConverterUnavailable {
+                converter: "tar".to_owned(),
+            });
+        }
+    };
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_stdout_missing".to_owned(),
+        });
+    };
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let reader = std::thread::spawn(move || {
+        let mut xml = Vec::new();
+        let result = stdout
+            .take(output_limit.saturating_add(1) as u64)
+            .read_to_end(&mut xml)
+            .map(|_| xml);
+        let _ = sender.send(result);
+    });
+    let xml = match receiver.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(Ok(xml)) => xml,
+        Ok(Err(error)) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(DocumentConversionErrorV1::InvalidInput {
+                detail: format!("docx_read:{error}"),
+            });
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = reader.join();
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(DocumentConversionErrorV1::InvalidInput {
+                detail: "docx_converter_timeout".to_owned(),
+            });
+        }
+    };
+    let _ = reader.join();
+    if xml.len() > output_limit {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(DocumentConversionErrorV1::OutputTooLarge {
+            actual: xml.len(),
+            maximum: output_limit,
+        });
+    }
+    let status = child.wait().map_err(|error| DocumentConversionErrorV1::InvalidInput {
+        detail: format!("docx_wait:{error}"),
+    })?;
+    let _ = std::fs::remove_file(&temp_path);
+    if !status.success() {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_document_xml_missing".to_owned(),
+        });
+    }
+    let xml = String::from_utf8(xml).map_err(|error| DocumentConversionErrorV1::InvalidInput {
+        detail: format!("docx_xml_utf8:{error}"),
+    })?;
+    let markdown = wordprocessingml_text(&xml);
+    if markdown.trim().is_empty() {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_no_text".to_owned(),
+        });
+    }
+    let media_occurrences = String::from_utf8_lossy(raw)
+        .match_indices("word/media/")
+        .count();
+    Ok((markdown, media_occurrences.div_ceil(2), tar_version))
+}
+
+fn wordprocessingml_text(xml: &str) -> String {
+    let mut output = String::new();
+    let mut cursor = 0usize;
+    while let Some(relative) = xml[cursor..].find("<w:t") {
+        let start_tag = cursor + relative;
+        let Some(open_end) = xml[start_tag..].find('>').map(|value| start_tag + value + 1) else {
+            break;
+        };
+        let Some(close) = xml[open_end..]
+            .find("</w:t>")
+            .map(|value| open_end + value)
+        else {
+            break;
+        };
+        output.push_str(&decode_xml_entities(&xml[open_end..close]));
+        let after = close + "</w:t>".len();
+        if xml[after..].find("</w:p>").is_some_and(|paragraph| {
+            xml[after..]
+                .find("<w:t")
+                .is_none_or(|next_text| paragraph < next_text)
+        }) {
+            output.push_str("\n\n");
+        } else {
+            output.push(' ');
+        }
+        cursor = after;
+    }
+    format!("{}\n", output.trim())
+}
+
+fn tar_command() -> Command {
+    let mut command = Command::new("tar");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}
+
+fn decode_xml_entities(value: &str) -> String {
+    value
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
 }
 
 fn digest(bytes: &[u8]) -> String {

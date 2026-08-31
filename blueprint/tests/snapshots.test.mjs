@@ -31,6 +31,8 @@ test("named snapshots are idempotent and changes are deterministic/bounded", () 
     assert.equal(semantic.authority, "history_reference_only");
     assert.equal(semantic.currentTruth.generationId, "g2");
     assert.equal(semantic.changes[0].path, "a.ts");
+    assert.ok(semantic.semanticDelta);
+    assert.equal(semantic.schemaVersion, 2);
   } finally { closeStore(db); }
 });
 

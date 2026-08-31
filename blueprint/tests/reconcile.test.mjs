@@ -64,14 +64,16 @@ test("reconcile clears an overflow gap only after applying authority diff", asyn
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-test("reconcile CLI emits machine-readable result and hook installer pins node", () => {
+test("reconcile CLI emits machine-readable pending-domain result and hook installer pins node", () => {
   const repo = makeRepo();
   try {
     const git = spawnSync("git", ["init", "-q"], { cwd: repo, encoding: "utf8" });
     assert.equal(git.status, 0, git.stderr);
     const reconcileResult = spawnSync(process.execPath, [CLI, "reconcile", "--json", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
     assert.equal(reconcileResult.status, 0, reconcileResult.stderr);
-    assert.equal(JSON.parse(reconcileResult.stdout).eventGap, 0);
+    const reconcilePayload = JSON.parse(reconcileResult.stdout);
+    assert.equal(reconcilePayload.eventGap, 1);
+    assert.deepEqual(reconcilePayload.convergence.domainsPending, ["doc"]);
     const hooks = spawnSync(process.execPath, [CLI, "hooks", "install-git"], { cwd: repo, encoding: "utf8" });
     assert.equal(hooks.status, 0, hooks.stderr);
     const result = JSON.parse(hooks.stdout);

@@ -72,7 +72,7 @@ fn active_merge_emits_versioned_fusion_receipt() {
     .expect("valid provider lane");
     assert_eq!(
         result.fusion_receipt.policy,
-        membrane_protocol::FusionReceiptV1::RRF_POLICY
+        membrane_protocol::FusionReceiptV1::POLICY
     );
     assert!(result
         .fusion_receipt
@@ -82,12 +82,12 @@ fn active_merge_emits_versioned_fusion_receipt() {
     let response = result.response("request", "trace");
     assert_eq!(
         response.extensions["fusionReceipt"]["policy"].as_str(),
-        Some(membrane_protocol::FusionReceiptV1::RRF_POLICY)
+        Some(membrane_protocol::FusionReceiptV1::POLICY)
     );
 }
 
 #[test]
-fn rrf_is_production_default_and_fixed_order_remains_explicit_control() {
+fn fixed_order_is_default_and_rrf_requires_explicit_selection() {
     let outputs = [
         output(ProviderId::Anchors, "anchor-1"),
         output(ProviderId::Blueprint, "blueprint-1"),
@@ -100,21 +100,21 @@ fn rrf_is_production_default_and_fixed_order_remains_explicit_control() {
     .expect("active merge");
     assert_eq!(
         active.fusion_receipt.policy,
-        membrane_protocol::FusionReceiptV1::RRF_POLICY
+        membrane_protocol::FusionReceiptV1::POLICY
     );
-    assert_eq!(active.candidates.len(), 1);
-    let control = merge_outputs_with_strategy(
+    assert_eq!(active.candidates.len(), 2);
+    let experiment = merge_outputs_with_strategy(
         &[ProviderId::Anchors, ProviderId::Blueprint],
         &outputs,
         None,
-        FusionStrategy::FixedOrder,
+        FusionStrategy::Rrf,
     )
-    .expect("explicit fixed-order merge");
+    .expect("explicit RRF merge");
     assert_eq!(
-        control.fusion_receipt.policy,
-        membrane_protocol::FusionReceiptV1::POLICY
+        experiment.fusion_receipt.policy,
+        membrane_protocol::FusionReceiptV1::RRF_POLICY
     );
-    assert_eq!(control.candidates.len(), 2);
+    assert_eq!(experiment.candidates.len(), 1);
 }
 
 #[test]

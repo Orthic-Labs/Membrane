@@ -1,7 +1,7 @@
-//! Production-path qualification for bounded production RRF fusion.
+//! Qualification harness for bounded experimental RRF fusion.
 //!
-//! This harness intentionally measures mechanics only. Fixed order remains an
-//! explicit comparison control; held-out quality claims require root-run
+//! This harness intentionally measures mechanics only. Fixed order remains
+//! qualified default; held-out quality claims require root-run
 //! operational evidence and are represented as unavailable in the fixture.
 
 use membrane_federation::merge::{merge_outputs, merge_outputs_with_strategy, FusionStrategy};
@@ -152,7 +152,7 @@ fn qualification_fixture_has_development_and_frozen_held_out_corpora() {
 }
 
 #[test]
-fn production_path_defaults_to_rrf_and_retains_explicit_control() {
+fn production_path_keeps_fixed_default_and_gates_rrf_explicitly() {
     let fixture: Corpus = serde_json::from_str(FIXTURE).expect("valid qualification fixture");
     for corpus in fixture.corpora {
         for case in corpus.cases {
@@ -181,8 +181,8 @@ fn production_path_defaults_to_rrf_and_retains_explicit_control() {
 
             assert_eq!(control.fusion_receipt.policy, "membrane-fusion-fixed-v1");
             assert_eq!(rrf.fusion_receipt.policy, "membrane-fusion-rrf-v1");
-            assert_eq!(active.fusion_receipt, rrf.fusion_receipt);
-            assert_eq!(active.candidates, rrf.candidates);
+            assert_eq!(active.fusion_receipt, control.fusion_receipt);
+            assert_eq!(active.candidates, control.candidates);
             assert_eq!(control.fusion_receipt.schema_version, 1);
             assert_eq!(rrf.fusion_receipt.schema_version, 1);
             assert_eq!(control.fusion_receipt.provider_order.len(), lanes.len());

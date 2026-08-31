@@ -20,7 +20,7 @@ fn fixture() -> (tempfile::TempDir, LedgerDb, String, String) {
     std::fs::create_dir_all(&docs).unwrap();
     std::fs::write(
         docs.join("a.md"),
-        "# Root\n\nHow do operators rotate keys?\n\n[Unicode](目标.md#section)\n\n[Encoded](%E7%9B%AE%E6%A0%87.md#section)\n\n[Missing][missing]\n\n[missing]: missing.md\n\n<https://example.com>\n\n![diagram](image.png)\n\n[Self](#root)\n",
+        "# Root\n\nKey rotation is performed with the key tool.\n\nHow do operators rotate keys?\n\n[Unicode](目标.md#section)\n\n[Encoded](%E7%9B%AE%E6%A0%87.md#section)\n\n[Missing][missing]\n\n[missing]: missing.md\n\n<https://example.com>\n\n![diagram](image.png)\n\n[Self](#root)\n",
     )
     .unwrap();
     std::fs::write(
@@ -182,15 +182,54 @@ fn graph_expansion_requires_strong_seeds_and_observes_every_cap() {
 }
 
 #[test]
+fn production_recall_expands_only_from_strong_bounded_seeds() {
+    let (_root, db, source, target) = fixture();
+    let receipt = doc_spine::recall_with_graph(
+        &db,
+        "key rotation",
+        5,
+        &doc_spine::LedgerRecallGraphPolicyV1::default(),
+    )
+    .unwrap();
+    assert!(receipt.hits.iter().any(|hit| hit.doc_id == source));
+    assert!(receipt
+        .hits
+        .iter()
+        .any(|hit| hit.doc_id == target && hit.lane == "ledger_graph"));
+    assert!(receipt.graph.edges.len() <= 6);
+
+    let abstained = doc_spine::recall_with_graph(
+        &db,
+        "root absent",
+        5,
+        &doc_spine::LedgerRecallGraphPolicyV1::default(),
+    )
+    .unwrap();
+    assert!(abstained
+        .graph
+        .abstentions
+        .contains(&GraphExpansionAbstentionV1::NoStrongSeed));
+}
+
+#[test]
 fn future_question_aliases_are_separate_weighted_and_fail_closed_on_drift() {
     let (root, db, source, _target) = fixture();
-    let hits = recall_query_aliases_shadow(&db, "operators rotate keys", 5).unwrap();
+    let hits = recall_query_aliases_shadow(&db, "what is key rotation", 5).unwrap();
     let hit = hits.iter().find(|hit| hit.doc_id == source).unwrap();
-    assert_eq!(hit.alias, "How do operators rotate keys?");
+    assert_eq!(hit.alias, "What is Key rotation?");
     assert_eq!(hit.weight, 1.0);
-    assert_eq!(hit.derivation, "source_question");
+    assert_eq!(hit.derivation, "declarative_copula_is");
+    assert_eq!(
+        hit.evidence_quote,
+        "Key rotation is performed with the key tool."
+    );
+    assert_eq!(hit.evidence_sha256.len(), 64);
+    assert!(hit.evidence_end_byte > hit.evidence_start_byte);
+    assert!(!hits
+        .iter()
+        .any(|candidate| candidate.alias == "How do operators rotate keys?"));
     assert_eq!(hit.span_hash.len(), 64);
-    assert!(doc_spine::recall_shadow(&db, "operators rotate keys", 5)
+    assert!(doc_spine::recall_shadow(&db, "what is key rotation", 5)
         .unwrap()
         .alias_hits
         .iter()
@@ -202,7 +241,7 @@ fn future_question_aliases_are_separate_weighted_and_fail_closed_on_drift() {
             [&source],
         )
         .unwrap();
-    assert!(!recall_query_aliases_shadow(&db, "operators rotate keys", 5)
+    assert!(!recall_query_aliases_shadow(&db, "what is key rotation", 5)
         .unwrap()
         .iter()
         .any(|candidate| candidate.doc_id == source));
@@ -213,7 +252,7 @@ fn future_question_aliases_are_separate_weighted_and_fail_closed_on_drift() {
         )
         .unwrap();
     std::fs::write(root.path().join("docs/a.md"), "# Changed\n").unwrap();
-    assert!(!recall_query_aliases_shadow(&db, "operators rotate keys", 5)
+    assert!(!recall_query_aliases_shadow(&db, "what is key rotation", 5)
         .unwrap()
         .iter()
         .any(|candidate| candidate.doc_id == source));
@@ -285,4 +324,164 @@ fn conversion_is_grant_gated_raw_retaining_hash_bound_and_media_excluding() {
             media_type: "audio/mpeg".to_owned()
         }
     );
+}
+
+#[test]
+fn pdf_and_docx_conversion_feed_granted_ingest_with_raw_provenance() {
+    let pdf = b"%PDF-1.4\nBT (PDF guidance is preserved.) Tj ET\n/Subtype /Image\n/FlateDecode\n%%EOF".to_vec();
+    let docx = stored_zip(&[
+        (
+            "word/document.xml",
+            br#"<?xml version="1.0"?><w:document xmlns:w="x"><w:body><w:p><w:r><w:t>DOCX guidance is retained.</w:t></w:r></w:p></w:body></w:document>"# as &[u8],
+        ),
+        ("word/media/image1.png", b"not-admitted-media" as &[u8]),
+    ]);
+    let grant = DocumentConversionGrantV1::new(
+        [DocumentInputFormatV1::Pdf, DocumentInputFormatV1::Docx],
+        64 * 1024,
+    );
+    let converted_pdf = convert_granted_document(
+        &grant,
+        DocumentConversionInputV1 {
+            source_ref: "doc://grant/import/guide.pdf".to_owned(),
+            format: DocumentInputFormatV1::Pdf,
+            raw_input: pdf.clone(),
+        },
+    )
+    .unwrap();
+    assert!(converted_pdf.markdown.contains("PDF guidance is preserved."));
+    assert!(converted_pdf
+        .omissions
+        .contains(&ConversionOmissionV1::EmbeddedMediaExcluded { count: 1 }));
+    assert!(converted_pdf.omissions.contains(
+        &ConversionOmissionV1::CompressedPdfStreamExcluded { count: 1 }
+    ));
+
+    let converted_docx = convert_granted_document(
+        &grant,
+        DocumentConversionInputV1 {
+            source_ref: "doc://grant/import/guide.docx".to_owned(),
+            format: DocumentInputFormatV1::Docx,
+            raw_input: docx.clone(),
+        },
+    )
+    .unwrap();
+    assert!(converted_docx.markdown.contains("DOCX guidance is retained."));
+    assert_eq!(converted_docx.raw_input, docx);
+    assert!(!converted_docx.converter.version.is_empty());
+    assert!(converted_docx
+        .omissions
+        .iter()
+        .any(|omission| matches!(omission, ConversionOmissionV1::EmbeddedMediaExcluded { count } if *count >= 1)));
+
+    let db = LedgerDb::open_in_memory();
+    let artifact = doc_spine::ingest_granted_document(
+        &db,
+        &grant,
+        doc_spine::GrantedDocumentIngestV1 {
+            repository_root: "grant://documents".to_owned(),
+            repository_id: "repo-grant".to_owned(),
+            revision: "revision-1".to_owned(),
+            path: "imports/guide.docx".to_owned(),
+            title: "Imported guide".to_owned(),
+            document: DocumentConversionInputV1 {
+                source_ref: "doc://grant/import/guide.docx".to_owned(),
+                format: DocumentInputFormatV1::Docx,
+                raw_input: converted_docx.raw_input.clone(),
+            },
+        },
+    )
+    .unwrap();
+    let (stored_raw, converter, converter_version, config_digest): (Vec<u8>, String, String, String) = db
+        .lock()
+        .query_row(
+            "SELECT raw_input,converter,converter_version,config_digest
+             FROM ledger_document_conversions WHERE doc_id=?1",
+            [&artifact.doc_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(stored_raw, converted_docx.raw_input);
+    assert_eq!(converter, "ledger.docx-wordprocessingml");
+    assert!(!converter_version.is_empty());
+    assert_eq!(config_digest, grant.config_digest());
+    let aliases = recall_query_aliases_shadow(&db, "what is DOCX guidance", 5).unwrap();
+    assert!(aliases.iter().any(|alias| {
+        alias.doc_id == artifact.doc_id && alias.evidence_quote == "DOCX guidance is retained."
+    }));
+    let alias = aliases
+        .iter()
+        .find(|alias| alias.doc_id == artifact.doc_id)
+        .unwrap();
+    let read = doc_spine::read_registered_section(&db, &artifact.doc_id, &alias.anchor_id, 4096)
+        .unwrap();
+    assert_eq!(read.raw_content_hash, artifact.content_hash);
+    assert!(read.read.content.contains("DOCX guidance is retained."));
+    assert!(doc_spine::recall(&db, "DOCX guidance", 5)
+        .unwrap()
+        .iter()
+        .any(|hit| hit.doc_id == artifact.doc_id));
+}
+
+fn stored_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut output = Vec::new();
+    let mut central = Vec::new();
+    for (name, data) in entries {
+        let offset = output.len() as u32;
+        let crc = crc32(data);
+        output.extend_from_slice(&0x0403_4b50u32.to_le_bytes());
+        output.extend_from_slice(&20u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(&crc.to_le_bytes());
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        output.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        output.extend_from_slice(&0u16.to_le_bytes());
+        output.extend_from_slice(name.as_bytes());
+        output.extend_from_slice(data);
+
+        central.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&20u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&crc.to_le_bytes());
+        central.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        central.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u16.to_le_bytes());
+        central.extend_from_slice(&0u32.to_le_bytes());
+        central.extend_from_slice(&offset.to_le_bytes());
+        central.extend_from_slice(name.as_bytes());
+    }
+    let central_offset = output.len() as u32;
+    output.extend_from_slice(&central);
+    output.extend_from_slice(&0x0605_4b50u32.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    output.extend_from_slice(&(entries.len() as u16).to_le_bytes());
+    output.extend_from_slice(&(central.len() as u32).to_le_bytes());
+    output.extend_from_slice(&central_offset.to_le_bytes());
+    output.extend_from_slice(&0u16.to_le_bytes());
+    output
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xedb8_8320u32 & (0u32.wrapping_sub(crc & 1)));
+        }
+    }
+    !crc
 }
