@@ -15,8 +15,9 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
   const rightGit = JSON.parse(read(".rightgit.json"));
 
   assert.match(workflow, /^# Managed by right-git — do not hand-edit\./m);
-  assert.match(workflow, /^# Template: profiles\/rust-hybrid\/ci\.yml \| Template version: 1\.6\.0$/m);
+  assert.ok(workflow.includes(`# Template: profiles/rust-hybrid/ci.yml | Template version: ${rightGit.templateVersion}`));
   assert.match(workflow, /run: bash \.\/scripts\/ci\/run-ci\.sh/);
+  assert.equal(rightGit.compile, "github-actions-only");
   assert.equal(rightGit.profile, "rust-hybrid");
   assert.equal(rightGit.gate.path, "scripts/ci/run-ci.sh");
   assert.doesNotMatch(workflow, /run:\s*(?:bash\s+)?cargo\b/);
