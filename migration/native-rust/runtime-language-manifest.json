@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-31T08:46:10.266Z",
+ "generatedAt": "2026-08-31T15:25:03.963Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1229,
+  "files": 1230,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1582,7 +1582,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "933926367dea7679000c9610f8d2e44e7064837c2c086b7f17e77babd5053563"
+   "content_digest": "4f60f5dc5edba2c767a8eadf2eafc2973d776627ed5a25ad79ad9d84e41a0f48"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1737,7 +1737,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "38c056c936b56807a12ce4d885ac11bb6ca1c712cf2dac90bef85cf758b6a340"
+   "content_digest": "b0efa0699377de5e7e49bcffc10f23d70776a74ae023cbbe79fcf48549ec952c"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1759,6 +1759,7 @@
     "apps/membrane-hub/scripts/build-frontend.mjs",
     "apps/membrane-hub/scripts/build-mac-release.mjs",
     "apps/membrane-hub/scripts/build-windows-release.mjs",
+    "apps/membrane-hub/scripts/bundle-portable-installer-windows.mjs",
     "apps/membrane-hub/scripts/dev.mjs",
     "apps/membrane-hub/scripts/finalize-portable-release.mjs",
     "apps/membrane-hub/scripts/lib/target-root.mjs",
@@ -1782,7 +1783,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "18601b4da6a9701eaf982768ca1bd76434025dbd0f75eb505410cde06eddf70c"
+   "content_digest": "193167482b487b13f3e5eaa4a92ac06dd58713d260d15902e255f7a14f751a66"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2177,7 +2178,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "3b72491ba1cadc004c41ca9bd583e2d19ae8e2895ff46c798d3bc1c8d285a71d"
+   "content_digest": "be51cd93d74f0d5af427ea045d4a3d8f8314b5197faee9ed55d12edde53914a1"
   },
   {
    "id": "tests-root-tests-root",
