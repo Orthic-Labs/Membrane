@@ -7,7 +7,7 @@
     "node": ["22.13"]
   },
   "packageManager": "pnpm@11.24.0",
-  "templateVersion": "1.7.0",
+  "templateVersion": "1.8.0",
   "profile": "rust-hybrid",
   "gate": {
     "path": "scripts/ci/run-ci.sh"
@@ -17,7 +17,8 @@
       "engine",
       "apps/membrane-tray-windows",
       "apps/membrane-hub/src-tauri"
-    ]
+    ],
+    "requiredForGate": true
   },
   "candidate": {
     "buildScript": "release:candidate:build",
