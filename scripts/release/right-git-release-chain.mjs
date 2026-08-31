@@ -51,11 +51,12 @@ function finalizeWindows() {
   if (process.platform !== "win32") throw new Error("Windows finalization requires native Windows host");
   assertSource();
   if (!unsignedWindows || !existsSync(join(unsignedWindows, "candidate.json"))) throw new Error("exact unsigned Windows candidate is required");
+  const candidate = JSON.parse(readFileSync(join(unsignedWindows, "candidate.json"), "utf8"));
+  if (candidate.target !== "windows-x86_64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned Windows candidate identity mismatch");
+  run("pnpm.cmd", ["--dir", hub, "install", "--frozen-lockfile"]);
   ensureDirectory(finalizedWindows, "RIGHT_GIT_FINALIZED_WINDOWS_ROOT");
   rmSync(finalizedWindows, { recursive: true, force: true });
   mkdirSync(finalizedWindows, { recursive: true });
-  const candidate = JSON.parse(readFileSync(join(unsignedWindows, "candidate.json"), "utf8"));
-  if (candidate.target !== "windows-x86_64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned Windows candidate identity mismatch");
   run("pnpm.cmd", ["--dir", hub, "run", "release:build:portable:win"], repo, { ...process.env, MEMBRANE_CANDIDATE_ROOT: unsignedWindows });
   const portable = join(hub, "dist", "portable");
   if (!existsSync(portable)) throw new Error("RightKit Windows finalization did not produce portable release inputs");
@@ -90,6 +91,7 @@ function finalizeMac() {
   if (!unsignedMac || !existsSync(join(unsignedMac, "candidate.json"))) throw new Error("exact unsigned macOS candidate is required");
   const candidate = JSON.parse(readFileSync(join(unsignedMac, "candidate.json"), "utf8"));
   if (candidate.target !== "macos-arm64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned macOS candidate identity mismatch");
+  run("pnpm", ["--dir", hub, "install", "--frozen-lockfile"]);
   ensureDirectory(finalizedMac, "RIGHT_GIT_FINALIZED_MACOS_ROOT");
   rmSync(finalizedMac, { recursive: true, force: true });
   mkdirSync(finalizedMac, { recursive: true });

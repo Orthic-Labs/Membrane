@@ -125,3 +125,10 @@ test("qualification uses hosted-gh-compatible prior download & publication uploa
 	assert.match(chain, /version !== "0\.1\.18"/);
 	assert.match(chain, /requires one prior stable-layout signed Windows installer/);
 });
+
+test("each protected finalizer materializes Hub dependencies from Hub lockfile", () => {
+	const chain = read("scripts/release/right-git-release-chain.mjs");
+
+	assert.match(chain, /function finalizeWindows\(\)[\s\S]*pnpm\.cmd", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+	assert.match(chain, /function finalizeMac\(\)[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
+});
