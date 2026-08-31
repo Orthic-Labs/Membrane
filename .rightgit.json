@@ -1,10 +1,18 @@
 {
   "schemaVersion": 1,
   "compile": "github-actions-only",
-  "lanes": ["ci", "release-candidate"],
+  "lanes": [
+    "ci",
+    "release-candidate"
+  ],
   "matrix": {
-    "os": ["ubuntu-latest", "windows-2025"],
-    "node": ["22.13"]
+    "os": [
+      "ubuntu-latest",
+      "windows-2025"
+    ],
+    "node": [
+      "22.13"
+    ]
   },
   "packageManager": "pnpm@11.24.0",
   "templateVersion": "1.8.0",
@@ -23,21 +31,37 @@
   "candidate": {
     "buildScript": "release:candidate:build",
     "checkScript": "release:candidate:check",
+    "admissionScript": "release:admission",
+    "stageSummaryScript": "release:stage-summary",
     "artifactRoot": "membrane-release-candidate",
-    "os": ["windows-2025", "macos-15"],
+    "os": [
+      "windows-2025",
+      "macos-15"
+    ],
     "targets": [
-      { "os": "windows-2025", "platform": "windows", "architecture": "x86_64" },
-      { "os": "macos-15", "platform": "macos", "architecture": "arm64" }
+      {
+        "os": "windows-2025",
+        "platform": "windows",
+        "architecture": "x86_64"
+      },
+      {
+        "os": "macos-15",
+        "platform": "macos",
+        "architecture": "arm64"
+      }
     ],
     "signWindows": true,
     "signMacos": true,
     "releaseChain": {
+      "evidenceVerificationScript": "release:verify:evidence",
       "windowsFinalizeScript": "release:finalize:windows",
       "macosFinalizeScript": "release:finalize:macos",
       "installedQualificationScript": "release:qualify:installed",
       "publishScript": "release:publish:qualified",
       "qualificationRunnerVariable": "MEMBRANE_QUALIFICATION_RUNNER_LABEL",
-      "publishSecrets": ["CLOUDFLARE_API_TOKEN"]
+      "publishSecrets": [
+        "CLOUDFLARE_API_TOKEN"
+      ]
     }
   }
 }

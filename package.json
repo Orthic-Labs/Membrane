@@ -28,9 +28,12 @@
     "release:candidate:build": "node scripts/release/right-git-candidate.mjs build",
     "release:candidate:artifacts": "node scripts/release/right-git-candidate.mjs build",
     "release:candidate:check": "node scripts/release/right-git-candidate.mjs check",
+    "release:admission": "node scripts/release/right-git-release-chain.mjs admission",
+    "release:stage-summary": "node scripts/release/right-git-release-chain.mjs stage-summary",
     "release:finalize:windows": "node scripts/release/right-git-release-chain.mjs finalize-windows",
     "release:finalize:macos": "node scripts/release/right-git-release-chain.mjs finalize-macos",
     "release:qualify:installed": "node scripts/release/right-git-release-chain.mjs qualify-installed",
+    "release:verify:evidence": "node scripts/release/right-git-release-chain.mjs evidence-verification",
     "release:publish:qualified": "node scripts/release/right-git-release-chain.mjs publish-qualified",
     "rightkit:ax:plugin": "right-ax plugin validate .",
     "rightkit:ax:static": "right-ax ax static .",
@@ -42,7 +45,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/git": "0.2.23",
+    "@rightkit/git": "0.2.24",
     "@rightkit/release": "0.2.99"
   }
 }
