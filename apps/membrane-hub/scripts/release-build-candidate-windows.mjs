@@ -48,8 +48,7 @@ const startedAt = new Date().toISOString();
 rmSync(artifactRoot, { recursive: true, force: true });
 mkdirSync(payload, { recursive: true });
 
-run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"]);
-run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
+run("cargo", ["build", "--locked", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", target, "-p", "cortex", "-p", "membrane", "-p", "membrane-runtime", "--bin", "cortex", "--bin", "membrane", "--bin", "membrane-daemon"]);
 run("cargo", ["build", "--locked", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", target]);
 
 const cargoTarget = output("cargo", ["metadata", "--locked", "--format-version", "1", "--no-deps", "--manifest-path", "engine/Cargo.toml"]);

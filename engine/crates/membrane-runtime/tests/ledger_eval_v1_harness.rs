@@ -6,7 +6,7 @@
 //! both lanes regardless of the activation mode persisted in the database.
 //!
 //! Run with:
-//!   cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test ledger_eval_v1_harness -- --nocapture
+//!   pnpm qualification:ledger-eval-v1
 //!
 //! Evaluation hygiene (canon section 12.1, binding): `dev` may be used to compare/tune; a
 //! separate test below runs `heldout` exactly once, prints its numbers, and applies the frozen
@@ -254,6 +254,7 @@ fn index_corpus_documents(db: &LedgerDb) {
 /// Dev-split comparison. This is the ONLY test in this file permitted to be run repeatedly while
 /// iterating on BM25 weights/normalization; heldout is exercised exactly once by the test below.
 #[test]
+#[ignore = "qualification-only: indexes full repository through production Ledger sync"]
 fn ledger_eval_v1_dev_split_both_arms() {
     let db = LedgerDb::open_in_memory();
     index_corpus_documents(&db);
@@ -272,6 +273,7 @@ fn ledger_eval_v1_dev_split_both_arms() {
 /// this file was written against dev numbers). Run exactly once per candidate per canon 12.1;
 /// re-running this test re-executes the same frozen code path, it does not re-tune anything.
 #[test]
+#[ignore = "qualification-only: indexes full repository through production Ledger sync"]
 fn ledger_eval_v1_heldout_split_both_arms() {
     let db = LedgerDb::open_in_memory();
     index_corpus_documents(&db);

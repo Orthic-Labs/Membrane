@@ -18,6 +18,7 @@
     "qualification:prebind-windows-release": "node scripts/qualification/write-prequalification-binding.mjs",
     "qualification:write-windows-platform-evidence": "node scripts/qualification/write-windows-platform-evidence.mjs",
     "qualification:issue-native-only-seal": "node scripts/qualification/issue-native-only-seal.mjs",
+    "qualification:ledger-eval-v1": "rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test ledger_eval_v1_harness -- --ignored --nocapture",
     "generate:host-contracts": "node scripts/generate-host-contracts.mjs",
     "check:host-contracts": "node scripts/generate-host-contracts.mjs --check",
     "test:mcp": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
@@ -41,7 +42,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/git": "0.2.16",
-    "@rightkit/release": "0.2.92"
+    "@rightkit/git": "0.2.18",
+    "@rightkit/release": "0.2.94"
   }
 }
