@@ -45,7 +45,8 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(release, /bundle-portable-installer-windows\.mjs/);
   assert.doesNotMatch(release, /["']cargo["']|release:prepare:sidecars|rightkit:package/i);
   assert.match(installerBundler, /verifyNsisEmbeddedBinary/);
-  assert.match(installerBundler, /resources:\s*\["installer-release"\]/);
+  assert.match(installerBundler, /Object\.fromEntries\(releaseFiles\.map/);
+  assert.match(installerBundler, /resources,/);
   assert.match(installerBundler, /nsis-embedded-receipt\.json/);
   assert.match(installerBundler, /membrane-nsis-direct-release-embedding-v1/);
   assert.match(installerBundler, /tauri\.release-bundle\.conf\.json/);

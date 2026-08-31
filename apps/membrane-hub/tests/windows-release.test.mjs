@@ -78,7 +78,8 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /CreateShortcut .*\$INSTDIR\\current\\membrane-tray\.exe" "--open-dashboard"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
-  assert.match(nsisTemplate, /installer-release\\install\.ps1/);
+  assert.match(nsisTemplate, /PLUGINSDIR\\release\\install\.ps1/);
+  assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
   assert.match(nsisTemplate, /-ReleaseRoot/);
   assert.match(nsisTemplate, /ExecWait[\s\S]*Membrane installation failed/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);

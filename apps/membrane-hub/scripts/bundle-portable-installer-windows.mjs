@@ -55,10 +55,11 @@ try {
     cpSync(requireFile(join(payload, name), `signed payload ${name}`), destination);
   }
 
+  const resources = Object.fromEntries(releaseFiles.map((name) => [`installer-release/${name}`, name]));
   const config = JSON.stringify({ bundle: {
     createUpdaterArtifacts: false,
     externalBin: ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"],
-    resources: ["installer-release"],
+    resources,
     windows: { allowDowngrades: true, nsis: { template: "windows/installer.nsi" } },
   } });
   writeFileSync(bundleConfig, `${config}\n`);

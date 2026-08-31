@@ -659,9 +659,9 @@ Section Install
   {{/each}}
   DetailPrint "Verifying & activating signed Membrane release"
   !if "${ALLOWDOWNGRADES}" == "true"
-    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\installer-release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release\installer-release$" -AllowDowngrade' $R0
+    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release$" -AllowDowngrade' $R0
   !else
-    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\installer-release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release\installer-release$"' $R0
+    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release$"' $R0
   !endif
   ${If} $R0 != 0
     Abort "Membrane installation failed (exit $R0). Prior release was restored."
