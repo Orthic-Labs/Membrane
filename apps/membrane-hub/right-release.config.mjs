@@ -9,6 +9,8 @@ const version = packageJson.version;
 const cargoTargetRoot = resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml"));
 const cargoTriple = "x86_64-pc-windows-msvc";
 const releaseRoot = join(cargoTargetRoot, cargoTriple, "release");
+const macCargoTriple = "aarch64-apple-darwin";
+const macReleaseRoot = join(cargoTargetRoot, macCargoTriple, "release");
 const buildInputs = {
   include: [
     "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
@@ -24,6 +26,7 @@ const buildInputs = {
 // spaces so signing receives one exact argv value rather than a split path.
 const winInstaller = join(releaseRoot, "bundle", "nsis", `Membrane_Hub_${version}_x64-setup.exe`);
 const winRawExe = join(releaseRoot, "membrane-hub.exe");
+const macDmg = join(macReleaseRoot, "bundle", "dmg", `Membrane Hub_${version}_aarch64.dmg`);
 
 export default {
   schema: 1,
@@ -33,6 +36,20 @@ export default {
   checks: ["test"],
   buildInputs,
   targets: {
+    // Tauri seals nested app contents while assembling the DMG. RightKit then
+    // owns the outer Developer ID signature, notarization & release evidence.
+    mac: {
+      signed: true,
+      cargoTarget: macCargoTriple,
+      signingContract: "macos-developer-id-notarized-portable-v1",
+      prePackage: { cmd: "pnpm", args: ["run", "rightkit:prepackage:mac"] },
+      package: { cmd: "pnpm", args: ["run", "rightkit:package:mac"] },
+      artifacts: [macDmg],
+      sign: { prePackageFiles: [macDmg] },
+      notarize: { file: macDmg },
+      hardening: [macDmg],
+      installer: { artifacts: [{ file: macDmg, key: "membrane/installers/mac/current/Membrane_Hub.dmg" }] },
+    },
     // RightKit owns Azure Authenticode + updater signing.  This target only
     // supplies its native Windows package command & exact files to seal.
     win: {

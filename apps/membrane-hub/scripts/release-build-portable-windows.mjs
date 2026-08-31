@@ -40,7 +40,7 @@ materializeHardeningEvidence({
     rule: "system-prompt-marker",
     exact: "system_prompt",
     file: join(staged, name),
-    sourceEvidence: "engine/crates/membrane-adapt/src/remediation.rs:74",
+    sourceEvidence: "engine/crates/membrane-adapt/src/remediation.rs:76",
     rationale: "Public remediation scope enum serialization token; no prompt content is embedded.",
   })),
 });
