@@ -32,6 +32,7 @@ export default {
   schema: 1,
   app: "membrane-hub",
   version,
+  distribution: { provider: "github-releases", repository: "Orthic-Labs/Membrane" },
   packageManager: "pnpm",
   checks: ["test"],
   buildInputs,
