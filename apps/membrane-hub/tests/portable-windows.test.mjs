@@ -48,6 +48,9 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(installerBundler, /resources:\s*\["installer-release"\]/);
   assert.match(installerBundler, /nsis-embedded-receipt\.json/);
   assert.match(installerBundler, /membrane-nsis-direct-release-embedding-v1/);
+  assert.match(installerBundler, /tauri\.release-bundle\.conf\.json/);
+  assert.match(installerBundler, /"--config", bundleConfig/);
+  assert.match(installerBundler, /rmSync\(bundleConfig, \{ force: true \}\)/);
 });
 
 test("portable payload is signed, hashed & includes activation plus Agent Plugins core", () => {

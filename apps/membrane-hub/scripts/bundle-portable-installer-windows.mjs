@@ -13,6 +13,7 @@ const output = join(hub, "dist", "portable");
 const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
 const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
 const embedded = join(hub, "src-tauri", "installer-release");
+const bundleConfig = join(output, "tauri.release-bundle.conf.json");
 const target = "x86_64-pc-windows-msvc";
 const managedRelease = join(resolveTargetRoot(join(hub, "src-tauri", "Cargo.toml")), target, "release");
 const manifest = JSON.parse(readFileSync(join(output, "release-manifest.json"), "utf8"));
@@ -60,7 +61,8 @@ try {
     resources: ["installer-release"],
     windows: { allowDowngrades: true, nsis: { template: "windows/installer.nsi" } },
   } });
-  run("pnpm", ["exec", "tauri", "bundle", "--target", target, "--bundles", "nsis", "--config", config], {
+  writeFileSync(bundleConfig, `${config}\n`);
+  run("pnpm", ["exec", "tauri", "bundle", "--target", target, "--bundles", "nsis", "--config", bundleConfig], {
     ...process.env,
     MEMBRANE_SIDECARS_READY: "1",
     MEMBRANE_SIGNED_SIDECARS_READY: "1",
@@ -76,4 +78,5 @@ try {
   console.log(JSON.stringify(receipt));
 } finally {
   rmSync(embedded, { recursive: true, force: true });
+  rmSync(bundleConfig, { force: true });
 }
