@@ -3,7 +3,11 @@ set -euo pipefail
 
 pnpm install --frozen-lockfile
 pnpm --dir apps/membrane-hub install --frozen-lockfile
-cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
+if [[ "${RIGHT_GIT_RUST_CHANGED:-true}" != "false" ]]; then
+  cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
+else
+  echo "Skipping Rust workspace tests: right-git found no Rust-impacting changes."
+fi
 pnpm test
 pnpm test:random
 node scripts/ci/check-release-identity.mjs

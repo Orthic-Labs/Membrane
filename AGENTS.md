@@ -79,7 +79,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Let nearest `packageManager`, `engines`, `rust-toolchain.toml`, or repository venv override workspace defaults.
 - Default to Node 26.5.x, pnpm 11.18.0, `python3` on Mac, & `py -3.11` on Windows.
 - Use pnpm in pnpm repositories & run package CLIs through `pnpm exec`, never npm or npx.
-- Read `docs/rules/rightkit.md` before any Rust/Cargo command. Managed agents use `rightkit cargo <args>` or `rightkit rustc|rustdoc <args>`; direct tools & bypasses are denied. Diagnose broker/receipt/service failures; `pnpm`/`npm` stay allowed & child Cargo must inherit RightKit.
+- Read `docs/rules/rightkit.md` before any Rust/Cargo command. Bind public-repository tasks to `local-static-only` or `github-build`; public repositories declare `compile: github-actions-only` & reject local compile, test, package, signing, qualification, installed-smoke, & release execution. Managed private-repository Rust uses `rightkit cargo <args>` or `rightkit rustc|rustdoc <args>`; direct tools & bypasses are denied. Diagnose broker/receipt/service failures; package-manager children must inherit RightKit.
 - Launch no visible Windows console for background automation.
 
 ## Mandatory systems
@@ -101,9 +101,9 @@ Report `produced → verified → completion-validated → committed → pushed 
 ## Releases, signing & distribution — every product
 - Treat signing, notarization, & release publication as solved workspace capabilities; Apple & Azure are provisioned, so never gate a plan on setting them up.
 - Read `docs/rules/release-signing.md` before any release, signing, installer, updater, or publication work in any repository.
-- Build & sign each target only on its native host; for both targets use `win` from Mac or `ssh mac` from Windows, never initiate browser/Azure authentication, cross-compile, or move signing into CI; publish finished signed artifacts through GitHub Releases; follow `docs/rules/release-signing.md`.
+- Build & sign each target only on its native host. Public repositories use native GitHub runners through RightKit CI; private repositories use `win` from Mac or `ssh mac` from Windows. Never initiate browser/Azure authentication or cross-compile; publish public products through GitHub Releases & private products through R2; follow `docs/rules/release-signing.md`.
 - Use RightKit `right-release` from primary checkout with manifest-pinned pnpm; never build signing or installer machinery inside a product repository.
-- Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request to GitHub Releases, & upload no test artifact.
+- Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request through its configured provider, & upload no test artifact.
 
 ## Plans authored outside this workspace
 - Check external repo plans against workspace capabilities; replace packets that rebuild owned capabilities with integration, & delete gates for provisioned capabilities.

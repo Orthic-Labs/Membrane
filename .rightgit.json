@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
+  "compile": "github-actions-only",
   "lanes": ["ci", "release-candidate"],
   "matrix": {
     "os": ["ubuntu-latest", "windows-2025"],
     "node": ["22.13"]
   },
   "packageManager": "pnpm@11.24.0",
-  "templateVersion": "1.6.0",
+  "templateVersion": "1.7.0",
   "profile": "rust-hybrid",
   "gate": {
     "path": "scripts/ci/run-ci.sh"
