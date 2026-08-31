@@ -1,5 +1,5 @@
 //! `cortex skill-read <name>` resolves a workspace skill body cross-repo (via --root),
-//! prints the body + bodyHash, and refuses path traversal / escapes.
+//! prints body plus structured hash/source receipt, and refuses path traversal / escapes.
 
 use std::fs;
 use std::process::Command;
@@ -21,7 +21,7 @@ fn skill_read_resolves_body_and_guards_traversal() {
     let root = tmp.to_str().unwrap();
     let event_path = tmp.join("skill-events.jsonl");
 
-    // Valid: prints the exact body on stdout, bodyHash on stderr.
+    // Valid: prints exact body on stdout & structured receipt on stderr.
     let ok = Command::new(bin)
         .env("MEMBRANE_SKILL_EVENT_PATH", &event_path)
         .env("MEMBRANE_CLIENT", "codex")
@@ -34,7 +34,11 @@ fn skill_read_resolves_body_and_guards_traversal() {
         String::from_utf8_lossy(&ok.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&ok.stdout), body);
-    assert!(String::from_utf8_lossy(&ok.stderr).contains("bodyHash="));
+    let receipt: serde_json::Value = serde_json::from_slice(&ok.stderr).unwrap();
+    let body_hash = hex::encode(Sha256::digest(body.as_bytes()));
+    assert_eq!(receipt["source"], "disk");
+    assert_eq!(receipt["storedBodyHash"], body_hash);
+    assert_eq!(receipt["resolvedBodyHash"], body_hash);
     let rows: Vec<serde_json::Value> = fs::read_to_string(&event_path)
         .unwrap()
         .lines()
@@ -161,7 +165,12 @@ fn skill_read_serves_from_engine_without_skills_directory() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&out.stdout), body);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("source=engine"));
+    let receipt: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(receipt["source"], "engine");
+    assert_eq!(
+        receipt["resolvedBodyHash"],
+        hex::encode(Sha256::digest(body.as_bytes()))
+    );
     let row: serde_json::Value =
         serde_json::from_str(fs::read_to_string(&event_path).unwrap().trim()).unwrap();
     assert_eq!(row["event"], "skill_resolved");

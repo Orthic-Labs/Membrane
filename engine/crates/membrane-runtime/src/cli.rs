@@ -257,9 +257,18 @@ fn run_skill_read(
                 if store.skill_from_db(&name).is_some() {
                     let resolved =
                         store.skill_read_bounded(&name, max_chars, &privacy_values)?;
+                    let mut receipt =
+                        serde_json::to_value(&resolved).map_err(|error| error.to_string())?;
+                    receipt
+                        .as_object_mut()
+                        .ok_or_else(|| "skill-read engine receipt must be an object".to_owned())?
+                        .insert(
+                            "source".to_owned(),
+                            serde_json::Value::String("engine".to_owned()),
+                        );
                     eprintln!(
                         "{}",
-                        serde_json::to_string(&resolved).map_err(|error| error.to_string())?
+                        serde_json::to_string(&receipt).map_err(|error| error.to_string())?
                     );
                     write_skill_body(&name, &resolved.body)?;
                     emit_skill_resolved(
