@@ -268,7 +268,7 @@ export function createDaemonServer({ service = null, findingsService = null, end
           throw endpointError("service_unavailable", `Blueprint service operation is unavailable: ${message.method}`);
         }
         entry.work = (async () => {
-          const session = typeof appService.openFreshnessSession === "function"
+          const session = message.method !== "federate" && typeof appService.openFreshnessSession === "function"
             ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))
             : null;
           try {

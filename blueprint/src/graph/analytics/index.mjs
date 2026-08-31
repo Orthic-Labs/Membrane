@@ -92,3 +92,35 @@ export function analyticsDigest({ algorithm, inputGenerationId, params }) {
     .digest("hex")
     .slice(0, 16);
 }
+
+function clamp(value, minimum = 0, maximum = 1) {
+  return Math.max(minimum, Math.min(maximum, Number(value) || 0));
+}
+
+/** Inspectable risk decomposition. Co-change is deliberately low-authority:
+ * it can refine review priority but can never make a structurally safe change
+ * high risk or cancel graph/evidence uncertainty. */
+export function decomposeChangeRisk({
+  changedPaths = [], impacted = [], edges = [], truncated = false,
+  ambiguousSeeds = 0, stale = false, cochangeScore = 0,
+} = {}) {
+  const heuristicEdges = edges.filter((edge) => ["CROSS_FILE_HEURISTIC", "UNRESOLVED"].includes(edge.confidenceTier));
+  const structural = clamp(Math.log2(1 + new Set(changedPaths).size) / 5);
+  const reach = clamp(Math.log2(1 + new Set(impacted.map((item) => item.id ?? item.path ?? String(item))).size) / 7);
+  const uncertainty = clamp((edges.length ? heuristicEdges.length / edges.length : 0) + (truncated ? 0.35 : 0) + Math.min(0.35, ambiguousSeeds * 0.1) + (stale ? 0.35 : 0));
+  const historical = clamp(cochangeScore) * 0.15;
+  const score = clamp(structural * 0.3 + reach * 0.35 + uncertainty * 0.35 + historical);
+  return Object.freeze({
+    schemaVersion: 1,
+    kind: "ChangeRiskDecomposition",
+    score,
+    band: score >= 0.67 ? "high" : score >= 0.34 ? "medium" : "low",
+    factors: Object.freeze([
+      { id: "change_breadth", authority: "structural", value: structural, evidence: { changedPathCount: new Set(changedPaths).size } },
+      { id: "impact_reach", authority: "structural", value: reach, evidence: { impactedCount: impacted.length } },
+      { id: "evidence_uncertainty", authority: "graph", value: uncertainty, evidence: { heuristicEdgeCount: heuristicEdges.length, edgeCount: edges.length, truncated, ambiguousSeeds, stale } },
+      { id: "cochange", authority: "historical_low", value: historical, evidence: { suppliedScore: clamp(cochangeScore), maximumContribution: 0.15 } },
+    ]),
+    authority: "advisory_not_truth",
+  });
+}

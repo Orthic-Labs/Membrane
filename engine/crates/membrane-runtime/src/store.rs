@@ -27,6 +27,7 @@ use crate::context_telemetry::{
 use crate::feedback::{outcome_str, parse_outcome, FeedbackRecord, FeedbackSource};
 use crate::memdb::MemDb;
 use rusqlite::{OptionalExtension, TransactionBehavior};
+use tokio_util::sync::CancellationToken;
 
 /// Cap on retrieved memories injected into context, to keep prompts bounded.
 const RETRIEVE_LIMIT: usize = 5;
@@ -607,6 +608,71 @@ pub struct RelationshipGraph {
     pub schema_version: u32,
     pub nodes: Vec<RelationshipGraphNode>,
     pub edges: Vec<RelationshipGraphEdge>,
+    pub completeness: CortexCompletenessV1,
+}
+
+/// Shared Cortex result envelope. Lower-bound counts are observations, never
+/// claims that an unvisited tail contains zero records.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CortexCompletenessState {
+    Exact,
+    LowerBound,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CortexCompletenessV1 {
+    pub schema_version: u32,
+    pub state: CortexCompletenessState,
+    pub causes: Vec<String>,
+    pub considered_count: usize,
+    pub returned_count: usize,
+    pub dropped_count: usize,
+    pub counts_exact: bool,
+}
+
+impl CortexCompletenessV1 {
+    pub fn exact(considered: usize, returned: usize, dropped: usize) -> Self {
+        Self {
+            schema_version: 1,
+            state: CortexCompletenessState::Exact,
+            causes: Vec::new(),
+            considered_count: considered,
+            returned_count: returned,
+            dropped_count: dropped,
+            counts_exact: true,
+        }
+    }
+
+    pub fn lower_bound(
+        cause: impl Into<String>,
+        considered: usize,
+        returned: usize,
+        dropped: usize,
+    ) -> Self {
+        Self {
+            schema_version: 1,
+            state: CortexCompletenessState::LowerBound,
+            causes: vec![cause.into()],
+            considered_count: considered,
+            returned_count: returned,
+            dropped_count: dropped,
+            counts_exact: false,
+        }
+    }
+
+    pub fn is_exact(&self) -> bool {
+        self.state == CortexCompletenessState::Exact
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CortexResultPage<T> {
+    pub schema_version: u32,
+    pub items: Vec<T>,
+    pub completeness: CortexCompletenessV1,
 }
 
 #[derive(Clone, Debug)]
@@ -650,7 +716,8 @@ pub struct TasteDeliveryAttributionV1 {
 
 /// One typed normal-recall result. Temporal facts stay structured so object
 /// values never enter memory text or bypass scope/lifecycle admission.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecallResult {
     Memory {
         entry: MemoryEntry,
@@ -1383,6 +1450,19 @@ pub struct SkillsSnapshot {
     pub skills: Vec<SkillIndexEntry>,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillResolvedRead {
+    pub schema_version: u32,
+    pub name: String,
+    pub body: String,
+    pub stored_body_hash: String,
+    pub resolved_body_hash: String,
+    pub restored_privacy_values: usize,
+    pub unresolved_privacy_values: usize,
+    pub completeness: CortexCompletenessV1,
+}
+
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     #[cfg(feature = "fastembed")]
     {
@@ -1494,6 +1574,105 @@ impl MemoryStore {
         );
         out
     }
+
+    /// Optional temporal + graph arms for Cortex candidate retrieval. Each
+    /// auxiliary arm is capped at 20% (maximum eight slots); no arm admits or
+    /// publishes context, so Membrane retains final authority.
+    pub fn recall_typed_bounded(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+        temporal: Option<cortex_store::TemporalFactQuery>,
+        graph_enabled: bool,
+        cancellation: &CancellationToken,
+    ) -> CortexResultPage<RecallResult> {
+        if limit == 0 {
+            return CortexResultPage {
+                schema_version: 1,
+                items: Vec::new(),
+                completeness: CortexCompletenessV1::exact(0, 0, 0),
+            };
+        }
+        if cancellation.is_cancelled() {
+            return CortexResultPage {
+                schema_version: 1,
+                items: Vec::new(),
+                completeness: CortexCompletenessV1::lower_bound("cancelled", 0, 0, 0),
+            };
+        }
+        let temporal_slots = usize::from(temporal.is_some())
+            * (limit / 5).clamp(1, 8).min(limit.saturating_sub(1));
+        let memory_slots = limit.saturating_sub(temporal_slots);
+        let mut items = Vec::with_capacity(limit);
+        let mut causes = Vec::new();
+        let mut considered = 0usize;
+        let mut dropped = 0usize;
+
+        if let Some(mut request) = temporal {
+            if request.scope_chain.is_empty() {
+                request.scope_chain = scopes.to_vec();
+            }
+            if request
+                .scope_chain
+                .iter()
+                .any(|scope| !scopes.contains(scope))
+            {
+                causes.push("temporal_scope_rejected".to_owned());
+            } else if !cancellation.is_cancelled() {
+                match self.temporal_facts().query(request) {
+                    Ok(facts) => {
+                        considered += facts.len().min(temporal_slots.saturating_add(1));
+                        dropped += facts.len().saturating_sub(temporal_slots);
+                        items.extend(
+                            facts
+                                .into_iter()
+                                .take(temporal_slots)
+                                .map(|fact| RecallResult::Temporal { fact, score: 1.0 }),
+                        );
+                        if dropped > 0 {
+                            causes.push("temporal_ceiling_truncated".to_owned());
+                        }
+                    }
+                    Err(_) => causes.push("temporal_unavailable".to_owned()),
+                }
+            }
+        }
+
+        let (memory_hits, _, memory_completeness) = self
+            .recall_scored_detailed_timed_cancellable(
+                query,
+                memory_slots,
+                scopes,
+                graph_enabled,
+                cancellation,
+            );
+        considered += memory_completeness.considered_count;
+        dropped += memory_completeness.dropped_count;
+        causes.extend(memory_completeness.causes);
+        items.extend(memory_hits.into_iter().map(|hit| RecallResult::Memory {
+            entry: hit.entry,
+            score: hit.score,
+        }));
+        let completeness = if causes.is_empty() {
+            CortexCompletenessV1::exact(considered, items.len(), dropped)
+        } else {
+            CortexCompletenessV1 {
+                schema_version: 1,
+                state: CortexCompletenessState::LowerBound,
+                causes,
+                considered_count: considered,
+                returned_count: items.len(),
+                dropped_count: dropped,
+                counts_exact: false,
+            }
+        };
+        CortexResultPage {
+            schema_version: 1,
+            items,
+            completeness,
+        }
+    }
     fn embed_query_cached(&self, text: &str) -> Vec<f32> {
         let pipeline = self.embedder.pipeline_fingerprint();
         let key = format!("{}:{}:{}", pipeline.digest, "query", content_hash(text));
@@ -1591,6 +1770,55 @@ fn skill_frontmatter_description(body: &str) -> String {
         return value.trim_matches('"').trim_matches('\'').to_string();
     }
     String::new()
+}
+
+pub(crate) fn restore_skill_privacy_placeholders(
+    body: &str,
+    privacy_values: &BTreeMap<String, String>,
+) -> (String, usize, usize) {
+    const PREFIX: &str = "{{membrane-private:";
+    const SUFFIX: &str = "}}";
+    let mut output = String::with_capacity(body.len());
+    let mut remainder = body;
+    let mut restored = 0usize;
+    let mut unresolved = 0usize;
+    while let Some(start) = remainder.find(PREFIX) {
+        output.push_str(&remainder[..start]);
+        let candidate = &remainder[start + PREFIX.len()..];
+        let Some(end) = candidate.find(SUFFIX) else {
+            output.push_str(&remainder[start..]);
+            remainder = "";
+            break;
+        };
+        let key = &candidate[..end];
+        if valid_privacy_key(key) {
+            if let Some(value) = privacy_values.get(key) {
+                output.push_str(value);
+                restored += 1;
+            } else {
+                output.push_str(PREFIX);
+                output.push_str(key);
+                output.push_str(SUFFIX);
+                unresolved += 1;
+            }
+        } else {
+            output.push_str(PREFIX);
+            output.push_str(key);
+            output.push_str(SUFFIX);
+            unresolved += 1;
+        }
+        remainder = &candidate[end + SUFFIX.len()..];
+    }
+    output.push_str(remainder);
+    (output, restored, unresolved)
+}
+
+fn valid_privacy_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
 fn content_hash(content: &str) -> String {
@@ -3864,6 +4092,144 @@ impl MemoryStore {
         self.skills_snapshot().map(|snapshot| snapshot.generation)
     }
 
+    /// Search the engine-owned skill index without returning skill bodies.
+    /// Bodies are available only through `skill_read_bounded`, keeping discovery
+    /// separate from governed content disclosure.
+    pub fn search_skills(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<CortexResultPage<SkillIndexEntry>, String> {
+        let terms = query
+            .split(|character: char| !character.is_alphanumeric())
+            .filter(|term| !term.is_empty())
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>();
+        let conn = self.db.lock();
+        let mut statement = conn
+            .prepare("SELECT name, description, body, body_sha256 FROM skills ORDER BY name")
+            .map_err(|error| format!("prepare skill search: {error}"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|error| format!("search skill index: {error}"))?;
+        let mut ranked = Vec::new();
+        for row in rows {
+            let (name, description, body, body_hash) =
+                row.map_err(|error| format!("decode skill search row: {error}"))?;
+            let name_lower = name.to_ascii_lowercase();
+            let description_lower = description.to_ascii_lowercase();
+            let body_lower = body.to_ascii_lowercase();
+            let score = if terms.is_empty() {
+                1usize
+            } else {
+                terms
+                    .iter()
+                    .map(|term| {
+                        usize::from(name_lower.contains(term)) * 8
+                            + usize::from(description_lower.contains(term)) * 4
+                            + usize::from(body_lower.contains(term))
+                    })
+                    .sum()
+            };
+            if score > 0 {
+                ranked.push((score, SkillIndexEntry { name, description, body_hash }));
+            }
+        }
+        ranked.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.name.cmp(&right.1.name))
+        });
+        let considered = ranked.len();
+        let take = limit.min(considered);
+        let items = ranked
+            .into_iter()
+            .take(take)
+            .map(|(_, entry)| entry)
+            .collect::<Vec<_>>();
+        let dropped = considered.saturating_sub(items.len());
+        let completeness = if dropped == 0 {
+            CortexCompletenessV1::exact(considered, items.len(), 0)
+        } else {
+            CortexCompletenessV1::lower_bound(
+                "ceiling_truncated",
+                items.len().saturating_add(1),
+                items.len(),
+                1,
+            )
+        };
+        Ok(CortexResultPage {
+            schema_version: 1,
+            items,
+            completeness,
+        })
+    }
+
+    /// Resolve one indexed skill body with a hard character ceiling. Private
+    /// values use `{{membrane-private:key}}`; caller-owned values are restored
+    /// only in returned text & never written back to Cortex.
+    pub fn skill_read_bounded(
+        &self,
+        name: &str,
+        max_chars: usize,
+        privacy_values: &BTreeMap<String, String>,
+    ) -> Result<SkillResolvedRead, String> {
+        if name.is_empty()
+            || name.len() > 128
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err(format!("invalid skill name: {name:?}"));
+        }
+        if max_chars == 0 {
+            return Err("skill read max_chars must be greater than zero".to_owned());
+        }
+        let (stored, stored_body_hash) = self
+            .skill_from_db(name)
+            .ok_or_else(|| format!("skill not found: {name}"))?;
+        let (resolved, restored_privacy_values, unresolved_privacy_values) =
+            restore_skill_privacy_placeholders(&stored, privacy_values);
+        let resolved_chars = resolved.chars().count();
+        let body = resolved.chars().take(max_chars).collect::<String>();
+        let truncated = resolved_chars > max_chars;
+        let mut completeness = if truncated {
+            CortexCompletenessV1::lower_bound(
+                "content_truncated",
+                max_chars.saturating_add(1),
+                max_chars,
+                1,
+            )
+        } else {
+            CortexCompletenessV1::exact(resolved_chars, resolved_chars, 0)
+        };
+        if unresolved_privacy_values > 0 {
+            completeness.state = CortexCompletenessState::LowerBound;
+            completeness.counts_exact = false;
+            completeness
+                .causes
+                .push("privacy_value_unavailable".to_owned());
+        }
+        Ok(SkillResolvedRead {
+            schema_version: 1,
+            name: name.to_owned(),
+            resolved_body_hash: content_hash(&body),
+            body,
+            stored_body_hash,
+            restored_privacy_values,
+            unresolved_privacy_values,
+            completeness,
+        })
+    }
+
     /// Content sha256 for a memory id WITHOUT recording a use (a pure peek). Backs the delivery
     /// provenance seal: verify a delivered block's `sourceHash` matches a real, current DB row
     /// before its text reaches the model. Uses the warm registry — no `get`, no use-count churn.
@@ -4170,6 +4536,7 @@ impl MemoryStore {
 
     /// Deterministic embedding-neighbor graph for the local and anonymous dashboards.
     pub fn relationship_graph(&self, neighbors: usize, min_cosine: f32) -> RelationshipGraph {
+        const MAX_GRAPH_NODES: usize = 512;
         let mut entries = self
             .registry
             .read()
@@ -4179,11 +4546,17 @@ impl MemoryStore {
             .cloned()
             .collect::<Vec<_>>();
         entries.sort_by(|left, right| left.id.cmp(&right.id));
-        let counters = self
-            .list(None)
-            .into_iter()
-            .map(|(id, _tier, _chars, access, inject)| (id, (access, inject)))
-            .collect::<std::collections::HashMap<_, _>>();
+        let total_entries = entries.len();
+        entries.truncate(MAX_GRAPH_NODES);
+        let (counters, counter_read_failed) = match self.try_list(None) {
+            Ok(rows) => (
+                rows.into_iter()
+                    .map(|(id, _tier, _chars, access, inject)| (id, (access, inject)))
+                    .collect::<std::collections::HashMap<_, _>>(),
+                false,
+            ),
+            Err(_) => (std::collections::HashMap::new(), true),
+        };
         let nodes = entries
             .iter()
             .map(|entry| {
@@ -4243,6 +4616,28 @@ impl MemoryStore {
                     .or_insert(score);
             }
         }
+        let mut completeness = if total_entries > entries.len() {
+            CortexCompletenessV1::lower_bound(
+                "node_ceiling_truncated",
+                entries.len().saturating_add(1),
+                entries.len(),
+                1,
+            )
+        } else {
+            CortexCompletenessV1::exact(total_entries, entries.len(), 0)
+        };
+        if counter_read_failed {
+            completeness.state = CortexCompletenessState::LowerBound;
+            completeness.counts_exact = false;
+            completeness.causes.push("counter_read_failed".to_owned());
+        }
+        if entries.len() > neighbors.saturating_add(1) {
+            completeness.state = CortexCompletenessState::LowerBound;
+            completeness.counts_exact = false;
+            completeness
+                .causes
+                .push("neighbor_ceiling_applied".to_owned());
+        }
         RelationshipGraph {
             schema_version: 2,
             nodes,
@@ -4255,6 +4650,7 @@ impl MemoryStore {
                     score,
                 })
                 .collect(),
+            completeness,
         }
     }
 
@@ -4268,7 +4664,11 @@ impl MemoryStore {
         if !anonymous {
             return serde_json::to_value(graph).unwrap_or_else(|_| {
                 serde_json::json!({
-                    "schema_version": 2, "nodes": [], "edges": []
+                    "schema_version": 2,
+                    "error": "relationship_graph_serialization_failed",
+                    "completeness": CortexCompletenessV1::lower_bound(
+                        "serialization_failed", 0, 0, 0
+                    )
                 })
             });
         }
@@ -4328,6 +4728,7 @@ impl MemoryStore {
             "schema_version": 2,
             "nodes": anonymous_nodes,
             "edges": anonymous_edges,
+            "completeness": graph.completeness,
         })
     }
 
@@ -4427,7 +4828,15 @@ impl MemoryStore {
         as_of_ms: i64,
         include_expired: bool,
     ) -> Vec<(MemoryEntry, f32)> {
-        self.recall_scored_detailed_timed_at(query, limit, scopes, as_of_ms, include_expired)
+        self.recall_scored_detailed_timed_at(
+            query,
+            limit,
+            scopes,
+            as_of_ms,
+            include_expired,
+            None,
+            None,
+        )
             .0
             .into_iter()
             .map(|hit| (hit.entry, hit.score))
@@ -4441,12 +4850,14 @@ impl MemoryStore {
         limit: usize,
         scopes: &[String],
     ) -> (Vec<(MemoryEntry, f32)>, RecallStageElapsed) {
-        let (hits, elapsed) = self.recall_scored_detailed_timed_at(
+        let (hits, elapsed, _) = self.recall_scored_detailed_timed_at(
             query,
             limit,
             scopes,
             crate::time::now_millis() as i64,
             false,
+            None,
+            None,
         );
         let hits = hits.into_iter().map(|hit| (hit.entry, hit.score)).collect();
         (hits, elapsed)
@@ -4466,8 +4877,36 @@ impl MemoryStore {
             scopes,
             crate::time::now_millis() as i64,
             false,
+            None,
+            None,
         )
         .0
+    }
+
+    /// Bounded recall arm for native Pull. Cancellation is observed between
+    /// embedding, scoped retrieval, graph expansion, & ranking. `graph_enabled`
+    /// controls Cortex candidate generation only; Membrane remains final planner.
+    pub fn recall_scored_detailed_timed_cancellable(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+        graph_enabled: bool,
+        cancellation: &CancellationToken,
+    ) -> (
+        Vec<ScoredRecallHit>,
+        RecallStageElapsed,
+        CortexCompletenessV1,
+    ) {
+        self.recall_scored_detailed_timed_at(
+            query,
+            limit,
+            scopes,
+            crate::time::now_millis() as i64,
+            false,
+            Some(graph_enabled),
+            Some(cancellation),
+        )
     }
 
     fn recall_scored_detailed_timed_at(
@@ -4477,21 +4916,40 @@ impl MemoryStore {
         scopes: &[String],
         as_of_ms: i64,
         include_expired: bool,
-    ) -> (Vec<ScoredRecallHit>, RecallStageElapsed) {
+        graph_enabled: Option<bool>,
+        cancellation: Option<&CancellationToken>,
+    ) -> (
+        Vec<ScoredRecallHit>,
+        RecallStageElapsed,
+        CortexCompletenessV1,
+    ) {
         *self.last_recall_status.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
         if limit == 0 {
-            return (Vec::new(), elapsed);
+            return (
+                Vec::new(),
+                elapsed,
+                CortexCompletenessV1::exact(0, 0, 0),
+            );
+        }
+        if cancellation.is_some_and(CancellationToken::is_cancelled) {
+            return (
+                Vec::new(),
+                elapsed,
+                CortexCompletenessV1::lower_bound("cancelled", 0, 0, 0),
+            );
         }
         let link_enabled = !scopes.is_empty()
-            && std::env::var("MEMBRANE_LINK_RECALL")
-                .map(|value| {
-                    !matches!(
-                        value.trim().to_ascii_lowercase().as_str(),
-                        "0" | "false" | "off" | "no"
-                    )
-                })
-                .unwrap_or(true);
+            && graph_enabled.unwrap_or_else(|| {
+                std::env::var("MEMBRANE_LINK_RECALL")
+                    .map(|value| {
+                        !matches!(
+                            value.trim().to_ascii_lowercase().as_str(),
+                            "0" | "false" | "off" | "no"
+                        )
+                    })
+                    .unwrap_or(true)
+            });
         // Reserve a small, bounded graph lane. Direct semantic ranking keeps at least 80% of the
         // caller's budget; one-hop neighbours can use at most eight slots and never expand beyond
         // `limit`. This prevents hubs from flooding the context while allowing useful links to
@@ -4508,6 +4966,13 @@ impl MemoryStore {
         let embed_started = Instant::now();
         let qvec = self.embed_query_cached(query);
         elapsed.embed_ms = embed_started.elapsed().as_secs_f64() * 1000.0;
+        if cancellation.is_some_and(CancellationToken::is_cancelled) {
+            return (
+                Vec::new(),
+                elapsed,
+                CortexCompletenessV1::lower_bound("cancelled", 0, 0, 0),
+            );
+        }
         let lock_started = Instant::now();
         let registry = self.registry.read().unwrap_or_else(|e| e.into_inner());
         let lock_ms = lock_started.elapsed().as_secs_f64() * 1000.0;
@@ -4541,6 +5006,9 @@ impl MemoryStore {
             let mut seen = std::collections::HashSet::<String>::new();
             let per_scope_limit = candidate_limit.max(SCOPED_CANDIDATE_FLOOR);
             for (scope_rank, scope) in scopes.iter().enumerate() {
+                if cancellation.is_some_and(CancellationToken::is_cancelled) {
+                    break;
+                }
                 let scope_filter = [scope.as_str()];
                 let retrieved = if vector_dispatch_v2 {
                     MemoryRetriever::retrieve_hybrid_indexed(
@@ -4601,6 +5069,7 @@ impl MemoryStore {
             .iter()
             .map(|(entry, _)| entry.id.clone())
             .collect::<Vec<_>>();
+        let observed_considered = candidate_ids.len();
         let eligible_ids = self.recall_eligible_ids_at(as_of_ms, include_expired);
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
@@ -4656,7 +5125,8 @@ impl MemoryStore {
             .cloned()
             .collect::<Vec<_>>();
         let mut linked_ids = std::collections::HashSet::<String>::new();
-        if link_slots > 0 {
+        let cancelled_before_graph = cancellation.is_some_and(CancellationToken::is_cancelled);
+        if link_slots > 0 && !cancelled_before_graph {
             let seed_ids = hits
                 .iter()
                 .map(|(entry, _)| entry.id.clone())
@@ -4715,7 +5185,30 @@ impl MemoryStore {
             *self.last_recall_status.lock().unwrap() = Some("insufficient_confidence".to_string());
         }
         elapsed.rank_ms = rank_started.elapsed().as_secs_f64() * 1000.0;
-        (hits, elapsed)
+        let completeness = if cancelled_before_graph
+            || cancellation.is_some_and(CancellationToken::is_cancelled)
+        {
+            CortexCompletenessV1::lower_bound(
+                "cancelled",
+                observed_considered,
+                hits.len(),
+                observed_considered.saturating_sub(hits.len()),
+            )
+        } else if observed_considered > hits.len() {
+            CortexCompletenessV1::lower_bound(
+                if hits.len() >= limit {
+                    "ceiling_truncated"
+                } else {
+                    "candidate_filtered_or_truncated"
+                },
+                observed_considered,
+                hits.len(),
+                observed_considered.saturating_sub(hits.len()),
+            )
+        } else {
+            CortexCompletenessV1::exact(observed_considered, hits.len(), 0)
+        };
+        (hits, elapsed, completeness)
     }
 
     /// Distinct scope_ids present in the store (for computing a recall scope chain).
@@ -8257,6 +8750,59 @@ impl MemoryStore {
         Ok(listed)
     }
 
+    /// Bounded external list surface with an N+1 probe. A full tail is never
+    /// represented as exact zero dropped records.
+    pub fn try_list_bounded(
+        &self,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<CortexResultPage<(String, String, i64, i64, i64)>, String> {
+        if limit == 0 {
+            return Err("memory list limit must be greater than zero".to_owned());
+        }
+        let conn = self.db.lock();
+        let sql = "SELECT id, tier, length(content), access_count, inject_count FROM memories \
+                   WHERE (?1 IS NULL OR scope_id = ?1) ORDER BY id LIMIT ?2";
+        let mut statement = conn
+            .prepare(sql)
+            .map_err(|error| self.persist_error(format!("bounded memory list prepare failed: {error}")))?;
+        let probe = limit.saturating_add(1);
+        let rows = statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get::<_, String>(1)?.trim_matches('"').to_string(),
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .map_err(|error| self.persist_error(format!("bounded memory list query failed: {error}")))?;
+        let mut items = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| self.persist_error(format!("bounded memory list decode failed: {error}")))?;
+        let truncated = items.len() > limit;
+        if truncated {
+            items.truncate(limit);
+        }
+        self.clear_last_persist_error();
+        let completeness = if truncated {
+            CortexCompletenessV1::lower_bound(
+                "ceiling_truncated",
+                items.len().saturating_add(1),
+                items.len(),
+                1,
+            )
+        } else {
+            CortexCompletenessV1::exact(items.len(), items.len(), 0)
+        };
+        Ok(CortexResultPage {
+            schema_version: 1,
+            items,
+            completeness,
+        })
+    }
+
     /// Compatibility wrapper for internal diagnostics. External HTTP/CLI paths use
     /// [`try_list`](Self::try_list) so provider failures cannot become false empty results.
     pub fn list(&self, scope: Option<&str>) -> Vec<(String, String, i64, i64, i64)> {
@@ -9079,6 +9625,156 @@ fn sanitize_memory_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cortex_competitive_skill_index_search_bounded_read_restores_privacy_without_persisting_it() {
+        let store = MemoryStore::new();
+        let body = "---\ndescription: deploy production safely\n---\nUse {{membrane-private:token}} after approval.";
+        let other = "---\ndescription: deploy staging safely\n---\nStaging runbook.";
+        let workspace = tempfile::tempdir().unwrap();
+        for (name, text) in [("deploy", body), ("deploy-stage", other)] {
+            let directory = workspace.path().join("tools").join("skills").join(name);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join("SKILL.md"), text).unwrap();
+        }
+        let run_git = |args: &[&str]| {
+            let mut command = std::process::Command::new("git");
+            command.arg("-C").arg(workspace.path()).args(args);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x0800_0000);
+            }
+            assert!(command.status().unwrap().success());
+        };
+        run_git(&["init"]);
+        run_git(&["add", "tools/skills/deploy/SKILL.md", "tools/skills/deploy-stage/SKILL.md"]);
+        assert_eq!(store.ingest_skills(workspace.path()), (2, 0, 0));
+
+        let search = store.search_skills("deploy safely", 1).unwrap();
+        assert_eq!(search.items.len(), 1);
+        assert_eq!(search.completeness.state, CortexCompletenessState::LowerBound);
+        assert_eq!(
+            search.completeness.causes,
+            vec!["ceiling_truncated".to_owned()]
+        );
+        let privacy = BTreeMap::from([("token".to_owned(), "SECRET-ONLY-FOR-READ".to_owned())]);
+        let read = store.skill_read_bounded("deploy", 4_096, &privacy).unwrap();
+        assert!(read.body.contains("SECRET-ONLY-FOR-READ"));
+        assert_eq!(read.restored_privacy_values, 1);
+        assert_eq!(read.unresolved_privacy_values, 0);
+        assert!(read.completeness.is_exact());
+        let (stored, _) = store.skill_from_db("deploy").unwrap();
+        assert!(stored.contains("{{membrane-private:token}}"));
+        assert!(!stored.contains("SECRET-ONLY-FOR-READ"));
+
+        let unresolved = store
+            .skill_read_bounded("deploy", 32, &BTreeMap::new())
+            .unwrap();
+        assert_eq!(unresolved.completeness.state, CortexCompletenessState::LowerBound);
+        assert!(unresolved
+            .completeness
+            .causes
+            .contains(&"privacy_value_unavailable".to_owned()));
+        assert!(unresolved
+            .completeness
+            .causes
+            .contains(&"content_truncated".to_owned()));
+    }
+
+    #[test]
+    fn cortex_competitive_completeness_never_claims_truncated_results_are_exact() {
+        let store = MemoryStore::new();
+        for index in 0..3 {
+            store.put(
+                &format!("bounded-{index}"),
+                &format!("bounded completeness memory {index}"),
+                "global",
+                MemoryTier::Semantic,
+            );
+        }
+        let list = store.try_list_bounded(Some("global"), 2).unwrap();
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.completeness.state, CortexCompletenessState::LowerBound);
+        assert!(!list.completeness.counts_exact);
+        assert_eq!(list.completeness.dropped_count, 1);
+
+        let graph = store.relationship_graph(2, -1.0);
+        assert_eq!(graph.completeness.state, CortexCompletenessState::Exact);
+        assert_eq!(graph.completeness.returned_count, 3);
+
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let (hits, _, completeness) = store.recall_scored_detailed_timed_cancellable(
+            "bounded completeness",
+            2,
+            &["global".to_owned()],
+            true,
+            &cancellation,
+        );
+        assert!(hits.is_empty());
+        assert_eq!(completeness.state, CortexCompletenessState::LowerBound);
+        assert_eq!(completeness.causes, vec!["cancelled".to_owned()]);
+        assert!(!completeness.counts_exact);
+    }
+
+    #[test]
+    fn cortex_competitive_temporal_arm_is_optional_bounded_and_typed() {
+        let store = MemoryStore::new();
+        for index in 0..5 {
+            store.put(
+                &format!("temporal-memory-{index}"),
+                &format!("release train procedure {index}"),
+                "global",
+                MemoryTier::Semantic,
+            );
+        }
+        store
+            .temporal_facts()
+            .record(
+                cortex_store::TemporalFact {
+                    fact_id: "release-channel-1".to_owned(),
+                    subject: "release".to_owned(),
+                    predicate: "channel".to_owned(),
+                    object: serde_json::json!("stable"),
+                    scope_id: "global".to_owned(),
+                    authority: "A1".to_owned(),
+                    veracity: "supported".to_owned(),
+                    observed_at: "2026-08-31T00:00:00Z".to_owned(),
+                    valid_from: "2026-08-31T00:00:00Z".to_owned(),
+                    valid_until: None,
+                    expires_at: None,
+                    supersedes: None,
+                },
+                true,
+            )
+            .unwrap();
+        let page = store.recall_typed_bounded(
+            "release train procedure",
+            5,
+            &["global".to_owned()],
+            Some(cortex_store::TemporalFactQuery {
+                scope_chain: vec!["global".to_owned()],
+                subject: "release".to_owned(),
+                predicate: "channel".to_owned(),
+                as_of: "2026-08-31T12:00:00Z".to_owned(),
+            }),
+            false,
+            &CancellationToken::new(),
+        );
+        assert!(page.items.len() <= 5);
+        assert_eq!(
+            page.items
+                .iter()
+                .filter(|item| matches!(item, RecallResult::Temporal { .. }))
+                .count(),
+            1
+        );
+        assert!(page
+            .items
+            .iter()
+            .any(|item| matches!(item, RecallResult::Memory { .. })));
+    }
 
     #[test]
     fn detailed_health_keeps_database_parity_and_surfaces_startup_wal() {

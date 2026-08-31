@@ -332,6 +332,21 @@ pub fn discover_open(home: &Path) -> Vec<DiscoveredTranscript> {
     });
     add_tree(
         &mut out,
+        "copilot",
+        home.join(".copilot/session-state"),
+        |p| p.extension().and_then(|x| x.to_str()) == Some("jsonl"),
+    );
+    add_tree(
+        &mut out,
+        "antigravity",
+        home.join(".gemini/antigravity/brain"),
+        |p| {
+            p.extension().and_then(|x| x.to_str()) == Some("jsonl")
+                && p.to_string_lossy().replace('\\', "/").contains("/.system_generated/logs/")
+        },
+    );
+    add_tree(
+        &mut out,
         "command_code",
         home.join(".commandcode/projects"),
         |p| {

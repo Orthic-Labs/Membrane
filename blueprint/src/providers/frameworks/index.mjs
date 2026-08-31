@@ -7,6 +7,23 @@ import { extractRoutes, frameworkGateActive } from "./http/index.mjs";
 
 export const CROSS_STACK_EDGES = Object.freeze(["PRODUCES", "CONSUMES", "GENERATES", "READS", "WRITES", "CONFIGURES", "DEPLOYS"]);
 
+export const DOMAIN_GATES = Object.freeze({
+  event: ["kafkajs", "kafka", "nats", "amqplib", "rabbitmq", "bullmq"],
+  database: ["prisma", "@prisma/client", "typeorm", "sequelize", "sqlalchemy", "django.db", "diesel", "sqlx"],
+});
+
+export function importedPackages(text) {
+  const imports = [];
+  for (const match of String(text ?? "").matchAll(/(?:from\s+|require\s*\(\s*)["']([^"']+)["']/g)) imports.push(match[1].toLowerCase());
+  for (const match of String(text ?? "").matchAll(/^\s*(?:from|import)\s+([A-Za-z_][\w.]*)/gm)) imports.push(match[1].toLowerCase());
+  return [...new Set(imports)];
+}
+
+export function domainGateActive(imports = [], domain) {
+  const gates = DOMAIN_GATES[domain] ?? [];
+  return gates.some((gate) => imports.some((item) => item === gate || item.startsWith(`${gate}/`) || item.startsWith(`${gate}.`)));
+}
+
 export function extractEventFacts({ text, path }) {
   const facts = [];
   const lines = String(text ?? "").split(/\r?\n/);
@@ -27,10 +44,10 @@ export function extractDatabaseFacts({ text, path }) {
     const line = lines[i].trim();
     const model = line.match(/(?:model|table)\s+([A-Za-z0-9_]+)/i);
     if (model) facts.push({ kind: "model", name: model[1], line: i + 1, confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
-    const read = line.match(/\.(find|get|query|select)\(/i);
-    if (read) facts.push({ kind: "read", line: i + 1, edge: "READS", confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
-    const write = line.match(/\.(insert|create|update|delete|save)\(/i);
-    if (write) facts.push({ kind: "write", line: i + 1, edge: "WRITES", confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
+    const read = line.match(/\b([A-Za-z_$][\w$]*)\.(find|get|query|select)\(/i);
+    if (read) facts.push({ kind: "read", name: read[1], line: i + 1, edge: "READS", confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
+    const write = line.match(/\b([A-Za-z_$][\w$]*)\.(insert|create|update|delete|save)\(/i);
+    if (write) facts.push({ kind: "write", name: write[1], line: i + 1, edge: "WRITES", confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
   }
   return facts;
 }

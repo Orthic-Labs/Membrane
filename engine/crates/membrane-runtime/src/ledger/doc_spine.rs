@@ -213,6 +213,7 @@ pub struct LedgerShadowRecallV1 {
     pub normalized_query: String,
     pub legacy_hits: Vec<DocRecallHitV1>,
     pub fts_hits: Vec<DocRecallHitV1>,
+    pub alias_hits: Vec<super::query_alias::QueryAliasShadowHitV1>,
 }
 
 /// Execute both lanes for qualification/debugging while leaving caller-visible production
@@ -220,10 +221,12 @@ pub struct LedgerShadowRecallV1 {
 pub fn recall_shadow(db: &LedgerDb, query: &str, k: usize) -> Result<LedgerShadowRecallV1, String> {
     let legacy_hits = recall_legacy(db, query, k)?;
     let fts_hits = recall_fts(db, query, k)?;
+    let alias_hits = super::query_alias::recall_query_aliases_shadow(db, query, k)?;
     Ok(LedgerShadowRecallV1 {
         normalized_query: super::index::normalize_query(query),
         legacy_hits,
         fts_hits,
+        alias_hits,
     })
 }
 
@@ -595,6 +598,22 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         rusqlite::params![generation, root_s],
     )
     .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_query_aliases SET ledger_generation=?1
+         WHERE doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE ledger_link_targets SET ledger_generation=?1
+         WHERE source_doc_id IN (
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+         )",
+        rusqlite::params![generation, root_s],
+    )
+    .map_err(|error| error.to_string())?;
     let projections_available: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",
@@ -769,6 +788,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
     }
     let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    super::link_projection::resolve_link_targets_tx(&tx, &root_s)
+        .map_err(|error| error.to_string())?;
     for input in &projection_inputs {
         replace_doc_projections_tx(&tx, input).map_err(|e| e.to_string())?;
     }

@@ -15,6 +15,7 @@ use membrane_federation::{FederationConfig, FederationEngine, ProviderRegistry};
 use membrane_protocol::{FederationRequestV1, FederationResponseV1, ProviderId};
 use membrane_provider_sdk::{FreshnessSource, ProviderRegistration, SourceQuery};
 use std::path::Path;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -25,6 +26,7 @@ pub struct NativeFederation {
     metrics: Arc<FederationMetrics>,
     freshness: Arc<dyn FreshnessSource>,
     last_freshness: Arc<Mutex<Option<membrane_protocol::FreshnessSnapshotV1>>>,
+    cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl std::fmt::Debug for NativeFederation {
@@ -38,6 +40,7 @@ impl std::fmt::Debug for NativeFederation {
 
 impl NativeFederation {
     pub fn new(bindings: NativeSourceBindings) -> Result<Self, String> {
+        let cancellations = bindings.cancellations.clone();
         let blueprint = bindings
             .blueprint
             .clone()
@@ -128,6 +131,7 @@ impl NativeFederation {
             metrics: Arc::new(FederationMetrics::new()),
             freshness,
             last_freshness: Arc::new(Mutex::new(None)),
+            cancellations,
         })
     }
 
@@ -178,7 +182,13 @@ impl NativeFederation {
                 return Err(error.to_string());
             }
         }
+        if let Ok(mut tokens) = self.cancellations.lock() {
+            tokens.insert(request.request_id.clone(), cancellation.clone());
+        }
         let response = self.engine.federate(request, cancellation).await;
+        if let Ok(mut tokens) = self.cancellations.lock() {
+            tokens.remove(&request.request_id);
+        }
         match &response {
             Ok(value) => self.metrics.record(metric_status(value, cancelled)),
             Err(error) => self

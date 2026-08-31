@@ -1,10 +1,10 @@
-//! Production-path qualification for the opt-in RRF fusion strategy.
+//! Production-path qualification for bounded production RRF fusion.
 //!
-//! This harness intentionally measures mechanics only.  The active default is
-//! always the fixed-order control; held-out quality claims require root-run
+//! This harness intentionally measures mechanics only. Fixed order remains an
+//! explicit comparison control; held-out quality claims require root-run
 //! operational evidence and are represented as unavailable in the fixture.
 
-use membrane_federation::merge::{merge_outputs_with_strategy, FusionStrategy};
+use membrane_federation::merge::{merge_outputs, merge_outputs_with_strategy, FusionStrategy};
 use membrane_protocol::{
     CandidateV1, FederationProviderStatusV1, ProviderId, ProviderOutputV1,
     PROVIDER_OUTPUT_SCHEMA_VERSION,
@@ -152,7 +152,7 @@ fn qualification_fixture_has_development_and_frozen_held_out_corpora() {
 }
 
 #[test]
-fn production_path_compares_control_and_explicit_rrf_without_default_cutover() {
+fn production_path_defaults_to_rrf_and_retains_explicit_control() {
     let fixture: Corpus = serde_json::from_str(FIXTURE).expect("valid qualification fixture");
     for corpus in fixture.corpora {
         for case in corpus.cases {
@@ -176,9 +176,13 @@ fn production_path_compares_control_and_explicit_rrf_without_default_cutover() {
                 FusionStrategy::Rrf,
             )
             .unwrap_or_else(|error| panic!("{} RRF merge: {error}", case.id));
+            let active = merge_outputs(&expected, &lanes, Some(FIXTURE_GENERATION))
+                .unwrap_or_else(|error| panic!("{} active merge: {error}", case.id));
 
             assert_eq!(control.fusion_receipt.policy, "membrane-fusion-fixed-v1");
             assert_eq!(rrf.fusion_receipt.policy, "membrane-fusion-rrf-v1");
+            assert_eq!(active.fusion_receipt, rrf.fusion_receipt);
+            assert_eq!(active.candidates, rrf.candidates);
             assert_eq!(control.fusion_receipt.schema_version, 1);
             assert_eq!(rrf.fusion_receipt.schema_version, 1);
             assert_eq!(control.fusion_receipt.provider_order.len(), lanes.len());

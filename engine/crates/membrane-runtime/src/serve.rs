@@ -3833,8 +3833,27 @@ fn route_with_context_ingest_lease(
             .get("scope")
             .and_then(|x| x.as_str())
             .filter(|s| !s.trim().is_empty());
-        let listed = match store.try_list(scope) {
-            Ok(listed) => listed,
+        let response_version = v
+            .get("responseVersion")
+            .or_else(|| v.get("response_version"))
+            .and_then(Value::as_u64)
+            .unwrap_or(1);
+        let limit = v
+            .get("limit")
+            .and_then(Value::as_u64)
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(256);
+        if response_version == 2 && (limit == 0 || limit > 1_000) {
+            return (400, serde_json::json!({"error":"limit must be between 1 and 1000"}).to_string());
+        }
+        let (listed, completeness) = match if response_version == 2 {
+            store
+                .try_list_bounded(scope, limit)
+                .map(|page| (page.items, Some(page.completeness)))
+        } else {
+            store.try_list(scope).map(|items| (items, None))
+        } {
+            Ok(result) => result,
             Err(error) => {
                 if let Some(response) = record_external_or_500(
                     store,
@@ -3881,7 +3900,19 @@ fn route_with_context_ingest_lease(
         ) {
             return response;
         }
-        return (200, serde_json::Value::Array(rows).to_string());
+        return if response_version == 2 {
+            (
+                200,
+                serde_json::json!({
+                    "schemaVersion": 2,
+                    "items": rows,
+                    "completeness": completeness.expect("V2 list always has completeness"),
+                })
+                .to_string(),
+            )
+        } else {
+            (200, serde_json::Value::Array(rows).to_string())
+        };
     }
     if method == "POST" && path == "/scopes" {
         return (
@@ -4279,10 +4310,13 @@ fn route_with_context_ingest_lease(
         } else {
             store.recall_scored_detailed(
                 query,
-                generic_slots.saturating_add(inventory.memory_ids.len()),
+                generic_slots
+                    .saturating_add(inventory.memory_ids.len())
+                    .saturating_add(1),
                 &chain,
             )
         };
+        let generic_considered = generic_candidates.len();
         let mut generic_rank = 0usize;
         for hit in generic_candidates {
             if hits.len() >= k || inventory.memory_ids.contains(&hit.entry.id) {
@@ -4404,6 +4438,34 @@ fn route_with_context_ingest_lease(
                     .to_string(),
             );
         }
+        let response_version = v
+            .get("responseVersion")
+            .or_else(|| v.get("response_version"))
+            .and_then(Value::as_u64)
+            .unwrap_or(1);
+        let mut completeness = if hits.len() >= k || generic_considered > generic_rank {
+            crate::store::CortexCompletenessV1::lower_bound(
+                "ceiling_truncated",
+                hits.len().saturating_add(1),
+                hits.len(),
+                1,
+            )
+        } else {
+            crate::store::CortexCompletenessV1::exact(hits.len(), hits.len(), 0)
+        };
+        if remaining_preview_chars == 0 && generic_considered > generic_rank {
+            completeness.state = crate::store::CortexCompletenessState::LowerBound;
+            completeness.counts_exact = false;
+            if !completeness
+                .causes
+                .iter()
+                .any(|cause| cause == "preview_budget_exhausted")
+            {
+                completeness
+                    .causes
+                    .push("preview_budget_exhausted".to_owned());
+            }
+        }
         if hits.is_empty()
             && store.last_recall_status().as_deref() == Some("insufficient_confidence")
         {
@@ -4411,7 +4473,18 @@ fn route_with_context_ingest_lease(
                 200,
                 serde_json::json!({
                     "status": "insufficient_confidence",
-                    "hits": []
+                    "hits": [],
+                    "completeness": completeness,
+                })
+                .to_string(),
+            )
+        } else if response_version == 2 {
+            (
+                200,
+                serde_json::json!({
+                    "schemaVersion": 2,
+                    "hits": hits,
+                    "completeness": completeness,
                 })
                 .to_string(),
             )
@@ -7899,6 +7972,44 @@ mod tests {
     }
 
     #[test]
+    fn cortex_competitive_v2_recall_and_list_share_completeness_envelope() {
+        let store = MemoryStore::new();
+        for index in 0..3 {
+            store.put(
+                &format!("complete-{index}"),
+                &format!("release worker completeness {index}"),
+                "global",
+                cortex_core::MemoryTier::Semantic,
+            );
+        }
+        let listed = route(
+            &store,
+            "POST",
+            "/list",
+            r#"{"scope":"global","responseVersion":2,"limit":2}"#,
+        );
+        assert_eq!(listed.0, 200, "{}", listed.1);
+        let listed: Value = serde_json::from_str(&listed.1).unwrap();
+        assert_eq!(listed["schemaVersion"], 2);
+        assert_eq!(listed["items"].as_array().unwrap().len(), 2);
+        assert_eq!(listed["completeness"]["state"], "lower_bound");
+        assert_eq!(listed["completeness"]["countsExact"], false);
+
+        let recalled = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"release worker completeness","k":2,"client":"test","responseVersion":2}"#,
+        );
+        assert_eq!(recalled.0, 200, "{}", recalled.1);
+        let recalled: Value = serde_json::from_str(&recalled.1).unwrap();
+        assert_eq!(recalled["schemaVersion"], 2);
+        assert!(recalled["hits"].is_array());
+        assert_eq!(recalled["completeness"]["state"], "lower_bound");
+        assert_eq!(recalled["completeness"]["countsExact"], false);
+    }
+
+    #[test]
     fn legacy_memory_operations_have_native_route_shapes() {
         let store = MemoryStore::new();
         let remembered = route(
@@ -8419,6 +8530,8 @@ mod tests {
         assert_eq!(value["schema_version"], 2);
         assert_eq!(value["nodes"].as_array().unwrap().len(), 2);
         assert_eq!(value["edges"].as_array().unwrap().len(), 1);
+        assert_eq!(value["completeness"]["state"], "exact");
+        assert_eq!(value["completeness"]["returnedCount"], 2);
         assert!(response.1.contains("global/first"));
         assert_eq!(value["edges"][0]["kind"], "semantic");
     }

@@ -1365,6 +1365,6 @@ export async function augmentGeneration(generation, repoRoot) {
     if (report.parseStatus in summary.parseStatus) summary.parseStatus[report.parseStatus] += 1;
   }
   generation.fileReports = graph.fileReports;
-  generation.augmentation = { treesitter: summary };
+  generation.augmentation = { ...(generation.augmentation ?? {}), treesitter: summary };
   return { generation, summary };
 }

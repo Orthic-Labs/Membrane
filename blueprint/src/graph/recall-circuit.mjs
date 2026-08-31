@@ -23,15 +23,27 @@ function adjacency(edgeRows, direction) {
   return result;
 }
 
-function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete) {
+function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete, generationId) {
   const nodes = nodeIds.map((id) => nodeMap.get(id)).filter(Boolean);
   const edges = edgeIds.map((id) => edgeMap.get(id)).filter(Boolean);
   const evidence = [...nodes.flatMap(evidenceFor), ...edges.flatMap(evidenceFor)];
   const edgeTiers = edges.map((edge) => edge.confidenceTier).filter(Boolean);
   const meanConfidence = edges.length ? edges.reduce((sum, edge) => sum + Number(edge.confidence ?? 0), 0) / edges.length : 1;
   const projection = { seed: seed.id, terminal: nodeIds.at(-1), nodeIds, edgeIds };
+  const id = stableDigest(projection);
+  const omissionReasons = complete ? [] : ["bound_reached"];
+  const evidenceEnvelope = Object.freeze({
+    schemaVersion: 1,
+    kind: "AtomicEvidencePath",
+    id,
+    generationId,
+    completeness: complete ? "exact" : "lower_bound",
+    nodeEvidence: nodes.map((node) => ({ nodeId: node.id, evidence: evidenceFor(node) })),
+    edgeEvidence: edges.map((edge) => ({ edgeId: edge.id, source: edge.source, target: edge.target, evidence: evidenceFor(edge) })),
+    omissions: omissionReasons.map((reason) => ({ reason })),
+  });
   return {
-    id: stableDigest(projection),
+    id,
     seedId: seed.id,
     terminalId: nodeIds.at(-1),
     nodes,
@@ -43,7 +55,8 @@ function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete) {
     meanEdgeConfidence: meanConfidence,
     hopCount: edgeIds.length,
     state: complete ? "complete" : "partial",
-    omissionReasons: complete ? [] : ["bound_reached"],
+    omissionReasons,
+    evidenceEnvelope,
   };
 }
 
@@ -65,10 +78,11 @@ export function executeRecallCircuit(db, task, options = {}) {
     seedIds: options.seedIds,
     anchors: options.anchors,
     maxSeeds: policy.maxSeeds,
+    allowAmbiguousTaskSeeds: true,
   });
   if (!resolution.seeds.length) {
     const visible = { generationId, task: String(task), policy: policy.family, paths: [], omissions: [{ reason: resolution.reason }] };
-    return { schemaVersion: 1, kind: "RecallCircuit", id: stableDigest(visible), ...visible, seeds: [], state: "abstained", bounds: policy };
+    return { schemaVersion: 1, kind: "RecallCircuit", id: stableDigest(visible), ...visible, seeds: [], resolution, state: resolution.state === "ambiguous" ? "ambiguous" : "abstained", bounds: policy };
   }
 
   const frontier = traversalNeighbors(db, {
@@ -92,7 +106,7 @@ export function executeRecallCircuit(db, task, options = {}) {
       const next = (graph.get(current.nodeId) ?? []).filter((item) => !current.visited.has(item.to));
       const isTerminal = current.edgeIds.length > 0 && (next.length === 0 || current.edgeIds.length >= policy.maxHops);
       if (isTerminal) {
-        const path = makePath(seed, current.nodeIds, current.edgeIds, nodeMap, edgeMap, next.length === 0);
+        const path = makePath(seed, current.nodeIds, current.edgeIds, nodeMap, edgeMap, next.length === 0, generationId);
         if ((!policy.evidenceRequired || path.evidenceCoverage > 0) && !seenPathIds.has(path.id)) {
           seenPathIds.add(path.id);
           paths.push(path);
@@ -110,7 +124,7 @@ export function executeRecallCircuit(db, task, options = {}) {
     }
   }
   if (!paths.length) {
-    for (const seed of resolution.seeds) paths.push(makePath(seed, [seed.id], [], nodeMap, edgeMap, true));
+    for (const seed of resolution.seeds) paths.push(makePath(seed, [seed.id], [], nodeMap, edgeMap, true, generationId));
   }
   paths.sort(comparePaths);
   const omissions = [];
@@ -123,7 +137,8 @@ export function executeRecallCircuit(db, task, options = {}) {
     kind: "RecallCircuit",
     id: stableDigest({ generationId, policy: policy.family, paths: paths.map((path) => path.id), omissions }),
     ...visible,
-    seeds: resolution.seeds.map((seed) => ({ id: seed.id, exactness: seed.exactness, reason: seed.reason })),
+    seeds: resolution.seeds.map((seed) => ({ id: seed.id, exactness: seed.exactness, reason: seed.reason, evidence: seed.evidence })),
+    resolution,
     state: "complete",
     bounds: policy,
     accounting: { visited: frontier.seenNodes.length, hydrated: nodeMap.size, returnedPaths: paths.length },
@@ -161,6 +176,9 @@ export function canonicalCandidateSet(candidateSet) {
       recoverable: candidate.recoverable,
       resolver: candidate.resolver,
       text: candidate.text,
+      ...(candidate.recallCircuitId === undefined ? {} : { recallCircuitId: candidate.recallCircuitId }),
+      ...(candidate.evidencePathId === undefined ? {} : { evidencePathId: candidate.evidencePathId }),
+      ...(candidate.evidenceEnvelope === undefined ? {} : { evidenceEnvelope: candidate.evidenceEnvelope }),
     })),
     omissions: candidateSet.omissions ?? [],
   };
@@ -196,6 +214,7 @@ export function recallCircuitToCandidateSet(circuit, options = {}) {
       text: terminal.qualifiedName ?? terminal.name ?? terminal.id,
       recallCircuitId: circuit.id,
       evidencePathId: path.id,
+      evidenceEnvelope: path.evidenceEnvelope,
     });
   }
   const candidateSet = {
@@ -208,7 +227,7 @@ export function recallCircuitToCandidateSet(circuit, options = {}) {
     task: circuit.task,
     mode: options.mode ?? "survey",
     provider: typeof options.provider === "string" ? options.provider : options.provider?.id ?? "blueprint-static",
-    freshness: { revision: circuit.generationId, indexedAt, stale: false },
+    freshness: options.freshness ?? { revision: circuit.generationId, indexedAt, stale: false },
     providerCeiling: { maxCandidates: circuit.bounds?.maxPaths ?? candidates.length, maxEstimatedTokens: options.maxEstimatedTokens ?? 8000 },
     candidates,
     omissions: circuit.omissions ?? [],

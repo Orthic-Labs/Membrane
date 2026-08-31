@@ -71,6 +71,43 @@ CREATE TABLE IF NOT EXISTS ledger_nodes (
 );
 CREATE INDEX IF NOT EXISTS idx_ledger_nodes_generation
   ON ledger_nodes(doc_id, ledger_generation);
+CREATE TABLE IF NOT EXISTS ledger_link_targets (
+    source_doc_id TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    source_span_hash TEXT NOT NULL,
+    source_start_byte INTEGER NOT NULL,
+    source_end_byte INTEGER NOT NULL,
+    ledger_generation INTEGER NOT NULL,
+    link_kind TEXT NOT NULL,
+    raw_target TEXT NOT NULL,
+    normalized_target TEXT NOT NULL,
+    target_fragment TEXT,
+    resolution_state TEXT NOT NULL,
+    target_doc_id TEXT,
+    target_revision TEXT,
+    target_content_hash TEXT,
+    target_span_hash TEXT,
+    PRIMARY KEY(source_doc_id, source_start_byte, source_end_byte)
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_link_targets_source_generation
+  ON ledger_link_targets(source_doc_id, ledger_generation);
+CREATE INDEX IF NOT EXISTS idx_ledger_link_targets_target
+  ON ledger_link_targets(target_doc_id, resolution_state);
+CREATE TABLE IF NOT EXISTS ledger_query_aliases (
+    doc_id TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    anchor_id TEXT NOT NULL,
+    alias TEXT NOT NULL,
+    weight REAL NOT NULL,
+    derivation TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    span_hash TEXT NOT NULL,
+    ledger_generation INTEGER NOT NULL,
+    PRIMARY KEY(doc_id, node_id, alias)
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_query_aliases_generation
+  ON ledger_query_aliases(doc_id, ledger_generation);
 CREATE TABLE IF NOT EXISTS ledger_index_publications (
     doc_id TEXT PRIMARY KEY,
     content_hash TEXT NOT NULL,
@@ -237,6 +274,8 @@ mod tests {
         assert!(names.iter().any(|name| name == "ledger_doc_artifacts"));
         assert!(names.iter().any(|name| name == "ledger_doc_projections"));
         assert!(names.iter().any(|name| name == "ledger_nodes"));
+        assert!(names.iter().any(|name| name == "ledger_link_targets"));
+        assert!(names.iter().any(|name| name == "ledger_query_aliases"));
         assert!(names.iter().any(|name| name == "ledger_node_fts"));
         assert!(names.iter().any(|name| name == "ledger_activation"));
         assert!(!names.iter().any(|name| name == "memories"));
@@ -301,6 +340,8 @@ mod tests {
         assert!(names.iter().any(|name| name == "ledger_doc_projections"));
         assert!(names.iter().any(|name| name == "ledger_nodes"));
         assert!(names.iter().any(|name| name == "ledger_node_fts"));
+        assert!(names.iter().any(|name| name == "ledger_link_targets"));
+        assert!(names.iter().any(|name| name == "ledger_query_aliases"));
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM ledger_doc_artifacts", [], |row| {
                 row.get(0)

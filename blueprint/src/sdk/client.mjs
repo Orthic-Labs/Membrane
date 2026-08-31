@@ -62,6 +62,7 @@ export class BlueprintClient {
   async path(input = {}) { return this.#call("path", input); }
   async architecture(input = {}) { return this.#call("architecture", input); }
   async documentTruth(input = {}) { return this.#call("documentTruth", input); }
+  async federate(input = {}) { return this.#call("federate", input); }
 
   close() { return this.client.close(); }
 }

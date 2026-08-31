@@ -74,6 +74,33 @@ function coalesceRenameEvents(events) {
   )));
 }
 
+export function evaluateConvergenceOracle(db, sourceFiles, { traversalTruncated = false, truncationReasons = [], eventGapOverride } = {}) {
+  const ledgerRows = Number(db.prepare("SELECT COUNT(*) AS n FROM generation_leaf WHERE kind='file'").get()?.n ?? 0);
+  const delta = ledgerRows > 0
+    ? diffLedgerAgainstTree(db, null, sourceFiles)
+    : { changed: [], added: [], removed: [] };
+  const pendingEvents = Number(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get()?.n ?? 0);
+  const domainsPending = String(db.prepare("SELECT value FROM watch_state WHERE key='domains_pending'").get()?.value ?? "")
+    .split(",").map((value) => value.trim()).filter(Boolean).sort();
+  const eventGap = eventGapOverride ?? (db.prepare("SELECT value FROM watch_state WHERE key='event_gap'").get()?.value === "1");
+  const mismatches = Object.freeze({ changed: delta.changed, added: delta.added, removed: delta.removed });
+  const converged = !traversalTruncated && !eventGap && pendingEvents === 0
+    && mismatches.changed.length === 0 && mismatches.added.length === 0 && mismatches.removed.length === 0;
+  return Object.freeze({
+    schemaVersion: 1,
+    kind: "IncrementalConvergenceOracle",
+    converged,
+    exact: !traversalTruncated && ledgerRows > 0,
+    mismatches,
+    pendingEvents,
+    domainsPending,
+    eventGap,
+    omissions: traversalTruncated
+      ? [...truncationReasons].map((reason) => ({ reason: "source_scan_truncated", detail: reason }))
+      : ledgerRows > 0 ? [] : [{ reason: "source_ledger_unavailable" }],
+  });
+}
+
 export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
   const root = canonicalRoot(typeof dbOrRoot === "string" ? dbOrRoot : rootOrOptions);
   const ownedDbPath = typeof dbOrRoot === "string" ? join(root, options.outDir ?? ".agent", "graph", "graph.db") : null;
@@ -157,17 +184,21 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       await adapter.writeSnapshot(root, snapshot, ignore);
     }
     throwIfAborted(signal);
+    const authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
+    const convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
     db.exec("BEGIN;");
     try {
-      db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap','0') ON CONFLICT(key) DO UPDATE SET value='0'").run();
-      db.prepare("DELETE FROM watch_state WHERE key='event_gap_reason'").run();
+      db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(convergence.converged ? "0" : "1");
+      if (convergence.converged) db.prepare("DELETE FROM watch_state WHERE key='event_gap_reason'").run();
+      else db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap_reason','convergence_mismatch') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
+      db.prepare("INSERT INTO watch_state(key,value) VALUES ('convergence_oracle',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(convergence));
       db.prepare("INSERT INTO watch_state(key,value) VALUES ('last_reconcile_ms',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(Date.now()));
       db.exec("COMMIT;");
     } catch (error) {
       db.exec("ROLLBACK;");
       throw error;
     }
-    return { ok: true, changed: diff.changed, added: diff.added, removed: diff.removed, queued: unique.size, applied, eventGap: 0 };
+    return { ok: convergence.converged, changed: diff.changed, added: diff.added, removed: diff.removed, queued: unique.size, applied, eventGap: convergence.converged ? 0 : 1, convergence };
   } finally {
     if (close) closeStore(db);
     lease?.release();

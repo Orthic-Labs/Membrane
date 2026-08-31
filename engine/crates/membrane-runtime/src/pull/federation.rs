@@ -816,6 +816,42 @@ pub fn memory_candidates_payload_for_descriptor(
     max_candidates: usize,
     repo_root: Option<&Path>,
 ) -> Result<serde_json::Value, String> {
+    memory_candidates_payload_for_descriptor_inner(
+        store,
+        task,
+        descriptor,
+        max_candidates,
+        repo_root,
+        None,
+    )
+}
+
+pub fn memory_candidates_payload_for_descriptor_cancellable(
+    store: &crate::MemoryStore,
+    task: &str,
+    descriptor: &crate::scope::ScopeDescriptorV1,
+    max_candidates: usize,
+    repo_root: Option<&Path>,
+    cancellation: &tokio_util::sync::CancellationToken,
+) -> Result<serde_json::Value, String> {
+    memory_candidates_payload_for_descriptor_inner(
+        store,
+        task,
+        descriptor,
+        max_candidates,
+        repo_root,
+        Some(cancellation),
+    )
+}
+
+fn memory_candidates_payload_for_descriptor_inner(
+    store: &crate::MemoryStore,
+    task: &str,
+    descriptor: &crate::scope::ScopeDescriptorV1,
+    max_candidates: usize,
+    repo_root: Option<&Path>,
+    cancellation: Option<&tokio_util::sync::CancellationToken>,
+) -> Result<serde_json::Value, String> {
     // Canonicalize whatever the caller sent (raw filesystem path, slug, or `global`) into the full
     // visibility chain: self + ancestor scopes that hold rows + global. Before 2026-07-16 this
     // passed the raw string into recall (clients send paths like `D:\Claude`), so project-scoped
@@ -834,13 +870,50 @@ pub fn memory_candidates_payload_for_descriptor(
     // an N+1 request are the same top-N a request for exactly N would have returned (ranking is
     // deterministic; see `recall_scored`'s doc comment), so this changes zero user-visible output.
     let probe_limit = max_candidates.saturating_add(1);
-    let (mut hits, mut stage_elapsed) = store.recall_scored_timed(task, probe_limit, &scopes);
+    let (mut hits, mut stage_elapsed, mut completeness) = if let Some(cancellation) = cancellation {
+        let (hits, elapsed, completeness) = store.recall_scored_detailed_timed_cancellable(
+            task,
+            probe_limit,
+            &scopes,
+            true,
+            cancellation,
+        );
+        (
+            hits.into_iter()
+                .map(|hit| (hit.entry, hit.score))
+                .collect(),
+            elapsed,
+            completeness,
+        )
+    } else {
+        let (hits, elapsed) = store.recall_scored_timed(task, probe_limit, &scopes);
+        let completeness = crate::store::CortexCompletenessV1::exact(hits.len(), hits.len(), 0);
+        (hits, elapsed, completeness)
+    };
     stage_elapsed.recall_ms += scope_ms;
     let dropped_by_ceiling = if hits.len() > max_candidates {
         hits.split_off(max_candidates)
     } else {
         Vec::new()
     };
+    if !dropped_by_ceiling.is_empty() {
+        completeness.state = crate::store::CortexCompletenessState::LowerBound;
+        completeness.counts_exact = false;
+        if !completeness
+            .causes
+            .iter()
+            .any(|cause| cause == OMISSION_REASON_CEILING_TRUNCATED)
+        {
+            completeness
+                .causes
+                .push(OMISSION_REASON_CEILING_TRUNCATED.to_owned());
+        }
+        completeness.considered_count = hits.len().saturating_add(1);
+        completeness.returned_count = hits.len();
+        completeness.dropped_count = completeness.dropped_count.max(1);
+    } else {
+        completeness.returned_count = hits.len();
+    }
     let rank_started = Instant::now();
     let candidates: Vec<serde_json::Value> = hits
         .iter()
@@ -908,6 +981,7 @@ pub fn memory_candidates_payload_for_descriptor(
         },
         "candidates": candidates,
         "omissions": omissions,
+        "completeness": completeness,
         "scope": scopes.first().cloned().unwrap_or_default(),
         "_membrane": {
             "stageElapsedMs": {
@@ -1334,5 +1408,29 @@ mod tests {
         assert!(omissions
             .iter()
             .all(|omission| omission["reason"] == "ceiling_truncated"));
+    }
+
+    #[test]
+    fn cortex_competitive_cancelled_candidate_retrieval_is_lower_bound_not_false_empty() {
+        let store = crate::MemoryStore::new();
+        let _ = store.remember("cancelled candidate fixture", vec![]);
+        let cancellation = tokio_util::sync::CancellationToken::new();
+        cancellation.cancel();
+        let payload = memory_candidates_payload_for_descriptor_cancellable(
+            &store,
+            "cancelled candidate fixture",
+            &crate::scope::ScopeDescriptorV1::filesystem("global"),
+            4,
+            None,
+            &cancellation,
+        )
+        .unwrap();
+        assert!(payload["candidates"].as_array().unwrap().is_empty());
+        assert_eq!(payload["completeness"]["state"], "lower_bound");
+        assert_eq!(payload["completeness"]["countsExact"], false);
+        assert!(payload["completeness"]["causes"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("cancelled")));
     }
 }

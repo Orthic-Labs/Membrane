@@ -17,6 +17,7 @@ export class EmbeddedBlueprintClient {
   async path(input = {}) { return this.service.path(input); }
   async architecture(input = {}) { return this.service.architecture(input); }
   async documentTruth(input = {}) { return this.service.documentTruth(input); }
+  async federate(input = {}) { return this.service.federate(input); }
 
   close() { return Promise.resolve(); }
 }

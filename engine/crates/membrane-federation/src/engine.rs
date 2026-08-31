@@ -187,8 +187,8 @@ impl FederationEngine {
         self
     }
 
-    /// Select a versioned fusion strategy explicitly. The default remains the
-    /// fixed provider/security ordering used by current production.
+    /// Select a versioned fusion strategy explicitly. Bounded RRF is default;
+    /// fixed provider/security ordering remains available as control.
     pub fn with_fusion_strategy(mut self, strategy: FusionStrategy) -> Self {
         self.fusion_strategy = strategy;
         self

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
-import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../src/graph/snapshots.mjs";
+import { createSnapshot, getSnapshot, listSnapshots, changesSince, changesSinceReference } from "../src/graph/snapshots.mjs";
 
 function seeded() {
   const db = openStore(":memory:");
@@ -27,6 +27,10 @@ test("named snapshots are idempotent and changes are deterministic/bounded", () 
     assert.equal(delta.receipt.truncated, true);
     assert.equal(getSnapshot(db, "base").generationId, "g1");
     assert.equal(listSnapshots(db).length, 1);
+    const semantic = changesSinceReference(db, "/tmp", { generation: "g1" });
+    assert.equal(semantic.authority, "history_reference_only");
+    assert.equal(semantic.currentTruth.generationId, "g2");
+    assert.equal(semantic.changes[0].path, "a.ts");
   } finally { closeStore(db); }
 });
 

@@ -40,6 +40,7 @@ pub mod outcomes;
 pub mod portable;
 pub mod procedural_effectiveness;
 pub mod proposal;
+pub mod proposal_state;
 pub mod record;
 pub mod remediation;
 pub mod scope;

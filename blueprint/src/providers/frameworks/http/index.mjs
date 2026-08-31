@@ -26,8 +26,8 @@ export function extractRoutes({ stack, text, path }) {
     line = line.replace(/\/\/.*$/, "").replace(/#.*$/, "").trim();
     let match;
     if (stack === "next-express") {
-      match = line.match(/(?:app|router)\.(get|post|put|delete|patch)\(\s*["'`]([^"'`]+)["'`]/i);
-      if (match) routes.push({ kind: "route", method: match[1].toUpperCase(), path: match[2], line: i + 1, confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
+      match = line.match(/(?:app|router)\.(get|post|put|delete|patch)\(\s*["'`]([^"'`]+)["'`]\s*,\s*([A-Za-z_$][\w$]*)?/i);
+      if (match) routes.push({ kind: "route", method: match[1].toUpperCase(), path: match[2], handler: match[3] ?? null, line: i + 1, confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
       match = line.match(/export\s+default\s+async\s+function\s+([A-Za-z0-9_]+)/);
       if (match) routes.push({ kind: "handler", name: match[1], line: i + 1, confidence: "CROSS_FILE_HEURISTIC", evidence: `${path}:${i + 1}` });
     } else if (stack === "fastapi-django") {

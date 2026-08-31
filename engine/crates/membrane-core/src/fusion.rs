@@ -140,7 +140,20 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
         for (index, candidate) in candidates.iter().cloned().enumerate() {
             let rank = u32::try_from(index + 1).unwrap_or(u32::MAX);
             let denominator = bounds.rrf_k.saturating_add(rank);
-            if rank > quota {
+            if candidate.source_kind.trim().is_empty()
+                || candidate.source_ref.trim().is_empty()
+                || candidate.source_hash.trim().is_empty()
+            {
+                decisions.push(FusionDecisionV1 {
+                    id: candidate.id,
+                    provider: provider.clone(),
+                    provider_rank: rank,
+                    rrf_denominator: denominator,
+                    fused_rank: None,
+                    decision: "rejected".to_string(),
+                    reason: "invalid_source".to_string(),
+                });
+            } else if rank > quota {
                 decisions.push(FusionDecisionV1 {
                     id: candidate.id,
                     provider: provider.clone(),
@@ -218,7 +231,7 @@ pub fn fuse(candidate_sets: &[ContextCandidateSetV1], bounds: FusionBounds) -> F
         receipt: FusionReceiptV1 {
             schema_version: FusionReceiptV1::SCHEMA_VERSION,
             policy: FusionReceiptV1::RRF_POLICY.to_string(),
-            fallback_policy: FusionReceiptV1::FALLBACK_POLICY.to_string(),
+            fallback_policy: FusionReceiptV1::RRF_FALLBACK_POLICY.to_string(),
             provider_order,
             provider_quotas: bounds.provider_quotas,
             rrf_k: bounds.rrf_k,
@@ -414,6 +427,52 @@ mod tests {
                 )),
             Some(("rejected", "duplicate_source_hash", Some(1)))
         );
+    }
+
+    #[test]
+    fn single_arm_survives_with_invalid_sources_excluded_and_cap_receipted() {
+        let mut invalid = candidate("invalid", 1.0, "hash-invalid");
+        invalid.source_ref.clear();
+        let result = fuse(
+            &[set(
+                "lexical",
+                vec![
+                    invalid,
+                    candidate("one", 0.9, "hash-one"),
+                    candidate("two", 0.8, "hash-two"),
+                    candidate("three", 0.7, "hash-three"),
+                ],
+            )],
+            FusionBounds {
+                rrf_k: 60,
+                max_items: 2,
+                ..FusionBounds::default()
+            },
+        );
+        assert_eq!(
+            result
+                .candidates
+                .iter()
+                .map(|candidate| candidate.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one", "two"]
+        );
+        assert_eq!(result.receipt.policy, FusionReceiptV1::RRF_POLICY);
+        assert_eq!(
+            result.receipt.fallback_policy,
+            FusionReceiptV1::RRF_FALLBACK_POLICY
+        );
+        assert_eq!(result.receipt.max_items, 2);
+        assert!(result.receipt.decisions.iter().any(|decision| {
+            decision.id == "invalid"
+                && decision.decision == "rejected"
+                && decision.reason == "invalid_source"
+        }));
+        assert!(result.receipt.decisions.iter().any(|decision| {
+            decision.id == "three"
+                && decision.decision == "rejected"
+                && decision.reason == "max_items"
+        }));
     }
 
     #[test]

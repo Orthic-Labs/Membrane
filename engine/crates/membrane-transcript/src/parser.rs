@@ -1,6 +1,6 @@
 //! Deterministic transcript parsing: rows → byte spans → events + receipt.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::adapters::{self, RawEvent, GENERIC_HOSTS};
@@ -13,6 +13,7 @@ use crate::source::{self, LoadedSource};
 
 /// Default cap applied to the lowest admission class by [`parse`].
 pub const CLASS_PRIORITY_CAP: usize = 6;
+const USER_DEDUPE_MIN_CHARS: usize = 200;
 
 fn is_supported_host(host: &str) -> bool {
     host == "claude_code" || host == "codex" || GENERIC_HOSTS.contains(&host)
@@ -148,13 +149,16 @@ pub fn parse_transcript(
     let mut call_index: BTreeMap<String, Vec<String>> = BTreeMap::new();
     // Tool linkage: call_id -> number of tool_results already linked.
     let mut result_counter: BTreeMap<String, u64> = BTreeMap::new();
+    // Long repeated user turns are normally re-injected specifications or
+    // harness context. Keep short confirmations because repetition remains
+    // meaningful evidence.
+    let mut seen_long_user_text = HashSet::new();
 
     for row in &source.rows {
         for (block_index, raw) in adapters::iter_events_for_host(&host, &row.value)
             .into_iter()
             .enumerate()
         {
-            sequence += 1;
             let mut text = compact_text(&raw.text);
             if text.is_empty() && raw.private_reasoning_omitted {
                 text = "private reasoning omitted".to_string();
@@ -165,6 +169,13 @@ pub fn parse_transcript(
             if text.is_empty() {
                 continue;
             }
+            if raw.kind == "user_message"
+                && text.chars().count() >= USER_DEDUPE_MIN_CHARS
+                && !seen_long_user_text.insert(text.clone())
+            {
+                continue;
+            }
+            sequence += 1;
 
             let occurrence = raw.call_id.as_ref().map(|cid| {
                 let counter = pair_occurrence.entry(cid.clone()).or_insert(0);

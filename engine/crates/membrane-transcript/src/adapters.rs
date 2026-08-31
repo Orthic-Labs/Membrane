@@ -5,7 +5,9 @@
 //! downstream projections ingest them identically.
 
 use std::path::Path;
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde_json::Value;
 
 use crate::canonical::py_json_dumps;
@@ -21,7 +23,53 @@ pub const GENERIC_HOSTS: &[&str] = &[
     "grok_build",
     "roo_cline",
     "cursor",
+    "copilot",
+    "antigravity",
 ];
+
+static CODEX_CONTROL_ENVELOPE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?s)<(?:subagent_notification|codex_internal_context|codex_delegation|turn_aborted|heartbeat)(?:\s[^>]*)?>.*?</(?:subagent_notification|codex_internal_context|codex_delegation|turn_aborted|heartbeat)>",
+    )
+    .expect("valid Codex control-envelope regex")
+});
+static CODEX_IMAGE_MARKER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"</?image\b[^>]*>?").expect("valid Codex image-marker regex")
+});
+static ANTIGRAVITY_USER_REQUEST: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>")
+        .expect("valid Antigravity user-request regex")
+});
+
+const INJECTED_CONTEXT_PREFIXES: &[&str] = &[
+    "# AGENTS.md instructions",
+    "# CLAUDE.md instructions",
+    "# Context from my IDE setup:",
+    "# Files mentioned by the user",
+    "<environment_context",
+    "<in-app-browser-context",
+    "<permissions instructions",
+    "<recommended_plugins",
+    "<summary>",
+    "<command-name",
+    "<command-message",
+    "<local-command-stdout",
+    "<task-notification",
+    "<launch-selected-element",
+    "[Request interrupted",
+];
+
+fn injected_context(text: &str) -> bool {
+    let text = text.trim_start();
+    INJECTED_CONTEXT_PREFIXES
+        .iter()
+        .any(|prefix| text.starts_with(prefix))
+}
+
+fn codex_user_text(text: String) -> String {
+    let text = CODEX_CONTROL_ENVELOPE.replace_all(&text, "");
+    CODEX_IMAGE_MARKER.replace_all(&text, "").trim().to_owned()
+}
 
 /// A normalized pre-canonicalization event emitted by a host adapter.
 #[derive(Debug, Clone, Default)]
@@ -454,6 +502,22 @@ pub fn claude_events(obj: &Value) -> Vec<RawEvent> {
     {
         return Vec::new();
     }
+    if row_type == "user"
+        && (obj.get("isMeta").and_then(Value::as_bool).unwrap_or(false)
+            || obj
+                .get("isCompactSummary")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            || obj.get("toolUseResult").is_some()
+            || obj
+                .get("origin")
+                .and_then(Value::as_object)
+                .is_some_and(|origin| origin.get("kind").and_then(Value::as_str) != Some("human"))
+            || (obj.get("promptSource").and_then(Value::as_str) == Some("sdk")
+                && obj.get("entrypoint").and_then(Value::as_str) == Some("sdk-cli")))
+    {
+        return Vec::new();
+    }
 
     let Some(message) = obj.get("message").filter(|m| m.is_object()) else {
         return Vec::new();
@@ -471,6 +535,9 @@ pub fn claude_events(obj: &Value) -> Vec<RawEvent> {
             ev.role = Some(row_type.to_string());
             ev.timestamp = timestamp;
             ev.text = trimmed.to_string();
+            if row_type == "user" && injected_context(&ev.text) {
+                return Vec::new();
+            }
             events.push(ev);
         }
         return events;
@@ -492,7 +559,9 @@ pub fn claude_events(obj: &Value) -> Vec<RawEvent> {
                     ev.role = Some(row_type.to_string());
                     ev.timestamp = timestamp.clone();
                     ev.text = text.to_string();
-                    events.push(ev);
+                    if row_type != "user" || !injected_context(&ev.text) {
+                        events.push(ev);
+                    }
                 }
             }
             "thinking" => {
@@ -588,7 +657,15 @@ pub fn codex_events(obj: &Value) -> Vec<RawEvent> {
                 &["input_text", "output_text", "text"],
             );
             let text = blocks.join("\n");
+            let text = if role == "user" {
+                codex_user_text(text)
+            } else {
+                text
+            };
             if text.trim().is_empty() {
+                return Vec::new();
+            }
+            if role == "user" && injected_context(&text) {
                 return Vec::new();
             }
             let mut ev = RawEvent::new(&format!("{role}_message"));
@@ -669,6 +746,80 @@ pub fn codex_events(obj: &Value) -> Vec<RawEvent> {
     }
 }
 
+// ---- GitHub Copilot CLI adapter ----
+
+/// Copilot CLI rows. System steering uses the same message shape as typed
+/// input, so `data.source=system` is excluded before it can become user
+/// evidence.
+pub fn copilot_events(obj: &Value) -> Vec<RawEvent> {
+    let row_type = obj.get("type").and_then(Value::as_str).unwrap_or("");
+    if !matches!(row_type, "user.message" | "assistant.message") {
+        return Vec::new();
+    }
+    let Some(data) = obj.get("data").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    if row_type == "user.message"
+        && data.get("source").and_then(Value::as_str) == Some("system")
+    {
+        return Vec::new();
+    }
+    let text = data
+        .get("content")
+        .or_else(|| data.get("text"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if text.is_empty() || (row_type == "user.message" && injected_context(text)) {
+        return Vec::new();
+    }
+    let role = if row_type == "user.message" {
+        "user"
+    } else {
+        "assistant"
+    };
+    let mut event = RawEvent::new(&format!("{role}_message"));
+    event.role = Some(role.into());
+    event.timestamp = as_str(obj.get("timestamp"));
+    event.text = text.into();
+    vec![event]
+}
+
+// ---- Google Antigravity adapter ----
+
+/// Antigravity's `USER_INPUT` row is admissible only when its source is
+/// explicitly `USER_EXPLICIT`. Harness metadata outside `<USER_REQUEST>` is
+/// discarded.
+pub fn antigravity_events(obj: &Value) -> Vec<RawEvent> {
+    if obj.get("type").and_then(Value::as_str) != Some("USER_INPUT")
+        || obj.get("source").and_then(Value::as_str) != Some("USER_EXPLICIT")
+    {
+        return Vec::new();
+    }
+    let content = obj.get("content").and_then(Value::as_str).unwrap_or("");
+    let texts = ANTIGRAVITY_USER_REQUEST
+        .captures_iter(content)
+        .filter_map(|capture| capture.get(1).map(|value| value.as_str()))
+        .collect::<Vec<_>>();
+    let texts = if texts.is_empty() {
+        vec![content]
+    } else {
+        texts
+    };
+    texts
+        .into_iter()
+        .map(str::trim)
+        .filter(|text| !text.is_empty() && !injected_context(text))
+        .map(|text| {
+            let mut event = RawEvent::new("user_message");
+            event.role = Some("user".into());
+            event.timestamp = as_str(obj.get("created_at"));
+            event.text = text.into();
+            event
+        })
+        .collect()
+}
+
 // ---- Generic frozen adapter ----
 
 const GENERIC_KINDS: &[&str] = &[
@@ -740,7 +891,7 @@ pub fn generic_events(obj: &Value) -> Vec<RawEvent> {
 /// queue-operation}`; frozen snapshots declare `adapt_event_v1` plus their own
 /// `host`. Falls back to `claude_code`.
 pub fn detect_host(path: &Path) -> std::io::Result<&'static str> {
-    let path_text = path.to_string_lossy();
+    let path_text = path.to_string_lossy().replace('\\', "/");
     if path.file_name().and_then(|value| value.to_str()) == Some("opencode.db") {
         return Ok("opencode");
     }
@@ -759,6 +910,9 @@ pub fn detect_host(path: &Path) -> std::io::Result<&'static str> {
     if path_text.contains("/.cline/") {
         return Ok("cline");
     }
+    if path_text.contains("/antigravity/") || path_text.contains("/.system_generated/logs/") {
+        return Ok("antigravity");
+    }
     if path_text.contains("/.gemini/") {
         return Ok("gemini");
     }
@@ -767,6 +921,9 @@ pub fn detect_host(path: &Path) -> std::io::Result<&'static str> {
     }
     if path_text.contains("roo-cline") {
         return Ok("roo_cline");
+    }
+    if path_text.contains("/.copilot/") {
+        return Ok("copilot");
     }
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
@@ -788,6 +945,10 @@ pub fn detect_host(path: &Path) -> std::io::Result<&'static str> {
             Some(t) if matches!(t, "user" | "assistant" | "queue-operation") => {
                 return Ok("claude_code");
             }
+            Some(t) if matches!(t, "user.message" | "assistant.message") => {
+                return Ok("copilot");
+            }
+            Some("USER_INPUT") => return Ok("antigravity"),
             Some("session") if map.contains_key("cwd") => return Ok("pi"),
             Some("message") if map.get("message").is_some() => return Ok("pi"),
             _ => {}
@@ -805,6 +966,8 @@ fn known_host(host: &str) -> &'static str {
     match host {
         "claude_code" => "claude_code",
         "codex" => "codex",
+        "copilot" => "copilot",
+        "antigravity" => "antigravity",
         _ => "",
     }
 }
@@ -825,6 +988,8 @@ pub fn iter_events_for_host(host: &str, obj: &Value) -> Vec<RawEvent> {
         "roo_cline" => roo_events(obj),
         "opencode" => opencode_events(obj),
         "cursor" => cursor_events(obj),
+        "copilot" => copilot_events(obj),
+        "antigravity" => antigravity_events(obj),
         _ => Vec::new(),
     }
 }

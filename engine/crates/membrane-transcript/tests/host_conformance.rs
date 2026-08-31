@@ -159,6 +159,11 @@ fn discovery_maps_real_roots_and_excludes_commandcode_checkpoints() {
         (".pi/agent/sessions/repo/pi.jsonl", "{}\n"),
         (".qwen/sessions/qwen.jsonl", "{}\n"),
         (".cline/data/sessions/s/s.messages.json", "{}"),
+        (".copilot/session-state/s/copilot.jsonl", "{}\n"),
+        (
+            ".gemini/antigravity/brain/s/.system_generated/logs/events.jsonl",
+            "{}\n",
+        ),
     ] {
         let path = home.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -169,7 +174,7 @@ fn discovery_maps_real_roots_and_excludes_commandcode_checkpoints() {
     assert!(!found
         .iter()
         .any(|item| item.path.to_string_lossy().contains("checkpoints")));
-    for host in ["pi", "qwen", "cline"] {
+    for host in ["pi", "qwen", "cline", "copilot", "antigravity"] {
         assert!(found.iter().any(|item| item.host == host), "{host}");
     }
     std::fs::remove_dir_all(home).unwrap();

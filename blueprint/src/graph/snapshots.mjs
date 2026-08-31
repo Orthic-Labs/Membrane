@@ -79,3 +79,83 @@ export function changesSince(db, name, { limit = 100 } = {}) {
     receipt: { total: changes.length, limit: cap, truncated: changes.length > cap },
   };
 }
+
+function gitTreeishChanges(repoRoot, base, head = "HEAD") {
+  const from = String(base ?? "").trim();
+  const to = String(head ?? "HEAD").trim() || "HEAD";
+  if (!from) throw fail("treeish_base_required");
+  let output;
+  try {
+    output = execFileSync("git", ["diff", "--name-status", "-z", "--find-renames", from, to, "--"], {
+      cwd: rootOf(repoRoot), encoding: "buffer", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000, maxBuffer: 4 * 1024 * 1024,
+    });
+  } catch { throw fail("treeish_unavailable"); }
+  const fields = output.toString("utf8").split("\0").filter(Boolean);
+  const changes = [];
+  for (let index = 0; index < fields.length;) {
+    const status = fields[index++];
+    const before = fields[index++];
+    if (!before) break;
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const after = fields[index++];
+      changes.push({ path: String(after).replaceAll("\\", "/"), previousPath: String(before).replaceAll("\\", "/"), kind: status.startsWith("R") ? "renamed" : "copied" });
+    } else {
+      const kind = ({ A: "added", D: "deleted", M: "modified", T: "type_changed", U: "unmerged" })[status[0]] ?? "modified";
+      changes.push({ path: String(before).replaceAll("\\", "/"), kind });
+    }
+  }
+  return changes.sort((left, right) => left.path.localeCompare(right.path) || left.kind.localeCompare(right.kind));
+}
+
+function citeCurrentNodes(db, generationId, changes) {
+  const file = db.prepare("SELECT node_id AS id FROM files WHERE generation_id=? AND path=? ORDER BY node_id");
+  const symbols = db.prepare("SELECT id FROM symbols WHERE generation_id=? AND path=? ORDER BY id LIMIT 50");
+  return changes.map((change) => ({
+    ...change,
+    currentEvidence: {
+      fileNodeId: file.get(generationId, change.path)?.id ?? null,
+      symbolNodeIds: symbols.all(generationId, change.path).map((row) => row.id),
+    },
+  }));
+}
+
+/** Historical comparison is a disposable projection. Current graph truth is
+ * never mutated or replaced by snapshot/treeish state. */
+export function changesSinceReference(db, repoRoot, { snapshot, generation, treeish, head = "HEAD", limit = 100 } = {}) {
+  const current = identityFromStore(db, repoRoot);
+  let source;
+  let raw;
+  const omissions = [];
+  if (snapshot) {
+    source = { kind: "snapshot", value: String(snapshot) };
+    raw = changesSince(db, snapshot, { limit: 10_000 }).changes;
+  } else if (generation) {
+    source = { kind: "generation", value: String(generation) };
+    if (String(generation) === current.generationId) raw = [];
+    else {
+      const row = db.prepare("SELECT name FROM named_snapshot WHERE generation_id=? ORDER BY name LIMIT 1").get(String(generation));
+      if (row) raw = changesSince(db, row.name, { limit: 10_000 }).changes;
+      else {
+        raw = [];
+        omissions.push({ reason: "generation_history_unavailable", generationId: String(generation) });
+      }
+    }
+  } else if (treeish) {
+    const base = typeof treeish === "string" ? treeish : treeish.base ?? treeish.from;
+    const target = typeof treeish === "string" ? head : treeish.head ?? treeish.to ?? head;
+    source = { kind: "treeish", value: String(base), head: String(target) };
+    raw = gitTreeishChanges(repoRoot, base, target);
+  } else throw fail("change_reference_required");
+  const cap = Math.min(10_000, Math.max(1, Number(limit) || 100));
+  const cited = citeCurrentNodes(db, current.generationId, raw);
+  return {
+    schemaVersion: 1,
+    kind: "SemanticChangeProjection",
+    authority: "history_reference_only",
+    source,
+    currentTruth: { generationId: current.generationId, manifestDigest: current.manifestDigest },
+    changes: cited.slice(0, cap),
+    receipt: { total: cited.length, limit: cap, truncated: cited.length > cap },
+    omissions,
+  };
+}

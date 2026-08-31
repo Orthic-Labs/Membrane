@@ -49,6 +49,7 @@ import { diffLedgerAgainstTree } from "./merkle-ledger.mjs";
 import { probeScip } from "./scip-provider.mjs";
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "./ignored-prefixes.mjs";
 import { withStoreLeaseSync } from "./store-lease.mjs";
+import { augmentFileFactsWithFirstPartyProviders, augmentGenerationWithFirstPartyProviders } from "../providers/build.mjs";
 
 export { EDGE_CONFIDENCE_TIERS, EDGE_CONFIDENCE_TIER_ORDER, EDGE_CONFIDENCE_TIER_DESCRIPTIONS, tierConfidence };
 export { PRECISION_TIERS, PRECISION_TIER_ORDER };
@@ -150,6 +151,9 @@ const FILE_ONLY_EXTENSIONS = new Set([
   "json", "jsonl", "yaml", "yml", "toml",
   "html", "css", "svg",
   "sql", "csv", "tsv",
+  // First-party supplemental providers consume these as evidence-bound
+  // domain/seam sources; lexical symbol extraction remains disabled.
+  "tf", "tfvars", "proto", "go", "java", "kt", "cs",
   "xml",
   "template",
 ]);
@@ -311,6 +315,8 @@ export async function augmentGenerationWithTreeSitter(generation, repoRoot, opti
       const astSet = new Set(astExtensions);
       generation.manifest.lexicalProvider = generation.manifest.provider;
       generation.manifest.provider = TS_PROVIDER;
+      const supplementalLayers = (generation.manifest.providerComposition?.layers ?? [])
+        .filter((layer) => layer.id !== TS_PROVIDER.id && layer.id !== PROVIDER.id);
       generation.manifest.providerComposition = {
         selected: TS_PROVIDER.id,
         layers: [
@@ -321,6 +327,7 @@ export async function augmentGenerationWithTreeSitter(generation, repoRoot, opti
             role: "fallback",
             extensions: PARSED_EXTENSIONS.filter((ext) => !astSet.has(ext)),
           },
+          ...supplementalLayers,
         ],
       };
       generation.provider = TS_PROVIDER;
@@ -338,7 +345,7 @@ export async function augmentGenerationWithTreeSitter(generation, repoRoot, opti
     return { state: "ok", summary };
   } catch (err) {
     const failure = { provider: "blueprint-treesitter", state: "unavailable", reason: String(err?.message ?? err) };
-    generation.augmentation = { treesitter: failure };
+    generation.augmentation = { ...(generation.augmentation ?? {}), treesitter: failure };
     return failure;
   }
 }
@@ -1370,10 +1377,21 @@ function buildGenerationFromSources(root, source, options = {}) {
     addCallEdges(source.files, nodes, edges, { resolverIndexes: resolutionIndexes, work: options.resolverWork });
     addConfigEdges(source.files, nodes, edges, resolutionIndexes);
   });
+  const providerAugmentation = measureStage(sink, "first_party_provider_augmentation", () => (
+    augmentGenerationWithFirstPartyProviders({ nodes, edges }, root, source.files, options)
+  ));
   const factProvider = { id: "lexical", version: PROVIDER.version };
-  const cleanNodes = dedupeBy(nodes, (node) => node.id).map((node) => ({ ...node, factProvider }));
+  const cleanNodes = dedupeBy(nodes, (node) => node.id).map((node) => ({
+    ...node,
+    ...(node.factProvider && node.factProvider.id !== factProvider.id ? { sourceProvider: node.factProvider } : {}),
+    factProvider,
+  }));
   const rawEdges = dedupeBy(edges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`)
-    .map((edge) => ({ ...edge, factProvider }));
+    .map((edge) => ({
+      ...edge,
+      ...(edge.factProvider && edge.factProvider.id !== factProvider.id ? { sourceProvider: edge.factProvider } : {}),
+      factProvider,
+    }));
   let generation;
   measureStage(sink, "identity", () => {
     const candidateGeneration = { schemaVersion: 1, provider: PROVIDER, manifest: null, nodes: cleanNodes, edges: rawEdges, repoRoot: root };
@@ -1387,6 +1405,13 @@ function buildGenerationFromSources(root, source, options = {}) {
     const manifest = {
     schemaVersion: 1,
     provider: PROVIDER,
+    providerComposition: {
+      selected: PROVIDER.id,
+      layers: [
+        { id: PROVIDER.id, version: PROVIDER.version, role: "primary", precisionTier: PROVIDER.precisionTier },
+        ...providerAugmentation.layers,
+      ],
+    },
     // Stable generation stamp derived from the generation id, so byte-identity
     // on unchanged rebuilds is preserved.
     generatedAt: `gen:${generationId.replace(/^xxh128:/, "").slice(0, 16)}`,
@@ -1410,7 +1435,16 @@ function buildGenerationFromSources(root, source, options = {}) {
       supersedes: docTruth.supersedes.length,
     },
     };
-    generation = { schemaVersion: 1, provider: PROVIDER, manifest, nodes: cleanNodes, edges: cleanEdges, docTruth, repoRoot: root };
+    generation = {
+      schemaVersion: 1,
+      provider: PROVIDER,
+      manifest,
+      nodes: cleanNodes,
+      edges: cleanEdges,
+      docTruth,
+      repoRoot: root,
+      augmentation: { providers: providerAugmentation.summaries },
+    };
   });
   return { generation, parseCache: nextCache(nextRecords) };
 }
@@ -1453,6 +1487,7 @@ export function parseFileFacts(root, file, options = {}) {
       .map((symbol) => ({ ...symbol, kind: "symbol" })),
   ];
   addCallEdges([...fileByPath.values()], resolutionNodes, edges, { sourcePaths: new Set([current.path]) });
+  augmentFileFactsWithFirstPartyProviders({ nodes, edges }, root, current, [...fileByPath.values()], options);
   const dependencies = extractImports(current, [...fileByPath.values()]).map((sourcePath) => ({
     dependentPath: current.path,
     sourcePath,
@@ -1460,8 +1495,16 @@ export function parseFileFacts(root, file, options = {}) {
   }));
   const dedupe = (items, key) => [...new Map(items.map((item) => [key(item), item])).values()];
   return {
-    nodes: dedupe(nodes, (node) => node.id).map((node) => ({ ...node, factProvider: { id: "lexical", version: PROVIDER.version } })),
-    edges: dedupe(edges, (edge) => edge.id).map((edge) => ({ ...edge, factProvider: { id: "lexical", version: PROVIDER.version } })),
+    nodes: dedupe(nodes, (node) => node.id).map((node) => ({
+      ...node,
+      ...(node.factProvider && node.factProvider.id !== "lexical" ? { sourceProvider: node.factProvider } : {}),
+      factProvider: { id: "lexical", version: PROVIDER.version },
+    })),
+    edges: dedupe(edges, (edge) => edge.id).map((edge) => ({
+      ...edge,
+      ...(edge.factProvider && edge.factProvider.id !== "lexical" ? { sourceProvider: edge.factProvider } : {}),
+      factProvider: { id: "lexical", version: PROVIDER.version },
+    })),
     dependencies: dedupe(dependencies, (item) => `${item.sourcePath}:${item.dependentPath}:${item.reason}`),
   };
 }

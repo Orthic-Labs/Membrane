@@ -48,8 +48,9 @@ export class BlueprintClient {
   expand(input: AnchorInput): Promise<BlueprintResult>;
   impact(input: AnchorInput): Promise<BlueprintResult>;
   path(input: PathInput): Promise<BlueprintResult>;
-  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows"; budget?: number; maxFlows?: number; cursor?: string }): Promise<BlueprintResult>;
+  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows" | "projection" | "changes"; budget?: number; maxFlows?: number; cursor?: string; snapshot?: string; sinceGeneration?: string; treeish?: string | { base: string; head?: string } }): Promise<BlueprintResult>;
   documentTruth(input: BlueprintServiceInput & { claimId?: string; limit?: number }): Promise<BlueprintResult>;
+  federate(input: { repositories: Array<{ repoId: string; repoRoot?: string; generation?: string }>; allowedRepoIds?: string[]; operation: "search" | "recall" | "impact" | "architecture"; query?: Record<string, unknown> }): Promise<BlueprintResult>;
   close(): Promise<void>;
 }
 
@@ -58,7 +59,8 @@ export class EmbeddedBlueprintClient {
   search(input: SearchInput): Promise<BlueprintSearchResult>;
   status(input?: BlueprintServiceInput): Promise<BlueprintResult>;
   path(input: PathInput): Promise<BlueprintResult>;
-  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows"; budget?: number; maxFlows?: number; cursor?: string }): Promise<BlueprintResult>;
+  architecture(input: BlueprintServiceInput & { view?: "summary" | "flows" | "projection" | "changes"; budget?: number; maxFlows?: number; cursor?: string }): Promise<BlueprintResult>;
+  federate(input: { repositories: Array<{ repoId: string; repoRoot?: string; generation?: string }>; operation: "search" | "recall" | "impact" | "architecture"; query?: Record<string, unknown> }): Promise<BlueprintResult>;
   close(): Promise<void>;
 }
 

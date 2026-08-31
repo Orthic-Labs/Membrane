@@ -19,6 +19,22 @@ const hit = (resolved, reason) => ({ resolved, status: RESOLVED, reason });
 const read = (path) => {
   try { return readFileSync(path, "utf8"); } catch { return null; }
 };
+
+export function extractPythonModuleSpecifiers(text) {
+  const found = [];
+  const lines = String(text ?? "").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const from = line.match(/^\s*from\s+([.A-Za-z_]\w*(?:\.\w+)*)\s+import\s+([A-Za-z_]\w*)/);
+    if (from) {
+      found.push({ specifier: from[1], importedName: from[2], line: index + 1 });
+      continue;
+    }
+    const imported = line.match(/^\s*import\s+([A-Za-z_]\w*(?:\.\w+)*)/);
+    if (imported) found.push({ specifier: imported[1], importedName: null, line: index + 1 });
+  }
+  return found;
+}
 const inside = (root, target) => {
   const rel = relative(root, target);
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));

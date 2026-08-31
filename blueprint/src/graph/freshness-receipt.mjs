@@ -25,6 +25,7 @@
 // pinning into the freshness enum (or vice versa) is the conflation this
 // module exists to prevent.
 
+import { execFileSync } from "node:child_process";
 import { gitSourceObservation } from "./git-source-observation.mjs";
 import { readManifestEnvelope } from "./store-sqlite.mjs";
 
@@ -82,6 +83,43 @@ export function observeCurrentVcsState(repoRoot, { observe = gitSourceObservatio
   });
 }
 
+function gitLines(repoRoot, args) {
+  try {
+    return execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+      maxBuffer: 4 * 1024 * 1024,
+    }).split(/\r?\n/).map((line) => line.trim().replaceAll("\\", "/")).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enumerate source paths whose sealed-generation evidence may be stale. This
+ * is response-boundary suppression evidence, not a second freshness verdict.
+ * A failed enumeration deliberately returns `complete:false`, requiring the
+ * caller to suppress every source-backed row instead of guessing it is fresh.
+ */
+export function changedPathsSinceGeneration(repoRoot, generation, current) {
+  if (!current?.available || !generation?.indexed_revision) {
+    return Object.freeze({ complete: false, paths: Object.freeze([]), reason: "comparison_unavailable" });
+  }
+  const committed = gitLines(repoRoot, ["diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", generation.indexed_revision, "--"]);
+  const worktree = gitLines(repoRoot, ["diff", "--no-renames", "--name-only", "--diff-filter=ACDMRTUXB", "HEAD", "--"]);
+  const untracked = gitLines(repoRoot, ["ls-files", "--others", "--exclude-standard"]);
+  if (!committed || !worktree || !untracked) {
+    return Object.freeze({ complete: false, paths: Object.freeze([]), reason: "comparison_failed" });
+  }
+  return Object.freeze({
+    complete: true,
+    paths: Object.freeze([...new Set([...committed, ...worktree, ...untracked])].sort()),
+    reason: null,
+  });
+}
+
 /**
  * The freshness axis ONLY. Never throws, never considers a pinned generation
  * — see assertGenerationCoherence for that orthogonal check.
@@ -102,11 +140,16 @@ export function evaluateFreshness(generation, current) {
  * Build the full BlueprintFreshnessReceiptV1 for `db`'s sealed generation
  * against `repoRoot`'s current worktree state.
  */
-export function buildFreshnessReceipt(db, repoRoot, { observe = gitSourceObservation } = {}) {
+export function buildFreshnessReceipt(db, repoRoot, { observe = gitSourceObservation, enumerateChanged = changedPathsSinceGeneration } = {}) {
   const envelope = readManifestEnvelope(db);
   const generation = generationFreshnessBasis(envelope);
   const current = observeCurrentVcsState(repoRoot, { observe });
   const freshness = evaluateFreshness(generation, current);
+  const changedRaw = freshness === "changed_since_generation"
+    ? enumerateChanged(repoRoot, generation, current)
+    : Object.freeze({ complete: freshness === "fresh", paths: Object.freeze([]), reason: freshness === "fresh" ? null : freshness });
+  const indexedPaths = new Set(db.prepare("SELECT path FROM generation_leaf WHERE kind='file'").all().map((row) => row.path));
+  const changed = Object.freeze({ ...changedRaw, paths: Object.freeze(changedRaw.paths.filter((path) => indexedPaths.has(path))) });
   return Object.freeze({
     schema: FRESHNESS_RECEIPT_SCHEMA,
     generationId: envelope?.generationId ?? null,
@@ -118,6 +161,11 @@ export function buildFreshnessReceipt(db, repoRoot, { observe = gitSourceObserva
       worktree_fingerprint: current.worktree_fingerprint,
     }),
     freshness,
+    staleSources: changed,
+    suppression: Object.freeze({
+      required: freshness === "changed_since_generation",
+      mode: freshness !== "changed_since_generation" ? "none" : changed.complete ? "changed_paths" : "whole_generation",
+    }),
   });
 }
 

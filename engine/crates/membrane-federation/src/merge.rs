@@ -2,14 +2,14 @@
 //!
 //! Merge is intentionally boring: normalize and admit lanes first, group by
 //! stable identity, collapse exact duplicates, omit conflicts, then apply the
-//! selected deterministic strategy. The fixed provider/security order remains
-//! the production control; RRF is explicitly selectable for measured work.
+//! selected deterministic strategy. Bounded RRF is production default; fixed
+//! provider/security order remains an explicit comparison control.
 
 use crate::normalize::{normalize_provider_output, NormalizedCandidate, NormalizedProviderOutput};
 use crate::omission::{
     canonical_omissions, canonical_warnings, conflict_omission, reconcile_lanes,
 };
-use membrane_core::{FusionBounds, DEFAULT_RRF_K};
+use membrane_core::{FusionBounds, DEFAULT_MAX_ITEMS, DEFAULT_RRF_K};
 use membrane_protocol::{
     canonical_json_of, CandidateV1, ContextCandidateSetV1, FederationProviderStatusV1,
     FederationResponseV1, FederationStatus, FreshnessV1, FusionReceiptV1, ProviderCeilingV1,
@@ -21,14 +21,19 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Deterministic fusion strategy selected by the composition owner.
 ///
-/// Fixed order is the migration control matching current production behavior.
-/// RRF remains available behind an explicit opt-in so comparison can be
-/// measured without silently changing the live default.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+/// RRF is production default. Fixed order remains an explicit comparison and
+/// recovery control; neither strategy can admit a provider or make final
+/// Membrane packet-selection decisions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FusionStrategy {
-    #[default]
     FixedOrder,
     Rrf,
+}
+
+impl Default for FusionStrategy {
+    fn default() -> Self {
+        Self::Rrf
+    }
 }
 
 impl FusionStrategy {
@@ -266,7 +271,7 @@ fn fuse_normalized(
     }
 }
 
-/// Preserve the current production merge control: provider rank first, then
+/// Preserve the comparison merge control: provider rank first, then
 /// protected/exact identity fields and stable candidate fields.
 fn fuse_fixed_normalized(
     providers: &[NormalizedProviderOutput],
@@ -335,7 +340,7 @@ fn fuse_fixed_normalized(
     )
 }
 
-/// Run the existing core RRF baseline behind an explicit strategy selection.
+/// Run bounded core RRF as production fusion.
 /// Federation owns provider eligibility; core owns rank fusion and receipt
 /// decisions.
 fn fuse_rrf_normalized(
@@ -398,15 +403,15 @@ fn fuse_rrf_normalized(
         });
     }
 
-    let max_items = sets.iter().map(|set| set.candidates.len()).sum::<usize>();
     let fused = membrane_core::fuse(
         &sets,
         FusionBounds {
             provider_quotas: quotas,
             rrf_k: DEFAULT_RRF_K,
-            // The planner remains the single attention-budget owner. This
-            // active baseline records no additional cap or silent drop.
-            max_items: u32::try_from(max_items).unwrap_or(u32::MAX),
+            // Fusion has a hard candidate-processing bound. The Membrane
+            // planner still owns final grant, sufficiency, attention budget,
+            // representation, & publication authority.
+            max_items: DEFAULT_MAX_ITEMS,
         },
     );
 

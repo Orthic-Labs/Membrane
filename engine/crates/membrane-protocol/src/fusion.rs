@@ -40,11 +40,10 @@ pub struct FusionReceiptV1 {
 
 impl FusionReceiptV1 {
     pub const SCHEMA_VERSION: u32 = 1;
-    /// Versioned production control strategy.  Federation uses this policy
-    /// unless an explicit RRF strategy is selected by its caller.
+    /// Versioned legacy fixed-order control strategy.
     pub const POLICY: &'static str = "membrane-fusion-fixed-v1";
-    /// Versioned RRF strategy used by the standalone core implementation and
-    /// available to explicitly selected or shadow-evaluation paths.
+    /// Versioned production RRF strategy.
     pub const RRF_POLICY: &'static str = "membrane-fusion-rrf-v1";
     pub const FALLBACK_POLICY: &'static str = "fixed-lanes-v1";
+    pub const RRF_FALLBACK_POLICY: &'static str = "single-arm-preserve-v1";
 }

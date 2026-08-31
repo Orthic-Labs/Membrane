@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v1";
+pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v2";
 pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
@@ -162,6 +162,10 @@ pub(crate) fn replace_document_index_tx(
         "DELETE FROM ledger_node_fts WHERE doc_id=?1",
         [input.doc_id],
     )?;
+    tx.execute(
+        "DELETE FROM ledger_query_aliases WHERE doc_id=?1",
+        [input.doc_id],
+    )?;
     tx.execute("DELETE FROM ledger_nodes WHERE doc_id=?1", [input.doc_id])?;
 
     let outline = build_outline(
@@ -237,6 +241,17 @@ pub(crate) fn replace_document_index_tx(
                 body,
                 aliases,
             ],
+        )?;
+        super::query_alias::replace_node_aliases_tx(
+            tx,
+            input.doc_id,
+            &node_id,
+            &section.anchor_id,
+            &section.heading,
+            body,
+            input.source_revision,
+            &section.span_hash,
+            input.generation,
         )?;
     }
     let arena = Arena::new();
@@ -372,6 +387,14 @@ pub(crate) fn replace_document_index_tx(
             input.generation,
         ],
     )?;
+    super::link_projection::replace_link_projection_tx(
+        tx,
+        input.doc_id,
+        input.path,
+        input.markdown,
+        input.source_revision,
+        input.generation,
+    )?;
     Ok(())
 }
 
@@ -388,6 +411,16 @@ pub(crate) fn advance_unchanged_generation_tx(
     tx.execute(
         "UPDATE ledger_index_publications
          SET source_revision=?1, ledger_generation=?2 WHERE doc_id=?3",
+        rusqlite::params![source_revision, generation, doc_id],
+    )?;
+    tx.execute(
+        "UPDATE ledger_query_aliases SET source_revision=?1, ledger_generation=?2
+         WHERE doc_id=?3",
+        rusqlite::params![source_revision, generation, doc_id],
+    )?;
+    tx.execute(
+        "UPDATE ledger_link_targets SET source_revision=?1, ledger_generation=?2
+         WHERE source_doc_id=?3",
         rusqlite::params![source_revision, generation, doc_id],
     )?;
     Ok(())

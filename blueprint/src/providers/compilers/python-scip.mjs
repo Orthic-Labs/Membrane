@@ -329,10 +329,10 @@ export const pythonScipProvider = defineProvider({
   protocolRange: ">=1 <2",
   capabilities: ["definitions", "references", "types"],
   permissions: { filesystem: "repo-read", network: "none", process: "none" },
-  async probe(context = {}) {
+  probe(context = {}) {
     return probeScipIndex(context);
   },
-  async collect(context = {}) {
+  collect(context = {}) {
     const probe = probeScipIndex(context);
     if (probe.state === "unavailable") {
       return { nodes: [], edges: [], reports: [degradationReport(probe)], index: probe };

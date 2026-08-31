@@ -72,7 +72,7 @@ fn active_merge_emits_versioned_fusion_receipt() {
     .expect("valid provider lane");
     assert_eq!(
         result.fusion_receipt.policy,
-        membrane_protocol::FusionReceiptV1::POLICY
+        membrane_protocol::FusionReceiptV1::RRF_POLICY
     );
     assert!(result
         .fusion_receipt
@@ -82,39 +82,39 @@ fn active_merge_emits_versioned_fusion_receipt() {
     let response = result.response("request", "trace");
     assert_eq!(
         response.extensions["fusionReceipt"]["policy"].as_str(),
-        Some(membrane_protocol::FusionReceiptV1::POLICY)
+        Some(membrane_protocol::FusionReceiptV1::RRF_POLICY)
     );
 }
 
 #[test]
-fn rr_fusion_requires_explicit_strategy_selection() {
+fn rrf_is_production_default_and_fixed_order_remains_explicit_control() {
     let outputs = [
         output(ProviderId::Anchors, "anchor-1"),
         output(ProviderId::Blueprint, "blueprint-1"),
     ];
-    let control = merge_outputs(
+    let active = merge_outputs(
         &[ProviderId::Anchors, ProviderId::Blueprint],
         &outputs,
         None,
     )
-    .expect("control merge");
+    .expect("active merge");
+    assert_eq!(
+        active.fusion_receipt.policy,
+        membrane_protocol::FusionReceiptV1::RRF_POLICY
+    );
+    assert_eq!(active.candidates.len(), 1);
+    let control = merge_outputs_with_strategy(
+        &[ProviderId::Anchors, ProviderId::Blueprint],
+        &outputs,
+        None,
+        FusionStrategy::FixedOrder,
+    )
+    .expect("explicit fixed-order merge");
     assert_eq!(
         control.fusion_receipt.policy,
         membrane_protocol::FusionReceiptV1::POLICY
     );
     assert_eq!(control.candidates.len(), 2);
-    let rrf = merge_outputs_with_strategy(
-        &[ProviderId::Anchors, ProviderId::Blueprint],
-        &outputs,
-        None,
-        FusionStrategy::Rrf,
-    )
-    .expect("explicit RRF merge");
-    assert_eq!(
-        rrf.fusion_receipt.policy,
-        membrane_protocol::FusionReceiptV1::RRF_POLICY
-    );
-    assert_eq!(rrf.candidates.len(), 1);
 }
 
 #[test]

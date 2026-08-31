@@ -8,9 +8,12 @@ pub mod doc_candidate_provider;
 pub mod doc_projection;
 pub mod doc_shadow;
 pub mod doc_spine;
+pub mod document_conversion;
 pub mod identifier;
 pub mod index;
+pub mod link_projection;
 pub mod outline;
+pub mod query_alias;
 pub mod session_projection;
 
 pub use db::LedgerDb;

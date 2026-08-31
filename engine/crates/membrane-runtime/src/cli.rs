@@ -157,7 +157,12 @@ fn write_skill_body(name: &str, body: &str) -> Result<(), String> {
 
 /// `skill-read <name>`: resolve and print a workspace skill body. DB-less; runs before DB
 /// resolution. Traversal- and escape-guarded.
-fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
+fn run_skill_read(
+    name: String,
+    root: Option<String>,
+    max_chars: usize,
+    privacy_values: Option<PathBuf>,
+) -> Result<(), String> {
     if name.is_empty()
         || name.len() > 128
         || !name
@@ -170,6 +175,17 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     {
         return Err(format!("invalid skill name: {name:?}"));
     }
+    if max_chars == 0 || max_chars > 262_144 {
+        return Err("skill-read max_chars must be between 1 and 262144".to_owned());
+    }
+    let privacy_values = match privacy_values {
+        Some(path) => serde_json::from_str::<std::collections::BTreeMap<String, String>>(
+            &std::fs::read_to_string(&path)
+                .map_err(|error| format!("skill-read privacy values {}: {error}", path.display()))?,
+        )
+        .map_err(|error| format!("skill-read privacy values must be a string map: {error}"))?,
+        None => std::collections::BTreeMap::new(),
+    };
     // DISK-FIRST, ENGINE-FALLBACK. Disk = the git-tracked authoring source (always current on a
     // machine that has it). The engine `skills` table is the PORTABILITY store — it travels with
     // the DB, so a session/machine WITHOUT the skills directory (no checkout, no symlink) still
@@ -188,27 +204,71 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
         }
         let body =
             std::fs::read_to_string(&resolved).map_err(|e| format!("skill-read {name}: {e}"))?;
-        let hash = {
+        let stored_hash = {
             use sha2::{Digest, Sha256};
             hex::encode(Sha256::digest(body.as_bytes()))
         };
-        eprintln!("[skill-read] {name} bodyHash={hash} source=disk");
-        write_skill_body(&name, &body)?;
-        emit_skill_resolved(&ws, &name, &hash, "disk", body.len());
+        let (resolved, restored, unresolved) =
+            crate::store::restore_skill_privacy_placeholders(&body, &privacy_values);
+        let resolved_chars = resolved.chars().count();
+        let bounded = resolved.chars().take(max_chars).collect::<String>();
+        let truncated = resolved_chars > max_chars;
+        let resolved_hash = {
+            use sha2::{Digest, Sha256};
+            hex::encode(Sha256::digest(bounded.as_bytes()))
+        };
+        let mut causes = Vec::new();
+        if truncated {
+            causes.push("content_truncated");
+        }
+        if unresolved > 0 {
+            causes.push("privacy_value_unavailable");
+        }
+        let exact = causes.is_empty();
+        eprintln!(
+            "{}",
+            serde_json::json!({
+                "schemaVersion": 1,
+                "name": name,
+                "source": "disk",
+                "storedBodyHash": stored_hash,
+                "resolvedBodyHash": resolved_hash,
+                "restoredPrivacyValues": restored,
+                "unresolvedPrivacyValues": unresolved,
+                "completeness": {
+                    "schemaVersion": 1,
+                    "state": if exact { "exact" } else { "lower_bound" },
+                    "causes": causes,
+                    "consideredCount": if truncated { max_chars + 1 } else { resolved_chars },
+                    "returnedCount": bounded.chars().count(),
+                    "droppedCount": usize::from(truncated),
+                    "countsExact": exact,
+                }
+            })
+        );
+        write_skill_body(&name, &bounded)?;
+        emit_skill_resolved(&ws, &name, &resolved_hash, "disk", bounded.len());
         return Ok(());
     }
     // No disk copy — serve from the engine store.
     if let Ok(db) = resolve_db(None, std::env::var("CORTEX_DB").ok(), None) {
         if let Ok(memdb) = crate::MemDb::open(&db) {
             if let Ok(store) = MemoryStore::try_open(memdb) {
-                if let Some((body, _stored_sha)) = store.skill_from_db(&name) {
-                    let hash = {
-                        use sha2::{Digest, Sha256};
-                        hex::encode(Sha256::digest(body.as_bytes()))
-                    };
-                    eprintln!("[skill-read] {name} bodyHash={hash} source=engine");
-                    write_skill_body(&name, &body)?;
-                    emit_skill_resolved(&ws, &name, &hash, "engine", body.len());
+                if store.skill_from_db(&name).is_some() {
+                    let resolved =
+                        store.skill_read_bounded(&name, max_chars, &privacy_values)?;
+                    eprintln!(
+                        "{}",
+                        serde_json::to_string(&resolved).map_err(|error| error.to_string())?
+                    );
+                    write_skill_body(&name, &resolved.body)?;
+                    emit_skill_resolved(
+                        &ws,
+                        &name,
+                        &resolved.resolved_body_hash,
+                        "engine",
+                        resolved.body.len(),
+                    );
                     return Ok(());
                 }
             }
@@ -804,6 +864,12 @@ enum Cmd {
         /// Override the workspace root (else derived from the deployed binary location).
         #[arg(long)]
         root: Option<String>,
+        /// Hard character ceiling for returned body text.
+        #[arg(long, default_value_t = 65_536)]
+        max_chars: usize,
+        /// JSON object of caller-held privacy values keyed by placeholder name.
+        #[arg(long)]
+        privacy_values: Option<PathBuf>,
     },
     /// DB-first write path: upsert a memory through the engine (embeds + persists immediately).
     /// Content from --file, or stdin when omitted.
@@ -853,6 +919,8 @@ enum Cmd {
     List {
         #[arg(long)]
         scope: Option<String>,
+        #[arg(long, default_value_t = 1_000)]
+        limit: usize,
     },
     /// Emit the embedding-neighbor graph; --anonymous removes memory IDs and scopes.
     Graph {
@@ -1398,6 +1466,7 @@ fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> 
         [id],
         |row| Ok(serde_json::json!({
             "schema":"membrane.memory-explain.v1",
+            "completeness": crate::store::CortexCompletenessV1::exact(1, 1, 0),
             "id":row.get::<_,String>(0)?, "tier":row.get::<_,String>(1)?, "scope_id":row.get::<_,String>(2)?, "score":row.get::<_,f64>(3)?,
             "created_at":row.get::<_,String>(4)?, "updated_at":row.get::<_,String>(5)?, "access_count":row.get::<_,i64>(6)?, "inject_count":row.get::<_,i64>(7)?,
             "content_hash":row.get::<_,Option<String>>(8)?, "embed_model":row.get::<_,Option<String>>(9)?, "source_ids":row.get::<_,String>(10)?,
@@ -3797,8 +3866,19 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if let Cmd::Installation { command } = &cli.cmd {
         return run_installation(command);
     }
-    if let Cmd::SkillRead { name, root } = &cli.cmd {
-        return run_skill_read(name.clone(), root.clone());
+    if let Cmd::SkillRead {
+        name,
+        root,
+        max_chars,
+        privacy_values,
+    } = &cli.cmd
+    {
+        return run_skill_read(
+            name.clone(),
+            root.clone(),
+            *max_chars,
+            privacy_values.clone(),
+        );
     }
     if let Cmd::Ledger { command } = &cli.cmd {
         return match command {
@@ -4792,11 +4872,11 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             };
             println!("{{\"deleted\":{removed}}}");
         }
-        Cmd::List { scope } => {
+        Cmd::List { scope, limit } => {
             let store = open(&db)?;
             let context = cli_event_context();
-            let rows = match store.try_list(scope.as_deref()) {
-                Ok(rows) => rows,
+            let page = match store.try_list_bounded(scope.as_deref(), limit) {
+                Ok(page) => page,
                 Err(error) => {
                     record_cli_external(
                         &store,
@@ -4814,6 +4894,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     return Err(error);
                 }
             };
+            let rows = page.items;
             record_cli_external(
                 &store,
                 &context,
@@ -4834,6 +4915,10 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             for (id, tier, chars, access, inject) in rows {
                 println!("{access:>4} {inject:>4} {chars:>7} {tier:<9} {id}");
             }
+            eprintln!(
+                "{}",
+                serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
+            );
         }
         Cmd::Graph {
             anonymous,
@@ -5456,6 +5541,8 @@ mod tests {
         let explained =
             super::explain_memory(path.to_str().unwrap(), "global/old-preference").unwrap();
         assert_eq!(explained["record_type"], "preference");
+        assert_eq!(explained["completeness"]["state"], "exact");
+        assert_eq!(explained["completeness"]["consideredCount"], 1);
         assert!(explained.get("content").is_none());
         assert!(!explained.to_string().contains("private duplicate"));
     }

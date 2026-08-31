@@ -19,11 +19,12 @@ use membrane_provider_sdk::{
 };
 #[cfg(windows)]
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use tokio_util::sync::CancellationToken;
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -40,6 +41,7 @@ pub struct NativeSourceBindings {
     pub blueprint: Option<Arc<dyn BlueprintSource>>,
     pub blueprint_contextual: Option<Arc<dyn ContextualBlueprintSource>>,
     pub release: Option<RuntimeReleaseSource>,
+    pub(crate) cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl std::fmt::Debug for NativeSourceBindings {
@@ -77,6 +79,7 @@ impl NativeSourceBindings {
         let blueprint = Arc::new(BlueprintClient::new(Arc::new(UnixBlueprintTransport::new(
             endpoint,
         ))));
+        let cancellations = Arc::new(Mutex::new(HashMap::new()));
 
         Ok(Self {
             audit: Some(Arc::new(EmptyAuditSource)),
@@ -86,6 +89,7 @@ impl NativeSourceBindings {
             })),
             memory: Some(Arc::new(RuntimeMemorySource {
                 store: store.clone(),
+                cancellations: cancellations.clone(),
             })),
             scope_grant: Some(Arc::new(RuntimeScopeGrantSource {
                 catalog,
@@ -95,6 +99,7 @@ impl NativeSourceBindings {
             blueprint: Some(blueprint.clone()),
             blueprint_contextual: Some(blueprint),
             release: Some(RuntimeReleaseSource),
+            cancellations,
         })
     }
 
@@ -209,6 +214,7 @@ impl DecisionRecordSource for EmptyDecisionSource {
 #[derive(Clone)]
 struct RuntimeMemorySource {
     store: crate::MemoryStore,
+    cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl MemoryCandidateSource for RuntimeMemorySource {
@@ -222,15 +228,22 @@ impl MemoryCandidateSource for RuntimeMemorySource {
         Self: 'c,
     {
         let store = self.store.clone();
+        let cancellations = self.cancellations.clone();
         let query = query.clone();
         Box::pin(async move {
+            let cancellation = cancellations
+                .lock()
+                .ok()
+                .and_then(|tokens| tokens.get(&query.request_id).cloned())
+                .unwrap_or_default();
             let descriptor = crate::scope::ScopeDescriptorV1::filesystem(&query.repository_root);
-            let payload = crate::pull::federation::memory_candidates_payload_for_descriptor(
+            let payload = crate::pull::federation::memory_candidates_payload_for_descriptor_cancellable(
                 &store,
                 &query.task,
                 &descriptor,
                 64,
                 Some(Path::new(&query.repository_root)),
+                &cancellation,
             )
             .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
             let generation = query
@@ -255,11 +268,26 @@ impl MemoryCandidateSource for RuntimeMemorySource {
                     candidate,
                 });
             }
+            let completeness = payload
+                .get("completeness")
+                .cloned()
+                .and_then(|value| serde_json::from_value::<crate::store::CortexCompletenessV1>(value).ok())
+                .unwrap_or_else(|| crate::store::CortexCompletenessV1::lower_bound(
+                    "completeness_unavailable", candidates.len(), candidates.len(), 0
+                ));
+            let warnings = completeness
+                .causes
+                .iter()
+                .map(|cause| SourceWarning {
+                    code: cause.clone(),
+                    detail_id: Some(query.request_id.clone()),
+                })
+                .collect();
             Ok(SourceResponse {
                 value: candidates,
                 generation: Some(generation),
-                complete: true,
-                warnings: Vec::new(),
+                complete: completeness.is_exact(),
+                warnings,
             })
         })
     }
@@ -287,8 +315,11 @@ impl SkillCatalogSource for RuntimeSkillsSource {
                 .skills_snapshot()
                 .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
             let generation = snapshot.generation.clone();
-            let value = snapshot
-                .skills
+            let results = store
+                .search_skills(&query.task, 64)
+                .map_err(membrane_provider_sdk::ProviderError::Unavailable)?;
+            let value = results
+                .items
                 .into_iter()
                 .map(|entry| SkillCatalogEntry {
                     id: entry.name,
@@ -302,8 +333,16 @@ impl SkillCatalogSource for RuntimeSkillsSource {
             Ok(SourceResponse {
                 value,
                 generation: Some(generation),
-                complete: true,
-                warnings: Vec::new(),
+                complete: results.completeness.is_exact(),
+                warnings: results
+                    .completeness
+                    .causes
+                    .into_iter()
+                    .map(|code| SourceWarning {
+                        code,
+                        detail_id: Some(query.request_id.clone()),
+                    })
+                    .collect(),
             })
         })
     }
