@@ -9,8 +9,10 @@ test("normalized canon inventory is complete & generated indexes are current", (
     capabilityRows: 335,
     atoms: 324,
     exploratory: 11,
-    closed: 0,
-    open: 324,
+    competitiveClosed: 66,
+    competitiveOpen: 258,
+    lifecycleClosed: 0,
+    lifecycleOpen: 324,
     groups: 7,
     implementations: 336,
     qualifications: 335,
@@ -33,6 +35,19 @@ test("closure requires exact fresh acceptance, revision & receipt evidence", () 
   assert.equal(atomicCanonTestHooks.closed(row, "RELEASED"), true);
   assert.equal(atomicCanonTestHooks.closed({ ...row, Verification: "PENDING" }, "RELEASED"), false);
   assert.equal(atomicCanonTestHooks.closed({ ...row, Delivery: "COMMITTED" }, "RELEASED"), false);
+});
+
+test("competitive closure stays separate from lifecycle qualification", () => {
+  const comparison = "Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/membrane.md@0123456789abcdef0123456789abcdef01234567; Atom: MEM-001; Compared: 0123456789abcdef0123456789abcdef01234567";
+  assert.deepEqual(atomicCanonTestHooks.comparisonEvidence(comparison), {
+    relative: "docs/provenance/foundation/2026-08-31-competitive-comparison/membrane.md",
+    hash: "0123456789abcdef0123456789abcdef01234567",
+    atom: "MEM-001",
+    compared: "0123456789abcdef0123456789abcdef01234567",
+  });
+  const row = { Scope: "COMMITTED", Competitive: "CURRENT_BEST", Implementation: "DELIVERED", Verification: "FOCUSED_PASS", Qualification: "PENDING", Delivery: "PUSHED", Evidence: "PENDING" };
+  assert.equal(atomicCanonTestHooks.competitivelyClosed(row), true);
+  assert.equal(atomicCanonTestHooks.closed(row, "RELEASED"), false);
 });
 
 test("semantic duplicate detector is conservative but catches aliases", () => {

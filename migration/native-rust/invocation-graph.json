@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "1679dc5b9f3b40a6eb6e0946c37d03e10ff3286e",
- "generatedAt": "2026-08-30T19:57:09.250Z",
+ "baselineCommit": "30b3c211ae874f369bed3fe92eb94b2fc5acbb16",
+ "generatedAt": "2026-08-30T23:58:31.761Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -7903,6 +7903,12 @@
   },
   {
    "id": "schemas/registry/code/mbr402-batch.mjs",
+   "kind": "tracked-executable",
+   "runtime": "node",
+   "production_reachable": false
+  },
+  {
+   "id": "scripts/ci/apply-competitive-comparison.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
    "production_reachable": false
@@ -42356,6 +42362,12 @@
    "reason": "bare executable name (PATH-resolved)"
   },
   {
+   "from": "scripts/ci/apply-competitive-comparison.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
    "from": "scripts/ci/build-invocation-graph.mjs",
    "reference": "git",
    "kind": "spawn",
@@ -42370,6 +42382,24 @@
   {
    "from": "scripts/ci/check-atomic-canons.mjs",
    "reference": "rg",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "scripts/ci/check-atomic-canons.mjs",
+   "reference": "git",
    "kind": "spawn",
    "reason": "bare executable name (PATH-resolved)"
   },

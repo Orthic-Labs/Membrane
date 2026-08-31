@@ -25,7 +25,7 @@ const canons = Object.freeze([
 
 const headers = Object.freeze({
   group: ["ID", "Parent", "Owner", "Scope", "Derived rollup"],
-  capability: ["ID", "Parent", "Owner", "Scope", "Observable behavior", "Implementation", "Verification", "Qualification", "Delivery", "Action", "Evidence"],
+  capability: ["ID", "Parent", "Owner", "Scope", "Observable behavior", "Implementation", "Verification", "Qualification", "Delivery", "Action", "Evidence", "Competitive", "Comparison"],
   implementation: ["ID", "Capability targets", "Mechanism", "Source/donor", "Reuse mode", "State", "Production consumer"],
   qualification: ["ID", "Capability targets", "Acceptance boundary", "State", "Evidence", "Material revision"],
   decision: ["ID", "Kind", "Capability targets", "Decision", "Authority/evidence", "State"],
@@ -34,6 +34,7 @@ const headers = Object.freeze({
   introduction: ["Introduced ID", "Origin", "Observable behavior", "Authority/evidence"],
   reconciliation: ["Capability", "State", "Exact source", "Exact consumer", "Residual"],
   focusedVerification: ["Capability targets", "Focused command", "Direct test evidence", "Result", "Run identity/time"],
+  comparison: ["Atom", "Scope", "Competitive disposition", "Best mechanism", "Current evidence", "Donor evidence", "Gap / action"],
 });
 
 const enums = Object.freeze({
@@ -42,6 +43,7 @@ const enums = Object.freeze({
   Verification: new Set(["PENDING", "FOCUSED_PASS", "FAIL", "STALE", "UNKNOWN"]),
   Qualification: new Set(["NOT_REQUIRED", "PENDING", "PASS", "FAIL", "STALE", "UNKNOWN"]),
   Delivery: new Set(["LOCAL", "COMMITTED", "PUSHED", "RELEASED", "UNKNOWN"]),
+  Competitive: new Set(["CURRENT_BEST", "DONOR_BETTER", "CURRENT_INCOMPLETE", "UNRESOLVED", "NOT_COMMITTED"]),
   decisionKind: new Set(["REFERENCE", "EXCLUSION", "BACKLOG"]),
 });
 const deliveryRank = Object.freeze({ UNKNOWN: -1, LOCAL: 0, COMMITTED: 1, PUSHED: 2, RELEASED: 3 });
@@ -77,6 +79,24 @@ function proofEvidence(value) {
   const freshness = Date.parse(`${match[4]}T00:00:00Z`);
   if (!Number.isFinite(freshness) || freshness > Date.now()) return null;
   return { acceptance: match[1], revision: match[2], receipt: match[3], freshness: match[4] };
+}
+function recordsByHeader(markdown, expected) {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.trim().startsWith("|") && cells(line).join("|") === expected.join("|"));
+  if (start < 0) throw new Error(`missing table with schema ${expected.join(" | ")}`);
+  const table = [];
+  for (const line of lines.slice(start)) {
+    if (!line.trim().startsWith("|")) break;
+    table.push(cells(line));
+  }
+  return table.slice(1).filter((row) => !isSeparator(row)).map((row) => {
+    if (row.length !== expected.length) throw new Error(`table: expected ${expected.length} fields, got ${row.length}`);
+    return Object.fromEntries(expected.map((name, index) => [name, row[index]]));
+  });
+}
+function comparisonEvidence(value) {
+  const match = /^Receipt: ([^;]+)@([0-9a-f]{40}); Atom: ([A-Z]{3}-\d{3}); Compared: ([0-9a-f]{40})$/.exec(value);
+  return match ? { relative: match[1], hash: match[2], atom: match[3], compared: match[4] } : null;
 }
 
 const liveLocatorLineCounts = new Map();
@@ -122,15 +142,20 @@ function parseCanon(config) {
     if (!new RegExp(`^${config.prefix}-\\d{3}$`).test(row.ID)) throw new Error(`${config.file}: invalid capability ID ${row.ID}`);
     if (row.Owner !== config.owner) throw new Error(`${config.file}:${row.ID}: owner ${row.Owner} != ${config.owner}`);
     if (!groupIds.has(row.Parent)) throw new Error(`${config.file}:${row.ID}: unknown parent ${row.Parent}`);
-    for (const field of ["Scope", "Implementation", "Verification", "Qualification", "Delivery"]) {
+    for (const field of ["Scope", "Implementation", "Verification", "Qualification", "Delivery", "Competitive"]) {
       if (!enums[field].has(row[field])) throw new Error(`${config.file}:${row.ID}: invalid ${field} ${row[field]}`);
     }
-    if (!row["Observable behavior"] || !row.Action || !row.Evidence) throw new Error(`${config.file}:${row.ID}: incomplete capability row`);
+    if (!row["Observable behavior"] || !row.Action || !row.Evidence || !row.Comparison) throw new Error(`${config.file}:${row.ID}: incomplete capability row`);
     if ((row.Verification === "FOCUSED_PASS" || row.Qualification === "PASS") && !proofEvidence(row.Evidence)) throw new Error(`${config.file}:${row.ID}: PASS state lacks exact evidence`);
     if (row.Qualification === "NOT_REQUIRED") {
       const disposition = qualifications.find((qualification) => targets(qualification["Capability targets"]).includes(row.ID) && qualification.State === "NOT_REQUIRED");
       if (!disposition || !proofEvidence(disposition.Evidence)) throw new Error(`${config.file}:${row.ID}: NOT_REQUIRED lacks revision-bound disposition`);
     }
+    if (!comparisonEvidence(row.Comparison)) throw new Error(`${config.file}:${row.ID}: invalid comparison evidence`);
+    if (row.Scope === "COMMITTED" && row.Competitive === "NOT_COMMITTED") throw new Error(`${config.file}:${row.ID}: committed capability cannot be NOT_COMMITTED`);
+    if (row.Scope !== "COMMITTED" && row.Competitive !== "NOT_COMMITTED") throw new Error(`${config.file}:${row.ID}: non-committed capability must be NOT_COMMITTED`);
+    if (row.Competitive === "CURRENT_BEST" && (row.Implementation !== "DELIVERED" || row.Verification !== "FOCUSED_PASS")) throw new Error(`${config.file}:${row.ID}: CURRENT_BEST requires delivered implementation and focused pass`);
+    if (row.Competitive === "CURRENT_INCOMPLETE" && !["PARTIAL", "MISSING"].includes(row.Implementation)) throw new Error(`${config.file}:${row.ID}: CURRENT_INCOMPLETE requires partial or missing implementation`);
   }
   const validateTargets = (rows, kind, pattern) => {
     for (const row of rows) {
@@ -167,6 +192,7 @@ function closed(row, boundary) {
     && ["PASS", "NOT_REQUIRED"].includes(row.Qualification) && deliveryRank[row.Delivery] >= deliveryRank[boundary]
     && Boolean(proofEvidence(row.Evidence));
 }
+function competitivelyClosed(row) { return row.Scope === "COMMITTED" && row.Competitive === "CURRENT_BEST"; }
 function normalizedTokens(value) {
   const stop = new Set(["a", "an", "and", "the", "to", "of", "for", "with", "when", "only", "one", "or", "from", "into", "without"]);
   return new Set(value.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((token) => token.length > 2 && !stop.has(token)));
@@ -276,6 +302,35 @@ function validateReceiptReferences(parsed) {
     focusedById.set(id, row);
   }
   for (const canon of parsed) for (const row of canon.capabilities) if (row.Verification === "FOCUSED_PASS" && !focusedById.has(row.ID)) throw new Error(`${canon.file}:${row.ID}: FOCUSED_PASS lacks focused verification receipt`);
+}
+function validateComparisonReferences(parsed) {
+  const receipts = new Map();
+  for (const canon of parsed) for (const row of canon.capabilities) {
+    const proof = comparisonEvidence(row.Comparison);
+    if (!proof || proof.atom !== row.ID) throw new Error(`${canon.file}:${row.ID}: comparison atom mismatch`);
+    if (!receipts.has(proof.relative)) {
+      const absolute = path.join(root, proof.relative);
+      if (!existsSync(absolute)) throw new Error(`${canon.file}:${row.ID}: missing comparison receipt ${proof.relative}`);
+      try { execFileSync("git", ["ls-files", "--error-unmatch", "--", proof.relative], { cwd: root, stdio: "ignore" }); }
+      catch { throw new Error(`${canon.file}:${row.ID}: comparison receipt is not tracked/staged ${proof.relative}`); }
+      const actualHash = execFileSync("git", ["hash-object", absolute], { cwd: root, encoding: "utf8" }).trim();
+      if (actualHash !== proof.hash) throw new Error(`${canon.file}:${row.ID}: comparison receipt hash drift`);
+      try { execFileSync("git", ["cat-file", "-e", `${proof.compared}^{commit}`], { cwd: root, stdio: "ignore" }); }
+      catch { throw new Error(`${canon.file}:${row.ID}: compared revision is not a commit`); }
+      const markdown = readFileSync(absolute, "utf8"), rows = recordsByHeader(markdown, headers.comparison);
+      const byAtom = new Map();
+      for (const comparison of rows) {
+        if (byAtom.has(comparison.Atom)) throw new Error(`${proof.relative}: duplicate comparison row ${comparison.Atom}`);
+        byAtom.set(comparison.Atom, comparison);
+      }
+      receipts.set(proof.relative, { byAtom, hash: actualHash, compared: proof.compared });
+    }
+    const receipt = receipts.get(proof.relative);
+    if (receipt.hash !== proof.hash || receipt.compared !== proof.compared) throw new Error(`${canon.file}:${row.ID}: comparison receipt metadata differs`);
+    const comparison = receipt.byAtom.get(row.ID);
+    if (!comparison) throw new Error(`${canon.file}:${row.ID}: comparison receipt lacks atom row`);
+    if (comparison.Scope !== row.Scope || comparison["Competitive disposition"] !== row.Competitive) throw new Error(`${canon.file}:${row.ID}: comparison receipt state differs`);
+  }
 }
 function behavior(byId, id) {
   const row = byId.get(id);
@@ -403,12 +458,13 @@ function safeCell(value) { return String(value).replace(/\|/g, "/").replace(/\r?
 function pendingMarkdown(parsed, inventory) {
   const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon })));
   const exploratory = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "EXPLORATORY"));
-  const open = committed.filter((row) => !closed(row, row.canon.boundary));
-  const lines = ["# Membrane pending capability work", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", `Total capability rows: **${committed.length + exploratory.length}**`, `Committed capability atoms: **${committed.length}**`, `Exploratory capability rows: **${exploratory.length}**`, `Closure-proven: **${committed.length - open.length}**`, `Open/unproven: **${open.length}**`, `Preserved legacy/spec rows: **${inventory.rows.length}**`, `Unclassified preserved rows: **${inventory.unclassified.length}**`, "", "Atomic state lives in `docs/canon/*.md`; preservation state lives in `docs/provenance/migrations/2026-08-30-atomic-canons/preservation-map.md`. This file is sole pending-work index & is derived from both.", "", "## Canon summary", "", "| Subsystem | Boundary | Committed | Exploratory | Closed | Open | Groups | Implementations | Qualifications | Decisions |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|"];
+  const competitiveOpen = committed.filter((row) => !competitivelyClosed(row));
+  const lifecycleOpen = committed.filter((row) => !closed(row, row.canon.boundary));
+  const lines = ["# Membrane pending capability work", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", `Total capability rows: **${committed.length + exploratory.length}**`, `Committed capability atoms: **${committed.length}**`, `Exploratory capability rows: **${exploratory.length}**`, `Competitive current-best/closed: **${committed.length - competitiveOpen.length}**`, `Competitive pending: **${competitiveOpen.length}**`, `Lifecycle closure-proven: **${committed.length - lifecycleOpen.length}**`, `Lifecycle open/unproven: **${lifecycleOpen.length}**`, `Preserved legacy/spec rows: **${inventory.rows.length}**`, `Unclassified preserved rows: **${inventory.unclassified.length}**`, "", "Atomic & competitive state lives in `docs/canon/*.md`; comparison receipts live in `docs/provenance/foundation/2026-08-31-competitive-comparison/`; lifecycle qualification remains separate. This file is sole competitive pending-work index.", "", "## Canon summary", "", "| Subsystem | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed | Groups | Implementations | Qualifications | Decisions |", "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"];
   for (const canon of parsed) {
-    const capabilities = canon.capabilities.filter((row) => row.Scope === "COMMITTED"), canonOpen = capabilities.filter((row) => !closed(row, canon.boundary)).length;
+    const capabilities = canon.capabilities.filter((row) => row.Scope === "COMMITTED"), canonCompetitiveOpen = capabilities.filter((row) => !competitivelyClosed(row)).length, canonLifecycleClosed = capabilities.filter((row) => closed(row, canon.boundary)).length;
     const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
-    lines.push(`| [${canon.owner}](../canon/${canon.file}) | ${canon.boundary} | ${capabilities.length} | ${canonExploratory} | ${capabilities.length - canonOpen} | ${canonOpen} | ${canon.groups.length} | ${canon.implementations.length} | ${canon.qualifications.length} | ${canon.decisions.length} |`);
+    lines.push(`| [${canon.owner}](../canon/${canon.file}) | ${canon.boundary} | ${capabilities.length} | ${canonExploratory} | ${capabilities.length - canonCompetitiveOpen} | ${canonCompetitiveOpen} | ${canonLifecycleClosed} | ${canon.groups.length} | ${canon.implementations.length} | ${canon.qualifications.length} | ${canon.decisions.length} |`);
   }
   lines.push("", "## Exploratory capability rows", "", "Exploratory rows are discovered candidates, not committed product behavior.", "", "| Atom | Candidate behavior |", "|---|---|");
   for (const canon of parsed) {
@@ -416,12 +472,12 @@ function pendingMarkdown(parsed, inventory) {
       lines.push(`| [${row.ID}](../canon/${canon.file}) | ${safeCell(row["Observable behavior"])} |`);
     }
   }
-  lines.push("", "## Open capability atoms", "");
+  lines.push("", "## Competitive pending capability atoms", "");
   for (const canon of parsed) {
-    const rows = canon.capabilities.filter((row) => row.Scope === "COMMITTED" && !closed(row, canon.boundary));
+    const rows = canon.capabilities.filter((row) => row.Scope === "COMMITTED" && !competitivelyClosed(row));
     if (!rows.length) continue;
-    lines.push(`### ${canon.owner}`, "", "| Atom | Action | Deficit |", "|---|---|---|");
-    for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
+    lines.push(`### ${canon.owner}`, "", "| Atom | Competitive state | Action | Deficit |", "|---|---|---|---|");
+    for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${row.Competitive} | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
     lines.push("");
   }
   lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
@@ -430,14 +486,15 @@ function pendingMarkdown(parsed, inventory) {
 function atomReadmeMarkdown(parsed, inventory) {
   const committed = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, 0);
   const exploratory = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0);
-  const closedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => closed(row, canon.boundary)).length, 0);
-  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Each named subsystem owns one atomic canon. Capability, implementation, qualification, decision & grouping state remain separate; closure is derived.", "", "## Current inventory", "", "| Canon | Boundary | Committed | Exploratory | Closed | Open |", "|---|---|---:|---:|---:|---:|"];
+  const competitiveClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter(competitivelyClosed).length, 0);
+  const lifecycleClosedCount = parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => closed(row, canon.boundary)).length, 0);
+  const lines = ["# Membrane atomic capability canons", "", "<!-- GENERATED by scripts/ci/check-atomic-canons.mjs --write. Do not hand-edit. -->", "", "Each named subsystem owns one atomic canon. Competitive comparison & lifecycle qualification remain separate; only current-best committed atoms are competitively closed.", "", "## Current inventory", "", "| Canon | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed |", "|---|---|---:|---:|---:|---:|---:|"];
   for (const canon of parsed) {
-    const count = canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, canonClosed = canon.capabilities.filter((row) => closed(row, canon.boundary)).length;
+    const count = canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, canonCompetitiveClosed = canon.capabilities.filter(competitivelyClosed).length, canonLifecycleClosed = canon.capabilities.filter((row) => closed(row, canon.boundary)).length;
     const canonExploratory = canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length;
-    lines.push(`| [${canon.owner}](${canon.file}) | ${canon.boundary} | ${count} | ${canonExploratory} | ${canonClosed} | ${count - canonClosed} |`);
+    lines.push(`| [${canon.owner}](${canon.file}) | ${canon.boundary} | ${count} | ${canonExploratory} | ${canonCompetitiveClosed} | ${count - canonCompetitiveClosed} | ${canonLifecycleClosed} |`);
   }
-  lines.push(`| **Total** | — | **${committed}** | **${exploratory}** | **${closedCount}** | **${committed - closedCount}** |`, "", `Total capability rows: **${committed + exploratory}**`, "", "## Counting & closure", "", "Count only `COMMITTED` capability rows. Groups roll up children & never count. Implementation mechanisms, qualification gates & decisions support capabilities & never count independently.", "", "Closure requires `DELIVERED` implementation, `FOCUSED_PASS` verification, `PASS` or evidence-bound `NOT_REQUIRED` qualification, required delivery boundary, exact acceptance ID, 40-character revision, receipt hash & non-future freshness date.", "", "## Preservation", "", `Legacy atoms: **${inventory.legacyAtoms.length}**`, `Introduced atomic splits: **${inventory.splits.length}**`, `New capabilities after normalization: **${inventory.introductions.length}**`, `Legacy/specification rows: **${inventory.specRows.length}**`, `Preserved union: **${inventory.rows.length}/${inventory.rows.length}**`, `Unclassified: **${inventory.unclassified.length}**`, "", "See [preservation map](../provenance/migrations/2026-08-30-atomic-canons/preservation-map.md) & generated [pending index](../pending/README.md).", "", "## Register schemas", "", `Group: \`${headers.group.join(" | ")}\``, "", `Capability: \`${headers.capability.join(" | ")}\``, "", `Implementation: \`${headers.implementation.join(" | ")}\``, "", `Qualification: \`${headers.qualification.join(" | ")}\``, "", `Decision: \`${headers.decision.join(" | ")}\``, "");
+  lines.push(`| **Total** | — | **${committed}** | **${exploratory}** | **${competitiveClosedCount}** | **${committed - competitiveClosedCount}** | **${lifecycleClosedCount}** |`, "", `Total capability rows: **${committed + exploratory}**`, "", "## Counting & closure", "", "Count only `COMMITTED` capability rows. Groups roll up children & never count. Implementation mechanisms, qualification gates & decisions support capabilities & never count independently.", "", "Competitive closure requires receipt-bound `CURRENT_BEST`; `DONOR_BETTER`, `CURRENT_INCOMPLETE`, & `UNRESOLVED` remain pending. Lifecycle closure remains independently derived from implementation, focused verification, qualification, delivery, & exact acceptance evidence.", "", "## Preservation", "", `Legacy atoms: **${inventory.legacyAtoms.length}**`, `Introduced atomic splits: **${inventory.splits.length}**`, `New capabilities after normalization: **${inventory.introductions.length}**`, `Legacy/specification rows: **${inventory.specRows.length}**`, `Preserved union: **${inventory.rows.length}/${inventory.rows.length}**`, `Unclassified: **${inventory.unclassified.length}**`, "", "See [preservation map](../provenance/migrations/2026-08-30-atomic-canons/preservation-map.md), [competitive comparison](../provenance/foundation/2026-08-31-competitive-comparison/README.md), & generated [pending index](../pending/README.md).", "", "## Register schemas", "", `Group: \`${headers.group.join(" | ")}\``, "", `Capability: \`${headers.capability.join(" | ")}\``, "", `Implementation: \`${headers.implementation.join(" | ")}\``, "", `Qualification: \`${headers.qualification.join(" | ")}\``, "", `Decision: \`${headers.decision.join(" | ")}\``, "");
   return lines.join("\n");
 }
 function validatePendingSupport(markdown) {
@@ -454,13 +511,14 @@ function validatePendingSupport(markdown) {
   if (JSON.stringify(observed) !== JSON.stringify([...required].sort())) throw new Error(`pending supporting-document inventory differs: ${observed.join(", ")}`);
 }
 
-export const atomicCanonTestHooks = Object.freeze({ proofEvidence, focusedProofLooksExact, closed, similarity, parseCanon });
+export const atomicCanonTestHooks = Object.freeze({ proofEvidence, comparisonEvidence, focusedProofLooksExact, closed, competitivelyClosed, similarity, parseCanon });
 export function validateAtomicCanons({ write = false } = {}) {
   const canonFiles = readdirSync(atomDir).filter((file) => file.endsWith(".md") && file !== "README.md").sort();
   const expectedCanonFiles = canons.map((canon) => canon.file).sort();
   if (JSON.stringify(canonFiles) !== JSON.stringify(expectedCanonFiles)) throw new Error(`atomic canon inventory differs: ${canonFiles.join(", ")}`);
   const parsed = canons.map(parseCanon), { everyId, capabilityIds } = validateIdentity(parsed);
   validateReceiptReferences(parsed);
+  validateComparisonReferences(parsed);
   validateSemanticOwnership(parsed);
   const inventory = validatePreservation(everyId, capabilityIds), expectedPending = pendingMarkdown(parsed, inventory), expectedReadme = atomReadmeMarkdown(parsed, inventory);
   validatePendingSupport(expectedPending);
@@ -469,14 +527,15 @@ export function validateAtomicCanons({ write = false } = {}) {
     if (readFileSync(pendingPath, "utf8").replace(/\r\n/g, "\n") !== expectedPending) throw new Error("docs/pending/README.md is stale; run checker with --write");
     if (readFileSync(atomReadmePath, "utf8").replace(/\r\n/g, "\n") !== expectedReadme) throw new Error("docs/canon/README.md is stale; run checker with --write");
   }
-  const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon }))), closedRows = committed.filter((row) => closed(row, row.canon.boundary));
-  return { canons: parsed.length, capabilityRows: parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0), atoms: committed.length, exploratory: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0), closed: closedRows.length, open: committed.length - closedRows.length, groups: parsed.reduce((sum, canon) => sum + canon.groups.length, 0), implementations: parsed.reduce((sum, canon) => sum + canon.implementations.length, 0), qualifications: parsed.reduce((sum, canon) => sum + canon.qualifications.length, 0), decisions: parsed.reduce((sum, canon) => sum + canon.decisions.length, 0), preservationRows: inventory.rows.length, legacyAtoms: inventory.legacyAtoms.length, introducedSplits: inventory.splits.length, introducedCapabilities: inventory.introductions.length, specRows: inventory.specRows.length, unclassified: inventory.unclassified.length };
+  const committed = parsed.flatMap((canon) => canon.capabilities.filter((row) => row.Scope === "COMMITTED").map((row) => ({ ...row, canon })));
+  const lifecycleClosedRows = committed.filter((row) => closed(row, row.canon.boundary)), competitiveClosedRows = committed.filter(competitivelyClosed);
+  return { canons: parsed.length, capabilityRows: parsed.reduce((sum, canon) => sum + canon.capabilities.length, 0), atoms: committed.length, exploratory: parsed.reduce((sum, canon) => sum + canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").length, 0), competitiveClosed: competitiveClosedRows.length, competitiveOpen: committed.length - competitiveClosedRows.length, lifecycleClosed: lifecycleClosedRows.length, lifecycleOpen: committed.length - lifecycleClosedRows.length, groups: parsed.reduce((sum, canon) => sum + canon.groups.length, 0), implementations: parsed.reduce((sum, canon) => sum + canon.implementations.length, 0), qualifications: parsed.reduce((sum, canon) => sum + canon.qualifications.length, 0), decisions: parsed.reduce((sum, canon) => sum + canon.decisions.length, 0), preservationRows: inventory.rows.length, legacyAtoms: inventory.legacyAtoms.length, introducedSplits: inventory.splits.length, introducedCapabilities: inventory.introductions.length, specRows: inventory.specRows.length, unclassified: inventory.unclassified.length };
 }
 
 const invoked = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
   try {
     const result = validateAtomicCanons({ write: process.argv.includes("--write") });
-    console.log(`atomic canons PASS: ${result.canons} canons, ${result.capabilityRows} rows, ${result.atoms} committed, ${result.exploratory} exploratory, ${result.closed} closed, ${result.open} open, ${result.preservationRows} preserved, ${result.unclassified} unclassified`);
+    console.log(`atomic canons PASS: ${result.canons} canons, ${result.capabilityRows} rows, ${result.atoms} committed, ${result.exploratory} exploratory, ${result.competitiveClosed} current-best/closed, ${result.competitiveOpen} competitive pending, ${result.lifecycleClosed} lifecycle-closed, ${result.preservationRows} preserved, ${result.unclassified} unclassified`);
   } catch (error) { console.error(`atomic canons FAIL: ${error.message}`); process.exitCode = 1; }
 }

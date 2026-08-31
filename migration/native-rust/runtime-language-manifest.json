@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-30T23:06:39.376Z",
+ "generatedAt": "2026-08-30T23:58:32.608Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1213,
+  "files": 1214,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -2090,6 +2090,7 @@
    "seal_blocker_note": null,
    "notes": "Repository-only CI, qualification, and release tooling; never installed runtime.",
    "files": [
+    "scripts/ci/apply-competitive-comparison.mjs",
     "scripts/ci/build-invocation-graph.mjs",
     "scripts/ci/check-adapt-ontology.mjs",
     "scripts/ci/check-adapt-ontology.test.mjs",
@@ -2161,7 +2162,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "8c8f920c18699c27c4882626fe65c840a0b0a14617763d20e47d26a326dd6100"
+   "content_digest": "99d5091a631f46bd62127ad212b9443a399c18fc8f70f11f3ab3a8bbf0b6cfea"
   },
   {
    "id": "tests-root-tests-root",
