@@ -9,6 +9,7 @@ const candidateCheck = readFileSync(new URL("../scripts/release-check-candidate-
 const packager = readFileSync(new URL("../scripts/package-portable-windows.mjs", import.meta.url), "utf8");
 const finalizer = readFileSync(new URL("../scripts/finalize-portable-release.mjs", import.meta.url), "utf8");
 const publisher = readFileSync(new URL("../scripts/publish-portable-release.mjs", import.meta.url), "utf8");
+const remediation = readFileSync(new URL("../../../engine/crates/membrane-adapt/src/remediation.rs", import.meta.url), "utf8");
 
 test("public CI builds unsigned candidate & protected host seals it without recompiling", () => {
   assert.equal(pkg.scripts["release:build:portable:win"], "node scripts/release-build-portable-windows.mjs");
@@ -32,7 +33,9 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(release, /--allow-evidence/);
   assert.match(release, /right-release\.cmd.*hardening/s);
   assert.match(release, /root: repoRoot/);
-  assert.match(release, /engine\/crates\/membrane-adapt\/src\/remediation\.rs:74/);
+  const evidence = /sourceEvidence:\s*"engine\/crates\/membrane-adapt\/src\/remediation\.rs:(\d+)"/.exec(release);
+  assert.ok(evidence, "hardening allowance must cite remediation source");
+  assert.match(remediation.split(/\r?\n/)[Number(evidence[1]) - 1], /system_prompt/);
   assert.match(release, /package-portable-windows\.mjs/);
   assert.match(release, /finalize-portable-release\.mjs/);
   assert.doesNotMatch(release, /cargo|tauri|release:prepare:sidecars|rightkit:package/i);

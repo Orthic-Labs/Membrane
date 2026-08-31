@@ -59,6 +59,24 @@ test("each release candidate materializes Hub dependencies from Hub lockfile", (
 	assert.match(windows, /cargo", \["metadata", "--locked"/);
 });
 
+test("macOS release is signed & notarized through RightRelease before stapling", () => {
+  const releaseConfig = read("apps/membrane-hub/right-release.config.mjs");
+  const packageJson = JSON.parse(read("apps/membrane-hub/package.json"));
+  const buildMac = read("apps/membrane-hub/scripts/build-mac-release.mjs");
+  const finalizeMac = read("apps/membrane-hub/scripts/release-build-mac.mjs");
+
+  assert.match(releaseConfig, /mac:\s*\{[\s\S]*signingContract: "macos-developer-id-notarized-portable-v1"/);
+  assert.match(releaseConfig, /prePackage: \{ cmd: "pnpm", args: \["run", "rightkit:prepackage:mac"\] \}/);
+  assert.match(releaseConfig, /sign: \{ prePackageFiles: \[macDmg\] \}/);
+  assert.match(releaseConfig, /notarize: \{ file: macDmg \}/);
+  assert.equal(packageJson.scripts["rightkit:prepackage:mac"], "node scripts/build-mac-release.mjs prepare");
+  assert.equal(packageJson.scripts["rightkit:package:mac"], "node scripts/build-mac-release.mjs package");
+  assert.doesNotMatch(buildMac, /notarytool|stapler|spctl/);
+  assert.match(finalizeMac, /\["stapler", "staple", dmg\]/);
+  assert.match(finalizeMac, /\["stapler", "validate", dmg\]/);
+  assert.match(finalizeMac, /"spctl"/);
+});
+
 test("candidate source check accepts Tauri's same-byte manifest rewrite & rejects real source drift", () => {
 	const repo = mkdtempSync(join(tmpdir(), "membrane-candidate-source-"));
 	const cargoToml = join(repo, "apps", "membrane-hub", "src-tauri", "Cargo.toml");
