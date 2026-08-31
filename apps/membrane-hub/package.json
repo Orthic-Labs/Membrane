@@ -1,6 +1,6 @@
 {
   "name": "membrane-hub",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/release": "0.2.97",
+    "@rightkit/release": "0.2.99",
     "@tauri-apps/cli": "2.11.4"
   }
 }
