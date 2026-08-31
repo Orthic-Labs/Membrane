@@ -237,6 +237,14 @@ function validateIdentity(parsed) {
 }
 
 let focusedAssertionCorpus;
+function testSourceFiles(directory) {
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) return testSourceFiles(absolute);
+    return entry.isFile() && /\.(?:mjs|rs)$/.test(entry.name) ? [absolute] : [];
+  });
+}
 function focusedProofLooksExact(command, evidence) {
   if (!/^(?:`)?(?:rightkit cargo test|node --test)\b/.test(command) || /\b(?:TBD|TODO|placeholder|unknown)\b/i.test(evidence)) return false;
   const candidates = [...evidence.matchAll(/`([^`]+)`/g)]
@@ -244,9 +252,10 @@ function focusedProofLooksExact(command, evidence) {
     .filter((candidate) => candidate.length >= 8 && !/^(?:TBD|TODO|placeholder|unknown)$/i.test(candidate));
   if (!candidates.length) return false;
   if (focusedAssertionCorpus === undefined) {
-    const testSources = execFileSync("rg", ["--files", "engine/crates", "blueprint/tests", "-g", "*.rs", "-g", "*.mjs"], { cwd: root, encoding: "utf8" })
-      .trim().split(/\r?\n/).filter(Boolean);
-    focusedAssertionCorpus = testSources.map((file) => readFileSync(path.join(root, file), "utf8")).join("\n");
+    const testSources = [path.join(root, "engine", "crates"), path.join(root, "blueprint", "tests")]
+      .flatMap(testSourceFiles)
+      .sort();
+    focusedAssertionCorpus = testSources.map((file) => readFileSync(file, "utf8")).join("\n");
   }
   return candidates.some((candidate) => focusedAssertionCorpus.includes(candidate));
 }

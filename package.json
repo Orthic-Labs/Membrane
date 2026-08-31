@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/git": "0.2.18",
-    "@rightkit/release": "0.2.94"
+    "@rightkit/git": "0.2.19",
+    "@rightkit/release": "0.2.95"
   }
 }
