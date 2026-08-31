@@ -130,8 +130,9 @@ test("Windows package creates raw EXE before signing, then bundles without rebui
   assert.match(packageBuild, /preserved signed raw Hub executable/);
   assert.match(packageBuild, /"tauri", "NSIS", "makensis\.exe"/);
   assert.match(packageBuild, /installer\.nsi/);
-  assert.match(frontendBuild, /spawnSync\(rightkit, \["cargo", "build"/);
-  assert.match(frontendBuild, /process\.platform === "win32" \? "rightkit\.cmd" : "rightkit"/);
+  assert.match(frontendBuild, /import \{ sidecarBuildCommand \} from "\.\/sidecar-build-command\.mjs"/);
+  assert.match(frontendBuild, /const command = sidecarBuildCommand\(\)/);
+  assert.match(frontendBuild, /spawnSync\(command\.command, \[\.\.\.command\.prefix, "build"/);
   assert.match(frontendBuild, /shell: process\.platform === "win32"/);
   assert.match(frontendBuild, /--message-format=json-render-diagnostics/);
   assert.match(frontendBuild, /message\.reason !== "compiler-artifact"/);

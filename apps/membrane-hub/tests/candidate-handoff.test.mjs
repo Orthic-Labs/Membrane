@@ -17,7 +17,7 @@ const filesUnder = (root) => readdirSync(root).flatMap((entry) => {
   return statSync(path).isDirectory() ? filesUnder(path) : [path];
 });
 
-test("candidate handoff accepts exact archive & rejects changed bytes", () => {
+test("candidate handoff accepts exact archive & rejects changed bytes", { skip: process.platform !== "win32" }, () => {
   const root = mkdtempSync(join(tmpdir(), "membrane-candidate-test-"));
   try {
     const payload = join(root, "payload");
@@ -58,16 +58,35 @@ test("candidate handoff accepts exact archive & rejects changed bytes", () => {
       const body = readFileSync(path);
       return { name: path.split(/[\\/]/).at(-1), size: body.length, sha256: createHash("sha256").update(body).digest("hex") };
     });
+    const signing = { status: "unsigned", reason: "test_fixture" };
+    const installerName = "Membrane_Hub_test_unsigned_x64-setup.exe";
+    const installerPath = join(root, installerName);
+    writeFileSync(installerPath, bytes);
+    const installerSha256 = createHash("sha256").update(bytes).digest("hex");
+    const installer = { name: installerName, size: bytes.length, sha256: installerSha256, signing };
+    writeFileSync(join(root, "release-manifest.json"), `${JSON.stringify({
+      schema: "membrane.release-evidence.v1",
+      product: "Membrane Hub",
+      artifact: { path: installerName, size: bytes.length, sha256: installerSha256 },
+      signing,
+    })}\n`);
+    writeFileSync(join(root, "sbom.json"), `${JSON.stringify({
+      schema: "membrane.sbom.v1",
+      artifact: { path: installerName, size: bytes.length, sha256: installerSha256 },
+      signing,
+    })}\n`);
     writeFileSync(join(root, "candidate.json"), `${JSON.stringify({
       schemaVersion: 1,
       kind: "membrane-unsigned-release-candidate",
       product: "membrane",
       version: "test",
       target: "windows-x86_64",
+      signing,
       sourceCommit: head,
       github: { runId: "123", runAttempt: "1" },
       startedAt,
       archive: { name: "membrane-test-windows-x86_64-unsigned.zip", size: archive.size, sha256: archive.sha256 },
+      installer,
       evidence,
       files: Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")])),
     })}\n`);

@@ -31,7 +31,9 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(release, /right-release", "sign-windows"/);
   assert.match(release, /materializeHardeningEvidence/);
   assert.match(release, /--allow-evidence/);
-  assert.match(release, /right-release\.cmd.*hardening/s);
+  assert.match(release, /const hardeningScan = fileURLToPath/);
+  assert.match(release, /run\(process\.execPath, \[hardeningScan, "--allow-evidence"/);
+  assert.doesNotMatch(release, /right-release\.cmd.*hardening/s);
   assert.match(release, /root: repoRoot/);
   const evidence = /sourceEvidence:\s*"engine\/crates\/membrane-adapt\/src\/remediation\.rs:(\d+)"/.exec(release);
   assert.ok(evidence, "hardening allowance must cite remediation source");
