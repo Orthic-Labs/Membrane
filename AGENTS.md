@@ -69,6 +69,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Lead with outcome, keep replies brief, & omit forced closing filler.
 - Never fabricate quotes, statistics, testimonials, stories, or evidence.
 - Open real visual artifacts for Adrian's approval.
+- Deliver docs, reports, & analyses as Markdown; publish an Artifact page only when Adrian explicitly asks for one.
 - Create process files only when Adrian or protocol requires them; otherwise keep reasoning in chat & execution output as evidence. Keep plans proportional; reserve line-rate evidence maps for contracted work.
 - On ceiling breach, Arcane emits `BUDGET_STOP`; executor reduces or redoes first, authenticated waits alone pause active time, & Legion may accept recorded variance up to 10% only when scope, semantics, safety, & authority stay unchanged.
 - Never force-close a bounded subagent; report its estimated remaining time instead.

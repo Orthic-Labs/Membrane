@@ -20,7 +20,13 @@ $PSNativeCommandUseErrorActionPreference = $false
 # Qualification can be launched by Windows PowerShell from a pwsh-hosted CI
 # step. Pin the host-native security module so an inherited pwsh module path
 # cannot make Windows PowerShell select its incompatible PowerShell 7 copy.
-Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -Force -ErrorAction Stop
+# Same hazard applies to Utility (Get-FileHash, Invoke-RestMethod, ...) and
+# Management (Get-ChildItem, Get-Content, ...): an inherited pwsh PSModulePath
+# makes Windows PowerShell resolve the PowerShell 7 copies, which do not export
+# their commands into a 5.1 host. Pin all three to $PSHOME.
+foreach ($module in @('Microsoft.PowerShell.Security', 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Management')) {
+  Import-Module (Join-Path $PSHOME "Modules\$module\$module.psd1") -Force -ErrorAction Stop
+}
 Add-Type -AssemblyName System.Net.Http
 $script:HubProcess = $null
 # Keep qualification isolated from checkout-local runtimes while retaining

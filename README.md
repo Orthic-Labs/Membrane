@@ -99,22 +99,9 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 <a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
 <!-- blueprint:docs:start -->
-## Support & pricing boundaries
-
-The free/local operational boundary does not condition local correctness on payment, hosted service,
-or telemetry. It is not a license grant. Paid support and prices are **unavailable**; team sync, fleet,
-policy, managed updates, and optional telemetry are **undecided**. Any future
-paid capability must never gate local safety, authority, receipts, updates, or
-export. See [pricing](docs/product/support/pricing.md), [support policy](docs/product/support/policy.md),
-and [public support boundaries](docs/product/support/boundaries.md).
-
 ## Repository truth docs
-- [Product overview](docs/product/README.md) — what this is and does (generated, code-grounded)
-- [Runtime architecture truth](docs/architecture/runtime-truth.md) — landed components, flows, interfaces (generated, code-grounded)
-- [Operations](docs/product/operations/README.md) — run and verify product truth (generated, code-grounded)
-- [Protocol](docs/reference/protocol/README.md) — MCP tool contract and behavior (generated, code-grounded)
-
-Gate: `node scripts/tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
+- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
+- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
 <!-- blueprint:docs:end -->
 
 <!-- support-matrix:start -->
