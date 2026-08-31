@@ -31,7 +31,7 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(release, /right-release", "sign-windows"/);
   assert.match(release, /materializeHardeningEvidence/);
   assert.match(release, /--allow-evidence/);
-  assert.match(release, /const hardeningScan = fileURLToPath/);
+  assert.match(release, /fileURLToPath\(import\.meta\.resolve\("@rightkit\/release\/hardeningscan\.mjs"\)\)/);
   assert.match(release, /run\(process\.execPath, \[hardeningScan, "--allow-evidence"/);
   assert.doesNotMatch(release, /right-release\.cmd.*hardening/s);
   assert.match(release, /root: repoRoot/);

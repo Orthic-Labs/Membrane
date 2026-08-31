@@ -84,7 +84,7 @@ function finalizeMac() {
   ensureDirectory(finalizedMac, "RIGHT_GIT_FINALIZED_MACOS_ROOT");
   rmSync(finalizedMac, { recursive: true, force: true });
   mkdirSync(finalizedMac, { recursive: true });
-  run("pnpm", ["--dir", hub, "run", "release:build:mac"]);
+  run("pnpm", ["--dir", hub, "run", "release:build:mac"], repo, { ...process.env, MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1" });
   const metadata = JSON.parse(output("cargo", ["metadata", "--format-version", "1", "--no-deps", "--manifest-path", "apps/membrane-hub/src-tauri/Cargo.toml"]));
   const dmg = join(metadata.target_directory, "aarch64-apple-darwin", "release", "bundle", "dmg", `Membrane Hub_${version}_aarch64.dmg`);
   if (!existsSync(dmg)) throw new Error(`signed macOS DMG is missing: ${dmg}`);
