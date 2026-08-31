@@ -92,10 +92,9 @@ Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
 OutFile "${OUTFILE}"
 
-; We don't actually use this value as default install path,
-; it's just for nsis to append the product name folder in the directory selector
-; https://nsis.sourceforge.io/Reference/InstallDir
-!define PLACEHOLDER_INSTALL_DIR "placeholder\${PRODUCTNAME}"
+; Shell files live at stable product root. Versioned application bytes are
+; installed only by RightRelease bootstrap under versions\ & current junction.
+!define PLACEHOLDER_INSTALL_DIR "$LOCALAPPDATA\Orthic Labs\Membrane"
 InstallDir "${PLACEHOLDER_INSTALL_DIR}"
 
 VIProductVersion "${VERSIONWITHBUILD}"
@@ -248,16 +247,7 @@ Function PageReinstall
   ; Do not invoke stale internal NSIS uninstallers during normal desktop
   ; upgrades; continue to Section Install so Tauri handles the running app.
   ${If} $WixMode <> 1
-    ${If} $UpdateMode = 1
-      Abort
-    ${ElseIf} $R0 = 1
-      Abort
-    ${ElseIf} $R0 <> 0
-      ${If} $R0 <> -1
-        StrCpy $R0 1
-        Abort
-      ${EndIf}
-    ${EndIf}
+    Abort
   ${EndIf}
   ; MEMBRANE_PATCH_END
 
@@ -352,13 +342,7 @@ Function PageLeaveReinstall
   ; MEMBRANE_PATCH_START: guard non-WiX upgrade leave routing.
   ; Passive/default upgrade choices must not ExecWait the old UninstallString.
   ${If} $WixMode <> 1
-    ${If} $R0 = 1
-      Goto reinst_done
-    ${ElseIf} $R0 <> 0
-      ${If} $R0 <> -1
-        Goto reinst_done
-      ${EndIf}
-    ${EndIf}
+    Goto reinst_done
   ${EndIf}
   ; MEMBRANE_PATCH_END
 
@@ -407,7 +391,7 @@ Function PageLeaveReinstall
     ${IfThen} ${Errors} ${|} StrCpy $0 2 ${|} ; ExecWait failed, set fake exit code
 
     ${If} $0 <> 0
-    ${OrIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
+    ${OrIf} ${FileExists} "$INSTDIR\current\${MAINBINARYNAME}.exe"
       ; User cancelled wix uninstaller? return to select un/reinstall page
       ${If} $WixMode = 1
       ${AndIf} $0 = 1602
@@ -426,11 +410,7 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-; 5. Choose install directory page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_DIRECTORY
-
-; 6. Start menu shortcut page
+; 5. Start menu shortcut page. Product root is fixed; no directory chooser.
 Var AppStartMenuFolder
 !if "${STARTMENUFOLDER}" != ""
   !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
@@ -459,7 +439,7 @@ Var AppStartMenuFolder
 !insertmacro MUI_PAGE_FINISH
 
 Function RunMainBinary
-  nsis_tauri_utils::RunAsUser "$INSTDIR\membrane-tray.exe" ""
+  nsis_tauri_utils::RunAsUser "$INSTDIR\current\membrane-tray.exe" ""
 FunctionEnd
 
 ; Uninstaller Pages
@@ -538,26 +518,7 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ; Set default install location
-    !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${INSTALLIDENTITY}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${INSTALLIDENTITY}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${INSTALLIDENTITY}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${INSTALLIDENTITY}"
-      ${EndIf}
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\${INSTALLIDENTITY}"
-    !endif
-
-    Call RestorePreviousInstallLocation
-  ${EndIf}
+  StrCpy $INSTDIR "$LOCALAPPDATA\Orthic Labs\Membrane"
 
 
   !if "${INSTALLMODE}" == "both"
@@ -678,7 +639,7 @@ Section WebView2
 SectionEnd
 
 Section Install
-  SetOutPath $INSTDIR
+  SetOutPath "$PLUGINSDIR\release"
 
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
@@ -688,26 +649,29 @@ Section Install
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
   !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
 
-  ; Copy main executable
-  File "${MAINBINARYSRCPATH}"
-
-  ; Copy resources
+  ; Embed exact protected-host direct release. App bytes are never copied flat
+  ; or rebuilt by NSIS; shared bootstrap verifies & atomically activates them.
   {{#each resources_dirs}}
-    CreateDirectory "$INSTDIR\\{{this}}"
+    CreateDirectory "$PLUGINSDIR\release\\{{this}}"
   {{/each}}
   {{#each resources}}
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
   {{/each}}
-
-  ; Copy external binaries
-  {{#each binaries}}
-    File /a "/oname={{this}}" "{{no-escape @key}}"
-  {{/each}}
+  DetailPrint "Verifying & activating signed Membrane release"
+  !if "${ALLOWDOWNGRADES}" == "true"
+    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\installer-release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release\installer-release$" -AllowDowngrade' $R0
+  !else
+    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\installer-release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release\installer-release$"' $R0
+  !endif
+  ${If} $R0 != 0
+    Abort "Membrane installation failed (exit $R0). Prior release was restored."
+  ${EndIf}
+  SetOutPath $INSTDIR
 
   ; Create file associations
   {{#each file_associations as |association| ~}}
     {{#each association.ext as |ext| ~}}
-       !insertmacro APP_ASSOCIATE "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$INSTDIR\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe $\"%1$\""
+    !insertmacro APP_ASSOCIATE "{{ext}}" "{{or association.name ext}}" "{{association-description association.description ext}}" "$INSTDIR\current\${MAINBINARYNAME}.exe,0" "Open with ${PRODUCTNAME}" "$INSTDIR\current\${MAINBINARYNAME}.exe $\"%1$\""
     {{/each}}
   {{/each}}
 
@@ -715,8 +679,8 @@ Section Install
   {{#each deep_link_protocols as |protocol| ~}}
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}" "URL Protocol" ""
     WriteRegStr SHCTX "Software\Classes\\{{protocol}}" "" "URL:${BUNDLEID} protocol"
-    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\DefaultIcon" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\",0"
-    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\DefaultIcon" "" "$\"$INSTDIR\current\${MAINBINARYNAME}.exe$\",0"
+    WriteRegStr SHCTX "Software\Classes\\{{protocol}}\shell\open\command" "" "$\"$INSTDIR\current\${MAINBINARYNAME}.exe$\" $\"%1$\""
   {{/each}}
 
   ; Create uninstaller
@@ -732,7 +696,7 @@ Section Install
   ${If} $R0 == ""
   ${OrIf} $R1 != ""
   ${OrIf} $R2 != ""
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" "$\"$INSTDIR\membrane-tray.exe$\" --login-launch"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Membrane" "$\"$INSTDIR\current\membrane-tray.exe$\" --login-launch"
   ${EndIf}
 
   !if "${INSTALLMODE}" == "both"
@@ -753,7 +717,7 @@ Section Install
 
   ; Registry information for add/remove programs
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
-  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\current\${MAINBINARYNAME}.exe$\""
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
   WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
@@ -796,15 +760,6 @@ Section Install
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
 
-  ; Installed app is not complete until resident identity is healthy & native
-  ; harnesses resolve the installed stdio command. `membrane activate` ports
-  ; proven setup/ensure/health/rollback mechanisms into one bounded Rust step.
-  DetailPrint "Activating installed Membrane for local harnesses"
-  ExecWait '$"$INSTDIR\membrane.exe$" activate --install-root $"$INSTDIR$"' $R0
-  ${If} $R0 != 0
-    Abort "Membrane activation failed (exit $R0). Installation was not marked successful."
-  ${EndIf}
-
   ; Auto close this page for passive mode
   ${If} $PassiveMode = 1
     SetAutoClose true
@@ -819,7 +774,7 @@ Function .onInstSuccess
     ${GetOptions} $CMDLINE "/R" $R0
     ${IfNot} ${Errors}
       ${GetOptions} $CMDLINE "/ARGS" $R0
-      nsis_tauri_utils::RunAsUser "$INSTDIR\membrane-tray.exe" "$R0"
+      nsis_tauri_utils::RunAsUser "$INSTDIR\current\membrane-tray.exe" "$R0"
     ${EndIf}
   ${EndIf}
 FunctionEnd
@@ -854,19 +809,18 @@ Section Uninstall
   !insertmacro CheckIfAppIsRunning "membrane-tray.exe" "Membrane"
   !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
 
-  ; Delete the app directory and its content from disk
-  ; Copy main executable
-  Delete "$INSTDIR\${MAINBINARYNAME}.exe"
-
-  ; Delete resources
-  {{#each resources}}
-    Delete "$INSTDIR\\{{this.[1]}}"
-  {{/each}}
-
-  ; Delete external binaries
-  {{#each binaries}}
-    Delete "$INSTDIR\\{{this}}"
-  {{/each}}
+  ; Remove only integrations owned by exact stable binding before payload.
+  IfFileExists "$INSTDIR\current\membrane.exe" 0 deactivate_done
+    ExecWait '$"$INSTDIR\current\membrane.exe$" deactivate --install-root $"$INSTDIR\current$"' $R0
+    ${If} $R0 != 0
+      Abort "Membrane deactivation failed (exit $R0)."
+    ${EndIf}
+  deactivate_done:
+  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c rmdir $"$INSTDIR\current$"' $R0
+  RMDir /r "$INSTDIR\versions"
+  Delete "$INSTDIR\integration-journal.json"
+  RMDir "$INSTDIR\.current-next"
+  RMDir "$INSTDIR\.current-previous"
 
   ; Delete app associations
   {{#each file_associations as |association| ~}}
@@ -878,7 +832,7 @@ Section Uninstall
   ; Delete deep links
   {{#each deep_link_protocols as |protocol| ~}}
     ReadRegStr $R7 SHCTX "Software\Classes\\{{protocol}}\shell\open\command" ""
-    ${If} $R7 == "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
+    ${If} $R7 == "$\"$INSTDIR\current\${MAINBINARYNAME}.exe$\" $\"%1$\""
       DeleteRegKey SHCTX "Software\Classes\\{{protocol}}"
     ${EndIf}
   {{/each}}
@@ -887,9 +841,6 @@ Section Uninstall
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
-  {{#each resources_ancestors}}
-  RMDir /REBOOTOK "$INSTDIR\\{{this}}"
-  {{/each}}
   RMDir "$INSTDIR"
 
   ; Remove shortcuts if not updating
@@ -956,12 +907,6 @@ Section Uninstall
   ${EndIf}
 SectionEnd
 
-Function RestorePreviousInstallLocation
-  ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-  StrCmp $4 "" +2 0
-    StrCpy $INSTDIR $4
-FunctionEnd
-
 Function Skip
   Abort
 FunctionEnd
@@ -971,6 +916,10 @@ Function SkipIfPassive
 FunctionEnd
 Function un.SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
+FunctionEnd
+
+Function RestorePreviousInstallLocation
+  StrCpy $INSTDIR "$LOCALAPPDATA\Orthic Labs\Membrane"
 FunctionEnd
 
 Function CreateOrUpdateStartMenuShortcut
@@ -1002,10 +951,10 @@ Function CreateOrUpdateStartMenuShortcut
 
   !if "${STARTMENUFOLDER}" != ""
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
-    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
+    CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\current\membrane-tray.exe" "--open-dashboard"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
   !else
-    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\current\membrane-tray.exe" "--open-dashboard"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   !endif
 FunctionEnd
@@ -1031,6 +980,6 @@ Function CreateOrUpdateDesktopShortcut
 
   Delete "$DESKTOP\${PRODUCTNAME}.lnk"
   Delete "$DESKTOP\${INSTALLIDENTITY}.lnk"
-  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\membrane-tray.exe" "--open-dashboard"
+  CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\current\membrane-tray.exe" "--open-dashboard"
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 FunctionEnd

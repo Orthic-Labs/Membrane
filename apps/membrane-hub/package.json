@@ -1,6 +1,6 @@
 {
   "name": "membrane-hub",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -20,6 +20,7 @@
     "release:prepare:sidecars:win": "pnpm run build && node scripts/release-build-windows.mjs --prepare-only",
     "release:build:win": "node scripts/release-build-windows.mjs",
     "release:build:portable:win": "node scripts/release-build-portable-windows.mjs",
+    "release:bundle:installer:win": "node scripts/bundle-portable-installer-windows.mjs",
     "release:candidate:build:win": "node scripts/release-build-candidate-windows.mjs",
     "release:candidate:artifacts:win": "node scripts/release-build-candidate-windows.mjs",
     "release:candidate:check:win": "node scripts/release-check-candidate-windows.mjs",
@@ -33,7 +34,7 @@
   },
   "devDependencies": {
     "@rightkit/ax": "0.2.1",
-    "@rightkit/release": "0.2.90",
+    "@rightkit/release": "0.2.91",
     "@tauri-apps/cli": "2.11.4"
   }
 }

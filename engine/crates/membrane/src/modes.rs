@@ -24,6 +24,7 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         MembraneMode::Install => membrane_runtime::Plane::Application,
         MembraneMode::Uninstall => membrane_runtime::Plane::Application,
         MembraneMode::Activate => membrane_runtime::Plane::Application,
+        MembraneMode::Deactivate => membrane_runtime::Plane::Application,
         MembraneMode::MigrateLegacy => membrane_runtime::Plane::Application,
     }
 }
@@ -77,6 +78,12 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
             Some(invocation) => dispatch_activation(invocation),
             None => DispatchOutcome::InternalError(
                 "activate mode invoked without activation invocation".to_string(),
+            ),
+        },
+        MembraneMode::Deactivate => match invocation.activation.as_ref() {
+            Some(invocation) => dispatch_deactivation(invocation),
+            None => DispatchOutcome::InternalError(
+                "deactivate mode invoked without deactivation invocation".to_string(),
             ),
         },
         MembraneMode::MigrateLegacy => match invocation.migration.as_ref() {
@@ -137,6 +144,52 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
             )),
         },
         Err(error) => DispatchOutcome::InternalError(format!("activation failed: {error}")),
+    }
+}
+
+fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
+    let install_root = match invocation
+        .install_root
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(crate::activation::default_install_root)
+    {
+        Ok(path) => path,
+        Err(error) => return DispatchOutcome::UserError(error),
+    };
+    let clients = if invocation.clients.is_empty() {
+        vec![
+            crate::activation::HarnessClient::Codex,
+            crate::activation::HarnessClient::Claude,
+        ]
+    } else {
+        let mut parsed = Vec::new();
+        for client in &invocation.clients {
+            match crate::activation::HarnessClient::parse(client) {
+                Ok(client) if !parsed.contains(&client) => parsed.push(client),
+                Ok(_) => {}
+                Err(error) => return DispatchOutcome::UserError(error),
+            }
+        }
+        parsed
+    };
+    let options = crate::activation::ActivationOptions {
+        install_root,
+        clients,
+        timeout: std::time::Duration::from_millis(invocation.timeout_ms.clamp(1_000, 120_000)),
+        dry_run: invocation.dry_run,
+    };
+    match crate::activation::deactivate(options) {
+        Ok(receipt) => match serde_json::to_string_pretty(&receipt) {
+            Ok(json) => {
+                println!("{json}");
+                DispatchOutcome::Ok
+            }
+            Err(error) => DispatchOutcome::InternalError(format!(
+                "deactivation receipt serialization failed: {error}"
+            )),
+        },
+        Err(error) => DispatchOutcome::InternalError(format!("deactivation failed: {error}")),
     }
 }
 

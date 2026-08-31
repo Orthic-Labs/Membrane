@@ -8,6 +8,7 @@ const candidateBuild = readFileSync(new URL("../scripts/release-build-candidate-
 const candidateCheck = readFileSync(new URL("../scripts/release-check-candidate-windows.mjs", import.meta.url), "utf8");
 const packager = readFileSync(new URL("../scripts/package-portable-windows.mjs", import.meta.url), "utf8");
 const finalizer = readFileSync(new URL("../scripts/finalize-portable-release.mjs", import.meta.url), "utf8");
+const installerBundler = readFileSync(new URL("../scripts/bundle-portable-installer-windows.mjs", import.meta.url), "utf8");
 const publisher = readFileSync(new URL("../scripts/publish-portable-release.mjs", import.meta.url), "utf8");
 const remediation = readFileSync(new URL("../../../engine/crates/membrane-adapt/src/remediation.rs", import.meta.url), "utf8");
 
@@ -23,6 +24,7 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(candidateBuild, /materializeInTotoSlsaProvenance/);
   assert.match(candidateBuild, /"cargo", \["build"/);
   assert.doesNotMatch(candidateBuild, /sign-windows|right-release/);
+  assert.doesNotMatch(candidateBuild, /tauri["'],\s*["']bundle|setup\.exe/i);
   assert.match(candidateCheck, /candidate archive digest mismatch/);
   assert.match(candidateCheck, /candidate file closure mismatch/);
   assert.match(candidateCheck, /candidate evidence digest mismatch/);
@@ -40,7 +42,12 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(remediation.split(/\r?\n/)[Number(evidence[1]) - 1], /system_prompt/);
   assert.match(release, /package-portable-windows\.mjs/);
   assert.match(release, /finalize-portable-release\.mjs/);
-  assert.doesNotMatch(release, /cargo|tauri|release:prepare:sidecars|rightkit:package/i);
+  assert.match(release, /bundle-portable-installer-windows\.mjs/);
+  assert.doesNotMatch(release, /["']cargo["']|release:prepare:sidecars|rightkit:package/i);
+  assert.match(installerBundler, /verifyNsisEmbeddedBinary/);
+  assert.match(installerBundler, /resources:\s*\["installer-release"\]/);
+  assert.match(installerBundler, /nsis-embedded-receipt\.json/);
+  assert.match(installerBundler, /membrane-nsis-direct-release-embedding-v1/);
 });
 
 test("portable payload is signed, hashed & includes activation plus Agent Plugins core", () => {
@@ -52,6 +59,8 @@ test("portable payload is signed, hashed & includes activation plus Agent Plugin
   assert.match(packager, /assemblePortableCore/);
   assert.match(packager, /validatePortableCore/);
   assert.match(packager, /clientProjections: CLIENT_PROJECTION_KINDS/);
+  assert.match(packager, /join\(projectionRoot, "LICENSE"\)/);
+  assert.match(packager, /join\(projectionRoot, "THIRD_PARTY_NOTICES\.md"\)/);
   assert.match(packager, /createPortableArchive/);
   assert.match(packager, /materializeCycloneDxSbom/);
   assert.match(packager, /materializeInTotoSlsaProvenance/);
@@ -64,6 +73,8 @@ test("shared bootstrap owns signed manifest, stable current, activation & exact 
   }
   assert.match(finalizer, /activate.*--install-root/s);
   assert.match(finalizer, /Orthic-Labs\/Membrane/);
+  assert.match(finalizer, /allowLocalReleaseRoot:\s*true/);
+  assert.match(finalizer, /validatePowerShellBootstrap\(bootstrap, \{[\s\S]*allowLocalReleaseRoot:\s*true/);
   assert.ok(finalizer.includes("release-manifest-signing.json"));
   assert.doesNotMatch(finalizer, /New-Service|sc\.exe|Win32_Service/);
 });

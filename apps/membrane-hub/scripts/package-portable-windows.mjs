@@ -29,7 +29,7 @@ if (hubArg < 0 || !process.argv[hubArg + 1] || startedArg < 0 || !process.argv[s
 }
 const inputRoot = inputArg >= 0 ? resolve(process.argv[inputArg + 1]) : null;
 const projectionRoot = inputRoot || repo;
-const descriptorRoot = inputRoot && existsSync(join(inputRoot, ".claude-plugin")) ? inputRoot : repo;
+const descriptorRoot = projectionRoot;
 
 const output = join(hub, "dist", "portable");
 const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
@@ -82,13 +82,13 @@ if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 const pluginContract = assemblePortableCore({
   outputDir: portableCore,
-  pluginManifestPath: join(repo, "plugin.json"),
-  mcpManifestPath: join(repo, "mcp.json"),
+  pluginManifestPath: join(projectionRoot, "plugin.json"),
+  mcpManifestPath: join(projectionRoot, "mcp.json"),
   skills: [{
     id: "membrane",
     visibility: "public",
-    sourceRoot: repo,
-    sourceDir: join(repo, "skills", "membrane"),
+    sourceRoot: projectionRoot,
+    sourceDir: join(projectionRoot, "skills", "membrane"),
   }],
   clientProjections: CLIENT_PROJECTION_KINDS,
 });
@@ -126,8 +126,8 @@ for (const [source, destination] of hookFiles) {
   mkdirSync(join(payload, destination, ".."), { recursive: true });
   cpSync(from, join(payload, destination));
 }
-cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
-cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
+cpSync(join(projectionRoot, "LICENSE"), join(payload, "LICENSE"));
+cpSync(join(projectionRoot, "THIRD_PARTY_NOTICES.md"), join(payload, "THIRD_PARTY_NOTICES.md"));
 
 powershell(
   "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",

@@ -16,6 +16,7 @@ const hub = fileURLToPath(new URL("../", import.meta.url));
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
 const output = join(hub, "dist", "portable");
+const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
 const archiveName = `membrane-${pkg.version}-windows-x86_64.zip`;
 const archivePath = join(output, archiveName);
 const provenancePath = join(output, "provenance-windows-x86_64.intoto.jsonl");
@@ -50,6 +51,7 @@ const bootstrap = renderPowerShellBootstrap({
   product: "membrane",
   repository: "Orthic-Labs/Membrane",
   bootstrapVersion: pkg.version,
+  allowLocalReleaseRoot: true,
   acceptedManifestSigners: [directRelease.signing.signer],
   installRootSubdir: "Orthic Labs\\Membrane",
   executablePath: "membrane.exe",
@@ -65,12 +67,13 @@ const bootstrap = renderPowerShellBootstrap({
 });
 const bootstrapValidation = validatePowerShellBootstrap(bootstrap, {
   product: "membrane",
+  allowLocalReleaseRoot: true,
   acceptedSignerIds: [directRelease.signing.signer.id],
 });
 if (!bootstrapValidation.valid) throw new Error(`bootstrap invalid: ${bootstrapValidation.errors.join("; ")}`);
 const bootstrapPath = join(output, "install.ps1");
 writeFileSync(bootstrapPath, bootstrap);
-cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
+cpSync(join(payload, "THIRD_PARTY_NOTICES.md"), join(output, "THIRD_PARTY_NOTICES.md"));
 const publicationPlan = planBootstrapPublication({
   product: "membrane",
   bootstrapVersion: pkg.version,

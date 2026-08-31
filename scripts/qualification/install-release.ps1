@@ -1,18 +1,18 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Installer,
-  [Parameter(Mandatory = $true)][string]$PreviousInstaller,
+  [string]$PreviousInstaller = '',
   [Parameter(Mandatory = $true)][string]$ReleaseManifest,
   [Parameter(Mandatory = $true)][string]$Sbom,
   [Parameter(Mandatory = $true)][string]$EvidencePath,
-  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Membrane Hub'),
+  [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\current'),
   [int]$TimeoutSeconds = 45,
   [int]$SteadyStateSamples = 4
 )
 
 # Installed Windows qualification is deliberately a runner, never a builder.
 # It accepts already-created package/evidence paths and exercises one exact
-# signed package through current -> previous -> current lifecycle.
+# signed package through clean install, repair/upgrade, rollback & uninstall.
 $ErrorActionPreference = 'Stop'
 # Native command diagnostics are checked through explicit exit codes below;
 # keep non-fatal Git warnings from becoming terminating PowerShell errors.
@@ -154,24 +154,29 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
 function Invoke-Installer([string]$Path) {
   $resolved = Resolve-File $Path 'installer'
   $expectedVersion = Get-ArtifactVersion $resolved 'installer'
-  # NSIS requires /D=<path> as one final argument; embedding quotes after the
-  # equals sign makes NSIS silently fall back to its default install root.
-  # Start-Process preserves one array item, so paths without spaces remain
-  # exact while callers can still supply an explicit Membrane directory.
+  # Product root is fixed by installer; qualification must not override it.
   # A just-terminated downgrade process can briefly retain an executable
   # handle; NSIS may then report success while leaving that old binary in
   # place. Retry only when installed Hub identity proves replacement did not
   # happen, keeping upgrade evidence fail-closed and bounded.
   $actualVersion = $null
   for ($attempt = 1; $attempt -le 3; $attempt++) {
-    $process = Start-Process -FilePath $resolved -ArgumentList @('/S', "/D=$InstallRoot") -Wait -PassThru -WindowStyle Hidden
+    $process = Start-Process -FilePath $resolved -ArgumentList @('/S') -Wait -PassThru -WindowStyle Hidden
     Require ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $resolved"
     Start-Sleep -Milliseconds 750
     $installedHub = Join-Path $InstallRoot 'membrane-hub.exe'
     if (Test-Path -LiteralPath $installedHub -PathType Leaf) {
       try { $actualVersion = Get-ArtifactVersion $installedHub 'installed Hub after installer' } catch { $actualVersion = $null }
     }
-    if ($actualVersion -eq $expectedVersion) { return }
+    if ($actualVersion -eq $expectedVersion) {
+      $link = Get-Item -Force -LiteralPath $InstallRoot
+      Require ($link.LinkType -eq 'Junction') 'installed current path is not a junction'
+      $target = [IO.Path]::GetFullPath([string]$link.Target)
+      $versionsRoot = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $InstallRoot) 'versions')).TrimEnd('\') + '\'
+      Require ($target.StartsWith($versionsRoot, [StringComparison]::OrdinalIgnoreCase)) 'installed current target escapes versions root'
+      Require ((Split-Path -Parent $target).TrimEnd('\') -ieq $versionsRoot.TrimEnd('\')) 'installed current target is not one direct versions child'
+      return $target
+    }
     if ($attempt -lt 3) { Start-Sleep -Milliseconds 750 }
   }
   throw "installer completed but installed Hub version $actualVersion does not match expected $($expectedVersion): $resolved"
@@ -1166,9 +1171,13 @@ function Stop-QualificationHub {
 }
 
 function Assert-UninstallResidue([string]$Root, $Doctor, [string]$DataMarker, [string]$DataHash) {
+  $productRoot = Split-Path -Parent $Root
   $files = @(); if (Test-Path -LiteralPath $Root) { $files = @(Get-ChildItem -LiteralPath $Root -File -Recurse -Force -ErrorAction Stop) }
   Require ($files.Count -eq 0) "uninstall left files under install root: $($files.FullName -join ', ')"
-  $processResidue = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase) })
+  Require (-not (Test-Path -LiteralPath (Join-Path $productRoot 'versions'))) 'uninstall left versioned payloads'
+  Require (-not (Test-Path -LiteralPath (Join-Path $productRoot 'uninstall.exe'))) 'uninstall left product uninstaller'
+  Require (-not (Test-Path -LiteralPath (Join-Path $productRoot 'integration-journal.json'))) 'uninstall left integration journal'
+  $processResidue = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($productRoot, [System.StringComparison]::OrdinalIgnoreCase) })
   Require ($processResidue.Count -eq 0) "uninstall left an installed process: $($processResidue.Name -join ', ')"
   if ($Doctor -and $Doctor.receiptOwned) {
     foreach ($entry in @($Doctor.receiptOwned)) {
@@ -1199,18 +1208,18 @@ function Assert-UninstallResidue([string]$Root, $Doctor, [string]$DataMarker, [s
       try {
         $shell = New-Object -ComObject WScript.Shell
         $target = $shell.CreateShortcut($shortcut.FullName).TargetPath
-        Require (-not ([string]$target).StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) "uninstall left shortcut targeting install root: $($shortcut.FullName)"
+        Require (-not ([string]$target).StartsWith($productRoot, [System.StringComparison]::OrdinalIgnoreCase)) "uninstall left shortcut targeting install root: $($shortcut.FullName)"
       } catch { if ($_.Exception.Message -like 'uninstall left shortcut*') { throw }; throw "could not inspect installed shortcut: $($shortcut.FullName): $($_.Exception.Message)" }
     }
   }
   $registryRoots = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
   foreach ($registryRoot in $registryRoots) {
     foreach ($entry in @(Get-ItemProperty -Path $registryRoot -ErrorAction Stop)) {
-      if ([string]$entry.InstallLocation -and ([string]$entry.InstallLocation).TrimEnd('\') -ieq $Root.TrimEnd('\')) { throw "uninstall left registry install entry: $($entry.PSPath)" }
+      if ([string]$entry.InstallLocation -and ([string]$entry.InstallLocation).TrimEnd('\') -ieq $productRoot.TrimEnd('\')) { throw "uninstall left registry install entry: $($entry.PSPath)" }
       if ([string]$entry.DisplayName -match '(?i)^Membrane Hub$' -and [string]$entry.UninstallString -match '(?i)Membrane') { throw "uninstall left Membrane Hub registry entry: $($entry.PSPath)" }
     }
   }
-  Require (-not (Test-Path -LiteralPath $Root)) "uninstall left install root directory: $Root"
+  Require (-not (Test-Path -LiteralPath $Root)) "uninstall left current junction: $Root"
   return [ordered]@{
     installRootRemoved = $true
     processesRemoved = $true
@@ -1221,21 +1230,23 @@ function Assert-UninstallResidue([string]$Root, $Doctor, [string]$DataMarker, [s
 }
 
 $installerPath = Resolve-File $Installer 'current installer'
-$previousPath = Resolve-File $PreviousInstaller 'previous installer'
+$previousPath = if ([string]::IsNullOrWhiteSpace($PreviousInstaller)) { $null } else { Resolve-File $PreviousInstaller 'previous installer' }
 $manifestPath = Resolve-File $ReleaseManifest 'release manifest'
 $sbomPath = Resolve-File $Sbom 'SBOM'
 $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
-Require ($InstallRoot -match '(?i)\\Membrane(?: Hub)?$') "install root must be an explicit Membrane directory: $InstallRoot"
+Require ($InstallRoot -match '(?i)\\Orthic Labs\\Membrane\\current$') "install root must be stable Membrane current path: $InstallRoot"
 $script:InitialInstallRoot = $InstallRoot
 
 $installerPublisher = Assert-SignedFile $installerPath 'current installer'
-[void](Assert-SignedFile $previousPath 'previous installer' $installerPublisher)
+if ($previousPath) { [void](Assert-SignedFile $previousPath 'previous installer' $installerPublisher) }
 Assert-BoundEvidence $installerPath $manifestPath $sbomPath
 $releaseManifestValue = Read-JsonFile $manifestPath 'release manifest'
 $currentVersion = Normalize-Version $releaseManifestValue.release.tag 'release manifest version'
-$previousVersion = Get-ArtifactVersion $previousPath 'previous installer'
-Require ($currentVersion -ne $previousVersion) "current & previous installers are the same version: $currentVersion"
-Require (([Version]$previousVersion.Substring(1)) -lt ([Version]$currentVersion.Substring(1))) "previous installer version $previousVersion is not older than current $currentVersion"
+$previousVersion = if ($previousPath) { Get-ArtifactVersion $previousPath 'previous installer' } else { $null }
+if ($previousPath) {
+  Require ($currentVersion -ne $previousVersion) "current & previous installers are the same version: $currentVersion"
+  Require (([Version]$previousVersion.Substring(1)) -lt ([Version]$currentVersion.Substring(1))) "previous installer version $previousVersion is not older than current $currentVersion"
+}
 $currentGeneration = Normalize-Generation $releaseManifestValue.release.generation 'release manifest generation'
 Require ((Get-ArtifactVersion $installerPath 'current installer') -eq $currentVersion) 'current installer version does not match release manifest'
 $script:QualificationWorkspace = Join-Path ([System.IO.Path]::GetTempPath()) "membrane-windows-qualification-$([guid]::NewGuid().ToString('N'))"
@@ -1255,7 +1266,7 @@ $doctor = $null
 $dataMarker = $null
 $dataHash = $null
 try {
-  Invoke-Installer $installerPath
+  $initialTarget = Invoke-Installer $installerPath
   $first = Start-AndVerifyHub 'initial install' $currentVersion $currentGeneration '' -Full
   $script:InitialEvidence = $first
   $script:WorkspaceConfigInitialSha256 = Assert-WorkspaceConfigMigrated $script:WorkspaceConfigPath 'initial startup'
@@ -1285,14 +1296,24 @@ try {
   $script:AdaptEvidence = Invoke-InstalledAdaptQualification $first.Native.Membrane $InstallRoot $nativeDatabase
   $script:BlueprintOneShot = Invoke-BlueprintOneShot $InstallRoot $script:QualificationWorkspace
 
-  Invoke-Installer $previousPath
-  $rollback = Start-AndVerifyPreviousHub $previousVersion
-  Require ((Hash-File $dataMarker) -eq $dataHash) 'durable data changed during downgrade'
-  $rollback | Add-Member -NotePropertyName durableState -NotePropertyValue 'preserved'
-  Stop-QualificationHub
-
-  Invoke-Installer $installerPath
-  $upgrade = Start-AndVerifyHub 'upgrade' $currentVersion $first.ReleaseGeneration '' -Full
+  if ($previousPath) {
+    $previousTarget = Invoke-Installer $previousPath
+    Require ($previousTarget -ne $initialTarget) 'downgrade did not switch current junction target'
+    $rollback = Start-AndVerifyPreviousHub $previousVersion
+    Require ((Hash-File $dataMarker) -eq $dataHash) 'durable data changed during downgrade'
+    $rollback | Add-Member -NotePropertyName durableState -NotePropertyValue 'preserved'
+    Stop-QualificationHub
+    $upgradeTarget = Invoke-Installer $installerPath
+    Require ($upgradeTarget -ne $previousTarget) 'upgrade did not switch current junction target'
+    $upgrade = Start-AndVerifyHub 'upgrade' $currentVersion $first.ReleaseGeneration '' -Full
+    $transitionContract = 'signed-version-liveness-durable-state-v1'
+  } else {
+    $repairTarget = Invoke-Installer $installerPath
+    Require ($repairTarget -ne $initialTarget) 'same-version repair did not create & switch to a unique version root'
+    $upgrade = Start-AndVerifyHub 'same-version repair' $currentVersion $first.ReleaseGeneration '' -Full
+    $rollback = [ordered]@{ status = 'not_applicable'; reason = 'first_stable_layout_release'; durableState = 'preserved' }
+    $transitionContract = 'first-stable-layout-repair-v1'
+  }
   $script:UpgradeEvidence = $upgrade
   [void](Assert-WorkspaceConfigMigrated $script:WorkspaceConfigPath 'upgrade startup' $script:WorkspaceConfigInitialSha256)
   $script:WorkspaceMigrationEvidence.upgradeIdempotent = $true
@@ -1302,13 +1323,26 @@ try {
   $doctor = Get-DoctorPaths $upgrade.Native.Membrane
   Stop-QualificationHub
 
-  $uninstaller = Resolve-File (Join-Path $InstallRoot 'uninstall.exe') 'uninstaller'
+  $uninstaller = Resolve-File (Join-Path (Split-Path -Parent $InstallRoot) 'uninstall.exe') 'uninstaller'
   $uninstall = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden
   Require ($uninstall.ExitCode -eq 0) "uninstaller failed with exit code $($uninstall.ExitCode)"
   Start-Sleep -Seconds 1
   $uninstallEvidence = Assert-UninstallResidue $InstallRoot $doctor $dataMarker $dataHash
   $installerSignature = Get-AuthenticodeSignature -LiteralPath $installerPath
-  $previousSignature = Get-AuthenticodeSignature -LiteralPath $previousPath
+  $previousArtifactEvidence = $null
+  if ($previousPath) {
+    $previousSignature = Get-AuthenticodeSignature -LiteralPath $previousPath
+    $previousArtifactEvidence = [ordered]@{
+      path = $previousPath
+      version = $previousVersion
+      sha256 = Hash-File $previousPath
+      authenticode = [string]$previousSignature.Status
+      signerSubject = [string]$previousSignature.SignerCertificate.Subject
+      signerThumbprint = [string]$previousSignature.SignerCertificate.Thumbprint
+      timestampSubject = [string]$previousSignature.TimeStamperCertificate.Subject
+      timestampThumbprint = [string]$previousSignature.TimeStamperCertificate.Thumbprint
+    }
+  }
   $receipt = [ordered]@{
     schema = 'membrane.windows-installed-qualification.v1'
     generatedAt = [DateTime]::UtcNow.ToString('o')
@@ -1324,16 +1358,7 @@ try {
       timestampSubject = [string]$installerSignature.TimeStamperCertificate.Subject
       timestampThumbprint = [string]$installerSignature.TimeStamperCertificate.Thumbprint
     }
-    previousArtifact = [ordered]@{
-      path = $previousPath
-      version = $previousVersion
-      sha256 = Hash-File $previousPath
-      authenticode = [string]$previousSignature.Status
-      signerSubject = [string]$previousSignature.SignerCertificate.Subject
-      signerThumbprint = [string]$previousSignature.SignerCertificate.Thumbprint
-      timestampSubject = [string]$previousSignature.TimeStamperCertificate.Subject
-      timestampThumbprint = [string]$previousSignature.TimeStamperCertificate.Thumbprint
-    }
+    previousArtifact = $previousArtifactEvidence
     inputs = [ordered]@{
       releaseManifest = [ordered]@{ path = $manifestPath; sha256 = Hash-File $manifestPath }
       sbom = [ordered]@{ path = $sbomPath; sha256 = Hash-File $sbomPath }
@@ -1354,7 +1379,7 @@ try {
       allowedBlueprintInterpreter = [ordered]@{ root = $script:UpgradeEvidence.Native.BlueprintRuntime; executable = $script:UpgradeEvidence.Native.BlueprintNode; bounded = $true; hubOwned = $true }
     }
     initial = $script:InitialEvidence
-    downgradeContract = 'signed-version-liveness-durable-state-v1'
+    downgradeContract = $transitionContract
     downgrade = $rollback
     upgradeContract = 'full-native-upgrade-uninstall-v1'
     upgrade = $script:UpgradeEvidence
@@ -1370,7 +1395,8 @@ try {
       nativeHostCutover = 'pass'
       blueprintHubHosted = 'pass'
       blueprintHubOffOneShot = 'pass'
-      downgrade = 'pass'
+      downgrade = if ($previousPath) { 'pass' } else { 'not_applicable' }
+      repair = if ($previousPath) { 'not_applicable' } else { 'pass' }
       upgrade = 'pass'
       stateContinuity = 'pass'
       uninstall = 'pass'

@@ -119,4 +119,9 @@ test("qualification uses hosted-gh-compatible prior download & publication uploa
 	assert.match(chain, /notarized: true, stapled: true/);
 	assert.match(chain, /macOS finalization receipt does not bind the exact notarized & stapled DMG/);
 	assert.match(chain, /gh", \["release", "upload", `v\$\{version\}`, dmg, finalizationPath, "--clobber"\]/);
+	assert.match(chain, /nsis-embedded-receipt\.json/);
+	assert.match(chain, /verifyNsisEmbeddedBinary/);
+	assert.match(chain, /size:\s*installerSize/);
+	assert.match(chain, /version !== "0\.1\.18"/);
+	assert.match(chain, /requires one prior stable-layout signed Windows installer/);
 });

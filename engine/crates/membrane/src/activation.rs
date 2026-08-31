@@ -23,6 +23,7 @@ use std::{
 };
 
 pub const ACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
+pub const DEACTIVATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const ACTIVATION_RECEIPT_FILE: &str = "activation-receipt.json";
 pub const INSTALLED_PORT: u16 = 47_851;
 const LOCK_DIR: &str = ".activation.lock";
@@ -116,6 +117,39 @@ pub struct ActivationReceiptV1 {
     pub dry_run: bool,
     pub service: ServiceActivationReceipt,
     pub clients: Vec<ClientActivationReceipt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceDeactivationReceipt {
+    pub service_id: String,
+    pub port: u16,
+    pub before: String,
+    pub after: String,
+    pub changed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeactivationReceiptV1 {
+    pub schema_version: u32,
+    pub runtime_origin: RuntimeOrigin,
+    pub install_root: PathBuf,
+    pub version_root: PathBuf,
+    pub membrane_executable: PathBuf,
+    pub tray_executable: PathBuf,
+    pub deactivated_at_unix_ms: u64,
+    pub dry_run: bool,
+    pub service: ServiceDeactivationReceipt,
+    pub clients: Vec<ClientActivationReceipt>,
+    pub claude_hooks_matched: usize,
+    pub claude_hooks_removed: usize,
+    pub user_path_present: bool,
+    pub user_path_removed: bool,
+    pub startup_entries_matched: usize,
+    pub startup_entries_removed: usize,
+    pub activation_receipt_matched: bool,
+    pub activation_receipt_removed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,6 +315,116 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         persist_receipt(&workspace_root, &receipt)?;
     }
     Ok(receipt)
+}
+
+pub fn deactivate(options: ActivationOptions) -> Result<DeactivationReceiptV1, String> {
+    let (install_root, version_root) = validate_installed_root(&options.install_root)?;
+    let product_root = install_root
+        .parent()
+        .ok_or_else(|| "stable installed path has no product root".to_string())?;
+    let membrane = install_root.join(executable_name("membrane"));
+    let tray = install_root.join(executable_name("membrane-tray"));
+    require_file(
+        &version_root.join(executable_name("membrane")),
+        "resolved membrane executable",
+    )?;
+    require_file(
+        &version_root.join(executable_name("membrane-tray")),
+        "resolved tray executable",
+    )?;
+    let (workspace_root, port) = installed_runtime(product_root)?;
+    let expected_generation = membrane_runtime::release_identity::release_generation();
+    let initial = match probe_health(port, &expected_generation) {
+        Ok(observation) => observation,
+        Err(error) => HealthObservation::Foreign(error),
+    };
+    let before = health_label(&initial).to_string();
+    if !options.dry_run {
+        if let HealthObservation::Foreign(reason) = &initial {
+            return Err(format!(
+                "refusing to deactivate unverified service on Membrane port: {reason}"
+            ));
+        }
+    }
+    let would_stop = matches!(
+        &initial,
+        HealthObservation::NotReady
+            | HealthObservation::Ready { .. }
+            | HealthObservation::PriorGeneration { .. }
+    );
+
+    let _lock = (!options.dry_run)
+        .then(|| acquire_lock(product_root))
+        .transpose()?;
+    if !options.dry_run && would_stop {
+        request_resident_replacement(&tray, &workspace_root, port)?;
+        wait_for_shutdown(port, &expected_generation, options.timeout)?;
+    }
+
+    let clients = deactivate_clients(&membrane, &options.clients, options.dry_run, run_client)?;
+    let claude_hooks_matched = remove_claude_hooks(&install_root, options.dry_run)?;
+    let user_path_present = remove_user_path(&install_root, options.dry_run)?;
+    let startup_entries_matched = remove_startup_entries(&tray, options.dry_run)?;
+    let activation_receipt_matched = remove_activation_receipt(
+        &workspace_root,
+        &install_root,
+        &version_root,
+        &membrane,
+        &tray,
+        options.dry_run,
+    )?;
+    Ok(DeactivationReceiptV1 {
+        schema_version: DEACTIVATION_RECEIPT_SCHEMA_VERSION,
+        runtime_origin: RuntimeOrigin::Installed,
+        install_root,
+        version_root,
+        membrane_executable: membrane,
+        tray_executable: tray,
+        deactivated_at_unix_ms: now_unix_ms(),
+        dry_run: options.dry_run,
+        service: ServiceDeactivationReceipt {
+            service_id: SERVICE_ID.to_string(),
+            port,
+            before: before.clone(),
+            after: if options.dry_run {
+                if would_stop {
+                    "would_stop".to_string()
+                } else {
+                    before.clone()
+                }
+            } else {
+                "unavailable".to_string()
+            },
+            changed: !options.dry_run && would_stop,
+        },
+        clients,
+        claude_hooks_matched,
+        claude_hooks_removed: if options.dry_run {
+            0
+        } else {
+            claude_hooks_matched
+        },
+        user_path_present,
+        user_path_removed: user_path_present && !options.dry_run,
+        startup_entries_matched,
+        startup_entries_removed: if options.dry_run {
+            0
+        } else {
+            startup_entries_matched
+        },
+        activation_receipt_matched,
+        activation_receipt_removed: activation_receipt_matched && !options.dry_run,
+    })
+}
+
+fn health_label(observation: &HealthObservation) -> &'static str {
+    match observation {
+        HealthObservation::Unavailable => "unavailable",
+        HealthObservation::NotReady => "not_ready",
+        HealthObservation::Ready { .. } => "ready",
+        HealthObservation::PriorGeneration { .. } => "stale_generation",
+        HealthObservation::Foreign(_) => "foreign",
+    }
 }
 
 fn expected_stable_install_root() -> Result<PathBuf, String> {
@@ -741,6 +885,280 @@ fn ensure_user_path(_install_root: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn without_path_entry(current: &str, install_root: &Path) -> (String, bool) {
+    let stable = install_root
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_string();
+    let mut removed = false;
+    let entries = current
+        .split(';')
+        .filter(|value| {
+            let owned = paths_equal(value.trim().trim_matches('"'), &stable);
+            removed |= owned;
+            !owned
+        })
+        .collect::<Vec<_>>();
+    (entries.join(";"), removed)
+}
+
+#[cfg(windows)]
+fn remove_user_path(install_root: &Path, dry_run: bool) -> Result<bool, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_QUERY_VALUE, KEY_SET_VALUE, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
+    };
+    let wide = |value: &std::ffi::OsStr| value.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    let key_name = wide(std::ffi::OsStr::new("Environment"));
+    let value_name = wide(std::ffi::OsStr::new("Path"));
+    let mut key: HKEY = std::ptr::null_mut();
+    let access = KEY_QUERY_VALUE | if dry_run { 0 } else { KEY_SET_VALUE };
+    let opened = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            key_name.as_ptr(),
+            0,
+            access,
+            &mut key,
+        )
+    };
+    if opened != 0 {
+        return Err(format!("open user PATH registry key: {opened}"));
+    }
+    let mut kind: REG_VALUE_TYPE = REG_EXPAND_SZ;
+    let mut byte_len = 0_u32;
+    let queried = unsafe {
+        RegQueryValueExW(
+            key,
+            value_name.as_ptr(),
+            std::ptr::null(),
+            &mut kind,
+            std::ptr::null_mut(),
+            &mut byte_len,
+        )
+    };
+    if queried == 2 {
+        unsafe { RegCloseKey(key) };
+        return Ok(false);
+    }
+    if queried != 0 {
+        unsafe { RegCloseKey(key) };
+        return Err(format!("query user PATH: {queried}"));
+    }
+    let mut buffer = vec![0_u16; (byte_len as usize + 1) / 2];
+    let read = unsafe {
+        RegQueryValueExW(
+            key,
+            value_name.as_ptr(),
+            std::ptr::null(),
+            &mut kind,
+            buffer.as_mut_ptr() as *mut u8,
+            &mut byte_len,
+        )
+    };
+    if read != 0 {
+        unsafe { RegCloseKey(key) };
+        return Err(format!("read user PATH: {read}"));
+    }
+    let end = buffer
+        .iter()
+        .position(|value| *value == 0)
+        .unwrap_or(buffer.len());
+    let current = String::from_utf16_lossy(&buffer[..end]);
+    let (updated, removed) = without_path_entry(&current, install_root);
+    if removed && !dry_run {
+        let encoded = wide(std::ffi::OsStr::new(&updated));
+        let value_kind = if kind == REG_SZ { REG_SZ } else { REG_EXPAND_SZ };
+        let written = unsafe {
+            RegSetValueExW(
+                key,
+                value_name.as_ptr(),
+                0,
+                value_kind,
+                encoded.as_ptr() as *const u8,
+                (encoded.len() * 2) as u32,
+            )
+        };
+        if written != 0 {
+            unsafe { RegCloseKey(key) };
+            return Err(format!("write user PATH: {written}"));
+        }
+    }
+    unsafe { RegCloseKey(key) };
+    Ok(removed)
+}
+
+#[cfg(not(windows))]
+fn remove_user_path(_install_root: &Path, _dry_run: bool) -> Result<bool, String> {
+    Ok(false)
+}
+
+fn startup_command(tray: &Path) -> String {
+    format!("\"{}\" --login-launch", tray.display())
+}
+
+fn startup_value_owned(value: &str, tray: &Path) -> bool {
+    if cfg!(windows) {
+        value.eq_ignore_ascii_case(&startup_command(tray))
+    } else {
+        value == startup_command(tray)
+    }
+}
+
+#[cfg(windows)]
+fn remove_startup_entries(tray: &Path, dry_run: bool) -> Result<usize, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER,
+        KEY_QUERY_VALUE, KEY_SET_VALUE, REG_VALUE_TYPE,
+    };
+    let wide = |value: &std::ffi::OsStr| value.encode_wide().chain(Some(0)).collect::<Vec<_>>();
+    let key_name = wide(std::ffi::OsStr::new(
+        r"Software\Microsoft\Windows\CurrentVersion\Run",
+    ));
+    let mut key: HKEY = std::ptr::null_mut();
+    let access = KEY_QUERY_VALUE | if dry_run { 0 } else { KEY_SET_VALUE };
+    let opened = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            key_name.as_ptr(),
+            0,
+            access,
+            &mut key,
+        )
+    };
+    if opened == 2 {
+        return Ok(0);
+    }
+    if opened != 0 {
+        return Err(format!("open user startup registry key: {opened}"));
+    }
+    let mut matched = 0;
+    for name in ["Membrane", "Membrane Tray"] {
+        let value_name = wide(std::ffi::OsStr::new(name));
+        let mut kind: REG_VALUE_TYPE = 0;
+        let mut byte_len = 0_u32;
+        let queried = unsafe {
+            RegQueryValueExW(
+                key,
+                value_name.as_ptr(),
+                std::ptr::null(),
+                &mut kind,
+                std::ptr::null_mut(),
+                &mut byte_len,
+            )
+        };
+        if queried == 2 {
+            continue;
+        }
+        if queried != 0 {
+            unsafe { RegCloseKey(key) };
+            return Err(format!("query user startup value {name}: {queried}"));
+        }
+        let mut buffer = vec![0_u16; (byte_len as usize + 1) / 2];
+        let read = unsafe {
+            RegQueryValueExW(
+                key,
+                value_name.as_ptr(),
+                std::ptr::null(),
+                &mut kind,
+                buffer.as_mut_ptr() as *mut u8,
+                &mut byte_len,
+            )
+        };
+        if read != 0 {
+            unsafe { RegCloseKey(key) };
+            return Err(format!("read user startup value {name}: {read}"));
+        }
+        let end = buffer
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(buffer.len());
+        let current = String::from_utf16_lossy(&buffer[..end]);
+        if !startup_value_owned(&current, tray) {
+            continue;
+        }
+        matched += 1;
+        if !dry_run {
+            let deleted = unsafe { RegDeleteValueW(key, value_name.as_ptr()) };
+            if deleted != 0 {
+                unsafe { RegCloseKey(key) };
+                return Err(format!("remove user startup value {name}: {deleted}"));
+            }
+        }
+    }
+    unsafe { RegCloseKey(key) };
+    Ok(matched)
+}
+
+#[cfg(not(windows))]
+fn remove_startup_entries(_tray: &Path, _dry_run: bool) -> Result<usize, String> {
+    Ok(0)
+}
+
+fn activation_receipt_owned(
+    receipt: &ActivationReceiptV1,
+    install_root: &Path,
+    version_root: &Path,
+    membrane: &Path,
+    tray: &Path,
+) -> bool {
+    receipt.schema_version == ACTIVATION_RECEIPT_SCHEMA_VERSION
+        && receipt.runtime_origin == RuntimeOrigin::Installed
+        && !receipt.dry_run
+        && receipt.service.service_id == SERVICE_ID
+        && paths_equal(
+            &receipt.install_root.to_string_lossy(),
+            &install_root.to_string_lossy(),
+        )
+        && paths_equal(
+            &receipt.version_root.to_string_lossy(),
+            &version_root.to_string_lossy(),
+        )
+        && paths_equal(
+            &receipt.membrane_executable.to_string_lossy(),
+            &membrane.to_string_lossy(),
+        )
+        && paths_equal(
+            &receipt.tray_executable.to_string_lossy(),
+            &tray.to_string_lossy(),
+        )
+}
+
+fn remove_activation_receipt(
+    workspace_root: &Path,
+    install_root: &Path,
+    version_root: &Path,
+    membrane: &Path,
+    tray: &Path,
+    dry_run: bool,
+) -> Result<bool, String> {
+    let path = workspace_root.join(ACTIVATION_RECEIPT_FILE);
+    if !path.is_file() {
+        return Ok(false);
+    }
+    let original = std::fs::read(&path)
+        .map_err(|error| format!("read activation receipt {}: {error}", path.display()))?;
+    let Ok(receipt) = serde_json::from_slice::<ActivationReceiptV1>(&original) else {
+        return Ok(false);
+    };
+    if !activation_receipt_owned(&receipt, install_root, version_root, membrane, tray) {
+        return Ok(false);
+    }
+    if dry_run {
+        return Ok(true);
+    }
+    let current = std::fs::read(&path)
+        .map_err(|error| format!("re-read activation receipt {}: {error}", path.display()))?;
+    if current != original {
+        return Err("activation receipt changed during deactivation; it was preserved".into());
+    }
+    std::fs::remove_file(&path)
+        .map_err(|error| format!("remove activation receipt {}: {error}", path.display()))?;
+    Ok(true)
+}
+
 fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
     let profile = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from)
@@ -759,7 +1177,7 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
     let entrypoint = install_root.join("mcp/hooks/membrane-hook-entrypoint.mjs");
     require_file(&node, "installed hook Node runtime")?;
     require_file(&entrypoint, "installed Claude hook entrypoint")?;
-    let command = format!("\"{}\" \"{}\"", node.display(), entrypoint.display());
+    let command = installed_hook_command(install_root);
     let root = settings
         .as_object_mut()
         .ok_or_else(|| "Claude settings root must be an object".to_string())?;
@@ -811,6 +1229,86 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
     .map_err(|error| format!("stage Claude settings: {error}"))?;
     replace_file(&staged, &settings_path)
         .map_err(|error| format!("promote Claude settings: {error}"))
+}
+
+fn installed_hook_command(install_root: &Path) -> String {
+    let node = install_root
+        .join("runtime/blueprint/lib")
+        .join(executable_name("node"));
+    let entrypoint = install_root.join("mcp/hooks/membrane-hook-entrypoint.mjs");
+    format!("\"{}\" \"{}\"", node.display(), entrypoint.display())
+}
+
+fn remove_exact_hook_items(settings: &mut serde_json::Value, expected: &str) -> usize {
+    let Some(hooks) = settings
+        .as_object_mut()
+        .and_then(|root| root.get_mut("hooks"))
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entries in hooks.values_mut().filter_map(serde_json::Value::as_array_mut) {
+        entries.retain_mut(|entry| {
+            let Some(items) = entry
+                .get_mut("hooks")
+                .and_then(serde_json::Value::as_array_mut)
+            else {
+                return true;
+            };
+            let before = items.len();
+            items.retain(|item| {
+                item.get("command").and_then(serde_json::Value::as_str) != Some(expected)
+            });
+            removed += before - items.len();
+            if !items.is_empty() {
+                return true;
+            }
+            !entry.as_object().is_some_and(|object| {
+                object
+                    .keys()
+                    .all(|key| matches!(key.as_str(), "hooks" | "matcher"))
+            })
+        });
+    }
+    removed
+}
+
+fn remove_claude_hooks(
+    install_root: &Path,
+    dry_run: bool,
+) -> Result<usize, String> {
+    let profile = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+        .map(PathBuf::from)
+        .ok_or_else(|| "Claude settings profile is unavailable".to_string())?;
+    let settings_path = profile.join(".claude").join("settings.json");
+    if !settings_path.is_file() {
+        return Ok(0);
+    }
+    let original = std::fs::read(&settings_path)
+        .map_err(|error| format!("read Claude settings {}: {error}", settings_path.display()))?;
+    let mut settings: serde_json::Value = serde_json::from_slice(&original)
+        .map_err(|error| format!("parse Claude settings {}: {error}", settings_path.display()))?;
+    let removed = remove_exact_hook_items(&mut settings, &installed_hook_command(install_root));
+    if removed == 0 || dry_run {
+        return Ok(removed);
+    }
+    let staged = settings_path.with_extension(format!("json.{}.partial", std::process::id()));
+    std::fs::write(
+        &staged,
+        serde_json::to_vec_pretty(&settings)
+            .map_err(|error| format!("serialize Claude settings: {error}"))?,
+    )
+    .map_err(|error| format!("stage Claude settings: {error}"))?;
+    let current = std::fs::read(&settings_path)
+        .map_err(|error| format!("re-read Claude settings {}: {error}", settings_path.display()))?;
+    if current != original {
+        let _ = std::fs::remove_file(&staged);
+        return Err("Claude settings changed during deactivation; exact hooks were preserved".into());
+    }
+    replace_file(&staged, &settings_path)
+        .map_err(|error| format!("promote Claude settings: {error}"))?;
+    Ok(removed)
 }
 
 fn replace_legacy_hook_commands(entries: &mut [serde_json::Value], expected: &str) {
@@ -909,6 +1407,63 @@ where
             }
         })
         .collect())
+}
+
+fn deactivate_clients<F>(
+    membrane: &Path,
+    clients: &[HarnessClient],
+    dry_run: bool,
+    mut runner: F,
+) -> Result<Vec<ClientActivationReceipt>, String>
+where
+    F: FnMut(HarnessClient, &[String]) -> CommandResult,
+{
+    let executable = membrane.to_string_lossy().into_owned();
+    let mut receipts = Vec::with_capacity(clients.len());
+    for &client in clients {
+        if !runner(client, &["--version".to_string()]).success() {
+            receipts.push(ClientActivationReceipt {
+                client,
+                before: "not_installed".to_string(),
+                after: "not_installed".to_string(),
+                changed: false,
+            });
+            continue;
+        }
+        let current = runner(client, &get_args(client));
+        if !current.success() {
+            receipts.push(ClientActivationReceipt {
+                client,
+                before: "absent".to_string(),
+                after: "absent".to_string(),
+                changed: false,
+            });
+            continue;
+        }
+        let owned = parse_prior_config(&current.stdout).is_some_and(|config| {
+            paths_equal(&config.command, &executable) && config.args == ["stdio-mcp".to_string()]
+        });
+        if owned && !dry_run {
+            require_command_success(client, "remove", runner(client, &remove_args(client)))?;
+            if runner(client, &get_args(client)).success() {
+                return Err(format!("{} remove verification failed", client.as_str()));
+            }
+        }
+        receipts.push(ClientActivationReceipt {
+            client,
+            before: if owned { "owned" } else { "preserved" }.to_string(),
+            after: if owned && !dry_run {
+                "removed"
+            } else if owned {
+                "owned"
+            } else {
+                "preserved"
+            }
+            .to_string(),
+            changed: owned && !dry_run,
+        });
+    }
+    Ok(receipts)
 }
 
 fn inspect_client<F>(
@@ -1353,6 +1908,166 @@ mod tests {
             *client == HarnessClient::Codex
                 && *args == add_args(HarnessClient::Codex, "node", &["old.mjs".to_string()])
         }));
+    }
+
+    #[test]
+    fn deactivation_removes_only_exact_owned_client_binding() {
+        let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
+        let exact = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let foreign = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp","--foreign"]}}"#;
+        let mut responses = VecDeque::from([
+            result(0, "codex-cli"),
+            result(0, exact),
+            result(0, ""),
+            result(1, ""),
+            result(0, "claude-cli"),
+            result(0, foreign),
+        ]);
+        let mut calls = Vec::new();
+        let receipts = deactivate_clients(
+            membrane,
+            &[HarnessClient::Codex, HarnessClient::Claude],
+            false,
+            |client, args| {
+                calls.push((client, args.to_vec()));
+                responses.pop_front().unwrap()
+            },
+        )
+        .unwrap();
+        assert_eq!(receipts[0].after, "removed");
+        assert!(receipts[0].changed);
+        assert_eq!(receipts[1].after, "preserved");
+        assert!(!receipts[1].changed);
+        assert!(calls.iter().any(|(client, args)| {
+            *client == HarnessClient::Codex && *args == remove_args(HarnessClient::Codex)
+        }));
+        assert!(!calls.iter().any(|(client, args)| {
+            *client == HarnessClient::Claude && *args == remove_args(HarnessClient::Claude)
+        }));
+    }
+
+    #[test]
+    fn deactivation_dry_run_plans_owned_binding_without_remove() {
+        let membrane = Path::new(r"C:\Membrane\current\membrane.exe");
+        let exact = r#"{"transport":{"command":"C:\\Membrane\\current\\membrane.exe","args":["stdio-mcp"]}}"#;
+        let mut responses = VecDeque::from([result(0, "codex-cli"), result(0, exact)]);
+        let mut calls = Vec::new();
+        let receipts = deactivate_clients(
+            membrane,
+            &[HarnessClient::Codex],
+            true,
+            |client, args| {
+                calls.push((client, args.to_vec()));
+                responses.pop_front().unwrap()
+            },
+        )
+        .unwrap();
+        assert_eq!(receipts[0].before, "owned");
+        assert_eq!(receipts[0].after, "owned");
+        assert!(!receipts[0].changed);
+        assert_eq!(calls.len(), 2);
+    }
+
+    #[test]
+    fn deactivation_hook_removal_preserves_near_matches_and_unrelated_items() {
+        let expected = r#""C:\Membrane\current\node.exe" "C:\Membrane\current\mcp\hooks\membrane-hook-entrypoint.mjs""#;
+        let mut settings = serde_json::json!({
+            "hooks": {
+                "SessionStart": [
+                    {"hooks": [
+                        {"type": "command", "command": expected},
+                        {"type": "command", "command": "keep-me"}
+                    ]},
+                    {"hooks": [{"type": "command", "command": format!("{expected} --extra")}]}
+                ],
+                "Stop": [{"hooks": [{"type": "command", "command": expected}]}],
+                "Custom": [{"owner": "user", "hooks": [{"type": "command", "command": expected}]}],
+                "Malformed": [{"other": true}]
+            }
+        });
+        assert_eq!(remove_exact_hook_items(&mut settings, expected), 3);
+        assert_eq!(settings["hooks"]["SessionStart"].as_array().unwrap().len(), 2);
+        assert_eq!(settings["hooks"]["SessionStart"][0]["hooks"][0]["command"], "keep-me");
+        assert!(settings["hooks"]["Stop"].as_array().unwrap().is_empty());
+        assert_eq!(settings["hooks"]["Custom"][0]["owner"], "user");
+        assert!(settings["hooks"]["Custom"][0]["hooks"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        assert_eq!(settings["hooks"]["Malformed"][0]["other"], true);
+    }
+
+    #[test]
+    fn deactivation_path_removal_drops_only_exact_stable_current_entries() {
+        let stable = Path::new(r"C:\Users\test\Orthic Labs\Membrane\current");
+        let current = r#"C:\Windows; "C:\Users\test\Orthic Labs\Membrane\current" ;C:\Users\test\Orthic Labs\Membrane\current-tools;C:\Elsewhere"#;
+        let (updated, removed) = without_path_entry(current, stable);
+        assert!(removed);
+        assert_eq!(
+            updated,
+            r#"C:\Windows;C:\Users\test\Orthic Labs\Membrane\current-tools;C:\Elsewhere"#
+        );
+        let (unchanged, removed) = without_path_entry(&updated, stable);
+        assert!(!removed);
+        assert_eq!(unchanged, updated);
+    }
+
+    #[test]
+    fn deactivation_startup_match_requires_exact_owned_command() {
+        let tray = Path::new(r"C:\Users\test\Orthic Labs\Membrane\current\membrane-tray.exe");
+        let exact = startup_command(tray);
+        assert!(startup_value_owned(&exact, tray));
+        assert!(!startup_value_owned(
+            &format!("{exact} --open-dashboard"),
+            tray
+        ));
+        assert!(!startup_value_owned(
+            r#""C:\Other\membrane-tray.exe" --login-launch"#,
+            tray
+        ));
+    }
+
+    #[test]
+    fn deactivation_activation_receipt_match_is_exact() {
+        let install_root = PathBuf::from(r"C:\Membrane\current");
+        let version_root = PathBuf::from(r"C:\Membrane\versions\v1");
+        let membrane = install_root.join("membrane.exe");
+        let tray = install_root.join("membrane-tray.exe");
+        let receipt = ActivationReceiptV1 {
+            schema_version: ACTIVATION_RECEIPT_SCHEMA_VERSION,
+            runtime_origin: RuntimeOrigin::Installed,
+            install_root: install_root.clone(),
+            version_root: version_root.clone(),
+            membrane_executable: membrane.clone(),
+            tray_executable: tray.clone(),
+            activated_at_unix_ms: 1,
+            dry_run: false,
+            service: ServiceActivationReceipt {
+                service_id: SERVICE_ID.to_string(),
+                port: INSTALLED_PORT,
+                release_generation: "sha256:test".to_string(),
+                already_running: false,
+                state: "ready".to_string(),
+                reason: None,
+            },
+            clients: Vec::new(),
+        };
+        assert!(activation_receipt_owned(
+            &receipt,
+            &install_root,
+            &version_root,
+            &membrane,
+            &tray
+        ));
+        let mut foreign = receipt.clone();
+        foreign.membrane_executable = PathBuf::from(r"C:\Other\membrane.exe");
+        assert!(!activation_receipt_owned(
+            &foreign,
+            &install_root,
+            &version_root,
+            &membrane,
+            &tray
+        ));
     }
 
     #[test]

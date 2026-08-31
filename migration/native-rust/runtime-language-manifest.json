@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-31T07:03:56.706Z",
+ "generatedAt": "2026-08-31T08:46:10.266Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1228,
+  "files": 1229,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1177,7 +1177,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "3a30208ac3e5c7693b0183118e54564c675655ff46b7277b162cb6dbb974b289"
+   "content_digest": "4c5dd272ec06fff7c4a754e39d1d3a3d7def1e25b0cb0830db229b1f81e71e1c"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1737,7 +1737,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "debe9492e92045e8fb3c072c445c1704e89c25945e957a1c76afa8f13dd15630"
+   "content_digest": "38c056c936b56807a12ce4d885ac11bb6ca1c712cf2dac90bef85cf758b6a340"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1782,7 +1782,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "cc7f1da44b275ef8cb051b758258ba3f5eabb61db8a6738869eafac402cef9ee"
+   "content_digest": "18601b4da6a9701eaf982768ca1bd76434025dbd0f75eb505410cde06eddf70c"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2146,6 +2146,7 @@
     "scripts/qualification/write-windows-platform-evidence.mjs",
     "scripts/qualification/write-windows-platform-evidence.test.mjs",
     "scripts/qualify-competitor-parity.mjs",
+    "scripts/release/candidate-source-clean.mjs",
     "scripts/release/evidence/sbom.mjs",
     "scripts/release/evidence/sbom.test.mjs",
     "scripts/release/identity.mjs",
@@ -2176,7 +2177,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "99d5091a631f46bd62127ad212b9443a399c18fc8f70f11f3ab3a8bbf0b6cfea"
+   "content_digest": "3b72491ba1cadc004c41ca9bd583e2d19ae8e2895ff46c798d3bc1c8d285a71d"
   },
   {
    "id": "tests-root-tests-root",

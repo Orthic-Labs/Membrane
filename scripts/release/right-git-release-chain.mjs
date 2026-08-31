@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyNsisEmbeddedBinary } from "@rightkit/release/nsis-payload.mjs";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 const hub = join(repo, "apps", "membrane-hub");
@@ -56,22 +57,30 @@ function finalizeWindows() {
   const candidate = JSON.parse(readFileSync(join(unsignedWindows, "candidate.json"), "utf8"));
   if (candidate.target !== "windows-x86_64" || candidate.sourceCommit !== sourceRevision) throw new Error("unsigned Windows candidate identity mismatch");
   run("pnpm.cmd", ["--dir", hub, "run", "release:build:portable:win"], repo, { ...process.env, MEMBRANE_CANDIDATE_ROOT: unsignedWindows });
-  const installer = onlyInstaller(unsignedWindows);
+  const portable = join(hub, "dist", "portable");
+  if (!existsSync(portable)) throw new Error("RightKit Windows finalization did not produce portable release inputs");
+  const installer = onlyInstaller(portable);
+  const embeddedReceiptPath = join(portable, "nsis-embedded-receipt.json");
+  if (!existsSync(embeddedReceiptPath)) throw new Error("NSIS embedded-release receipt is required before outer signing");
+  const embeddedReceipt = JSON.parse(readFileSync(embeddedReceiptPath, "utf8"));
+  if (embeddedReceipt.contract !== "membrane-nsis-direct-release-embedding-v1" || embeddedReceipt.installerSha256 !== sha256(installer) || !Array.isArray(embeddedReceipt.embedded) || embeddedReceipt.embedded.length < 7) throw new Error("NSIS embedded-release receipt does not bind unsigned outer installer");
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", installer]);
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", "--verify-only", installer]);
+  const postSignEmbedded = embeddedReceipt.embedded.map((entry) => verifyNsisEmbeddedBinary({ installer, entryName: entry.entry, expectedSha256: entry.sha256 }));
   const manifest = JSON.parse(readFileSync(join(unsignedWindows, "release-manifest.json"), "utf8"));
   const sbom = JSON.parse(readFileSync(join(unsignedWindows, "sbom.json"), "utf8"));
   const installerSha256 = sha256(installer);
   const signing = { status: "signed", contract: "azure-artifact-signing-v1", provider: "RightRelease" };
-  manifest.artifact = { ...manifest.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256 };
+  const installerSize = statSync(installer).size;
+  manifest.artifact = { ...manifest.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256, size: installerSize };
+  manifest.release = { ...manifest.release, artifact_sha256: installerSha256 };
   manifest.signing = signing;
-  sbom.artifact = { ...sbom.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256 };
+  sbom.artifact = { ...sbom.artifact, path: installer.split(/[\\/]/).pop(), sha256: installerSha256, size: installerSize };
   sbom.signing = signing;
   copyTree(installer, join(finalizedWindows, installer.split(/[\\/]/).pop()));
   writeFileSync(join(finalizedWindows, "release-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   writeFileSync(join(finalizedWindows, "sbom.json"), `${JSON.stringify(sbom, null, 2)}\n`);
-  const portable = join(hub, "dist", "portable");
-  if (!existsSync(portable)) throw new Error("RightKit Windows finalization did not produce portable release inputs");
+  writeFileSync(join(finalizedWindows, "nsis-embedded-receipt.json"), `${JSON.stringify({ ...embeddedReceipt, signedInstallerSha256: installerSha256, embedded: postSignEmbedded }, null, 2)}\n`);
   copyTree(portable, join(finalizedWindows, "portable"));
 }
 
@@ -101,16 +110,20 @@ function qualifyInstalled() {
   const manifest = join(finalizedWindows, "release-manifest.json");
   const sbom = join(finalizedWindows, "sbom.json");
   const releases = JSON.parse(output("gh", ["api", "repos/Orthic-Labs/Membrane/releases?per_page=100"]));
-  const prior = releases.find((release) => !release.draft && !release.prerelease && release.tag_name !== `v${version}`);
+  const prior = releases.find((release) => !release.draft && !release.prerelease && release.tag_name !== `v${version}` && /^v0\.1\.(?:1[89]|[2-9]\d|\d{3,})$/.test(release.tag_name));
   const asset = prior?.assets?.find((entry) => /-setup\.exe$/i.test(entry.name));
-  if (!prior || !asset) throw new Error("installed qualification requires one prior signed Windows release installer");
-  if (asset.name !== asset.name.split(/[\\/]/).pop()) throw new Error("prior signed Windows release installer name is unsafe");
-  const previous = join(qualification, "previous-signed-installer.exe");
-  const downloaded = join(qualification, asset.name);
-  run("gh", ["release", "download", prior.tag_name, "--repo", "Orthic-Labs/Membrane", "--pattern", asset.name, "--dir", qualification, "--clobber"]);
-  if (!existsSync(downloaded)) throw new Error("prior signed Windows release installer download is missing");
-  cpSync(downloaded, previous, { force: true });
-  run("powershell", ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/qualification/install-release.ps1", "-Installer", installer, "-PreviousInstaller", previous, "-ReleaseManifest", manifest, "-Sbom", sbom, "-EvidencePath", join(qualification, "evidence.json")]);
+  if (version !== "0.1.18" && (!prior || !asset)) throw new Error("installed qualification requires one prior stable-layout signed Windows installer");
+  const args = ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/qualification/install-release.ps1", "-Installer", installer, "-ReleaseManifest", manifest, "-Sbom", sbom, "-EvidencePath", join(qualification, "evidence.json")];
+  if (prior && asset) {
+    if (asset.name !== asset.name.split(/[\\/]/).pop()) throw new Error("prior signed Windows release installer name is unsafe");
+    const previous = join(qualification, "previous-signed-installer.exe");
+    const downloaded = join(qualification, asset.name);
+    run("gh", ["release", "download", prior.tag_name, "--repo", "Orthic-Labs/Membrane", "--pattern", asset.name, "--dir", qualification, "--clobber"]);
+    if (!existsSync(downloaded)) throw new Error("prior signed Windows release installer download is missing");
+    cpSync(downloaded, previous, { force: true });
+    args.push("-PreviousInstaller", previous);
+  }
+  run("powershell", args);
 }
 
 function publishQualified() {

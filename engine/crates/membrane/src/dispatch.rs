@@ -59,6 +59,9 @@ pub enum MembraneMode {
     /// Activate installed tray/daemon, prove resident identity, & enroll
     /// native harnesses against installed `membrane stdio-mcp`.
     Activate,
+    /// Stop installed tray/daemon & remove only exact product-owned native
+    /// harness projections.
+    Deactivate,
     MigrateLegacy,
 }
 
@@ -70,6 +73,7 @@ impl MembraneMode {
             MembraneMode::Install => "install",
             MembraneMode::Uninstall => "uninstall",
             MembraneMode::Activate => "activate",
+            MembraneMode::Deactivate => "deactivate",
             MembraneMode::MigrateLegacy => "migrate-legacy",
         }
     }
@@ -102,6 +106,8 @@ enum Command {
     Uninstall(UninstallArgs),
     /// Activate installed app & register native MCP harnesses.
     Activate(ActivateArgs),
+    /// Stop installed app & remove exact product-owned native harnesses.
+    Deactivate(ActivateArgs),
     /// Inspect installed service, release identity, & native harness projections.
     Status(ActivateArgs),
     /// MBR-210: move recognized legacy state without copying or starting a daemon.
@@ -178,13 +184,13 @@ struct ActivateArgs {
     /// product root's stable current path.
     #[arg(long)]
     install_root: Option<std::path::PathBuf>,
-    /// Native harness to register. Repeatable; defaults to Codex plus Claude.
+    /// Native harness to reconcile. Repeatable; defaults to Codex plus Claude.
     #[arg(long, value_name = "codex|claude")]
     client: Vec<String>,
     /// Bounded resident readiness deadline.
     #[arg(long, default_value_t = 35_000)]
     timeout_ms: u64,
-    /// Inspect activation without launching or mutating harness configuration.
+    /// Inspect requested action without launching, stopping, or mutating configuration.
     #[arg(long, default_value_t = false)]
     dry_run: bool,
 }
@@ -409,6 +415,21 @@ where
         },
         Command::Activate(args) => ParsedInvocation {
             mode: MembraneMode::Activate,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: Some(ActivationInvocation {
+                install_root: args.install_root,
+                clients: args.client,
+                timeout_ms: args.timeout_ms,
+                dry_run: args.dry_run,
+            }),
+            migration: None,
+        },
+        Command::Deactivate(args) => ParsedInvocation {
+            mode: MembraneMode::Deactivate,
             cli_tail: Vec::new(),
             framing: String::new(),
             port: 0,
@@ -753,6 +774,36 @@ mod tests {
                 clients: vec!["codex".to_string()],
                 timeout_ms: 45_000,
                 dry_run: false,
+            })
+        );
+    }
+
+    #[test]
+    fn deactivate_parses_installed_root_clients_deadline_and_dry_run() {
+        let inv = parse_mode(
+            [
+                "membrane",
+                "deactivate",
+                "--install-root",
+                r"C:\Membrane",
+                "--client",
+                "claude",
+                "--timeout-ms",
+                "4000",
+                "--dry-run",
+            ]
+            .iter()
+            .copied(),
+        )
+        .unwrap();
+        assert_eq!(inv.mode, MembraneMode::Deactivate);
+        assert_eq!(
+            inv.activation,
+            Some(ActivationInvocation {
+                install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
+                clients: vec!["claude".to_string()],
+                timeout_ms: 4_000,
+                dry_run: true,
             })
         );
     }

@@ -19,11 +19,11 @@ importers:
         specifier: 0.2.1
         version: 0.2.1
       '@rightkit/git':
-        specifier: 0.2.15
-        version: 0.2.15
+        specifier: 0.2.16
+        version: 0.2.16
       '@rightkit/release':
-        specifier: 0.2.90
-        version: 0.2.90
+        specifier: 0.2.91
+        version: 0.2.91
 
   blueprint:
     dependencies:
@@ -164,16 +164,16 @@ packages:
     resolution: {integrity: sha512-7iBNWoO2LmZLw38mVmHu/56O0Pn4lQrnnmbf26knnpyjPVE7XFUou3tJ9r607HRMmFvNJGEGk/WbVEL5x3AIyg==}
     hasBin: true
 
-  '@rightkit/git@0.2.15':
-    resolution: {integrity: sha512-dNqECS6n3RiaNItUc+SgzQ3YfhvNVYGmuw3UidzWcrVZg57Rn0QEpT4HPSOHp5hFg5gtYvYARdPEzGdKg3qlhg==}
+  '@rightkit/git@0.2.16':
+    resolution: {integrity: sha512-6wFXdMw9IR0IEfnmR3MjwOwwc1+enmsP6mMvuj8IDwmCj7aNxJkjwCviQlcc/58winEgaxnCnaBKLEIxspzwLQ==}
     hasBin: true
 
   '@rightkit/hooks@0.1.0':
     resolution: {integrity: sha512-6+SjBp5YABYqxMH6l2BC0ZTrIdDmTBSzvpuHyHvw3mT8Sf5FSgCYo1zVo28AQ+BsHfWkJN+S4JlirIrhTIc0mg==}
     hasBin: true
 
-  '@rightkit/release@0.2.90':
-    resolution: {integrity: sha512-SY0ZzCuumwum3mbz82npR+UqpCMsWK8K+qfXZ7fRubiTOZ0JkQF8bAy18bVQx8eg4m7znJ0b+SPBKyiCXpfHHA==}
+  '@rightkit/release@0.2.91':
+    resolution: {integrity: sha512-hnOb820uFYS3KqVUN1eHtgpD3EW4AcD2foqnrCdxxIxt9v9JMFeSiIHqV+8+8xU0F6JO2YDUiq5af07tzArBhw==}
     hasBin: true
 
   accepts@2.0.0:
@@ -653,11 +653,11 @@ snapshots:
 
   '@rightkit/ax@0.2.1': {}
 
-  '@rightkit/git@0.2.15': {}
+  '@rightkit/git@0.2.16': {}
 
   '@rightkit/hooks@0.1.0': {}
 
-  '@rightkit/release@0.2.90': {}
+  '@rightkit/release@0.2.91': {}
 
   accepts@2.0.0:
     dependencies:

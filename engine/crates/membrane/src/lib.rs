@@ -19,8 +19,10 @@ pub mod update;
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
 pub use activation::{
-    activate, ActivationOptions, ActivationReceiptV1, ClientActivationReceipt, HarnessClient,
-    ServiceActivationReceipt, ACTIVATION_RECEIPT_SCHEMA_VERSION,
+    activate, deactivate, ActivationOptions, ActivationReceiptV1, ClientActivationReceipt,
+    DeactivationReceiptV1, HarnessClient, ServiceActivationReceipt,
+    ServiceDeactivationReceipt, ACTIVATION_RECEIPT_SCHEMA_VERSION,
+    DEACTIVATION_RECEIPT_SCHEMA_VERSION,
 };
 pub use cli::{run_cli, run_cli_from};
 pub use cli_parity::{check_parity, generate_cli_subcommands, CliParityReport};

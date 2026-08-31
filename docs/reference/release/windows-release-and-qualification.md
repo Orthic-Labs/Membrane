@@ -31,14 +31,17 @@ RightKit owns both generated signing jobs; their manifest configuration is `.rig
 
 `installed-qualification` runs on configured self-hosted Windows runner. On a tag it
 uses `actions/download-artifact` to obtain same-run Windows signing output. It obtains
-the newest prior non-draft release's installer for the downgrade leg, then runs
+the newest prior stable-layout release's installer for the downgrade leg, then runs
 `scripts/qualification/install-release.ps1`. Missing signing, runner, prior-release, installer,
 manifest, or SBOM prerequisites fail the tag path with the typed
 `installed_qualification_skipped { reason: prerequisites_absent, detail: ... }` reason. The job
 never converts a hosted runner or an unsigned artifact into a pass.
 
 The script exercises the installed installer through install, startup, tray/UI automation,
-Blueprint checks, downgrade, upgrade, state continuity, uninstall, and residue checks. The
+Blueprint checks, downgrade, upgrade, state continuity, uninstall, and residue checks. Release
+`0.1.18` is the one stable-layout migration exception: qualification performs clean install plus
+same-version repair into a distinct immutable version root. From `0.1.19`, prior signed
+stable-layout installer is mandatory. The
 product under test is the installed artifact. The development workspace is for development and
 testing only; it is never the thing a customer runs.
 
@@ -70,8 +73,9 @@ tools. macOS signing uses scoped `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_
 operator. The top-level workflow permission remains `contents: read`; only `publish` declares
 `contents: write`.
 
-A prior non-draft GitHub Release with a signed setup installer is also required for the
-current-to-previous-to-current qualification sequence. If it is absent, the tag path fails with
+A prior non-draft GitHub Release at `0.1.18` or later with a signed setup installer is required
+from `0.1.19` onward for the current-to-previous-to-current qualification sequence. If absent,
+tag path fails with
 `previous_signed_release_missing` or `previous_signed_installer_missing`.
 
 ## Protected-host boundary

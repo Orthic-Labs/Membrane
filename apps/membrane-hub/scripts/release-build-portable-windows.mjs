@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { materializeHardeningEvidence } from "@rightkit/release/hardening-evidence.mjs";
+import { patchTauriBundleTypeForNsis } from "@rightkit/release/tauri-bundle-marker.mjs";
 
 if (process.platform !== "win32") throw new Error("portable Windows release must run on Windows");
 const hub = fileURLToPath(new URL("../", import.meta.url));
@@ -30,6 +31,7 @@ rmSync(staged, { recursive: true, force: true });
 mkdirSync(staged, { recursive: true });
 run("tar.exe", ["-xf", archive, "-C", staged]);
 const executables = ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"].map((name) => join(staged, name));
+patchTauriBundleTypeForNsis(join(staged, "membrane-hub.exe"));
 run("pnpm", ["exec", "right-release", "sign-windows", ...executables]);
 run("pnpm", ["exec", "right-release", "sign-windows", "--verify-only", ...executables]);
 
@@ -48,3 +50,4 @@ materializeHardeningEvidence({
 run(process.execPath, [hardeningScan, "--allow-evidence", hardeningEvidence, ...executables], repoRoot);
 run("node", ["scripts/package-portable-windows.mjs", "--input-root", staged, "--hub-exe", join(staged, "membrane-hub.exe"), "--started-at", candidate.startedAt]);
 run("node", ["scripts/finalize-portable-release.mjs"]);
+run("node", ["scripts/bundle-portable-installer-windows.mjs"]);

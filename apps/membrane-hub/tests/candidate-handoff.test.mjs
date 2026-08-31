@@ -43,6 +43,14 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
       mkdirSync(dirname(join(payload, name)), { recursive: true });
       writeFileSync(join(payload, name), bytes);
     }
+    for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+      mkdirSync(dirname(join(payload, name)), { recursive: true });
+      writeFileSync(join(payload, name), bytes);
+    }
+    mkdirSync(join(payload, "skills", "membrane"), { recursive: true });
+    writeFileSync(join(payload, "skills", "membrane", "SKILL.md"), bytes);
+    writeFileSync(join(payload, "LICENSE"), bytes);
+    writeFileSync(join(payload, "THIRD_PARTY_NOTICES.md"), bytes);
     const archive = createPortableArchive({ sourceDir: payload, outputPath: join(root, "candidate.zip") });
     const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8", windowsHide: true }).stdout.trim();
     const namedArchive = join(root, "membrane-test-windows-x86_64-unsigned.zip");
@@ -59,20 +67,15 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
       return { name: path.split(/[\\/]/).at(-1), size: body.length, sha256: createHash("sha256").update(body).digest("hex") };
     });
     const signing = { status: "unsigned", reason: "test_fixture" };
-    const installerName = "Membrane_Hub_test_unsigned_x64-setup.exe";
-    const installerPath = join(root, installerName);
-    writeFileSync(installerPath, bytes);
-    const installerSha256 = createHash("sha256").update(bytes).digest("hex");
-    const installer = { name: installerName, size: bytes.length, sha256: installerSha256, signing };
     writeFileSync(join(root, "release-manifest.json"), `${JSON.stringify({
       schema: "membrane.release-evidence.v1",
       product: "Membrane Hub",
-      artifact: { path: installerName, size: bytes.length, sha256: installerSha256 },
+      artifact: { path: "membrane-test-windows-x86_64-unsigned.zip", size: archive.size, sha256: archive.sha256 },
       signing,
     })}\n`);
     writeFileSync(join(root, "sbom.json"), `${JSON.stringify({
       schema: "membrane.sbom.v1",
-      artifact: { path: installerName, size: bytes.length, sha256: installerSha256 },
+      artifact: { path: "membrane-test-windows-x86_64-unsigned.zip", size: archive.size, sha256: archive.sha256 },
       signing,
     })}\n`);
     writeFileSync(join(root, "candidate.json"), `${JSON.stringify({
@@ -86,7 +89,6 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
       github: { runId: "123", runAttempt: "1" },
       startedAt,
       archive: { name: "membrane-test-windows-x86_64-unsigned.zip", size: archive.size, sha256: archive.sha256 },
-      installer,
       evidence,
       files: Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")])),
     })}\n`);

@@ -37,6 +37,11 @@ for (const name of [
 ]) {
   if (!candidate.files?.[name]) throw new Error(`candidate hook projection closure missing: ${name}`);
 }
+for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
+  if (!candidate.files?.[name]) throw new Error(`candidate client projection closure missing: ${name}`);
+}
+for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) if (!candidate.files?.[name]) throw new Error(`candidate legal closure missing: ${name}`);
+if (!Object.keys(candidate.files ?? {}).some((name) => name.startsWith("skills/membrane/"))) throw new Error("candidate skill closure is missing");
 if (!Object.keys(candidate.files ?? {}).some((name) => name.startsWith("runtime/"))) throw new Error("candidate runtime closure is missing");
 const archive = join(artifactRoot, candidate.archive.name);
 if (!existsSync(archive)) throw new Error("candidate archive is missing");
@@ -44,21 +49,14 @@ const bytes = readFileSync(archive);
 if (bytes.length !== candidate.archive.size) throw new Error("candidate archive size mismatch");
 if (createHash("sha256").update(bytes).digest("hex") !== candidate.archive.sha256) throw new Error("candidate archive digest mismatch");
 if (signingStatus !== "signed" && signingStatus !== "unsigned") throw new Error("candidate signing status is invalid");
-const installerRecord = candidate.installer;
-if (!installerRecord?.name || !/^[A-Za-z0-9_.+-]+\.exe$/i.test(installerRecord.name)) throw new Error("candidate installer identity is missing");
-if (!installerRecord.name.toLowerCase().includes(`_${signingStatus}_`)) throw new Error("candidate installer signing label is missing");
-const installer = join(artifactRoot, installerRecord.name);
-if (!existsSync(installer)) throw new Error("candidate installer is missing");
-const installerBytes = readFileSync(installer);
-if (installerBytes.length !== installerRecord.size || createHash("sha256").update(installerBytes).digest("hex") !== installerRecord.sha256) throw new Error("candidate installer digest mismatch");
 const manifestPath = join(artifactRoot, "release-manifest.json");
 const sbomPath = join(artifactRoot, "sbom.json");
 if (!existsSync(manifestPath) || !existsSync(sbomPath)) throw new Error("candidate qualification evidence is incomplete");
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const sbom = JSON.parse(readFileSync(sbomPath, "utf8"));
-if (manifest.schema !== "membrane.release-evidence.v1" || manifest.product !== "Membrane Hub" || manifest.artifact?.sha256?.toLowerCase() !== installerRecord.sha256.toLowerCase() || !manifest.artifact?.path) throw new Error("release manifest is not installer-bound");
-if (sbom.schema !== "membrane.sbom.v1" || sbom.artifact?.sha256?.toLowerCase() !== installerRecord.sha256.toLowerCase() || !sbom.artifact?.path) throw new Error("SBOM is not installer-bound");
-if (manifest.signing?.status !== signingStatus || sbom.signing?.status !== signingStatus || candidate.installer.signing?.status !== signingStatus) throw new Error("candidate signing label is inconsistent");
+if (manifest.schema !== "membrane.release-evidence.v1" || manifest.product !== "Membrane Hub" || manifest.artifact?.sha256?.toLowerCase() !== candidate.archive.sha256.toLowerCase() || manifest.artifact?.path !== candidate.archive.name) throw new Error("release manifest is not candidate-archive-bound");
+if (sbom.schema !== "membrane.sbom.v1" || sbom.artifact?.sha256?.toLowerCase() !== candidate.archive.sha256.toLowerCase() || sbom.artifact?.path !== candidate.archive.name) throw new Error("SBOM is not candidate-archive-bound");
+if (manifest.signing?.status !== signingStatus || sbom.signing?.status !== signingStatus) throw new Error("candidate signing label is inconsistent");
 const evidenceNames = new Set([`sbom-windows-x86_64-${signingStatus}.cdx.json`, `provenance-windows-x86_64-${signingStatus}.intoto.jsonl`]);
 if (!Array.isArray(candidate.evidence) || candidate.evidence.length !== evidenceNames.size || candidate.evidence.some((item) => !evidenceNames.delete(item.name)) || evidenceNames.size) throw new Error("candidate evidence closure is invalid");
 for (const evidence of candidate.evidence) {

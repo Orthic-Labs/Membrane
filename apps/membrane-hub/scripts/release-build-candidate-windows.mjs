@@ -5,6 +5,7 @@ import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPortableArchive } from "@rightkit/release/direct-bootstrap.mjs";
 import { materializeCycloneDxSbom, materializeInTotoSlsaProvenance } from "@rightkit/release/supply-chain-evidence.mjs";
+import { CLIENT_PROJECTION_KINDS, assemblePortableCore, validatePortableCore } from "@rightkit/ax/plugin/portable-core";
 
 if (process.platform !== "win32") throw new Error("Windows candidate must build on Windows");
 
@@ -77,15 +78,6 @@ const hubExecutable = join(hubTarget, target, "release", "membrane-hub.exe");
 if (!existsSync(hubExecutable)) throw new Error(`candidate executable missing: ${hubExecutable}`);
 const signing = { status: "unsigned", reason: "public_candidate_requires_protected_finalization" };
 
-// Candidate bytes are deliberately unsigned. RightKit signing finalization
-// consumes this exact handoff only after a protected tag-triggered boundary.
-run("pnpm", ["exec", "tauri", "bundle", "--target", target, "--bundles", "nsis", "--config", "src-tauri/tauri.windows.conf.json"], hub, candidateEnv);
-const generatedInstaller = join(hubTarget, target, "release", "bundle", "nsis", `Membrane Hub_${pkg.version}_x64-setup.exe`);
-if (!existsSync(generatedInstaller)) throw new Error(`candidate installer missing: ${generatedInstaller}`);
-const installerName = `Membrane_Hub_${pkg.version}_${signing.status}_x64-setup.exe`;
-const installerPath = join(artifactRoot, installerName);
-cpSync(generatedInstaller, installerPath);
-
 const executables = [[hubExecutable, "membrane-hub.exe"], ...stagedSidecars];
 for (const [source, name] of executables) cpSync(source, join(payload, name));
 const runtime = join(hub, "src-tauri", "runtime");
@@ -115,6 +107,27 @@ for (const file of hookFiles) {
   cpSync(source, join(payload, file));
 }
 
+// Candidate owns complete client/plugin projection. Protected finalization is
+// forbidden from rebuilding this content from its checkout.
+const portableCore = join(artifactRoot, "agent-plugin-core");
+const pluginContract = assemblePortableCore({
+  outputDir: portableCore,
+  pluginManifestPath: join(repo, "plugin.json"),
+  mcpManifestPath: join(repo, "mcp.json"),
+  skills: [{ id: "membrane", visibility: "public", sourceRoot: repo, sourceDir: join(repo, "skills", "membrane") }],
+  clientProjections: CLIENT_PROJECTION_KINDS,
+});
+const pluginValidation = validatePortableCore(portableCore);
+if (!pluginValidation.valid) throw new Error(`candidate Agent Plugins core invalid: ${pluginValidation.errors.join("; ")}`);
+for (const entry of readdirSync(portableCore)) cpSync(join(portableCore, entry), join(payload, entry), { recursive: true });
+for (const entry of [".claude-plugin", ".codex-plugin", ".antigravity-plugin"]) cpSync(join(repo, entry), join(payload, entry), { recursive: true });
+mkdirSync(join(payload, ".agents", "skills"), { recursive: true });
+cpSync(join(repo, "skills", "membrane"), join(payload, ".agents", "skills", "membrane"), { recursive: true });
+mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
+cpSync(join(repo, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
+cpSync(join(repo, "LICENSE"), join(payload, "LICENSE"));
+cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(payload, "THIRD_PARTY_NOTICES.md"));
+
 const files = Object.fromEntries(filesUnder(payload).map((path) => [relative(payload, path).replaceAll("\\", "/"), sha256(path)]));
 const statusSuffix = signing.status;
 const archiveName = `membrane-${pkg.version}-windows-x86_64-${statusSuffix}.zip`;
@@ -130,7 +143,6 @@ const identity = JSON.parse(readFileSync(identityPath, "utf8"));
 if (!/^[0-9a-f]{64}$/.test(identity.sourceTreeSha256) || identity.releaseGeneration !== `sha256:${identity.sourceTreeSha256}`) {
   throw new Error("candidate release identity is not hash-bound");
 }
-const installerSha256 = sha256(installerPath);
 const releaseManifest = {
   schema: "membrane.release-evidence.v1",
   product: "Membrane Hub",
@@ -141,17 +153,17 @@ const releaseManifest = {
     tree: identity.sourceTreeSha256,
     generation: identity.sourceTreeSha256,
     target: "windows-x86_64",
-    artifact_sha256: installerSha256,
+    artifact_sha256: archive.sha256,
   },
-  artifact: { path: installerName, sha256: installerSha256, size: statSync(installerPath).size },
+  artifact: { path: archiveName, sha256: archive.sha256, size: archive.size },
   signing,
 };
 const qualificationSbom = {
   schema: "membrane.sbom.v1",
   signing,
-  artifact: { path: installerName, sha256: installerSha256, size: statSync(installerPath).size },
+  artifact: { path: archiveName, sha256: archive.sha256, size: archive.size },
   package: { name: "membrane-hub", version: pkg.version, target: "windows-x86_64" },
-  components: [{ name: "Membrane Hub Windows installer", type: "application", sha256: installerSha256 }],
+  components: [{ name: "Membrane Windows candidate payload", type: "application", sha256: archive.sha256 }],
 };
 const releaseManifestPath = join(artifactRoot, "release-manifest.json");
 const qualificationSbomPath = join(artifactRoot, "sbom.json");
@@ -168,7 +180,7 @@ writeFileSync(join(artifactRoot, "candidate.json"), `${JSON.stringify({
   github: { runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT },
   startedAt,
   archive: { name: basename(archive.path), size: archive.size, sha256: archive.sha256 },
-  installer: { name: installerName, size: statSync(installerPath).size, sha256: installerSha256, signing },
+  agentPlugins: pluginContract,
   releaseManifest: { name: "release-manifest.json", size: statSync(releaseManifestPath).size, sha256: sha256(releaseManifestPath) },
   sbom: { name: "sbom.json", size: statSync(qualificationSbomPath).size, sha256: sha256(qualificationSbomPath) },
   evidence: [sbomPath, provenancePath].map((path) => ({ name: basename(path), size: statSync(path).size, sha256: sha256(path) })),

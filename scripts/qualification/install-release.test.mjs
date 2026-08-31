@@ -51,12 +51,14 @@ test("qualification covers tray, popup, renderer, native cutover & forbidden des
   assert.match(lower, /Get-InstalledContentEvidence/i);
 });
 
-test("qualification proves current -> downgrade -> upgrade state continuity & uninstall residue", () => {
-  assert.match(lower, /invoke-installer \$installerpath[\s\S]*invoke-installer \$previouspath[\s\S]*invoke-installer \$installerpath/);
+test("qualification proves current -> transition -> upgrade or repair state continuity & uninstall residue", () => {
+  assert.match(lower, /invoke-installer \$installerpath[\s\S]*(?:invoke-installer \$previouspath[\s\S]*invoke-installer \$installerpath|invoke-installer \$installerpath)/);
   assert.match(lower, /start-andverifyprevioushub \$previousversion/);
   assert.match(lower, /previous signed hub did not remain running during downgrade/);
   assert.match(lower, /downgrade\s*=\s*\$rollback/);
-  assert.match(lower, /downgradecontract\s*=\s*'signed-version-liveness-durable-state-v1'/);
+  assert.match(lower, /transitioncontract\s*=\s*'signed-version-liveness-durable-state-v1'/);
+  assert.match(lower, /transitioncontract\s*=\s*'first-stable-layout-repair-v1'/);
+  assert.match(lower, /same-version repair did not create & switch to a unique version root/);
   assert.match(lower, /durablestate.*preserved/);
   assert.match(lower, /upgradecontract\s*=\s*'full-native-upgrade-uninstall-v1'/);
   for (const field of ["installRootRemoved", "processesRemoved", "shortcutsRemoved", "registryRemoved", "durableStatePreserved"]) assert.ok(source.includes(field), field);
@@ -65,7 +67,8 @@ test("qualification proves current -> downgrade -> upgrade state continuity & un
     "durable data changed during downgrade", "durable data changed during upgrade",
     "Assert-UninstallResidue", "receipt-owned residue", "shortcut targeting install root",
     "registry install entry",
-    "uninstall left install root directory",
+    "uninstall left current junction",
+    "uninstall left versioned payloads",
   ]) assert.ok(lower.includes(term.toLowerCase()), term);
   assert.match(lower, /get-artifactversion/);
   assert.match(lower, /current & previous installers are the same version/);
