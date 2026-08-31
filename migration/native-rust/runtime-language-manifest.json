@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-31T04:47:04.692Z",
+ "generatedAt": "2026-08-31T06:08:25.357Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1226,
+  "files": 1228,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1463,6 +1463,7 @@
    "files": [
     "engine/crates/membrane-runtime/build.rs",
     "engine/crates/membrane-runtime/examples/hub_runtime_test_host.rs",
+    "engine/crates/membrane-runtime/src/adapt.rs",
     "engine/crates/membrane-runtime/src/admission_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
@@ -1548,6 +1549,7 @@
     "engine/crates/membrane-runtime/src/store.rs",
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
+    "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs",
     "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
     "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
     "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
@@ -1580,7 +1582,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "6e7190b327a1b8b9ad82a3be3815d9837c1c2bce9a4fc1aa4e58b693397a2cf0"
+   "content_digest": "437d5efac8a0998d04aeadea928c96ec71fa3d8ce897cd2461267e0b02e58e6d"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

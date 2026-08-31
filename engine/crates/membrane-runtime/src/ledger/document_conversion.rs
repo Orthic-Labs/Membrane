@@ -3,11 +3,11 @@
 //! Conversion retains raw input in its result. Media never enters document text. Ledger owns
 //! this rebuildable normalization receipt, not source truth or durable storage.
 
+use flate2::read::DeflateDecoder;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::io::Read;
-use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -226,7 +226,7 @@ pub fn convert_granted_document(
         }
         DocumentInputFormatV1::Docx => {
             let output_limit = grant.max_raw_bytes.saturating_mul(8).min(16 * 1024 * 1024);
-            let (normalized, media_count, tar_version) =
+            let (normalized, media_count, converter_version) =
                 normalize_docx(&input.raw_input, output_limit)?;
             losses.push(ConversionLossV1::FormattingFlattened);
             if media_count > 0 {
@@ -235,7 +235,7 @@ pub fn convert_granted_document(
             (
                 normalized,
                 "ledger.docx-wordprocessingml".to_owned(),
-                tar_version,
+                converter_version,
             )
         }
         DocumentInputFormatV1::Other(format) => {
@@ -403,105 +403,7 @@ fn normalize_docx(
             detail: "docx_zip_header_missing".to_owned(),
         });
     }
-    let tar_version_output = tar_command()
-        .arg("--version")
-        .output()
-        .map_err(|_| DocumentConversionErrorV1::ConverterUnavailable {
-            converter: "tar".to_owned(),
-        })?;
-    let tar_version = String::from_utf8_lossy(&tar_version_output.stdout)
-        .lines()
-        .next()
-        .unwrap_or("tar-version-unknown")
-        .trim()
-        .to_owned();
-    let hash = digest(raw);
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    let temp_path = std::env::temp_dir().join(format!(
-        "membrane-ledger-docx-{}-{}-{}.docx",
-        std::process::id(),
-        &hash[..16],
-        nonce
-    ));
-    std::fs::write(&temp_path, raw).map_err(|error| DocumentConversionErrorV1::InvalidInput {
-        detail: format!("docx_temp_write:{error}"),
-    })?;
-    let child = tar_command()
-        .arg("-xOf")
-        .arg(&temp_path)
-        .arg("word/document.xml")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn();
-    let mut child = match child {
-        Ok(child) => child,
-        Err(_) => {
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(DocumentConversionErrorV1::ConverterUnavailable {
-                converter: "tar".to_owned(),
-            });
-        }
-    };
-    let Some(stdout) = child.stdout.take() else {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(DocumentConversionErrorV1::InvalidInput {
-            detail: "docx_stdout_missing".to_owned(),
-        });
-    };
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let reader = std::thread::spawn(move || {
-        let mut xml = Vec::new();
-        let result = stdout
-            .take(output_limit.saturating_add(1) as u64)
-            .read_to_end(&mut xml)
-            .map(|_| xml);
-        let _ = sender.send(result);
-    });
-    let xml = match receiver.recv_timeout(std::time::Duration::from_secs(5)) {
-        Ok(Ok(xml)) => xml,
-        Ok(Err(error)) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(DocumentConversionErrorV1::InvalidInput {
-                detail: format!("docx_read:{error}"),
-            });
-        }
-        Err(_) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(DocumentConversionErrorV1::InvalidInput {
-                detail: "docx_converter_timeout".to_owned(),
-            });
-        }
-    };
-    let _ = reader.join();
-    if xml.len() > output_limit {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = std::fs::remove_file(&temp_path);
-        return Err(DocumentConversionErrorV1::OutputTooLarge {
-            actual: xml.len(),
-            maximum: output_limit,
-        });
-    }
-    let status = child.wait().map_err(|error| DocumentConversionErrorV1::InvalidInput {
-        detail: format!("docx_wait:{error}"),
-    })?;
-    let _ = std::fs::remove_file(&temp_path);
-    if !status.success() {
-        return Err(DocumentConversionErrorV1::InvalidInput {
-            detail: "docx_document_xml_missing".to_owned(),
-        });
-    }
+    let xml = extract_zip_entry(raw, b"word/document.xml", output_limit)?;
     let xml = String::from_utf8(xml).map_err(|error| DocumentConversionErrorV1::InvalidInput {
         detail: format!("docx_xml_utf8:{error}"),
     })?;
@@ -514,7 +416,183 @@ fn normalize_docx(
     let media_occurrences = String::from_utf8_lossy(raw)
         .match_indices("word/media/")
         .count();
-    Ok((markdown, media_occurrences.div_ceil(2), tar_version))
+    Ok((
+        markdown,
+        media_occurrences.div_ceil(2),
+        "zip-wordprocessingml-v1".to_owned(),
+    ))
+}
+
+fn extract_zip_entry(
+    archive: &[u8],
+    wanted_name: &[u8],
+    output_limit: usize,
+) -> Result<Vec<u8>, DocumentConversionErrorV1> {
+    const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
+    const CENTRAL_SIGNATURE: &[u8; 4] = b"PK\x01\x02";
+    const LOCAL_SIGNATURE: &[u8; 4] = b"PK\x03\x04";
+    let search_start = archive.len().saturating_sub(65_557);
+    let eocd = (search_start..archive.len().saturating_sub(3))
+        .rev()
+        .find(|offset| archive.get(*offset..offset + 4) == Some(EOCD_SIGNATURE.as_slice()))
+        .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_end_of_central_directory_missing".to_owned(),
+        })?;
+    if eocd + 22 > archive.len()
+        || read_u16(archive, eocd + 4)? != 0
+        || read_u16(archive, eocd + 6)? != 0
+        || read_u16(archive, eocd + 8)? != read_u16(archive, eocd + 10)?
+        || eocd + 22 + usize::from(read_u16(archive, eocd + 20)?) != archive.len()
+    {
+        return Err(DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_multidisk_zip_unsupported".to_owned(),
+        });
+    }
+    let entry_count = usize::from(read_u16(archive, eocd + 10)?);
+    let central_size = usize::try_from(read_u32(archive, eocd + 12)?).unwrap_or(usize::MAX);
+    let mut cursor = usize::try_from(read_u32(archive, eocd + 16)?).unwrap_or(usize::MAX);
+    let central_end = cursor.checked_add(central_size).filter(|end| *end <= archive.len()).ok_or_else(|| {
+        DocumentConversionErrorV1::InvalidInput {
+            detail: "docx_central_directory_out_of_bounds".to_owned(),
+        }
+    })?;
+    for _ in 0..entry_count {
+        if cursor + 46 > central_end
+            || archive.get(cursor..cursor + 4) != Some(CENTRAL_SIGNATURE.as_slice())
+        {
+            return Err(DocumentConversionErrorV1::InvalidInput {
+                detail: "docx_central_directory_invalid".to_owned(),
+            });
+        }
+        let flags = read_u16(archive, cursor + 8)?;
+        let method = read_u16(archive, cursor + 10)?;
+        let expected_crc = read_u32(archive, cursor + 16)?;
+        let compressed_size = usize::try_from(read_u32(archive, cursor + 20)?).unwrap_or(usize::MAX);
+        let uncompressed_size = usize::try_from(read_u32(archive, cursor + 24)?).unwrap_or(usize::MAX);
+        let name_len = usize::from(read_u16(archive, cursor + 28)?);
+        let extra_len = usize::from(read_u16(archive, cursor + 30)?);
+        let comment_len = usize::from(read_u16(archive, cursor + 32)?);
+        let local_offset = usize::try_from(read_u32(archive, cursor + 42)?).unwrap_or(usize::MAX);
+        let name_start = cursor + 46;
+        let next = name_start
+            .checked_add(name_len)
+            .and_then(|value| value.checked_add(extra_len))
+            .and_then(|value| value.checked_add(comment_len))
+            .filter(|value| *value <= central_end)
+            .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+                detail: "docx_central_entry_out_of_bounds".to_owned(),
+            })?;
+        if archive.get(name_start..name_start + name_len) == Some(wanted_name) {
+            if flags & 0x0001 != 0 {
+                return Err(DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_encrypted_entry_unsupported".to_owned(),
+                });
+            }
+            if uncompressed_size > output_limit {
+                return Err(DocumentConversionErrorV1::OutputTooLarge {
+                    actual: uncompressed_size,
+                    maximum: output_limit,
+                });
+            }
+            let local_header_end = local_offset.checked_add(30).ok_or_else(|| {
+                DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_local_entry_out_of_bounds".to_owned(),
+                }
+            })?;
+            if local_header_end > archive.len()
+                || archive.get(local_offset..local_offset + 4)
+                    != Some(LOCAL_SIGNATURE.as_slice())
+            {
+                return Err(DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_local_entry_invalid".to_owned(),
+                });
+            }
+            let local_name_len = usize::from(read_u16(archive, local_offset + 26)?);
+            let local_extra_len = usize::from(read_u16(archive, local_offset + 28)?);
+            let data_start = local_offset
+                .checked_add(30)
+                .and_then(|value| value.checked_add(local_name_len))
+                .and_then(|value| value.checked_add(local_extra_len))
+                .ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_local_entry_out_of_bounds".to_owned(),
+                })?;
+            let data_end = data_start.checked_add(compressed_size).filter(|end| *end <= archive.len()).ok_or_else(|| {
+                DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_compressed_entry_out_of_bounds".to_owned(),
+                }
+            })?;
+            let compressed = &archive[data_start..data_end];
+            let mut output = Vec::with_capacity(uncompressed_size.min(output_limit));
+            match method {
+                0 if compressed.len() <= output_limit => output.extend_from_slice(compressed),
+                0 => {
+                    return Err(DocumentConversionErrorV1::OutputTooLarge {
+                        actual: compressed.len(),
+                        maximum: output_limit,
+                    });
+                }
+                8 => {
+                    DeflateDecoder::new(compressed)
+                        .take(output_limit.saturating_add(1) as u64)
+                        .read_to_end(&mut output)
+                        .map_err(|error| DocumentConversionErrorV1::InvalidInput {
+                            detail: format!("docx_deflate:{error}"),
+                        })?;
+                }
+                unsupported => {
+                    return Err(DocumentConversionErrorV1::InvalidInput {
+                        detail: format!("docx_compression_unsupported:{unsupported}"),
+                    });
+                }
+            }
+            if output.len() > output_limit {
+                return Err(DocumentConversionErrorV1::OutputTooLarge {
+                    actual: output.len(),
+                    maximum: output_limit,
+                });
+            }
+            if output.len() != uncompressed_size {
+                return Err(DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_uncompressed_size_mismatch".to_owned(),
+                });
+            }
+            if zip_crc32(&output) != expected_crc {
+                return Err(DocumentConversionErrorV1::InvalidInput {
+                    detail: "docx_crc_mismatch".to_owned(),
+                });
+            }
+            return Ok(output);
+        }
+        cursor = next;
+    }
+    Err(DocumentConversionErrorV1::InvalidInput {
+        detail: "docx_document_xml_missing".to_owned(),
+    })
+}
+
+fn read_u16(bytes: &[u8], offset: usize) -> Result<u16, DocumentConversionErrorV1> {
+    let value = bytes.get(offset..offset + 2).ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+        detail: "docx_zip_field_out_of_bounds".to_owned(),
+    })?;
+    Ok(u16::from_le_bytes([value[0], value[1]]))
+}
+
+fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, DocumentConversionErrorV1> {
+    let value = bytes.get(offset..offset + 4).ok_or_else(|| DocumentConversionErrorV1::InvalidInput {
+        detail: "docx_zip_field_out_of_bounds".to_owned(),
+    })?;
+    Ok(u32::from_le_bytes([value[0], value[1], value[2], value[3]]))
+}
+
+fn zip_crc32(bytes: &[u8]) -> u32 {
+    let mut crc = 0xffff_ffffu32;
+    for byte in bytes {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            crc = (crc >> 1) ^ (0xedb8_8320u32 & 0u32.wrapping_sub(crc & 1));
+        }
+    }
+    !crc
 }
 
 fn wordprocessingml_text(xml: &str) -> String {
@@ -545,16 +623,6 @@ fn wordprocessingml_text(xml: &str) -> String {
         cursor = after;
     }
     format!("{}\n", output.trim())
-}
-
-fn tar_command() -> Command {
-    let mut command = Command::new("tar");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
-    }
-    command
 }
 
 fn decode_xml_entities(value: &str) -> String {

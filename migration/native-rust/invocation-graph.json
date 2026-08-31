@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "3b301767041316b2a9cc19be8fc7e8174834eec4",
- "generatedAt": "2026-08-31T04:47:05.102Z",
+ "baselineCommit": "605098d2861f3402ce488bdc3b7e3b4f24bfac1f",
+ "generatedAt": "2026-08-31T06:08:28.653Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -6051,7 +6051,7 @@
   },
   {
    "id": "engine/crates/membrane-runtime/src/adapt.rs",
-   "kind": "referenced-file",
+   "kind": "tracked-executable",
    "runtime": "rust",
    "production_reachable": true,
    "reachability_evidence": {
@@ -6896,6 +6896,12 @@
     "seed": "engine/crates/membrane/src/main.rs",
     "hops": 3
    }
+  },
+  {
+   "id": "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs",
+   "kind": "tracked-executable",
+   "runtime": "rust",
+   "production_reachable": false
   },
   {
    "id": "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
@@ -43714,6 +43720,7 @@
   "engine/crates/membrane-provider-sdk/src/provider.rs",
   "engine/crates/membrane-provider-sdk/src/registry.rs",
   "engine/crates/membrane-provider-sdk/src/source.rs",
+  "engine/crates/membrane-runtime/src/adapt.rs",
   "engine/crates/membrane-runtime/src/admission_producer.rs",
   "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
   "engine/crates/membrane-runtime/src/agent_adapter_view.rs",

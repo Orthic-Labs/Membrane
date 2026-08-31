@@ -2518,6 +2518,7 @@ dependencies = [
  "cortex-core",
  "cortex-format",
  "cortex-store",
+ "flate2",
  "getrandom 0.4.3",
  "hex",
  "membrane-adapt",
