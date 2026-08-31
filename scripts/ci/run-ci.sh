@@ -6,8 +6,9 @@ pnpm --dir apps/membrane-hub install --frozen-lockfile
 if [[ "${RIGHT_GIT_RUST_CHANGED:-true}" != "false" ]]; then
   cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
 else
-  echo "Building test-required Membrane binary from cache: right-git found no Rust-impacting changes."
-  cargo build --manifest-path engine/Cargo.toml --locked --bin membrane
+  echo "Building test-required Membrane binaries from cache: right-git found no Rust-impacting changes."
+  cargo build --manifest-path engine/Cargo.toml --locked --package membrane --bin membrane
+  cargo build --manifest-path engine/Cargo.toml --locked --package membrane-runtime --example hub_runtime_test_host
 fi
 pnpm test
 pnpm test:random

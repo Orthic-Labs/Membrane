@@ -13,6 +13,7 @@ const read = (relativePath) => readFileSync(join(root, relativePath), "utf8");
 test("generated CI remains right-git managed & reaches repository gate", () => {
   const workflow = read(".github/workflows/ci.yml");
   const rightGit = JSON.parse(read(".rightgit.json"));
+  const gate = read("scripts/ci/run-ci.sh");
 
   assert.match(workflow, /^# Managed by right-git — do not hand-edit\./m);
   assert.ok(workflow.includes(`# Template: profiles/rust-hybrid/ci.yml | Template version: ${rightGit.templateVersion}`));
@@ -20,7 +21,11 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
   assert.equal(rightGit.compile, "github-actions-only");
   assert.equal(rightGit.profile, "rust-hybrid");
   assert.equal(rightGit.gate.path, "scripts/ci/run-ci.sh");
+  assert.equal(rightGit.rustCache.requiredForGate, true);
   assert.doesNotMatch(workflow, /run:\s*(?:bash\s+)?cargo\b/);
+  assert.match(gate, /RIGHT_GIT_RUST_CHANGED:-true/);
+  assert.match(gate, /--package membrane --bin membrane/);
+  assert.match(gate, /--package membrane-runtime --example hub_runtime_test_host/);
 });
 
 test("equivalence Cargo stages enter through RightKit", () => {
