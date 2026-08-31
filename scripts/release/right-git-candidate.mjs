@@ -5,6 +5,7 @@ import { basename, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPortableArchive } from "@rightkit/release/direct-bootstrap.mjs";
 import { materializeCycloneDxSbom, materializeInTotoSlsaProvenance, validateCycloneDxSbom, validateInTotoSlsaProvenance } from "@rightkit/release/supply-chain-evidence.mjs";
+import { assertCandidateSourceClean } from "./candidate-source-clean.mjs";
 
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 const hub = join(repo, "apps", "membrane-hub");
@@ -42,12 +43,7 @@ function filesUnder(directory) {
 
 function assertContext({ allowGeneratedSchemaOutput = false } = {}) {
 	if (!root || !platform || !architecture) throw new Error("RightGit candidate platform, architecture, and artifact root are required");
-	const changedPaths = git(["status", "--porcelain"])
-		.split("\n")
-		.filter(Boolean)
-		.map((line) => line.slice(3).trim());
-	const unexpectedPaths = changedPaths.filter((path) => !allowGeneratedSchemaOutput || !path.startsWith("apps/membrane-hub/src-tauri/gen/"));
-	if (unexpectedPaths.length) throw new Error(`candidate source must be clean: ${unexpectedPaths.join(", ")}`);
+	assertCandidateSourceClean({ git, allowGeneratedSchemaOutput });
   const commit = git(["rev-parse", "HEAD"]);
   if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "Orthic-Labs/Membrane" || process.env.GITHUB_SHA !== commit) {
     throw new Error("release candidates may be built only by exact-source Orthic-Labs/Membrane GitHub Actions");

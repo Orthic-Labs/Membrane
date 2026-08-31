@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { assertCandidateSourceClean } from "./release/candidate-source-clean.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(root, relativePath), "utf8");
@@ -51,9 +54,40 @@ test("each release candidate materializes Hub dependencies from Hub lockfile", (
 	assert.match(candidate, /platform === "macos"[\s\S]*pnpm", \["--dir", hub, "install", "--frozen-lockfile"\]/);
 	assert.match(candidate, /MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1"/);
 	assert.match(candidate, /allowGeneratedSchemaOutput: mode === "check"/);
-	assert.match(candidate, /apps\/membrane-hub\/src-tauri\/gen\//);
+	assert.match(candidate, /assertCandidateSourceClean\(\{ git, allowGeneratedSchemaOutput \}\)/);
 	assert.match(windows, /cargo", \["build", "--locked"/);
 	assert.match(windows, /cargo", \["metadata", "--locked"/);
+});
+
+test("candidate source check accepts Tauri's same-byte manifest rewrite & rejects real source drift", () => {
+	const repo = mkdtempSync(join(tmpdir(), "membrane-candidate-source-"));
+	const cargoToml = join(repo, "apps", "membrane-hub", "src-tauri", "Cargo.toml");
+	const git = (args) => execFileSync("git", args, { cwd: repo, encoding: "utf8" });
+	try {
+		mkdirSync(dirname(cargoToml), { recursive: true });
+		writeFileSync(cargoToml, '[package]\nname = "membrane-hub"\n');
+		git(["init", "-q"]);
+		git(["config", "user.email", "release@example.invalid"]);
+		git(["config", "user.name", "Membrane Release"]);
+		git(["add", "."]);
+		git(["commit", "-qm", "fixture"]);
+
+		// This mirrors Tauri's Windows rewrite: a new write with identical bytes.
+		writeFileSync(cargoToml, readFileSync(cargoToml));
+		assert.doesNotThrow(() => assertCandidateSourceClean({ git }));
+
+		writeFileSync(cargoToml, '[package]\nname = "tampered"\n');
+		assert.throws(() => assertCandidateSourceClean({ git }), /Cargo\.toml/);
+		git(["checkout", "--", "."]);
+
+		const generated = join(repo, "apps", "membrane-hub", "src-tauri", "gen", "schema.json");
+		mkdirSync(dirname(generated), { recursive: true });
+		writeFileSync(generated, "{}");
+		assert.throws(() => assertCandidateSourceClean({ git }), /schema\.json/);
+		assert.doesNotThrow(() => assertCandidateSourceClean({ git, allowGeneratedSchemaOutput: true }));
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
+	}
 });
 
 test("qualified publication uploads exact notarized macOS DMG beside Windows release assets", () => {
