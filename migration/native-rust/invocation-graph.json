@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "3466e5ece56cc949cdf4a0285da5091934ff461f",
- "generatedAt": "2026-08-31T08:46:09.352Z",
+ "baselineCommit": "4a77ee78b3f6036f90768f37a7dd134376ecb46b",
+ "generatedAt": "2026-08-31T15:35:41.846Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -761,6 +761,12 @@
   },
   {
    "id": "apps/membrane-hub/scripts/build-windows-release.mjs",
+   "kind": "tracked-executable",
+   "runtime": "node",
+   "production_reachable": false
+  },
+  {
+   "id": "apps/membrane-hub/scripts/bundle-portable-installer-windows.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
    "production_reachable": false
@@ -43360,12 +43366,6 @@
   {
    "from": "scripts/ci/build-invocation-graph.mjs",
    "reference": "git",
-   "kind": "spawn",
-   "reason": "bare executable name (PATH-resolved)"
-  },
-  {
-   "from": "scripts/ci/check-atomic-canons.mjs",
-   "reference": "rg",
    "kind": "spawn",
    "reason": "bare executable name (PATH-resolved)"
   },

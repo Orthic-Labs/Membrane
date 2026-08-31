@@ -21,7 +21,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 export const GRAPH_REL = "migration/native-rust/invocation-graph.json";
@@ -704,6 +704,6 @@ function main(argv) {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${resolve(process.argv[1])}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   process.exitCode = main(process.argv.slice(2));
 }
