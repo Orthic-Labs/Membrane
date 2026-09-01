@@ -2,8 +2,9 @@
 // Native client enrollment. Client configuration is changed only through native MCP CLIs.
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, rename, writeFile, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bindingFor, canonicalRoot, defaultRegistryPath, enroll, installationFor, removeBinding, rotateToken } from "./project-registry.mjs";
 import { installationBindingFor } from "./installation-binding.mjs";
@@ -182,16 +183,48 @@ export function installedCurrentRoot({ env = process.env, platform = process.pla
   return join(base, "Orthic Labs", "Membrane", "current");
 }
 
+function sameInstalledPath(left, right, platform) {
+  const a = resolve(left);
+  const b = resolve(right);
+  return platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+/** Require activation identity proof before any global client reconciliation. */
+export function installedActivationReceipt({ env = process.env, platform = process.platform } = {}) {
+  const root = installedCurrentRoot({ env, platform });
+  const executable = join(root, platform === "win32" ? "membrane.exe" : "membrane");
+  const receiptPath = join(dirname(root), "state", "activation-receipt.json");
+  let receipt;
+  try {
+    receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  } catch (error) {
+    throw new Error(`installed activation identity receipt unavailable: ${error.message}`);
+  }
+  if (
+    receipt.schemaVersion !== 1
+    || receipt.runtimeOrigin !== "installed"
+    || receipt.dryRun !== false
+    || !sameInstalledPath(receipt.installRoot, root, platform)
+    || !sameInstalledPath(receipt.membraneExecutable, executable, platform)
+    || receipt.service?.serviceId !== "membrane-hub"
+    || typeof receipt.service?.releaseGeneration !== "string"
+    || receipt.service.releaseGeneration.length === 0
+  ) throw new Error("installed activation identity receipt does not match stable current");
+  return receipt;
+}
+
 export function createInstalledNativeInstaller({ runner = spawnRunner, env = process.env, platform = process.platform } = {}) {
   const root = installedCurrentRoot({ env, platform });
+  installedActivationReceipt({ env, platform });
   const executable = join(root, platform === "win32" ? "membrane.exe" : "membrane");
   return createNativeInstaller({ runner, nodePath: executable, serverPath: "stdio-mcp", mode: "production" });
 }
 
 function nativeInstallerForRuntime(options = {}) {
-  return process.env.MEMBRANE_RUNTIME_ORIGIN === "installed"
-    ? createInstalledNativeInstaller(options)
-    : createNativeInstaller(options);
+  if (process.env.MEMBRANE_RUNTIME_ORIGIN !== "installed") {
+    throw new Error("global client binding requires installed runtime origin, stable current, and activation identity receipt");
+  }
+  return createInstalledNativeInstaller(options);
 }
 
 function descriptorFrom(rest, scope_id) {

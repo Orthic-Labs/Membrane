@@ -60,6 +60,11 @@ const bootstrap = renderPowerShellBootstrap({
   healthAssertions: [
     { path: "schemaVersion", equals: 1 },
     { path: "dryRun", equals: true },
+    { path: "runtimeOrigin", equals: "installed" },
+    { path: "installRoot", nonempty: true },
+    { path: "versionRoot", nonempty: true },
+    { path: "membraneExecutable", nonempty: true },
+    { path: "trayExecutable", nonempty: true },
     { path: "service.serviceId", equals: "membrane-hub" },
     { path: "service.releaseGeneration", nonempty: true },
     { path: "clients", minCount: 2 },

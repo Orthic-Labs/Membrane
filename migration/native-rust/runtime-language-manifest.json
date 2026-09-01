@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-01T11:57:08.129Z",
+ "generatedAt": "2026-09-01T14:34:03.010Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1216,
+  "files": 1215,
   "rows": 55,
   "byRuntime": {
    "python": 7,
@@ -1155,7 +1155,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "4b3085f4500fbf3932424bc2b93f44049ee8a9aed133e42727b7169a75e9d600"
+   "content_digest": "0e4aa1730868f73f743f28caea4e7814111963040b459f3ab802b4baa568e600"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1761,7 +1761,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "38b0f28f11ca9624cba665162dec08ee62cb328ed573f7a111436c2896d8b079"
+   "content_digest": "203043f7e24691837f751636dd05ad5955ae5ad4079449c68774894f100b3a22"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1923,7 +1923,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "5f5cb95f2cb1a391fb02fb9b1faa1c89a02b87021adebad219af1a5ccf38e24e"
+   "content_digest": "86aef06fc7410d4f953263ad8c4b6553a37b86b08da2ba6f91368b30f4b2b13c"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -2105,8 +2105,7 @@
     "scripts/ci/test-random.mjs",
     "scripts/generate-host-contracts.mjs",
     "scripts/generate-host-contracts.test.mjs",
-    "scripts/generate-install-workspace.mjs",
-    "scripts/generate-install-workspace.test.mjs",
+    "scripts/install-boundary.test.mjs",
     "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
     "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
     "scripts/qualification/install-release.test.mjs",
@@ -2151,7 +2150,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "8253e73ff8d7d1d0d673575f5fc4dc214af7528634ff1b4ef260f95a8030255c"
+   "content_digest": "e4f6220a0cafa101a6f78831f4962838c481c90987d48aaca6dc1516f86f8890"
   },
   {
    "id": "tests-root-tests-root",
