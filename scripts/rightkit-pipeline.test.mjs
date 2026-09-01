@@ -84,6 +84,10 @@ test("macOS release is signed & notarized through RightRelease before stapling",
   assert.match(finalizeMac, /\["stapler", "validate", dmg\]/);
   assert.match(finalizeMac, /"spctl"/);
   assert.match(releaseChain, /release:build:mac"\], repo, \{ \.\.\.process\.env, MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1" \}/);
+  const workflow = read(".github/workflows/release-candidate.yml");
+  const macosSign = workflow.slice(workflow.indexOf("  macos-sign:"), workflow.indexOf("  installed-qualification:"));
+  assert.match(macosSign, /git checkout -B main "\$SOURCE_REVISION"/);
+  assert.match(macosSign, /git symbolic-ref --short HEAD/);
 });
 
 test("candidate source check accepts Tauri's same-byte manifest rewrite & rejects real source drift", () => {

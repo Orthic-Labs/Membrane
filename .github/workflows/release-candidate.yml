@@ -330,6 +330,15 @@ jobs:
         with:
           ref: ${{ needs.admission.outputs.source_revision }}
           persist-credentials: false
+      - name: Attach exact release revision to main
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ needs.admission.outputs.source_revision }}
+        run: |
+          set -euo pipefail
+          git checkout -B main "$SOURCE_REVISION"
+          test "$(git rev-parse HEAD)" = "$SOURCE_REVISION"
+          test "$(git symbolic-ref --short HEAD)" = "main"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.13
