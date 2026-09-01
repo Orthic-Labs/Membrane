@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "96fcdc80bd98aab2532c5fe679e08b785c2b909d",
- "generatedAt": "2026-08-31T21:57:34.732Z",
+ "baselineCommit": "9df44d28eaf6e36422e764c5d092276915569b15",
+ "generatedAt": "2026-09-01T09:14:49.471Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -16,7 +16,7 @@
    "childProcessLiteralScan": true,
    "repoRelativeExecutablePathLiterals": true,
    "rustModTree": true,
-   "scannedEdges": 1947
+   "scannedEdges": 1913
   },
   "curatedEdges": 9,
   "limitations": [
@@ -3602,12 +3602,6 @@
    "production_reachable": false
   },
   {
-   "id": "blueprint/tests/package-manager-manifests.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
    "id": "blueprint/tests/package-metadata.test.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
@@ -4131,18 +4125,6 @@
    "id": "continuity/transcript/tests/test_transcript_event_v1.py",
    "kind": "tracked-executable",
    "runtime": "python",
-   "production_reachable": false
-  },
-  {
-   "id": "dist/npm/bin/membrane.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "dist/npm/index.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
    "production_reachable": false
   },
   {
@@ -5256,6 +5238,16 @@
    }
   },
   {
+   "id": "engine/crates/membrane-federation/src/egress_redaction.rs",
+   "kind": "tracked-executable",
+   "runtime": "rust",
+   "production_reachable": true,
+   "reachability_evidence": {
+    "seed": "engine/crates/membrane/src/main.rs",
+    "hops": 4
+   }
+  },
+  {
    "id": "engine/crates/membrane-federation/src/engine.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
@@ -5304,12 +5296,6 @@
     "seed": "engine/crates/membrane/src/main.rs",
     "hops": 4
    }
-  },
-  {
-   "id": "engine/crates/membrane-federation/src/migrate_audit.rs",
-   "kind": "tracked-executable",
-   "runtime": "rust",
-   "production_reachable": false
   },
   {
    "id": "engine/crates/membrane-federation/src/migrate_decisions.rs",
@@ -8350,18 +8336,6 @@
    "production_reachable": false
   },
   {
-   "id": "scripts/release/npm/resolve-platform-artifacts.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "scripts/release/npm/resolve-platform-artifacts.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
    "id": "scripts/release/oci/generate-oci-release.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
@@ -8374,18 +8348,6 @@
    "production_reachable": false
   },
   {
-   "id": "scripts/release/registry/tool-contract-coverage.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "scripts/release/registry/verify-server-json.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
    "id": "scripts/release/right-git-candidate.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
@@ -8393,12 +8355,6 @@
   },
   {
    "id": "scripts/release/right-git-release-chain.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "scripts/release/verify-mcp-registry.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
    "production_reachable": false
@@ -8758,24 +8714,6 @@
    "production_reachable": false
   },
   {
-   "id": "tests/mcp-registry/registry.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "tests/mcp-registry/verify-server-json.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
    "id": "tests/mcp-resources/resources.contract.test.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
@@ -8783,24 +8721,6 @@
   },
   {
    "id": "tests/mcp-resources/resources.parity.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "tests/npm/bootstrap.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "tests/npm/install-cli.test.mjs",
-   "kind": "tracked-executable",
-   "runtime": "node",
-   "production_reachable": false
-  },
-  {
-   "id": "tests/npm/platform-packages.test.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
    "production_reachable": false
@@ -26709,20 +26629,6 @@
   },
   {
    "id": "e1270",
-   "from": "dist/npm/bin/membrane.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "dist/npm/bin/membrane.mjs",
-     "symbol": "../index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1271",
    "from": "dist/packages/python/src/membrane_client/__init__.py",
    "to": "dist/packages/python/src/membrane_client/client.py",
    "operation": "python-import",
@@ -26736,7 +26642,7 @@
    ]
   },
   {
-   "id": "e1272",
+   "id": "e1271",
    "from": "dist/release/channels/compatibility-policy.mjs",
    "to": "tests/compat/release-channel-compatibility.test.mjs",
    "operation": "executable-path-reference",
@@ -26750,7 +26656,7 @@
    ]
   },
   {
-   "id": "e1273",
+   "id": "e1272",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/absorbed.rs",
    "operation": "rust-module-declaration",
@@ -26764,7 +26670,7 @@
    ]
   },
   {
-   "id": "e1274",
+   "id": "e1273",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/accounting.rs",
    "operation": "rust-module-declaration",
@@ -26778,7 +26684,7 @@
    ]
   },
   {
-   "id": "e1275",
+   "id": "e1274",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/calibration.rs",
    "operation": "rust-module-declaration",
@@ -26792,7 +26698,7 @@
    ]
   },
   {
-   "id": "e1276",
+   "id": "e1275",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/dream.rs",
    "operation": "rust-module-declaration",
@@ -26806,7 +26712,7 @@
    ]
   },
   {
-   "id": "e1277",
+   "id": "e1276",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/effectiveness.rs",
    "operation": "rust-module-declaration",
@@ -26820,7 +26726,7 @@
    ]
   },
   {
-   "id": "e1278",
+   "id": "e1277",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/embed.rs",
    "operation": "rust-module-declaration",
@@ -26834,7 +26740,7 @@
    ]
   },
   {
-   "id": "e1279",
+   "id": "e1278",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/eval_gate.rs",
    "operation": "rust-module-declaration",
@@ -26848,7 +26754,7 @@
    ]
   },
   {
-   "id": "e1280",
+   "id": "e1279",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/fingerprint.rs",
    "operation": "rust-module-declaration",
@@ -26862,7 +26768,7 @@
    ]
   },
   {
-   "id": "e1281",
+   "id": "e1280",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/graph.rs",
    "operation": "rust-module-declaration",
@@ -26876,7 +26782,7 @@
    ]
   },
   {
-   "id": "e1282",
+   "id": "e1281",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/markdown.rs",
    "operation": "rust-module-declaration",
@@ -26890,7 +26796,7 @@
    ]
   },
   {
-   "id": "e1283",
+   "id": "e1282",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/planner.rs",
    "operation": "rust-module-declaration",
@@ -26904,7 +26810,7 @@
    ]
   },
   {
-   "id": "e1284",
+   "id": "e1283",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/quant.rs",
    "operation": "rust-module-declaration",
@@ -26918,7 +26824,7 @@
    ]
   },
   {
-   "id": "e1285",
+   "id": "e1284",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/registry.rs",
    "operation": "rust-module-declaration",
@@ -26932,7 +26838,7 @@
    ]
   },
   {
-   "id": "e1286",
+   "id": "e1285",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/retriever.rs",
    "operation": "rust-module-declaration",
@@ -26946,7 +26852,7 @@
    ]
   },
   {
-   "id": "e1287",
+   "id": "e1286",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/review.rs",
    "operation": "rust-module-declaration",
@@ -26960,7 +26866,7 @@
    ]
   },
   {
-   "id": "e1288",
+   "id": "e1287",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/routing.rs",
    "operation": "rust-module-declaration",
@@ -26974,7 +26880,7 @@
    ]
   },
   {
-   "id": "e1289",
+   "id": "e1288",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/transcript.rs",
    "operation": "rust-module-declaration",
@@ -26988,7 +26894,7 @@
    ]
   },
   {
-   "id": "e1290",
+   "id": "e1289",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/types.rs",
    "operation": "rust-module-declaration",
@@ -27002,7 +26908,7 @@
    ]
   },
   {
-   "id": "e1291",
+   "id": "e1290",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/vector_index.rs",
    "operation": "rust-module-declaration",
@@ -27016,7 +26922,7 @@
    ]
   },
   {
-   "id": "e1292",
+   "id": "e1291",
    "from": "engine/crates/cortex-core/src/lib.rs",
    "to": "engine/crates/cortex-core/src/vector_index_tests.rs",
    "operation": "rust-module-declaration",
@@ -27030,7 +26936,7 @@
    ]
   },
   {
-   "id": "e1293",
+   "id": "e1292",
    "from": "engine/crates/cortex-core/src/retriever.rs",
    "to": "engine/crates/cortex-core/src/lexical.rs",
    "operation": "rust-module-declaration",
@@ -27044,7 +26950,7 @@
    ]
   },
   {
-   "id": "e1294",
+   "id": "e1293",
    "from": "engine/crates/cortex-format/src/lib.rs",
    "to": "engine/crates/cortex-format/src/okf.rs",
    "operation": "rust-module-declaration",
@@ -27058,7 +26964,7 @@
    ]
   },
   {
-   "id": "e1295",
+   "id": "e1294",
    "from": "engine/crates/cortex-store/src/context_telemetry.rs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "executable-path-reference",
@@ -27072,7 +26978,7 @@
    ]
   },
   {
-   "id": "e1296",
+   "id": "e1295",
    "from": "engine/crates/cortex-store/src/context_telemetry.rs",
    "to": "mcp/delivery-serialization.test.mjs",
    "operation": "executable-path-reference",
@@ -27086,7 +26992,7 @@
    ]
   },
   {
-   "id": "e1297",
+   "id": "e1296",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/absorbed_migrations.rs",
    "operation": "rust-module-declaration",
@@ -27100,7 +27006,7 @@
    ]
   },
   {
-   "id": "e1298",
+   "id": "e1297",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/absorbed_records.rs",
    "operation": "rust-module-declaration",
@@ -27114,7 +27020,7 @@
    ]
   },
   {
-   "id": "e1299",
+   "id": "e1298",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/context_telemetry.rs",
    "operation": "rust-module-declaration",
@@ -27128,7 +27034,7 @@
    ]
   },
   {
-   "id": "e1300",
+   "id": "e1299",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/db.rs",
    "operation": "rust-module-declaration",
@@ -27142,7 +27048,7 @@
    ]
   },
   {
-   "id": "e1301",
+   "id": "e1300",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/fts5.rs",
    "operation": "rust-module-declaration",
@@ -27156,7 +27062,7 @@
    ]
   },
   {
-   "id": "e1302",
+   "id": "e1301",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/installation_identity.rs",
    "operation": "rust-module-declaration",
@@ -27170,7 +27076,7 @@
    ]
   },
   {
-   "id": "e1303",
+   "id": "e1302",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/maintenance_exec.rs",
    "operation": "rust-module-declaration",
@@ -27184,7 +27090,7 @@
    ]
   },
   {
-   "id": "e1304",
+   "id": "e1303",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/memdb.rs",
    "operation": "rust-module-declaration",
@@ -27198,7 +27104,7 @@
    ]
   },
   {
-   "id": "e1305",
+   "id": "e1304",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/scope.rs",
    "operation": "rust-module-declaration",
@@ -27212,7 +27118,7 @@
    ]
   },
   {
-   "id": "e1306",
+   "id": "e1305",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/team_sync.rs",
    "operation": "rust-module-declaration",
@@ -27226,7 +27132,7 @@
    ]
   },
   {
-   "id": "e1307",
+   "id": "e1306",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/temporal.rs",
    "operation": "rust-module-declaration",
@@ -27240,7 +27146,7 @@
    ]
   },
   {
-   "id": "e1308",
+   "id": "e1307",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/time.rs",
    "operation": "rust-module-declaration",
@@ -27254,7 +27160,7 @@
    ]
   },
   {
-   "id": "e1309",
+   "id": "e1308",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/cortex-store/src/transcript.rs",
    "operation": "rust-module-declaration",
@@ -27268,7 +27174,7 @@
    ]
   },
   {
-   "id": "e1310",
+   "id": "e1309",
    "from": "engine/crates/membrane-adapt/src/insights/mod.rs",
    "to": "engine/crates/membrane-adapt/src/insights/detectors.rs",
    "operation": "rust-module-declaration",
@@ -27282,7 +27188,7 @@
    ]
   },
   {
-   "id": "e1311",
+   "id": "e1310",
    "from": "engine/crates/membrane-adapt/src/insights/mod.rs",
    "to": "engine/crates/membrane-adapt/src/insights/guards.rs",
    "operation": "rust-module-declaration",
@@ -27296,7 +27202,7 @@
    ]
   },
   {
-   "id": "e1312",
+   "id": "e1311",
    "from": "engine/crates/membrane-adapt/src/insights/mod.rs",
    "to": "engine/crates/membrane-adapt/src/insights/recurrence.rs",
    "operation": "rust-module-declaration",
@@ -27310,7 +27216,7 @@
    ]
   },
   {
-   "id": "e1313",
+   "id": "e1312",
    "from": "engine/crates/membrane-adapt/src/insights/mod.rs",
    "to": "engine/crates/membrane-adapt/src/insights/sealed_issue.rs",
    "operation": "rust-module-declaration",
@@ -27324,7 +27230,7 @@
    ]
   },
   {
-   "id": "e1314",
+   "id": "e1313",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/adaptive.rs",
    "operation": "rust-module-declaration",
@@ -27338,7 +27244,7 @@
    ]
   },
   {
-   "id": "e1315",
+   "id": "e1314",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/admission.rs",
    "operation": "rust-module-declaration",
@@ -27352,7 +27258,7 @@
    ]
   },
   {
-   "id": "e1316",
+   "id": "e1315",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/attribution.rs",
    "operation": "rust-module-declaration",
@@ -27366,7 +27272,7 @@
    ]
   },
   {
-   "id": "e1317",
+   "id": "e1316",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/authority.rs",
    "operation": "rust-module-declaration",
@@ -27380,7 +27286,7 @@
    ]
   },
   {
-   "id": "e1318",
+   "id": "e1317",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/benchmark.rs",
    "operation": "rust-module-declaration",
@@ -27394,7 +27300,7 @@
    ]
   },
   {
-   "id": "e1319",
+   "id": "e1318",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/canonical.rs",
    "operation": "rust-module-declaration",
@@ -27408,7 +27314,7 @@
    ]
   },
   {
-   "id": "e1320",
+   "id": "e1319",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/cli_api.rs",
    "operation": "rust-module-declaration",
@@ -27422,7 +27328,7 @@
    ]
   },
   {
-   "id": "e1321",
+   "id": "e1320",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/context_cost.rs",
    "operation": "rust-module-declaration",
@@ -27436,7 +27342,7 @@
    ]
   },
   {
-   "id": "e1322",
+   "id": "e1321",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/delivery.rs",
    "operation": "rust-module-declaration",
@@ -27450,7 +27356,7 @@
    ]
   },
   {
-   "id": "e1323",
+   "id": "e1322",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/duplicate_groups.rs",
    "operation": "rust-module-declaration",
@@ -27464,7 +27370,7 @@
    ]
   },
   {
-   "id": "e1324",
+   "id": "e1323",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/evidence.rs",
    "operation": "rust-module-declaration",
@@ -27478,7 +27384,7 @@
    ]
   },
   {
-   "id": "e1325",
+   "id": "e1324",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/gates.rs",
    "operation": "rust-module-declaration",
@@ -27492,7 +27398,7 @@
    ]
   },
   {
-   "id": "e1326",
+   "id": "e1325",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/insights/mod.rs",
    "operation": "rust-module-declaration",
@@ -27506,7 +27412,7 @@
    ]
   },
   {
-   "id": "e1327",
+   "id": "e1326",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/lineage.rs",
    "operation": "rust-module-declaration",
@@ -27520,7 +27426,7 @@
    ]
   },
   {
-   "id": "e1328",
+   "id": "e1327",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/manifest.rs",
    "operation": "rust-module-declaration",
@@ -27534,7 +27440,7 @@
    ]
   },
   {
-   "id": "e1329",
+   "id": "e1328",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/model_boundary.rs",
    "operation": "rust-module-declaration",
@@ -27548,7 +27454,7 @@
    ]
   },
   {
-   "id": "e1330",
+   "id": "e1329",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/multiwriter.rs",
    "operation": "rust-module-declaration",
@@ -27562,7 +27468,7 @@
    ]
   },
   {
-   "id": "e1331",
+   "id": "e1330",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/outcomes.rs",
    "operation": "rust-module-declaration",
@@ -27576,7 +27482,7 @@
    ]
   },
   {
-   "id": "e1332",
+   "id": "e1331",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/portable.rs",
    "operation": "rust-module-declaration",
@@ -27590,7 +27496,7 @@
    ]
   },
   {
-   "id": "e1333",
+   "id": "e1332",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/procedural_effectiveness.rs",
    "operation": "rust-module-declaration",
@@ -27604,7 +27510,7 @@
    ]
   },
   {
-   "id": "e1334",
+   "id": "e1333",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/proposal.rs",
    "operation": "rust-module-declaration",
@@ -27618,7 +27524,7 @@
    ]
   },
   {
-   "id": "e1335",
+   "id": "e1334",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/proposal_state.rs",
    "operation": "rust-module-declaration",
@@ -27632,7 +27538,7 @@
    ]
   },
   {
-   "id": "e1336",
+   "id": "e1335",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/record.rs",
    "operation": "rust-module-declaration",
@@ -27646,7 +27552,7 @@
    ]
   },
   {
-   "id": "e1337",
+   "id": "e1336",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/remediation.rs",
    "operation": "rust-module-declaration",
@@ -27660,7 +27566,7 @@
    ]
   },
   {
-   "id": "e1338",
+   "id": "e1337",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/scope.rs",
    "operation": "rust-module-declaration",
@@ -27674,7 +27580,7 @@
    ]
   },
   {
-   "id": "e1339",
+   "id": "e1338",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/seal.rs",
    "operation": "rust-module-declaration",
@@ -27688,7 +27594,7 @@
    ]
   },
   {
-   "id": "e1340",
+   "id": "e1339",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/taste.rs",
    "operation": "rust-module-declaration",
@@ -27702,7 +27608,7 @@
    ]
   },
   {
-   "id": "e1341",
+   "id": "e1340",
    "from": "engine/crates/membrane-client/src/lib.rs",
    "to": "engine/crates/membrane-client/src/error.rs",
    "operation": "rust-module-declaration",
@@ -27716,7 +27622,7 @@
    ]
   },
   {
-   "id": "e1342",
+   "id": "e1341",
    "from": "engine/crates/membrane-client/src/lib.rs",
    "to": "engine/crates/membrane-client/src/handshake.rs",
    "operation": "rust-module-declaration",
@@ -27730,7 +27636,7 @@
    ]
   },
   {
-   "id": "e1343",
+   "id": "e1342",
    "from": "engine/crates/membrane-client/src/lib.rs",
    "to": "engine/crates/membrane-client/src/memory_backend.rs",
    "operation": "rust-module-declaration",
@@ -27744,7 +27650,7 @@
    ]
   },
   {
-   "id": "e1344",
+   "id": "e1343",
    "from": "engine/crates/membrane-client/src/lib.rs",
    "to": "engine/crates/membrane-client/src/records.rs",
    "operation": "rust-module-declaration",
@@ -27758,7 +27664,7 @@
    ]
   },
   {
-   "id": "e1345",
+   "id": "e1344",
    "from": "engine/crates/membrane-client/tests/compat.rs",
    "to": "tests/sdk/cross-language-compat.test.mjs",
    "operation": "executable-path-reference",
@@ -27772,7 +27678,7 @@
    ]
   },
   {
-   "id": "e1346",
+   "id": "e1345",
    "from": "engine/crates/membrane-client/tests/compat.rs",
    "to": "tests/sdk/python_client_test.py",
    "operation": "executable-path-reference",
@@ -27786,7 +27692,7 @@
    ]
   },
   {
-   "id": "e1347",
+   "id": "e1346",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/budget.rs",
    "operation": "rust-module-declaration",
@@ -27800,7 +27706,7 @@
    ]
   },
   {
-   "id": "e1348",
+   "id": "e1347",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/compaction.rs",
    "operation": "rust-module-declaration",
@@ -27814,7 +27720,7 @@
    ]
   },
   {
-   "id": "e1349",
+   "id": "e1348",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/compaction_receipt.rs",
    "operation": "rust-module-declaration",
@@ -27828,7 +27734,7 @@
    ]
   },
   {
-   "id": "e1350",
+   "id": "e1349",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/fusion.rs",
    "operation": "rust-module-declaration",
@@ -27842,7 +27748,7 @@
    ]
   },
   {
-   "id": "e1351",
+   "id": "e1350",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/lane.rs",
    "operation": "rust-module-declaration",
@@ -27856,7 +27762,7 @@
    ]
   },
   {
-   "id": "e1352",
+   "id": "e1351",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-core/src/reconcile.rs",
    "operation": "rust-module-declaration",
@@ -27866,6 +27772,20 @@
     {
      "path": "engine/crates/membrane-core/src/lib.rs",
      "symbol": "mod reconcile;"
+    }
+   ]
+  },
+  {
+   "id": "e1352",
+   "from": "engine/crates/membrane-federation/src/blueprint_client.rs",
+   "to": "blueprint/src/service/protocol.mjs",
+   "operation": "executable-path-reference",
+   "boundary": "path-reference",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-federation/src/blueprint_client.rs",
+     "symbol": "blueprint/src/service/protocol.mjs"
     }
    ]
   },
@@ -27928,6 +27848,20 @@
   {
    "id": "e1357",
    "from": "engine/crates/membrane-federation/src/lib.rs",
+   "to": "engine/crates/membrane-federation/src/egress_redaction.rs",
+   "operation": "rust-module-declaration",
+   "boundary": "module",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "engine/crates/membrane-federation/src/lib.rs",
+     "symbol": "mod egress_redaction;"
+    }
+   ]
+  },
+  {
+   "id": "e1358",
+   "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/engine.rs",
    "operation": "rust-module-declaration",
    "boundary": "module",
@@ -27940,7 +27874,7 @@
    ]
   },
   {
-   "id": "e1358",
+   "id": "e1359",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/error.rs",
    "operation": "rust-module-declaration",
@@ -27954,7 +27888,7 @@
    ]
   },
   {
-   "id": "e1359",
+   "id": "e1360",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/freshness.rs",
    "operation": "rust-module-declaration",
@@ -27968,7 +27902,7 @@
    ]
   },
   {
-   "id": "e1360",
+   "id": "e1361",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/merge.rs",
    "operation": "rust-module-declaration",
@@ -27982,7 +27916,7 @@
    ]
   },
   {
-   "id": "e1361",
+   "id": "e1362",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/migrate_decisions.rs",
    "operation": "rust-module-declaration",
@@ -27996,7 +27930,7 @@
    ]
   },
   {
-   "id": "e1362",
+   "id": "e1363",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/normalize.rs",
    "operation": "rust-module-declaration",
@@ -28010,7 +27944,7 @@
    ]
   },
   {
-   "id": "e1363",
+   "id": "e1364",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/omission.rs",
    "operation": "rust-module-declaration",
@@ -28024,7 +27958,7 @@
    ]
   },
   {
-   "id": "e1364",
+   "id": "e1365",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/registry.rs",
    "operation": "rust-module-declaration",
@@ -28038,7 +27972,7 @@
    ]
   },
   {
-   "id": "e1365",
+   "id": "e1366",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/release.rs",
    "operation": "rust-module-declaration",
@@ -28052,7 +27986,7 @@
    ]
   },
   {
-   "id": "e1366",
+   "id": "e1367",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/request.rs",
    "operation": "rust-module-declaration",
@@ -28066,7 +28000,7 @@
    ]
   },
   {
-   "id": "e1367",
+   "id": "e1368",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/root.rs",
    "operation": "rust-module-declaration",
@@ -28080,7 +28014,7 @@
    ]
   },
   {
-   "id": "e1368",
+   "id": "e1369",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/scheduler.rs",
    "operation": "rust-module-declaration",
@@ -28094,7 +28028,7 @@
    ]
   },
   {
-   "id": "e1369",
+   "id": "e1370",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/scope.rs",
    "operation": "rust-module-declaration",
@@ -28108,7 +28042,7 @@
    ]
   },
   {
-   "id": "e1370",
+   "id": "e1371",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/shadow.rs",
    "operation": "rust-module-declaration",
@@ -28122,7 +28056,7 @@
    ]
   },
   {
-   "id": "e1371",
+   "id": "e1372",
    "from": "engine/crates/membrane-federation/src/scope.rs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -28136,7 +28070,7 @@
    ]
   },
   {
-   "id": "e1372",
+   "id": "e1373",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/discovery.rs",
    "operation": "rust-module-declaration",
@@ -28150,7 +28084,7 @@
    ]
   },
   {
-   "id": "e1373",
+   "id": "e1374",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/http_security.rs",
    "operation": "rust-module-declaration",
@@ -28164,7 +28098,7 @@
    ]
   },
   {
-   "id": "e1374",
+   "id": "e1375",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/jsonrpc.rs",
    "operation": "rust-module-declaration",
@@ -28178,7 +28112,7 @@
    ]
   },
   {
-   "id": "e1375",
+   "id": "e1376",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/prompts.rs",
    "operation": "rust-module-declaration",
@@ -28192,7 +28126,7 @@
    ]
   },
   {
-   "id": "e1376",
+   "id": "e1377",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/resources.rs",
    "operation": "rust-module-declaration",
@@ -28206,7 +28140,7 @@
    ]
   },
   {
-   "id": "e1377",
+   "id": "e1378",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/tools.rs",
    "operation": "rust-module-declaration",
@@ -28220,7 +28154,7 @@
    ]
   },
   {
-   "id": "e1378",
+   "id": "e1379",
    "from": "engine/crates/membrane-protocol/bindings/operations.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -28234,7 +28168,7 @@
    ]
   },
   {
-   "id": "e1379",
+   "id": "e1380",
    "from": "engine/crates/membrane-protocol/bindings/operations.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -28248,7 +28182,7 @@
    ]
   },
   {
-   "id": "e1380",
+   "id": "e1381",
    "from": "engine/crates/membrane-protocol/bindings/operations.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
    "operation": "esm-import",
@@ -28262,7 +28196,7 @@
    ]
   },
   {
-   "id": "e1381",
+   "id": "e1382",
    "from": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -28276,7 +28210,7 @@
    ]
   },
   {
-   "id": "e1382",
+   "id": "e1383",
    "from": "engine/crates/membrane-protocol/bindings/roundtrip.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -28290,7 +28224,7 @@
    ]
   },
   {
-   "id": "e1383",
+   "id": "e1384",
    "from": "engine/crates/membrane-protocol/src/canonical.rs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -28304,7 +28238,7 @@
    ]
   },
   {
-   "id": "e1384",
+   "id": "e1385",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/background_review.rs",
    "operation": "rust-module-declaration",
@@ -28318,7 +28252,7 @@
    ]
   },
   {
-   "id": "e1385",
+   "id": "e1386",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/canonical.rs",
    "operation": "rust-module-declaration",
@@ -28332,7 +28266,7 @@
    ]
   },
   {
-   "id": "e1386",
+   "id": "e1387",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/compatibility_policy.rs",
    "operation": "rust-module-declaration",
@@ -28346,7 +28280,7 @@
    ]
   },
   {
-   "id": "e1387",
+   "id": "e1388",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/compression.rs",
    "operation": "rust-module-declaration",
@@ -28360,7 +28294,7 @@
    ]
   },
   {
-   "id": "e1388",
+   "id": "e1389",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/diagnostics.rs",
    "operation": "rust-module-declaration",
@@ -28374,7 +28308,7 @@
    ]
   },
   {
-   "id": "e1389",
+   "id": "e1390",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/federation.rs",
    "operation": "rust-module-declaration",
@@ -28388,7 +28322,7 @@
    ]
   },
   {
-   "id": "e1390",
+   "id": "e1391",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/fusion.rs",
    "operation": "rust-module-declaration",
@@ -28402,7 +28336,7 @@
    ]
   },
   {
-   "id": "e1391",
+   "id": "e1392",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/heartbeat.rs",
    "operation": "rust-module-declaration",
@@ -28416,7 +28350,7 @@
    ]
   },
   {
-   "id": "e1392",
+   "id": "e1393",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/host_observation.rs",
    "operation": "rust-module-declaration",
@@ -28430,7 +28364,7 @@
    ]
   },
   {
-   "id": "e1393",
+   "id": "e1394",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/hub.rs",
    "operation": "rust-module-declaration",
@@ -28444,7 +28378,7 @@
    ]
   },
   {
-   "id": "e1394",
+   "id": "e1395",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/installation.rs",
    "operation": "rust-module-declaration",
@@ -28458,7 +28392,7 @@
    ]
   },
   {
-   "id": "e1395",
+   "id": "e1396",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lease.rs",
    "operation": "rust-module-declaration",
@@ -28472,7 +28406,7 @@
    ]
   },
   {
-   "id": "e1396",
+   "id": "e1397",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/membrane_status.rs",
    "operation": "rust-module-declaration",
@@ -28486,7 +28420,7 @@
    ]
   },
   {
-   "id": "e1397",
+   "id": "e1398",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/observable_event.rs",
    "operation": "rust-module-declaration",
@@ -28500,7 +28434,7 @@
    ]
   },
   {
-   "id": "e1398",
+   "id": "e1399",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/operations.rs",
    "operation": "rust-module-declaration",
@@ -28514,7 +28448,7 @@
    ]
   },
   {
-   "id": "e1399",
+   "id": "e1400",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/portable_pack.rs",
    "operation": "rust-module-declaration",
@@ -28528,7 +28462,7 @@
    ]
   },
   {
-   "id": "e1400",
+   "id": "e1401",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/provider_readiness.rs",
    "operation": "rust-module-declaration",
@@ -28542,7 +28476,7 @@
    ]
   },
   {
-   "id": "e1401",
+   "id": "e1402",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/push.rs",
    "operation": "rust-module-declaration",
@@ -28556,7 +28490,7 @@
    ]
   },
   {
-   "id": "e1402",
+   "id": "e1403",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/release_channel.rs",
    "operation": "rust-module-declaration",
@@ -28570,7 +28504,7 @@
    ]
   },
   {
-   "id": "e1403",
+   "id": "e1404",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/source_resolution.rs",
    "operation": "rust-module-declaration",
@@ -28584,7 +28518,7 @@
    ]
   },
   {
-   "id": "e1404",
+   "id": "e1405",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/status.rs",
    "operation": "rust-module-declaration",
@@ -28598,7 +28532,7 @@
    ]
   },
   {
-   "id": "e1405",
+   "id": "e1406",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/team_policy.rs",
    "operation": "rust-module-declaration",
@@ -28612,7 +28546,7 @@
    ]
   },
   {
-   "id": "e1406",
+   "id": "e1407",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/tray_daemon.rs",
    "operation": "rust-module-declaration",
@@ -28626,7 +28560,7 @@
    ]
   },
   {
-   "id": "e1407",
+   "id": "e1408",
    "from": "engine/crates/membrane-protocol/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/types.rs",
    "operation": "rust-module-declaration",
@@ -28640,7 +28574,7 @@
    ]
   },
   {
-   "id": "e1408",
+   "id": "e1409",
    "from": "engine/crates/membrane-protocol/src/observable_event.rs",
    "to": "mcp/observable-events.mjs",
    "operation": "executable-path-reference",
@@ -28654,7 +28588,7 @@
    ]
   },
   {
-   "id": "e1409",
+   "id": "e1410",
    "from": "engine/crates/membrane-protocol/src/operations.rs",
    "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
    "operation": "executable-path-reference",
@@ -28668,7 +28602,7 @@
    ]
   },
   {
-   "id": "e1410",
+   "id": "e1411",
    "from": "engine/crates/membrane-protocol/src/types.rs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -28682,7 +28616,7 @@
    ]
   },
   {
-   "id": "e1411",
+   "id": "e1412",
    "from": "engine/crates/membrane-protocol/src/types.rs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "executable-path-reference",
@@ -28696,7 +28630,7 @@
    ]
   },
   {
-   "id": "e1412",
+   "id": "e1413",
    "from": "engine/crates/membrane-protocol/tests/installation_handshake.rs",
    "to": "engine/crates/membrane-protocol/tests/common/mod.rs",
    "operation": "rust-module-declaration",
@@ -28710,7 +28644,7 @@
    ]
   },
   {
-   "id": "e1413",
+   "id": "e1414",
    "from": "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
    "to": "engine/crates/membrane-protocol/tests/common/mod.rs",
    "operation": "rust-module-declaration",
@@ -28724,7 +28658,7 @@
    ]
   },
   {
-   "id": "e1414",
+   "id": "e1415",
    "from": "engine/crates/membrane-protocol/tests/roundtrip.rs",
    "to": "engine/crates/membrane-protocol/tests/common/mod.rs",
    "operation": "rust-module-declaration",
@@ -28738,7 +28672,7 @@
    ]
   },
   {
-   "id": "e1415",
+   "id": "e1416",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/batch.rs",
    "operation": "rust-module-declaration",
@@ -28752,7 +28686,7 @@
    ]
   },
   {
-   "id": "e1416",
+   "id": "e1417",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/conformance.rs",
    "operation": "rust-module-declaration",
@@ -28766,7 +28700,7 @@
    ]
   },
   {
-   "id": "e1417",
+   "id": "e1418",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/context.rs",
    "operation": "rust-module-declaration",
@@ -28780,7 +28714,7 @@
    ]
   },
   {
-   "id": "e1418",
+   "id": "e1419",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/error.rs",
    "operation": "rust-module-declaration",
@@ -28794,7 +28728,7 @@
    ]
   },
   {
-   "id": "e1419",
+   "id": "e1420",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/output.rs",
    "operation": "rust-module-declaration",
@@ -28808,7 +28742,7 @@
    ]
   },
   {
-   "id": "e1420",
+   "id": "e1421",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/provider.rs",
    "operation": "rust-module-declaration",
@@ -28822,7 +28756,7 @@
    ]
   },
   {
-   "id": "e1421",
+   "id": "e1422",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/registry.rs",
    "operation": "rust-module-declaration",
@@ -28836,7 +28770,7 @@
    ]
   },
   {
-   "id": "e1422",
+   "id": "e1423",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/source.rs",
    "operation": "rust-module-declaration",
@@ -28850,7 +28784,7 @@
    ]
   },
   {
-   "id": "e1423",
+   "id": "e1424",
    "from": "engine/crates/membrane-runtime/src/authorization.rs",
    "to": "mcp/authorization.mjs",
    "operation": "executable-path-reference",
@@ -28864,7 +28798,7 @@
    ]
   },
   {
-   "id": "e1424",
+   "id": "e1425",
    "from": "engine/crates/membrane-runtime/src/authorization.rs",
    "to": "mcp/project-registry.mjs",
    "operation": "executable-path-reference",
@@ -28878,7 +28812,7 @@
    ]
   },
   {
-   "id": "e1425",
+   "id": "e1426",
    "from": "engine/crates/membrane-runtime/src/authorization.rs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -28892,7 +28826,7 @@
    ]
   },
   {
-   "id": "e1426",
+   "id": "e1427",
    "from": "engine/crates/membrane-runtime/src/authorization.rs",
    "to": "mcp/repository-catalog.mjs",
    "operation": "executable-path-reference",
@@ -28906,7 +28840,7 @@
    ]
   },
   {
-   "id": "e1427",
+   "id": "e1428",
    "from": "engine/crates/membrane-runtime/src/authorization.rs",
    "to": "mcp/installation-binding.mjs",
    "operation": "executable-path-reference",
@@ -28920,7 +28854,7 @@
    ]
   },
   {
-   "id": "e1428",
+   "id": "e1429",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/db.rs",
    "operation": "rust-module-declaration",
@@ -28934,7 +28868,7 @@
    ]
   },
   {
-   "id": "e1429",
+   "id": "e1430",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
    "operation": "rust-module-declaration",
@@ -28948,7 +28882,7 @@
    ]
   },
   {
-   "id": "e1430",
+   "id": "e1431",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
    "operation": "rust-module-declaration",
@@ -28962,7 +28896,7 @@
    ]
   },
   {
-   "id": "e1431",
+   "id": "e1432",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/doc_shadow.rs",
    "operation": "rust-module-declaration",
@@ -28976,7 +28910,7 @@
    ]
   },
   {
-   "id": "e1432",
+   "id": "e1433",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
    "operation": "rust-module-declaration",
@@ -28990,7 +28924,7 @@
    ]
   },
   {
-   "id": "e1433",
+   "id": "e1434",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
    "operation": "rust-module-declaration",
@@ -29004,7 +28938,7 @@
    ]
   },
   {
-   "id": "e1434",
+   "id": "e1435",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/identifier.rs",
    "operation": "rust-module-declaration",
@@ -29018,7 +28952,7 @@
    ]
   },
   {
-   "id": "e1435",
+   "id": "e1436",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/index.rs",
    "operation": "rust-module-declaration",
@@ -29032,7 +28966,7 @@
    ]
   },
   {
-   "id": "e1436",
+   "id": "e1437",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/link_projection.rs",
    "operation": "rust-module-declaration",
@@ -29046,7 +28980,7 @@
    ]
   },
   {
-   "id": "e1437",
+   "id": "e1438",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/outline.rs",
    "operation": "rust-module-declaration",
@@ -29060,7 +28994,7 @@
    ]
   },
   {
-   "id": "e1438",
+   "id": "e1439",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/query_alias.rs",
    "operation": "rust-module-declaration",
@@ -29074,7 +29008,7 @@
    ]
   },
   {
-   "id": "e1439",
+   "id": "e1440",
    "from": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
    "operation": "rust-module-declaration",
@@ -29088,7 +29022,7 @@
    ]
   },
   {
-   "id": "e1440",
+   "id": "e1441",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/admission_producer.rs",
    "operation": "rust-module-declaration",
@@ -29102,7 +29036,7 @@
    ]
   },
   {
-   "id": "e1441",
+   "id": "e1442",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/adapt.rs",
    "operation": "rust-module-declaration",
@@ -29116,7 +29050,7 @@
    ]
   },
   {
-   "id": "e1442",
+   "id": "e1443",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
    "operation": "rust-module-declaration",
@@ -29130,7 +29064,7 @@
    ]
   },
   {
-   "id": "e1443",
+   "id": "e1444",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
    "operation": "rust-module-declaration",
@@ -29144,7 +29078,7 @@
    ]
   },
   {
-   "id": "e1444",
+   "id": "e1445",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/authorization.rs",
    "operation": "rust-module-declaration",
@@ -29158,7 +29092,7 @@
    ]
   },
   {
-   "id": "e1445",
+   "id": "e1446",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/background_review.rs",
    "operation": "rust-module-declaration",
@@ -29172,7 +29106,7 @@
    ]
   },
   {
-   "id": "e1446",
+   "id": "e1447",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/cache_prefix.rs",
    "operation": "rust-module-declaration",
@@ -29186,7 +29120,7 @@
    ]
   },
   {
-   "id": "e1447",
+   "id": "e1448",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/catalog.rs",
    "operation": "rust-module-declaration",
@@ -29200,7 +29134,7 @@
    ]
   },
   {
-   "id": "e1448",
+   "id": "e1449",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/checkpoint.rs",
    "operation": "rust-module-declaration",
@@ -29214,7 +29148,7 @@
    ]
   },
   {
-   "id": "e1449",
+   "id": "e1450",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/cli.rs",
    "operation": "rust-module-declaration",
@@ -29228,7 +29162,7 @@
    ]
   },
   {
-   "id": "e1450",
+   "id": "e1451",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/code_batch.rs",
    "operation": "rust-module-declaration",
@@ -29242,7 +29176,7 @@
    ]
   },
   {
-   "id": "e1451",
+   "id": "e1452",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/cortex_relevance_spotcheck.rs",
    "operation": "rust-module-declaration",
@@ -29256,7 +29190,7 @@
    ]
   },
   {
-   "id": "e1452",
+   "id": "e1453",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
    "operation": "rust-module-declaration",
@@ -29270,7 +29204,7 @@
    ]
   },
   {
-   "id": "e1453",
+   "id": "e1454",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
    "operation": "rust-module-declaration",
@@ -29284,7 +29218,7 @@
    ]
   },
   {
-   "id": "e1454",
+   "id": "e1455",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/digest.rs",
    "operation": "rust-module-declaration",
@@ -29298,7 +29232,7 @@
    ]
   },
   {
-   "id": "e1455",
+   "id": "e1456",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/doctor.rs",
    "operation": "rust-module-declaration",
@@ -29312,7 +29246,7 @@
    ]
   },
   {
-   "id": "e1456",
+   "id": "e1457",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/feedback.rs",
    "operation": "rust-module-declaration",
@@ -29326,7 +29260,7 @@
    ]
   },
   {
-   "id": "e1457",
+   "id": "e1458",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/fleet.rs",
    "operation": "rust-module-declaration",
@@ -29340,7 +29274,7 @@
    ]
   },
   {
-   "id": "e1458",
+   "id": "e1459",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/freshness.rs",
    "operation": "rust-module-declaration",
@@ -29354,7 +29288,7 @@
    ]
   },
   {
-   "id": "e1459",
+   "id": "e1460",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
    "operation": "rust-module-declaration",
@@ -29368,7 +29302,7 @@
    ]
   },
   {
-   "id": "e1460",
+   "id": "e1461",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/hub.rs",
    "operation": "rust-module-declaration",
@@ -29382,7 +29316,7 @@
    ]
   },
   {
-   "id": "e1461",
+   "id": "e1462",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/hub_inputs.rs",
    "operation": "rust-module-declaration",
@@ -29396,7 +29330,7 @@
    ]
   },
   {
-   "id": "e1462",
+   "id": "e1463",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
    "operation": "rust-module-declaration",
@@ -29410,7 +29344,7 @@
    ]
   },
   {
-   "id": "e1463",
+   "id": "e1464",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/installation_manifest.rs",
    "operation": "rust-module-declaration",
@@ -29424,7 +29358,7 @@
    ]
   },
   {
-   "id": "e1464",
+   "id": "e1465",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/ledger/mod.rs",
    "operation": "rust-module-declaration",
@@ -29438,7 +29372,7 @@
    ]
   },
   {
-   "id": "e1465",
+   "id": "e1466",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/live_diagnostics.rs",
    "operation": "rust-module-declaration",
@@ -29452,7 +29386,7 @@
    ]
   },
   {
-   "id": "e1466",
+   "id": "e1467",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
    "operation": "rust-module-declaration",
@@ -29466,7 +29400,7 @@
    ]
   },
   {
-   "id": "e1467",
+   "id": "e1468",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/mcp_executor.rs",
    "operation": "rust-module-declaration",
@@ -29480,7 +29414,7 @@
    ]
   },
   {
-   "id": "e1468",
+   "id": "e1469",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/mcp_http.rs",
    "operation": "rust-module-declaration",
@@ -29494,7 +29428,7 @@
    ]
   },
   {
-   "id": "e1469",
+   "id": "e1470",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/memory_provider.rs",
    "operation": "rust-module-declaration",
@@ -29508,7 +29442,7 @@
    ]
   },
   {
-   "id": "e1470",
+   "id": "e1471",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/memory_sentinel_producer.rs",
    "operation": "rust-module-declaration",
@@ -29522,7 +29456,7 @@
    ]
   },
   {
-   "id": "e1471",
+   "id": "e1472",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/memory_sentinel_view.rs",
    "operation": "rust-module-declaration",
@@ -29536,7 +29470,7 @@
    ]
   },
   {
-   "id": "e1472",
+   "id": "e1473",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
    "operation": "rust-module-declaration",
@@ -29550,7 +29484,7 @@
    ]
   },
   {
-   "id": "e1473",
+   "id": "e1474",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/notifications.rs",
    "operation": "rust-module-declaration",
@@ -29564,7 +29498,7 @@
    ]
   },
   {
-   "id": "e1474",
+   "id": "e1475",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/paths.rs",
    "operation": "rust-module-declaration",
@@ -29578,7 +29512,7 @@
    ]
   },
   {
-   "id": "e1475",
+   "id": "e1476",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/planes.rs",
    "operation": "rust-module-declaration",
@@ -29592,7 +29526,7 @@
    ]
   },
   {
-   "id": "e1476",
+   "id": "e1477",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/provenance.rs",
    "operation": "rust-module-declaration",
@@ -29606,7 +29540,7 @@
    ]
   },
   {
-   "id": "e1477",
+   "id": "e1478",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "operation": "rust-module-declaration",
@@ -29620,7 +29554,7 @@
    ]
   },
   {
-   "id": "e1478",
+   "id": "e1479",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "operation": "rust-module-declaration",
@@ -29634,7 +29568,7 @@
    ]
   },
   {
-   "id": "e1479",
+   "id": "e1480",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/receipt.rs",
    "operation": "rust-module-declaration",
@@ -29648,7 +29582,7 @@
    ]
   },
   {
-   "id": "e1480",
+   "id": "e1481",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/release_identity.rs",
    "operation": "rust-module-declaration",
@@ -29662,7 +29596,7 @@
    ]
   },
   {
-   "id": "e1481",
+   "id": "e1482",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/runtime_receipt.rs",
    "operation": "rust-module-declaration",
@@ -29676,7 +29610,7 @@
    ]
   },
   {
-   "id": "e1482",
+   "id": "e1483",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/scratchpad.rs",
    "operation": "rust-module-declaration",
@@ -29690,7 +29624,7 @@
    ]
   },
   {
-   "id": "e1483",
+   "id": "e1484",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/serve.rs",
    "operation": "rust-module-declaration",
@@ -29704,7 +29638,7 @@
    ]
   },
   {
-   "id": "e1484",
+   "id": "e1485",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/service.rs",
    "operation": "rust-module-declaration",
@@ -29718,7 +29652,7 @@
    ]
   },
   {
-   "id": "e1485",
+   "id": "e1486",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/source_resolution.rs",
    "operation": "rust-module-declaration",
@@ -29732,7 +29666,7 @@
    ]
   },
   {
-   "id": "e1486",
+   "id": "e1487",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/sources_explorer.rs",
    "operation": "rust-module-declaration",
@@ -29746,7 +29680,7 @@
    ]
   },
   {
-   "id": "e1487",
+   "id": "e1488",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/sources_producer.rs",
    "operation": "rust-module-declaration",
@@ -29760,7 +29694,7 @@
    ]
   },
   {
-   "id": "e1488",
+   "id": "e1489",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/store.rs",
    "operation": "rust-module-declaration",
@@ -29774,7 +29708,7 @@
    ]
   },
   {
-   "id": "e1489",
+   "id": "e1490",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/team_policy.rs",
    "operation": "rust-module-declaration",
@@ -29788,7 +29722,7 @@
    ]
   },
   {
-   "id": "e1490",
+   "id": "e1491",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/push/mod.rs",
    "operation": "rust-module-declaration",
@@ -29802,7 +29736,7 @@
    ]
   },
   {
-   "id": "e1491",
+   "id": "e1492",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/working_context.rs",
    "operation": "rust-module-declaration",
@@ -29816,7 +29750,7 @@
    ]
   },
   {
-   "id": "e1492",
+   "id": "e1493",
    "from": "engine/crates/membrane-runtime/src/provenance.rs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "executable-path-reference",
@@ -29830,7 +29764,7 @@
    ]
   },
   {
-   "id": "e1493",
+   "id": "e1494",
    "from": "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
    "to": "blueprint/src/service/protocol.mjs",
    "operation": "executable-path-reference",
@@ -29844,7 +29778,7 @@
    ]
   },
   {
-   "id": "e1494",
+   "id": "e1495",
    "from": "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
    "to": "blueprint/src/service/paths.mjs",
    "operation": "executable-path-reference",
@@ -29858,7 +29792,7 @@
    ]
   },
   {
-   "id": "e1495",
+   "id": "e1496",
    "from": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "to": "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
    "operation": "rust-module-declaration",
@@ -29872,7 +29806,7 @@
    ]
   },
   {
-   "id": "e1496",
+   "id": "e1497",
    "from": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "to": "engine/crates/membrane-runtime/src/providers/child_process.rs",
    "operation": "rust-module-declaration",
@@ -29886,7 +29820,7 @@
    ]
   },
   {
-   "id": "e1497",
+   "id": "e1498",
    "from": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "to": "engine/crates/membrane-runtime/src/providers/identity.rs",
    "operation": "rust-module-declaration",
@@ -29900,7 +29834,7 @@
    ]
   },
   {
-   "id": "e1498",
+   "id": "e1499",
    "from": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "to": "engine/crates/membrane-runtime/src/providers/rust_analyzer_provider.rs",
    "operation": "rust-module-declaration",
@@ -29914,7 +29848,7 @@
    ]
   },
   {
-   "id": "e1499",
+   "id": "e1500",
    "from": "engine/crates/membrane-runtime/src/providers/mod.rs",
    "to": "engine/crates/membrane-runtime/src/providers/typescript_provider.rs",
    "operation": "rust-module-declaration",
@@ -29928,7 +29862,7 @@
    ]
   },
   {
-   "id": "e1500",
+   "id": "e1501",
    "from": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "to": "engine/crates/membrane-runtime/src/pull/admission.rs",
    "operation": "rust-module-declaration",
@@ -29942,7 +29876,7 @@
    ]
   },
   {
-   "id": "e1501",
+   "id": "e1502",
    "from": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "to": "engine/crates/membrane-runtime/src/pull/cli.rs",
    "operation": "rust-module-declaration",
@@ -29956,7 +29890,7 @@
    ]
   },
   {
-   "id": "e1502",
+   "id": "e1503",
    "from": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "to": "engine/crates/membrane-runtime/src/pull/federation.rs",
    "operation": "rust-module-declaration",
@@ -29970,7 +29904,7 @@
    ]
   },
   {
-   "id": "e1503",
+   "id": "e1504",
    "from": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "to": "engine/crates/membrane-runtime/src/pull/metrics.rs",
    "operation": "rust-module-declaration",
@@ -29984,7 +29918,7 @@
    ]
   },
   {
-   "id": "e1504",
+   "id": "e1505",
    "from": "engine/crates/membrane-runtime/src/pull/mod.rs",
    "to": "engine/crates/membrane-runtime/src/pull/publication.rs",
    "operation": "rust-module-declaration",
@@ -29998,7 +29932,7 @@
    ]
   },
   {
-   "id": "e1505",
+   "id": "e1506",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/compress.rs",
    "operation": "rust-module-declaration",
@@ -30012,7 +29946,7 @@
    ]
   },
   {
-   "id": "e1506",
+   "id": "e1507",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/compression_provider.rs",
    "operation": "rust-module-declaration",
@@ -30026,7 +29960,7 @@
    ]
   },
   {
-   "id": "e1507",
+   "id": "e1508",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/prep.rs",
    "operation": "rust-module-declaration",
@@ -30040,7 +29974,7 @@
    ]
   },
   {
-   "id": "e1508",
+   "id": "e1509",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/runc.rs",
    "operation": "rust-module-declaration",
@@ -30054,7 +29988,7 @@
    ]
   },
   {
-   "id": "e1509",
+   "id": "e1510",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/selection.rs",
    "operation": "rust-module-declaration",
@@ -30068,7 +30002,7 @@
    ]
   },
   {
-   "id": "e1510",
+   "id": "e1511",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/skel.rs",
    "operation": "rust-module-declaration",
@@ -30082,7 +30016,7 @@
    ]
   },
   {
-   "id": "e1511",
+   "id": "e1512",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/telemetry.rs",
    "operation": "rust-module-declaration",
@@ -30096,7 +30030,7 @@
    ]
   },
   {
-   "id": "e1512",
+   "id": "e1513",
    "from": "engine/crates/membrane-runtime/src/push/mod.rs",
    "to": "engine/crates/membrane-runtime/src/push/truncate.rs",
    "operation": "rust-module-declaration",
@@ -30110,7 +30044,7 @@
    ]
   },
   {
-   "id": "e1513",
+   "id": "e1514",
    "from": "engine/crates/membrane-runtime/src/working_context.rs",
    "to": "mcp/working-context.mjs",
    "operation": "executable-path-reference",
@@ -30124,7 +30058,7 @@
    ]
   },
   {
-   "id": "e1514",
+   "id": "e1515",
    "from": "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
    "to": "docs/reference/examples/quickstart/run.mjs",
    "operation": "executable-path-reference",
@@ -30138,7 +30072,7 @@
    ]
   },
   {
-   "id": "e1515",
+   "id": "e1516",
    "from": "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
    "to": "tests/mcp-prompts/prompts.parity.test.mjs",
    "operation": "executable-path-reference",
@@ -30152,7 +30086,7 @@
    ]
   },
   {
-   "id": "e1516",
+   "id": "e1517",
    "from": "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "executable-path-reference",
@@ -30166,7 +30100,7 @@
    ]
   },
   {
-   "id": "e1517",
+   "id": "e1518",
    "from": "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
    "to": "apps/membrane-hub/tests/hub-chain.mjs",
    "operation": "executable-path-reference",
@@ -30180,7 +30114,7 @@
    ]
   },
   {
-   "id": "e1518",
+   "id": "e1519",
    "from": "engine/crates/membrane-runtime/tests/native_authorization.rs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -30194,7 +30128,7 @@
    ]
   },
   {
-   "id": "e1519",
+   "id": "e1520",
    "from": "engine/crates/membrane-runtime/tests/native_authorization.rs",
    "to": "mcp/authorization.mjs",
    "operation": "executable-path-reference",
@@ -30208,7 +30142,7 @@
    ]
   },
   {
-   "id": "e1520",
+   "id": "e1521",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/adapters.rs",
    "operation": "rust-module-declaration",
@@ -30222,7 +30156,7 @@
    ]
   },
   {
-   "id": "e1521",
+   "id": "e1522",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/canonical.rs",
    "operation": "rust-module-declaration",
@@ -30236,7 +30170,7 @@
    ]
   },
   {
-   "id": "e1522",
+   "id": "e1523",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/classify.rs",
    "operation": "rust-module-declaration",
@@ -30250,7 +30184,7 @@
    ]
   },
   {
-   "id": "e1523",
+   "id": "e1524",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/error.rs",
    "operation": "rust-module-declaration",
@@ -30264,7 +30198,7 @@
    ]
   },
   {
-   "id": "e1524",
+   "id": "e1525",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/event.rs",
    "operation": "rust-module-declaration",
@@ -30278,7 +30212,7 @@
    ]
   },
   {
-   "id": "e1525",
+   "id": "e1526",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/evidence.rs",
    "operation": "rust-module-declaration",
@@ -30292,7 +30226,7 @@
    ]
   },
   {
-   "id": "e1526",
+   "id": "e1527",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/parser.rs",
    "operation": "rust-module-declaration",
@@ -30306,7 +30240,7 @@
    ]
   },
   {
-   "id": "e1527",
+   "id": "e1528",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/redact.rs",
    "operation": "rust-module-declaration",
@@ -30320,7 +30254,7 @@
    ]
   },
   {
-   "id": "e1528",
+   "id": "e1529",
    "from": "engine/crates/membrane-transcript/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/source.rs",
    "operation": "rust-module-declaration",
@@ -30334,7 +30268,7 @@
    ]
   },
   {
-   "id": "e1529",
+   "id": "e1530",
    "from": "engine/crates/membrane/build.rs",
    "to": "engine/crates/membrane/scripts/generate-cli-subcommands.mjs",
    "operation": "executable-path-reference",
@@ -30348,7 +30282,7 @@
    ]
   },
   {
-   "id": "e1530",
+   "id": "e1531",
    "from": "engine/crates/membrane/src/activation.rs",
    "to": "mcp/install.mjs",
    "operation": "executable-path-reference",
@@ -30362,7 +30296,7 @@
    ]
   },
   {
-   "id": "e1531",
+   "id": "e1532",
    "from": "engine/crates/membrane/src/activation.rs",
    "to": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "operation": "executable-path-reference",
@@ -30376,7 +30310,7 @@
    ]
   },
   {
-   "id": "e1532",
+   "id": "e1533",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/activation.rs",
    "operation": "rust-module-declaration",
@@ -30390,7 +30324,7 @@
    ]
   },
   {
-   "id": "e1533",
+   "id": "e1534",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/cli.rs",
    "operation": "rust-module-declaration",
@@ -30404,7 +30338,7 @@
    ]
   },
   {
-   "id": "e1534",
+   "id": "e1535",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/cli_parity.rs",
    "operation": "rust-module-declaration",
@@ -30418,7 +30352,7 @@
    ]
   },
   {
-   "id": "e1535",
+   "id": "e1536",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/dispatch.rs",
    "operation": "rust-module-declaration",
@@ -30432,7 +30366,7 @@
    ]
   },
   {
-   "id": "e1536",
+   "id": "e1537",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/install_tx.rs",
    "operation": "rust-module-declaration",
@@ -30446,7 +30380,7 @@
    ]
   },
   {
-   "id": "e1537",
+   "id": "e1538",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/migration.rs",
    "operation": "rust-module-declaration",
@@ -30460,7 +30394,7 @@
    ]
   },
   {
-   "id": "e1538",
+   "id": "e1539",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/modes.rs",
    "operation": "rust-module-declaration",
@@ -30474,7 +30408,7 @@
    ]
   },
   {
-   "id": "e1539",
+   "id": "e1540",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/serve.rs",
    "operation": "rust-module-declaration",
@@ -30488,7 +30422,7 @@
    ]
   },
   {
-   "id": "e1540",
+   "id": "e1541",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/uninstall.rs",
    "operation": "rust-module-declaration",
@@ -30502,7 +30436,7 @@
    ]
   },
   {
-   "id": "e1541",
+   "id": "e1542",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane/src/update.rs",
    "operation": "rust-module-declaration",
@@ -30516,7 +30450,7 @@
    ]
   },
   {
-   "id": "e1542",
+   "id": "e1543",
    "from": "mcp/adapter-manifest.mjs",
    "to": "mcp/server.mjs",
    "operation": "esm-import",
@@ -30530,7 +30464,7 @@
    ]
   },
   {
-   "id": "e1543",
+   "id": "e1544",
    "from": "mcp/adapter-manifest.mjs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -30544,7 +30478,7 @@
    ]
   },
   {
-   "id": "e1544",
+   "id": "e1545",
    "from": "mcp/adapter-manifest.test.mjs",
    "to": "mcp/adapter-manifest.mjs",
    "operation": "esm-import",
@@ -30558,7 +30492,7 @@
    ]
   },
   {
-   "id": "e1545",
+   "id": "e1546",
    "from": "mcp/adapters.test.mjs",
    "to": "mcp/adapters.mjs",
    "operation": "esm-import",
@@ -30572,7 +30506,7 @@
    ]
   },
   {
-   "id": "e1546",
+   "id": "e1547",
    "from": "mcp/adapters/provenance/index.test.mjs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "esm-import",
@@ -30586,7 +30520,7 @@
    ]
   },
   {
-   "id": "e1547",
+   "id": "e1548",
    "from": "mcp/adapters/provenance/index.test.mjs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "dynamic-import",
@@ -30600,7 +30534,7 @@
    ]
   },
   {
-   "id": "e1548",
+   "id": "e1549",
    "from": "mcp/authorization.conformance.test.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "esm-import",
@@ -30614,7 +30548,7 @@
    ]
   },
   {
-   "id": "e1549",
+   "id": "e1550",
    "from": "mcp/authorization.test.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "esm-import",
@@ -30628,7 +30562,7 @@
    ]
   },
   {
-   "id": "e1550",
+   "id": "e1551",
    "from": "mcp/blueprint-capability.test.mjs",
    "to": "mcp/server.mjs",
    "operation": "esm-import",
@@ -30642,7 +30576,7 @@
    ]
   },
   {
-   "id": "e1551",
+   "id": "e1552",
    "from": "mcp/blueprint-readiness.test.mjs",
    "to": "mcp/blueprint-readiness.mjs",
    "operation": "esm-import",
@@ -30656,7 +30590,7 @@
    ]
   },
   {
-   "id": "e1552",
+   "id": "e1553",
    "from": "mcp/calibration-harness.test.mjs",
    "to": "mcp/retrieval-contracts.mjs",
    "operation": "esm-import",
@@ -30670,7 +30604,7 @@
    ]
   },
   {
-   "id": "e1553",
+   "id": "e1554",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/server.mjs",
    "operation": "esm-import",
@@ -30684,7 +30618,7 @@
    ]
   },
   {
-   "id": "e1554",
+   "id": "e1555",
    "from": "mcp/capability-inventory.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "esm-import",
@@ -30698,7 +30632,7 @@
    ]
   },
   {
-   "id": "e1555",
+   "id": "e1556",
    "from": "mcp/capability-inventory.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "executable-path-reference",
@@ -30712,7 +30646,7 @@
    ]
   },
   {
-   "id": "e1556",
+   "id": "e1557",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/working-context.test.mjs",
    "operation": "executable-path-reference",
@@ -30726,7 +30660,7 @@
    ]
   },
   {
-   "id": "e1557",
+   "id": "e1558",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/server-durable.test.mjs",
    "operation": "executable-path-reference",
@@ -30740,7 +30674,7 @@
    ]
   },
   {
-   "id": "e1558",
+   "id": "e1559",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/server.test.mjs",
    "operation": "executable-path-reference",
@@ -30754,7 +30688,7 @@
    ]
   },
   {
-   "id": "e1559",
+   "id": "e1560",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -30768,7 +30702,7 @@
    ]
   },
   {
-   "id": "e1560",
+   "id": "e1561",
    "from": "mcp/capability-inventory.mjs",
    "to": "mcp/adapters.test.mjs",
    "operation": "executable-path-reference",
@@ -30782,7 +30716,7 @@
    ]
   },
   {
-   "id": "e1561",
+   "id": "e1562",
    "from": "mcp/capability-inventory.mjs",
    "to": "blueprint/src/lib/findings/detect.mjs",
    "operation": "executable-path-reference",
@@ -30796,7 +30730,7 @@
    ]
   },
   {
-   "id": "e1562",
+   "id": "e1563",
    "from": "mcp/capability-inventory.mjs",
    "to": "blueprint/tests/findings-detect.test.mjs",
    "operation": "executable-path-reference",
@@ -30810,7 +30744,7 @@
    ]
   },
   {
-   "id": "e1563",
+   "id": "e1564",
    "from": "mcp/capability-inventory.mjs",
    "to": "blueprint/tests/resolution-owner.test.mjs",
    "operation": "executable-path-reference",
@@ -30824,7 +30758,7 @@
    ]
   },
   {
-   "id": "e1564",
+   "id": "e1565",
    "from": "mcp/capability-inventory.mjs",
    "to": "blueprint/src/graph/module-surface.mjs",
    "operation": "executable-path-reference",
@@ -30838,7 +30772,7 @@
    ]
   },
   {
-   "id": "e1565",
+   "id": "e1566",
    "from": "mcp/capability-inventory.mjs",
    "to": "blueprint/src/graph/resolution/index.mjs",
    "operation": "executable-path-reference",
@@ -30852,7 +30786,7 @@
    ]
   },
   {
-   "id": "e1566",
+   "id": "e1567",
    "from": "mcp/capability-inventory.test.mjs",
    "to": "mcp/capability-inventory.mjs",
    "operation": "esm-import",
@@ -30866,7 +30800,7 @@
    ]
   },
   {
-   "id": "e1567",
+   "id": "e1568",
    "from": "mcp/context-renderer.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -30880,7 +30814,7 @@
    ]
   },
   {
-   "id": "e1568",
+   "id": "e1569",
    "from": "mcp/context-renderer.test.mjs",
    "to": "mcp/context-renderer.mjs",
    "operation": "esm-import",
@@ -30894,7 +30828,7 @@
    ]
   },
   {
-   "id": "e1569",
+   "id": "e1570",
    "from": "mcp/context-renderer.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -30908,7 +30842,7 @@
    ]
   },
   {
-   "id": "e1570",
+   "id": "e1571",
    "from": "mcp/deadline.test.mjs",
    "to": "mcp/deadline.mjs",
    "operation": "esm-import",
@@ -30922,7 +30856,7 @@
    ]
   },
   {
-   "id": "e1571",
+   "id": "e1572",
    "from": "mcp/decision-points.mjs",
    "to": "mcp/decision-points-lib.cjs",
    "operation": "require",
@@ -30936,7 +30870,7 @@
    ]
   },
   {
-   "id": "e1572",
+   "id": "e1573",
    "from": "mcp/decision-points.test.mjs",
    "to": "mcp/decision-points.mjs",
    "operation": "esm-import",
@@ -30950,24 +30884,10 @@
    ]
   },
   {
-   "id": "e1573",
-   "from": "mcp/delivery-receipt.test.mjs",
-   "to": "mcp/delivery-receipt.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "mcp/delivery-receipt.test.mjs",
-     "symbol": "./delivery-receipt.mjs"
-    }
-   ]
-  },
-  {
    "id": "e1574",
    "from": "mcp/delivery-receipt.test.mjs",
    "to": "mcp/delivery-receipt.mjs",
-   "operation": "dynamic-import",
+   "operation": "esm-import",
    "boundary": "import",
    "origin": "scanned",
    "evidence": [
@@ -30981,6 +30901,20 @@
    "id": "e1575",
    "from": "mcp/delivery-receipt.test.mjs",
    "to": "mcp/delivery-receipt.mjs",
+   "operation": "dynamic-import",
+   "boundary": "import",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "mcp/delivery-receipt.test.mjs",
+     "symbol": "./delivery-receipt.mjs"
+    }
+   ]
+  },
+  {
+   "id": "e1576",
+   "from": "mcp/delivery-receipt.test.mjs",
+   "to": "mcp/delivery-receipt.mjs",
    "operation": "executable-path-reference",
    "boundary": "path-reference",
    "origin": "scanned",
@@ -30992,7 +30926,7 @@
    ]
   },
   {
-   "id": "e1576",
+   "id": "e1577",
    "from": "mcp/delivery-serialization.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -31006,7 +30940,7 @@
    ]
   },
   {
-   "id": "e1577",
+   "id": "e1578",
    "from": "mcp/delivery-serialization.test.mjs",
    "to": "mcp/delivery-serialization.mjs",
    "operation": "esm-import",
@@ -31020,7 +30954,7 @@
    ]
   },
   {
-   "id": "e1578",
+   "id": "e1579",
    "from": "mcp/diagnostics-tools.test.mjs",
    "to": "mcp/server.mjs",
    "operation": "esm-import",
@@ -31034,7 +30968,7 @@
    ]
   },
   {
-   "id": "e1579",
+   "id": "e1580",
    "from": "mcp/diagnostics-tools.test.mjs",
    "to": "mcp/toolsets.mjs",
    "operation": "esm-import",
@@ -31048,7 +30982,7 @@
    ]
   },
   {
-   "id": "e1580",
+   "id": "e1581",
    "from": "mcp/diagnostics-tools.test.mjs",
    "to": "mcp/lib/diagnostics-client.mjs",
    "operation": "esm-import",
@@ -31062,7 +30996,7 @@
    ]
   },
   {
-   "id": "e1581",
+   "id": "e1582",
    "from": "mcp/diagnostics-tools.test.mjs",
    "to": "mcp/lib/diagnostics-client.mjs",
    "operation": "executable-path-reference",
@@ -31076,7 +31010,7 @@
    ]
   },
   {
-   "id": "e1582",
+   "id": "e1583",
    "from": "mcp/e2e-benchmark.test.mjs",
    "to": "mcp/e2e-benchmark.mjs",
    "operation": "esm-import",
@@ -31090,7 +31024,7 @@
    ]
   },
   {
-   "id": "e1583",
+   "id": "e1584",
    "from": "mcp/feedback-loop.test.mjs",
    "to": "mcp/feedback-loop.mjs",
    "operation": "esm-import",
@@ -31104,7 +31038,7 @@
    ]
   },
   {
-   "id": "e1584",
+   "id": "e1585",
    "from": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "to": "mcp/hooks/membrane-hook-runtime.mjs",
    "operation": "esm-import",
@@ -31118,7 +31052,7 @@
    ]
   },
   {
-   "id": "e1585",
+   "id": "e1586",
    "from": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "to": "mcp/hooks/membrane-workspace-operations.mjs",
    "operation": "esm-import",
@@ -31132,7 +31066,7 @@
    ]
   },
   {
-   "id": "e1586",
+   "id": "e1587",
    "from": "mcp/hooks/membrane-hook-runtime.mjs",
    "to": "mcp/lib/verification-command.mjs",
    "operation": "esm-import",
@@ -31142,20 +31076,6 @@
     {
      "path": "mcp/hooks/membrane-hook-runtime.mjs",
      "symbol": "../lib/verification-command.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1587",
-   "from": "mcp/hooks/membrane-hook-runtime.test.mjs",
-   "to": "mcp/hooks/membrane-hook-runtime.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "mcp/hooks/membrane-hook-runtime.test.mjs",
-     "symbol": "./membrane-hook-runtime.mjs"
     }
    ]
   },
@@ -31175,6 +31095,20 @@
   },
   {
    "id": "e1589",
+   "from": "mcp/hooks/membrane-hook-runtime.test.mjs",
+   "to": "mcp/hooks/membrane-hook-runtime.mjs",
+   "operation": "esm-import",
+   "boundary": "import",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "mcp/hooks/membrane-hook-runtime.test.mjs",
+     "symbol": "./membrane-hook-runtime.mjs"
+    }
+   ]
+  },
+  {
+   "id": "e1590",
    "from": "mcp/hooks/membrane-workspace-operations.mjs",
    "to": "mcp/hooks/membrane-hook-runtime.mjs",
    "operation": "esm-import",
@@ -31188,7 +31122,7 @@
    ]
   },
   {
-   "id": "e1590",
+   "id": "e1591",
    "from": "mcp/hooks/membrane-workspace-operations.mjs",
    "to": "mcp/host/continuity.mjs",
    "operation": "esm-import",
@@ -31202,7 +31136,7 @@
    ]
   },
   {
-   "id": "e1591",
+   "id": "e1592",
    "from": "mcp/hooks/membrane-workspace-operations.mjs",
    "to": "mcp/lib/diagnostics-client.mjs",
    "operation": "esm-import",
@@ -31216,7 +31150,7 @@
    ]
   },
   {
-   "id": "e1592",
+   "id": "e1593",
    "from": "mcp/hooks/membrane-workspace-operations.mjs",
    "to": "mcp/lib/verification-command.mjs",
    "operation": "esm-import",
@@ -31230,7 +31164,7 @@
    ]
   },
   {
-   "id": "e1593",
+   "id": "e1594",
    "from": "mcp/hooks/membrane-workspace-operations.mjs",
    "to": "mcp/host/context-adapter.cjs",
    "operation": "require",
@@ -31244,7 +31178,7 @@
    ]
   },
   {
-   "id": "e1594",
+   "id": "e1595",
    "from": "mcp/hooks/membrane-workspace-operations.test.mjs",
    "to": "mcp/hooks/membrane-hook-runtime.mjs",
    "operation": "esm-import",
@@ -31258,7 +31192,7 @@
    ]
   },
   {
-   "id": "e1595",
+   "id": "e1596",
    "from": "mcp/hooks/membrane-workspace-operations.test.mjs",
    "to": "mcp/hooks/membrane-workspace-operations.mjs",
    "operation": "esm-import",
@@ -31272,7 +31206,7 @@
    ]
   },
   {
-   "id": "e1596",
+   "id": "e1597",
    "from": "mcp/hooks/membrane-workspace-operations.test.mjs",
    "to": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "operation": "esm-import",
@@ -31286,7 +31220,7 @@
    ]
   },
   {
-   "id": "e1597",
+   "id": "e1598",
    "from": "mcp/hooks/membrane-workspace-operations.test.mjs",
    "to": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "operation": "executable-path-reference",
@@ -31300,7 +31234,7 @@
    ]
   },
   {
-   "id": "e1598",
+   "id": "e1599",
    "from": "mcp/host/context-adapter.cjs",
    "to": "mcp/host/observable-ingress.cjs",
    "operation": "require",
@@ -31314,7 +31248,7 @@
    ]
   },
   {
-   "id": "e1599",
+   "id": "e1600",
    "from": "mcp/host/context-adapter.cjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31328,7 +31262,7 @@
    ]
   },
   {
-   "id": "e1600",
+   "id": "e1601",
    "from": "mcp/host/context-adapter.cjs",
    "to": "mcp/host/delivery-ledger-store.cjs",
    "operation": "require",
@@ -31342,7 +31276,7 @@
    ]
   },
   {
-   "id": "e1601",
+   "id": "e1602",
    "from": "mcp/host/context-adapter.cjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -31356,7 +31290,7 @@
    ]
   },
   {
-   "id": "e1602",
+   "id": "e1603",
    "from": "mcp/host/evidence-interceptor.mjs",
    "to": "mcp/host/capability-matrix.mjs",
    "operation": "esm-import",
@@ -31370,7 +31304,7 @@
    ]
   },
   {
-   "id": "e1603",
+   "id": "e1604",
    "from": "mcp/host/host-boundary.test.mjs",
    "to": "mcp/host/capability-matrix.mjs",
    "operation": "esm-import",
@@ -31384,7 +31318,7 @@
    ]
   },
   {
-   "id": "e1604",
+   "id": "e1605",
    "from": "mcp/host/host-boundary.test.mjs",
    "to": "mcp/host/evidence-interceptor.mjs",
    "operation": "esm-import",
@@ -31398,7 +31332,7 @@
    ]
   },
   {
-   "id": "e1605",
+   "id": "e1606",
    "from": "mcp/host/host-boundary.test.mjs",
    "to": "mcp/host/continuity.mjs",
    "operation": "esm-import",
@@ -31412,7 +31346,7 @@
    ]
   },
   {
-   "id": "e1606",
+   "id": "e1607",
    "from": "mcp/host/host-boundary.test.mjs",
    "to": "mcp/host/candidate-set.mjs",
    "operation": "esm-import",
@@ -31426,7 +31360,7 @@
    ]
   },
   {
-   "id": "e1607",
+   "id": "e1608",
    "from": "mcp/host/host-context-adapter.test.mjs",
    "to": "mcp/host/context-adapter.cjs",
    "operation": "require",
@@ -31440,7 +31374,7 @@
    ]
   },
   {
-   "id": "e1608",
+   "id": "e1609",
    "from": "mcp/host/host-context-adapter.test.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31454,7 +31388,7 @@
    ]
   },
   {
-   "id": "e1609",
+   "id": "e1610",
    "from": "mcp/host/host-context-adapter.test.mjs",
    "to": "mcp/host/fixtures/membrane-client.mjs",
    "operation": "executable-path-reference",
@@ -31468,7 +31402,7 @@
    ]
   },
   {
-   "id": "e1610",
+   "id": "e1611",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/host/context-adapter.cjs",
    "operation": "require",
@@ -31482,7 +31416,7 @@
    ]
   },
   {
-   "id": "e1611",
+   "id": "e1612",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -31496,7 +31430,7 @@
    ]
   },
   {
-   "id": "e1612",
+   "id": "e1613",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/host/delivery-ledger-store.cjs",
    "operation": "require",
@@ -31510,7 +31444,7 @@
    ]
   },
   {
-   "id": "e1613",
+   "id": "e1614",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/host/context-adapter.cjs",
    "operation": "executable-path-reference",
@@ -31524,7 +31458,7 @@
    ]
   },
   {
-   "id": "e1614",
+   "id": "e1615",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/host/delivery-ledger-store.cjs",
    "operation": "executable-path-reference",
@@ -31538,7 +31472,7 @@
    ]
   },
   {
-   "id": "e1615",
+   "id": "e1616",
    "from": "mcp/host/host-delivery-ledger.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "executable-path-reference",
@@ -31552,7 +31486,7 @@
    ]
   },
   {
-   "id": "e1616",
+   "id": "e1617",
    "from": "mcp/host/host-delivery-receipt.test.mjs",
    "to": "mcp/host/delivery-receipt.cjs",
    "operation": "require",
@@ -31566,7 +31500,7 @@
    ]
   },
   {
-   "id": "e1617",
+   "id": "e1618",
    "from": "mcp/host/host-observable-event.test.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31580,7 +31514,7 @@
    ]
   },
   {
-   "id": "e1618",
+   "id": "e1619",
    "from": "mcp/host/host-observable-ingress-default-path.test.mjs",
    "to": "mcp/host/observable-ingress.cjs",
    "operation": "require",
@@ -31594,7 +31528,7 @@
    ]
   },
   {
-   "id": "e1619",
+   "id": "e1620",
    "from": "mcp/host/host-observable-ingress-default-path.test.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31608,7 +31542,7 @@
    ]
   },
   {
-   "id": "e1620",
+   "id": "e1621",
    "from": "mcp/host/host-observable-ingress.test.mjs",
    "to": "mcp/host/observable-ingress.cjs",
    "operation": "esm-import",
@@ -31622,7 +31556,7 @@
    ]
   },
   {
-   "id": "e1621",
+   "id": "e1622",
    "from": "mcp/host/host-observable-ingress.test.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31636,7 +31570,7 @@
    ]
   },
   {
-   "id": "e1622",
+   "id": "e1623",
    "from": "mcp/host/observable-ingress.cjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -31650,7 +31584,7 @@
    ]
   },
   {
-   "id": "e1623",
+   "id": "e1624",
    "from": "mcp/install.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31664,7 +31598,7 @@
    ]
   },
   {
-   "id": "e1624",
+   "id": "e1625",
    "from": "mcp/install.mjs",
    "to": "mcp/installation-binding.mjs",
    "operation": "esm-import",
@@ -31678,7 +31612,7 @@
    ]
   },
   {
-   "id": "e1625",
+   "id": "e1626",
    "from": "mcp/install.mjs",
    "to": "mcp/repository-catalog.mjs",
    "operation": "esm-import",
@@ -31692,7 +31626,7 @@
    ]
   },
   {
-   "id": "e1626",
+   "id": "e1627",
    "from": "mcp/install.mjs",
    "to": "scripts/tools/productization/generate-client-matrix.mjs",
    "operation": "executable-path-reference",
@@ -31706,7 +31640,7 @@
    ]
   },
   {
-   "id": "e1627",
+   "id": "e1628",
    "from": "mcp/install.test.mjs",
    "to": "mcp/install.mjs",
    "operation": "esm-import",
@@ -31720,7 +31654,7 @@
    ]
   },
   {
-   "id": "e1628",
+   "id": "e1629",
    "from": "mcp/installation-binding.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31734,7 +31668,7 @@
    ]
   },
   {
-   "id": "e1629",
+   "id": "e1630",
    "from": "mcp/installation-binding.test.mjs",
    "to": "mcp/installation-binding.mjs",
    "operation": "esm-import",
@@ -31748,7 +31682,7 @@
    ]
   },
   {
-   "id": "e1630",
+   "id": "e1631",
    "from": "mcp/lib/verification-command.test.mjs",
    "to": "mcp/lib/verification-command.mjs",
    "operation": "esm-import",
@@ -31762,7 +31696,7 @@
    ]
   },
   {
-   "id": "e1631",
+   "id": "e1632",
    "from": "mcp/lifecycle.test.mjs",
    "to": "mcp/lifecycle.mjs",
    "operation": "esm-import",
@@ -31776,7 +31710,7 @@
    ]
   },
   {
-   "id": "e1632",
+   "id": "e1633",
    "from": "mcp/product-truth.test.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "esm-import",
@@ -31790,7 +31724,7 @@
    ]
   },
   {
-   "id": "e1633",
+   "id": "e1634",
    "from": "mcp/product-truth.test.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "executable-path-reference",
@@ -31804,7 +31738,7 @@
    ]
   },
   {
-   "id": "e1634",
+   "id": "e1635",
    "from": "mcp/project-registry.test.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31818,7 +31752,7 @@
    ]
   },
   {
-   "id": "e1635",
+   "id": "e1636",
    "from": "mcp/proposal-store.mjs",
    "to": "mcp/context-renderer.mjs",
    "operation": "esm-import",
@@ -31832,7 +31766,7 @@
    ]
   },
   {
-   "id": "e1636",
+   "id": "e1637",
    "from": "mcp/proposal-store.test.mjs",
    "to": "mcp/proposal-store.mjs",
    "operation": "esm-import",
@@ -31846,7 +31780,7 @@
    ]
   },
   {
-   "id": "e1637",
+   "id": "e1638",
    "from": "mcp/repository-catalog.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31860,7 +31794,7 @@
    ]
   },
   {
-   "id": "e1638",
+   "id": "e1639",
    "from": "mcp/repository-catalog.mjs",
    "to": "mcp/blueprint-readiness.mjs",
    "operation": "esm-import",
@@ -31874,7 +31808,7 @@
    ]
   },
   {
-   "id": "e1639",
+   "id": "e1640",
    "from": "mcp/repository-catalog.test.mjs",
    "to": "mcp/repository-catalog.mjs",
    "operation": "esm-import",
@@ -31888,7 +31822,7 @@
    ]
   },
   {
-   "id": "e1640",
+   "id": "e1641",
    "from": "mcp/repository-catalog.test.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31902,7 +31836,7 @@
    ]
   },
   {
-   "id": "e1641",
+   "id": "e1642",
    "from": "mcp/retrieval-contracts.test.mjs",
    "to": "mcp/retrieval-contracts.mjs",
    "operation": "esm-import",
@@ -31916,7 +31850,7 @@
    ]
   },
   {
-   "id": "e1642",
+   "id": "e1643",
    "from": "mcp/rightax-conformance-server.mjs",
    "to": "mcp/server.mjs",
    "operation": "esm-import",
@@ -31930,7 +31864,7 @@
    ]
   },
   {
-   "id": "e1643",
+   "id": "e1644",
    "from": "mcp/rollout.test.mjs",
    "to": "mcp/rollout.mjs",
    "operation": "esm-import",
@@ -31944,7 +31878,7 @@
    ]
   },
   {
-   "id": "e1644",
+   "id": "e1645",
    "from": "mcp/scope-grant-v1.test.mjs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "esm-import",
@@ -31958,7 +31892,7 @@
    ]
   },
   {
-   "id": "e1645",
+   "id": "e1646",
    "from": "mcp/server-durable.test.mjs",
    "to": "mcp/server.test.mjs",
    "operation": "executable-path-reference",
@@ -31972,7 +31906,7 @@
    ]
   },
   {
-   "id": "e1646",
+   "id": "e1647",
    "from": "mcp/server.mjs",
    "to": "mcp/project-registry.mjs",
    "operation": "esm-import",
@@ -31986,7 +31920,7 @@
    ]
   },
   {
-   "id": "e1647",
+   "id": "e1648",
    "from": "mcp/server.mjs",
    "to": "mcp/installation-binding.mjs",
    "operation": "esm-import",
@@ -32000,7 +31934,7 @@
    ]
   },
   {
-   "id": "e1648",
+   "id": "e1649",
    "from": "mcp/server.mjs",
    "to": "mcp/repository-catalog.mjs",
    "operation": "esm-import",
@@ -32014,7 +31948,7 @@
    ]
   },
   {
-   "id": "e1649",
+   "id": "e1650",
    "from": "mcp/server.mjs",
    "to": "mcp/feedback-loop.mjs",
    "operation": "esm-import",
@@ -32028,7 +31962,7 @@
    ]
   },
   {
-   "id": "e1650",
+   "id": "e1651",
    "from": "mcp/server.mjs",
    "to": "mcp/proposal-store.mjs",
    "operation": "esm-import",
@@ -32042,7 +31976,7 @@
    ]
   },
   {
-   "id": "e1651",
+   "id": "e1652",
    "from": "mcp/server.mjs",
    "to": "mcp/working-context.mjs",
    "operation": "esm-import",
@@ -32056,7 +31990,7 @@
    ]
   },
   {
-   "id": "e1652",
+   "id": "e1653",
    "from": "mcp/server.mjs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "esm-import",
@@ -32070,7 +32004,7 @@
    ]
   },
   {
-   "id": "e1653",
+   "id": "e1654",
    "from": "mcp/server.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "esm-import",
@@ -32084,7 +32018,7 @@
    ]
   },
   {
-   "id": "e1654",
+   "id": "e1655",
    "from": "mcp/server.mjs",
    "to": "mcp/workspace-routing.mjs",
    "operation": "esm-import",
@@ -32098,7 +32032,7 @@
    ]
   },
   {
-   "id": "e1655",
+   "id": "e1656",
    "from": "mcp/server.mjs",
    "to": "mcp/deadline.mjs",
    "operation": "esm-import",
@@ -32112,7 +32046,7 @@
    ]
   },
   {
-   "id": "e1656",
+   "id": "e1657",
    "from": "mcp/server.mjs",
    "to": "mcp/lifecycle.mjs",
    "operation": "esm-import",
@@ -32126,7 +32060,7 @@
    ]
   },
   {
-   "id": "e1657",
+   "id": "e1658",
    "from": "mcp/server.mjs",
    "to": "mcp/toolsets.mjs",
    "operation": "esm-import",
@@ -32140,7 +32074,7 @@
    ]
   },
   {
-   "id": "e1658",
+   "id": "e1659",
    "from": "mcp/server.mjs",
    "to": "schemas/registry/code/mbr402-batch.mjs",
    "operation": "esm-import",
@@ -32154,7 +32088,7 @@
    ]
   },
   {
-   "id": "e1659",
+   "id": "e1660",
    "from": "mcp/server.mjs",
    "to": "mcp/blueprint-readiness.mjs",
    "operation": "esm-import",
@@ -32168,7 +32102,7 @@
    ]
   },
   {
-   "id": "e1660",
+   "id": "e1661",
    "from": "mcp/server.mjs",
    "to": "mcp/lib/diagnostics-client.mjs",
    "operation": "esm-import",
@@ -32182,7 +32116,21 @@
    ]
   },
   {
-   "id": "e1661",
+   "id": "e1662",
+   "from": "mcp/server.mjs",
+   "to": "mcp/client.mjs",
+   "operation": "esm-import",
+   "boundary": "import",
+   "origin": "scanned",
+   "evidence": [
+    {
+     "path": "mcp/server.mjs",
+     "symbol": "./client.mjs"
+    }
+   ]
+  },
+  {
+   "id": "e1663",
    "from": "mcp/server.mjs",
    "to": "schemas/registry/code/mbr402-batch.mjs",
    "operation": "executable-path-reference",
@@ -32196,7 +32144,7 @@
    ]
   },
   {
-   "id": "e1662",
+   "id": "e1664",
    "from": "mcp/server.mjs",
    "to": "mcp/lib/diagnostics-client.mjs",
    "operation": "executable-path-reference",
@@ -32210,7 +32158,7 @@
    ]
   },
   {
-   "id": "e1663",
+   "id": "e1665",
    "from": "mcp/server.test.mjs",
    "to": "mcp/repository-catalog.mjs",
    "operation": "esm-import",
@@ -32224,7 +32172,7 @@
    ]
   },
   {
-   "id": "e1664",
+   "id": "e1666",
    "from": "mcp/working-context.mjs",
    "to": "mcp/proposal-store.mjs",
    "operation": "esm-import",
@@ -32238,7 +32186,7 @@
    ]
   },
   {
-   "id": "e1665",
+   "id": "e1667",
    "from": "mcp/working-context.mjs",
    "to": "mcp/observable-events.mjs",
    "operation": "executable-path-reference",
@@ -32252,7 +32200,7 @@
    ]
   },
   {
-   "id": "e1666",
+   "id": "e1668",
    "from": "mcp/working-context.test.mjs",
    "to": "mcp/working-context.mjs",
    "operation": "esm-import",
@@ -32266,7 +32214,7 @@
    ]
   },
   {
-   "id": "e1667",
+   "id": "e1669",
    "from": "mcp/workspace-routing.test.mjs",
    "to": "mcp/workspace-routing.mjs",
    "operation": "esm-import",
@@ -32280,7 +32228,7 @@
    ]
   },
   {
-   "id": "e1668",
+   "id": "e1670",
    "from": "schemas/registry/code/mbr402-batch.mjs",
    "to": "schemas/registry/code/code-batch-limits.mjs",
    "operation": "esm-import",
@@ -32294,7 +32242,7 @@
    ]
   },
   {
-   "id": "e1669",
+   "id": "e1671",
    "from": "scripts/ci/build-invocation-graph.mjs",
    "to": "blueprint/scripts/blueprint.mjs",
    "operation": "executable-path-reference",
@@ -32308,7 +32256,7 @@
    ]
   },
   {
-   "id": "e1670",
+   "id": "e1672",
    "from": "scripts/ci/build-invocation-graph.mjs",
    "to": "blueprint/scripts/blueprint-mcp.mjs",
    "operation": "executable-path-reference",
@@ -32322,7 +32270,7 @@
    ]
   },
   {
-   "id": "e1671",
+   "id": "e1673",
    "from": "scripts/ci/build-invocation-graph.mjs",
    "to": "blueprint/scripts/cli/commands.mjs",
    "operation": "executable-path-reference",
@@ -32336,7 +32284,7 @@
    ]
   },
   {
-   "id": "e1672",
+   "id": "e1674",
    "from": "scripts/ci/build-invocation-graph.mjs",
    "to": "blueprint/scripts/blueprint-watch.mjs",
    "operation": "executable-path-reference",
@@ -32350,7 +32298,7 @@
    ]
   },
   {
-   "id": "e1673",
+   "id": "e1675",
    "from": "scripts/ci/build-invocation-graph.mjs",
    "to": "blueprint/scripts/cli/commands.mjs",
    "operation": "executable-path-literal-launch",
@@ -32364,7 +32312,7 @@
    ]
   },
   {
-   "id": "e1674",
+   "id": "e1676",
    "from": "scripts/ci/check-adapt-ontology.test.mjs",
    "to": "scripts/ci/check-adapt-ontology.mjs",
    "operation": "esm-import",
@@ -32378,7 +32326,7 @@
    ]
   },
   {
-   "id": "e1675",
+   "id": "e1677",
    "from": "scripts/ci/check-atomic-canons.test.mjs",
    "to": "scripts/ci/check-atomic-canons.mjs",
    "operation": "esm-import",
@@ -32392,7 +32340,7 @@
    ]
   },
   {
-   "id": "e1676",
+   "id": "e1678",
    "from": "scripts/ci/check-generated.mjs",
    "to": "scripts/tools/productization/check-docs.mjs",
    "operation": "child-process-spawn",
@@ -32406,7 +32354,7 @@
    ]
   },
   {
-   "id": "e1677",
+   "id": "e1679",
    "from": "scripts/ci/check-generated.mjs",
    "to": "scripts/tools/productization/check-docs.mjs",
    "operation": "executable-path-literal-launch",
@@ -32420,7 +32368,7 @@
    ]
   },
   {
-   "id": "e1678",
+   "id": "e1680",
    "from": "scripts/ci/check-invocation-graph.mjs",
    "to": "scripts/ci/build-invocation-graph.mjs",
    "operation": "esm-import",
@@ -32434,7 +32382,7 @@
    ]
   },
   {
-   "id": "e1679",
+   "id": "e1681",
    "from": "scripts/ci/check-invocation-graph.test.mjs",
    "to": "scripts/ci/build-invocation-graph.mjs",
    "operation": "esm-import",
@@ -32448,7 +32396,7 @@
    ]
   },
   {
-   "id": "e1680",
+   "id": "e1682",
    "from": "scripts/ci/check-invocation-graph.test.mjs",
    "to": "scripts/ci/check-invocation-graph.mjs",
    "operation": "esm-import",
@@ -32462,7 +32410,7 @@
    ]
   },
   {
-   "id": "e1681",
+   "id": "e1683",
    "from": "scripts/ci/check-invocation-graph.test.mjs",
    "to": "scripts/ci/check-invocation-graph.mjs",
    "operation": "executable-path-reference",
@@ -32476,7 +32424,7 @@
    ]
   },
   {
-   "id": "e1682",
+   "id": "e1684",
    "from": "scripts/ci/check-invocation-graph.test.mjs",
    "to": "scripts/ci/build-invocation-graph.mjs",
    "operation": "executable-path-reference",
@@ -32490,7 +32438,7 @@
    ]
   },
   {
-   "id": "e1683",
+   "id": "e1685",
    "from": "scripts/ci/check-invocation-graph.test.mjs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -32504,7 +32452,7 @@
    ]
   },
   {
-   "id": "e1684",
+   "id": "e1686",
    "from": "scripts/ci/check-lifecycle-conformance.mjs",
    "to": "mcp/client.mjs",
    "operation": "executable-path-reference",
@@ -32518,7 +32466,7 @@
    ]
   },
   {
-   "id": "e1685",
+   "id": "e1687",
    "from": "scripts/ci/check-native-contract-fixtures.test.mjs",
    "to": "scripts/ci/check-native-contract-fixtures.mjs",
    "operation": "esm-import",
@@ -32532,7 +32480,7 @@
    ]
   },
   {
-   "id": "e1686",
+   "id": "e1688",
    "from": "scripts/ci/check-native-contract-fixtures.test.mjs",
    "to": "scripts/ci/check-native-contract-fixtures.mjs",
    "operation": "executable-path-reference",
@@ -32546,7 +32494,7 @@
    ]
   },
   {
-   "id": "e1687",
+   "id": "e1689",
    "from": "scripts/ci/check-network-boundary.mjs",
    "to": "mcp/host/observable-ingress.cjs",
    "operation": "require",
@@ -32560,7 +32508,7 @@
    ]
   },
   {
-   "id": "e1688",
+   "id": "e1690",
    "from": "scripts/ci/check-network-boundary.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -32574,7 +32522,7 @@
    ]
   },
   {
-   "id": "e1689",
+   "id": "e1691",
    "from": "scripts/ci/check-network-boundary.mjs",
    "to": "mcp/host/observable-ingress.cjs",
    "operation": "executable-path-reference",
@@ -32588,7 +32536,7 @@
    ]
   },
   {
-   "id": "e1690",
+   "id": "e1692",
    "from": "scripts/ci/check-network-boundary.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "executable-path-reference",
@@ -32602,7 +32550,7 @@
    ]
   },
   {
-   "id": "e1691",
+   "id": "e1693",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/right-release.config.mjs",
    "operation": "esm-import",
@@ -32616,7 +32564,7 @@
    ]
   },
   {
-   "id": "e1692",
+   "id": "e1694",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/scripts/runtime-inventory.mjs",
    "operation": "esm-import",
@@ -32630,7 +32578,7 @@
    ]
   },
   {
-   "id": "e1693",
+   "id": "e1695",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/right-release.config.mjs",
    "operation": "executable-path-reference",
@@ -32644,7 +32592,7 @@
    ]
   },
   {
-   "id": "e1694",
+   "id": "e1696",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/scripts/runtime-inventory.mjs",
    "operation": "executable-path-reference",
@@ -32658,7 +32606,7 @@
    ]
   },
   {
-   "id": "e1695",
+   "id": "e1697",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/scripts/release-assets.mjs",
    "operation": "executable-path-reference",
@@ -32672,7 +32620,7 @@
    ]
   },
   {
-   "id": "e1696",
+   "id": "e1698",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/scripts/write-release-manifest.mjs",
    "operation": "executable-path-reference",
@@ -32686,7 +32634,7 @@
    ]
   },
   {
-   "id": "e1697",
+   "id": "e1699",
    "from": "scripts/ci/check-release-identity.mjs",
    "to": "apps/membrane-hub/scripts/write-windows-release-evidence.mjs",
    "operation": "executable-path-reference",
@@ -32700,7 +32648,7 @@
    ]
   },
   {
-   "id": "e1698",
+   "id": "e1700",
    "from": "scripts/ci/check-runtime-language-manifest.test.mjs",
    "to": "scripts/ci/check-runtime-language-manifest.mjs",
    "operation": "esm-import",
@@ -32714,7 +32662,7 @@
    ]
   },
   {
-   "id": "e1699",
+   "id": "e1701",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-release-identity.mjs",
    "operation": "executable-path-reference",
@@ -32728,7 +32676,7 @@
    ]
   },
   {
-   "id": "e1700",
+   "id": "e1702",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-generated.mjs",
    "operation": "executable-path-reference",
@@ -32742,7 +32690,7 @@
    ]
   },
   {
-   "id": "e1701",
+   "id": "e1703",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-network-boundary.mjs",
    "operation": "executable-path-reference",
@@ -32756,7 +32704,7 @@
    ]
   },
   {
-   "id": "e1702",
+   "id": "e1704",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-lifecycle-conformance.mjs",
    "operation": "executable-path-reference",
@@ -32770,7 +32718,7 @@
    ]
   },
   {
-   "id": "e1703",
+   "id": "e1705",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-adapt-ontology.test.mjs",
    "operation": "executable-path-reference",
@@ -32784,7 +32732,7 @@
    ]
   },
   {
-   "id": "e1704",
+   "id": "e1706",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-adapt-ontology.mjs",
    "operation": "executable-path-reference",
@@ -32798,7 +32746,7 @@
    ]
   },
   {
-   "id": "e1705",
+   "id": "e1707",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-runtime-language-manifest.test.mjs",
    "operation": "executable-path-reference",
@@ -32812,7 +32760,7 @@
    ]
   },
   {
-   "id": "e1706",
+   "id": "e1708",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-runtime-language-manifest.mjs",
    "operation": "executable-path-reference",
@@ -32826,7 +32774,7 @@
    ]
   },
   {
-   "id": "e1707",
+   "id": "e1709",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-invocation-graph.test.mjs",
    "operation": "executable-path-reference",
@@ -32840,7 +32788,7 @@
    ]
   },
   {
-   "id": "e1708",
+   "id": "e1710",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-invocation-graph.mjs",
    "operation": "executable-path-reference",
@@ -32854,7 +32802,7 @@
    ]
   },
   {
-   "id": "e1709",
+   "id": "e1711",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-native-contract-fixtures.test.mjs",
    "operation": "executable-path-reference",
@@ -32868,7 +32816,7 @@
    ]
   },
   {
-   "id": "e1710",
+   "id": "e1712",
    "from": "scripts/ci/run-ci.sh",
    "to": "scripts/ci/check-native-contract-fixtures.mjs",
    "operation": "executable-path-reference",
@@ -32882,7 +32830,7 @@
    ]
   },
   {
-   "id": "e1711",
+   "id": "e1713",
    "from": "scripts/ci/run-equivalence.mjs",
    "to": "mcp/scope-grant-v1.test.mjs",
    "operation": "executable-path-reference",
@@ -32896,7 +32844,7 @@
    ]
   },
   {
-   "id": "e1712",
+   "id": "e1714",
    "from": "scripts/ci/run-equivalence.mjs",
    "to": "mcp/deadline.test.mjs",
    "operation": "executable-path-reference",
@@ -32910,7 +32858,7 @@
    ]
   },
   {
-   "id": "e1713",
+   "id": "e1715",
    "from": "scripts/ci/run-equivalence.mjs",
    "to": "mcp/delivery-serialization.test.mjs",
    "operation": "executable-path-reference",
@@ -32924,7 +32872,7 @@
    ]
   },
   {
-   "id": "e1714",
+   "id": "e1716",
    "from": "scripts/ci/test-random.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "require",
@@ -32938,7 +32886,7 @@
    ]
   },
   {
-   "id": "e1715",
+   "id": "e1717",
    "from": "scripts/ci/test-random.mjs",
    "to": "mcp/host/observable-event.cjs",
    "operation": "executable-path-reference",
@@ -32952,7 +32900,7 @@
    ]
   },
   {
-   "id": "e1716",
+   "id": "e1718",
    "from": "scripts/generate-host-contracts.mjs",
    "to": "mcp/host/capability-matrix.mjs",
    "operation": "esm-import",
@@ -32966,7 +32914,7 @@
    ]
   },
   {
-   "id": "e1717",
+   "id": "e1719",
    "from": "scripts/generate-host-contracts.mjs",
    "to": "mcp/host/capability-matrix.mjs",
    "operation": "executable-path-reference",
@@ -32980,7 +32928,7 @@
    ]
   },
   {
-   "id": "e1718",
+   "id": "e1720",
    "from": "scripts/generate-host-contracts.test.mjs",
    "to": "scripts/generate-host-contracts.mjs",
    "operation": "esm-import",
@@ -32994,7 +32942,7 @@
    ]
   },
   {
-   "id": "e1719",
+   "id": "e1721",
    "from": "scripts/generate-host-contracts.test.mjs",
    "to": "scripts/generate-host-contracts.mjs",
    "operation": "executable-path-reference",
@@ -33008,7 +32956,7 @@
    ]
   },
   {
-   "id": "e1720",
+   "id": "e1722",
    "from": "scripts/generate-install-workspace.test.mjs",
    "to": "scripts/generate-install-workspace.mjs",
    "operation": "esm-import",
@@ -33022,7 +32970,7 @@
    ]
   },
   {
-   "id": "e1721",
+   "id": "e1723",
    "from": "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
    "to": "tests/benchmarks/whole-task/runner.mjs",
    "operation": "esm-import",
@@ -33036,7 +32984,7 @@
    ]
   },
   {
-   "id": "e1722",
+   "id": "e1724",
    "from": "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
    "to": "tests/benchmarks/whole-task/runner.mjs",
    "operation": "executable-path-reference",
@@ -33050,7 +32998,7 @@
    ]
   },
   {
-   "id": "e1723",
+   "id": "e1725",
    "from": "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
    "to": "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
    "operation": "esm-import",
@@ -33064,7 +33012,7 @@
    ]
   },
   {
-   "id": "e1724",
+   "id": "e1726",
    "from": "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
    "to": "tests/benchmarks/whole-task/holdout.mjs",
    "operation": "esm-import",
@@ -33078,7 +33026,7 @@
    ]
   },
   {
-   "id": "e1725",
+   "id": "e1727",
    "from": "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
    "to": "tests/benchmarks/whole-task/holdout.mjs",
    "operation": "executable-path-reference",
@@ -33092,7 +33040,7 @@
    ]
   },
   {
-   "id": "e1726",
+   "id": "e1728",
    "from": "scripts/qualification/memory/run-memory-benchmarks.mjs",
    "to": "tests/benchmarks/memory/runner.mjs",
    "operation": "esm-import",
@@ -33106,7 +33054,7 @@
    ]
   },
   {
-   "id": "e1727",
+   "id": "e1729",
    "from": "scripts/qualification/memory/run-memory-benchmarks.mjs",
    "to": "tests/benchmarks/memory/contracts.mjs",
    "operation": "esm-import",
@@ -33120,7 +33068,7 @@
    ]
   },
   {
-   "id": "e1728",
+   "id": "e1730",
    "from": "scripts/qualification/memory/run-memory-benchmarks.mjs",
    "to": "tests/benchmarks/memory/runner.mjs",
    "operation": "executable-path-reference",
@@ -33134,7 +33082,7 @@
    ]
   },
   {
-   "id": "e1729",
+   "id": "e1731",
    "from": "scripts/qualification/memory/run-memory-benchmarks.mjs",
    "to": "tests/benchmarks/memory/contracts.mjs",
    "operation": "executable-path-reference",
@@ -33148,7 +33096,7 @@
    ]
   },
   {
-   "id": "e1730",
+   "id": "e1732",
    "from": "scripts/qualification/memory/run-memory-benchmarks.test.mjs",
    "to": "scripts/qualification/memory/run-memory-benchmarks.mjs",
    "operation": "esm-import",
@@ -33162,7 +33110,7 @@
    ]
   },
   {
-   "id": "e1731",
+   "id": "e1733",
    "from": "scripts/qualification/run-adversarial.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "executable-path-reference",
@@ -33176,7 +33124,7 @@
    ]
   },
   {
-   "id": "e1732",
+   "id": "e1734",
    "from": "scripts/qualification/run-adversarial.mjs",
    "to": "tests/fixtures/adversarial/fixtures.mjs",
    "operation": "executable-path-reference",
@@ -33190,7 +33138,7 @@
    ]
   },
   {
-   "id": "e1733",
+   "id": "e1735",
    "from": "scripts/qualification/run-fault-injection.mjs",
    "to": "tests/fault-injection/fault-runner.mjs",
    "operation": "esm-import",
@@ -33204,7 +33152,7 @@
    ]
   },
   {
-   "id": "e1734",
+   "id": "e1736",
    "from": "scripts/qualification/run-fault-injection.mjs",
    "to": "tests/fault-injection/fault-runner.mjs",
    "operation": "executable-path-reference",
@@ -33218,7 +33166,7 @@
    ]
   },
   {
-   "id": "e1735",
+   "id": "e1737",
    "from": "scripts/qualification/run.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "executable-path-reference",
@@ -33232,7 +33180,7 @@
    ]
   },
   {
-   "id": "e1736",
+   "id": "e1738",
    "from": "scripts/qualification/run.mjs",
    "to": "scripts/release/verify-release-evidence.mjs",
    "operation": "executable-path-reference",
@@ -33246,7 +33194,7 @@
    ]
   },
   {
-   "id": "e1737",
+   "id": "e1739",
    "from": "scripts/qualification/run.mjs",
    "to": "scripts/run-platform-scenarios.mjs",
    "operation": "executable-path-reference",
@@ -33260,7 +33208,7 @@
    ]
   },
   {
-   "id": "e1738",
+   "id": "e1740",
    "from": "scripts/qualification/run.mjs",
    "to": "mcp/e2e-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -33274,7 +33222,7 @@
    ]
   },
   {
-   "id": "e1739",
+   "id": "e1741",
    "from": "scripts/qualification/verify-memory-benchmark.mjs",
    "to": "tests/benchmarks/memory/adapters.mjs",
    "operation": "esm-import",
@@ -33288,7 +33236,7 @@
    ]
   },
   {
-   "id": "e1740",
+   "id": "e1742",
    "from": "scripts/qualification/verify-memory-benchmark.mjs",
    "to": "tests/benchmarks/memory/adapters.mjs",
    "operation": "executable-path-reference",
@@ -33302,7 +33250,7 @@
    ]
   },
   {
-   "id": "e1741",
+   "id": "e1743",
    "from": "scripts/qualification/write-prequalification-binding.test.mjs",
    "to": "scripts/qualification/write-prequalification-binding.mjs",
    "operation": "esm-import",
@@ -33316,7 +33264,7 @@
    ]
   },
   {
-   "id": "e1742",
+   "id": "e1744",
    "from": "scripts/qualification/write-windows-platform-evidence.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "esm-import",
@@ -33330,7 +33278,7 @@
    ]
   },
   {
-   "id": "e1743",
+   "id": "e1745",
    "from": "scripts/qualification/write-windows-platform-evidence.test.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "esm-import",
@@ -33344,7 +33292,7 @@
    ]
   },
   {
-   "id": "e1744",
+   "id": "e1746",
    "from": "scripts/qualification/write-windows-platform-evidence.test.mjs",
    "to": "scripts/qualification/write-windows-platform-evidence.mjs",
    "operation": "esm-import",
@@ -33358,7 +33306,7 @@
    ]
   },
   {
-   "id": "e1745",
+   "id": "e1747",
    "from": "scripts/release/evidence/sbom.test.mjs",
    "to": "scripts/release/evidence/sbom.mjs",
    "operation": "esm-import",
@@ -33372,7 +33320,7 @@
    ]
   },
   {
-   "id": "e1746",
+   "id": "e1748",
    "from": "scripts/release/evidence/sbom.test.mjs",
    "to": "scripts/release/evidence/sbom.mjs",
    "operation": "executable-path-reference",
@@ -33386,77 +33334,7 @@
    ]
   },
   {
-   "id": "e1747",
-   "from": "scripts/release/npm/resolve-platform-artifacts.mjs",
-   "to": "scripts/release/identity.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/npm/resolve-platform-artifacts.mjs",
-     "symbol": "../identity.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1748",
-   "from": "scripts/release/npm/resolve-platform-artifacts.mjs",
-   "to": "dist/npm/bin/membrane.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/npm/resolve-platform-artifacts.mjs",
-     "symbol": "dist/npm/bin/membrane.mjs"
-    }
-   ]
-  },
-  {
    "id": "e1749",
-   "from": "scripts/release/npm/resolve-platform-artifacts.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/npm/resolve-platform-artifacts.mjs",
-     "symbol": "dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1750",
-   "from": "scripts/release/npm/resolve-platform-artifacts.test.mjs",
-   "to": "scripts/release/npm/resolve-platform-artifacts.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/npm/resolve-platform-artifacts.test.mjs",
-     "symbol": "./resolve-platform-artifacts.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1751",
-   "from": "scripts/release/npm/resolve-platform-artifacts.test.mjs",
-   "to": "scripts/release/identity.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/npm/resolve-platform-artifacts.test.mjs",
-     "symbol": "../identity.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1752",
    "from": "scripts/release/oci/generate-oci-release.mjs",
    "to": "scripts/release/identity.mjs",
    "operation": "esm-import",
@@ -33470,7 +33348,7 @@
    ]
   },
   {
-   "id": "e1753",
+   "id": "e1750",
    "from": "scripts/release/oci/generate-oci-release.mjs",
    "to": "scripts/release/verify-oci-release.mjs",
    "operation": "esm-import",
@@ -33484,7 +33362,7 @@
    ]
   },
   {
-   "id": "e1754",
+   "id": "e1751",
    "from": "scripts/release/oci/generate-oci-release.mjs",
    "to": "scripts/release/verify-oci-release.mjs",
    "operation": "executable-path-reference",
@@ -33498,147 +33376,7 @@
    ]
   },
   {
-   "id": "e1755",
-   "from": "scripts/release/registry/tool-contract-coverage.mjs",
-   "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/tool-contract-coverage.mjs",
-     "symbol": "../../../engine/crates/membrane-protocol/bindings/operations.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1756",
-   "from": "scripts/release/registry/tool-contract-coverage.mjs",
-   "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/tool-contract-coverage.mjs",
-     "symbol": "engine/crates/membrane-protocol/bindings/operations.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1757",
-   "from": "scripts/release/registry/tool-contract-coverage.mjs",
-   "to": "mcp/server.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/tool-contract-coverage.mjs",
-     "symbol": "mcp/server.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1758",
-   "from": "scripts/release/registry/tool-contract-coverage.mjs",
-   "to": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/tool-contract-coverage.mjs",
-     "symbol": "tests/mcp-registry/tool-contract-coverage.test.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1759",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "scripts/release/verify-mcp-registry.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "../verify-mcp-registry.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1760",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "scripts/release/registry/tool-contract-coverage.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "./tool-contract-coverage.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1761",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "scripts/release/verify-mcp-registry.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "scripts/release/verify-mcp-registry.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1762",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "mcp/server.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "mcp/server.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1763",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "engine/crates/membrane-protocol/bindings/operations.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1764",
-   "from": "scripts/release/registry/verify-server-json.mjs",
-   "to": "tests/mcp-registry/verify-server-json.test.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "scripts/release/registry/verify-server-json.mjs",
-     "symbol": "tests/mcp-registry/verify-server-json.test.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1765",
+   "id": "e1752",
    "from": "scripts/release/right-git-candidate.mjs",
    "to": "scripts/release/candidate-source-clean.mjs",
    "operation": "esm-import",
@@ -33652,7 +33390,7 @@
    ]
   },
   {
-   "id": "e1766",
+   "id": "e1753",
    "from": "scripts/release/verify-release-evidence.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "esm-import",
@@ -33666,7 +33404,7 @@
    ]
   },
   {
-   "id": "e1767",
+   "id": "e1754",
    "from": "scripts/release/verify-release-evidence.test.mjs",
    "to": "scripts/release/verify-release-evidence.mjs",
    "operation": "esm-import",
@@ -33680,7 +33418,7 @@
    ]
   },
   {
-   "id": "e1768",
+   "id": "e1755",
    "from": "scripts/release/verify-release-evidence.test.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "esm-import",
@@ -33694,7 +33432,7 @@
    ]
   },
   {
-   "id": "e1769",
+   "id": "e1756",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/candidate-source-clean.mjs",
    "operation": "esm-import",
@@ -33708,7 +33446,7 @@
    ]
   },
   {
-   "id": "e1770",
+   "id": "e1757",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/right-git-release-chain.mjs",
    "operation": "esm-import",
@@ -33722,7 +33460,7 @@
    ]
   },
   {
-   "id": "e1771",
+   "id": "e1758",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/candidate-source-clean.mjs",
    "operation": "executable-path-reference",
@@ -33736,7 +33474,7 @@
    ]
   },
   {
-   "id": "e1772",
+   "id": "e1759",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/right-git-release-chain.mjs",
    "operation": "executable-path-reference",
@@ -33750,7 +33488,7 @@
    ]
   },
   {
-   "id": "e1773",
+   "id": "e1760",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/ci/run-ci.sh",
    "operation": "executable-path-reference",
@@ -33764,7 +33502,7 @@
    ]
   },
   {
-   "id": "e1774",
+   "id": "e1761",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/ci/run-equivalence.mjs",
    "operation": "executable-path-reference",
@@ -33778,7 +33516,7 @@
    ]
   },
   {
-   "id": "e1775",
+   "id": "e1762",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "apps/membrane-hub/right-release.config.mjs",
    "operation": "executable-path-reference",
@@ -33792,7 +33530,7 @@
    ]
   },
   {
-   "id": "e1776",
+   "id": "e1763",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/right-git-candidate.mjs",
    "operation": "executable-path-reference",
@@ -33806,7 +33544,7 @@
    ]
   },
   {
-   "id": "e1777",
+   "id": "e1764",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "apps/membrane-hub/scripts/release-build-candidate-windows.mjs",
    "operation": "executable-path-reference",
@@ -33820,7 +33558,7 @@
    ]
   },
   {
-   "id": "e1778",
+   "id": "e1765",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "apps/membrane-hub/scripts/build-mac-release.mjs",
    "operation": "executable-path-reference",
@@ -33834,7 +33572,7 @@
    ]
   },
   {
-   "id": "e1779",
+   "id": "e1766",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "apps/membrane-hub/scripts/release-build-mac.mjs",
    "operation": "executable-path-reference",
@@ -33848,7 +33586,7 @@
    ]
   },
   {
-   "id": "e1780",
+   "id": "e1767",
    "from": "scripts/rightkit-pipeline.test.mjs",
    "to": "scripts/release/right-git-release-chain.mjs",
    "operation": "executable-path-reference",
@@ -33862,7 +33600,7 @@
    ]
   },
   {
-   "id": "e1781",
+   "id": "e1768",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "blueprint/scripts/release/npm-cli.mjs",
    "operation": "esm-import",
@@ -33876,7 +33614,7 @@
    ]
   },
   {
-   "id": "e1782",
+   "id": "e1769",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "blueprint/scripts/release/npm-cli.mjs",
    "operation": "executable-path-reference",
@@ -33890,7 +33628,7 @@
    ]
   },
   {
-   "id": "e1783",
+   "id": "e1770",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "mcp/server-durable.test.mjs",
    "operation": "executable-path-reference",
@@ -33904,7 +33642,7 @@
    ]
   },
   {
-   "id": "e1784",
+   "id": "e1771",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "mcp/client.test.mjs",
    "operation": "executable-path-reference",
@@ -33918,7 +33656,7 @@
    ]
   },
   {
-   "id": "e1785",
+   "id": "e1772",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "mcp/adapters.test.mjs",
    "operation": "executable-path-reference",
@@ -33932,7 +33670,7 @@
    ]
   },
   {
-   "id": "e1786",
+   "id": "e1773",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "mcp/project-registry.test.mjs",
    "operation": "executable-path-reference",
@@ -33946,7 +33684,7 @@
    ]
   },
   {
-   "id": "e1787",
+   "id": "e1774",
    "from": "scripts/run-m0-baseline-current.mjs",
    "to": "mcp/repository-catalog.test.mjs",
    "operation": "executable-path-reference",
@@ -33960,7 +33698,7 @@
    ]
   },
   {
-   "id": "e1788",
+   "id": "e1775",
    "from": "scripts/run-m0-baseline-current.test.mjs",
    "to": "scripts/run-m0-baseline-current.mjs",
    "operation": "esm-import",
@@ -33974,7 +33712,7 @@
    ]
   },
   {
-   "id": "e1789",
+   "id": "e1776",
    "from": "scripts/run-platform-scenarios.mjs",
    "to": "mcp/e2e-benchmark.mjs",
    "operation": "esm-import",
@@ -33988,7 +33726,7 @@
    ]
   },
   {
-   "id": "e1790",
+   "id": "e1777",
    "from": "scripts/run-platform-scenarios.mjs",
    "to": "mcp/e2e-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -34002,7 +33740,7 @@
    ]
   },
   {
-   "id": "e1791",
+   "id": "e1778",
    "from": "scripts/tools/productization/check-docs.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "esm-import",
@@ -34016,7 +33754,7 @@
    ]
   },
   {
-   "id": "e1792",
+   "id": "e1779",
    "from": "scripts/tools/productization/check-docs.mjs",
    "to": "scripts/tools/productization/render-docs.mjs",
    "operation": "esm-import",
@@ -34030,7 +33768,7 @@
    ]
   },
   {
-   "id": "e1793",
+   "id": "e1780",
    "from": "scripts/tools/productization/check-docs.mjs",
    "to": "scripts/tools/productization/render-docs.mjs",
    "operation": "executable-path-reference",
@@ -34044,7 +33782,7 @@
    ]
   },
   {
-   "id": "e1794",
+   "id": "e1781",
    "from": "scripts/tools/productization/check-docs.test.mjs",
    "to": "scripts/tools/productization/check-docs.mjs",
    "operation": "esm-import",
@@ -34058,7 +33796,7 @@
    ]
   },
   {
-   "id": "e1795",
+   "id": "e1782",
    "from": "scripts/tools/productization/check-docs.test.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "esm-import",
@@ -34072,7 +33810,7 @@
    ]
   },
   {
-   "id": "e1796",
+   "id": "e1783",
    "from": "scripts/tools/productization/check-docs.test.mjs",
    "to": "scripts/tools/productization/render-docs.mjs",
    "operation": "esm-import",
@@ -34086,7 +33824,7 @@
    ]
   },
   {
-   "id": "e1797",
+   "id": "e1784",
    "from": "scripts/tools/productization/generate-client-matrix.mjs",
    "to": "tests/clients/client-matrix.test.mjs",
    "operation": "executable-path-reference",
@@ -34100,7 +33838,7 @@
    ]
   },
   {
-   "id": "e1798",
+   "id": "e1785",
    "from": "scripts/tools/productization/generate-product-truth.mjs",
    "to": "scripts/tools/productization/render-docs.mjs",
    "operation": "esm-import",
@@ -34114,7 +33852,7 @@
    ]
   },
   {
-   "id": "e1799",
+   "id": "e1786",
    "from": "scripts/tools/productization/generate-product-truth.mjs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -34128,7 +33866,7 @@
    ]
   },
   {
-   "id": "e1800",
+   "id": "e1787",
    "from": "scripts/tools/productization/generate-support-matrix.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "esm-import",
@@ -34142,7 +33880,7 @@
    ]
   },
   {
-   "id": "e1801",
+   "id": "e1788",
    "from": "scripts/tools/productization/generate-support-matrix.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "executable-path-reference",
@@ -34156,7 +33894,7 @@
    ]
   },
   {
-   "id": "e1802",
+   "id": "e1789",
    "from": "scripts/tools/productization/generate-support-matrix.mjs",
    "to": "scripts/qualification/run.mjs",
    "operation": "executable-path-reference",
@@ -34170,7 +33908,7 @@
    ]
   },
   {
-   "id": "e1803",
+   "id": "e1790",
    "from": "scripts/tools/productization/generate-support-matrix.test.mjs",
    "to": "scripts/tools/productization/generate-support-matrix.mjs",
    "operation": "esm-import",
@@ -34184,7 +33922,7 @@
    ]
   },
   {
-   "id": "e1804",
+   "id": "e1791",
    "from": "scripts/tools/productization/generate-support-matrix.test.mjs",
    "to": "scripts/qualification/run.mjs",
    "operation": "esm-import",
@@ -34198,7 +33936,7 @@
    ]
   },
   {
-   "id": "e1805",
+   "id": "e1792",
    "from": "scripts/tools/productization/generate-support-matrix.test.mjs",
    "to": "scripts/qualification/run.mjs",
    "operation": "executable-path-reference",
@@ -34212,7 +33950,7 @@
    ]
   },
   {
-   "id": "e1806",
+   "id": "e1793",
    "from": "scripts/tools/productization/generate-support-matrix.test.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "executable-path-reference",
@@ -34226,7 +33964,7 @@
    ]
   },
   {
-   "id": "e1807",
+   "id": "e1794",
    "from": "scripts/tools/productization/render-docs.mjs",
    "to": "scripts/tools/productization/generate-product-truth.mjs",
    "operation": "executable-path-reference",
@@ -34240,7 +33978,7 @@
    ]
   },
   {
-   "id": "e1808",
+   "id": "e1795",
    "from": "scripts/tools/productization/render-docs.mjs",
    "to": "mcp/server.mjs",
    "operation": "executable-path-reference",
@@ -34254,7 +33992,7 @@
    ]
   },
   {
-   "id": "e1809",
+   "id": "e1796",
    "from": "scripts/tools/productization/render-docs.mjs",
    "to": "scripts/tools/productization/check-docs.mjs",
    "operation": "executable-path-reference",
@@ -34268,7 +34006,7 @@
    ]
   },
   {
-   "id": "e1810",
+   "id": "e1797",
    "from": "scripts/tools/productization/render-docs.mjs",
    "to": "tests/runbook-links/hub-alerts.test.mjs",
    "operation": "executable-path-reference",
@@ -34282,7 +34020,7 @@
    ]
   },
   {
-   "id": "e1811",
+   "id": "e1798",
    "from": "tests/adapters/heartbeat-classifier.test.mjs",
    "to": "mcp/adapters.mjs",
    "operation": "esm-import",
@@ -34296,7 +34034,7 @@
    ]
   },
   {
-   "id": "e1812",
+   "id": "e1799",
    "from": "tests/adapters/heartbeat-classifier.test.mjs",
    "to": "mcp/adapters.mjs",
    "operation": "executable-path-reference",
@@ -34310,7 +34048,7 @@
    ]
   },
   {
-   "id": "e1813",
+   "id": "e1800",
    "from": "tests/admission/budget-lane-reconciliation.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -34324,7 +34062,7 @@
    ]
   },
   {
-   "id": "e1814",
+   "id": "e1801",
    "from": "tests/admission/budget-lane-reconciliation.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "require",
@@ -34338,7 +34076,7 @@
    ]
   },
   {
-   "id": "e1815",
+   "id": "e1802",
    "from": "tests/admission/budget-lane-reconciliation.test.mjs",
    "to": "mcp/context-renderer-lib.cjs",
    "operation": "executable-path-reference",
@@ -34352,7 +34090,7 @@
    ]
   },
   {
-   "id": "e1816",
+   "id": "e1803",
    "from": "tests/adversarial/authorization-adversarial.test.mjs",
    "to": "tests/fixtures/adversarial/fixtures.mjs",
    "operation": "esm-import",
@@ -34366,7 +34104,7 @@
    ]
   },
   {
-   "id": "e1817",
+   "id": "e1804",
    "from": "tests/adversarial/authorization-adversarial.test.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "executable-path-reference",
@@ -34380,7 +34118,7 @@
    ]
   },
   {
-   "id": "e1818",
+   "id": "e1805",
    "from": "tests/adversarial/scope-grant-adversarial.test.mjs",
    "to": "tests/fixtures/adversarial/fixtures.mjs",
    "operation": "esm-import",
@@ -34394,7 +34132,7 @@
    ]
   },
   {
-   "id": "e1819",
+   "id": "e1806",
    "from": "tests/adversarial/scope-grant-adversarial.test.mjs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -34408,7 +34146,7 @@
    ]
   },
   {
-   "id": "e1820",
+   "id": "e1807",
    "from": "tests/benchmarks/memory/adapters.mjs",
    "to": "tests/benchmarks/memory/contracts.mjs",
    "operation": "esm-import",
@@ -34422,7 +34160,7 @@
    ]
   },
   {
-   "id": "e1821",
+   "id": "e1808",
    "from": "tests/benchmarks/memory/memory-benchmark.test.mjs",
    "to": "tests/benchmarks/memory/adapters.mjs",
    "operation": "esm-import",
@@ -34436,7 +34174,7 @@
    ]
   },
   {
-   "id": "e1822",
+   "id": "e1809",
    "from": "tests/benchmarks/memory/memory-benchmark.test.mjs",
    "to": "scripts/qualification/verify-memory-benchmark.mjs",
    "operation": "esm-import",
@@ -34450,7 +34188,7 @@
    ]
   },
   {
-   "id": "e1823",
+   "id": "e1810",
    "from": "tests/benchmarks/memory/memory-benchmark.test.mjs",
    "to": "scripts/qualification/verify-memory-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -34464,7 +34202,7 @@
    ]
   },
   {
-   "id": "e1824",
+   "id": "e1811",
    "from": "tests/benchmarks/memory/runner.mjs",
    "to": "tests/benchmarks/memory/contracts.mjs",
    "operation": "esm-import",
@@ -34478,7 +34216,7 @@
    ]
   },
   {
-   "id": "e1825",
+   "id": "e1812",
    "from": "tests/benchmarks/memory/runner.mjs",
    "to": "scripts/qualification/verify-memory-benchmark.mjs",
    "operation": "esm-import",
@@ -34492,7 +34230,7 @@
    ]
   },
   {
-   "id": "e1826",
+   "id": "e1813",
    "from": "tests/benchmarks/memory/runner.mjs",
    "to": "scripts/qualification/verify-memory-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -34506,7 +34244,7 @@
    ]
   },
   {
-   "id": "e1827",
+   "id": "e1814",
    "from": "tests/benchmarks/memory/runner.test.mjs",
    "to": "tests/benchmarks/memory/runner.mjs",
    "operation": "esm-import",
@@ -34520,7 +34258,7 @@
    ]
   },
   {
-   "id": "e1828",
+   "id": "e1815",
    "from": "tests/benchmarks/whole-task.test.mjs",
    "to": "scripts/qualification/verify-whole-task-benchmark.mjs",
    "operation": "esm-import",
@@ -34534,7 +34272,7 @@
    ]
   },
   {
-   "id": "e1829",
+   "id": "e1816",
    "from": "tests/benchmarks/whole-task.test.mjs",
    "to": "scripts/qualification/verify-whole-task-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -34548,7 +34286,7 @@
    ]
   },
   {
-   "id": "e1830",
+   "id": "e1817",
    "from": "tests/benchmarks/whole-task/bakeoff-reference.test.mjs",
    "to": "tests/benchmarks/whole-task/bakeoff-reference.mjs",
    "operation": "esm-import",
@@ -34562,7 +34300,7 @@
    ]
   },
   {
-   "id": "e1831",
+   "id": "e1818",
    "from": "tests/benchmarks/whole-task/holdout.test.mjs",
    "to": "tests/benchmarks/whole-task/holdout.mjs",
    "operation": "esm-import",
@@ -34576,7 +34314,7 @@
    ]
   },
   {
-   "id": "e1832",
+   "id": "e1819",
    "from": "tests/benchmarks/whole-task/runner.mjs",
    "to": "tests/benchmarks/whole-task/holdout.mjs",
    "operation": "esm-import",
@@ -34590,7 +34328,7 @@
    ]
   },
   {
-   "id": "e1833",
+   "id": "e1820",
    "from": "tests/benchmarks/whole-task/runner.mjs",
    "to": "tests/benchmarks/whole-task/bakeoff-reference.mjs",
    "operation": "esm-import",
@@ -34604,7 +34342,7 @@
    ]
   },
   {
-   "id": "e1834",
+   "id": "e1821",
    "from": "tests/benchmarks/whole-task/runner.mjs",
    "to": "scripts/qualification/verify-whole-task-benchmark.mjs",
    "operation": "esm-import",
@@ -34618,7 +34356,7 @@
    ]
   },
   {
-   "id": "e1835",
+   "id": "e1822",
    "from": "tests/benchmarks/whole-task/runner.mjs",
    "to": "scripts/qualification/verify-whole-task-benchmark.mjs",
    "operation": "executable-path-reference",
@@ -34632,7 +34370,7 @@
    ]
   },
   {
-   "id": "e1836",
+   "id": "e1823",
    "from": "tests/benchmarks/whole-task/runner.test.mjs",
    "to": "tests/benchmarks/whole-task/runner.mjs",
    "operation": "esm-import",
@@ -34646,7 +34384,7 @@
    ]
   },
   {
-   "id": "e1837",
+   "id": "e1824",
    "from": "tests/benchmarks/whole-task/runner.test.mjs",
    "to": "tests/benchmarks/whole-task/holdout.mjs",
    "operation": "esm-import",
@@ -34660,7 +34398,7 @@
    ]
   },
   {
-   "id": "e1838",
+   "id": "e1825",
    "from": "tests/clients/client-matrix.test.mjs",
    "to": "scripts/tools/productization/generate-client-matrix.mjs",
    "operation": "esm-import",
@@ -34674,7 +34412,7 @@
    ]
   },
   {
-   "id": "e1839",
+   "id": "e1826",
    "from": "tests/clients/client-matrix.test.mjs",
    "to": "mcp/install.mjs",
    "operation": "dynamic-import",
@@ -34688,7 +34426,7 @@
    ]
   },
   {
-   "id": "e1840",
+   "id": "e1827",
    "from": "tests/clients/client-matrix.test.mjs",
    "to": "scripts/tools/productization/generate-client-matrix.mjs",
    "operation": "executable-path-reference",
@@ -34702,7 +34440,7 @@
    ]
   },
   {
-   "id": "e1841",
+   "id": "e1828",
    "from": "tests/clients/client-matrix.test.mjs",
    "to": "mcp/install.mjs",
    "operation": "executable-path-reference",
@@ -34716,7 +34454,7 @@
    ]
   },
   {
-   "id": "e1842",
+   "id": "e1829",
    "from": "tests/code-operations/mbr402-batch.test.mjs",
    "to": "schemas/registry/code/mbr402-batch.mjs",
    "operation": "esm-import",
@@ -34730,7 +34468,7 @@
    ]
   },
   {
-   "id": "e1843",
+   "id": "e1830",
    "from": "tests/code-operations/mbr402-batch.test.mjs",
    "to": "schemas/registry/code/mbr402-batch.mjs",
    "operation": "executable-path-reference",
@@ -34744,7 +34482,7 @@
    ]
   },
   {
-   "id": "e1844",
+   "id": "e1831",
    "from": "tests/compat/code-batch-limits-parity.test.mjs",
    "to": "schemas/registry/code/code-batch-limits.mjs",
    "operation": "executable-path-reference",
@@ -34758,7 +34496,7 @@
    ]
   },
   {
-   "id": "e1845",
+   "id": "e1832",
    "from": "tests/compat/release-channel-compatibility.test.mjs",
    "to": "dist/release/channels/compatibility-policy.mjs",
    "operation": "esm-import",
@@ -34772,7 +34510,7 @@
    ]
   },
   {
-   "id": "e1846",
+   "id": "e1833",
    "from": "tests/compat/release-channel-compatibility.test.mjs",
    "to": "dist/release/channels/compatibility-policy.mjs",
    "operation": "executable-path-reference",
@@ -34786,7 +34524,7 @@
    ]
   },
   {
-   "id": "e1847",
+   "id": "e1834",
    "from": "tests/compression/protected-evidence.test.mjs",
    "to": "tests/compression/protection-classifier.mjs",
    "operation": "esm-import",
@@ -34800,7 +34538,7 @@
    ]
   },
   {
-   "id": "e1848",
+   "id": "e1835",
    "from": "tests/contracts/operations-contract.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
    "operation": "esm-import",
@@ -34814,7 +34552,7 @@
    ]
   },
   {
-   "id": "e1849",
+   "id": "e1836",
    "from": "tests/contracts/operations-contract.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/operations.test.mjs",
    "operation": "executable-path-reference",
@@ -34828,7 +34566,7 @@
    ]
   },
   {
-   "id": "e1850",
+   "id": "e1837",
    "from": "tests/contracts/operations-contract.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
    "operation": "executable-path-reference",
@@ -34842,7 +34580,7 @@
    ]
   },
   {
-   "id": "e1851",
+   "id": "e1838",
    "from": "tests/contracts/operations-contract.test.mjs",
    "to": "mcp/toolsets.mjs",
    "operation": "executable-path-reference",
@@ -34856,7 +34594,7 @@
    ]
   },
   {
-   "id": "e1852",
+   "id": "e1839",
    "from": "tests/e2e/mbr801-evidence.test.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "esm-import",
@@ -34870,7 +34608,7 @@
    ]
   },
   {
-   "id": "e1853",
+   "id": "e1840",
    "from": "tests/e2e/mbr801-evidence.test.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "executable-path-reference",
@@ -34884,7 +34622,7 @@
    ]
   },
   {
-   "id": "e1854",
+   "id": "e1841",
    "from": "tests/e2e/mbr801-run-harness.test.mjs",
    "to": "scripts/qualification/run.mjs",
    "operation": "esm-import",
@@ -34898,7 +34636,7 @@
    ]
   },
   {
-   "id": "e1855",
+   "id": "e1842",
    "from": "tests/e2e/mbr801-run-harness.test.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "esm-import",
@@ -34912,7 +34650,7 @@
    ]
   },
   {
-   "id": "e1856",
+   "id": "e1843",
    "from": "tests/e2e/mbr801-run-harness.test.mjs",
    "to": "scripts/qualification/run.mjs",
    "operation": "executable-path-reference",
@@ -34926,7 +34664,7 @@
    ]
   },
   {
-   "id": "e1857",
+   "id": "e1844",
    "from": "tests/e2e/mbr801-run-harness.test.mjs",
    "to": "scripts/qualification/verify-mbr801-evidence.mjs",
    "operation": "executable-path-reference",
@@ -34940,7 +34678,7 @@
    ]
   },
   {
-   "id": "e1858",
+   "id": "e1845",
    "from": "tests/events/observable-event.test.mjs",
    "to": "mcp/observable-events.mjs",
    "operation": "esm-import",
@@ -34954,7 +34692,7 @@
    ]
   },
   {
-   "id": "e1859",
+   "id": "e1846",
    "from": "tests/events/observable-event.test.mjs",
    "to": "mcp/observable-events.mjs",
    "operation": "executable-path-reference",
@@ -34968,7 +34706,7 @@
    ]
   },
   {
-   "id": "e1860",
+   "id": "e1847",
    "from": "tests/fault-injection/fault-runner.mjs",
    "to": "tests/fault-injection/fault-matrix.v1.json",
    "operation": "esm-import",
@@ -34982,7 +34720,7 @@
    ]
   },
   {
-   "id": "e1861",
+   "id": "e1848",
    "from": "tests/fault-injection/fault-runner.test.mjs",
    "to": "tests/fault-injection/fault-runner.mjs",
    "operation": "esm-import",
@@ -34996,7 +34734,7 @@
    ]
   },
   {
-   "id": "e1862",
+   "id": "e1849",
    "from": "tests/fixtures/adversarial/fixtures.mjs",
    "to": "mcp/authorization.mjs",
    "operation": "executable-path-reference",
@@ -35010,7 +34748,7 @@
    ]
   },
   {
-   "id": "e1863",
+   "id": "e1850",
    "from": "tests/fixtures/adversarial/fixtures.mjs",
    "to": "mcp/scope-grant-v1.mjs",
    "operation": "executable-path-reference",
@@ -35024,7 +34762,7 @@
    ]
   },
   {
-   "id": "e1864",
+   "id": "e1851",
    "from": "tests/hub-contract/hub-contract.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -35038,7 +34776,7 @@
    ]
   },
   {
-   "id": "e1865",
+   "id": "e1852",
    "from": "tests/hub-contract/hub-contract.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "executable-path-reference",
@@ -35052,7 +34790,7 @@
    ]
   },
   {
-   "id": "e1866",
+   "id": "e1853",
    "from": "tests/install/uninstall-js.test.mjs",
    "to": "mcp/install.mjs",
    "operation": "esm-import",
@@ -35066,7 +34804,7 @@
    ]
   },
   {
-   "id": "e1867",
+   "id": "e1854",
    "from": "tests/install/uninstall-js.test.mjs",
    "to": "mcp/install.mjs",
    "operation": "executable-path-reference",
@@ -35080,7 +34818,7 @@
    ]
   },
   {
-   "id": "e1868",
+   "id": "e1855",
    "from": "tests/mcp-prompts/prompts.contract.test.mjs",
    "to": "mcp/prompts.mjs",
    "operation": "esm-import",
@@ -35094,7 +34832,7 @@
    ]
   },
   {
-   "id": "e1869",
+   "id": "e1856",
    "from": "tests/mcp-prompts/prompts.contract.test.mjs",
    "to": "mcp/prompts.mjs",
    "operation": "executable-path-reference",
@@ -35108,7 +34846,7 @@
    ]
   },
   {
-   "id": "e1870",
+   "id": "e1857",
    "from": "tests/mcp-prompts/prompts.parity.test.mjs",
    "to": "mcp/prompts.mjs",
    "operation": "esm-import",
@@ -35122,7 +34860,7 @@
    ]
   },
   {
-   "id": "e1871",
+   "id": "e1858",
    "from": "tests/mcp-prompts/prompts.parity.test.mjs",
    "to": "mcp/prompts.mjs",
    "operation": "executable-path-reference",
@@ -35136,175 +34874,7 @@
    ]
   },
   {
-   "id": "e1872",
-   "from": "tests/mcp-registry/registry.test.mjs",
-   "to": "scripts/release/verify-mcp-registry.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/registry.test.mjs",
-     "symbol": "../../scripts/release/verify-mcp-registry.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1873",
-   "from": "tests/mcp-registry/registry.test.mjs",
-   "to": "scripts/release/verify-mcp-registry.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/registry.test.mjs",
-     "symbol": "scripts/release/verify-mcp-registry.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1874",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "scripts/release/registry/tool-contract-coverage.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "../../scripts/release/registry/tool-contract-coverage.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1875",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "mcp/server.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "../../mcp/server.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1876",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "../../engine/crates/membrane-protocol/bindings/operations.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1877",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "scripts/release/registry/tool-contract-coverage.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "scripts/release/registry/tool-contract-coverage.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1878",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "mcp/server.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "mcp/server.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1879",
-   "from": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-   "to": "engine/crates/membrane-protocol/bindings/operations.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/tool-contract-coverage.test.mjs",
-     "symbol": "engine/crates/membrane-protocol/bindings/operations.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1880",
-   "from": "tests/mcp-registry/verify-server-json.test.mjs",
-   "to": "scripts/release/registry/verify-server-json.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/verify-server-json.test.mjs",
-     "symbol": "../../scripts/release/registry/verify-server-json.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1881",
-   "from": "tests/mcp-registry/verify-server-json.test.mjs",
-   "to": "scripts/release/registry/tool-contract-coverage.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/verify-server-json.test.mjs",
-     "symbol": "../../scripts/release/registry/tool-contract-coverage.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1882",
-   "from": "tests/mcp-registry/verify-server-json.test.mjs",
-   "to": "scripts/release/registry/verify-server-json.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/verify-server-json.test.mjs",
-     "symbol": "scripts/release/registry/verify-server-json.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1883",
-   "from": "tests/mcp-registry/verify-server-json.test.mjs",
-   "to": "scripts/release/registry/tool-contract-coverage.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/mcp-registry/verify-server-json.test.mjs",
-     "symbol": "scripts/release/registry/tool-contract-coverage.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1884",
+   "id": "e1859",
    "from": "tests/mcp-resources/resources.contract.test.mjs",
    "to": "mcp/resources.mjs",
    "operation": "esm-import",
@@ -35318,7 +34888,7 @@
    ]
   },
   {
-   "id": "e1885",
+   "id": "e1860",
    "from": "tests/mcp-resources/resources.contract.test.mjs",
    "to": "mcp/resources.mjs",
    "operation": "executable-path-reference",
@@ -35332,7 +34902,7 @@
    ]
   },
   {
-   "id": "e1886",
+   "id": "e1861",
    "from": "tests/mcp-resources/resources.parity.test.mjs",
    "to": "mcp/resources.mjs",
    "operation": "esm-import",
@@ -35346,7 +34916,7 @@
    ]
   },
   {
-   "id": "e1887",
+   "id": "e1862",
    "from": "tests/mcp-resources/resources.parity.test.mjs",
    "to": "mcp/resources.mjs",
    "operation": "executable-path-reference",
@@ -35360,119 +34930,7 @@
    ]
   },
   {
-   "id": "e1888",
-   "from": "tests/npm/bootstrap.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/bootstrap.test.mjs",
-     "symbol": "../../dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1889",
-   "from": "tests/npm/bootstrap.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/bootstrap.test.mjs",
-     "symbol": "dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1890",
-   "from": "tests/npm/install-cli.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/install-cli.test.mjs",
-     "symbol": "../../dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1891",
-   "from": "tests/npm/install-cli.test.mjs",
-   "to": "dist/npm/bin/membrane.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/install-cli.test.mjs",
-     "symbol": "../../dist/npm/bin/membrane.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1892",
-   "from": "tests/npm/install-cli.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/install-cli.test.mjs",
-     "symbol": "dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1893",
-   "from": "tests/npm/install-cli.test.mjs",
-   "to": "dist/npm/bin/membrane.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/install-cli.test.mjs",
-     "symbol": "dist/npm/bin/membrane.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1894",
-   "from": "tests/npm/platform-packages.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "esm-import",
-   "boundary": "import",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/platform-packages.test.mjs",
-     "symbol": "../../dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1895",
-   "from": "tests/npm/platform-packages.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/npm/platform-packages.test.mjs",
-     "symbol": "dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1896",
+   "id": "e1863",
    "from": "tests/oci/generate-oci-release.test.mjs",
    "to": "scripts/release/oci/generate-oci-release.mjs",
    "operation": "esm-import",
@@ -35486,7 +34944,7 @@
    ]
   },
   {
-   "id": "e1897",
+   "id": "e1864",
    "from": "tests/oci/generate-oci-release.test.mjs",
    "to": "scripts/release/identity.mjs",
    "operation": "esm-import",
@@ -35500,7 +34958,7 @@
    ]
   },
   {
-   "id": "e1898",
+   "id": "e1865",
    "from": "tests/oci/generate-oci-release.test.mjs",
    "to": "scripts/release/oci/generate-oci-release.mjs",
    "operation": "executable-path-reference",
@@ -35514,7 +34972,7 @@
    ]
   },
   {
-   "id": "e1899",
+   "id": "e1866",
    "from": "tests/oci/generate-oci-release.test.mjs",
    "to": "scripts/release/identity.mjs",
    "operation": "executable-path-reference",
@@ -35528,7 +34986,7 @@
    ]
   },
   {
-   "id": "e1900",
+   "id": "e1867",
    "from": "tests/oci/oci-contract.test.mjs",
    "to": "scripts/release/verify-oci-release.mjs",
    "operation": "esm-import",
@@ -35542,7 +35000,7 @@
    ]
   },
   {
-   "id": "e1901",
+   "id": "e1868",
    "from": "tests/oci/oci-contract.test.mjs",
    "to": "scripts/release/verify-oci-release.mjs",
    "operation": "executable-path-reference",
@@ -35556,7 +35014,7 @@
    ]
   },
   {
-   "id": "e1902",
+   "id": "e1869",
    "from": "tests/onboarding/getting-started-consistency.test.mjs",
    "to": "mcp/hooks/membrane-hook-entrypoint.mjs",
    "operation": "executable-path-reference",
@@ -35570,7 +35028,7 @@
    ]
   },
   {
-   "id": "e1903",
+   "id": "e1870",
    "from": "tests/onboarding/getting-started-consistency.test.mjs",
    "to": "docs/reference/examples/quickstart/run.mjs",
    "operation": "executable-path-reference",
@@ -35584,7 +35042,7 @@
    ]
   },
   {
-   "id": "e1904",
+   "id": "e1871",
    "from": "tests/onboarding/quickstart.test.mjs",
    "to": "docs/reference/examples/quickstart/run.mjs",
    "operation": "executable-path-reference",
@@ -35598,7 +35056,7 @@
    ]
   },
   {
-   "id": "e1905",
+   "id": "e1872",
    "from": "tests/platform/platform-artifacts.test.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "esm-import",
@@ -35612,7 +35070,7 @@
    ]
   },
   {
-   "id": "e1906",
+   "id": "e1873",
    "from": "tests/platform/platform-artifacts.test.mjs",
    "to": "scripts/release/verify-platform-artifacts.mjs",
    "operation": "executable-path-reference",
@@ -35626,21 +35084,7 @@
    ]
   },
   {
-   "id": "e1907",
-   "from": "tests/platform/release-install-identity.test.mjs",
-   "to": "dist/npm/index.mjs",
-   "operation": "executable-path-reference",
-   "boundary": "path-reference",
-   "origin": "scanned",
-   "evidence": [
-    {
-     "path": "tests/platform/release-install-identity.test.mjs",
-     "symbol": "dist/npm/index.mjs"
-    }
-   ]
-  },
-  {
-   "id": "e1908",
+   "id": "e1874",
    "from": "tests/provenance/bridge.mjs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "esm-import",
@@ -35654,7 +35098,7 @@
    ]
   },
   {
-   "id": "e1909",
+   "id": "e1875",
    "from": "tests/provenance/bridge.mjs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "executable-path-reference",
@@ -35668,7 +35112,7 @@
    ]
   },
   {
-   "id": "e1910",
+   "id": "e1876",
    "from": "tests/provenance/runtime-observe.test.mjs",
    "to": "tests/provenance/bridge.mjs",
    "operation": "esm-import",
@@ -35682,7 +35126,7 @@
    ]
   },
   {
-   "id": "e1911",
+   "id": "e1877",
    "from": "tests/provenance/runtime-observe.test.mjs",
    "to": "mcp/adapters/provenance/index.mjs",
    "operation": "executable-path-reference",
@@ -35696,7 +35140,7 @@
    ]
   },
   {
-   "id": "e1912",
+   "id": "e1878",
    "from": "tests/provider-readiness/provider-readiness.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -35710,7 +35154,7 @@
    ]
   },
   {
-   "id": "e1913",
+   "id": "e1879",
    "from": "tests/provider-readiness/provider-readiness.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "executable-path-reference",
@@ -35724,7 +35168,7 @@
    ]
   },
   {
-   "id": "e1914",
+   "id": "e1880",
    "from": "tests/sdk/cross-language-compat.test.mjs",
    "to": "dist/packages/typescript/index.mjs",
    "operation": "esm-import",
@@ -35738,7 +35182,7 @@
    ]
   },
   {
-   "id": "e1915",
+   "id": "e1881",
    "from": "tests/sdk/cross-language-compat.test.mjs",
    "to": "dist/packages/typescript/index.mjs",
    "operation": "executable-path-reference",
@@ -35752,7 +35196,7 @@
    ]
   },
   {
-   "id": "e1916",
+   "id": "e1882",
    "from": "tests/sdk/cross-language-compat.test.mjs",
    "to": "dist/packages/python/src/membrane_client/client.py",
    "operation": "executable-path-reference",
@@ -35766,7 +35210,7 @@
    ]
   },
   {
-   "id": "e1917",
+   "id": "e1883",
    "from": "tests/sdk/python_client_test.py",
    "to": "tests/sdk/cross-language-compat.test.mjs",
    "operation": "executable-path-reference",
@@ -35780,7 +35224,7 @@
    ]
   },
   {
-   "id": "e1918",
+   "id": "e1884",
    "from": "tests/session/working-context.test.mjs",
    "to": "mcp/working-context.mjs",
    "operation": "esm-import",
@@ -35794,7 +35238,7 @@
    ]
   },
   {
-   "id": "e1919",
+   "id": "e1885",
    "from": "tests/session/working-context.test.mjs",
    "to": "mcp/working-context.mjs",
    "operation": "executable-path-reference",
@@ -35808,7 +35252,7 @@
    ]
   },
   {
-   "id": "e1920",
+   "id": "e1886",
    "from": "tests/status/multidimensional-status.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "esm-import",
@@ -35822,7 +35266,7 @@
    ]
   },
   {
-   "id": "e1921",
+   "id": "e1887",
    "from": "tests/status/multidimensional-status.test.mjs",
    "to": "engine/crates/membrane-protocol/bindings/protocol.mjs",
    "operation": "executable-path-reference",
@@ -35836,7 +35280,7 @@
    ]
   },
   {
-   "id": "e1922",
+   "id": "e1888",
    "from": "tests/toolsets/toolsets.test.mjs",
    "to": "mcp/toolsets.mjs",
    "operation": "esm-import",
@@ -35850,7 +35294,7 @@
    ]
   },
   {
-   "id": "e1923",
+   "id": "e1889",
    "from": "tests/toolsets/toolsets.test.mjs",
    "to": "mcp/toolsets.mjs",
    "operation": "executable-path-reference",
@@ -35864,7 +35308,7 @@
    ]
   },
   {
-   "id": "e1924",
+   "id": "e1890",
    "from": "apps/membrane-hub/src-tauri/src/main.rs",
    "to": "apps/membrane-hub/src-tauri/src/supervisor.rs",
    "operation": "supervise native child",
@@ -35878,7 +35322,7 @@
    ]
   },
   {
-   "id": "e1925",
+   "id": "e1891",
    "from": "engine/crates/membrane/src/main.rs",
    "to": "engine/crates/membrane-runtime/src/cli.rs",
    "operation": "first-class membrane adapt dispatch",
@@ -35892,7 +35336,7 @@
    ]
   },
   {
-   "id": "e1926",
+   "id": "e1892",
    "from": "blueprint/release/launchers/blueprint.cmd",
    "to": "blueprint/scripts/blueprint.mjs",
    "operation": "bounded installed Blueprint CLI launch",
@@ -35906,7 +35350,7 @@
    ]
   },
   {
-   "id": "e1927",
+   "id": "e1893",
    "from": "blueprint/release/launchers/blueprint-mcp.cmd",
    "to": "blueprint/scripts/blueprint-mcp.mjs",
    "operation": "bounded installed Blueprint MCP launch",
@@ -35920,7 +35364,7 @@
    ]
   },
   {
-   "id": "e1928",
+   "id": "e1894",
    "from": "blueprint/scripts/cli/commands.mjs",
    "to": "blueprint/scripts/blueprint-watch.mjs",
    "operation": "tray-owned daemon Blueprint watcher launch",
@@ -35934,7 +35378,7 @@
    ]
   },
   {
-   "id": "e1929",
+   "id": "e1895",
    "from": "engine/crates/membrane-runtime/src/cli.rs",
    "to": "engine/crates/membrane-adapt/src/lib.rs",
    "operation": "native Adapt command handlers",
@@ -35948,7 +35392,7 @@
    ]
   },
   {
-   "id": "e1930",
+   "id": "e1896",
    "from": "engine/crates/membrane-runtime/src/cli.rs",
    "to": "engine/crates/membrane-transcript/src/lib.rs",
    "operation": "native transcript normalization for Adapt mining",
@@ -35962,7 +35406,7 @@
    ]
   },
   {
-   "id": "e1931",
+   "id": "e1897",
    "from": "apps/membrane-hub/src-tauri/src/supervisor.rs",
    "to": "engine/crates/membrane-runtime/src/serve.rs",
    "operation": "legacy Hub adapter runtime library call",
@@ -35976,7 +35420,7 @@
    ]
   },
   {
-   "id": "e1932",
+   "id": "e1898",
    "from": "external:host-clients",
    "to": "engine/crates/membrane/src/main.rs",
    "operation": "native stdio MCP session launched by generated host config",
@@ -35990,7 +35434,7 @@
    ]
   },
   {
-   "id": "e1933",
+   "id": "e1899",
    "from": "engine/crates/cortex/src/main.rs",
    "to": "engine/crates/cortex/src/lib.rs",
    "operation": "crate binary links its library",
@@ -36004,7 +35448,7 @@
    ]
   },
   {
-   "id": "e1934",
+   "id": "e1900",
    "from": "engine/crates/membrane/src/main.rs",
    "to": "engine/crates/membrane/src/lib.rs",
    "operation": "crate binary links its library",
@@ -36018,7 +35462,7 @@
    ]
   },
   {
-   "id": "e1935",
+   "id": "e1901",
    "from": "engine/crates/cortex-store/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36032,7 +35476,7 @@
    ]
   },
   {
-   "id": "e1936",
+   "id": "e1902",
    "from": "engine/crates/cortex/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/lib.rs",
    "operation": "cargo path dependency membrane-runtime",
@@ -36046,7 +35490,7 @@
    ]
   },
   {
-   "id": "e1937",
+   "id": "e1903",
    "from": "engine/crates/membrane-adapt/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/lib.rs",
    "operation": "cargo path dependency membrane-transcript",
@@ -36060,7 +35504,7 @@
    ]
   },
   {
-   "id": "e1938",
+   "id": "e1904",
    "from": "engine/crates/membrane-core/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36074,7 +35518,7 @@
    ]
   },
   {
-   "id": "e1939",
+   "id": "e1905",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-core/src/lib.rs",
    "operation": "cargo path dependency membrane-core",
@@ -36088,7 +35532,7 @@
    ]
   },
   {
-   "id": "e1940",
+   "id": "e1906",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36102,7 +35546,7 @@
    ]
   },
   {
-   "id": "e1941",
+   "id": "e1907",
    "from": "engine/crates/membrane-federation/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "operation": "cargo path dependency membrane-provider-sdk",
@@ -36116,7 +35560,7 @@
    ]
   },
   {
-   "id": "e1942",
+   "id": "e1908",
    "from": "engine/crates/membrane-mcp/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36130,7 +35574,7 @@
    ]
   },
   {
-   "id": "e1943",
+   "id": "e1909",
    "from": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36144,7 +35588,7 @@
    ]
   },
   {
-   "id": "e1944",
+   "id": "e1910",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/cortex-store/src/lib.rs",
    "operation": "cargo path dependency cortex-store",
@@ -36158,7 +35602,7 @@
    ]
   },
   {
-   "id": "e1945",
+   "id": "e1911",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/cortex-core/src/lib.rs",
    "operation": "cargo path dependency cortex-core",
@@ -36172,7 +35616,7 @@
    ]
   },
   {
-   "id": "e1946",
+   "id": "e1912",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/cortex-format/src/lib.rs",
    "operation": "cargo path dependency cortex-format",
@@ -36186,7 +35630,7 @@
    ]
   },
   {
-   "id": "e1947",
+   "id": "e1913",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -36200,7 +35644,7 @@
    ]
   },
   {
-   "id": "e1948",
+   "id": "e1914",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-core/src/lib.rs",
    "operation": "cargo path dependency membrane-core",
@@ -36214,7 +35658,7 @@
    ]
   },
   {
-   "id": "e1949",
+   "id": "e1915",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/lib.rs",
    "operation": "cargo path dependency membrane-mcp",
@@ -36228,7 +35672,7 @@
    ]
   },
   {
-   "id": "e1950",
+   "id": "e1916",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-federation/src/lib.rs",
    "operation": "cargo path dependency membrane-federation",
@@ -36242,7 +35686,7 @@
    ]
   },
   {
-   "id": "e1951",
+   "id": "e1917",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "operation": "cargo path dependency membrane-provider-sdk",
@@ -36256,7 +35700,7 @@
    ]
   },
   {
-   "id": "e1952",
+   "id": "e1918",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-adapt/src/lib.rs",
    "operation": "cargo path dependency membrane-adapt",
@@ -36270,7 +35714,7 @@
    ]
   },
   {
-   "id": "e1953",
+   "id": "e1919",
    "from": "engine/crates/membrane-runtime/src/lib.rs",
    "to": "engine/crates/membrane-transcript/src/lib.rs",
    "operation": "cargo path dependency membrane-transcript",
@@ -36284,7 +35728,7 @@
    ]
   },
   {
-   "id": "e1954",
+   "id": "e1920",
    "from": "engine/crates/membrane-testkit/src/lib.rs",
    "to": "engine/crates/membrane-provider-sdk/src/lib.rs",
    "operation": "cargo path dependency membrane-provider-sdk",
@@ -36298,7 +35742,7 @@
    ]
   },
   {
-   "id": "e1955",
+   "id": "e1921",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane-mcp/src/lib.rs",
    "operation": "cargo path dependency membrane-mcp",
@@ -36312,7 +35756,7 @@
    ]
   },
   {
-   "id": "e1956",
+   "id": "e1922",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane-runtime/src/lib.rs",
    "operation": "cargo path dependency membrane-runtime",
@@ -36326,7 +35770,7 @@
    ]
   },
   {
-   "id": "e1957",
+   "id": "e1923",
    "from": "engine/crates/membrane/src/lib.rs",
    "to": "engine/crates/membrane-protocol/src/lib.rs",
    "operation": "cargo path dependency membrane-protocol",
@@ -43884,6 +43328,7 @@
   "engine/crates/membrane-federation/src/config.rs",
   "engine/crates/membrane-federation/src/corrective.rs",
   "engine/crates/membrane-federation/src/deadline.rs",
+  "engine/crates/membrane-federation/src/egress_redaction.rs",
   "engine/crates/membrane-federation/src/engine.rs",
   "engine/crates/membrane-federation/src/error.rs",
   "engine/crates/membrane-federation/src/freshness.rs",
