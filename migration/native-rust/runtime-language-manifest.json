@@ -1,21 +1,21 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-08-31T21:51:10.056Z",
+ "generatedAt": "2026-09-01T09:10:02.094Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1230,
-  "rows": 56,
+  "files": 1216,
+  "rows": 55,
   "byRuntime": {
    "python": 7,
    "shell": 1,
-   "node": 26,
+   "node": 25,
    "rust": 22
   },
   "byDisposition": {
    "migration-oracle": 5,
-   "dev-only": 33,
+   "dev-only": 32,
    "external-typed-service": 4,
    "native-port": 14
   },
@@ -287,7 +287,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "9b4f2a6d32a9d9e06bf079bbe2f2275b453c0767484a79df9e705f2e74bedb48"
+   "content_digest": "0fb925b2d120556bc44d5fd29e42914dae020f6e408f980a88fee44d6b11abd4"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -468,7 +468,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "eec391f246d9241d399a860526a138433dfd95d7c13682769c421ce78822a8dc"
+   "content_digest": "10165c0f1ce1681bb04c9c22369524616c69d434e81a97ff3e74ef5869621fee"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -719,7 +719,6 @@
     "blueprint/tests/orientation-evidence.test.mjs",
     "blueprint/tests/p0-portable-queue-regression.test.mjs",
     "blueprint/tests/p0-publish-identity.test.mjs",
-    "blueprint/tests/package-manager-manifests.test.mjs",
     "blueprint/tests/package-metadata.test.mjs",
     "blueprint/tests/packaging.test.mjs",
     "blueprint/tests/peer-discovery.test.mjs",
@@ -794,7 +793,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "4af4ce40ef7acf9624e29412de6368170928e5b5c5a4e4b2afab10890ed32c0d"
+   "content_digest": "8161c1badb3ecf34be39f4a6bfae00f627fe16bf0a4644bcdb0ef75d76f76859"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -841,27 +840,6 @@
     "continuity/transcript/tests/test_transcript_event_v1.py"
    ],
    "content_digest": "4f4508427a9073923fd2b7245aa13ea04b276874f5c92315942798e8efbb74f5"
-  },
-  {
-   "id": "dist-npm-dist-npm",
-   "rule": "dist-npm",
-   "runtime": "node",
-   "kind": "npm-distribution-reference",
-   "product_surface": "install/MCP",
-   "production_reachable": false,
-   "packaged": false,
-   "target_disposition": "dev-only",
-   "owner": null,
-   "exception": null,
-   "parity_fixture": null,
-   "deletion_or_exclusion_proof": "Windows signed-installer release excludes npm distribution; no root package bin or production graph seed reaches it",
-   "seal_blocker_note": null,
-   "notes": "Retained for separate external npm distribution work only.",
-   "files": [
-    "dist/npm/bin/membrane.mjs",
-    "dist/npm/index.mjs"
-   ],
-   "content_digest": "a81875ab65ca58feec4cfa1b0eebdb06fe55e7c31461596009ad2b6948c40af2"
   },
   {
    "id": "dist-python-client-sdk-dist-python-client-sdk",
@@ -1083,7 +1061,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "a0e1cda1916656b87e717d31e2e6eec01a2a1c45fc9d582fcbf860a5f83284de"
+   "content_digest": "9ff59a28ad1bc9db86117803a284f7b7c5440fd4f67c1bb2909d576164cc662a"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1138,7 +1116,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "2f35dc3f6160abe79385b916c2e0f7ef5887586084e95999adecf0c821714ab3"
+   "content_digest": "27b03c52f0042186dd108ab9b2a70b2e73ffbc92220ea81cc4508f6241f042fc"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -1177,7 +1155,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "4c5dd272ec06fff7c4a754e39d1d3a3d7def1e25b0cb0830db229b1f81e71e1c"
+   "content_digest": "8543e8164fa2ca20068fd2d93acd5a0e1bb35be635921c6843d7e8bf42c3bfa5"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1291,12 +1269,12 @@
     "engine/crates/membrane-federation/src/config.rs",
     "engine/crates/membrane-federation/src/corrective.rs",
     "engine/crates/membrane-federation/src/deadline.rs",
+    "engine/crates/membrane-federation/src/egress_redaction.rs",
     "engine/crates/membrane-federation/src/engine.rs",
     "engine/crates/membrane-federation/src/error.rs",
     "engine/crates/membrane-federation/src/freshness.rs",
     "engine/crates/membrane-federation/src/lib.rs",
     "engine/crates/membrane-federation/src/merge.rs",
-    "engine/crates/membrane-federation/src/migrate_audit.rs",
     "engine/crates/membrane-federation/src/migrate_decisions.rs",
     "engine/crates/membrane-federation/src/normalize.rs",
     "engine/crates/membrane-federation/src/omission.rs",
@@ -1332,7 +1310,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "6adfb69769ffcde1df358f7c57cedaa6e92fc54c974eb12a261184dc47d0258c"
+   "content_digest": "24dab9980e016e53b157b60c3ef5a2a0c25eef9bf769918fbb04304acf0ebe85"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1413,7 +1391,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "6257ff1117f6d12a95094aa2853c7d81ab095c9cf73c6c80cdf1f090f2e305c3"
+   "content_digest": "55f2fc6edc3fc241d76b1e2b370c3028fed604141ba90d6f037fa113b34f5efe"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1582,7 +1560,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "4f60f5dc5edba2c767a8eadf2eafc2973d776627ed5a25ad79ad9d84e41a0f48"
+   "content_digest": "0370d2ce4ffa1011fec88c88c06ed2e9fc2be8911dc5d069382739f22e9b30ce"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1737,7 +1715,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "bacebdc37b89310e3cd422f16ae79f3f2947759f3c699647475c7576dc183d01"
+   "content_digest": "7ac45428b096ce56cf869751d1e1bab4eb61e344b3144aab6e39dbfbd78bb1a8"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1783,7 +1761,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "1fa79898eca9a6cdd83f7b109ea9b73aa5856a1f678cf1f65aa450a0a26f6656"
+   "content_digest": "38b0f28f11ca9624cba665162dec08ee62cb328ed573f7a111436c2896d8b079"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1854,7 +1832,7 @@
     "mcp/host/observable-event.cjs",
     "mcp/host/observable-ingress.cjs"
    ],
-   "content_digest": "77fb7dc3fc2f7add2ee64ee700d1244192e0577a0682ca8da298dc89f6b5c6c2"
+   "content_digest": "0817a7dd85c17a1db023d149a81e0da5a1a49205d5a2bea105d178ba93368557"
   },
   {
    "id": "mcp-host-fixtures-mcp-host-fixtures",
@@ -1945,7 +1923,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "047cd27861830f40d321f2f83c7336001218c3dab2ddb14ce537bf6e2a0d4a48"
+   "content_digest": "5f5cb95f2cb1a391fb02fb9b1faa1c89a02b87021adebad219af1a5ccf38e24e"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -1965,7 +1943,7 @@
    "files": [
     "mcp/context-renderer-lib.cjs"
    ],
-   "content_digest": "5917da8bc1a4d83f7c1743936a962c001a4c5a6d47b72c79baf19a5d8fbbcfae"
+   "content_digest": "1fd0bd1e423515a0bc53153061ece065117709b11802f1ff00b30b485e772d26"
   },
   {
    "id": "mcp-server-core-mcp/server.mjs",
@@ -1985,7 +1963,7 @@
    "files": [
     "mcp/server.mjs"
    ],
-   "content_digest": "243e02cdaf1fbf782a52cdc94f21e56426b2f803c6ba20965b739cf0715ce4d4"
+   "content_digest": "38b9127ada5e6e1673252bff63c2a1d75932237d44074ca8e29779608723efbd"
   },
   {
    "id": "mcp-tests-mcp-tests",
@@ -2046,7 +2024,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "df6761994a27ace6c2513fd558255a3b2cab5f8989eb98dd41b5c66fded1db1f"
+   "content_digest": "9cd76b3f3ef93bb4230e139b80e4e78ea8110fec316736a5f89a255db5aacf10"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -2151,15 +2129,10 @@
     "scripts/release/evidence/sbom.mjs",
     "scripts/release/evidence/sbom.test.mjs",
     "scripts/release/identity.mjs",
-    "scripts/release/npm/resolve-platform-artifacts.mjs",
-    "scripts/release/npm/resolve-platform-artifacts.test.mjs",
     "scripts/release/oci/generate-oci-release.mjs",
     "scripts/release/orchestrate-release.mjs",
-    "scripts/release/registry/tool-contract-coverage.mjs",
-    "scripts/release/registry/verify-server-json.mjs",
     "scripts/release/right-git-candidate.mjs",
     "scripts/release/right-git-release-chain.mjs",
-    "scripts/release/verify-mcp-registry.mjs",
     "scripts/release/verify-oci-release.mjs",
     "scripts/release/verify-platform-artifacts.mjs",
     "scripts/release/verify-release-evidence.mjs",
@@ -2178,7 +2151,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "a141dc41d11f4286e636eb1db6c88c62831c57bd2b468604506dde3178d90997"
+   "content_digest": "e15dfd22d14dc3c1b8b71674ae8303a5362bf0801547722cea2a5e5b8694cfc8"
   },
   {
    "id": "tests-root-tests-root",
@@ -2237,14 +2210,8 @@
     "tests/maintenance/maintenance-exec-contract.test.mjs",
     "tests/mcp-prompts/prompts.contract.test.mjs",
     "tests/mcp-prompts/prompts.parity.test.mjs",
-    "tests/mcp-registry/registry.test.mjs",
-    "tests/mcp-registry/tool-contract-coverage.test.mjs",
-    "tests/mcp-registry/verify-server-json.test.mjs",
     "tests/mcp-resources/resources.contract.test.mjs",
     "tests/mcp-resources/resources.parity.test.mjs",
-    "tests/npm/bootstrap.test.mjs",
-    "tests/npm/install-cli.test.mjs",
-    "tests/npm/platform-packages.test.mjs",
     "tests/oci/generate-oci-release.test.mjs",
     "tests/oci/oci-contract.test.mjs",
     "tests/onboarding/getting-started-consistency.test.mjs",
@@ -2266,7 +2233,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "452ca676ae3b4d5cc4c11aca53a0a25cc3e22de041fee8805084bbfe500662f4"
+   "content_digest": "6b56d7abae17ac27dfef59e91e8619500858bf9bd8ad989a165243a154e251e1"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",
