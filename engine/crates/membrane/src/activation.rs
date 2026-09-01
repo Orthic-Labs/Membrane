@@ -299,7 +299,26 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         )
     };
 
-    let clients = reconcile_clients(&membrane, &options.clients, options.dry_run, run_client)?;
+    let clients = match reconcile_clients(
+        &membrane,
+        &options.clients,
+        options.dry_run,
+        run_client,
+    ) {
+        Ok(clients) => clients,
+        Err(error) => {
+            if !options.dry_run && !already_running {
+                let cleanup = request_resident_replacement(&tray, &workspace_root, port)
+                    .and_then(|()| wait_for_shutdown(port, &expected_generation, options.timeout));
+                if let Err(cleanup_error) = cleanup {
+                    return Err(format!(
+                        "{error}; activation cleanup failed: {cleanup_error}"
+                    ));
+                }
+            }
+            return Err(error);
+        }
+    };
     if !options.dry_run {
         ensure_user_path(&install_root)?;
         reconcile_claude_hooks(&install_root)?;
@@ -1712,7 +1731,7 @@ fn rollback_clients<F>(
 fn get_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "get", "membrane", "--json"],
-        HarnessClient::Claude => vec!["mcp", "get", "membrane", "-s", "user"],
+        HarnessClient::Claude => vec!["mcp", "get", "membrane"],
         HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
             unreachable!("config-managed client")
         }
@@ -2026,7 +2045,7 @@ mod tests {
         );
         assert_eq!(
             get_args(HarnessClient::Claude),
-            ["mcp", "get", "membrane", "-s", "user"]
+            ["mcp", "get", "membrane"]
                 .into_iter()
                 .map(str::to_string)
                 .collect::<Vec<_>>()
