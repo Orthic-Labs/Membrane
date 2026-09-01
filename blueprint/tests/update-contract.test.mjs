@@ -45,9 +45,9 @@ test("channel is disabled by offline and by BLUEPRINT_NO_UPDATE_CHECK", () => {
   }
 });
 
-test("install owner detection returns a source checkout here", () => {
+test("install owner detection exposes only source or GitHub Release archive", () => {
   const owner = detectInstallOwner();
-  assert.ok(["source", "npm", "homebrew", "portable"].includes(owner.owner));
+  assert.ok(["source", "portable"].includes(owner.owner));
 });
 
 test("update manifest validates against UpdateManifestV1", () => {

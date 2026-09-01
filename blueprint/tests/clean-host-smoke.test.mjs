@@ -18,21 +18,15 @@ test("clean-host harness is present as a release executable", () => {
   assert.ok(existsSync(SMOKE), "missing scripts/release/clean-host-smoke.mjs");
 });
 
-test("RightGit owns CI publication while signing remains local", () => {
+test("RightGit owns CI while GitHub Releases remain sole publication channel", () => {
   const workflows = join(ROOT, ".github", "workflows");
   const rightGit = JSON.parse(readFileSync(join(ROOT, ".rightgit.json"), "utf8"));
-  assert.deepEqual(rightGit.lanes, ["ci", "publish-npm"]);
-  assert.equal(rightGit.publish.npm.oidc, true);
-  assert.equal(rightGit.publish.npm.provenance, true);
+  assert.deepEqual(rightGit.lanes, ["ci"]);
+  assert.deepEqual(rightGit.publish, {});
   assert.equal(existsSync(join(workflows, "immutable-release.yml")), false);
   assert.equal(existsSync(join(workflows, "release.yml")), false);
-  const publish = readFileSync(join(workflows, "publish-npm.yml"), "utf8").replaceAll("\r\n", "\n");
-  assert.match(publish, /^# Managed by right-git/m);
-  assert.match(publish, /release:\n    types: \[published\]/);
-  assert.match(publish, /id-token: write/);
-  assert.match(publish, /build-candidate\.mjs/);
-  assert.match(publish, /check-release\.mjs/);
-  assert.match(publish, /npm publish .*--provenance --access public/);
+  assert.equal(existsSync(join(workflows, "publish-npm.yml")), false);
+  assert.equal(existsSync(join(workflows, "publish-package-managers.yml")), false);
   const allWorkflows = readdirSync(workflows).filter((file) => file.endsWith(".yml")).map((file) => readFileSync(join(workflows, file), "utf8")).join("\n");
   assert.doesNotMatch(allWorkflows, /APPLE_|AZURE_|UPDATE_SIGNING_KEY|NPM_TOKEN|artifact-signing-action|notarytool/i);
 });

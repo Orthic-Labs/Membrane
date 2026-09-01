@@ -12,13 +12,11 @@
    failing receipts stop publication.
 4. Generate compatibility, catalog, checksums, SBOM, provenance, and signed
    updater metadata from sealed bytes under ignored `.right-release/` output.
-   Generate channel manifests from immutable GitHub Release assets.
-5. Publish and redownload-verify immutable bytes in order: GitHub Release,
-   npm OIDC, MCP Registry, then Membrane Homebrew tap.
+5. Publish and redownload-verify immutable bytes through GitHub Releases.
 
 Apple signing is provisioned workspace capability owned by RightRelease.
 Product workflows do not implement signing or carry secrets.
-RightGit owns public CI and npm OIDC publication.
+RightGit owns public CI; GitHub Releases are sole publication channel.
 
 ## Candidates (non-publishable)
 
@@ -44,9 +42,9 @@ artifacts.
 
 ## Signing and publishing
 
-RightRelease owns signed macOS artifacts. RightGit owns public CI and
-npm OIDC. `release-candidate.yml` may assemble non-publishable candidates but
-never signs or publishes.
+RightRelease owns signed macOS artifacts. RightGit owns public CI.
+`release-candidate.yml` may assemble non-publishable candidates but never
+signs or publishes.
 
 ## Release seal (D53 / EC v4 D-18)
 

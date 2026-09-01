@@ -39,12 +39,6 @@ which case the data directory is also removed.
 - **macOS** (`release/macos/uninstall.sh`): removes
   `${INSTALL_LOCATION:-/usr/local/lib/blueprint}`. User data under `~/.blueprint`
   is explicitly preserved.
-## npm/pnpm and Homebrew installs
-
-Uninstall follows the owning package manager (`npm uninstall -g`,
-`brew uninstall blueprint`); Blueprint never
-self-removes files outside its own package footprint for these owners.
-
 ## What is preserved by default
 
 - Repository graph data (`.agent/graph/graph.db`, backups) unless

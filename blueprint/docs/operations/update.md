@@ -12,9 +12,7 @@ blueprint update rollback [--json]
 
 | Owner | Behavior |
 |---|---|
-| npm / pnpm | Prints `npm update -g <pkg>`; never self-replaces. |
-| Homebrew | Prints `brew upgrade blueprint`; never self-replaces. |
-| Portable / native | Requires a signed release manifest and matching checksum before staging. |
+| GitHub Release archive / native | Requires a signed release manifest and matching checksum before staging. |
 
 ## Safety rules
 

@@ -100,8 +100,8 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 
 <!-- blueprint:docs:start -->
 ## Repository truth docs
-- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
-- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
+- [Product overview](docs/product/README.md) — what this is and does (generated, code-grounded)
+- [Architecture](docs/architecture/membrane.md) — components, flows, interfaces (generated, code-grounded)
 <!-- blueprint:docs:end -->
 
 <!-- support-matrix:start -->

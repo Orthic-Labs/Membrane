@@ -16,7 +16,7 @@ multi-channel publication remain in progress.
 | Plugin trust boundary (no escalation) | D51 | ✅ |
 | Deterministic soak + fault injection | D52 | ✅ |
 | Candidate, SBOM, checksum, provenance-input, and clean-host contracts | D53 | Implemented; final signed release pending |
-| OIDC trusted publishing (no long-lived NPM_TOKEN) | D53 | Configured; publication pending |
+| GitHub Releases publication | D53 | Sole public distribution channel |
 
 ## Deferred — measured, with reversal conditions
 

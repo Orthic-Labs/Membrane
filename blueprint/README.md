@@ -67,10 +67,10 @@ This repo maps itself. Run `blueprint doctor --full --json` for current file, do
 
 ## Quick start
 
-Install and run from npm (no source checkout needed):
+Download your platform archive from [GitHub Releases](https://github.com/Orthic-Labs/Membrane/releases), verify its published checksum, then run:
 
 ```sh
-npx -y @membrane/blueprint init    # enroll Blueprint in the current repository
+blueprint init                       # enroll Blueprint in the current repository
 blueprint status                       # freshness + coverage
 blueprint search "placeOrder"          # query the graph
 ```
@@ -101,7 +101,7 @@ Parser depth varies by language (lexical fallback is broader than AST coverage).
 Blueprint is **source-available**, not open source. Its proprietary core is covered
 by the [Orthic Labs Source Use License v1.0](LICENSE), which permits internal and
 evaluation use. Damned Ventures LLC may publish Blueprint through owner-authorized
-channels, including npm, GitHub Releases, and its Homebrew tap. That publication
+channels through GitHub Releases. That publication
 does not grant licensees a general right to redistribute,
 mirror, modify, or repackage proprietary core.
 

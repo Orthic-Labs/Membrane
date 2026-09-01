@@ -359,13 +359,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           printResult({ schemaVersion: 1, owner, action: "apply-local-artifact", ...result }, args);
           return result.ok ? EXIT.OK : EXIT.INTERNAL;
         }
-        // Portable/native apply requires a signed manifest; package-manager
-        // channels print the owning-manager command and never self-replace.
-        if (owner.owner === "npm" || owner.owner === "homebrew" || owner.owner === "winget") {
-          printResult({ schemaVersion: 1, owner, action: "delegate", updateCommand: owner.command }, args);
-          return EXIT.OK;
-        }
-        printResult({ schemaVersion: 1, owner, action: "require-signed-manifest", reason: "portable/native updates require a signed manifest and matching checksum" }, args);
+        printResult({ schemaVersion: 1, owner, action: "require-signed-manifest", reason: "GitHub Release updates require a signed manifest and matching checksum" }, args);
         return EXIT.OK;
       }
       if (subcommand === "rollback") {

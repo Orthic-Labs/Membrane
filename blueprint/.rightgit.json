@@ -1,9 +1,6 @@
 {
   "schemaVersion": 1,
-  "lanes": [
-    "ci",
-    "publish-npm"
-  ],
+  "lanes": ["ci"],
   "matrix": {
     "os": [
       "ubuntu-latest",
@@ -17,10 +14,5 @@
   },
   "packageManager": "pnpm@11.24.0",
   "templateVersion": "1.0.0",
-  "publish": {
-    "npm": {
-      "oidc": true,
-      "provenance": true
-    }
-  }
+  "publish": {}
 }

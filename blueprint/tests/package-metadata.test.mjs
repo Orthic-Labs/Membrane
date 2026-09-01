@@ -15,7 +15,8 @@ test("package identity fields are consistent", () => {
   assert.equal(pkg.repository.directory, "blueprint");
   assert.equal(pkg.homepage, "https://github.com/Orthic-Labs/Membrane/tree/main/blueprint#readme");
   assert.equal(pkg.bugs.url, "https://github.com/Orthic-Labs/Membrane/issues");
-  assert.equal(pkg.mcpName, "io.github.Membrane/blueprint");
+  assert.equal(pkg.publishConfig, undefined);
+  assert.equal(pkg.mcpName, undefined);
 });
 
 test("all required bins are declared", () => {
@@ -40,8 +41,8 @@ test("files allowlist ships sdk and service directories", () => {
   assert.ok(pkg.files.includes("src/service/"), "files must include src/service/");
 });
 
-test("publish config is public and sideEffects false", () => {
-  assert.equal(pkg.publishConfig?.access, "public");
+test("package is not externally publishable and sideEffects false", () => {
+  assert.equal(pkg.publishConfig, undefined);
   assert.equal(pkg.sideEffects, false);
 });
 
