@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +27,14 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
   assert.match(gate, /RIGHT_GIT_RUST_CHANGED:-true/);
   assert.match(gate, /--package membrane --bin membrane/);
   assert.match(gate, /--package membrane-runtime --example hub_runtime_test_host/);
+});
+
+test("GitHub Pages bootstrap uses branch-hosted docs without extra workflow", () => {
+  assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml"]);
+  assert.equal(read("docs/CNAME").trim(), "membrane.orthiclabs.com");
+  const bootstrap = read("docs/install.ps1");
+  assert.match(bootstrap, /Orthic-Labs\/Membrane\/releases\/latest\/download\/install\.ps1/);
+  assert.doesNotMatch(bootstrap, /homebrew|winget|vendor/i);
 });
 
 test("equivalence Cargo stages enter through RightKit", () => {
