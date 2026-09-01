@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/provider-output.v1.schema.json",
+  "title": "ProviderOutputV1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "provider", "status", "candidates", "warnings", "omissions"],
+  "properties": {
+    "schemaVersion": {"const": 1, "type": "integer"},
+    "provider": {"$ref": "#/$defs/provider"},
+    "status": {"$ref": "#/$defs/status"},
+    "generation": {"type": ["string", "null"]},
+    "candidates": {"type": "array", "items": {"$ref": "context-candidate-set.v1.schema.json#/$defs/candidate"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/warning"}},
+    "omissions": {"type": "array", "items": {"$ref": "#/$defs/omission"}},
+    "diagnostics": {"$ref": "#/$defs/providerDiagnostics"}
+  },
+  "$defs": {
+    "provider": {"enum": ["anchors", "blueprint", "rules", "live_files", "git", "audit", "architect", "skills", "cortex"]},
+    "status": {"enum": ["complete", "partial", "failed", "cancelled"]},
+    "reason": {"enum": ["invalid_request", "invalid_root", "release_generation_mismatch", "scope_grant_missing", "scope_grant_invalid", "freshness_unavailable", "provider_unavailable", "provider_failed", "provider_timeout", "provider_cancelled", "provider_malformed", "generation_incoherent", "candidate_identity_conflict", "deadline_exhausted", "cancelled", "internal"]},
+    "warning": {
+      "type": "object", "additionalProperties": false, "required": ["provider", "reason", "severity"],
+      "properties": {
+        "provider": {"$ref": "#/$defs/provider"}, "reason": {"$ref": "#/$defs/reason"},
+        "severity": {"enum": ["warning", "blocker"]}, "detailId": {"type": ["string", "null"]},
+        "stage": {"type": ["string", "null"]}, "message": {"type": ["string", "null"]}
+      }
+    },
+    "omission": {
+      "type": "object", "additionalProperties": false, "required": ["provider", "reason"],
+      "properties": {"provider": {"$ref": "#/$defs/provider"}, "reason": {"$ref": "#/$defs/reason"}, "candidateId": {"type": ["string", "null"]}, "detailId": {"type": ["string", "null"]}, "stage": {"type": ["string", "null"]}}
+    },
+    "providerDiagnostics": {
+      "type": "object", "additionalProperties": false, "required": ["provider", "attributes"],
+      "properties": {"provider": {"$ref": "#/$defs/provider"}, "elapsedMs": {"type": ["integer", "null"], "minimum": 0}, "generation": {"type": ["string", "null"]}, "attributes": {"type": "object", "additionalProperties": {"type": "string"}}}
+    }
+  }
+}

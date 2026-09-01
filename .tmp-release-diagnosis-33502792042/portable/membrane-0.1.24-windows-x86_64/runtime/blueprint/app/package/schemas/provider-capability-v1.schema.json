@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/provider-capability-v1.json",
+  "title": "ProviderCapabilityV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "provider", "version", "precisionTier", "languages", "capabilities", "permissions", "state"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "precisionTier": { "enum": ["COMPILER", "AST", "LEXICAL", "FILE_ONLY"] },
+    "languages": { "type": "array", "items": { "type": "string" } },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "permissions": { "type": "object", "additionalProperties": true },
+    "state": { "type": "string" },
+    "details": { "type": "object", "additionalProperties": true },
+    "properties": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

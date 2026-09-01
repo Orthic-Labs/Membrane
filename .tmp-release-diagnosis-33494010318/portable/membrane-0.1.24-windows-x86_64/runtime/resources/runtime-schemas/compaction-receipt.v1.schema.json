@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/compaction-receipt.v1.schema.json",
+  "title": "Membrane deterministic compaction receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "sourceCursor", "projectionHash", "retainedObligations",
+    "omittedCategories", "inputTokens", "outputTokens", "budgetTokens",
+    "budgetMet", "fallbackUsed", "cacheImpact"
+  ],
+  "properties": {
+    "schemaVersion": {"type": "integer", "const": 1},
+    "sourceCursor": {"$ref": "#/$defs/cursor"},
+    "projectionHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "retainedObligations": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "omittedCategories": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "inputTokens": {"type": "integer", "minimum": 0},
+    "outputTokens": {"type": "integer", "minimum": 0},
+    "budgetTokens": {"type": "integer", "minimum": 1},
+    "budgetMet": {"type": "boolean"},
+    "fallbackUsed": {"type": "boolean"},
+    "fallbackProvider": {"type": ["string", "null"], "minLength": 1},
+    "cacheImpact": {"$ref": "#/$defs/cacheImpact"}
+  },
+  "$defs": {
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "lastSeq"],
+      "properties": {
+        "sessionId": {"type": "string", "minLength": 1},
+        "lastSeq": {"type": "integer", "minimum": 0}
+      }
+    },
+    "cacheImpact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cacheHit", "reusedTokens", "invalidated"],
+      "properties": {
+        "cacheHit": {"type": "boolean"},
+        "cacheKey": {"type": ["string", "null"], "minLength": 1},
+        "reusedTokens": {"type": "integer", "minimum": 0},
+        "invalidated": {"type": "boolean"}
+      }
+    }
+  }
+}

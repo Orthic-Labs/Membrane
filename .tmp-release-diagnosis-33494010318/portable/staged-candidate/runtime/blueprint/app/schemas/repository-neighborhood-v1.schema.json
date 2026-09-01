@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/repository-neighborhood-v1.json",
+  "title": "RepositoryNeighborhoodV1",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "repoId", "repoRoot", "generationId", "receiptId", "anchors", "neurons", "synapses", "circuits", "bounds", "omissions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "RepositoryNeighborhoodV1" },
+    "repoId": { "type": ["string", "null"] },
+    "repoRoot": { "type": ["string", "null"] },
+    "generationId": { "type": ["string", "null"] },
+    "receiptId": { "type": ["string", "null"] },
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "symbol", "protected"],
+        "properties": {
+          "path": { "type": "string" },
+          "symbol": { "type": ["string", "null"] },
+          "protected": { "type": "boolean" },
+          "exact": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "neurons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "path", "span", "evidenceTier"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "path": { "type": "string" },
+          "span": { "type": ["array", "object", "null"], "items": { "type": "integer" } },
+          "evidenceTier": { "type": "integer", "minimum": 0 },
+          "name": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "synapses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "source", "target", "confidenceTier", "resolved"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "source": { "type": "string" },
+          "target": { "type": ["string", "null"] },
+          "confidenceTier": { "type": "string" },
+          "resolved": { "type": "boolean" },
+          "provider": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "circuits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "neuronIds"],
+        "properties": {
+          "name": { "type": "string" },
+          "neuronIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "required": ["budgetTokens", "usedTokens", "maxHops"],
+      "properties": {
+        "budgetTokens": { "type": "integer", "minimum": 0 },
+        "usedTokens": { "type": "integer", "minimum": 0 },
+        "maxHops": { "type": "integer", "minimum": 0 },
+        "maxNodes": { "type": "integer", "minimum": 0 },
+        "maxEdges": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "count", "recovery"],
+        "properties": {
+          "reason": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 },
+          "recovery": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

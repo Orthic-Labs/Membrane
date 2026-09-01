@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/architecture-rule-result-v1.json",
+  "title": "ArchitectureRuleResultV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ruleId", "ruleVersion", "state", "severity", "fingerprint", "source", "target", "evidencePath", "generationId"],
+  "properties": {
+    "ruleId": { "type": "string", "minLength": 1 },
+    "ruleVersion": { "type": "string", "minLength": 1 },
+    "state": { "type": "string" },
+    "severity": { "enum": ["error", "warning", "info"] },
+    "fingerprint": { "type": "string", "minLength": 1 },
+    "source": { "type": ["string", "null"] },
+    "target": { "type": ["string", "null"] },
+    "evidencePath": { "type": "array", "items": { "type": "string" } },
+    "generationId": { "type": "string", "minLength": 1 },
+    "details": { "type": "object", "additionalProperties": true },
+    "properties": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

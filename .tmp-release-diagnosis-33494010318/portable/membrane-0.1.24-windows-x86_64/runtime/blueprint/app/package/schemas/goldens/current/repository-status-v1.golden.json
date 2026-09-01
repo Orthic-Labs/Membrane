@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "state": "degraded",
+  "artifacts": { "graph": ".agent/graph/graph.db", "map": ".agent/map.json" },
+  "stats": { "files": 160, "docs": 13, "claims": 82, "codeRefs": 28 },
+  "errors": [],
+  "warnings": [
+    { "code": "doc_reference_missing", "message": "AGENTS.md mentions missing tools/setup-workspace.py" }
+  ],
+  "reasons": ["provider_coverage_incomplete"],
+  "capabilities": { "precisionTier": "AST", "languages": ["javascript", "typescript", "python", "rust"] },
+  "details": {},
+  "properties": {},
+  "extensions": {}
+}

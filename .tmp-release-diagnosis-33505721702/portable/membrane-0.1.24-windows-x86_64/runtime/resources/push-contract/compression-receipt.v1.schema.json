@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CompressionReceiptV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "originalHash", "transform", "transformVersion", "keptSpans", "protectedSpans", "dropped", "resolver", "risk", "tokenDelta"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "originalHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "transform": {"type": "string", "minLength": 1}, "transformVersion": {"type": "string", "minLength": 1},
+    "keptSpans": {"type": "array", "items": {"$ref": "#/$defs/span"}},
+    "protectedSpans": {"type": "array", "items": {"$ref": "#/$defs/span"}},
+    "dropped": {"type": "array", "items": {"$ref": "#/$defs/dropped"}},
+    "resolver": {"type": "string", "minLength": 1}, "risk": {"type": "string", "minLength": 1}, "tokenDelta": {"type": "integer"}
+  },
+  "$defs": {
+    "span": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "integer", "minimum": 0, "maximum": 4294967295}, "end": {"type": "integer", "minimum": 0, "maximum": 4294967295}}},
+    "dropped": {"type": "object", "additionalProperties": false, "required": ["span", "reason"], "properties": {"span": {"$ref": "#/$defs/span"}, "reason": {"type": "string", "minLength": 1}}}
+  }
+}

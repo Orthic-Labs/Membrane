@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_scratchpad",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "saved_ephemeral",
+      "operation": "save",
+      "scratchpad": { "sessionId": "session-mbr-301", "taskId": "task-mbr-301", "items": { "note": "ephemeral; never consolidated" } }
+    }
+  }
+}

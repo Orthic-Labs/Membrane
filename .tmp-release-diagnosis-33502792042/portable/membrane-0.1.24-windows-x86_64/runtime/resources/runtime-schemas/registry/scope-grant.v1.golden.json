@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "sgv1-3f6b1c2a-9d4e-4a1b-8c7d-2e5f6a7b8c9d",
+  "issuer": "membrane-gateway",
+  "client": "mcp",
+  "repositoryIds": ["/Volumes/D/claude/membrane"],
+  "permittedEdgeTypes": ["source_read"],
+  "taskId": "task-mbr-101",
+  "sessionId": "session-2026-08-04-101",
+  "issuedAt": "2026-08-04T04:00:00.000Z",
+  "expiresAt": "2026-08-04T04:05:00.000Z",
+  "status": "active",
+  "nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  "manifestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+  "repositoryId": "membrane",
+  "repositoryRoot": "/Volumes/D/claude/membrane",
+  "blueprintGeneration": "gen-2026-08-04T03-59-00",
+  "blueprintFreshness": "clean",
+  "requestHash": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+  "contextPacketHash": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
+  "readPaths": [
+    { "path": "engine/crates/membrane-protocol/src/types.rs", "startLine": 1, "endLine": 60 },
+    { "path": "mcp/scope-grant-v1.mjs", "startLine": 78, "endLine": 132 }
+  ],
+  "sourceReadBytesMax": 32768,
+  "uniqueFilesMax": 2,
+  "resultsMax": 2,
+  "cortexStatus": "available",
+  "degraded": false,
+  "signatureAlgorithm": "Ed25519",
+  "keyId": "scope-grant-ed25519-v1:0123456789abcdef0123456789abcdef",
+  "signature": "dGVzdC1zaWduYXR1cmUtZm9yLW1icm0xMDEtZ29sZGVuLWZpeHR1cmUtb25seQ=="
+}

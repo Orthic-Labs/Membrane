@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_blueprint",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "operation": "symbol",
+      "sourceGeneration": "gen-mbr-401-001",
+      "freshness": {
+        "generationId": "gen-mbr-401-001",
+        "barrierResult": "caught_up",
+        "receiptId": "receipt-mbr-401-001"
+      },
+      "items": [
+        {
+          "id": "engine/crates/membrane-protocol/src/operations.rs:OperationSpec",
+          "name": "OperationSpec",
+          "kind": "struct",
+          "path": "engine/crates/membrane-protocol/src/operations.rs",
+          "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000a01",
+          "startLine": 12,
+          "endLine": 48,
+          "freshness": {
+            "generationId": "gen-mbr-401-001",
+            "barrierResult": "caught_up",
+            "receiptId": "receipt-mbr-401-001"
+          },
+          "resolver": "blueprint graph resolve --node engine/crates/membrane-protocol/src/operations.rs:OperationSpec"
+        }
+      ]
+    }
+  }
+}

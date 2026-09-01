@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/adapter-heartbeat.v1.schema.json",
+  "title": "AdapterHeartbeatV1",
+  "description": "MBR-207 per-client adapter heartbeat and mechanism receipt. One envelope per client; the supervisor upserts the most recent record into a HeartbeatTable keyed by clientId and refuses any client reported as both installed and delivering. Canonical Rust source of truth: engine/crates/membrane-protocol/src/heartbeat.rs (AdapterHeartbeatV1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "clientId",
+    "adapterVersion",
+    "status",
+    "lastSeen",
+    "mechanismReceipts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "clientId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable opaque client identifier (e.g. cursor, windsurf, claude, codex, windsurf-mcp)."
+    },
+    "adapterVersion": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Adapter self-declared semver-ish version; never parsed by the supervisor."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["installed", "active", "delivering", "stale"],
+      "description": "Adapter self-declared status; the supervisor may upgrade or downgrade this during summarize_status but never below the truth the adapter asserted."
+    },
+    "lastSeen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 UTC instant at which the heartbeat was minted; the supervisor compares it against now() to compute staleness."
+    },
+    "mechanismReceipts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["mechanism", "scopeGrant", "lastUsed", "count"],
+        "properties": {
+          "mechanism": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable mechanism name, e.g. membrane_context, membrane_source_read."
+          },
+          "scopeGrant": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Scope-grant id that authorised the most recent delivery under this mechanism."
+          },
+          "lastUsed": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339 / ISO 8601 UTC instant at which the mechanism was last exercised."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cumulative delivery count under this mechanism; a receipt is 'hot' when strictly greater than zero."
+          }
+        }
+      },
+      "description": "One receipt per mechanism the adapter has actually exercised; an empty list is valid and means 'active but not delivering'."
+    }
+  }
+}

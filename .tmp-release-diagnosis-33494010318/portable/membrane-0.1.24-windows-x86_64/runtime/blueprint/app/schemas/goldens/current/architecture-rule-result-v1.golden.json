@@ -1,0 +1,14 @@
+{
+  "ruleId": "ui-must-not-import-db",
+  "ruleVersion": "1.0.0",
+  "state": "violation",
+  "severity": "error",
+  "fingerprint": "fp-ui-db-01",
+  "source": "src/ui/button.tsx",
+  "target": "src/db/connection.ts",
+  "evidencePath": ["src/ui/button.tsx:12", "src/db/connection.ts:3"],
+  "generationId": "xxh128:2fd5ec67fb43606ccc985aa3d1fcb1d7",
+  "details": {},
+  "properties": {},
+  "extensions": {}
+}

@@ -1,0 +1,9 @@
+{
+  "product": "membrane",
+  "bootstrapVersion": "0.1.24",
+  "bucket": "rightapps-downloads",
+  "stableKey": "membrane/install.ps1",
+  "versionedKey": "membrane/versions/0.1.24/install.ps1",
+  "scriptPath": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\install.ps1",
+  "sha256": "605bdf66dcbc2abb80bb134de6f9f217fd89c938180764d109ee2b4f43fb66e9"
+}

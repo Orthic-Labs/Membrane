@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "kind": "rightkit-hardening-evidence",
+  "allowances": [
+    {
+      "rule": "system-prompt-marker",
+      "exact": "system_prompt",
+      "artifactSha256": "e6cf345ebfc5954381e174f2818d657b4821c4ae948efc9697d407a00f9b8b34",
+      "sourceEvidence": "engine/crates/membrane-adapt/src/remediation.rs:76",
+      "sourceSha256": "34edc7002ec6fbf6d99a1bc5160b9dc42605705ce56386597874450088bba791",
+      "sourceLine": 76,
+      "rationale": "Public remediation scope enum serialization token; no prompt content is embedded."
+    },
+    {
+      "rule": "system-prompt-marker",
+      "exact": "system_prompt",
+      "artifactSha256": "08407abec064b82d212ae867d3fa2947f5bd581cb21d70d9d80a04f649a7fd80",
+      "sourceEvidence": "engine/crates/membrane-adapt/src/remediation.rs:76",
+      "sourceSha256": "34edc7002ec6fbf6d99a1bc5160b9dc42605705ce56386597874450088bba791",
+      "sourceLine": 76,
+      "rationale": "Public remediation scope enum serialization token; no prompt content is embedded."
+    }
+  ]
+}

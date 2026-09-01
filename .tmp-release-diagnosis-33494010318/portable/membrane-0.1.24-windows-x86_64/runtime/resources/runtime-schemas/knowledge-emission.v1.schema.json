@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/knowledge-emission.v1.schema.json",
+  "title": "KnowledgeEmissionV1",
+  "description": "MBR-101: a bounded, typed proposal to persist durable memory, submitted via membrane_knowledge_propose and persisted verbatim by ProposalStore. `text` is the canonical content field (the server reads emission.text ?? emission.content and re-stores with `text`). Provenance is an open metadata map so future fields do not fork the contract, but schemaVersion, kind, and text are always required. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (KnowledgeEmissionV1).",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "text"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "kind": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Emission discriminator, e.g. fact, decision, preference, lesson.",
+      "enum": ["fact", "decision", "preference", "lesson", "note"]
+    },
+    "text": { "type": "string", "minLength": 1, "description": "The durable content (canonical field)." },
+    "provenance": {
+      "type": "object",
+      "description": "Open metadata map: source refs, confidence, tags. Additional properties permitted by design."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_working_context",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "loaded",
+      "operation": "load",
+      "contexts": [
+        { "contextId": "wc-mbr-301-001", "sessionId": "session-mbr-301", "taskId": "task-mbr-301", "items": { "focus": "operations contract" } }
+      ]
+    }
+  }
+}

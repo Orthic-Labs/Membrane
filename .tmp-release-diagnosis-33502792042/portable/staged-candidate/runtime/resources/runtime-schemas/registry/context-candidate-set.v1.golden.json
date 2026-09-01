@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "traceId": "11111111-1111-4111-8111-111111111111",
+  "indexedAt": "2026-08-04T03:59:00.000Z",
+  "task": "Implement the membrane-protocol contract crate",
+  "mode": "repo",
+  "provider": "blueprint-treesitter",
+  "freshness": {
+    "revision": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+    "indexedAt": "2026-08-04T03:59:00.000Z",
+    "stale": false,
+    "graphState": "clean",
+    "snapshotId": "snap-2026-08-04-101",
+    "baseCommit": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+    "expectedReleaseGeneration": "sha256:0000000000000000000000000000000000000000000000000000000000000010",
+    "observedReleaseGeneration": "sha256:0000000000000000000000000000000000000000000000000000000000000010",
+    "releaseGenerationStatus": "matched"
+  },
+  "providerCeiling": { "maxCandidates": 16, "maxEstimatedTokens": 4096 },
+  "candidates": [
+    {
+      "id": "cand-blueprint-types",
+      "layer": 1,
+      "provider": "blueprint-treesitter",
+      "sourceKind": "code",
+      "sourceRef": "engine/crates/membrane-protocol/src/types.rs:1-60",
+      "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000011",
+      "trustClass": "local_trusted",
+      "instructionPolicy": "none",
+      "providerScore": 0.92,
+      "scoreComponents": { "graphRank": 0.95, "recency": 0.5 },
+      "baseCommit": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4",
+      "freshnessClass": "current",
+      "snapshotId": "snap-2026-08-04-101",
+      "estimatedTokens": 320,
+      "protected": true,
+      "exact": true,
+      "recoverable": true,
+      "resolver": "source_read",
+      "text": "pub struct ScopeGrantV1 { pub schema_version: u32, pub id: String, /* ... */ }"
+    },
+    {
+      "id": "cand-memory-lesson",
+      "layer": 2,
+      "provider": "memory",
+      "sourceKind": "memory",
+      "sourceRef": "memory:WS/Claude-design-101",
+      "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000012",
+      "trustClass": "local_trusted",
+      "instructionPolicy": "advisory",
+      "providerScore": 0.41,
+      "scoreComponents": { "cosine": 0.41 },
+      "estimatedTokens": 96,
+      "protected": false,
+      "exact": false,
+      "recoverable": true,
+      "resolver": "memory_get",
+      "text": "Contract types are the single source of truth; bindings must round-trip byte-for-byte."
+    }
+  ],
+  "omissions": [
+    { "id": "cand-stale-doc", "layer": 3, "reason": "stale_snapshot" }
+  ]
+}

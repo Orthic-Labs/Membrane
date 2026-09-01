@@ -1,0 +1,12 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,
+  "required":["schemaVersion","operation","errorVersion","result"],
+  "properties":{"schemaVersion":{"const":1},"operation":{"const":"hub.capabilities"},"errorVersion":{"const":1},"result":{"oneOf":[{"$ref":"#/$defs/success"},{"$ref":"#/$defs/error"}]}},
+  "$defs":{
+    "success":{"type":"object","additionalProperties":false,"required":["kind","data"],"properties":{"kind":{"const":"success"},"data":{"$ref":"#/$defs/capabilities"}}},
+    "error":{"type":"object","additionalProperties":false,"required":["kind","code","message","retryable"],"properties":{"kind":{"const":"error"},"code":{"const":"hub_unavailable"},"message":{"type":"string","minLength":1},"retryable":{"type":"boolean"}}},
+    "capabilities":{"type":"object","additionalProperties":false,"required":["schemaVersion","readOnly","resources","operations","installationId","serviceId","releaseGeneration","dataRootDigest"],"properties":{"schemaVersion":{"const":1},"readOnly":{"const":true},"resources":{"const":["deliveries","providers","repositories","adapters","devices","memory","sentinel","alerts"]},"operations":{"const":["hub.capabilities","hub.snapshot"]},"installationId":{"type":"string","minLength":1},"serviceId":{"type":"string","minLength":1},"releaseGeneration":{"type":"string","minLength":1},"dataRootDigest":{"type":"string","minLength":1},"stream":{"$ref":"#/$defs/stream"}}},
+    "stream":{"type":"object","additionalProperties":false,"required":["state","reason"],"properties":{"state":{"enum":["available","degraded","unavailable"]},"reason":{"type":"string","minLength":1},"resolver":{"type":"string","minLength":1}}},
+    "errorCode":{"type":"object","properties":{"code":{"enum":["hub_unavailable"]}}}
+  }
+}

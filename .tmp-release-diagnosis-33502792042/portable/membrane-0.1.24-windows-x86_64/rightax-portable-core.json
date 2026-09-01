@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "rightax-portable-core",
+  "plugin": "membrane",
+  "publicSkills": [
+    "membrane"
+  ],
+  "publicFiles": [
+    "plugin.json",
+    "mcp.json",
+    "skills/membrane/SKILL.md"
+  ],
+  "privateWorkspaceContent": false,
+  "clientProjections": {
+    "claude": {
+      "portableCore": false,
+      "projection": "claude-native-plugin+standalone-skills",
+      "fidelity": "full+skills-only",
+      "executableRegistration": true
+    },
+    "codex": {
+      "portableCore": true,
+      "projection": "agent-plugins+codex-sidecar",
+      "fidelity": "full+sidecar",
+      "executableRegistration": true
+    },
+    "cursor": {
+      "portableCore": true,
+      "projection": "agent-plugins+optional-cursor-sidecar",
+      "fidelity": "full+optional-sidecar",
+      "executableRegistration": true
+    },
+    "pi": {
+      "portableCore": false,
+      "projection": "agents-skills",
+      "fidelity": "skills-only",
+      "executableRegistration": false
+    },
+    "antigravity": {
+      "portableCore": false,
+      "projection": "antigravity-native-plugin",
+      "fidelity": "native",
+      "schema": "https://antigravity.google/schemas/v1/plugin.json",
+      "executableRegistration": true
+    }
+  }
+}

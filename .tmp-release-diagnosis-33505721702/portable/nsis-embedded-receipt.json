@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "contract": "membrane-nsis-direct-release-embedding-v1",
+  "installer": "Membrane_Hub_0.1.24_x64-setup.exe",
+  "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd",
+  "embedded": [
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "release-manifest.json",
+      "sha256": "ec9aac1c5ea6f2e4a9b8eb9c17a65b24fb44a297ac3c36fb4453a8de22398a6b",
+      "sizeBytes": 1343,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "release-manifest.cat",
+      "sha256": "454d127092624434109ddf55f26a64aa58dfe6bf21715e83f642a8ab1e08b839",
+      "sizeBytes": 16012,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "checksums.json",
+      "sha256": "3bf7dc3100a06d34717cfeb5fcdff2c9459a2647ae39b62b81fe613623251fa5",
+      "sizeBytes": 362,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "install.ps1",
+      "sha256": "5e257d58eeff542f9f573b27e70a324fa4cc018bb4d95296b095940aa508e4ee",
+      "sizeBytes": 14640,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "membrane-0.1.24-windows-x86_64.zip",
+      "sha256": "0bdc2c7dbaee0d2d4a69347c4bf4fe34a8a27d2027e27c05adf0d453fa357139",
+      "sizeBytes": 88108808,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "provenance-windows-x86_64.intoto.jsonl",
+      "sha256": "9de6fce4df9cb15ea42696167ab06d622dad60c16f40545ad53bd59440387fbe",
+      "sizeBytes": 904,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    },
+    {
+      "installer": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\Membrane_Hub_0.1.24_x64-setup.exe",
+      "entry": "sbom-windows-x86_64.cdx.json",
+      "sha256": "4f366edbb3c0e5e1b29879268bce8977caff5e027708e112f67a743797431e2c",
+      "sizeBytes": 1118,
+      "installerSha256": "0226004ab37fb6d87c066c939d088e07c218726b5715b645df2eabb61971f5cd"
+    }
+  ]
+}

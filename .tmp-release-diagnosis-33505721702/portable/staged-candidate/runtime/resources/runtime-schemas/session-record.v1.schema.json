@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/session-record.v1.schema.json",
+  "title": "Cortex absorbed session record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sessionId", "scopeId", "status", "authority", "influenceClass", "lifecycle", "retention", "provenance", "contentHash", "createdAtMs", "updatedAtMs"],
+  "properties": {
+    "schemaVersion": {"type": "integer", "const": 1},
+    "sessionId": {"type": "string", "minLength": 1},
+    "scopeId": {"type": "string", "minLength": 1},
+    "workspaceRoot": {"type": ["string", "null"]},
+    "permissionMode": {"type": ["string", "null"]},
+    "model": {"type": ["string", "null"]},
+    "provider": {"type": ["string", "null"]},
+    "status": {"type": "string", "minLength": 1},
+    "title": {"type": ["string", "null"]},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "authority": {"type": "string", "minLength": 1},
+    "influenceClass": {"type": "string", "minLength": 1},
+    "lifecycle": {"type": "string", "minLength": 1},
+    "retention": {"type": "string", "minLength": 1},
+    "provenance": {"type": "array", "items": {"$ref": "#/$defs/provenance"}},
+    "contentHash": {"type": "string", "minLength": 1},
+    "createdAtMs": {"type": "integer", "minimum": 0},
+    "updatedAtMs": {"type": "integer", "minimum": 0},
+    "startedAtMs": {"type": ["integer", "null"], "minimum": 0},
+    "endedAtMs": {"type": ["integer", "null"], "minimum": 0}
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "sourceEventIds": {"type": "array", "items": {"type": "string"}},
+        "producer": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

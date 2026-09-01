@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "name": "lease-status",
+  "version": 1,
+  "uri": "membrane://resource/lease-status/v1",
+  "mimeType": "application/json",
+  "description": "Active Membrane component lease: installation id, release generation, data-root digest, validity window, and lease status. The resource is bounded to the caller's `lease.read` grant; reads outside that grant return a typed rejection with no content leak.",
+  "accessGrants": ["lease.read"],
+  "authorityEscalation": false,
+  "authorityNotes": "Reads return the active lease only. The lease cannot be used to widen authority beyond `lease.read`; a caller without the grant receives a typed `resource_access_denied` rejection and the lease body is never serialized into the response.",
+  "template": {
+    "uriTemplate": "membrane://resource/lease-status/v1",
+    "arguments": []
+  },
+  "body": {
+    "schemaVersion": 1,
+    "leaseVersion": 1,
+    "installationId": "<stable-uuidv4>",
+    "releaseGeneration": "<sha256-hex>",
+    "dataRootDigest": "<sha256-hex>",
+    "issuedAt": "<rfc3339-utc>",
+    "expiresAt": "<rfc3339-utc>",
+    "status": "active"
+  },
+  "example": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "resources/read",
+    "params": {
+      "uri": "membrane://resource/lease-status/v1",
+      "accessGrants": ["lease.read"]
+    }
+  },
+  "exampleRejection": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "error": {
+        "kind": "error",
+        "code": "resource_access_denied",
+        "message": "resources/read requires one of the grants in accessGrants: [lease.read]; caller presented [protocol.read]",
+        "retryable": false,
+        "details": {
+          "resource": "lease-status",
+          "requiredGrants": ["lease.read"],
+          "presentedGrants": ["protocol.read"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_temporal_fact",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "loaded",
+      "operation": "query",
+      "facts": [
+        {
+          "subject": "membrane-protocol",
+          "predicate": "source_of_truth_for",
+          "object": "mcp_operations",
+          "asOf": "2026-08-07T05:21:00.000Z",
+          "scopeId": "scope-mbr-301"
+        }
+      ]
+    }
+  }
+}

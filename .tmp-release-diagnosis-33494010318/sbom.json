@@ -1,0 +1,25 @@
+{
+  "schema": "membrane.sbom.v1",
+  "signing": {
+    "status": "signed",
+    "contract": "azure-artifact-signing-v1",
+    "provider": "RightRelease"
+  },
+  "artifact": {
+    "path": "Membrane_Hub_0.1.24_x64-setup.exe",
+    "sha256": "63d398afb34b049ea785e40c6e57e1f5fbe97a8273d5050649fcbb66f370af6e",
+    "size": 84785032
+  },
+  "package": {
+    "name": "membrane-hub",
+    "version": "0.1.24",
+    "target": "windows-x86_64"
+  },
+  "components": [
+    {
+      "name": "Membrane Windows candidate payload",
+      "type": "application",
+      "sha256": "49027d2a2032113f757022a084e24efd5bbc48a81ea23e8c3855570cb011c826"
+    }
+  ]
+}

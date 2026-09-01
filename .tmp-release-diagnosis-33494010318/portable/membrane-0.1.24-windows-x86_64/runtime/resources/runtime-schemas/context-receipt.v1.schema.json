@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/context-receipt.v1.schema.json",
+  "title": "ContextReceiptV1",
+  "description": "MBR-101: the content-free per-candidate receipt — what entered context, what did not, and why. Carries only a SHA-256 of content, never raw content. schemaVersion is the receipt envelope version (1 or 2); the planner always populates the v2 observability fields. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ContextReceiptV1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "traceId", "id", "layer", "provider", "sourceKind", "sourceRef",
+    "beforeChars", "admittedChars", "decision", "reason", "contentSha256",
+    "providerStatus", "fallbackMode", "degradationReason", "sourceGeneration"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "enum": [1, 2] },
+    "traceId": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "layer": { "type": "integer", "minimum": 0, "maximum": 255 },
+    "provider": { "type": "string", "minLength": 1 },
+    "sourceKind": { "type": "string", "minLength": 1 },
+    "sourceRef": { "type": "string" },
+    "beforeChars": { "type": "integer", "minimum": 0 },
+    "admittedChars": { "type": "integer", "minimum": 0 },
+    "decision": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string" },
+    "contentSha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "deduplicatedFrom": { "type": "array", "items": { "type": "string" } },
+    "deduplicatedTo": { "type": "string" },
+    "baseCommit": { "type": "string" },
+    "overlayDigest": { "type": "string" },
+    "freshnessClass": { "$ref": "#/$defs/freshnessClass" },
+    "snapshotId": { "type": "string" },
+    "deliveryStage": { "$ref": "#/$defs/deliveryStage" },
+    "deliveryClass": { "$ref": "#/$defs/deliveryClass" },
+    "selectedTokens": { "type": "integer", "minimum": 0 },
+    "allottedTokens": { "type": "integer", "minimum": 0 },
+    "renderedTokens": { "type": "integer", "minimum": 0 },
+    "deliveredChars": { "type": "integer", "minimum": 0 },
+    "dropReason": { "$ref": "#/$defs/dropReason" },
+    "statusScope": { "$ref": "#/$defs/statusScope" },
+    "statusProvider": { "type": "string" },
+    "providerStatus": { "$ref": "#/$defs/providerStatus" },
+    "fallbackMode": { "$ref": "#/$defs/fallbackMode" },
+    "degradationReason": { "$ref": "#/$defs/degradationReason" },
+    "sourceGeneration": { "type": ["string", "null"] },
+    "expectedReleaseGeneration": { "type": "string" },
+    "observedReleaseGeneration": { "type": "string" },
+    "releaseGenerationStatus": { "$ref": "#/$defs/releaseGenerationStatus" }
+  },
+  "$defs": {
+    "freshnessClass": {
+      "type": "string",
+      "enum": ["current", "committed_snapshot", "dirty_overlay", "stale_snapshot", "unknown"]
+    },
+    "deliveryStage": { "type": "string", "enum": ["planned", "finalized"] },
+    "deliveryClass": { "type": "string", "enum": ["resolver_backed", "metadata_only", "rendered"] },
+    "dropReason": {
+      "type": "string",
+      "enum": ["none", "missing_resolver", "trust_gate_dropped", "seal_failed", "additional_context_char_cap", "packet_budget_exceeded", "not_selected", "multiple"]
+    },
+    "statusScope": { "type": "string", "enum": ["candidate_set"] },
+    "providerStatus": { "type": "string", "enum": ["fresh", "stale", "unavailable", "degraded"] },
+    "fallbackMode": { "type": "string", "enum": ["none", "non_graph_sources_only", "portable_text_only"] },
+    "degradationReason": {
+      "type": "string",
+      "enum": ["none", "blueprint_stale", "blueprint_unavailable", "blueprint_corrupt", "provider_capability_missing", "release_generation_mismatch", "release_generation_unavailable"]
+    },
+    "releaseGenerationStatus": { "type": "string", "enum": ["matched", "mismatch", "unavailable"] }
+  }
+}

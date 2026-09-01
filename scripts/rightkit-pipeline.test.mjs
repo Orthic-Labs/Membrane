@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,12 +29,14 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
   assert.match(gate, /--package membrane-runtime --example hub_runtime_test_host/);
 });
 
-test("GitHub Pages bootstrap uses branch-hosted docs without extra workflow", () => {
+// membrane.orthiclabs.com is a Cloudflare Worker custom domain backed by R2, so
+// a product-side Pages CNAME and wrapper are a second, conflicting control
+// plane. RightKit owns the bootstrap; this repository must carry none of it.
+test("no product-side GitHub Pages bootstrap competes with the Worker route", () => {
   assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml"]);
-  assert.equal(read("docs/CNAME").trim(), "membrane.orthiclabs.com");
-  const bootstrap = read("docs/install.ps1");
-  assert.match(bootstrap, /Orthic-Labs\/Membrane\/releases\/latest\/download\/install\.ps1/);
-  assert.doesNotMatch(bootstrap, /homebrew|winget|vendor/i);
+  for (const retired of ["docs/CNAME", "docs/install.ps1", "docs/.nojekyll", "site/install.ps1"]) {
+    assert.equal(existsSync(join(root, retired)), false, `retired Pages path must stay removed: ${retired}`);
+  }
 });
 
 test("equivalence Cargo stages enter through RightKit", () => {

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProviderReadinessV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "state", "identity", "observation", "testQuery", "reason"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "state": {"enum": ["ready", "degraded", "unavailable", "unknown"]},
+    "identity": {"$ref": "#/$defs/identity"},
+    "observation": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["observedAtUnixMs", "freshForMs"],
+      "properties": {
+        "observedAtUnixMs": {"type": "integer", "minimum": 0},
+        "freshForMs": {"type": "integer", "minimum": 1}
+      }
+    },
+    "testQuery": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["name", "succeeded"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "succeeded": {"type": "boolean"}
+      }
+    },
+    "reason": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["providerId", "installationId", "serviceId", "releaseGeneration", "dataRootDigest"],
+      "properties": {
+        "providerId": {"type": "string", "minLength": 1},
+        "installationId": {"type": "string", "minLength": 1},
+        "serviceId": {"type": "string", "minLength": 1},
+        "releaseGeneration": {"type": "string", "minLength": 1},
+        "dataRootDigest": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

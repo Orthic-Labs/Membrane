@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "action": "allow",
+  "reason": "recalled against current generation",
+  "reasonCode": "recalled",
+  "receiptId": "xxh128:cafe01234567890abcdef01234567890abcdef01234567890abcdef01234567890",
+  "candidateSet": {
+    "id": "cs-1",
+    "count": 1
+  },
+  "allowedScopes": ["repo"],
+  "omissions": [],
+  "claimBoundary": {
+    "status": "clear",
+    "cleanClaimAllowed": true,
+    "safeClaims": [
+      "Results reflect the current sealed generation."
+    ],
+    "prohibitedClaims": [],
+    "gaps": []
+  },
+  "nextAction": null,
+  "evidence": null,
+  "evidencePath": null,
+  "receipt": null
+}

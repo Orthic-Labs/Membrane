@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_blueprint",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "blueprint_unavailable",
+    "message": "blueprint_unavailable",
+    "retryable": true,
+    "details": { "operation": "symbol", "node": "engine/crates/membrane-protocol/src/operations.rs:OperationSpec" }
+  }
+}

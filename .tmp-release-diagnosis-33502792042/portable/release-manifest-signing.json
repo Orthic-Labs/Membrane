@@ -1,0 +1,11 @@
+{
+  "signaturePath": "D:\\a\\Membrane\\Membrane\\apps\\membrane-hub\\dist\\portable\\release-manifest.cat",
+  "signer": {
+    "id": "azure-artifact-signing-damned-ventures-v1",
+    "subject": "CN=Damned Ventures LLC",
+    "algorithm": "authenticode-catalog-sha256",
+    "provider": "windows-authenticode-catalog",
+    "providerVersion": 1,
+    "certificateSha256": "d0f3767bab672a4b73ddb25cd957598a243bfeaf9b1da9821842ae8765bd397f"
+  }
+}

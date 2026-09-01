@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "membrane://hub/actions/v1",
+  "title": "Membrane Hub post-v1 action contract",
+  "type": "object",
+  "required": ["schemaVersion", "actions", "runtimeReceipt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "request": {
+      "type": "object",
+      "description": "The inert, frozen request the Hub renderer may build & hand to a trusted runtime. Never a dispatch or a claim of success.",
+      "required": ["state", "schemaVersion", "kind", "actionId", "capability", "capabilityReceiptId", "confirmationNonce", "payload", "rollbackOrRepair", "requestDigest"],
+      "properties": {
+        "state": { "const": "awaiting-trusted-runtime" },
+        "schemaVersion": { "const": 1 },
+        "kind": { "const": "hub.action.request" },
+        "actionId": { "enum": ["restart", "reconcile", "rotate-token", "review-proposal", "restore-quarantine", "apply-update"] },
+        "capability": { "type": "string", "minLength": 1 },
+        "capabilityReceiptId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$" },
+        "confirmationNonce": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{16,128}$" },
+        "payload": { "type": "object" },
+        "rollbackOrRepair": { "type": "string", "pattern": "^repair/hub/[a-z-]+$" },
+        "requestDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "sha256 over the canonical (key-sorted) actionId, capability, capabilityReceiptId, confirmationNonce, & payload. The runtime receipt must echo this digest exactly or the Hub renders unavailable." }
+      },
+      "additionalProperties": false
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "capability", "confirmation", "rollbackOrRepair"],
+        "properties": {
+          "id": { "enum": ["restart", "reconcile", "rotate-token", "review-proposal", "restore-quarantine", "apply-update"] },
+          "capability": { "type": "string", "minLength": 1 },
+          "confirmation": { "const": "nonce-required" },
+          "rollbackOrRepair": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "runtimeReceipt": {
+      "type": "object",
+      "description": "Immutable, content-free receipt returned only by trusted runtime.",
+      "required": ["receiptId", "actionId", "capabilityReceiptId", "requestDigest", "outcome", "occurredAt", "runtimeIdentity", "repairPath"],
+      "properties": {
+        "receiptId": { "type": "string", "minLength": 1 },
+        "actionId": { "type": "string", "minLength": 1 },
+        "capabilityReceiptId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$" },
+        "requestDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "outcome": { "enum": ["applied", "rejected", "repaired", "rolled-back"] },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "runtimeIdentity": { "type": "string", "minLength": 1 },
+        "repairPath": { "type": "string", "pattern": "^repair/hub/[a-z-]+$" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

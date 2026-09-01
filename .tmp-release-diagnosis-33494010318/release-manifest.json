@@ -1,0 +1,23 @@
+{
+  "schema": "membrane.release-evidence.v1",
+  "product": "Membrane Hub",
+  "release": {
+    "tag": "v0.1.24",
+    "version": "0.1.24",
+    "commit": "a07e0900458cc30bd33af878657c27cdcb05831a",
+    "tree": "189f14ced10dbf52b18d7cf999b2030bee0f286df612df82aae1c5eae76341c4",
+    "generation": "189f14ced10dbf52b18d7cf999b2030bee0f286df612df82aae1c5eae76341c4",
+    "target": "windows-x86_64",
+    "artifact_sha256": "63d398afb34b049ea785e40c6e57e1f5fbe97a8273d5050649fcbb66f370af6e"
+  },
+  "artifact": {
+    "path": "Membrane_Hub_0.1.24_x64-setup.exe",
+    "sha256": "63d398afb34b049ea785e40c6e57e1f5fbe97a8273d5050649fcbb66f370af6e",
+    "size": 84785032
+  },
+  "signing": {
+    "status": "signed",
+    "contract": "azure-artifact-signing-v1",
+    "provider": "RightRelease"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/diagnostic-bundle.v1.schema.json",
+  "title": "DiagnosticBundleV1",
+  "type": "object",
+  "required": ["schemaVersion", "redaction", "entries", "manifest"],
+  "properties": {
+    "schemaVersion": {"const": "DiagnosticBundleV1"},
+    "redaction": {"const": "content-free"},
+    "entries": {"$ref": "#/$defs/entries"},
+    "manifest": {"$ref": "#/$defs/manifest"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "check": {"type": "object", "required": ["code", "severity", "count"], "properties": {"code": {"pattern": "^MRD-[A-Z0-9-]+$"}, "severity": {"enum": ["info", "warning", "critical"]}, "count": {"type": "integer", "minimum": 0}}, "additionalProperties": false},
+    "schema": {"type": "object", "required": ["version", "digest"], "properties": {"version": {"const": 1}, "digest": {"$ref": "#/$defs/digest"}}, "additionalProperties": false},
+    "entries": {
+      "type": "object",
+      "required": ["identity", "signatures", "schemas", "ports", "tokens", "database", "providers", "adapters", "delivery", "versions"],
+      "properties": {
+        "identity": {"type": "object", "required": ["state", "releaseDigest", "target", "manifestPublished", "reason"], "properties": {"state": {"enum": ["ok", "unavailable"]}, "releaseDigest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}, "target": {"type": "string"}, "manifestPublished": {"type": "boolean"}, "reason": {"anyOf": [{"type": "null"}, {"const": "build-identity-unavailable"}]}}, "additionalProperties": false},
+        "signatures": {"type": "object", "required": ["state", "reason"], "properties": {"state": {"const": "unavailable"}, "reason": {"const": "runtime-has-no-signature-verifier"}}, "additionalProperties": false},
+        "schemas": {"type": "object", "required": ["state", "bound"], "properties": {"state": {"const": "ok"}, "bound": {"type": "object", "required": ["ContextCandidateSetV1", "ContextPacketV1", "ContextReceiptV1", "KnowledgeEmissionV1", "ScopeGrantV1"], "properties": {"ContextCandidateSetV1": {"$ref": "#/$defs/schema"}, "ContextPacketV1": {"$ref": "#/$defs/schema"}, "ContextReceiptV1": {"$ref": "#/$defs/schema"}, "KnowledgeEmissionV1": {"$ref": "#/$defs/schema"}, "ScopeGrantV1": {"$ref": "#/$defs/schema"}}, "additionalProperties": false}}, "additionalProperties": false},
+        "ports": {"type": "object", "required": ["state", "port", "reason"], "properties": {"state": {"enum": ["ok", "invalid", "unavailable"]}, "port": {"anyOf": [{"type": "integer", "minimum": 1024, "maximum": 65535}, {"type": "null"}]}, "reason": {"anyOf": [{"type": "null"}, {"enum": ["port-is-not-unprivileged-u16", "runtime-port-not-published"]}]}}, "additionalProperties": false},
+        "tokens": {"type": "object", "required": ["state", "reason"], "properties": {"state": {"enum": ["ok", "invalid", "unavailable"]}, "reason": {"anyOf": [{"type": "null"}, {"enum": ["token-file-missing-or-invalid", "token-file-path-unavailable"]}]}}, "additionalProperties": false},
+        "database": {"type": "object", "required": ["state", "doctorSchema", "checks"], "properties": {"state": {"enum": ["ok", "warning", "critical"]}, "doctorSchema": {"const": "CortexDoctorV0"}, "checks": {"type": "array", "items": {"$ref": "#/$defs/check"}}}, "additionalProperties": false},
+        "providers": {"type": "object", "required": ["state", "reason"], "properties": {"state": {"const": "unavailable"}, "reason": {"const": "cli-has-no-provider-readiness-handle"}}, "additionalProperties": false},
+        "adapters": {"type": "object", "required": ["state", "reason"], "properties": {"state": {"const": "unavailable"}, "reason": {"const": "cli-has-no-adapter-heartbeat-handle"}}, "additionalProperties": false},
+        "delivery": {"type": "object", "required": ["state"], "properties": {"state": {"enum": ["ok", "warning", "critical", "unavailable"]}, "checked": {"type": "integer", "minimum": 1}, "reason": {"const": "doctor-schema-has-no-delivery-check"}}, "additionalProperties": false},
+        "versions": {"type": "object", "required": ["runtime", "schemas"], "properties": {"runtime": {"type": "string"}, "schemas": {"const": 5}}, "additionalProperties": false}
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "type": "object",
+      "required": ["identity", "signatures", "schemas", "ports", "tokens", "database", "providers", "adapters", "delivery", "versions"],
+      "properties": {"identity": {"$ref": "#/$defs/digest"}, "signatures": {"$ref": "#/$defs/digest"}, "schemas": {"$ref": "#/$defs/digest"}, "ports": {"$ref": "#/$defs/digest"}, "tokens": {"$ref": "#/$defs/digest"}, "database": {"$ref": "#/$defs/digest"}, "providers": {"$ref": "#/$defs/digest"}, "adapters": {"$ref": "#/$defs/digest"}, "delivery": {"$ref": "#/$defs/digest"}, "versions": {"$ref": "#/$defs/digest"}},
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "eventId": "00000000-0000-4000-8000-000000000000",
+  "kind": "context_delivered",
+  "clientId": "claude",
+  "installationId": "00000000-0000-4000-8000-000000000001",
+  "occurredAtUnixMs": 1700000000000,
+  "scopeGrant": "sgv1-3f6b1c2a-9d4e-4a1b-8c7d-2e5f6a7b8c9d",
+  "mechanism": "membrane_context",
+  "payload": {
+    "reason": "golden",
+    "token_count": 256
+  },
+  "digest": "sha256:5000d953813b0bbadb934ffde90c32d025929ecc60326ed04e42506a341ff777"
+}

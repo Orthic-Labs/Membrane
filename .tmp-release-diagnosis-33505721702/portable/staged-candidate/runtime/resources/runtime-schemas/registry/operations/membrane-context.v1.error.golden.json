@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_context",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "context_deadline_exceeded",
+    "message": "Workspace fan-out exceeded the ingress deadline",
+    "retryable": true,
+    "details": { "deadlineMs": 2500, "exceededBy": "fan-out" }
+  }
+}

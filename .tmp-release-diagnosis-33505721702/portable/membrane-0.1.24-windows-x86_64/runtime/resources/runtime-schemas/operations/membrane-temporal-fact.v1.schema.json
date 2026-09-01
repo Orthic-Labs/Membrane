@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/operations/membrane-temporal-fact.v1.schema.json",
+  "title": "MembraneTemporalFactV1",
+  "description": "MBR-301: operation-specific contract for membrane_temporal_fact. The success branch carries the recorded/queried fact; the error branch is a closed typed taxonomy keyed by sub-operation (record/query).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "operation", "errorVersion", "result"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "operation": { "type": "string", "const": "membrane_temporal_fact" },
+    "errorVersion": { "type": "integer", "const": 1 },
+    "result": { "$ref": "#/$defs/result" }
+  },
+  "$defs": {
+    "result": { "oneOf": [{ "$ref": "#/$defs/success" }, { "$ref": "#/$defs/error" }] },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "type": "string", "const": "success" },
+        "data": { "$ref": "#/$defs/temporalFactOutput" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "code", "message", "retryable"],
+      "properties": {
+        "kind": { "type": "string", "const": "error" },
+        "code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "details": { "type": "object" }
+      }
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "temporal_fact_payload_too_large",
+        "temporal_fact_scope_denied",
+        "temporal_fact_scope_mismatch",
+        "temporal_fact_query_invalid",
+        "temporal_fact_operation_invalid",
+        "temporal_fact_envelope_invalid"
+      ]
+    },
+    "temporalFactOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "operation"],
+      "properties": {
+        "status": { "type": "string", "enum": ["recorded", "loaded"] },
+        "operation": { "type": "string", "enum": ["record", "query"] },
+        "fact": { "type": "object" },
+        "facts": { "type": "array" }
+      }
+    }
+  }
+}

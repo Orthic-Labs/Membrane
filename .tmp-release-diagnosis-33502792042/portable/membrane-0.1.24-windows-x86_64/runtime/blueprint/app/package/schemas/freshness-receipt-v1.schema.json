@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/freshness-receipt-v1.json",
+  "title": "FreshnessReceiptV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["receiptId", "createdMs", "repoRoot", "generationId", "sourceClock", "appliedClock", "eventGap", "barrierResult", "details"],
+  "properties": {
+    "receiptId": { "type": "string", "minLength": 1 },
+    "createdMs": { "type": "integer", "minimum": 0 },
+    "repoRoot": { "type": "string", "minLength": 1 },
+    "generationId": { "type": "string", "minLength": 1 },
+    "sourceClock": { "type": "integer", "minimum": 0 },
+    "appliedClock": { "type": "integer", "minimum": 0 },
+    "eventGap": { "type": "boolean" },
+    "barrierResult": { "enum": ["caught_up", "gap_blocked", "timeout"] },
+    "details": { "type": "object", "additionalProperties": true },
+    "properties": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

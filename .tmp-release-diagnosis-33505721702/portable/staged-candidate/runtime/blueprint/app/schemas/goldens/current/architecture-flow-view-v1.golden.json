@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "provider": "blueprint",
+  "kind": "architecture",
+  "view": "flows",
+  "generationId": "generation-1",
+  "sourceState": "clean",
+  "dirtyFileCount": 0,
+  "ordering": "entry.id,path[].id",
+  "bounds": {
+    "maxFlows": 20,
+    "maxDepth": 12
+  },
+  "entryPoints": 0,
+  "flows": [],
+  "truncated": false,
+  "continuationCursor": null
+}

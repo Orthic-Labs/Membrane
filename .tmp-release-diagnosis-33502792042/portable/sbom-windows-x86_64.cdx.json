@@ -1,0 +1,44 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:70dfff5a-676c-5ad0-88b5-ba2299284f27",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-09-01T11:38:59.931Z",
+    "component": {
+      "type": "application",
+      "name": "membrane",
+      "version": "0.1.24",
+      "bom-ref": "pkg:generic/membrane@0.1.24?target=windows-x86_64",
+      "properties": [
+        {
+          "name": "rightkit:target",
+          "value": "windows-x86_64"
+        },
+        {
+          "name": "rightkit:sourceCommit",
+          "value": "7fdbce1bd7fadb539ad3d18d1bb318e7602149c2"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "file",
+      "name": "membrane-0.1.24-windows-x86_64.zip",
+      "bom-ref": "urn:sha256:59ea9ade5c1a6fea28a3f991ee92ec97d6d3cfbd33bbe8413a68a9d011264eae",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "59ea9ade5c1a6fea28a3f991ee92ec97d6d3cfbd33bbe8413a68a9d011264eae"
+        }
+      ],
+      "properties": [
+        {
+          "name": "rightkit:sizeBytes",
+          "value": "88108808"
+        }
+      ]
+    }
+  ]
+}

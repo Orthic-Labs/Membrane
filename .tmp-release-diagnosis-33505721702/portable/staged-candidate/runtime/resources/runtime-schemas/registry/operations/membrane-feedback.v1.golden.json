@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_feedback",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "persisted",
+      "durable": true,
+      "feedbackId": "feedback-mbr-301-001",
+      "receiptId": "receipt-mbr-301-001",
+      "outcome": "used",
+      "source": "advisory",
+      "verified": false,
+      "lifecycleReceipt": {
+        "schema": "membrane.lifecycle-receipt.v1",
+        "operation": "feedback",
+        "status": "persisted",
+        "durableId": "feedback-mbr-301-001",
+        "eventId": "event-mbr-301-fb-001",
+        "readbackDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000c01",
+        "recordedAt": "2026-08-07T05:21:00.000Z"
+      },
+      "provenance": { "repositoryId": "membrane", "scopeId": "scope-mbr-301", "callerLevel": "write-proposed" }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_source_read",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "source_read_hash_mismatch",
+    "message": "expectedContentHash did not match the live document content",
+    "retryable": false,
+    "details": { "sourceRef": "engine/crates/membrane-protocol/src/types.rs:1-60", "expected": "sha256:0000000000000000000000000000000000000000000000000000000000000a01" }
+  }
+}

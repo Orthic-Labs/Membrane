@@ -1,0 +1,9 @@
+{
+  "version": "membrane.toolsets.v1",
+  "groups": {
+    "default": ["membrane_context"],
+    "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"],
+    "blueprint": ["membrane_source_read", "membrane_blueprint"],
+    "diagnostic": ["membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence", "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider"]
+  }
+}

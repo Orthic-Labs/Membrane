@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/diagnostic-evidence-snapshot.v1.schema.json",
+  "title": "DiagnosticEvidenceSnapshotV1",
+  "description": "Raw mutation-bound diagnostic evidence bound to Blueprint generation + workspace epoch + source manifest + provider versions. Canonical wire representation; internal Rust types are implementation projections of this one semantic contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "snapshotId", "repoId", "worktreeId", "blueprintFreshness", "workspaceEpoch", "requestMaxCost", "coverageObligations", "observations", "issues", "coverageLanes", "omissions", "producedAtMs"],
+  "properties": {
+    "schemaVersion": {"const": "diagnostics-evidence-snapshot.v1"},
+    "snapshotId": {"type": "string", "minLength": 1},
+    "repoId": {"type": "string", "minLength": 1},
+    "worktreeId": {"type": "string", "minLength": 1},
+    "blueprintGeneration": {"type": "string", "description": "Blueprint repository/graph evidence snapshot this evidence is bound to; omitted when Blueprint evidence was unavailable."},
+    "blueprintFreshness": {"enum": ["current", "stale", "unknown"]},
+    "workspaceEpoch": {"$ref": "#/$defs/workspaceEpoch"},
+    "mutationId": {"type": "string"},
+    "requestMaxCost": {"$ref": "#/$defs/costClass"},
+    "absoluteDeadlineMs": {"type": "integer", "minimum": 0},
+    "coverageObligations": {"type": "array", "items": {"$ref": "#/$defs/coverageObligation"}},
+    "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+    "issues": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "coverageLanes": {"type": "array", "items": {"$ref": "#/$defs/coverageLane"}},
+    "blueprintDelta": {"$ref": "#/$defs/blueprintDelta"},
+    "aggregateDelta": {"$ref": "#/$defs/aggregateDelta"},
+    "omissions": {"type": "array", "items": {"$ref": "#/$defs/typedOmission"}},
+    "producedAtMs": {"type": "integer", "minimum": 0}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "costClass": {"enum": ["instant", "interactive", "verification", "build", "test"]},
+    "capability": {"enum": ["syntax", "repository_module_resolution", "import_export_binding", "name_resolution", "type_semantics", "configured_static_policy", "compiler_project_semantics", "generated_source_awareness"]},
+    "classification": {"enum": ["new", "persistent", "resolved", "moved", "changed", "unknown_baseline"]},
+    "typedOmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "detail"],
+      "properties": {
+        "code": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "changedFileHash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "hash"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "hash": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "workspaceEpoch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "repoId", "worktreeId", "epoch", "sourceManifestDigest", "changedPaths", "changedFileHashes", "projectConfigDigest", "toolchainDigest", "sandboxPolicyDigest", "origin"],
+      "properties": {
+        "schemaVersion": {"const": "workspace-epoch.v1"},
+        "repoId": {"type": "string", "minLength": 1},
+        "worktreeId": {"type": "string", "minLength": 1},
+        "epoch": {"type": "integer", "minimum": 0},
+        "parentEpoch": {"type": "integer", "minimum": 0},
+        "mutationId": {"type": "string"},
+        "sourceManifestDigest": {"$ref": "#/$defs/digest"},
+        "changedPaths": {"type": "array", "items": {"type": "string"}},
+        "changedFileHashes": {"type": "array", "items": {"$ref": "#/$defs/changedFileHash"}},
+        "projectConfigDigest": {"$ref": "#/$defs/digest"},
+        "toolchainDigest": {"$ref": "#/$defs/digest"},
+        "sandboxPolicyDigest": {"$ref": "#/$defs/digest"},
+        "origin": {"enum": ["transactional", "observed_hook", "reconciliation"]}
+      }
+    },
+    "requiredScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "coverageObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "languageDialect", "projectIdentity", "requiredScope", "exactnessRequirement", "acceptableProviderAlternatives", "maximumCost", "state", "omissions"],
+      "properties": {
+        "capability": {"$ref": "#/$defs/capability"},
+        "languageDialect": {"type": "string"},
+        "projectIdentity": {"type": "string"},
+        "requiredScope": {"$ref": "#/$defs/requiredScope"},
+        "exactnessRequirement": {"enum": ["exact", "advisory"]},
+        "acceptableProviderAlternatives": {"type": "array", "items": {"type": "string"}},
+        "maximumCost": {"$ref": "#/$defs/costClass"},
+        "state": {"enum": ["unsatisfied", "satisfied_exact", "satisfied_advisory", "unavailable", "timed_out", "unsupported"]},
+        "omissions": {"type": "array", "items": {"$ref": "#/$defs/typedOmission"}}
+      }
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "startLine": {"type": "integer", "minimum": 0},
+        "startColumn": {"type": "integer", "minimum": 0},
+        "endLine": {"type": "integer", "minimum": 0},
+        "endColumn": {"type": "integer", "minimum": 0}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observationId", "providerId", "providerVersion", "code", "path", "message", "range", "sourceClass", "costClass", "severityHint"],
+      "properties": {
+        "observationId": {"type": "string", "minLength": 1},
+        "providerId": {"type": "string", "minLength": 1},
+        "providerVersion": {"type": "string", "minLength": 1},
+        "code": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1},
+        "range": {"$ref": "#/$defs/range"},
+        "semanticAnchor": {"type": "string"},
+        "sourceClass": {"enum": ["parser", "repository_finding", "native_language_service", "static_analyzer", "compiler_check"]},
+        "costClass": {"$ref": "#/$defs/costClass"},
+        "severityHint": {"enum": ["blocking", "advisory"]}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issueId", "correlationKey", "observations", "classification"],
+      "properties": {
+        "issueId": {"type": "string", "minLength": 1},
+        "correlationKey": {"type": "string", "minLength": 1},
+        "observations": {"type": "array", "items": {"$ref": "#/$defs/observation"}},
+        "classification": {"$ref": "#/$defs/classification"}
+      }
+    },
+    "coverageLane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "scope", "capabilitiesCovered", "convergenceClass", "boundWorkspaceEpoch", "state", "omissions"],
+      "properties": {
+        "providerId": {"type": "string", "minLength": 1},
+        "scope": {"type": "array", "items": {"type": "string"}},
+        "capabilitiesCovered": {"type": "array", "items": {"$ref": "#/$defs/capability"}},
+        "convergenceClass": {"enum": ["pull_exact", "push_versioned_exact", "snapshot_checker_exact", "push_unversioned_advisory", "unsupported"]},
+        "boundWorkspaceEpoch": {"type": "integer", "minimum": 0},
+        "state": {"enum": ["complete", "partial", "unavailable", "timed_out", "unsupported"]},
+        "omissions": {"type": "array", "items": {"$ref": "#/$defs/typedOmission"}}
+      }
+    },
+    "blueprintDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["findingsDelta"],
+      "properties": {
+        "baselineGeneration": {"type": "string"},
+        "findingsDelta": {"type": "array", "items": {"$ref": "#/$defs/issue"}}
+      }
+    },
+    "aggregateDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issues"],
+      "properties": {
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["issueId", "classification"],
+            "properties": {
+              "issueId": {"type": "string", "minLength": 1},
+              "classification": {"$ref": "#/$defs/classification"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

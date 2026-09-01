@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_source_read",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "ok": true,
+      "contentSha256": "sha256:0000000000000000000000000000000000000000000000000000000000000a01",
+      "section": { "anchorId": "anchor-mbr-301", "startLine": 1, "endLine": 60 },
+      "sourceRef": "engine/crates/membrane-protocol/src/types.rs:1-60"
+    }
+  }
+}

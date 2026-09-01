@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "contract": "MBR-108: separate application, control, and data planes",
+  "source": "engine/crates/membrane-runtime/src/planes.rs",
+  "planes": [
+    {
+      "name": "application",
+      "ownsProcess": false,
+      "ownsFiles": [
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/planes.rs",
+        "engine/crates/membrane-mcp/src/"
+      ],
+      "readsFrom": ["data"],
+      "writesTo": []
+    },
+    {
+      "name": "control",
+      "ownsProcess": false,
+      "ownsFiles": [
+        "apps/membrane-hub/src-tauri/src/supervisor.rs",
+        "engine/crates/membrane-runtime/src/service.rs",
+        "engine/crates/membrane-protocol/src/lease.rs"
+      ],
+      "readsFrom": ["data"],
+      "writesTo": ["data"]
+    },
+    {
+      "name": "data",
+      "ownsProcess": false,
+      "ownsFiles": [
+        "engine/crates/cortex-store/src/db.rs",
+        "engine/crates/cortex-store/src/memdb.rs",
+        "engine/crates/cortex-store/src/scope.rs",
+        "engine/crates/cortex-store/src/context_telemetry.rs",
+        "engine/crates/cortex-store/src/installation_identity.rs"
+      ],
+      "readsFrom": [],
+      "writesTo": []
+    }
+  ],
+  "modeMapping": {
+    "Cli": "application",
+    "StdioMcp": "application",
+    "Install": "application",
+    "Uninstall": "application",
+    "MigrateLegacy": "application"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/operations/operations-index.v1.schema.json",
+  "title": "OperationsIndexV1",
+  "description": "MBR-301: independent-versioning registry for every Membrane MCP operation. Each operation's schemaVersion and errorVersion advance independently: bumping one operation's error taxonomy does not move any sibling. The index is the single source of truth the contract test walks to assert every operation is present, versioned, and goldened.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "indexVersion", "operations"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "indexVersion": { "type": "integer", "const": 1, "description": "Independent version of the index itself." },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/operation" }
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "schemaVersion", "errorVersion", "schemaPath", "successFixture", "errorFixture"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Stable MCP tool name, e.g. membrane_context." },
+        "schemaVersion": { "type": "integer", "minimum": 1, "description": "Independent contract version of this operation. Bumping this revises input/output/error shapes." },
+        "errorVersion": { "type": "integer", "minimum": 1, "description": "Independent error-taxonomy version. Bumping this revises the typed error codes for this operation only." },
+        "schemaPath": { "type": "string", "description": "Repo-relative path of the per-operation JSON Schema (canonical contract text)." },
+        "successFixture": { "type": "string", "description": "Repo-relative path of the golden success fixture (validates the success branch)." },
+        "errorFixture": { "type": "string", "description": "Repo-relative path of the golden error fixture (validates the error branch)." },
+        "errorCodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Closed list of typed error codes this operation's contract defines; must match the schema's #/$defs/errorCode/properties/code/enum exactly."
+        }
+      }
+    }
+  }
+}

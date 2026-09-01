@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/context-candidate-set.v1.schema.json",
+  "title": "ContextCandidateSetV1",
+  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Blueprint owns this repository-truth contract; Membrane root and Rust assets are generated projections consumed by cortex-core::planner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "traceId", "indexedAt", "task", "mode", "provider", "freshness", "providerCeiling", "candidates", "omissions"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "traceId": { "type": "string", "minLength": 1 },
+    "indexedAt": { "type": "string", "format": "date-time" },
+    "task": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "freshness": { "$ref": "#/$defs/freshness" },
+    "providerCeiling": { "$ref": "#/$defs/providerCeiling" },
+    "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
+    "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } }
+  },
+  "$defs": {
+    "graphState": {
+      "type": "string",
+      "enum": ["clean", "dirty_overlay", "stale_snapshot", "missing_snapshot", "partial_reindex", "concurrent_update", "indeterminate"]
+    },
+    "freshnessClass": {
+      "type": "string",
+      "enum": ["current", "committed_snapshot", "dirty_overlay", "stale_snapshot", "unknown"]
+    },
+    "releaseGenerationStatus": {
+      "type": "string",
+      "enum": ["matched", "mismatch", "unavailable"]
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "indexedAt", "stale"],
+      "properties": {
+        "revision": { "type": "string" },
+        "indexedAt": { "type": "string", "format": "date-time" },
+        "stale": { "type": "boolean" },
+        "graphState": { "$ref": "#/$defs/graphState" },
+        "snapshotId": { "type": "string" },
+        "baseCommit": { "type": "string" },
+        "overlayDigest": { "type": "string" },
+        "expectedReleaseGeneration": { "type": "string" },
+        "observedReleaseGeneration": { "type": "string" },
+        "releaseGenerationStatus": { "$ref": "#/$defs/releaseGenerationStatus" }
+      }
+    },
+    "providerCeiling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxCandidates", "maxEstimatedTokens"],
+      "properties": {
+        "maxCandidates": { "type": "integer", "minimum": 0 },
+        "maxEstimatedTokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "layer", "sourceKind", "sourceRef", "sourceHash", "trustClass",
+        "instructionPolicy", "providerScore", "estimatedTokens", "protected",
+        "exact", "recoverable", "resolver", "text"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "provider": { "type": "string" },
+        "sourceKind": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string" },
+        "sourceHash": { "type": "string" },
+        "trustClass": { "type": "string", "minLength": 1 },
+        "instructionPolicy": { "type": "string" },
+        "providerScore": { "type": "number" },
+        "scoreComponents": { "type": "object", "additionalProperties": { "type": "number" } },
+        "baseCommit": { "type": "string" },
+        "overlayDigest": { "type": "string" },
+        "freshnessClass": { "$ref": "#/$defs/freshnessClass" },
+        "snapshotId": { "type": "string" },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "protected": { "type": "boolean" },
+        "exact": { "type": "boolean" },
+        "recoverable": { "type": "boolean" },
+        "resolver": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

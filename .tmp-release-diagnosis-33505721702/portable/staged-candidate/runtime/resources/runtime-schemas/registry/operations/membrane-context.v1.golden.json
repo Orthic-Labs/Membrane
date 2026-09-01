@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_context",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "ok": true,
+      "scope": "workspace",
+      "packet": { "status": "available" },
+      "scopeGrant": { "id": "sgv1-mbr-301-context", "status": "active" },
+      "taskEnvelope": { "schema": "membrane.task-envelope.v1", "taskId": "task-mbr-301" },
+      "turnEnvelope": { "schema": "membrane.turn-envelope.v1", "turnId": "turn-1", "sessionId": "session-mbr-301", "sequence": 1 },
+      "clientEnvelope": { "schema": "membrane.client-envelope.v1", "clientId": "mcp", "adapterVersion": "1.0.0" },
+      "overlay": { "schema": "membrane.overlay-identity.v1", "sessionId": "session-mbr-301", "worktreePath": "/Volumes/D/claude/membrane" },
+      "repos": [
+        { "repoId": "membrane", "basis": "admitted", "candidates": 3, "omissions": [] }
+      ],
+      "totalCandidates": 3,
+      "totalOmissions": 0,
+      "deadlineExceeded": false
+    }
+  }
+}

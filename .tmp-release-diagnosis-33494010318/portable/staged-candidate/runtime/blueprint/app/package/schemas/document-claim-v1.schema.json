@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/document-claim-v1.json",
+  "title": "DocumentClaimV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "documentId", "source", "line", "status", "sha1", "edges"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "documentId": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "line": { "type": "integer", "minimum": 1 },
+    "status": { "type": "string" },
+    "sha1": { "type": "string" },
+    "edges": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+    "details": { "type": "object", "additionalProperties": true },
+    "properties": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

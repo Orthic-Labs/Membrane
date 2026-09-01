@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_temporal_fact",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "temporal_fact_query_invalid",
+    "message": "query requires scopeId, subject, predicate, and asOf",
+    "retryable": false,
+    "details": { "missing": ["subject", "asOf"] }
+  }
+}
