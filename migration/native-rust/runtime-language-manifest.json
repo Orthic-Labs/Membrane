@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-01T11:25:54.158Z",
+ "generatedAt": "2026-09-01T11:57:08.129Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1155,7 +1155,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "8543e8164fa2ca20068fd2d93acd5a0e1bb35be635921c6843d7e8bf42c3bfa5"
+   "content_digest": "4b3085f4500fbf3932424bc2b93f44049ee8a9aed133e42727b7169a75e9d600"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1715,7 +1715,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "7ac45428b096ce56cf869751d1e1bab4eb61e344b3144aab6e39dbfbd78bb1a8"
+   "content_digest": "9ebfe9fe1bde9f07aa22aad3fdd4ecbd022f22665e1352bcf6005efa3e8dc0ae"
   },
   {
    "id": "hub-scripts-hub-scripts",

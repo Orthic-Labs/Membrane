@@ -6,8 +6,6 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-#![cfg_attr(windows, windows_subsystem = "windows")]
-
 use membrane::dispatch::{parse_mode, ParsedInvocation};
 use membrane::modes::{dispatch, DispatchOutcome};
 

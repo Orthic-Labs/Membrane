@@ -11,6 +11,7 @@ const finalizer = readFileSync(new URL("../scripts/finalize-portable-release.mjs
 const installerBundler = readFileSync(new URL("../scripts/bundle-portable-installer-windows.mjs", import.meta.url), "utf8");
 const publisher = readFileSync(new URL("../scripts/publish-portable-release.mjs", import.meta.url), "utf8");
 const remediation = readFileSync(new URL("../../../engine/crates/membrane-adapt/src/remediation.rs", import.meta.url), "utf8");
+const membraneCli = readFileSync(new URL("../../../engine/crates/membrane/src/main.rs", import.meta.url), "utf8");
 
 test("public CI builds unsigned candidate & protected host seals it without recompiling", () => {
   assert.equal(pkg.scripts["release:build:portable:win"], "node scripts/release-build-portable-windows.mjs");
@@ -81,6 +82,7 @@ test("shared bootstrap owns signed manifest, stable current, activation & exact 
   assert.match(finalizer, /validatePowerShellBootstrap\(bootstrap, \{[\s\S]*allowLocalReleaseRoot:\s*true/);
   assert.ok(finalizer.includes("release-manifest-signing.json"));
   assert.doesNotMatch(finalizer, /New-Service|sc\.exe|Win32_Service/);
+  assert.doesNotMatch(membraneCli, /windows_subsystem/, "installer-facing CLI must retain exit codes plus stdout/stderr on Windows");
 });
 
 test("ported native client descriptors remain valid JSON", () => {
