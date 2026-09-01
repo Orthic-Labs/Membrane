@@ -51,6 +51,8 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Legion routes engineering agents by their descriptions or explicit `@sage`/`@oracle`; Alchemist reaches cheap execution through the OmniRoute worker scripts.
 - Worker output is untrusted until Legion verifies it in the primary checkout. Require a reachable canonical commit or a content-addressed patch outside its disposable worktree before archive; clean read-only tasks archive freely.
 - Bound mapping, planning, & retries; only Adrian's explicit resume resets stopped work.
+- Preserve original acceptance criteria through every workaround; rerun them before accepting workaround output.
+- Treat supervised external-session launch or success as invalid until a monitor receipt proves session identity, authoritative transcript read, control write, reconnect, & completion detection.
 
 ## Invariants Legion never breaks
 
@@ -70,12 +72,14 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Never fabricate quotes, statistics, testimonials, stories, or evidence.
 - Open real visual artifacts for Adrian's approval.
 - Deliver docs, reports, & analyses as Markdown; publish an Artifact page only when Adrian explicitly asks for one.
+- ETA: agentic critical-path wall clock only; forbid human/engineer days, ranges, & serial lane sums.
 - Create process files only when Adrian or protocol requires them; otherwise keep reasoning in chat & execution output as evidence. Keep plans proportional; reserve line-rate evidence maps for contracted work.
 - On ceiling breach, Arcane emits `BUDGET_STOP`; executor reduces or redoes first, authenticated waits alone pause active time, & Legion may accept recorded variance up to 10% only when scope, semantics, safety, & authority stay unchanged.
 - Never force-close a bounded subagent; report its estimated remaining time instead.
 
 ## Bootstrap & toolchains
 - After clone, pull, or a missing command, run `python3 tools/setup-workspace.py` on Mac or `py -3.11 tools\setup-workspace.py` on Windows, then `workspace-doctor`.
+- Treat Membrane & Legion checkouts as development-only; bind installed behavior only from installer-owned stable `current` roots (see `docs/architecture/development-installed-product-boundary.md`).
 - Install no workspace toolchain ad hoc.
 - Let nearest `packageManager`, `engines`, `rust-toolchain.toml`, or repository venv override workspace defaults.
 - Default to Node 26.5.x, pnpm 11.18.0, `python3` on Mac, & `py -3.11` on Windows.
@@ -118,8 +122,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Load `/brand <code>` before brand or content work.
 - Keep product facts, procedures, incidents, credentials, & current state outside this core.
 - Add rules only after repeated failure; use one imperative plus one pointer, one stable term per concept, & active voice.
-- Run focused checks first, then verification proportional to blast radius.
-- Require concrete behavior or artifact evidence before completion.
+- Run focused checks first, verify proportional to blast radius, & require concrete behavior or artifact evidence before completion.
 - Emit a structured lifecycle event log with any long-running service, queue, scheduler, or process supervisor; instrumentation is delivery, not separate proof, & a service whose failures cannot be diagnosed from its own output is incomplete.
 
 # Membrane Rules
