@@ -1340,8 +1340,9 @@ fn backout_v25_to_v24(path: &Path) -> rusqlite::Result<()> {
         return Err(rusqlite::Error::InvalidQuery);
     }
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    // v25 only adds a read-path composite index; lowering the marker must not drop it
-    // (the index remains harmless on a v24-marked database).
+    // v25 only adds this read-path composite index. Remove it before any older rollback
+    // removes lifecycle columns referenced by the index.
+    tx.execute_batch("DROP INDEX IF EXISTS idx_memories_authority_lifecycle_eligibility;")?;
     tx.pragma_update(None, "user_version", 24)?;
     tx.commit()
 }
@@ -1352,6 +1353,7 @@ fn backout_v25_to_v24(path: &Path) -> rusqlite::Result<()> {
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
     backout_v23_to_v22(path)?;
     backout_v22_to_v21(path)?;
@@ -1387,6 +1389,7 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
 /// Remove only the causal-learning v23 tables and feedback qualification marker.
 pub fn backout_v23_to_v22<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
     let conn = Connection::open(path)?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
