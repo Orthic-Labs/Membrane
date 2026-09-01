@@ -16,7 +16,7 @@
 // Authentication contract:
 //   1. $MEMBRANE_PORT env var if set, else 47851.
 //   2. $MEMBRANE_API_TOKEN env var if set, else $MEMBRANE_API_TOKEN_FILE
-//      (default tools/.cache/memory/api-token) — same path the workspace
+//      or an explicit $WORKSPACE_ROOT token path — same path workspace
 //      hooks use. The token is read once per process; it is NEVER echoed,
 //      printed, written to a log row, or embedded in any output line.
 //
@@ -49,18 +49,19 @@ const TRANSPORT_VERSION = "membrane-mcp/1";
 const PLANNER_PROVIDER = "membrane-planner";
 const MODE_DEFAULT = "shadow"; // gate state until G5 parity is green
 
-function readToken() {
+function readToken(env = process.env) {
   // Resolution order matches the workspace hook recipe:
   //   1. MEMBRANE_API_TOKEN env var (raw, used directly; never logged).
-  //   2. MEMBRANE_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
+  //   2. MEMBRANE_API_TOKEN_FILE env var.
+  //   3. Explicit WORKSPACE_ROOT token path for development/workspace installs.
   // The token is held in closure; it never enters any log or output row.
-  const envTok = process.env.MEMBRANE_API_TOKEN;
+  const envTok = env.MEMBRANE_API_TOKEN;
   if (envTok && envTok.trim().length > 0) return envTok.trim();
-  const fileEnv = process.env.MEMBRANE_API_TOKEN_FILE;
+  const fileEnv = env.MEMBRANE_API_TOKEN_FILE;
   const candidates = [];
   if (fileEnv && fileEnv.trim().length > 0) candidates.push(fileEnv.trim());
-  const ws = process.env.WORKSPACE_ROOT || (process.platform === "win32" ? "D:/Claude" : `${process.env.HOME}/claude`);
-  candidates.push(`${ws}/tools/.cache/memory/api-token`);
+  const workspaceRoot = env.WORKSPACE_ROOT?.trim();
+  if (workspaceRoot) candidates.push(`${workspaceRoot}/tools/.cache/memory/api-token`);
   for (const path of candidates) {
     try {
       if (!existsSync(path)) continue;
@@ -75,8 +76,8 @@ function readToken() {
   return null;
 }
 
-function readPort() {
-  const raw = process.env.MEMBRANE_PORT;
+function readPort(env = process.env) {
+  const raw = env.MEMBRANE_PORT;
   if (raw && raw.trim().length > 0) {
     const n = Number(raw.trim());
     if (Number.isInteger(n) && n >= 1024 && n <= 65535) return n;
@@ -182,7 +183,7 @@ function loadInput({ inputArg, maxTokens }) {
   };
 }
 
-function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs }) {
+function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs, signal }) {
   const trace = boundedTrace(body);
   // MBR-005: honor the parent's single absolute monotonic deadline; never take a
   // fresh inner timeout longer than the remaining budget.
@@ -190,6 +191,7 @@ function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs }) {
     const remaining = Math.max(0, Math.floor(deadlineAtMs - performance.now()));
     if (remaining <= 0) return Promise.reject(new Error("deadline_exceeded"));
   }
+  if (signal?.aborted) return Promise.reject(new Error("request_cancelled"));
   return new Promise((resolve, reject) => {
     const json = Buffer.from(JSON.stringify(body), "utf8");
     const timeoutMs = deadlineAtMs
@@ -223,15 +225,21 @@ function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs }) {
           if (received <= MAX_BODY_BYTES) chunks.push(chunk);
         });
         res.on("end", () => {
+          signal?.removeEventListener("abort", abort);
           const text = Buffer.concat(chunks).toString("utf8");
           resolve({ status: res.statusCode || 0, body: text });
         });
       }
     );
+    const abort = () => req.destroy(new Error("request_cancelled"));
+    signal?.addEventListener("abort", abort, { once: true });
     req.on("timeout", () => {
       req.destroy(new Error("planner request timed out"));
     });
-    req.on("error", reject);
+    req.on("error", (error) => {
+      signal?.removeEventListener("abort", abort);
+      reject(error);
+    });
     // Set Authorization LAST so we never accidentally log the token header.
     if (token) {
       req.setHeader("authorization", `Bearer ${token}`);
@@ -275,6 +283,115 @@ function redactForLog(payload) {
     return out;
   };
   return walk(payload);
+}
+
+async function federatePayload(payload, { env = process.env, signal, request = postPlanner } = {}) {
+  const traceId = payload.traceparent ? payload.traceparent.split("-")[1] : (payload.session || `mcp-${Date.now().toString(16)}`);
+  const deadlineEnv = Number(env.MEMBRANE_DEADLINE_AT_MS);
+  const deadlineAtMs = Number.isFinite(deadlineEnv) && deadlineEnv > 0 ? deadlineEnv : null;
+  let response;
+  try {
+    response = await request({
+      host: "127.0.0.1",
+      port: readPort(env),
+      path: "/federate",
+      body: payload,
+      token: readToken(env),
+      traceId,
+      deadlineAtMs,
+      signal,
+    });
+  } catch {
+    emitFallbackEvent({ traceId, provider: PLANNER_PROVIDER, reason: "transport_failure", mode: "non_graph_sources_only" });
+    return {
+      ok: false,
+      transport: "mcp",
+      version: TRANSPORT_VERSION,
+      traceId,
+      providerStatus: "unavailable",
+      fallbackMode: "non_graph_sources_only",
+      degradationReason: "planner_unavailable",
+      sourceGeneration: null,
+      packet: null,
+      receipts: [],
+      error: "planner_transport_failure",
+      ...(payload.taskEnvelope ? { taskEnvelope: payload.taskEnvelope } : {}),
+      ...(payload.turnEnvelope ? { turnEnvelope: payload.turnEnvelope } : {}),
+      ...(payload.clientEnvelope ? { clientEnvelope: payload.clientEnvelope } : {}),
+      ...(payload.overlay ? { overlay: payload.overlay } : {}),
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(response.body);
+  } catch {
+    emitFallbackEvent({ traceId, provider: PLANNER_PROVIDER, reason: "malformed_response", mode: "non_graph_sources_only" });
+    return {
+      ok: false,
+      transport: "mcp",
+      version: TRANSPORT_VERSION,
+      traceId,
+      providerStatus: "degraded",
+      fallbackMode: "non_graph_sources_only",
+      degradationReason: "malformed_response",
+      sourceGeneration: null,
+      packet: null,
+      receipts: [],
+      error: "planner_malformed_response",
+      httpStatus: response.status,
+    };
+  }
+  if (response.status === 401 || response.status === 403) {
+    emitFallbackEvent({ traceId, provider: PLANNER_PROVIDER, reason: "auth_rejected", mode: "non_graph_sources_only" });
+    return {
+      ok: false,
+      transport: "mcp",
+      version: TRANSPORT_VERSION,
+      traceId,
+      providerStatus: "unavailable",
+      fallbackMode: "non_graph_sources_only",
+      degradationReason: "auth_rejected",
+      sourceGeneration: null,
+      packet: null,
+      receipts: [],
+      error: parsed.error || "planner_auth_rejected",
+      httpStatus: response.status,
+    };
+  }
+  if (response.status >= 400) {
+    const reason = parsed?.kind || "planner_error";
+    emitFallbackEvent({ traceId, provider: PLANNER_PROVIDER, reason, mode: "non_graph_sources_only" });
+    return redactForLog({
+      ok: false,
+      transport: "mcp",
+      version: TRANSPORT_VERSION,
+      traceId,
+      providerStatus: "degraded",
+      fallbackMode: "non_graph_sources_only",
+      degradationReason: reason,
+      sourceGeneration: null,
+      packet: null,
+      receipts: [],
+      error: parsed?.error || "planner_rejected",
+      httpStatus: response.status,
+    });
+  }
+  return redactForLog({
+    ok: true,
+    transport: "mcp",
+    version: TRANSPORT_VERSION,
+    traceId,
+    providerStatus: parsed.providerStatus ?? "unknown",
+    fallbackMode: parsed.fallbackMode ?? "none",
+    degradationReason: parsed.degradationReason ?? "none",
+    sourceGeneration: parsed.sourceGeneration ?? null,
+    packet: parsed.packet ?? null,
+    receipts: parsed.receipts ?? [],
+    structuredEvent: parsed.structuredEvent ?? null,
+    persistedReceipts: parsed.persistedReceipts ?? 0,
+    scopeGrant: parsed.scopeGrant ?? null,
+    httpStatus: response.status,
+  });
 }
 
 async function main() {
@@ -511,4 +628,5 @@ export {
   REQUEST_TIMEOUT_MS,
   MAX_BODY_BYTES,
   DEFAULT_PORT,
+  federatePayload,
 };

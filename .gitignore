@@ -51,3 +51,4 @@ docs/research/**/*.pdf
 
 # Subagent isolation worktrees — transient nested checkouts of this repo
 .claude/worktrees/
+.claude/settings.local.json

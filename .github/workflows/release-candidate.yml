@@ -592,4 +592,3 @@ jobs:
           RIGHT_GIT_SOURCE_REVISION: ${{ needs.admission.outputs.source_revision }}
           RIGHT_GIT_RUN_ID: ${{ github.run_id }}
           RIGHT_GIT_RUN_ATTEMPT: ${{ github.run_attempt }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

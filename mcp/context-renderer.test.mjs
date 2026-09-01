@@ -6,6 +6,7 @@
 // drift from the other and only one was ever covered.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -43,6 +44,7 @@ function blockOf(overrides = {}) {
 test("typedClient maps every unknown identity to 'other', never a new ad-hoc string", () => {
   // Plan convention 3: the retired ccx/host-adapter strings must not survive
   // anywhere; an unrecognized client is 'other', not itself.
+  assert.equal(typedClient("claude"), "claude");
   assert.equal(typedClient("claude_code"), "claude_code");
   assert.equal(typedClient("codex"), "codex");
   assert.equal(typedClient("ccx"), "other");
@@ -58,6 +60,15 @@ test("self-loading capability follows the typed identity", () => {
   assert.equal(loadsWorkspaceRules("api_worker"), false);
   // The retired string must NOT be treated as self-loading by accident.
   assert.equal(loadsWorkspaceRules("ccx"), false);
+});
+
+test("Rust and JavaScript self-loading client sets stay identical", () => {
+  const rust = readFileSync(new URL("../engine/crates/membrane-federation/src/providers/rules.rs", import.meta.url), "utf8");
+  const declared = rust.match(/SELF_LOADING_CLIENTS:\s*&\[&str\]\s*=\s*&\[([^\]]+)\]/s)?.[1]
+    ?.match(/"([^"]+)"/g)
+    ?.map((value) => value.slice(1, -1));
+  assert.deepEqual(declared, ["claude", "claude_code", "codex"]);
+  assert.deepEqual(declared, CLIENT_IDENTITIES.filter((client) => loadsWorkspaceRules(client)));
 });
 
 test("finalize renders within the effective budget and stamps accounting", () => {

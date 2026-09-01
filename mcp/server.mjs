@@ -4,7 +4,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
@@ -23,9 +23,8 @@ import { toolsetNames } from "./toolsets.mjs";
 import { executeCodeBatch } from "../schemas/registry/code/mbr402-batch.mjs";
 import { requestBlueprint } from "./blueprint-readiness.mjs";
 import { diagnosticsRequest } from "./lib/diagnostics-client.mjs";
+import { federatePayload } from "./client.mjs";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CLIENT = join(HERE, "client.mjs");
 const PROTOCOL_URI = "membrane://protocol/v1";
 const MAX_REQUEST_BYTES = 32 * 1024;
 const SCOPE_GRANT_FRESHNESS_TIMEOUT_MS = 1200;
@@ -879,10 +878,9 @@ async function callTool(name, args, trace = {}, lifecycle) {
         });
         if (!effectiveLevel) return deniedRow(entry);
         const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: workspaceEnvelope.taskEnvelope, turnEnvelope: workspaceEnvelope.turnEnvelope, clientEnvelope: workspaceEnvelope.clientEnvelope, overlay: workspaceEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, ...trace };
-        const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, lane.signal);
+        const packet = await federatePayload(request, { env: { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, signal: lane.signal });
         const reason = terminalReason(lane.signal);
         if (reason) return { row: { repoId: entry.repoId, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
-        const packet = text(out.stdout.trim() || "");
         const degraded = Boolean(packet?.degradationReason && packet.degradationReason !== "none");
         const identity = repositoryIdentity(packet, entry);
         return {
@@ -918,8 +916,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
     await lifecycle?.checkpoint("provider_dispatch", 40);
     const singleEnvelope = requestEnvelopeFor(args);
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, ...trace };
-    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root }, lifecycle?.signal);
-    const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
+    const packet = await federatePayload(request, { env: { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root }, signal: lifecycle?.signal });
     if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
     if (args.session && args.taskId && packet.ok === true && packet.packet && typeof packet.packet === "object") {
       const freshness = await currentFreshness(binding, install, args.session, singleEnvelope.overlay.worktreePath);

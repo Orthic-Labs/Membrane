@@ -32,7 +32,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 - Run `pnpm test` for MCP/client/install-binding coverage.
 - Run `pnpm test:mcp` for the MCP surface.
-- Run Rust checks through workspace RightKit shim.
+- This is an Orthic Labs public repository: `compile: github-actions-only`. Never run cargo, Rust builds/tests, packaging, signing, qualification, or release steps locally; push & read managed CI. Local scope is reads, static checks, JS/node tests, & schema validation.
 - Run the repository's current docs/productization checks after changing hand-maintained docs.
 
 ## Locked invariants
@@ -65,7 +65,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 Before claiming completion:
 
-- run focused tests, then relevant full suites;
+- run focused tests, then relevant full suites — JS/node locally; Rust/Cargo evidence comes only from pushed, managed CI, never a local cargo run;
 - verify packet/receipt schemas together after contract changes;
 - prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;

@@ -22,7 +22,8 @@ const REQUEST_TIMEOUT_MS = 1500;
 
 // Plan convention 3: one typed client identity everywhere. Membrane's rules
 // provider keys self-loading behavior off this exact string
-// (SELF_LOADING_RULE_CLIENTS in engine/federation/providers/rules.py), so the
+// (SELF_LOADING_CLIENTS in
+// engine/crates/membrane-federation/src/providers/rules.rs), so the
 // ad-hoc 'ccx'/'host-adapter' values silently disabled the capability split:
 // neither is a member, so self-loading hosts kept receiving inlined, truncated
 // duplicates of rules they already had.

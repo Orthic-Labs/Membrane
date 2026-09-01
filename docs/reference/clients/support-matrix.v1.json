@@ -241,6 +241,66 @@
       "support": "unsupported"
     },
     {
+      "client": "antigravity",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_source_read",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_blueprint",
+      "support": "unsupported"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_knowledge_propose",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_checkpoint_save",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_checkpoint_load",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_working_context",
+      "support": "supported"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_temporal_fact",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_scratchpad",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "membrane_feedback",
+      "support": "degraded"
+    },
+    {
+      "client": "antigravity",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "antigravity",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
+    },
+    {
       "client": "generic_mcp",
       "operation": "membrane_context",
       "support": "supported"
@@ -324,6 +384,12 @@
       "displayName": "Windsurf",
       "honestLevel": "L1",
       "id": "windsurf",
+      "transport": "stdio"
+    },
+    {
+      "displayName": "Antigravity",
+      "honestLevel": "L1",
+      "id": "antigravity",
       "transport": "stdio"
     },
     {

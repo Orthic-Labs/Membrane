@@ -2597,10 +2597,15 @@ fn read_ingress_cursor(path: &Path, journal_len: u64) -> u64 {
         .unwrap_or(0)
 }
 
+/// Durable checkpoint write: temp file + fsync + atomic rename + parent-directory fsync,
+/// reusing the one correct publish pattern from `installation_identity::atomic_replace`
+/// instead of the previous in-place truncate-write (`File::create` + `write_all`), which left
+/// a window where a crash mid-write could leave a partially-written or empty cursor file.
+/// Low blast radius either way: `read_ingress_cursor` treats unparseable/oversized content as
+/// `0`, and `drain_prompt_telemetry_ingress_once`'s content-addressed ingest safely replays
+/// already-committed records, so this is a correctness/consistency fix, not a new invariant.
 fn persist_ingress_cursor(path: &Path, cursor: u64) -> Result<(), String> {
-    let mut file = File::create(path).map_err(|_| "persist prompt telemetry cursor".to_string())?;
-    file.write_all(cursor.to_string().as_bytes())
-        .and_then(|_| file.sync_data())
+    crate::installation_identity::atomic_replace(path, cursor.to_string().as_bytes())
         .map_err(|_| "persist prompt telemetry cursor".to_string())
 }
 

@@ -22,6 +22,7 @@ const MAX_PACKET_BYTES = 64 * 1024;
  * Adapters emit exactly these; anything else degrades to "other".
  */
 const CLIENT_IDENTITIES = Object.freeze([
+  "claude",
   "claude_code",
   "codex",
   "mcp",
@@ -31,9 +32,10 @@ const CLIENT_IDENTITIES = Object.freeze([
 
 /**
  * Clients whose host loads workspace rule files itself at session start.
- * Kept in sync with engine/federation/providers/rules.py:SELF_LOADING_RULE_CLIENTS.
+ * Source of truth: SELF_LOADING_CLIENTS in
+ * engine/crates/membrane-federation/src/providers/rules.rs.
  */
-const SELF_LOADING_RULE_CLIENTS = Object.freeze(["claude_code", "codex"]);
+const SELF_LOADING_RULE_CLIENTS = Object.freeze(["claude", "claude_code", "codex"]);
 
 /** How a block's content reached the agent. */
 const DELIVERY_MODES = Object.freeze(["native", "inline", "reference"]);

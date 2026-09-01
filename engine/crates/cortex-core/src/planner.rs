@@ -1052,10 +1052,7 @@ fn freshness_component(cand: &CandidateV1) -> f64 {
 }
 
 fn is_version_demoted(cand: &CandidateV1) -> bool {
-    if cand.id.ends_with(":superseded") || cand.id.ends_with(":proposed") {
-        return true;
-    }
-    freshness_component(cand) == 0.0
+    cand.id.ends_with(":superseded") || cand.id.ends_with(":proposed")
 }
 
 fn kind_priority(cand: &CandidateV1) -> u8 {
@@ -1520,6 +1517,17 @@ mod tests {
         let input = empty_planner_input(vec![c]);
         let out = plan(&input).unwrap();
         assert_eq!(out.receipts[0].reason, "superseded_version");
+    }
+
+    #[test]
+    fn zero_freshness_is_ranked_instead_of_mislabeled_as_superseded() {
+        let mut c = candidate("old-but-current", "doc", 100, 0.9, false);
+        c.score_components.insert("freshness".into(), 0.0);
+        let out = plan(&empty_planner_input(vec![c])).unwrap();
+        assert!(out
+            .receipts
+            .iter()
+            .all(|receipt| receipt.reason != "superseded_version"));
     }
 
     #[test]

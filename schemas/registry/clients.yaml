@@ -95,14 +95,14 @@ clients:
   - id: cursor
     display_name: "Cursor"
     transport: stdio
-    discovery_method: "rules-file-and-mcp"
-    binary_env: MEMBRANE_CURSOR_BIN
-    install_command: "mcp add membrane -- <node> <server>"
-    detect_command: "--version"
-    get_command: "mcp get membrane"
-    remove_command: "mcp remove membrane"
-    add_command: "mcp add membrane -- <node> <server>"
-    scope_default: project
+    discovery_method: "global-mcp-config"
+    install_command: "merge ~/.cursor/mcp.json mcpServers.membrane"
+    detect_command: null
+    binary_env: null
+    get_command: null
+    remove_command: null
+    add_command: null
+    scope_default: user
     authority_grant:
       max_level: L1
       scopes: [read-only]
@@ -123,14 +123,42 @@ clients:
   - id: windsurf
     display_name: "Windsurf"
     transport: stdio
-    discovery_method: "rules-file-and-mcp"
-    binary_env: MEMBRANE_WINDSURF_BIN
-    install_command: "mcp add membrane -- <node> <server>"
-    detect_command: "--version"
-    get_command: "mcp get membrane"
-    remove_command: "mcp remove membrane"
-    add_command: "mcp add membrane -- <node> <server>"
-    scope_default: project
+    discovery_method: "global-mcp-config"
+    install_command: "merge ~/.codeium/windsurf/mcp_config.json mcpServers.membrane"
+    detect_command: null
+    binary_env: null
+    get_command: null
+    remove_command: null
+    add_command: null
+    scope_default: user
+    authority_grant:
+      max_level: L1
+      scopes: [read-only]
+      loopback_only: true
+    honest_level: L1
+    supported_operations:
+      - membrane_context
+      - membrane_working_context
+    degraded_operations:
+      - membrane_source_read
+      - membrane_knowledge_propose
+      - membrane_checkpoint_save
+      - membrane_checkpoint_load
+      - membrane_temporal_fact
+      - membrane_scratchpad
+      - membrane_feedback
+
+  - id: antigravity
+    display_name: "Antigravity"
+    transport: stdio
+    discovery_method: "global-mcp-config"
+    install_command: "merge ~/.gemini/config/mcp_config.json mcpServers.membrane"
+    detect_command: null
+    binary_env: null
+    get_command: null
+    remove_command: null
+    add_command: null
+    scope_default: user
     authority_grant:
       max_level: L1
       scopes: [read-only]

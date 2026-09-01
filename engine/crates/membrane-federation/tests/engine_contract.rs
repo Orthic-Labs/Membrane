@@ -87,6 +87,32 @@ fn active_merge_emits_versioned_fusion_receipt() {
 }
 
 #[test]
+fn cross_provider_duplicate_id_keeps_winner_but_reports_losing_lane() {
+    let outputs = [
+        output(ProviderId::Anchors, "shared-id"),
+        output(ProviderId::Blueprint, "shared-id"),
+    ];
+    let result = merge_outputs(
+        &[ProviderId::Anchors, ProviderId::Blueprint],
+        &outputs,
+        None,
+    )
+    .expect("valid provider lanes");
+
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].provider, ProviderId::Anchors);
+    assert!(result.is_partial());
+    assert!(result.omissions.iter().any(|omission| {
+        omission.provider == ProviderId::Blueprint
+            && omission.candidate_id.as_deref() == Some("shared-id")
+    }));
+    assert!(result
+        .warnings
+        .iter()
+        .any(|warning| warning.provider == ProviderId::Blueprint));
+}
+
+#[test]
 fn fixed_order_is_default_and_rrf_requires_explicit_selection() {
     let outputs = [
         output(ProviderId::Anchors, "anchor-1"),

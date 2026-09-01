@@ -59,9 +59,7 @@
       "installedQualificationScript": "release:qualify:installed",
       "publishScript": "release:publish:qualified",
       "qualificationRunnerVariable": "MEMBRANE_QUALIFICATION_RUNNER_LABEL",
-      "publishSecrets": [
-        "CLOUDFLARE_API_TOKEN"
-      ]
+      "publishSecrets": []
     }
   }
 }

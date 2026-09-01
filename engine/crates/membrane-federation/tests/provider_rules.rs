@@ -11,6 +11,9 @@ fn rule_paths_are_normalized_and_confined() {
     assert!(normalize_rule_path("/AGENTS.md").is_err());
     assert!(normalize_rule_path("../AGENTS.md").is_err());
     assert!(normalize_rule_path("nested\\AGENTS.md").is_err());
+    assert!(normalize_rule_path(".env").is_err());
+    assert!(normalize_rule_path("keys/id_ed25519").is_err());
+    assert!(normalize_rule_path("keys/service.key").is_err());
 }
 
 #[test]

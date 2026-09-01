@@ -80,7 +80,9 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Let nearest `packageManager`, `engines`, `rust-toolchain.toml`, or repository venv override workspace defaults.
 - Default to Node 26.5.x, pnpm 11.18.0, `python3` on Mac, & `py -3.11` on Windows.
 - Use pnpm in pnpm repositories & run package CLIs through `pnpm exec`, never npm or npx.
-- Read `docs/rules/rightkit.md` before any Rust/Cargo command. Bind public-repository tasks to `local-static-only` or `github-build`; public repositories declare `compile: github-actions-only` & reject local compile, test, package, signing, qualification, installed-smoke, & release execution. Managed private-repository Rust uses `rightkit cargo <args>` or `rightkit rustc|rustdoc <args>`; direct tools & bypasses are denied. Diagnose broker/receipt/service failures; package-manager children must inherit RightKit.
+- Read `docs/rules/rightkit.md` before any Rust/Cargo command; managed private-repository Rust uses `rightkit cargo <args>` or `rightkit rustc|rustdoc <args>`, direct tools & bypasses denied.
+- Public repositories declare `compile: github-actions-only` & reject local compile, test, package, signing, qualification, installed-smoke, & release execution; bind their tasks to `local-static-only` or `github-build`, & push and read managed CI instead.
+- Diagnose broker/receipt/service failures; package-manager children must inherit RightKit.
 - Launch no visible Windows console for background automation.
 
 ## Mandatory systems
@@ -154,7 +156,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 - Run `pnpm test` for MCP/client/install-binding coverage.
 - Run `pnpm test:mcp` for the MCP surface.
-- Run Rust checks through workspace RightKit shim.
+- This is an Orthic Labs public repository: `compile: github-actions-only`. Never run cargo, Rust builds/tests, packaging, signing, qualification, or release steps locally; push & read managed CI. Local scope is reads, static checks, JS/node tests, & schema validation.
 - Run the repository's current docs/productization checks after changing hand-maintained docs.
 
 ## Locked invariants
@@ -187,7 +189,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 Before claiming completion:
 
-- run focused tests, then relevant full suites;
+- run focused tests, then relevant full suites — JS/node locally; Rust/Cargo evidence comes only from pushed, managed CI, never a local cargo run;
 - verify packet/receipt schemas together after contract changes;
 - prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;

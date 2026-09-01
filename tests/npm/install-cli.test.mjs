@@ -6,8 +6,8 @@ import { runInstall, PlatformPackageMissingError, SigningTrustNotConfiguredError
 const artifact = Buffer.from("native-fixture-cli");
 const metadata = {
   sha256: artifactDigest(artifact),
-  packageName: "@membrane/membrane-darwin-arm64",
-  platform: "darwin-arm64",
+  packageName: "@membrane/membrane-win32-x64",
+  platform: "win32-x64",
   version: "0.1.0",
   signature: { algorithm: "ed25519", keyId: "fixture-key", value: "fixture-signature", digest: artifactDigest(artifact) },
 };
@@ -20,17 +20,17 @@ test("runInstall verifies and dispatches the co-installed platform package", asy
   const calls = [];
   const logs = [];
   const result = await runInstall({
-    platform: "darwin",
-    arch: "arm64",
+    platform: "win32",
+    arch: "x64",
     load: async (name) => { calls.push(name); return nativeFixture(); },
     verifySignature: async () => true,
     log: (message) => logs.push(message),
   });
   assert.equal(result.dispatch("ok"), "dispatched:ok");
   // The platform package is imported exactly once, then reused for bootstrap()'s own load.
-  assert.deepEqual(calls, ["@membrane/membrane-darwin-arm64"]);
+  assert.deepEqual(calls, ["@membrane/membrane-win32-x64"]);
   assert.equal(logs.length, 1);
-  assert.match(logs[0], /@membrane\/membrane-darwin-arm64/);
+  assert.match(logs[0], /@membrane\/membrane-win32-x64/);
 });
 
 test("unsupported host tuples fail closed before any package is loaded", async () => {
@@ -45,17 +45,17 @@ test("unsupported host tuples fail closed before any package is loaded", async (
 test("a missing optional platform package is a declared gap, not a crash", async () => {
   await assert.rejects(
     () => runInstall({
-      platform: "darwin", arch: "arm64",
-      load: async () => { throw new Error("Cannot find package '@membrane/membrane-darwin-arm64'"); },
+      platform: "win32", arch: "x64",
+      load: async () => { throw new Error("Cannot find package '@membrane/membrane-win32-x64'"); },
       verifySignature: async () => true,
     }),
-    (error) => error instanceof PlatformPackageMissingError && /@membrane\/membrane-darwin-arm64/.test(error.message),
+    (error) => error instanceof PlatformPackageMissingError && /@membrane\/membrane-win32-x64/.test(error.message),
   );
 });
 
 test("a platform package that exports no artifact/metadata is a declared gap", async () => {
   await assert.rejects(
-    () => runInstall({ platform: "darwin", arch: "arm64", load: async () => ({ dispatch() {} }), verifySignature: async () => true }),
+    () => runInstall({ platform: "win32", arch: "x64", load: async () => ({ dispatch() {} }), verifySignature: async () => true }),
     PlatformPackageMissingError,
   );
 });
@@ -64,7 +64,7 @@ test("checksum mismatch is rejected before dispatch", async () => {
   let dispatched = false;
   await assert.rejects(
     () => runInstall({
-      platform: "darwin", arch: "arm64",
+      platform: "win32", arch: "x64",
       load: async () => nativeFixture({ metadata: { ...metadata, sha256: `sha256:${"0".repeat(64)}` }, dispatch: () => { dispatched = true; } }),
       verifySignature: async () => true,
     }),
@@ -76,7 +76,7 @@ test("checksum mismatch is rejected before dispatch", async () => {
 test("signature mismatch is rejected before dispatch", async () => {
   await assert.rejects(
     () => runInstall({
-      platform: "darwin", arch: "arm64",
+      platform: "win32", arch: "x64",
       load: async () => nativeFixture(),
       verifySignature: async () => false,
     }),
@@ -86,7 +86,7 @@ test("signature mismatch is rejected before dispatch", async () => {
 
 test("without an injected trust root, the default verifySignature fails closed instead of fabricating trust", async () => {
   await assert.rejects(
-    () => runInstall({ platform: "darwin", arch: "arm64", load: async () => nativeFixture() }),
+    () => runInstall({ platform: "win32", arch: "x64", load: async () => nativeFixture() }),
     SigningTrustNotConfiguredError,
   );
 });

@@ -51,7 +51,7 @@ export default {
       hardening: [macDmg],
       installer: { artifacts: [{ file: macDmg, key: "membrane/installers/mac/current/Membrane_Hub.dmg" }] },
     },
-    // RightKit owns Azure Authenticode + updater signing.  This target only
+    // RightKit owns Azure Authenticode signing. This target only
     // supplies its native Windows package command & exact files to seal.
     win: {
       signed: true,
@@ -65,7 +65,7 @@ export default {
       sign: { prePackageFiles: [winRawExe], files: [winInstaller] },
       hardening: [winInstaller],
       installer: { artifacts: [{ file: winInstaller, key: "membrane/installers/windows/current/Membrane_x64-setup.exe" }] },
-      updater: { artifacts: [{ file: winInstaller, signature: `${winInstaller}.sig`, platform: "windows-x86_64", key: "membrane/updates/windows/current/Membrane_x64-setup.exe" }] },
+
       nsisUpgradeContract: { windowsTauriConfig: "src-tauri/tauri.windows.conf.json" },
     },
   },

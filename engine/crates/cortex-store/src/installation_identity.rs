@@ -330,7 +330,66 @@ fn write_exclusive(path: &Path, data: &[u8]) -> Result<bool, InstallationIdentit
         Err(error) => Err(io_error("publish immutable file", path, error)),
     };
     let _ = fs::remove_file(&temporary);
+    if result.is_ok() {
+        if let Some(parent) = path.parent() {
+            sync_directory(parent)?;
+        }
+    }
     result
+}
+
+/// Durability barrier for the parent directory entry after a rename/link publishes a new
+/// file: fsync the directory handle on unix, where it is a well-defined durability barrier.
+/// On Windows, opening a directory handle for `FlushFileBuffers` requires
+/// `FILE_FLAG_BACKUP_SEMANTICS`; the standard library does not expose that flag through a
+/// safe wrapper for `FlushFileBuffers` itself, but `OpenOptionsExt::custom_flags` lets us pass
+/// it to the underlying `CreateFileW` call safely, and `AsRawHandle` then exposes the raw
+/// handle for the single unavoidable unsafe FFI call. Both platforms hard-fail on error here:
+/// the caller (`write_exclusive`/`atomic_replace`) already propagates this exactly like the
+/// unix branch's `sync_all` failure, and silently downgrading only the Windows path to
+/// best-effort would leave Windows — the primary platform for this product — with a weaker
+/// durability guarantee than unix for the identical operation, and no signal that the parent
+/// directory entry may not have been made durable.
+#[cfg(unix)]
+fn sync_directory(directory: &Path) -> Result<(), InstallationIdentityError> {
+    fs::File::open(directory)
+        .and_then(|handle| handle.sync_all())
+        .map_err(|error| io_error("sync directory", directory, error))
+}
+
+#[cfg(windows)]
+fn sync_directory(directory: &Path) -> Result<(), InstallationIdentityError> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{FlushFileBuffers, FILE_FLAG_BACKUP_SEMANTICS};
+
+    // FILE_FLAG_BACKUP_SEMANTICS is required by CreateFileW to hand out a handle to a
+    // directory at all; without it, opening a directory path here fails outright.
+    let handle = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(directory)
+        .map_err(|error| io_error("open directory", directory, error))?;
+    // Safety: `handle` is a live `std::fs::File` for the entire body of this call, so the
+    // underlying Windows HANDLE it wraps is open and valid. `FlushFileBuffers` only reads
+    // that handle value and performs a synchronous flush of buffered data/metadata for it;
+    // it does not take ownership of, duplicate, or close the handle, so no invariant of
+    // `File`/`AsRawHandle` is violated by this call.
+    let flushed = unsafe { FlushFileBuffers(handle.as_raw_handle() as _) };
+    if flushed == 0 {
+        return Err(io_error(
+            "sync directory",
+            directory,
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(unix, windows)))]
+fn sync_directory(_directory: &Path) -> Result<(), InstallationIdentityError> {
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -369,11 +428,19 @@ fn replace_file(temporary: &Path, path: &Path) -> Result<(), InstallationIdentit
     fs::rename(temporary, path).map_err(|error| io_error("atomically replace", path, error))
 }
 
-fn atomic_replace(path: &Path, data: &[u8]) -> Result<(), InstallationIdentityError> {
+/// Temp-file + fsync + atomic-rename + parent-directory-fsync publish of `data` to `path`.
+/// `pub(crate)` so other durable-write call sites in this crate (see
+/// `context_telemetry::persist_ingress_cursor`) can reuse the one correct pattern instead of
+/// re-implementing it.
+pub(crate) fn atomic_replace(path: &Path, data: &[u8]) -> Result<(), InstallationIdentityError> {
     let temporary = write_completed_temp(path, data)?;
     let result = replace_file(&temporary, path);
     if result.is_err() {
         let _ = fs::remove_file(&temporary);
+        return result;
+    }
+    if let Some(parent) = path.parent() {
+        sync_directory(parent)?;
     }
     result
 }

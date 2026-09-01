@@ -1513,14 +1513,12 @@ Primary customer entry points are branded bootstrap URLs:
 
 ```text
 https://membrane.orthiclabs.com/install.ps1
-https://membrane.orthiclabs.com/install.sh
 ```
 
-The stable URL serves or redirects to an immutable versioned bootstrap under
-R2. R2 owns bootstrap discovery only and stores no Membrane release payload.
-The versioned bootstrap embeds accepted release-manifest signing-key IDs.
-RightRelease must reuse the provisioned workspace R2/DNS/TLS publication path;
-Membrane must not implement a product-local R2 uploader.
+GitHub Pages serves a stable custom-domain wrapper. Wrapper downloads current
+release-owned bootstrap from GitHub Releases. Versioned bootstrap embeds
+accepted release-manifest signing-key IDs. GitHub Releases owns every payload;
+Membrane implements no product-local uploader.
 
 GitHub Releases is the immutable payload authority. Tag `vX.Y.Z` publishes only
 targets actually built, signed, qualified, and supported from this set:
@@ -1637,18 +1635,16 @@ cover the client or required surface:
 Activation claims only adapters proven by the current release. Missing adapters
 remain typed unsupported outcomes rather than inferred success.
 
-Membrane is a user-session app, not a Windows Service. Setup EXE, MSI, DMG,
-WinGet, and Homebrew are optional aliases or UI channels; none is required for
-installation, activation, update, or harness availability. The archive still
-contains native `.exe` files on Windows; “no installer EXE” means no required
-Setup application.
+Membrane is a user-session app, not a Windows Service. GitHub Pages plus
+GitHub Releases are sole public channel; package-manager, vendor, setup-application,
+and store lanes are unsupported. Archives contain native `.exe` files on Windows.
 
 RightGit owns public native build/test/qualification workflows and unsigned
 candidate handoff. RightRelease owns candidate verification, shared archive
 naming, manifest schema, signing and key rotation, immutable GitHub
-publication, R2 bootstrap publication, and shared update transaction. AX owns
+publication, GitHub Pages bootstrap publication, and shared update transaction. AX owns
 Agent Plugins schema, containment, and conformance.
-Infrastructure owns R2 buckets, DNS, TLS, cache, and object policy. Membrane owns
+Infrastructure owns GitHub Pages, DNS, and TLS configuration. Membrane owns
 its payload, install roots, activation, daemon health, harness reconciliation,
 and rollback semantics.
 

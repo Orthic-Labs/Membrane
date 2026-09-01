@@ -38,6 +38,9 @@ const SERVICE_ID: &str = "membrane-hub";
 pub enum HarnessClient {
     Codex,
     Claude,
+    Cursor,
+    Windsurf,
+    Antigravity,
 }
 
 impl HarnessClient {
@@ -45,8 +48,11 @@ impl HarnessClient {
         match value {
             "codex" => Ok(Self::Codex),
             "claude" => Ok(Self::Claude),
+            "cursor" => Ok(Self::Cursor),
+            "windsurf" => Ok(Self::Windsurf),
+            "antigravity" => Ok(Self::Antigravity),
             _ => Err(format!(
-                "unsupported harness `{value}`; expected codex or claude"
+                "unsupported harness `{value}`; expected codex, claude, cursor, windsurf, or antigravity"
             )),
         }
     }
@@ -55,6 +61,9 @@ impl HarnessClient {
         match self {
             Self::Codex => "codex",
             Self::Claude => "claude",
+            Self::Cursor => "cursor",
+            Self::Windsurf => "windsurf",
+            Self::Antigravity => "antigravity",
         }
     }
 
@@ -62,6 +71,9 @@ impl HarnessClient {
         match self {
             Self::Codex => "MEMBRANE_CODEX_BIN",
             Self::Claude => "MEMBRANE_CLAUDE_BIN",
+            Self::Cursor => "MEMBRANE_CURSOR_BIN",
+            Self::Windsurf => "MEMBRANE_WINDSURF_BIN",
+            Self::Antigravity => "MEMBRANE_ANTIGRAVITY_BIN",
         }
     }
 }
@@ -1329,6 +1341,162 @@ fn replace_legacy_hook_commands(entries: &mut [serde_json::Value], expected: &st
     }
 }
 
+fn uses_config_file(client: HarnessClient) -> bool {
+    matches!(
+        client,
+        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity
+    )
+}
+
+fn client_config_path(client: HarnessClient) -> Result<PathBuf, String> {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .ok_or_else(|| "user home directory is unavailable".to_string())?;
+    match client {
+        HarnessClient::Cursor => Ok(home.join(".cursor").join("mcp.json")),
+        HarnessClient::Windsurf => Ok(home.join(".codeium").join("windsurf").join("mcp_config.json")),
+        HarnessClient::Antigravity => Ok(home.join(".gemini").join("config").join("mcp_config.json")),
+        HarnessClient::Codex | HarnessClient::Claude => Err("command-managed client has no config path".to_string()),
+    }
+}
+
+fn read_client_config(path: &Path) -> Result<(Option<Vec<u8>>, serde_json::Value), String> {
+    if !path.exists() {
+        return Ok((None, serde_json::json!({ "mcpServers": {} })));
+    }
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("inspect client config {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!("client config {} is not a regular file", path.display()));
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|error| format!("read client config {}: {error}", path.display()))?;
+    let value = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .map_err(|error| format!("parse client config {}: {error}", path.display()))?;
+    if !value.is_object() {
+        return Err(format!("client config {} must be an object", path.display()));
+    }
+    Ok((Some(bytes), value))
+}
+
+fn config_client_state(value: &serde_json::Value, executable: &str) -> Result<ClientState, String> {
+    let Some(servers) = value.get("mcpServers") else {
+        return Ok(ClientState::Absent);
+    };
+    let servers = servers.as_object().ok_or_else(|| "client mcpServers must be an object".to_string())?;
+    let Some(entry) = servers.get("membrane") else {
+        return Ok(ClientState::Absent);
+    };
+    let config = parse_prior_config(&entry.to_string())
+        .ok_or_else(|| "client has a membrane entry that cannot be safely reconciled".to_string())?;
+    if paths_equal(&config.command, executable) && config.args == ["stdio-mcp".to_string()] {
+        Ok(ClientState::AlreadyCorrect)
+    } else {
+        Ok(ClientState::Conflict(config))
+    }
+}
+
+fn config_with_membrane(mut value: serde_json::Value, executable: &str) -> Result<serde_json::Value, String> {
+    let object = value.as_object_mut().ok_or_else(|| "client config must be an object".to_string())?;
+    let servers = object.entry("mcpServers").or_insert_with(|| serde_json::json!({}))
+        .as_object_mut().ok_or_else(|| "client mcpServers must be an object".to_string())?;
+    servers.insert("membrane".to_string(), serde_json::json!({ "command": executable, "args": ["stdio-mcp"] }));
+    Ok(value)
+}
+
+fn config_without_owned_membrane(mut value: serde_json::Value, executable: &str) -> Result<(serde_json::Value, bool), String> {
+    let Some(servers) = value.get_mut("mcpServers").and_then(serde_json::Value::as_object_mut) else {
+        return Ok((value, false));
+    };
+    let owned = servers.get("membrane").is_some_and(|entry| {
+        parse_prior_config(&entry.to_string()).is_some_and(|config| {
+            paths_equal(&config.command, executable) && config.args == ["stdio-mcp".to_string()]
+        })
+    });
+    if owned { servers.remove("membrane"); }
+    Ok((value, owned))
+}
+
+fn write_client_config(path: &Path, original: Option<&[u8]>, value: &serde_json::Value) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| "client config has no parent".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create client config directory {}: {error}", parent.display()))?;
+    let current = if path.exists() {
+        Some(std::fs::read(path).map_err(|error| format!("re-read client config {}: {error}", path.display()))?)
+    } else { None };
+    if current.as_deref() != original {
+        return Err(format!("client config {} changed during activation", path.display()));
+    }
+    let staged = path.with_extension(format!("json.{}.partial", std::process::id()));
+    let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| format!("serialize client config: {error}"))?;
+    bytes.push(b'\n');
+    std::fs::write(&staged, bytes)
+        .map_err(|error| format!("stage client config {}: {error}", staged.display()))?;
+    replace_file(&staged, path).map_err(|error| format!("promote client config {}: {error}", path.display()))
+}
+
+fn restore_client_config(path: &Path, original: Option<&[u8]>) {
+    match original {
+        Some(bytes) => {
+            let staged = path.with_extension(format!("json.{}.rollback", std::process::id()));
+            if std::fs::write(&staged, bytes).is_ok() { let _ = replace_file(&staged, path); }
+        }
+        None => { let _ = std::fs::remove_file(path); }
+    }
+}
+
+fn reconcile_config_clients(executable: &str, clients: &[HarnessClient], dry_run: bool) -> Result<Vec<ClientActivationReceipt>, String> {
+    let mut inspected = Vec::new();
+    for &client in clients {
+        let path = client_config_path(client)?;
+        let (original, value) = read_client_config(&path)?;
+        let state = config_client_state(&value, executable)?;
+        inspected.push((client, path, original, value, state));
+    }
+    if dry_run {
+        return Ok(inspected.into_iter().map(|(client, _, _, _, state)| ClientActivationReceipt {
+            client, before: state.label().to_string(), after: state.label().to_string(), changed: false,
+        }).collect());
+    }
+    let mut completed: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::new();
+    let mut receipts = Vec::new();
+    for (client, path, original, value, state) in inspected {
+        let changed = matches!(state, ClientState::Absent | ClientState::Conflict(_));
+        if changed {
+            let next = config_with_membrane(value, executable)?;
+            if let Err(error) = write_client_config(&path, original.as_deref(), &next) {
+                for (done_path, done_original) in completed.iter().rev() {
+                    restore_client_config(done_path, done_original.as_deref());
+                }
+                return Err(error);
+            }
+            completed.push((path, original));
+        }
+        receipts.push(ClientActivationReceipt {
+            client, before: state.label().to_string(), after: if changed { "installed" } else { state.label() }.to_string(), changed,
+        });
+    }
+    Ok(receipts)
+}
+
+fn deactivate_config_clients(executable: &str, clients: &[HarnessClient], dry_run: bool) -> Result<Vec<ClientActivationReceipt>, String> {
+    let mut receipts = Vec::new();
+    for &client in clients {
+        let path = client_config_path(client)?;
+        let (original, value) = read_client_config(&path)?;
+        let (next, owned) = config_without_owned_membrane(value, executable)?;
+        if owned && !dry_run { write_client_config(&path, original.as_deref(), &next)?; }
+        receipts.push(ClientActivationReceipt {
+            client,
+            before: if owned { "owned" } else { "preserved" }.to_string(),
+            after: if owned && !dry_run { "removed" } else if owned { "owned" } else { "preserved" }.to_string(),
+            changed: owned && !dry_run,
+        });
+    }
+    Ok(receipts)
+}
+
 fn reconcile_clients<F>(
     membrane: &Path,
     clients: &[HarnessClient],
@@ -1339,8 +1507,10 @@ where
     F: FnMut(HarnessClient, &[String]) -> CommandResult,
 {
     let executable = membrane.to_string_lossy().into_owned();
-    let mut inspections = Vec::with_capacity(clients.len());
-    for &client in clients {
+    let command_clients = clients.iter().copied().filter(|client| !uses_config_file(*client)).collect::<Vec<_>>();
+    let config_clients = clients.iter().copied().filter(|client| uses_config_file(*client)).collect::<Vec<_>>();
+    let mut inspections = Vec::with_capacity(command_clients.len());
+    for client in command_clients {
         let detected = runner(client, &["--version".to_string()]);
         let state = if !detected.success() {
             ClientState::NotInstalled
@@ -1351,7 +1521,7 @@ where
     }
 
     if dry_run {
-        return Ok(inspections
+        let mut receipts = inspections
             .into_iter()
             .map(|(client, state)| ClientActivationReceipt {
                 client,
@@ -1359,7 +1529,10 @@ where
                 after: state.label().to_string(),
                 changed: false,
             })
-            .collect());
+            .collect::<Vec<_>>();
+        receipts.extend(reconcile_config_clients(&executable, &config_clients, true)?);
+        receipts.sort_by_key(|receipt| clients.iter().position(|client| *client == receipt.client).unwrap_or(usize::MAX));
+        return Ok(receipts);
     }
 
     let mut completed: Vec<(HarnessClient, ClientState)> = Vec::new();
@@ -1395,18 +1568,34 @@ where
         completed.push((client, state));
     }
 
-    Ok(completed
-        .into_iter()
+    let mut receipts = completed
+        .iter()
         .map(|(client, state)| {
             let changed = matches!(state, ClientState::Absent | ClientState::Conflict(_));
             ClientActivationReceipt {
-                client,
+                client: *client,
                 before: state.label().to_string(),
                 after: if changed { "installed" } else { state.label() }.to_string(),
                 changed,
             }
         })
-        .collect())
+        .collect::<Vec<_>>();
+    let config_receipts = match reconcile_config_clients(&executable, &config_clients, false) {
+        Ok(receipts) => receipts,
+        Err(error) => {
+            for (client, state) in completed.iter().rev() {
+                if !matches!(state, ClientState::Absent | ClientState::Conflict(_)) { continue; }
+                let _ = runner(*client, &remove_args(*client));
+                if let ClientState::Conflict(prior) = state {
+                    let _ = runner(*client, &add_args(*client, &prior.command, &prior.args));
+                }
+            }
+            return Err(error);
+        }
+    };
+    receipts.extend(config_receipts);
+    receipts.sort_by_key(|receipt| clients.iter().position(|client| *client == receipt.client).unwrap_or(usize::MAX));
+    Ok(receipts)
 }
 
 fn deactivate_clients<F>(
@@ -1420,7 +1609,7 @@ where
 {
     let executable = membrane.to_string_lossy().into_owned();
     let mut receipts = Vec::with_capacity(clients.len());
-    for &client in clients {
+    for &client in clients.iter().filter(|client| !uses_config_file(**client)) {
         if !runner(client, &["--version".to_string()]).success() {
             receipts.push(ClientActivationReceipt {
                 client,
@@ -1463,6 +1652,9 @@ where
             changed: owned && !dry_run,
         });
     }
+    let config_clients = clients.iter().copied().filter(|client| uses_config_file(*client)).collect::<Vec<_>>();
+    receipts.extend(deactivate_config_clients(&executable, &config_clients, dry_run)?);
+    receipts.sort_by_key(|receipt| clients.iter().position(|client| *client == receipt.client).unwrap_or(usize::MAX));
     Ok(receipts)
 }
 
@@ -1521,6 +1713,9 @@ fn get_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "get", "membrane", "--json"],
         HarnessClient::Claude => vec!["mcp", "get", "membrane", "-s", "user"],
+        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
+            unreachable!("config-managed client")
+        }
     }
     .into_iter()
     .map(str::to_string)
@@ -1531,6 +1726,9 @@ fn remove_args(client: HarnessClient) -> Vec<String> {
     match client {
         HarnessClient::Codex => vec!["mcp", "remove", "membrane"],
         HarnessClient::Claude => vec!["mcp", "remove", "membrane", "-s", "user"],
+        HarnessClient::Cursor | HarnessClient::Windsurf | HarnessClient::Antigravity => {
+            unreachable!("config-managed client")
+        }
     }
     .into_iter()
     .map(str::to_string)
@@ -1908,6 +2106,47 @@ mod tests {
             *client == HarnessClient::Codex
                 && *args == add_args(HarnessClient::Codex, "node", &["old.mjs".to_string()])
         }));
+    }
+
+    #[test]
+    fn additional_clients_use_documented_global_config_files() {
+        assert!(client_config_path(HarnessClient::Cursor).unwrap().ends_with(".cursor/mcp.json"));
+        assert!(client_config_path(HarnessClient::Windsurf).unwrap().ends_with(".codeium/windsurf/mcp_config.json"));
+        assert!(client_config_path(HarnessClient::Antigravity).unwrap().ends_with(".gemini/config/mcp_config.json"));
+        assert!(uses_config_file(HarnessClient::Cursor));
+        assert!(!uses_config_file(HarnessClient::Codex));
+    }
+
+    #[test]
+    fn config_client_merge_preserves_other_servers_and_replaces_conflict() {
+        let executable = r"C:\Membrane\current\membrane.exe";
+        let original = serde_json::json!({
+            "mcpServers": {
+                "other": { "command": "other", "args": [] },
+                "membrane": { "command": "node", "args": ["old.mjs"] }
+            },
+            "unrelated": true
+        });
+        assert!(matches!(config_client_state(&original, executable).unwrap(), ClientState::Conflict(_)));
+        let merged = config_with_membrane(original, executable).unwrap();
+        assert_eq!(merged["mcpServers"]["other"]["command"], "other");
+        assert_eq!(merged["mcpServers"]["membrane"]["command"], executable);
+        assert_eq!(merged["mcpServers"]["membrane"]["args"], serde_json::json!(["stdio-mcp"]));
+        assert!(matches!(config_client_state(&merged, executable).unwrap(), ClientState::AlreadyCorrect));
+    }
+
+    #[test]
+    fn config_client_deactivation_removes_only_exact_owned_entry() {
+        let executable = r"C:\Membrane\current\membrane.exe";
+        let owned = config_with_membrane(serde_json::json!({ "mcpServers": { "other": { "command": "x" } } }), executable).unwrap();
+        let (removed, changed) = config_without_owned_membrane(owned, executable).unwrap();
+        assert!(changed);
+        assert!(removed["mcpServers"].get("membrane").is_none());
+        assert_eq!(removed["mcpServers"]["other"]["command"], "x");
+        let foreign = serde_json::json!({ "mcpServers": { "membrane": { "command": "node", "args": ["foreign.mjs"] } } });
+        let (preserved, changed) = config_without_owned_membrane(foreign.clone(), executable).unwrap();
+        assert!(!changed);
+        assert_eq!(preserved, foreign);
     }
 
     #[test]

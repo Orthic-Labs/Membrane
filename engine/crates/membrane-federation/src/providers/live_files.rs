@@ -523,7 +523,8 @@ pub fn normalize_overlay_path(value: &str) -> Option<String> {
         parts.push(part);
     }
     let normalized = parts.join("/");
-    (!normalized.starts_with(".agent/")
+    (!crate::egress_redaction::is_sensitive_path(&normalized)
+        && !normalized.starts_with(".agent/")
         && !normalized.starts_with(".blueprint/")
         && normalized
             .bytes()

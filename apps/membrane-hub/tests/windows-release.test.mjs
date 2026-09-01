@@ -51,16 +51,12 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(target.sign.files[0], /Membrane_Hub_/);
   assert.deepEqual(target.artifacts, target.sign.files);
   assert.equal(target.installer.artifacts[0].file, target.sign.files[0]);
-  assert.equal(target.updater.artifacts[0].file, target.sign.files[0]);
-  assert.equal(target.updater.artifacts[0].signature, `${target.sign.files[0]}.sig`);
+
   assert.match(target.installer.artifacts[0].key, /installers\/windows\/current\/Membrane_x64-setup\.exe$/);
-  assert.match(target.updater.artifacts[0].key, /updates\/windows\/current\/Membrane_x64-setup\.exe$/);
+  assert.equal(target.updater, undefined);
   assert.doesNotMatch(JSON.stringify(target), /upload|publish/);
   assert.equal(tauriConfig.bundle.publisher, "Adrian D'souza");
-  assert.equal(
-    tauriConfig.plugins.updater.pubkey,
-    "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5Mzk1RjlGRjQ2NjI2MUQKUldRZEptYjBuMTg1S1VSUXlBdFM4WmtzaHArYko0U2hRMDVlSDJmSExVZG82Q0hoQ2srUlhqanAK",
-  );
+  assert.equal(tauriConfig.plugins, undefined);
   assert.equal(windowsTauriConfig.bundle.windows.allowDowngrades, true);
   assert.equal(windowsTauriConfig.bundle.createUpdaterArtifacts, false);
   assert.deepEqual(windowsTauriConfig.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);

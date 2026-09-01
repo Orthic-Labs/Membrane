@@ -19,7 +19,8 @@ test("Windows installed qualification is package-only & signature-bound", () => 
   assert.doesNotMatch(lower, /pnpm|cargo|tauri\s+build|right-release\s+(build|sign)/);
   assert.match(lower, /publisher does not match installer publisher/);
   assert.doesNotMatch(lower, /expectedthumbprint|signer does not match installer signer/);
-  assert.match(source, /Import-Module \(Join-Path \$PSHOME 'Modules\\Microsoft\.PowerShell\.Security\\Microsoft\.PowerShell\.Security\.psd1'\) -Force -ErrorAction Stop/);
+  assert.match(source, /foreach \(\$module in @\('Microsoft\.PowerShell\.Security', 'Microsoft\.PowerShell\.Utility', 'Microsoft\.PowerShell\.Management'\)\)/);
+  assert.match(source, /Import-Module \(Join-Path \$PSHOME "Modules\\\$module\\\$module\.psd1"\) -Force -ErrorAction Stop/);
 });
 
 test("qualification exercises native stdio MCP discovery & every registry tool", () => {

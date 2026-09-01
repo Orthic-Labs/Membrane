@@ -50,6 +50,65 @@ for (const shape of SHAPES) {
   });
 }
 
+// MBR-608 audit finding: `ContextPacketV1.reconciliation` is optional and
+// omitted when absent, but a packet that DOES carry one must still validate
+// against the canonical schema. This sibling fixture (the base
+// ContextPacketV1 golden fixture omits `reconciliation` entirely) exercises
+// the present-field path so the schema's `#/$defs/reconciliation` shape can
+// never silently drift from `BudgetReconciliationV1` again. The digest is
+// pinned the same way the Rust test
+// (`tests/roundtrip.rs::context_packet_with_reconciliation_round_trips`)
+// pins it; update both sides only on an INTENTIONAL contract change.
+test("ContextPacketV1 (with reconciliation): validates, round-trips, and matches the Rust-pinned digest", () => {
+  const schema = loadJson("schemas/context-packet.v1.schema.json");
+  const fixture = loadJson("schemas/registry/context-packet.v1.with-reconciliation.golden.json");
+
+  const violations = validate(schema, fixture);
+  assert.deepEqual(violations, [], "ContextPacketV1 (with reconciliation) fails schema validation");
+
+  const canonical1 = canonicalize(fixture);
+  const canonical2 = canonicalize(JSON.parse(canonical1));
+  assert.equal(canonical2, canonical1, "ContextPacketV1 (with reconciliation) canonical form is not stable");
+
+  const digest = canonicalDigest(fixture);
+  assert.equal(
+    digest,
+    "sha256:9a71fcef72dd0c4436739bd0ca5d048bdb4aeffa369f4ac5b79ca72966a864d0",
+    "ContextPacketV1 (with reconciliation) digest drifted from the Rust pin — update both sides only on an INTENTIONAL contract change",
+  );
+});
+
+// MBR-608 audit finding: `BlockV1.lane` (`Option<BudgetLaneKind>`) and
+// `BlockV1.deliveryMode` (`Option<DeliveryMode>`) are optional and omitted
+// when absent, but a block that DOES carry them must still validate against
+// the canonical schema. This sibling fixture carries both fields on every
+// block, exercising the present-field path so the schema's `#/$defs/block`
+// `lane`/`deliveryMode` properties can never silently drift from `BlockV1`
+// again. Kept separate from the `with-reconciliation` fixture: that one
+// exercises the receipt-level `reconciliation` shape, this one exercises
+// block-level fields — each fixture stays a single concern. The digest is
+// pinned the same way the Rust test
+// (`tests/roundtrip.rs::context_packet_with_block_lane_round_trips`) pins it;
+// update both sides only on an INTENTIONAL contract change.
+test("ContextPacketV1 (with block lane/deliveryMode): validates, round-trips, and matches the Rust-pinned digest", () => {
+  const schema = loadJson("schemas/context-packet.v1.schema.json");
+  const fixture = loadJson("schemas/registry/context-packet.v1.with-block-lane.golden.json");
+
+  const violations = validate(schema, fixture);
+  assert.deepEqual(violations, [], "ContextPacketV1 (with block lane/deliveryMode) fails schema validation");
+
+  const canonical1 = canonicalize(fixture);
+  const canonical2 = canonicalize(JSON.parse(canonical1));
+  assert.equal(canonical2, canonical1, "ContextPacketV1 (with block lane/deliveryMode) canonical form is not stable");
+
+  const digest = canonicalDigest(fixture);
+  assert.equal(
+    digest,
+    "sha256:733abc9554b9f64e6d7427479c458beb266420e4a604ff53279844ad6b0a8bb9",
+    "ContextPacketV1 (with block lane/deliveryMode) digest drifted from the Rust pin — update both sides only on an INTENTIONAL contract change",
+  );
+});
+
 test("canonical form is independent of input key order", () => {
   const a = { b: 1, a: { y: [true, null], x: "s" } };
   const b = { a: { x: "s", y: [true, null] }, b: 1 };

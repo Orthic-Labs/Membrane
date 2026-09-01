@@ -87,6 +87,73 @@ fn context_packet_round_trips() {
     check_shape::<ContextPacketV1>(shape.name, shape.schema, shape.fixture);
 }
 
+/// MBR-608 audit finding: `ContextPacketV1.reconciliation` is an optional
+/// field (`Option<BudgetReconciliationV1>`, omitted when `None`), but a
+/// packet that DOES carry one must still validate against the canonical
+/// schema. The base `ContextPacketV1` golden fixture omits `reconciliation`
+/// entirely (proving the omitted-field path); this sibling fixture carries a
+/// populated one (proving the present-field path), so the schema's
+/// `#/$defs/reconciliation` shape can never silently drift from
+/// `BudgetReconciliationV1` again.
+const CONTEXT_PACKET_WITH_RECONCILIATION_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/operations/context-packet.v1.with-reconciliation.golden.json"
+));
+
+#[test]
+fn context_packet_with_reconciliation_round_trips() {
+    let shape = &SHAPES[2];
+    let (_canonical, digest) = check_shape::<ContextPacketV1>(
+        shape.name,
+        shape.schema,
+        CONTEXT_PACKET_WITH_RECONCILIATION_FIXTURE,
+    );
+    // Pinned the same way `canonical_digests_are_pinned` pins the five base
+    // shapes: computed once over the canonicalized fixture; the TypeScript
+    // binding recomputes it independently in `bindings/roundtrip.test.mjs`.
+    // Update only on an INTENTIONAL contract change.
+    assert_eq!(
+        digest,
+        "sha256:9a71fcef72dd0c4436739bd0ca5d048bdb4aeffa369f4ac5b79ca72966a864d0",
+        "ContextPacketV1 (with reconciliation) canonical digest drifted"
+    );
+}
+
+/// MBR-608 audit finding: `BlockV1.lane` (`Option<BudgetLaneKind>`) and
+/// `BlockV1.delivery_mode` (`Option<DeliveryMode>`) are optional fields the
+/// renderer stamps once a block finalizes, but a block that DOES carry them
+/// must still validate against the canonical schema. The base
+/// `ContextPacketV1` golden fixture omits both (proving the omitted-field
+/// path); this sibling fixture carries both on every block (proving the
+/// present-field path), so the schema's `#/$defs/block` `lane` /
+/// `deliveryMode` properties can never silently drift from `BlockV1` again.
+/// Kept separate from the `with-reconciliation` fixture: that one exercises
+/// the receipt-level `reconciliation` shape, this one exercises block-level
+/// fields — each fixture stays a single concern.
+const CONTEXT_PACKET_WITH_BLOCK_LANE_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/operations/context-packet.v1.with-block-lane.golden.json"
+));
+
+#[test]
+fn context_packet_with_block_lane_round_trips() {
+    let shape = &SHAPES[2];
+    let (_canonical, digest) = check_shape::<ContextPacketV1>(
+        shape.name,
+        shape.schema,
+        CONTEXT_PACKET_WITH_BLOCK_LANE_FIXTURE,
+    );
+    // Pinned the same way `canonical_digests_are_pinned` pins the five base
+    // shapes: computed once over the canonicalized fixture; the TypeScript
+    // binding recomputes it independently in `bindings/roundtrip.test.mjs`.
+    // Update only on an INTENTIONAL contract change.
+    assert_eq!(
+        digest,
+        "sha256:733abc9554b9f64e6d7427479c458beb266420e4a604ff53279844ad6b0a8bb9",
+        "ContextPacketV1 (with block lane/deliveryMode) canonical digest drifted"
+    );
+}
+
 #[test]
 fn context_receipt_round_trips() {
     let shape = &SHAPES[3];

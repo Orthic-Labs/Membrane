@@ -4,13 +4,15 @@
 
 Membrane native distribution owns desktop activation, updates, & install cleanup;
 visible tray owns resident runtime supervision, while shared release tooling owns
-release builds. Canonical customer entry is branded R2 bootstrap at
-`https://membrane.orthiclabs.com/install.ps1`; Infrastructure must route this
-root URL to product-scoped R2 key `membrane/install.ps1` before it is live.
-Immutable versioned bootstrap verifies a detached signed release manifest,
-then downloads exact signed native archive from GitHub Releases. R2 stores
-bootstrap only. Provisioned
-RightRelease/R2 infrastructure owns publication; Membrane creates no uploader.
+release builds. Canonical customer entry is GitHub Pages bootstrap at
+`https://membrane.orthiclabs.com/install.ps1`; DNS points this custom domain to
+GitHub Pages. Bootstrap downloads release-owned installer logic from GitHub
+Releases, which remains immutable payload authority. Membrane uses no package
+manager, vendor distribution service, or product-local uploader.
+
+Install from PowerShell:
+
+`irm https://membrane.orthiclabs.com/install.ps1 | iex`
 
 Membrane is public, so `@rightkit/git` GitHub Actions owns native compilation,
 tests, SBOM/provenance, unsigned release candidates, Windows Azure OIDC signing,
@@ -42,13 +44,22 @@ hosts the only Membrane runtime; Hub dashboard opens on demand. Headless clients
 are stateless and do not create a resident service. No external product manifest,
 add-on handoff, or retired installer lane is
 active. Tray-owned daemon is sole desktop runtime host; shared release tooling
-owns build/publication, while Membrane install contract owns activation. Setup EXE, MSI, DMG, WinGet, and Homebrew are optional channels, not
-primary distribution or activation prerequisites. Membrane is not installed as
-a Windows Service.
+owns build/publication, while Membrane install contract owns activation. GitHub
+Pages plus GitHub Releases are sole public channel. Membrane is not installed as a
+Windows Service.
 
 Membrane Agent Plugins payload contains `plugin.json`, `mcp.json`, and only
 public Membrane skills. Native thin client projections remain for unsupported
 or client-specific surfaces. Agent Plugins never owns install, update, UI, or
 activation.
+
+On activation, native `membrane` registers its installed stable `current`
+executable as `membrane stdio-mcp` for Claude Code and Codex through native
+CLI registration, plus Cursor (`~/.cursor/mcp.json`), Windsurf
+(`~/.codeium/windsurf/mcp_config.json`), and Antigravity
+(`~/.gemini/config/mcp_config.json`) through atomic global-config merges. Missing
+Claude or Codex clients are reported without
+failing activation. `membrane deactivate` removes only bindings that still
+match that exact stable executable; both commands support `--dry-run`.
 OCI metadata remains evaluation-only until independently published evidence
 exists.

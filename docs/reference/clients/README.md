@@ -32,8 +32,9 @@ advertises no tools until native tool execution exists.
 |---|---|---|---|---|---|
 | `claude` | Claude Code | stdio | native-mcp-cli | L4 | all nine |
 | `codex` | Codex CLI | stdio | native-mcp-cli | L2 | all nine |
-| `cursor` | Cursor | stdio | rules-file-and-mcp | L1 | context, working_context |
-| `windsurf` | Windsurf | stdio | rules-file-and-mcp | L1 | context, working_context |
+| `cursor` | Cursor | stdio | global-mcp-config | L1 | context, working_context |
+| `windsurf` | Windsurf | stdio | global-mcp-config | L1 | context, working_context |
+| `antigravity` | Antigravity | stdio | global-mcp-config | L1 | context, working_context |
 | `generic_mcp` | Generic MCP client | stdio | mcp-stdio-only | L0 | context |
 
 The nine operations referenced by the matrix come from
@@ -107,14 +108,18 @@ import {
 
 const caps = await loadClientCapabilities();
 const matrix = await loadSupportMatrix();
-const ids = await clientsForEnrollment();             // ["claude", "codex", "cursor", "windsurf", "generic_mcp"]
+const ids = await clientsForEnrollment();             // ["claude", "codex", "cursor", "windsurf", "antigravity", "generic_mcp"]
 const claudeOps = await supportedOperationsFor("claude"); // all nine operations
 ```
 
-The install CLI itself does not yet call these helpers — they are the
-read-only surface the future `membrane install --client <id>` paths
-will use to validate that a request is well-formed against the registry.
-Adding the dispatch logic is the responsibility of MBR-203 / MBR-207.
+`membrane activate` and `membrane deactivate` reconcile Claude Code, Codex,
+Cursor, Windsurf, and Antigravity through their documented global MCP JSON files.
+Each binding uses the installed stable `current` `membrane` executable plus
+`stdio-mcp`, preserves unrelated servers, compares original bytes before atomic
+promotion, restores earlier files on failure, and removes only an exact
+Membrane-owned binding during deactivation. `--dry-run`
+inspects without changing client configuration. The JavaScript helper remains
+a development/fixture surface; installed activation is native.
 
 ## Schema constraints
 

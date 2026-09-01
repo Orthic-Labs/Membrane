@@ -184,8 +184,8 @@ struct ActivateArgs {
     /// product root's stable current path.
     #[arg(long)]
     install_root: Option<std::path::PathBuf>,
-    /// Native harness to reconcile. Repeatable; defaults to Codex plus Claude.
-    #[arg(long, value_name = "codex|claude")]
+    /// Native harness to reconcile. Repeatable; defaults to every supported native MCP client.
+    #[arg(long, value_name = "codex|claude|cursor|windsurf|antigravity")]
     client: Vec<String>,
     /// Bounded resident readiness deadline.
     #[arg(long, default_value_t = 35_000)]
@@ -806,6 +806,15 @@ mod tests {
                 dry_run: true,
             })
         );
+    }
+
+    #[test]
+    fn activation_accepts_every_supported_native_client() {
+        for client in ["cursor", "windsurf", "antigravity"] {
+            let invocation = parse_mode(["membrane", "activate", "--client", client].iter().copied())
+                .unwrap();
+            assert_eq!(invocation.activation.unwrap().clients, vec![client.to_string()]);
+        }
     }
 
     #[test]

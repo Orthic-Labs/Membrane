@@ -10,6 +10,9 @@ fn overlay_paths_are_strictly_relative_and_shell_safe() {
     assert!(normalize_overlay_path("src/app.rs;echo-pwned").is_none());
     assert!(normalize_overlay_path("src/app.rs\nresolver").is_none());
     assert!(normalize_overlay_path(".agent/index.json").is_none());
+    assert!(normalize_overlay_path(".env.local").is_none());
+    assert!(normalize_overlay_path("keys/id_rsa").is_none());
+    assert!(normalize_overlay_path("keys/service.pem").is_none());
 }
 
 #[test]

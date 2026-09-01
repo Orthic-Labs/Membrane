@@ -1,12 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  createWranglerR2Client,
-  planBootstrapPublication,
-  publishBootstrapPlan,
-} from "@rightkit/release/direct-bootstrap.mjs";
 import {
   prepareGitHubDirectRelease,
   publishGitHubRelease,
@@ -32,28 +26,13 @@ const githubPlan = prepareGitHubDirectRelease({
   archivePaths: [join(output, `membrane-${pkg.version}-windows-x86_64.zip`)],
   provenancePaths: [join(output, "provenance-windows-x86_64.intoto.jsonl")],
   sbomPaths: [join(output, "sbom-windows-x86_64.cdx.json")],
-  assets: [join(output, "THIRD_PARTY_NOTICES.md")],
+  assets: [
+    join(output, "install.ps1"),
+    join(output, "THIRD_PARTY_NOTICES.md"),
+  ],
 });
 const github = publishGitHubRelease(githubPlan, {
   repo: "Orthic-Labs/Membrane",
   dryRun,
 });
-const bootstrapPlan = planBootstrapPublication({
-  product: "membrane",
-  bootstrapVersion: pkg.version,
-  scriptPath: join(output, "install.ps1"),
-});
-if (dryRun) {
-  console.log(JSON.stringify({ github, bootstrap: bootstrapPlan, dryRun: true }));
-  process.exit(0);
-}
-
-const verificationRoot = mkdtempSync(join(tmpdir(), "membrane-r2-verify-"));
-try {
-  const r2 = publishBootstrapPlan(bootstrapPlan, createWranglerR2Client(), {
-    verificationPath: join(verificationRoot, "install.ps1"),
-  });
-  console.log(JSON.stringify({ github, r2 }));
-} finally {
-  rmSync(verificationRoot, { recursive: true, force: true });
-}
+console.log(JSON.stringify({ github, dryRun }));

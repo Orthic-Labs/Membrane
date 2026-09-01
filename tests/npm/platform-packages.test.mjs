@@ -14,7 +14,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PLATFORMS_ROOT = resolve(HERE, "../../dist/npm/platforms");
 const ROOT_PACKAGE = JSON.parse(readFileSync(resolve(HERE, "../../dist/npm/package.json"), "utf8"));
 
-const EXPECTED_OS = { darwin: "darwin" };
+const EXPECTED_OS = { win32: "win32" };
 
 function platformKeyParts(key) {
   const [os, cpu] = key.split(/-(?=[^-]+$)/);

@@ -138,6 +138,8 @@ pub struct BlueprintWireRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlueprintWireResponse {
+    #[serde(default)]
+    pub protocol_version: Option<u32>,
     pub request_id: Option<String>,
     #[serde(default)]
     pub ok: bool,
@@ -353,6 +355,7 @@ impl<T: BlueprintTransport> BlueprintClient<T> {
                 "response request identity mismatch".into(),
             ));
         }
+        check_protocol_version(&response)?;
         if !response.ok {
             let remote = response.error.unwrap_or(BlueprintWireError {
                 code: None,
@@ -572,6 +575,58 @@ impl<T: BlueprintTransport + 'static> ContextualBlueprintSource for BlueprintCli
     }
 }
 
+/// Fail closed on a daemon protocol bump the client does not understand.
+/// The JS daemon (blueprint/src/service/protocol.mjs `encodeResponse`)
+/// unconditionally stamps `protocolVersion` on every response, so absence of
+/// the field itself is treated as malformed rather than tolerated.
+fn check_protocol_version(response: &BlueprintWireResponse) -> Result<(), BlueprintClientError> {
+    match response.protocol_version {
+        Some(version) if version == BLUEPRINT_PROTOCOL_VERSION => Ok(()),
+        Some(version) => Err(BlueprintClientError::Malformed(format!(
+            "response protocol version {version} does not match expected {BLUEPRINT_PROTOCOL_VERSION}"
+        ))),
+        None => Err(BlueprintClientError::Malformed(
+            "response is missing protocolVersion".into(),
+        )),
+    }
+}
+
+#[cfg(test)]
+mod protocol_version_tests {
+    use super::{
+        check_protocol_version, BlueprintClientError, BlueprintWireResponse,
+        BLUEPRINT_PROTOCOL_VERSION,
+    };
+
+    fn response(protocol_version: Option<u32>) -> BlueprintWireResponse {
+        BlueprintWireResponse {
+            protocol_version,
+            request_id: Some("request-1".into()),
+            ok: true,
+            generation: Some("generation-1".into()),
+            result: Some(serde_json::json!({})),
+            error: None,
+        }
+    }
+
+    #[test]
+    fn accepts_exact_protocol_version() {
+        check_protocol_version(&response(Some(BLUEPRINT_PROTOCOL_VERSION))).unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_or_mismatched_protocol_version() {
+        assert!(matches!(
+            check_protocol_version(&response(None)),
+            Err(BlueprintClientError::Malformed(message)) if message.contains("missing protocolVersion")
+        ));
+        assert!(matches!(
+            check_protocol_version(&response(Some(BLUEPRINT_PROTOCOL_VERSION + 1))),
+            Err(BlueprintClientError::Malformed(message)) if message.contains("does not match")
+        ));
+    }
+}
+
 fn client_error(error: BlueprintClientError) -> membrane_provider_sdk::ProviderError {
     use membrane_provider_sdk::ProviderError;
     match error {
@@ -611,6 +666,7 @@ fn parse_result(
             ));
         }
     }
+    check_protocol_version(&response)?;
     if !response.ok {
         let error = response.error.unwrap_or(BlueprintWireError {
             code: None,
@@ -624,6 +680,11 @@ fn parse_result(
     let raw = response.result.ok_or_else(|| {
         BlueprintClientError::Malformed("successful response has no result".into())
     })?;
+    // Fail closed rather than fall back to `query.expected_generation`: doing
+    // so would make the mismatch guard below unconditionally pass whenever
+    // the provider response omits both `generation` and
+    // `result.generationId`, letting a stale/unusable response be cached
+    // under the expected generation key.
     let observed = response
         .generation
         .or_else(|| {
@@ -631,8 +692,9 @@ fn parse_result(
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
-        .or_else(|| query.expected_generation.clone())
-        .unwrap_or_default();
+        .ok_or_else(|| {
+            BlueprintClientError::Malformed("response has no generation identity".into())
+        })?;
     if let Some(expected) = query
         .expected_generation
         .as_deref()

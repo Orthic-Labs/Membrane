@@ -15,11 +15,14 @@
     "allocations": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
     "providerAccounting": { "type": "object", "additionalProperties": { "$ref": "#/$defs/providerAccounting" } },
     "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
-    "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } }
+    "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } },
+    "reconciliation": { "$ref": "#/$defs/reconciliation" }
   },
   "$defs": {
     "deliveryStage": { "type": "string", "enum": ["planned", "finalized"] },
     "deliveryClass": { "type": "string", "enum": ["resolver_backed", "metadata_only", "rendered"] },
+    "budgetLaneKind": { "type": "string", "enum": ["native", "rendered", "resolver_backed", "metadata_only"] },
+    "deliveryMode": { "type": "string", "enum": ["native", "inline", "reference"] },
     "dropReason": {
       "type": "string",
       "enum": ["none", "missing_resolver", "trust_gate_dropped", "seal_failed", "additional_context_char_cap", "packet_budget_exceeded", "not_selected", "multiple"]
@@ -87,6 +90,8 @@
         "protected": { "type": "boolean" },
         "recoverable": { "type": "boolean" },
         "resolver": { "type": "string" },
+        "deliveryMode": { "$ref": "#/$defs/deliveryMode" },
+        "lane": { "$ref": "#/$defs/budgetLaneKind" },
         "text": { "type": "string" }
       }
     },
@@ -98,6 +103,37 @@
         "id": { "type": "string", "minLength": 1 },
         "layer": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
         "reason": { "type": "string" }
+      }
+    },
+    "reconciliationRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane", "selectedTokens", "deliveredTokens", "deliveredChars", "blocks"],
+      "properties": {
+        "lane": { "$ref": "#/$defs/budgetLaneKind" },
+        "selectedTokens": { "type": "integer", "minimum": 0 },
+        "deliveredTokens": { "type": "integer", "minimum": 0 },
+        "deliveredChars": { "type": "integer", "minimum": 0 },
+        "blocks": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "maxTokens", "totalSelectedTokens", "totalDeliveredTokens",
+        "totalDeliveredChars", "lanes", "unclassifiedBlocks", "balanced"
+      ],
+      "properties": {
+        "schemaVersion": { "type": "integer", "minimum": 0 },
+        "maxTokens": { "type": "integer", "minimum": 0 },
+        "totalSelectedTokens": { "type": "integer", "minimum": 0 },
+        "totalDeliveredTokens": { "type": "integer", "minimum": 0 },
+        "totalDeliveredChars": { "type": "integer", "minimum": 0 },
+        "lanes": { "type": "array", "items": { "$ref": "#/$defs/reconciliationRow" } },
+        "unclassifiedBlocks": { "type": "integer", "minimum": 0 },
+        "balanced": { "type": "boolean" },
+        "alert": { "type": "string" }
       }
     }
   }

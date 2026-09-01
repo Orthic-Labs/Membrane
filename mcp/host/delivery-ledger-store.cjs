@@ -100,6 +100,7 @@ function persist(session, ledgerKey, startIndex, env = process.env) {
       if (error && error.code === 'EEXIST') existing += 1; else lastDiag = diag('write_failed');
     } finally { if (fd !== -1) try { fs.closeSync(fd); } catch { /* already closed */ } }
   }
+  if (written > 0 && !fsyncDirectory(directory)) lastDiag = diag('dir_fsync_failed');
   return { written, existing, diagnostic: lastDiag };
 }
 

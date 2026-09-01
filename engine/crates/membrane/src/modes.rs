@@ -115,6 +115,9 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
         vec![
             crate::activation::HarnessClient::Codex,
             crate::activation::HarnessClient::Claude,
+            crate::activation::HarnessClient::Cursor,
+            crate::activation::HarnessClient::Windsurf,
+            crate::activation::HarnessClient::Antigravity,
         ]
     } else {
         let mut parsed = Vec::new();
@@ -161,6 +164,9 @@ fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
         vec![
             crate::activation::HarnessClient::Codex,
             crate::activation::HarnessClient::Claude,
+            crate::activation::HarnessClient::Cursor,
+            crate::activation::HarnessClient::Windsurf,
+            crate::activation::HarnessClient::Antigravity,
         ]
     } else {
         let mut parsed = Vec::new();

@@ -89,14 +89,13 @@ test("ported native client descriptors remain valid JSON", () => {
   }
 });
 
-test("publication delegates GitHub payload & R2 bootstrap effects to RightRelease", () => {
+test("publication delegates every public asset to GitHub Releases", () => {
   assert.equal(pkg.scripts["release:publish:portable:win"], "node scripts/publish-portable-release.mjs");
   assert.ok(publisher.includes('signaturePath: join(output, "release-manifest.cat")'));
   assert.ok(publisher.includes("release-manifest-signing.json"));
   assert.ok(publisher.includes("signing,"));
-  for (const term of ["prepareGitHubDirectRelease", "publishGitHubRelease", "planBootstrapPublication", "createWranglerR2Client", "publishBootstrapPlan", "--dry-run"]) {
+  for (const term of ["prepareGitHubDirectRelease", "publishGitHubRelease", 'join(output, "install.ps1")', "--dry-run"]) {
     assert.ok(publisher.includes(term), term);
   }
-  assert.ok(publisher.indexOf("const github = publishGitHubRelease") < publisher.indexOf("const r2 = publishBootstrapPlan"));
-  assert.doesNotMatch(publisher, /Invoke-WebRequest|wrangler@|r2 object|gh release/);
+  assert.doesNotMatch(publisher, /createWranglerR2Client|publishBootstrapPlan|Invoke-WebRequest|wrangler@|r2 object|gh release/);
 });

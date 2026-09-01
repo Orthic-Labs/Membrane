@@ -71,7 +71,7 @@
           "read-only"
         ]
       },
-      "binaryEnv": "MEMBRANE_CURSOR_BIN",
+      "binaryEnv": null,
       "degradedOperations": [
         "membrane_source_read",
         "membrane_knowledge_propose",
@@ -81,14 +81,14 @@
         "membrane_scratchpad",
         "membrane_feedback"
       ],
-      "detectCommand": "--version",
-      "discoveryMethod": "rules-file-and-mcp",
+      "detectCommand": null,
+      "discoveryMethod": "global-mcp-config",
       "displayName": "Cursor",
       "honestLevel": "L1",
       "id": "cursor",
-      "installCommand": "mcp add membrane -- <node> <server>",
+      "installCommand": "merge ~/.cursor/mcp.json mcpServers.membrane",
       "schemaVersion": 1,
-      "scopeDefault": "project",
+      "scopeDefault": "user",
       "supportedOperations": [
         "membrane_context",
         "membrane_working_context"
@@ -103,7 +103,7 @@
           "read-only"
         ]
       },
-      "binaryEnv": "MEMBRANE_WINDSURF_BIN",
+      "binaryEnv": null,
       "degradedOperations": [
         "membrane_source_read",
         "membrane_knowledge_propose",
@@ -113,14 +113,46 @@
         "membrane_scratchpad",
         "membrane_feedback"
       ],
-      "detectCommand": "--version",
-      "discoveryMethod": "rules-file-and-mcp",
+      "detectCommand": null,
+      "discoveryMethod": "global-mcp-config",
       "displayName": "Windsurf",
       "honestLevel": "L1",
       "id": "windsurf",
-      "installCommand": "mcp add membrane -- <node> <server>",
+      "installCommand": "merge ~/.codeium/windsurf/mcp_config.json mcpServers.membrane",
       "schemaVersion": 1,
-      "scopeDefault": "project",
+      "scopeDefault": "user",
+      "supportedOperations": [
+        "membrane_context",
+        "membrane_working_context"
+      ],
+      "transport": "stdio"
+    },
+    {
+      "authorityGrant": {
+        "loopbackOnly": true,
+        "maxLevel": "L1",
+        "scopes": [
+          "read-only"
+        ]
+      },
+      "binaryEnv": null,
+      "degradedOperations": [
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "detectCommand": null,
+      "discoveryMethod": "global-mcp-config",
+      "displayName": "Antigravity",
+      "honestLevel": "L1",
+      "id": "antigravity",
+      "installCommand": "merge ~/.gemini/config/mcp_config.json mcpServers.membrane",
+      "schemaVersion": 1,
+      "scopeDefault": "user",
       "supportedOperations": [
         "membrane_context",
         "membrane_working_context"

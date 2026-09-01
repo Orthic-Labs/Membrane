@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { artifactDigest, bootstrap, selectPlatform, verifyArtifact, UnsupportedPlatformError, ArtifactVerificationError } from "../../dist/npm/index.mjs";
 
 const artifact = Buffer.from("native-fixture");
-const metadata = { sha256: artifactDigest(artifact), packageName: "@membrane/membrane-darwin-arm64", platform: "darwin-arm64", version: "0.1.0", signature: { algorithm: "ed25519", keyId: "fixture-key", value: "fixture-signature", digest: artifactDigest(artifact) } };
+const metadata = { sha256: artifactDigest(artifact), packageName: "@membrane/membrane-win32-x64", platform: "win32-x64", version: "0.1.0", signature: { algorithm: "ed25519", keyId: "fixture-key", value: "fixture-signature", digest: artifactDigest(artifact) } };
 
 test("selectPlatform maps supported host tuples", () => {
-  assert.deepEqual(selectPlatform({ platform: "darwin", arch: "arm64" }), { key: "darwin-arm64", packageName: "@membrane/membrane-darwin-arm64" });
+  assert.deepEqual(selectPlatform({ platform: "win32", arch: "x64" }), { key: "win32-x64", packageName: "@membrane/membrane-win32-x64" });
 });
 
 test("unsupported hosts fail closed", () => {
@@ -15,8 +15,8 @@ test("unsupported hosts fail closed", () => {
 
 test("digest and signed metadata are checked before dispatch", async () => {
   const calls = [];
-  const result = await bootstrap({ artifact, metadata, platform: "darwin", arch: "arm64", verifySignature: async input => { calls.push(input); return true; }, load: async name => ({ dispatch: value => `${name}:${value}` }) });
-  assert.equal(result.dispatch("ok"), "@membrane/membrane-darwin-arm64:ok");
+  const result = await bootstrap({ artifact, metadata, platform: "win32", arch: "x64", verifySignature: async input => { calls.push(input); return true; }, load: async name => ({ dispatch: value => `${name}:${value}` }) });
+  assert.equal(result.dispatch("ok"), "@membrane/membrane-win32-x64:ok");
   assert.equal(calls.length, 1);
 });
 
@@ -27,7 +27,7 @@ test("digest mismatch prevents package loading", async () => {
 });
 
 test("signature verification and package binding are mandatory", async () => {
-  await assert.rejects(() => bootstrap({ artifact, metadata, platform: "darwin", arch: "arm64", load: async () => ({ dispatch() {} }) }), ArtifactVerificationError);
-  await assert.rejects(() => bootstrap({ artifact, metadata: { ...metadata, packageName: "@membrane/other" }, platform: "darwin", arch: "arm64", verifySignature: async () => true }), ArtifactVerificationError);
+  await assert.rejects(() => bootstrap({ artifact, metadata, platform: "win32", arch: "x64", load: async () => ({ dispatch() {} }) }), ArtifactVerificationError);
+  await assert.rejects(() => bootstrap({ artifact, metadata: { ...metadata, packageName: "@membrane/other" }, platform: "win32", arch: "x64", verifySignature: async () => true }), ArtifactVerificationError);
   await assert.rejects(() => verifyArtifact({ artifact, metadata: { ...metadata, signature: { ...metadata.signature, digest: "sha256:" + "f".repeat(64) }, }, expectedPackage: metadata.packageName, expectedPlatform: metadata.platform, verifySignature: async () => true }), ArtifactVerificationError);
 });

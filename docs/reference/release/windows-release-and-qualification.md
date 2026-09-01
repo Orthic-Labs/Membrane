@@ -47,7 +47,7 @@ testing only; it is never the thing a customer runs.
 
 `publish` runs only after `installed-qualification` succeeds. It has the only job-level
 `contents: write` permission. RightKit publishes the signed portable release and stable bootstrap
-through its existing GitHub and R2 publication path; the workflow then attaches the signed
+through GitHub Releases; the workflow then attaches the signed
 installer, qualification manifest, SBOM, and qualification evidence to the GitHub Release. A
 failed qualification cannot reach publication.
 
@@ -61,7 +61,7 @@ failed qualification cannot reach publication.
 | Release environment variable | `AZURE_ARTIFACT_SIGNING_ENDPOINT` | Azure Artifact Signing endpoint | Windows signing fails |
 | Release environment variable | `AZURE_ARTIFACT_SIGNING_ACCOUNT` | Azure Artifact Signing account | Windows signing fails |
 | Release environment variable | `AZURE_ARTIFACT_SIGNING_PROFILE` | Azure Artifact Signing certificate profile | Windows signing fails |
-| GitHub Actions secret | `CLOUDFLARE_API_TOKEN` | Stable bootstrap publication through the public R2 bucket | Publication fails with `bootstrap_publication_missing` before any release mutation |
+| GitHub Pages environment | `github-pages` | Stable custom-domain bootstrap deployment | Pages deployment fails without configured environment and DNS |
 
 Azure identity uses OIDC through release-environment variables `AZURE_CLIENT_ID`,
 `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`; GitHub-hosted signing installs pinned signing

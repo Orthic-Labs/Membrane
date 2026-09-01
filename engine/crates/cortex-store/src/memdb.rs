@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable Cortex schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 24;
+pub const LATEST_SCHEMA_VERSION: i64 = 25;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1297,6 +1297,15 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                      DROP TABLE IF EXISTS transform_log;",
                 )?;
             }
+            25 => {
+                // Support recall_eligible_ids_on's per-query eligibility scan
+                // (authority IN (...) AND lifecycle_state/superseded_by/effective_from_ms
+                // predicate) with a composite index instead of a full table scan.
+                tx.execute_batch(
+                    "CREATE INDEX IF NOT EXISTS idx_memories_authority_lifecycle_eligibility
+                        ON memories(authority, lifecycle_state, superseded_by, effective_from_ms);",
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1318,6 +1327,22 @@ fn backout_v24_to_v23(path: &Path) -> rusqlite::Result<()> {
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     // v24 only retires Push transform ledgers; lowering the marker must not recreate them.
     tx.pragma_update(None, "user_version", 23)?;
+    tx.commit()
+}
+
+fn backout_v25_to_v24(path: &Path) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 25 {
+        return Ok(());
+    }
+    if version != 25 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    // v25 only adds a read-path composite index; lowering the marker must not drop it
+    // (the index remains harmless on a v24-marked database).
+    tx.pragma_update(None, "user_version", 24)?;
     tx.commit()
 }
 
@@ -1457,6 +1482,14 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
             backout_v20_to_v19(path)
         }
         24 => {
+            backout_v24_to_v23(path)?;
+            backout_v23_to_v22(path)?;
+            backout_v22_to_v21(path)?;
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
+        25 => {
+            backout_v25_to_v24(path)?;
             backout_v24_to_v23(path)?;
             backout_v23_to_v22(path)?;
             backout_v22_to_v21(path)?;

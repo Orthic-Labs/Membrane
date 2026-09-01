@@ -7,6 +7,7 @@ pub mod blueprint_client;
 pub mod config;
 pub mod corrective;
 pub mod deadline;
+mod egress_redaction;
 pub mod engine;
 pub mod error;
 pub mod freshness;

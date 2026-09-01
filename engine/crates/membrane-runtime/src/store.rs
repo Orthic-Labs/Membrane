@@ -58,6 +58,57 @@ const MAX_MEMORY_BATCH_CONTENT_CHARS: usize = 256 * 1024;
 /// Enabled only after frozen-replay acceptance; pin/protection never bypasses admission gates.
 const PROTECTED_PRIORITY_BONUS: f32 = 0.04;
 
+/// Cap on the in-RAM effectiveness-history ring buffer (`MemoryStore::effectiveness_history`).
+/// Every task outcome pushes rows onto this Vec; before this cap it grew unbounded for the
+/// process lifetime and was fully cloned twice per recall. `EffectivenessGate` computes its
+/// per-entry effectiveness ratio and veto lookup over whatever is in this buffer, so the cap
+/// trades exact lifetime ratio aggregation for a bounded recent-history window: once the cap is
+/// hit, the oldest rows are evicted first. Eviction is veto-safe (see `evict_effectiveness_history`
+/// below): a row that establishes a verified `Contradicted` veto — `verified && injected &&
+/// outcome == Some(Contradicted)`, `MemoryUsageRecord::is_veto`'s predicate — is never dropped,
+/// so `should_inject`'s hard veto can never silently age out no matter how old it is. Only the
+/// non-veto ratio signal is windowed; that is an accepted, documented approximation — an exact
+/// fix would need either unbounded per-entry memory (defeating the point of this cap) or a
+/// `cortex-core::EffectivenessGate` signature change to accept pre-aggregated counts, which is
+/// out of scope for this bound.
+const EFFECTIVENESS_HISTORY_CAP: usize = 20_000;
+
+/// Evict from `history` down to `cap` (production call sites always pass
+/// `EFFECTIVENESS_HISTORY_CAP`; the parameter exists so tests can exercise eviction without
+/// pushing tens of thousands of rows), oldest-first, without ever dropping a row that
+/// establishes a verified `Contradicted` veto (mirrors `MemoryUsageRecord::is_veto`'s private
+/// predicate, which store.rs cannot call directly from outside `cortex-core`). A single
+/// front-to-back pass keeps this O(history.len()) rather than O(n^2) from repeated `Vec::remove`.
+///
+/// Today this buffer only ever receives `MemoryUsageRecord::legacy` rows (see the single push
+/// site in `record_run`), which always have `outcome: None` and can therefore never satisfy the
+/// veto predicate — so this is currently a no-op safety net rather than an observed behavior
+/// change. It guarantees that if a verified per-candidate row is ever folded into this buffer in
+/// the future, the cap cannot silently un-veto an entry that a controlled experiment or observed
+/// contradiction flagged.
+///
+/// If `cap` is smaller than the number of veto rows present, the veto rows are all kept and
+/// `history` ends up longer than `cap` — a deliberate soft-floor: veto correctness is chosen over
+/// strict cap enforcement in that (self-limiting, since a veto requires a verified negative
+/// signal) edge case.
+fn evict_effectiveness_history(history: &mut Vec<MemoryUsageRecord>, cap: usize) {
+    if history.len() <= cap {
+        return;
+    }
+    let mut to_drop = history.len() - cap;
+    let mut kept = Vec::with_capacity(history.len());
+    for record in history.drain(..) {
+        let is_veto =
+            record.verified && record.injected && matches!(record.outcome, Some(Outcome::Contradicted));
+        if to_drop > 0 && !is_veto {
+            to_drop -= 1;
+            continue;
+        }
+        kept.push(record);
+    }
+    *history = kept;
+}
+
 fn protected_priority_bonus_enabled() -> bool {
     matches!(
         std::env::var("MEMBRANE_PROTECTED_PRIORITY_BONUS")
@@ -2002,6 +2053,65 @@ fn recall_eligible_ids_on(
         .collect::<rusqlite::Result<HashSet<_>>>()
 }
 
+/// Chunk size for `recall_eligible_ids_among`'s `id IN (...)` lookups. Kept comfortably under
+/// SQLite's historical `SQLITE_MAX_VARIABLE_NUMBER` (999) even after reserving one bound slot
+/// for the shared `as_of_ms` parameter, so an unusually large candidate slate is split across
+/// multiple statements instead of risking a "too many SQL variables" error.
+const RECALL_ELIGIBILITY_ID_CHUNK: usize = 900;
+
+/// Same eligibility predicate as `recall_eligible_ids_on`, but scoped to a caller-supplied
+/// candidate slate via `id IN (...)` instead of scanning/materializing the whole table.
+///
+/// Every hot recall path only needs to know which of a SMALL, already-bounded candidate set
+/// (produced by retrieval, itself capped at `limit * N`) is eligible. Fetching and hashing
+/// every eligible id in the corpus to answer that question is O(corpus) memory and CPU on
+/// every single recall; this is O(candidates) instead, letting `idx_memories_authority_lifecycle_eligibility`
+/// (migration 25) serve a narrow lookup rather than a near-full-table scan.
+///
+/// The predicate is intentionally byte-for-byte identical to `recall_eligible_ids_on`'s (same
+/// `authority`, `lifecycle_state`/`superseded_by`/`effective_until_ms`, and `include_expired`
+/// branches) with only one addition: an `id IN (...)` restriction to the candidate slate. Since
+/// every other clause is already AND-ed at the top level, intersecting with `id IN (...)` cannot
+/// change which of the candidate rows would have been included in the full eligible set.
+fn recall_eligible_ids_among(
+    connection: &rusqlite::Connection,
+    as_of_ms: i64,
+    include_expired: bool,
+    candidate_ids: &[String],
+) -> rusqlite::Result<HashSet<String>> {
+    if candidate_ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let expiry_clause = if include_expired {
+        ""
+    } else {
+        " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
+    };
+    let mut eligible = HashSet::with_capacity(candidate_ids.len());
+    for chunk in candidate_ids.chunks(RECALL_ELIGIBILITY_ID_CHUNK) {
+        // Numbered placeholders: ?1 is the shared as_of_ms (reused by the expiry clause exactly
+        // as in `recall_eligible_ids_on`), ?2.. are the candidate ids for this chunk.
+        let placeholders = (0..chunk.len())
+            .map(|i| format!("?{}", i + 2))
+            .collect::<Vec<_>>()
+            .join(",");
+        let query = format!(
+            "SELECT id FROM memories WHERE id IN ({placeholders}) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+        );
+        let mut statement = connection.prepare(&query)?;
+        let mut params: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk.len() + 1);
+        params.push(&as_of_ms);
+        for id in chunk {
+            params.push(id);
+        }
+        let rows = statement.query_map(params.as_slice(), |row| row.get::<_, String>(0))?;
+        for row in rows {
+            eligible.insert(row?);
+        }
+    }
+    Ok(eligible)
+}
+
 fn expired_curation_ids_on(
     connection: &rusqlite::Connection,
     as_of_ms: i64,
@@ -3332,6 +3442,7 @@ impl MemoryStore {
             for entry_id in injected {
                 history.push(MemoryUsageRecord::legacy(entry_id, true, succeeded));
             }
+            evict_effectiveness_history(&mut *history, EFFECTIVENESS_HISTORY_CAP);
         }
 
         if let Some((features, tier)) = self.last_route.lock().unwrap().take() {
@@ -4758,6 +4869,21 @@ impl MemoryStore {
         recall_eligible_ids_on(&conn, as_of_ms, include_expired).unwrap_or_default()
     }
 
+    /// Lifecycle-eligibility membership for exactly `candidate_ids`, not the whole corpus. Use
+    /// this on hot recall paths where only a small, already-bounded candidate slate needs an
+    /// eligibility check — `recall_eligible_ids_at` above is for callers that genuinely need the
+    /// complete admission set (dream consolidation's full-registry filter, audit/replay, tests).
+    fn recall_eligible_ids_among_at(
+        &self,
+        candidate_ids: &[String],
+        as_of_ms: i64,
+        include_expired: bool,
+    ) -> HashSet<String> {
+        let conn = self.db.lock();
+        recall_eligible_ids_among(&conn, as_of_ms, include_expired, candidate_ids)
+            .unwrap_or_default()
+    }
+
     /// Content-free lifecycle fields for `/get` and dashboard editing.
     pub fn lifecycle_json_for(&self, id: &str) -> Result<serde_json::Value, String> {
         let conn = self.db.lock();
@@ -5072,7 +5198,10 @@ impl MemoryStore {
             .map(|(entry, _)| entry.id.clone())
             .collect::<Vec<_>>();
         let observed_considered = candidate_ids.len();
-        let eligible_ids = self.recall_eligible_ids_at(as_of_ms, include_expired);
+        // Bounded to exactly this recall's candidate slate (`candidate_limit`, ~`limit * 4`) via
+        // `id IN (...)`, not a full-corpus scan/materialization — see `recall_eligible_ids_among`.
+        let eligible_ids =
+            self.recall_eligible_ids_among_at(&candidate_ids, as_of_ms, include_expired);
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         direct_candidates.retain(|(entry, _)| eligible_ids.contains(&entry.id));
@@ -5140,8 +5269,19 @@ impl MemoryStore {
             let linked = self.linked_neighbors(&seed_ids, scopes, link_slots.saturating_mul(4));
             let linked_refs = linked.iter().map(|(entry, _)| entry).collect::<Vec<_>>();
             history.extend(self.gate_history_for(&linked_refs));
+            // Graph neighbours are only discovered here, after direct ranking — a separate small
+            // slate (capped at `link_slots * 4`) from `candidate_ids`/`eligible_ids` above, so its
+            // eligibility is looked up against exactly this list rather than reusing the direct
+            // slate's set (which would incorrectly treat every linked id as ineligible) or a
+            // full-corpus fetch.
+            let linked_candidate_ids = linked
+                .iter()
+                .map(|(entry, _)| entry.id.clone())
+                .collect::<Vec<_>>();
+            let linked_eligible_ids =
+                self.recall_eligible_ids_among_at(&linked_candidate_ids, as_of_ms, include_expired);
             for (entry, score) in linked {
-                if !eligible_ids.contains(&entry.id) {
+                if !linked_eligible_ids.contains(&entry.id) {
                     continue;
                 }
                 let mut score = utility_recall_score(&entry, score);
@@ -5261,7 +5401,14 @@ impl MemoryStore {
             .iter()
             .map(|entry| entry.id.clone())
             .collect::<Vec<_>>();
-        let eligible_ids = self.recall_eligible_ids_at(crate::time::now_millis() as i64, false);
+        // Bounded to this recall's candidate slate (`limit * 2`/`limit * 3` from the tier above)
+        // via `id IN (...)`, not a full-corpus scan/materialization — see
+        // `recall_eligible_ids_among`.
+        let eligible_ids = self.recall_eligible_ids_among_at(
+            &candidate_ids,
+            crate::time::now_millis() as i64,
+            false,
+        );
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         let filtered = eval_gate
@@ -5999,9 +6146,6 @@ impl MemoryStore {
 
         let now = crate::time::now_millis() as i64;
         let conn = self.db.lock();
-        let eligible_ids = recall_eligible_ids_on(&conn, now, false).map_err(|error| {
-            self.persist_error(format!("Taste lifecycle query failed: {error}"))
-        })?;
         // Keep the complete identity set so generic recall can exclude every
         // Taste row without deserializing an unbounded historical archive.
         let memory_ids = conn
@@ -6045,6 +6189,11 @@ impl MemoryStore {
             .map_err(|error| self.persist_error(format!("Taste query failed: {error}")))?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|error| self.persist_error(format!("Taste row read failed: {error}")))?;
+        // Eligibility is looked up only for this already-bounded (`MAX_TASTE_DELIVERY_CANDIDATES`,
+        // 128) row set via `id IN (...)`, not the whole corpus — see `recall_eligible_ids_among`.
+        let candidate_ids = rows.iter().map(|row| row.0.clone()).collect::<Vec<_>>();
+        let eligible_ids = recall_eligible_ids_among(&conn, now, false, &candidate_ids)
+            .map_err(|error| self.persist_error(format!("Taste lifecycle query failed: {error}")))?;
         let mut candidates = Vec::with_capacity(rows.len());
         let mut bindings = BTreeMap::new();
         for (memory_id, content, scope_id, lifecycle, influence, authority) in rows {
@@ -11276,6 +11425,228 @@ mod tests {
         assert!(k.contains(&"instructions".to_string()));
         assert!(!k.iter().any(|w| w == "a")); // too short
         assert!(!k.iter().any(|w| w == "create")); // stopword
+    }
+
+    #[test]
+    fn recall_eligible_ids_among_matches_full_scan_for_a_mixed_candidate_slate() {
+        let store = MemoryStore::new();
+        let eligible = store
+            .try_put(
+                "still-eligible",
+                "eligibility slate marker one",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let wrong_authority = store
+            .try_put(
+                "wrong-authority",
+                "eligibility slate marker two",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET authority='A0' WHERE id=?1",
+                rusqlite::params![wrong_authority],
+            )
+            .unwrap();
+        let superseded = store
+            .try_put(
+                "superseded-row",
+                "eligibility slate marker three",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let successor = store
+            .try_put(
+                "successor-row",
+                "eligibility slate marker four",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state='superseded', superseded_by=?2 WHERE id=?1",
+                rusqlite::params![superseded, successor],
+            )
+            .unwrap();
+        let never_in_db = "not-a-real-memory-id".to_string();
+
+        let as_of_ms = crate::time::now_millis() as i64;
+        let candidate_ids = vec![
+            eligible.clone(),
+            wrong_authority.clone(),
+            superseded.clone(),
+            successor.clone(),
+            never_in_db.clone(),
+        ];
+
+        // Same predicate as the full-corpus scan, restricted to this candidate slate: every
+        // candidate's membership must agree with what a full `recall_eligible_ids_at` scan says.
+        let bounded = store.recall_eligible_ids_among_at(&candidate_ids, as_of_ms, false);
+        let full = store.recall_eligible_ids_at(as_of_ms, false);
+        for id in &candidate_ids {
+            assert_eq!(
+                bounded.contains(id),
+                full.contains(id),
+                "bounded/full eligibility disagree for {id}"
+            );
+        }
+        assert!(bounded.contains(&eligible));
+        assert!(bounded.contains(&successor));
+        assert!(!bounded.contains(&wrong_authority));
+        // superseded_by IS NOT NULL but effective_until_ms is still NULL here, so the superseded
+        // grace-window clause cannot be satisfied -- correctly ineligible.
+        assert!(!bounded.contains(&superseded));
+        assert!(!bounded.contains(&never_in_db));
+    }
+
+    #[test]
+    fn recall_eligible_ids_among_include_expired_matches_full_scan() {
+        let store = MemoryStore::new();
+        let expired = store
+            .try_put(
+                "expired-bounded",
+                "bounded lifecycle inverse marker",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET effective_until_ms=1000 WHERE id=?1",
+                rusqlite::params![expired],
+            )
+            .unwrap();
+
+        let candidate_ids = vec![expired.clone()];
+        assert!(
+            !store
+                .recall_eligible_ids_among_at(&candidate_ids, 2000, false)
+                .contains(&expired)
+        );
+        assert!(
+            store
+                .recall_eligible_ids_among_at(&candidate_ids, 2000, true)
+                .contains(&expired)
+        );
+        // Must agree with the full-corpus scan in both branches.
+        assert_eq!(
+            store
+                .recall_eligible_ids_among_at(&candidate_ids, 2000, false)
+                .contains(&expired),
+            store.recall_eligible_ids_at(2000, false).contains(&expired)
+        );
+        assert_eq!(
+            store
+                .recall_eligible_ids_among_at(&candidate_ids, 2000, true)
+                .contains(&expired),
+            store.recall_eligible_ids_at(2000, true).contains(&expired)
+        );
+    }
+
+    #[test]
+    fn recall_eligible_ids_among_chunks_large_candidate_slates() {
+        let store = MemoryStore::new();
+        let first = store
+            .try_put("chunk-first", "chunking marker one", "global", MemoryTier::Semantic)
+            .unwrap();
+        let boundary = store
+            .try_put(
+                "chunk-boundary",
+                "chunking marker two",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let last = store
+            .try_put("chunk-last", "chunking marker three", "global", MemoryTier::Semantic)
+            .unwrap();
+
+        // Build a candidate slate spanning 3 chunks of `RECALL_ELIGIBILITY_ID_CHUNK`, with real
+        // (eligible) ids planted at the very start, exactly on a chunk boundary, and at the end,
+        // interleaved with ids that do not exist in the table at all.
+        let mut candidate_ids =
+            Vec::with_capacity(RECALL_ELIGIBILITY_ID_CHUNK * 2 + 3);
+        candidate_ids.push(first.clone());
+        for i in 0..(RECALL_ELIGIBILITY_ID_CHUNK - 1) {
+            candidate_ids.push(format!("filler-before-{i}"));
+        }
+        candidate_ids.push(boundary.clone());
+        for i in 0..(RECALL_ELIGIBILITY_ID_CHUNK - 1) {
+            candidate_ids.push(format!("filler-after-{i}"));
+        }
+        candidate_ids.push(last.clone());
+        assert!(
+            candidate_ids.len() > RECALL_ELIGIBILITY_ID_CHUNK * 2,
+            "test must actually span more than 2 chunks"
+        );
+
+        let as_of_ms = crate::time::now_millis() as i64;
+        let eligible = store.recall_eligible_ids_among_at(&candidate_ids, as_of_ms, false);
+        assert!(eligible.contains(&first));
+        assert!(eligible.contains(&boundary));
+        assert!(eligible.contains(&last));
+        assert_eq!(
+            eligible.len(),
+            3,
+            "only the 3 real memories are eligible; none of the filler ids exist"
+        );
+    }
+
+    #[test]
+    fn evict_effectiveness_history_prunes_oldest_first() {
+        let mut history: Vec<MemoryUsageRecord> = (0..5)
+            .map(|i| MemoryUsageRecord::legacy(format!("entry-{i}"), true, true))
+            .collect();
+        evict_effectiveness_history(&mut history, 3);
+        let ids: Vec<&str> = history.iter().map(|r| r.entry_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["entry-2", "entry-3", "entry-4"],
+            "the oldest rows must be dropped first"
+        );
+    }
+
+    #[test]
+    fn evict_effectiveness_history_never_drops_a_verified_contradicted_veto() {
+        let mut history = vec![
+            MemoryUsageRecord::verified_outcome("veto-entry", Outcome::Contradicted), // oldest
+            MemoryUsageRecord::legacy("other-1", true, true),
+            MemoryUsageRecord::legacy("other-2", true, true),
+            MemoryUsageRecord::legacy("other-3", true, true),
+        ];
+        // The cap forces 3 rows out, but only 3 non-veto rows exist. A naive truncate-from-front
+        // would delete the veto row first since it is the oldest; it must survive instead.
+        evict_effectiveness_history(&mut history, 1);
+        assert_eq!(
+            history.len(),
+            1,
+            "only the veto row should remain once every non-veto row is evicted"
+        );
+        assert_eq!(history[0].entry_id, "veto-entry");
+        assert!(matches!(history[0].outcome, Some(Outcome::Contradicted)));
+        assert!(history[0].verified);
+    }
+
+    #[test]
+    fn evict_effectiveness_history_is_a_noop_under_the_cap() {
+        let mut history: Vec<MemoryUsageRecord> = (0..3)
+            .map(|i| MemoryUsageRecord::legacy(format!("entry-{i}"), true, true))
+            .collect();
+        let before = history.len();
+        evict_effectiveness_history(&mut history, 10);
+        assert_eq!(history.len(), before);
     }
 
     #[test]

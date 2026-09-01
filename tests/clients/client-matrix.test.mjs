@@ -40,9 +40,9 @@ function test(name, fn) {
   checks.push([name, fn]);
 }
 
-test("registry declares the five canonical clients", () => {
+test("registry declares the six canonical clients", () => {
   const ids = REGISTRY.clients.map((client) => client.id).sort();
-  assert.deepEqual(ids, ["claude", "codex", "cursor", "generic_mcp", "windsurf"]);
+  assert.deepEqual(ids, ["antigravity", "claude", "codex", "cursor", "generic_mcp", "windsurf"]);
 });
 
 test("every client has a non-empty, lowercase snake_case id", () => {
@@ -77,8 +77,9 @@ test("(a) every client is discoverable through at least one transport", () => {
     const hasDiscoveryHook =
       (typeof client.detect_command === "string" && client.detect_command.length > 0) ||
       (typeof client.binary_env === "string" && client.binary_env.length > 0) ||
+      client.discovery_method === "global-mcp-config" ||
       client.transport === "loopback";
-    assert.ok(hasDiscoveryHook, `${client.id}: no discovery hook (need detect_command, binary_env, or loopback transport)`);
+    assert.ok(hasDiscoveryHook, `${client.id}: no discovery hook (need command, config-file, or loopback discovery)`);
   }
 });
 

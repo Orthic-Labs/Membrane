@@ -206,10 +206,10 @@ pub fn merge_normalized_with_strategy(
             continue;
         }
 
-        // The sealed parity corpus defines duplicate IDs across provider
-        // lanes as canonical first-wins: provider order is the authority for
-        // deterministic identity ownership.  Conflicting observations within
-        // one provider remain unsafe and are omitted below.
+        // Duplicate IDs across provider lanes remain canonical first-wins, but
+        // every losing lane must stay visible in warning/omission accounting.
+        // Provider order selects deterministic identity ownership; it does not
+        // turn a cross-provider disagreement into a complete response.
         let first_provider = first.provider;
         let first_provider_entries = entries
             .iter()
@@ -220,6 +220,23 @@ pub fn merge_normalized_with_strategy(
             .all(|entry| equivalent_identity(first_provider_entries[0], entry))
         {
             candidates.push(first.clone());
+            let mut providers_seen = BTreeSet::new();
+            for entry in entries
+                .iter()
+                .filter(|entry| entry.provider != first_provider)
+            {
+                if providers_seen.insert(entry.provider.as_str().to_owned()) {
+                    omissions.push(conflict_omission(entry.provider, id.clone()));
+                    warnings.push(ProviderWarningV1 {
+                        provider: entry.provider,
+                        reason: ReasonCode::CandidateIdentityConflict,
+                        severity: WarningSeverity::Warning,
+                        detail_id: Some(id.clone()),
+                        stage: Some("merge".to_owned()),
+                        message: None,
+                    });
+                }
+            }
             continue;
         }
 

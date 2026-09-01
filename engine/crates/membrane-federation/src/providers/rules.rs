@@ -312,7 +312,7 @@ impl RulesProvider {
                     Ok(receipt) => (
                         receipt.mode,
                         if receipt.mode == DeliveryMode::Inline {
-                            document.content.clone()
+                            crate::egress_redaction::redact_for_egress(&document.content)
                         } else {
                             String::new()
                         },
@@ -452,7 +452,11 @@ pub fn normalize_rule_path(path: &str) -> Result<String, &'static str> {
         }
         parts.push(part);
     }
-    Ok(parts.join("/"))
+    let normalized = parts.join("/");
+    if crate::egress_redaction::is_sensitive_path(&normalized) {
+        return Err("sensitive_rule_path");
+    }
+    Ok(normalized)
 }
 
 fn normalize_grant_path(entry: &str) -> Option<String> {
