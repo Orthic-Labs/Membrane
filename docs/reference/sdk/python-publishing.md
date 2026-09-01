@@ -22,9 +22,9 @@ against `pyproject.toml` and the on-disk tree by
   dependencies. The client never vendors, downloads, or requires the
   Membrane daemon, another SDK, or a native extension to import.
 - **`forbiddenPathPrefixes`** (`engine/`, `apps/`, `dist/packaging/`, `dist/release/`,
-  `dist/install/`, `dist/npm/`, `dist/packages/typescript/`) — the repository locations of
+  `dist/install/`, `dist/packages/typescript/`) — the repository locations of
   the Rust engine/daemon, the desktop app, installer/release tooling, the
-  npm bootstrapper, and the TypeScript SDK. `pyproject.toml` must never
+  TypeScript SDK. `pyproject.toml` must never
   reference any of them; the test asserts this by scanning the file's own
   text for each prefix.
 - **`forbiddenFileExtensions`** — native binaries, installers, and archives

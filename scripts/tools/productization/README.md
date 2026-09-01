@@ -37,9 +37,6 @@ Emits:
   never a fabricated `unsupported` state).
 - The `<!-- support-matrix:start -->` / `<!-- support-matrix:end -->` block in
   `README.md`.
-- `server.json`'s per-target `nativeArtifacts[*].platformReceipt` fields (the
-  MCP Registry server descriptor), left untouched when nothing semantically
-  changes so it never gets gratuitously reformatted.
 
 A platform/client pair is `qualified` only when a receipt for that exact
 platform verifies as `passed` for the current commit and release generation,

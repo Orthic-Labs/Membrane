@@ -110,7 +110,7 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 Generated from current MBR-801 installed-path conformance receipts — 0 of 10
 platform/client pairs currently qualified. Full table, tiers, and reasons:
 [docs/product/support/matrix.md](docs/product/support/matrix.md) (also machine-readable at `docs/product/support/matrix.json`).
-This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`
-fields are all written by `node scripts/tools/productization/generate-support-matrix.mjs`
-from the same receipts; none of them is hand-maintained.
+This block plus JSON/MD matrix are written by
+`node scripts/tools/productization/generate-support-matrix.mjs` from same receipts;
+none are hand-maintained.
 <!-- support-matrix:end -->

@@ -6,9 +6,8 @@
 // generator reuses the existing MBR-801 validator
 // (scripts/qualification/verify-mbr801-evidence.mjs) rather than
 // re-implementing conformance logic, and writes the SAME generated matrix
-// into every surface this task owns: docs/product/support/matrix.md & matrix.json,
-// a generated block in README.md, and the per-target platformReceipt fields
-// in server.json (the MCP Registry server descriptor). A platform/client pair
+// into every surface this task owns: docs/product/support/matrix.md & matrix.json
+// plus a generated block in README.md. A platform/client pair
 // with no current, verified receipt renders "unavailable" — never "qualified"
 // and never silently omitted.
 //
@@ -31,7 +30,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const PLATFORMS = ["macos", "windows"];
 const README_START = "<!-- support-matrix:start -->";
 const README_END = "<!-- support-matrix:end -->";
-const PLATFORM_TARGETS = { macos: ["darwin-arm64", "darwin-x64"], windows: ["win32-arm64", "win32-x64"] };
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
@@ -153,9 +151,9 @@ export function renderReadmeBlock(matrix) {
     `Generated from current MBR-801 installed-path conformance receipts — ${qualified} of ${matrix.rows.length}`,
     "platform/client pairs currently qualified. Full table, tiers, and reasons:",
     "[docs/product/support/matrix.md](docs/product/support/matrix.md) (also machine-readable at `docs/product/support/matrix.json`).",
-    "This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`",
-    "fields are all written by `node scripts/tools/productization/generate-support-matrix.mjs`",
-    "from the same receipts; none of them is hand-maintained.",
+    "This block plus JSON/MD matrix are written by",
+    "`node scripts/tools/productization/generate-support-matrix.mjs` from same receipts;",
+    "none are hand-maintained.",
     README_END,
   ].join("\n");
 }
@@ -166,40 +164,6 @@ export function spliceReadme(readmeText, block) {
   const endIndex = readmeText.indexOf(README_END);
   if (startIndex === -1 || endIndex === -1) throw new Error("README.md is missing the support-matrix markers");
   return `${readmeText.slice(0, startIndex)}${block}${readmeText.slice(endIndex + README_END.length)}`;
-}
-
-/**
- * Apply the same matrix to server.json's per-target platformReceipt fields —
- * the MCP Registry server descriptor. A target's receipt is non-null only
- * when its platform has a currently verified MBR-801 receipt; the specific
- * qualifying client does not change the platform-level artifact receipt.
- */
-export function applyServerJson(serverJson, matrix) {
-  const next = structuredClone(serverJson);
-  for (const [platform, targets] of Object.entries(PLATFORM_TARGETS)) {
-    const qualifiedRow = matrix.rows.find((row) => row.platform === platform && row.tier === "qualified");
-    const receipt = qualifiedRow
-      ? {
-          schema: qualifiedRow.receipt.schema,
-          commit: qualifiedRow.receipt.commit,
-          releaseGeneration: qualifiedRow.receipt.releaseGeneration,
-          scenariosPassed: qualifiedRow.receipt.scenariosPassed,
-          scenarioCount: qualifiedRow.receipt.scenarioCount,
-        }
-      : null;
-    for (const target of targets) {
-      if (next.nativeArtifacts?.[target]) next.nativeArtifacts[target].platformReceipt = receipt;
-    }
-  }
-  return next;
-}
-
-function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function safeGitCommit(repoRoot) {
@@ -225,16 +189,6 @@ export function generate({ repoRoot = root, commit, releaseGeneration, receiptPa
 
   const readmePath = join(repoRoot, "README.md");
   writeFileSync(readmePath, spliceReadme(readFileSync(readmePath, "utf8"), renderReadmeBlock(matrix)));
-
-  const serverJsonPath = join(repoRoot, "server.json");
-  const currentServerJson = readJson(serverJsonPath);
-  const nextServerJson = applyServerJson(currentServerJson, matrix);
-  // Only rewrite when a receipt actually changes a platformReceipt value —
-  // avoids gratuitous reformatting of a file this generator does not own the
-  // style of when there is no semantic change to report.
-  if (canonicalJson(nextServerJson) !== canonicalJson(currentServerJson)) {
-    writeFileSync(serverJsonPath, `${JSON.stringify(nextServerJson, null, 2)}\n`);
-  }
 
   return matrix;
 }

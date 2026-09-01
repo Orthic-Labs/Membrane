@@ -10,7 +10,7 @@
   "scripts": {
     "legal:verify": "node dist/packaging/legal/verify.mjs",
     "test": "node --test mcp/*.test.mjs mcp/host/*.test.mjs scripts/*.test.mjs tests/compat/code-batch-limits-parity.test.mjs && pnpm run test:restored && pnpm run legal:verify",
-    "test:restored": "node --test scripts/ci/check-atomic-canons.test.mjs scripts/ci/test-live-diagnostics-schemas.test.mjs scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs scripts/qualification/install-release.test.mjs scripts/qualification/issue-native-only-seal.test.mjs scripts/qualification/memory/run-memory-benchmarks.test.mjs scripts/qualification/write-prequalification-binding.test.mjs scripts/qualification/write-windows-platform-evidence.test.mjs scripts/release/evidence/sbom.test.mjs scripts/release/npm/resolve-platform-artifacts.test.mjs scripts/release/verify-release-evidence.test.mjs",
+    "test:restored": "node --test scripts/ci/check-atomic-canons.test.mjs scripts/ci/test-live-diagnostics-schemas.test.mjs scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs scripts/qualification/install-release.test.mjs scripts/qualification/issue-native-only-seal.test.mjs scripts/qualification/memory/run-memory-benchmarks.test.mjs scripts/qualification/write-prequalification-binding.test.mjs scripts/qualification/write-windows-platform-evidence.test.mjs scripts/release/evidence/sbom.test.mjs scripts/release/verify-release-evidence.test.mjs",
     "test:random": "node scripts/ci/test-random.mjs",
     "test:all": "rightkit cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast && node scripts/ci/check-release-identity.mjs",
     "test:equivalence": "node scripts/ci/run-equivalence.mjs",

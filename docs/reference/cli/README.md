@@ -36,7 +36,7 @@ membrane <mode> [flags]
 
 ## What it does not do
 
-- It does not publish to Homebrew, npm, PyPI, or crates.io. Publishing is a separate
+- It does not publish product artifacts. Publishing is a separate
   decision owned by the release engineer and is documented in `MBR-901..912` once the
   Wave 3 release gate passes.
 - It does not configure GitHub Actions or any CI runner. Every test in this crate runs through

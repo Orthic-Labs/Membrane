@@ -14,8 +14,8 @@ Hub-off access is bounded one-shot only.
 Installed install/upgrade/uninstall & Blueprint qualification is implemented by
 `scripts/qualification/install-release.ps1` plus Blueprint lifecycle runner.
 
-This seal qualifies only the signed Windows installer locally. Homebrew/WinGet
-publication and external Blueprint provisioning are outside this release.
+This seal qualifies only signed Windows installer locally. External Blueprint
+provisioning is outside this release.
 
 Retired `install/workspace` & `dist/install/workspace` Python projections are
 not release inputs.

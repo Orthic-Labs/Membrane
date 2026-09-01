@@ -32,7 +32,7 @@ Generated/runtime docs use final greenfield identities: Blueprint for repository
 ## Get started
 
 - [Getting started](product/getting-started.md)
-- [Install](product/installation/install.md), [npm](product/installation/npm.md), [OCI](product/installation/oci.md), [registry](product/installation/registry.md)
+- [Install](product/installation/install.md), [OCI](product/installation/oci.md)
 - [Uninstall](product/installation/uninstall.md)
 - [Doctor](product/troubleshooting/doctor.md)
 - [Pricing](product/support/pricing.md), [support policy](product/support/policy.md), [support matrix](product/support/matrix.md)

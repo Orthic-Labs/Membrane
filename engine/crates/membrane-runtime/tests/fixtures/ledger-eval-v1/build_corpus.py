@@ -84,7 +84,6 @@ HUB_NOTIFICATIONS = "docs/product/hub/notifications.md"
 BACKUPS = "docs/product/troubleshooting/backups.md"
 MEMORY_LIFECYCLE = "docs/product/memory/lifecycle.md"
 RESOURCES = "docs/reference/protocol/resources.md"
-INSTALL_REGISTRY = "docs/product/installation/registry.md"
 ROOTS = "docs/product/installation/roots.md"
 CHECKPOINT = "docs/product/workflows/checkpoint.md"
 SUPPORT_BOUNDARIES = "docs/product/support/boundaries.md"
@@ -161,11 +160,6 @@ add("heldout", "exact_document",
 add("heldout", "exact_document",
     "Backups troubleshooting document",
     [T(BACKUPS, "Backups")],
-    tags=["exact_document"])
-
-add("heldout", "exact_document",
-    "MCP Registry metadata document",
-    [T(INSTALL_REGISTRY, "MCP Registry metadata (MBR-907)")],
     tags=["exact_document"])
 
 # ===========================================================================
@@ -743,17 +737,6 @@ add("dev", "identifier_camel_case",
 add("dev", "identifier_camel_case",
     "authorityScope",
     [T(CHECKPOINT, "Authority scope", "`authorityScope`: `write-proposed`")],
-    tags=["identifier", "camel_case"])
-
-add("heldout", "identifier_camel_case",
-    "namespaceStatus artifactStatus",
-    [T(INSTALL_REGISTRY, "What `server.json` asserts, and how each part is checked",
-       "`server.publication.namespaceStatus` and\n   `.artifactStatus`")],
-    tags=["identifier", "camel_case"])
-
-add("heldout", "identifier_camel_case",
-    "platformReceipt",
-    [T(INSTALL_REGISTRY, "What `server.json` asserts, and how each part is checked", "`platformReceipt` field is `null` today")],
     tags=["identifier", "camel_case"])
 
 add("heldout", "identifier_camel_case",

@@ -4,7 +4,6 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  applyServerJson,
   buildMatrix,
   render,
   renderReadmeBlock,
@@ -170,7 +169,7 @@ test("README splice round-trips through the marker block and rejects a README wi
   assert.throws(() => spliceReadme("# No markers here", block), /missing the support-matrix markers/);
 });
 
-test("applyServerJson only fills a target's platformReceipt when its platform is currently qualified", () => {
+test("support matrix is independent from removed package-registry metadata", () => {
   const evidenceRoot = tmpEvidenceRoot();
   const macosReceipt = writeValidReceipt({ evidenceRoot, platform: "macos", client: "claude" });
   const matrix = buildMatrix({
@@ -180,28 +179,6 @@ test("applyServerJson only fills a target's platformReceipt when its platform is
     receiptPaths: { macos: macosReceipt, windows: join(evidenceRoot, "windows", "receipt.json") },
   });
 
-  const serverJson = {
-    nativeArtifacts: {
-      "darwin-arm64": { platformReceipt: null },
-      "darwin-x64": { platformReceipt: null },
-      "win32-arm64": { platformReceipt: null },
-      "win32-x64": { platformReceipt: null },
-    },
-  };
-  const next = applyServerJson(serverJson, matrix);
-  assert.ok(next.nativeArtifacts["darwin-arm64"].platformReceipt);
-  assert.ok(next.nativeArtifacts["darwin-x64"].platformReceipt);
-  assert.equal(next.nativeArtifacts["darwin-arm64"].platformReceipt.commit, COMMIT);
-  assert.equal(next.nativeArtifacts["win32-arm64"].platformReceipt, null);
-  assert.equal(next.nativeArtifacts["win32-x64"].platformReceipt, null);
-  // original object is untouched
-  assert.equal(serverJson.nativeArtifacts["darwin-arm64"].platformReceipt, null);
-});
-
-test("applyServerJson never fills a target when no receipt exists anywhere", () => {
-  const matrix = buildMatrix({ commit: COMMIT, releaseGeneration: GENERATION, clients: ["claude"], receiptPaths: {} });
-  const serverJson = { nativeArtifacts: { "darwin-arm64": { platformReceipt: null }, "win32-arm64": { platformReceipt: null } } };
-  const next = applyServerJson(serverJson, matrix);
-  assert.equal(next.nativeArtifacts["darwin-arm64"].platformReceipt, null);
-  assert.equal(next.nativeArtifacts["win32-arm64"].platformReceipt, null);
+  assert.equal(matrix.rows.filter((row) => row.tier === "qualified").length, 1);
+  assert.equal(matrix.rows.filter((row) => row.tier === "unavailable").length, matrix.rows.length - 1);
 });
