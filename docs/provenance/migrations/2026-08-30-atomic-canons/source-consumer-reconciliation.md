@@ -69,7 +69,7 @@ Freshness: `2026-08-30`.
 | BPT-060 | DELIVERED | `blueprint/src/lib/redaction.mjs:1-18` | `blueprint/scripts/blueprint-mcp.mjs:21,176-202,247-258`; `blueprint/src/lib/operations/support-bundle.mjs:10,46-100` → `blueprint/scripts/blueprint.mjs:3879-3900` | COMPLETE |
 | BPT-061 | DELIVERED | `blueprint/src/lib/update/manifest.mjs:11-105`; `blueprint/src/lib/update/apply.mjs:159-184` | `blueprint/scripts/cli/commands.mjs:341-360` | COMPLETE |
 | BPT-062 | DELIVERED | `blueprint/src/lib/update/rollback.mjs:13-55` | `blueprint/scripts/cli/commands.mjs:371-376` | COMPLETE |
-| BPT-063 | DELIVERED | `blueprint/src/lib/update/channel.mjs:11-24` | `blueprint/scripts/cli/commands.mjs:341-363` | COMPLETE |
+| BPT-063 | DELIVERED | `blueprint/src/lib/update/channel.mjs:13-40` | `blueprint/scripts/cli/commands.mjs:341-369` | COMPLETE |
 | BPT-064 | DELIVERED | `blueprint/src/lib/http-server.mjs:54-58` | `blueprint/src/lib/explorer/index.mjs:4-6` → `blueprint/scripts/cli/commands.mjs:143-158` | COMPLETE |
 | BPT-068 | DELIVERED | `blueprint/src/lib/http-server.mjs:24,38-39,58` | `blueprint/src/lib/explorer/index.mjs:4-6` → `blueprint/scripts/cli/commands.mjs:143-158` | COMPLETE |
 | BPT-069 | DELIVERED | `blueprint/src/lib/http-server.mjs:33-35` | `blueprint/src/lib/explorer/index.mjs:4-6` → `blueprint/scripts/cli/commands.mjs:143-158` | COMPLETE |
