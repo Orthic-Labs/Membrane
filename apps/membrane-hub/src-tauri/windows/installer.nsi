@@ -704,10 +704,12 @@ Section Install
     Goto membrane_install_failed
   ${EndIf}
   StrCpy $R1 "activate-junction"
-  nsExec::ExecToStack '$"$SYSDIR\cmd.exe$" /d /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$"'
-  Pop $R0
-  Pop $R2
-  ${If} $R0 != 0
+  ; ExecWait is the launch path proven on the runner (run 33617483577 reached
+  ; mklink through it); nsExec::ExecToStack returned "error" without launching
+  ; (run 33620223701). cmd.exe redirects mklink's own output into the step log.
+  CreateDirectory "$INSTDIR\logs"
+  ExecWait '$"$SYSDIR\cmd.exe$" /d /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$" >> $"$INSTDIR\logs\install-${VERSION}.log$" 2>&1' $R0
+  ${If} $R0 <> 0
     Goto membrane_install_failed
   ${EndIf}
 
