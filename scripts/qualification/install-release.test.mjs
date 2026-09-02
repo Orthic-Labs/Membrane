@@ -59,7 +59,9 @@ test("qualification proves current -> transition -> upgrade or repair state cont
   assert.match(lower, /downgrade\s*=\s*\$rollback/);
   assert.match(lower, /transitioncontract\s*=\s*'signed-version-liveness-durable-state-v1'/);
   assert.match(lower, /transitioncontract\s*=\s*'first-stable-layout-repair-v1'/);
-  assert.match(lower, /same-version repair did not create & switch to a unique version root/);
+  assert.match(lower, /same-version repair did not reuse the version root/);
+  assert.match(lower, /invoke-activation \$installroot/);
+  assert.match(lower, /invoke-activationdryrun \$installroot/);
   assert.match(lower, /durablestate.*preserved/);
   assert.match(lower, /upgradecontract\s*=\s*'full-native-upgrade-uninstall-v1'/);
   for (const field of ["installRootRemoved", "processesRemoved", "shortcutsRemoved", "registryRemoved", "durableStatePreserved"]) assert.ok(source.includes(field), field);
@@ -151,9 +153,11 @@ test("installer failure collects the NSIS install-step log instead of extracting
     "installer-failure.log",
     "installer-failure.json",
     "membrane.installer-failure.v1",
-    "install-*.log",
+    "install-$($Version.TrimStart('v')).log",
     "nsisExitCode = $ExitCode",
   ]) assert.ok(source.includes(term), term);
+  // The evidence is bound to the exact version under test, never the newest log.
+  assert.doesNotMatch(source, /Filter 'install-\*\.log'/);
   assert.match(source, /Join-Path \$env:LOCALAPPDATA 'Orthic Labs\\Membrane\\logs'/);
   assert.doesNotMatch(lower, /7z\.exe|7-zip|expand the installer|-releaseroot `"\$releaseroot`"/);
   assert.match(lower, /if \(\$process\.exitcode -ne 0\) \{/);
