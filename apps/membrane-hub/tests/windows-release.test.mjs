@@ -81,8 +81,9 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.doesNotMatch(nsisTemplate, /powershell(\.exe)?/i);
   assert.doesNotMatch(nsisTemplate, /Expand-Archive/);
   assert.doesNotMatch(nsisTemplate, /CopyFiles|PLUGINSDIR\\release/);
-  assert.match(nsisTemplate, /SetOutPath "\$INSTDIR"\s*\n\s*\{\{#each resources_dirs\}\}/);
-  assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\current"/);
+  assert.match(nsisTemplate, /SetOutPath "\$INSTDIR"\s*\n\s*ClearErrors\s*\n\s*\{\{#each resources_dirs\}\}/);
+  assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\\.current-next"/);
+  assert.match(nsisTemplate, /Rename "\$INSTDIR\\\.current-next" "\$INSTDIR\\current"/);
   assert.doesNotMatch(nsisTemplate, /\$"/, 'NSIS escapes a quote as $\\"; $" is not an escape and breaks every ExecWait built with it');
   assert.equal((nsisTemplate.match(/membrane\.exe" activate --install-root/g) ?? []).length, 1);
   assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*membrane\.exe" activate/);

@@ -279,12 +279,17 @@ Section Install
   ;    MAX_PATH doubling. Same-version repair overwrites in place.
   StrCpy $InstallStep "extract-version-tree"
   SetOutPath "$INSTDIR"
+  ClearErrors
   {{#each resources_dirs}}
     CreateDirectory "$INSTDIR\\{{this}}"
   {{/each}}
   {{#each resources}}
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
   {{/each}}
+  ${If} ${Errors}
+    StrCpy $R0 1
+    Goto install_failed
+  ${EndIf}
   ${Log} "extract-version-tree ok"
 
   ; Every executable the product runs from this version must be present.
@@ -299,32 +304,59 @@ Section Install
   ${EndIf}
   ${Log} "verify-version-tree ok"
 
-  ; 2. Point the stable junction. RMDir removes a junction or an empty
-  ;    directory through RemoveDirectory without touching its target; only a
-  ;    populated real directory (never a junction) reaches the recursive form.
-  StrCpy $InstallStep "remove-old-current"
-  ${If} ${FileExists} "$INSTDIR\current\*.*"
-    RMDir "$INSTDIR\current"
+  ; 2. Point the stable junction atomically. The new junction is built beside
+  ;    the live one as .current-next; only when it exists and resolves is the
+  ;    live one renamed aside and the new one renamed into place, so a failed
+  ;    mklink leaves the working install untouched. Junctions are removed only
+  ;    with the non-recursive RMDir (RemoveDirectory drops the reparse point
+  ;    and never enters its target); nothing here recurses into current.
+  StrCpy $InstallStep "stage-next-junction"
+  ${If} ${FileExists} "$INSTDIR\.current-next\*.*"
+    RMDir "$INSTDIR\.current-next"
   ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\current\*.*"
-    RMDir /r "$INSTDIR\current"
-  ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\current\*.*"
+  ${If} ${FileExists} "$INSTDIR\.current-next\*.*"
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
-  ${Log} "remove-old-current ok"
-
-  StrCpy $InstallStep "create-current-junction"
-  ExecWait '"$SYSDIR\cmd.exe" /d /c mklink /J "$INSTDIR\current" "$INSTDIR\versions\${VERSION}" >> "${INSTALLLOG}" 2>&1' $R0
+  ExecWait '"$SYSDIR\cmd.exe" /d /c mklink /J "$INSTDIR\.current-next" "$INSTDIR\versions\${VERSION}" >> "${INSTALLLOG}" 2>&1' $R0
   ${If} $R0 <> 0
+    Goto install_failed
+  ${EndIf}
+  ${IfNot} ${FileExists} "$INSTDIR\.current-next\membrane.exe"
+    StrCpy $R0 1
+    Goto install_failed
+  ${EndIf}
+  ${Log} "stage-next-junction ok"
+
+  StrCpy $InstallStep "cutover-current"
+  ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+    RMDir "$INSTDIR\.current-previous"
+  ${EndIf}
+  ClearErrors
+  ${If} ${FileExists} "$INSTDIR\current\*.*"
+    Rename "$INSTDIR\current" "$INSTDIR\.current-previous"
+    ${If} ${Errors}
+      StrCpy $R0 1
+      Goto install_failed
+    ${EndIf}
+  ${EndIf}
+  Rename "$INSTDIR\.current-next" "$INSTDIR\current"
+  ${If} ${Errors}
+    ; Put the previous junction back before failing.
+    ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+      Rename "$INSTDIR\.current-previous" "$INSTDIR\current"
+    ${EndIf}
+    StrCpy $R0 1
     Goto install_failed
   ${EndIf}
   ${IfNot} ${FileExists} "$INSTDIR\current\membrane.exe"
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
-  ${Log} "create-current-junction ok"
+  ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+    RMDir "$INSTDIR\.current-previous"
+  ${EndIf}
+  ${Log} "cutover-current ok"
 
   ; 3. Registration: uninstall entry, Start Menu shortcut, login launch.
   StrCpy $InstallStep "register"
@@ -369,7 +401,7 @@ Section Install
   ;    (qualification runs `membrane activate` itself).
   ${IfNot} ${Silent}
     DetailPrint "Activating Membrane"
-    nsExec::ExecToStack '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
+    nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'
     Pop $R0
     Pop $R2
     ClearErrors
@@ -432,6 +464,17 @@ Section Uninstall
   ${EndIf}
   ${If} ${FileExists} "$INSTDIR\current\*.*"
     Abort "Membrane uninstall stopped: $INSTDIR\current could not be removed as a junction."
+  ${EndIf}
+  ; Staging junctions from an interrupted cutover, same non-recursive removal.
+  ${If} ${FileExists} "$INSTDIR\.current-next\*.*"
+    RMDir "$INSTDIR\.current-next"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\.current-previous\*.*"
+    RMDir "$INSTDIR\.current-previous"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\.current-next\*.*"
+  ${OrIf} ${FileExists} "$INSTDIR\.current-previous\*.*"
+    Abort "Membrane uninstall stopped: a staging junction under $INSTDIR could not be removed."
   ${EndIf}
   RMDir /r "$INSTDIR\versions"
   Delete "$INSTDIR\integration-journal.json"

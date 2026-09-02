@@ -41,6 +41,7 @@ $script:InitialInstallRoot = $null
 $script:InitialEvidence = $null
 $script:UpgradeEvidence = $null
 $script:ActivationDryRun = $null
+$script:Activation = $null
 $script:PreviousMembraneWorkspaceConfig = $null
 $script:WorkspaceConfigPath = $null
 $script:WorkspaceConfigInitialSha256 = $null
@@ -158,6 +159,59 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
   Remove-Variable bound -Scope Script -ErrorAction SilentlyContinue
 }
 
+function Save-RuntimeLogEvidence([string]$Label) {
+  # Copy every log the installed product can have written so a health failure
+  # carries the runtime's own words, not only the probe's.
+  $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
+  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  $target = Join-Path $evidenceRoot "runtime-logs-$Label"
+  try {
+    New-Item -ItemType Directory -Path $target -Force -ErrorAction Stop | Out-Null
+    $sources = @(
+      (Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\logs'),
+      (Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\log'),
+      (Join-Path $env:LOCALAPPDATA 'Membrane\logs'),
+      (Join-Path $env:LOCALAPPDATA 'Membrane\log'),
+      (Join-Path $env:APPDATA 'Orthic Labs\Membrane\logs'),
+      (Join-Path $env:APPDATA 'Membrane\logs')
+    )
+    if ($script:QualificationWorkspace) { $sources += (Join-Path $script:QualificationWorkspace 'logs') }
+    foreach ($source in $sources) {
+      if (Test-Path -LiteralPath $source -PathType Container) {
+        $dest = Join-Path $target (($source -replace '[:\\]+', '_'))
+        Copy-Item -LiteralPath $source -Destination $dest -Recurse -Force -ErrorAction SilentlyContinue
+      }
+    }
+    $processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)^(membrane|cortex|node)' } | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
+    $processes | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $target 'processes.json') -Encoding utf8
+  } catch {
+    try { "could not collect runtime logs: $($_.Exception.Message)" | Set-Content -LiteralPath (Join-Path $target 'collection-error.txt') -Encoding utf8 } catch {}
+  }
+  return $target
+}
+
+function Invoke-Activation([string]$Root) {
+  # The real activation a customer install performs: reconciles every client
+  # config, registers PATH, launches the resident tray and waits for health.
+  # Output is evidence either way; a non-zero exit fails qualification with it.
+  $membrane = Join-Path $Root 'membrane.exe'
+  Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
+  $output = & $membrane activate --install-root $Root --timeout-ms 90000 2>&1 | Out-String
+  $exit = $LASTEXITCODE
+  $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
+  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  try {
+    New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
+    $output | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation.log') -Encoding utf8
+  } catch {}
+  if ($exit -ne 0) { [void](Save-RuntimeLogEvidence 'activation') }
+  Require ($exit -eq 0) "membrane activate exited $exit`n$output"
+  $parsed = $null
+  try { $parsed = $output | ConvertFrom-Json } catch { throw "membrane activate did not emit JSON:`n$output" }
+  Require ([string]$parsed.runtimeOrigin -eq 'installed') "activation reported runtimeOrigin $($parsed.runtimeOrigin)"
+  return [ordered]@{ exitCode = $exit; runtimeOrigin = [string]$parsed.runtimeOrigin; service = $parsed.service; clients = @($parsed.clients | ForEach-Object { [ordered]@{ client = $_.client; before = $_.before; after = $_.after; changed = $_.changed } }) }
+}
+
 function Invoke-ActivationDryRun([string]$Root) {
   # `membrane activate --dry-run` validates the stable root, the version
   # pointer and every client's config without launching or mutating anything.
@@ -193,9 +247,10 @@ function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version,
     New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
     $logsDir = Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\logs'
     $sourceLog = $null
-    if (Test-Path -LiteralPath $logsDir -PathType Container) {
-      $sourceLog = Get-ChildItem -LiteralPath $logsDir -Filter 'install-*.log' -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    # Bind to the exact version under test; never attach another version's log.
+    $exactLog = Join-Path $logsDir "install-$($Version.TrimStart('v')).log"
+    if (Test-Path -LiteralPath $exactLog -PathType Leaf) {
+      $sourceLog = Get-Item -LiteralPath $exactLog
     }
     if ($sourceLog) {
       Copy-Item -LiteralPath $sourceLog.FullName -Destination $logPath -Force
@@ -1101,12 +1156,20 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
   $hub = Get-InstalledExecutable $InstallRoot
   $installedVersion = Get-ArtifactVersion $hub "installed Hub during $Phase"
   Require ($installedVersion -eq $ExpectedVersion) "installed Hub version $installedVersion does not match expected $ExpectedVersion during $Phase"
-  $previousPath = $env:PATH
-  try {
-    $env:PATH = $script:SafePath
-    $script:HubProcess = Start-Process -FilePath $hub -WorkingDirectory $InstallRoot -PassThru
-  } finally {
-    $env:PATH = $previousPath
+  # A real `membrane activate` (Invoke-Activation) launches the resident tray
+  # exactly as a customer install does. Adopt that process when it is running
+  # from the installed root; start one only when nothing is resident.
+  $resident = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath -ieq $hub) })
+  if ($resident.Count -ge 1) {
+    $script:HubProcess = Get-Process -Id ([int]$resident[0].ProcessId)
+  } else {
+    $previousPath = $env:PATH
+    try {
+      $env:PATH = $script:SafePath
+      $script:HubProcess = Start-Process -FilePath $hub -WorkingDirectory $InstallRoot -PassThru
+    } finally {
+      $env:PATH = $previousPath
+    }
   }
   $port = Get-RuntimePort $InstallRoot
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -1118,7 +1181,10 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
   Require ($null -ne $script:HubProcess -and -not $script:HubProcess.HasExited) "Hub exited during $Phase"
-  try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5 } catch { throw "Hub health unavailable during $Phase" }
+  try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5 } catch {
+    $logs = Save-RuntimeLogEvidence "hub-health-$($Phase -replace '[^a-z0-9]+','-')"
+    throw "Hub health unavailable during $Phase (port $port; runtime logs copied to $logs)"
+  }
   Require ($health.ok -eq $true) "Hub /health was not ok during $Phase"
   Require ($health.serviceId -eq 'membrane-hub') "Hub native service identity is invalid during $Phase"
   foreach ($name in @('installationId', 'cortexStoreId', 'releaseGeneration')) {
@@ -1341,6 +1407,9 @@ try {
   # product's own activation validation, with its output on record, before the
   # Hub is started.
   $script:ActivationDryRun = Invoke-ActivationDryRun $InstallRoot
+  # Then the real activation a customer's install performs; it launches the
+  # resident tray, which Start-AndVerifyHub adopts.
+  $script:Activation = Invoke-Activation $InstallRoot
   $first = Start-AndVerifyHub 'initial install' $currentVersion $currentGeneration '' -Full
   $script:InitialEvidence = $first
   $script:WorkspaceConfigInitialSha256 = Assert-WorkspaceConfigMigrated $script:WorkspaceConfigPath 'initial startup'
@@ -1435,7 +1504,8 @@ try {
       timestampThumbprint = [string]$installerSignature.TimeStamperCertificate.Thumbprint
     }
     previousArtifact = $previousArtifactEvidence
-    activation = $script:ActivationDryRun
+    activationDryRun = $script:ActivationDryRun
+    activation = $script:Activation
     inputs = [ordered]@{
       releaseManifest = [ordered]@{ path = $manifestPath; sha256 = Hash-File $manifestPath }
       sbom = [ordered]@{ path = $sbomPath; sha256 = Hash-File $sbomPath }
