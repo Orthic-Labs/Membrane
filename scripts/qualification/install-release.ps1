@@ -196,6 +196,7 @@ function Save-RuntimeLogEvidence([string]$Label) {
 }
 
 function Invoke-Activation([string]$Root) {
+  Write-Host "[qualification] Invoke-Activation $(Get-Date -Format 'HH:mm:ss')"
   # The real activation a customer install performs: reconciles every client
   # config, registers PATH, launches the resident tray and waits for health.
   # Output is evidence either way; a non-zero exit fails qualification with it.
@@ -223,6 +224,7 @@ function Invoke-Activation([string]$Root) {
 }
 
 function Invoke-ActivationDryRun([string]$Root) {
+  Write-Host "[qualification] Invoke-ActivationDryRun $(Get-Date -Format 'HH:mm:ss')"
   # `membrane activate --dry-run` validates the stable root, the version
   # pointer and every client's config without launching or mutating anything.
   # Its full output is kept as evidence either way; a non-zero exit fails
@@ -284,6 +286,7 @@ function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version,
 }
 
 function Invoke-Installer([string]$Path) {
+  Write-Host "[qualification] Invoke-Installer $(Get-Date -Format 'HH:mm:ss')"
   $resolved = Resolve-File $Path 'installer'
   $expectedVersion = Get-ArtifactVersion $resolved 'installer'
   # Product root is fixed by installer; qualification must not override it.
@@ -387,6 +390,7 @@ function Invoke-BlueprintPipeUntilReady([string]$Endpoint, [string]$Method, [has
 }
 
 function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
+  Write-Host "[qualification] Assert-BlueprintResident $(Get-Date -Format 'HH:mm:ss')"
   $typedStates = @('root_not_enrolled', 'not_configured', 'graph_missing', 'missing_graph', 'stale_blocked', 'generation_mismatch')
   $endpoint = Get-BlueprintEndpoint; $status = $null; $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
@@ -424,6 +428,7 @@ function Assert-BlueprintResident([string]$Root, [string]$WorkspaceRoot) {
 }
 
 function Invoke-BlueprintOneShot([string]$Root, [string]$WorkspaceRoot) {
+  Write-Host "[qualification] Invoke-BlueprintOneShot $(Get-Date -Format 'HH:mm:ss')"
   $launcher = Join-Path $Root 'runtime\blueprint\bin\blueprint.cmd'; Require (Test-Path -LiteralPath $launcher -PathType Leaf) 'installed Blueprint launcher is missing'
   $psi = [Diagnostics.ProcessStartInfo]::new(); $psi.FileName = $env:ComSpec; $psi.WorkingDirectory = Split-Path -Parent $launcher; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.CreateNoWindow = $true
   $psi.Arguments = '/d /s /c ""{0}" status --json --root "{1}""' -f $launcher.Replace('"', '""'), $WorkspaceRoot.Replace('"', '""')
@@ -511,6 +516,7 @@ namespace MembraneQualification {
 }
 
 function Assert-NativeSteadyState([int]$ProcessId, [string]$BlueprintNode, [string]$BlueprintNodeSha256) {
+  Write-Host "[qualification] Assert-NativeSteadyState $(Get-Date -Format 'HH:mm:ss')"
   $latest = @()
   $rendererPath = $null
   # Rust Hub publishes health as soon as its service child handshakes, while
@@ -677,6 +683,7 @@ function Find-TrayElement {
 }
 
 function Assert-TrayAndPopup([int]$ProcessId) {
+  Write-Host "[qualification] Assert-TrayAndPopup $(Get-Date -Format 'HH:mm:ss')"
   Add-NativeWindowProbe
   $shell = [MembraneQualification.NativeWindowProbe]::Find('Shell_TrayWnd', $null)
   Require ($shell -ne [IntPtr]::Zero) 'Windows notification area is unavailable'
@@ -705,6 +712,7 @@ function Assert-TrayAndPopup([int]$ProcessId) {
 }
 
 function Assert-Dashboard([string]$HubExecutable, [int]$ProcessId) {
+  Write-Host "[qualification] Assert-Dashboard $(Get-Date -Format 'HH:mm:ss')"
   $previousPath = $env:PATH
   try {
     $env:PATH = $script:SafePath
@@ -724,6 +732,7 @@ function Assert-Dashboard([string]$HubExecutable, [int]$ProcessId) {
 }
 
 function Assert-RendererWindows([int]$ProcessId) {
+  Write-Host "[qualification] Assert-RendererWindows $(Get-Date -Format 'HH:mm:ss')"
   $windows = @(Get-WindowRows $ProcessId)
   $hubWindows = @($windows | Where-Object { $_.Title -match '(?i)^Membrane Hub' })
   Require ($hubWindows.Count -ge 2) 'installed Hub did not create both embedded dashboard and popup renderer windows'
@@ -734,6 +743,7 @@ function Assert-RendererWindows([int]$ProcessId) {
 }
 
 function Assert-NativeHostCutover([string]$Root, [string]$HubExecutable) {
+  Write-Host "[qualification] Assert-NativeHostCutover $(Get-Date -Format 'HH:mm:ss')"
   $hubPublisher = Assert-SignedFile $HubExecutable 'installed Hub'
   $blueprintRoot = Join-Path $Root 'runtime\blueprint'
   $blueprintNode = Join-Path $blueprintRoot 'lib\node.exe'
@@ -846,6 +856,7 @@ function Write-NativeText([string]$Path, [string]$Text) {
 }
 
 function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string]$Root, [string]$Database) {
+  Write-Host "[qualification] Invoke-InstalledAdaptQualification $(Get-Date -Format 'HH:mm:ss')"
   # This runner intentionally creates its input under %TEMP%, never under this
   # checkout. The only executable involved is the installed native sidecar;
   # source Adapt, Python, Pi, OpenCode, and Node are absent from PATH.
@@ -963,6 +974,7 @@ function Invoke-InstalledAdaptQualification([string]$MembraneExecutable, [string
 }
 
 function Invoke-NativeMcp([string]$Executable, [switch]$ExerciseAll, [hashtable]$AdditionalCalls) {
+  Write-Host "[qualification] Invoke-NativeMcp $(Get-Date -Format 'HH:mm:ss')"
   $caller = [ordered]@{
     root = $script:QualificationWorkspace
     repositoryId = 'windows-qualification'
@@ -1072,12 +1084,14 @@ function Invoke-HubMcpCall([string]$Name, $Payload) {
 }
 
 function Get-DoctorPaths([string]$MembraneExecutable) {
+  Write-Host "[qualification] Get-DoctorPaths $(Get-Date -Format 'HH:mm:ss')"
   $result = Invoke-NativeProcess $MembraneExecutable 'cli doctor paths'
   try { return ($result.Stdout | ConvertFrom-Json) }
   catch { throw "native doctor paths emitted invalid JSON: $($result.Stdout)" }
 }
 
 function Save-State([string]$MembraneExecutable) {
+  Write-Host "[qualification] Save-State $(Get-Date -Format 'HH:mm:ss')"
   $contextId = "windows-qualification-$([guid]::NewGuid().ToString('N'))"
   $payload = [ordered]@{
     repository = 'windows-qualification'; caller = [ordered]@{ root = $script:QualificationWorkspace; repositoryId = 'windows-qualification'; scopeId = 'windows-qualification' }
@@ -1090,6 +1104,7 @@ function Save-State([string]$MembraneExecutable) {
 }
 
 function Assert-State([string]$MembraneExecutable, [string]$Phase) {
+  Write-Host "[qualification] Assert-State $(Get-Date -Format 'HH:mm:ss')"
   $payload = [ordered]@{
     repository = 'windows-qualification'; caller = [ordered]@{ root = $script:QualificationWorkspace; repositoryId = 'windows-qualification'; scopeId = 'windows-qualification' }
     operation = 'load'; sessionId = 'qualification-session'; taskId = 'qualification-task'
@@ -1150,6 +1165,7 @@ function Initialize-QualificationRepository([string]$WorkspaceRoot) {
 }
 
 function Assert-WorkspaceConfigMigrated([string]$Path, [string]$Phase, [string]$ExpectedSha256 = '') {
+  Write-Host "[qualification] Assert-WorkspaceConfigMigrated $(Get-Date -Format 'HH:mm:ss')"
   Require (Test-Path -LiteralPath $Path -PathType Leaf) "workspace config was not written during $Phase"
   $config = Read-JsonFile $Path "workspace config during $Phase"
   Require ([int]$config.schemaVersion -eq 3) "workspace config did not migrate to strict v3 during $Phase"
@@ -1163,6 +1179,7 @@ function Assert-WorkspaceConfigMigrated([string]$Path, [string]$Phase, [string]$
 }
 
 function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$ExpectedGeneration, [string]$ForbiddenGeneration, [switch]$Full) {
+  Write-Host "[qualification] Start-AndVerifyHub $(Get-Date -Format 'HH:mm:ss')"
   $hub = Get-InstalledExecutable $InstallRoot
   $installedVersion = Get-ArtifactVersion $hub "installed Hub during $Phase"
   Require ($installedVersion -eq $ExpectedVersion) "installed Hub version $installedVersion does not match expected $ExpectedVersion during $Phase"
@@ -1239,6 +1256,7 @@ function Start-AndVerifyHub([string]$Phase, [string]$ExpectedVersion, [string]$E
 }
 
 function Start-AndVerifyPreviousHub([string]$ExpectedVersion) {
+  Write-Host "[qualification] Start-AndVerifyPreviousHub $(Get-Date -Format 'HH:mm:ss')"
   $phase = 'downgrade'
   $hub = Get-InstalledExecutable $InstallRoot
   $installedVersion = Get-ArtifactVersion $hub "installed Hub during $phase"
@@ -1317,6 +1335,7 @@ function Stop-QualificationHub {
 }
 
 function Assert-UninstallResidue([string]$Root, $Doctor, [string]$DataMarker, [string]$DataHash) {
+  Write-Host "[qualification] Assert-UninstallResidue $(Get-Date -Format 'HH:mm:ss')"
   $productRoot = Split-Path -Parent $Root
   $files = @(); if (Test-Path -LiteralPath $Root) { $files = @(Get-ChildItem -LiteralPath $Root -File -Recurse -Force -ErrorAction Stop) }
   Require ($files.Count -eq 0) "uninstall left files under install root: $($files.FullName -join ', ')"
