@@ -28,6 +28,10 @@ Excluded: generic entity ontology, alias/master-data registry, Neo4j/Kuzu adopti
 
 ## Evidence
 
+| Capability | State | Exact source | Exact consumer | Residual |
+|---|---|---|---|---|
+| MEM-013 | DELIVERED | `engine/crates/membrane-mcp/src/tools.rs:114-156` | `engine/crates/membrane-mcp/src/jsonrpc.rs:14-16` | COMPLETE |
+
 - `engine/crates/cortex-core/src/graph.rs`: arbitrary relation strings, allowed dangling edges, one-hop neighbors/search.
 - `engine/crates/membrane-runtime/src/store.rs`: persisted wikilink targets & bounded one-hop recall augmentation.
 - `engine/crates/membrane-mcp/src/tools.rs` + `jsonrpc.rs`: negotiated default-one-tool discovery consumed by `tools/list`; generic descriptions remain.
