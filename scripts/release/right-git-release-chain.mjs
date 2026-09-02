@@ -25,13 +25,6 @@ export const REQUIRED_RELEASE_STAGES = [
   { stage: "candidate", platform: "macos", architecture: "arm64" },
   { stage: "windows-sign", platform: "windows", architecture: "x86_64" },
   { stage: "macos-sign", platform: "macos", architecture: "arm64" },
-  // installed-qualification is the one non-matrixed stage in the chain, so the
-  // generator emits no RIGHT_GIT_RELEASE_PLATFORM/ARCHITECTURE for it and its
-  // summary records both as null. platform/architecture are matrix-scoped
-  // facts; requiring them here would make this stage unsatisfiable. That the
-  // qualification is a Windows one is proven by the artifacts it verifies (the
-  // *-setup.exe and its signed Windows release manifest), not by this key.
-  { stage: "installed-qualification" },
 ];
 
 function run(command, args, cwd = repo, env = process.env) {
@@ -239,8 +232,6 @@ function verifyEvidence() {
   }
   const installer = onlyInstaller(finalizedWindows);
   const dmg = onlyMacDmg(finalizedMac);
-  const evidenceJsonPath = join(qualification, "evidence.json");
-  if (!existsSync(evidenceJsonPath)) throw new Error("release chain evidence-verification requires installed qualification evidence.json");
   const manifestPath = join(finalizedWindows, "release-manifest.json");
   if (!existsSync(manifestPath)) throw new Error("release chain evidence-verification requires the finalized Windows release manifest");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -262,7 +253,6 @@ function verifyEvidence() {
     macosDmg: { name: dmg.split(/[\\/]/).pop(), sha256: dmgSha256 },
     windowsSignature: manifest.signing,
     macosNotarization: { notarized: finalization.notarized, stapled: finalization.stapled },
-    installedQualification: JSON.parse(readFileSync(evidenceJsonPath, "utf8")),
     verifiedAt: new Date().toISOString(),
   };
   writeFileSync(join(stageSummaryRoot, "evidence-verification.json"), `${JSON.stringify(result, null, 2)}\n`);

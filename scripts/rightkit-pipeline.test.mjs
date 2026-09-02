@@ -95,7 +95,7 @@ test("macOS release is signed & notarized through RightRelease before stapling",
   assert.match(finalizeMac, /"spctl"/);
   assert.match(releaseChain, /release:build:mac"\], repo, \{ \.\.\.process\.env, MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1" \}/);
   const workflow = read(".github/workflows/release-candidate.yml");
-  const macosSign = workflow.slice(workflow.indexOf("  macos-sign:"), workflow.indexOf("  installed-qualification:"));
+  const macosSign = workflow.slice(workflow.indexOf("\n  macos-sign:"), workflow.indexOf("\n  publish:"));
   assert.match(macosSign, /git checkout -B main "\$SOURCE_REVISION"/);
   assert.match(macosSign, /git symbolic-ref --short HEAD/);
 });
@@ -253,7 +253,10 @@ test("required release stages match the RightKit generator's RIGHT_GIT_STAGE val
 	assert.match(chain, /\{ stage: "candidate", platform: "macos", architecture: "arm64" \}/);
 	assert.match(chain, /\{ stage: "windows-sign", platform: "windows", architecture: "x86_64" \}/);
 	assert.match(chain, /\{ stage: "macos-sign", platform: "macos", architecture: "arm64" \}/);
-	assert.match(chain, /\{ stage: "installed-qualification" \}/);
+	// Installed qualification was removed on 2026-09-02: it needs a desktop the
+	// hosted runner does not have, and the signed build is installed and tested
+	// on a real machine instead. Publish is gated on both signings.
+	assert.doesNotMatch(chain, /stage: "installed-qualification"/);
 	assert.doesNotMatch(chain, /stage: "finalize-windows"/);
 	assert.doesNotMatch(chain, /stage: "finalize-macos"/);
 	assert.doesNotMatch(chain, /stage: "qualify-installed"/);
@@ -370,11 +373,10 @@ test("each protected finalizer materializes Hub dependencies from Hub lockfile",
 
 // The render-side tests in @rightkit/git prove the workflow is internally
 // consistent; they cannot see what THIS repo's evidence verifier demands of it.
-// This is the seam that broke: the generator emits no
-// RIGHT_GIT_RELEASE_PLATFORM/ARCHITECTURE for the non-matrixed
-// installed-qualification stage, so a required entry keyed on platform there is
-// permanently unsatisfiable and publication fails after every expensive stage
-// has already passed. Assert the two sides agree, stage by stage.
+// This is the seam that broke: a required stage entry keyed on a platform the
+// generator never emits is permanently unsatisfiable, and publication fails
+// after every expensive stage has already passed. Assert the two sides agree,
+// stage by stage.
 test("every REQUIRED_RELEASE_STAGES entry is satisfiable by the generated release-candidate workflow", () => {
   const workflow = read(".github/workflows/release-candidate.yml");
   // One block per stage-summary step: the env keys between `RIGHT_GIT_STAGE:`
