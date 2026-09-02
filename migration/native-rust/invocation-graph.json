@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "a1a9c0216fb522668d482d1a598da1107061c967",
- "generatedAt": "2026-09-02T21:02:16.225Z",
+ "baselineCommit": "9f4895a39fd9715cc47185212b52fcbe6f78a4c1",
+ "generatedAt": "2026-09-02T22:19:37.509Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -40970,6 +40970,12 @@
   {
    "from": "apps/membrane-hub/scripts/release-build-portable-windows.mjs",
    "reference": "git",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
+  },
+  {
+   "from": "apps/membrane-hub/scripts/release-build-windows.mjs",
+   "reference": "cargo",
    "kind": "spawn",
    "reason": "bare executable name (PATH-resolved)"
   },

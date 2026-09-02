@@ -56,3 +56,17 @@ docs/research/**/*.pdf
 # Local diagnostic scratch: never publishable
 .tmp-*
 Microsoft/
+
+# Release evidence is a hash-bound manifest plus small receipts. The artifacts
+# it attests to live in the GitHub release and the CI run, never in git: a
+# committed installer cost this repository 50 MB in every clone.
+docs/evidence/releases/**/*.exe
+docs/evidence/releases/**/*.exe.sig
+docs/evidence/releases/**/*.dmg
+docs/evidence/releases/**/*.zip
+docs/evidence/releases/**/windows-installed-qualification.json
+
+# Bakeoff raw per-query dumps. The decision reports under
+# docs/reference/benchmarks/ and each lane's NOTES.md carry the findings.
+engine/vector-bakeoff/**/simd.json
+!engine/vector-bakeoff/**/smoke/simd.json

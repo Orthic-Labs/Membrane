@@ -71,3 +71,12 @@ variants remain fallback evidence, not dispatch winners on this host.
 
 Raw per-query bundles are under `<cell>/simd.json`; immutable hashes & fixture receipts
 are in `receipt.json`.
+
+## Raw dumps removed
+
+The per-query `simd.json` dumps for every lane except `smoke/` were removed on
+2026-09-03: 31 MB of raw timings that nothing reads and no report hash-pins.
+The findings they supported live in
+`docs/reference/benchmarks/vector-backend/2026-08-02-rust-vector-optimization-bakeoff-2-report.md`
+and in `receipt.json` beside this file. Re-running the harness regenerates
+them; `.gitignore` keeps them out of git.
