@@ -151,7 +151,7 @@ test("installer failure captures extracted NSIS payload evidence instead of a ba
     "installer-failure.log",
     "installer-failure.json",
     "7z.exe",
-    "-Version `\"$Version`\"",
+    "-Version `\"$payloadVersion`\"",
     "-ReleaseRoot `\"$releaseRoot`\"",
   ]) assert.ok(source.includes(term), term);
   assert.match(lower, /if \(\$process\.exitcode -ne 0\) \{/);
