@@ -698,6 +698,12 @@ Section Install
   ${If} ${FileExists} "$INSTDIR\current\*.*"
     RMDir "$INSTDIR\current"
   ${EndIf}
+  ; Plain RMDir always removes a junction or an empty directory. Reaching this
+  ; point means current is a real, non-empty directory left by an older layout,
+  ; so recursive removal cannot touch any versions\* target.
+  ${If} ${FileExists} "$INSTDIR\current\*.*"
+    RMDir /r "$INSTDIR\current"
+  ${EndIf}
   ${If} ${FileExists} "$INSTDIR\current\*.*"
     StrCpy $R0 1
     StrCpy $R2 "prior current still present after RMDir"
