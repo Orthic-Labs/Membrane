@@ -4,6 +4,7 @@ mod instance;
 mod ipc;
 mod placement;
 mod process;
+mod renderer;
 mod snapshot;
 mod startup;
 mod supervisor;
@@ -90,7 +91,25 @@ fn main() -> Result<(), slint::PlatformError> {
         .unwrap_or(tray::Status::Starting);
     let tray_icon = tray::create_tray(tray_status)
         .map_err(|error| slint::PlatformError::Other(error.to_string()))?;
-    let popover = TrayPopover::new()?;
+
+    // Pick the renderer before the first window exists: keep the GPU renderer on
+    // real desktops, use Slint's software renderer on GPU-less hosts.
+    let mut selected_renderer = renderer::install();
+    let popover = match TrayPopover::new() {
+        Ok(popover) => popover,
+        Err(error)
+            if selected_renderer == renderer::Renderer::Default
+                && renderer::looks_like_gpu_failure(&error.to_string()) =>
+        {
+            eprintln!(
+                "membrane-tray: default renderer failed to initialize ({error}); retrying with software renderer"
+            );
+            selected_renderer = renderer::force_software();
+            TrayPopover::new()?
+        }
+        Err(error) => return Err(error),
+    };
+    let _ = selected_renderer;
     popover.hide()?;
 
     let resolved_workspace = workspace::resolve();

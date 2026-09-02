@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T15:40:34.798Z",
+ "generatedAt": "2026-09-02T15:57:29.750Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1216,
+  "files": 1217,
   "rows": 55,
   "byRuntime": {
    "python": 7,
@@ -2276,13 +2276,14 @@
     "apps/membrane-tray-windows/src/main.rs",
     "apps/membrane-tray-windows/src/placement.rs",
     "apps/membrane-tray-windows/src/process.rs",
+    "apps/membrane-tray-windows/src/renderer.rs",
     "apps/membrane-tray-windows/src/snapshot.rs",
     "apps/membrane-tray-windows/src/startup.rs",
     "apps/membrane-tray-windows/src/supervisor.rs",
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "5cc329a0ea56c713522a669f06e9e09fe7d01c637a215d031f785c20df90cf38"
+   "content_digest": "ea4fa1f0aac9339c45d2fbbe42b77cbdedaa46b39837831af1c2a6eb93ae0482"
   }
  ]
 }

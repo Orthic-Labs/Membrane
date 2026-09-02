@@ -34,6 +34,11 @@ $script:HubProcess = $null
 $script:GitPath = (Get-Command git.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
 $script:GitBin = if ($script:GitPath) { Split-Path -Parent $script:GitPath } else { $null }
 $script:SafePath = ((@("$env:WINDIR\System32", "$env:WINDIR", $script:GitBin) | Where-Object { $_ }) -join ';')
+# Hosted runners have no GPU-backed OpenGL (run 33646458218: the tray died with
+# "Could not locate glCreateShader symbol"). The tray honours this override and
+# selects Slint's software renderer before creating any window; a desktop with
+# a GPU never sets it. membrane activate inherits it into the tray it launches.
+if ($env:GITHUB_ACTIONS -eq 'true' -and [string]::IsNullOrWhiteSpace($env:MEMBRANE_TRAY_RENDERER)) { $env:MEMBRANE_TRAY_RENDERER = 'software' }
 $script:QualificationWorkspace = $null
 $script:AdaptEvidence = $null
 $script:State = $null

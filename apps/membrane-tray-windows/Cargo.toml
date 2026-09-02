@@ -6,7 +6,10 @@ publish = false
 
 [dependencies]
 membrane-protocol = { path = "../../engine/crates/membrane-protocol" }
-slint = { version = "1.17.1", features = ["raw-window-handle-06"] }
+# `renderer-software` is already a default Slint feature; naming it explicitly
+# keeps the CPU fallback renderer available even if defaults are trimmed later.
+# The GPU renderer (`renderer-femtovg`) stays enabled for normal desktops.
+slint = { version = "1.17.1", features = ["raw-window-handle-06", "renderer-software"] }
 tray-icon = "0.21.1"
 getrandom = "0.4.3"
 raw-window-handle = "0.6.2"
