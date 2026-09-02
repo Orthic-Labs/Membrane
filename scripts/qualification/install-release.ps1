@@ -158,65 +158,40 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
 }
 
 function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version, [int]$ExitCode) {
-  # NSIS exit 2 means "aborted by script" and hides the embedded install.ps1
-  # payload's own error text. Re-run that payload directly (extracted via
-  # 7-Zip, same arguments the .nsi template passes it) so the real failure
-  # reason survives into evidence instead of a bare exit code.
+  # Section Install writes a step-level failure line ("<step> exit=<code>") to
+  # %LOCALAPPDATA%\Orthic Labs\Membrane\logs\install-<version>.log. Collect the
+  # newest such log into evidence instead of extracting and re-running an
+  # embedded payload; the installer no longer carries one.
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
   if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  $logPath = Join-Path $evidenceRoot 'installer-failure.log'
+  $jsonPath = Join-Path $evidenceRoot 'installer-failure.json'
   try {
     New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
-    $logPath = Join-Path $evidenceRoot 'installer-failure.log'
-    $jsonPath = Join-Path $evidenceRoot 'installer-failure.json'
-    $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
-    if (-not $sevenZip) {
-      $candidate = 'C:\Program Files\7-Zip\7z.exe'
-      if (Test-Path -LiteralPath $candidate -PathType Leaf) { $sevenZip = $candidate }
+    $logsDir = Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\logs'
+    $sourceLog = $null
+    if (Test-Path -LiteralPath $logsDir -PathType Container) {
+      $sourceLog = Get-ChildItem -LiteralPath $logsDir -Filter 'install-*.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
     }
-    if (-not $sevenZip) {
-      "7z.exe not found; could not extract installer payload for exit code $ExitCode" | Set-Content -LiteralPath $logPath -Encoding utf8
-      return $logPath
-    }
-    $extractDir = Join-Path ([IO.Path]::GetTempPath()) "membrane-installer-failure-$([Guid]::NewGuid().ToString('N'))"
-    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
-    $extract = Start-Process -FilePath $sevenZip -ArgumentList @('x', "`"$InstallerPath`"", "-o`"$extractDir`"", '-y') -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $extractDir '7z-stdout.log') -RedirectStandardError (Join-Path $extractDir '7z-stderr.log')
-    $payload = Join-Path $extractDir '$PLUGINSDIR\release\install.ps1'
-    $stdout = ''; $stderr = ''; $payloadExit = $null
-    if ($extract.ExitCode -eq 0 -and (Test-Path -LiteralPath $payload -PathType Leaf)) {
-      $releaseRoot = Join-Path $extractDir '$PLUGINSDIR\release'
-      $psi = [Diagnostics.ProcessStartInfo]::new()
-      $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-      # The NSIS template passes the bare SemVer (${VERSION}); the artifact version carries the tag prefix.
-      $payloadVersion = $Version.TrimStart('v')
-      $psi.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$payload`" -Version `"$payloadVersion`" -ReleaseRoot `"$releaseRoot`""
-      $psi.UseShellExecute = $false
-      $psi.RedirectStandardOutput = $true
-      $psi.RedirectStandardError = $true
-      $payloadProcess = [Diagnostics.Process]::new(); $payloadProcess.StartInfo = $psi
-      $payloadProcess.Start() | Out-Null
-      $stdout = $payloadProcess.StandardOutput.ReadToEnd()
-      $stderr = $payloadProcess.StandardError.ReadToEnd()
-      $payloadProcess.WaitForExit()
-      $payloadExit = $payloadProcess.ExitCode
+    if ($sourceLog) {
+      Copy-Item -LiteralPath $sourceLog.FullName -Destination $logPath -Force
     } else {
-      $stderr = "extraction failed or payload not found under $extractDir (7z exit $($extract.ExitCode))"
+      "no NSIS install step log found under $logsDir for NSIS exit code $ExitCode" | Set-Content -LiteralPath $logPath -Encoding utf8
     }
     $record = [ordered]@{
+      schema = 'membrane.installer-failure.v1'
       installer = $InstallerPath
       version = $Version
       nsisExitCode = $ExitCode
-      payloadExitCode = $payloadExit
-      stdout = $stdout
-      stderr = $stderr
+      installStepLog = if ($sourceLog) { $sourceLog.FullName } else { $null }
+      evidenceLog = $logPath
     }
     $record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding utf8
-    @("nsis exit code: $ExitCode", "payload exit code: $payloadExit", '--- stdout ---', $stdout, '--- stderr ---', $stderr) -join "`n" | Set-Content -LiteralPath $logPath -Encoding utf8
-    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
     return $logPath
   } catch {
-    $fallback = Join-Path $evidenceRoot 'installer-failure.log'
-    try { "could not capture installer failure evidence: $($_.Exception.Message)" | Set-Content -LiteralPath $fallback -Encoding utf8 } catch {}
-    return $fallback
+    try { "could not capture installer failure evidence: $($_.Exception.Message)" | Set-Content -LiteralPath $logPath -Encoding utf8 } catch {}
+    return $logPath
   }
 }
 

@@ -33,7 +33,6 @@ const releaseFiles = [
   "release-manifest.json",
   "release-manifest.cat",
   "checksums.json",
-  "install.ps1",
   asset.name,
   asset.provenanceName,
   asset.sbomName,
@@ -56,6 +55,13 @@ try {
   }
 
   const resources = Object.fromEntries(releaseFiles.map((name) => [`installer-release/${name}`, name]));
+  // Section Install now lays versions/<v> and activates directly. A generated
+  // RightRelease install.ps1 must never re-enter the Membrane NSIS payload.
+  for (const name of Object.values(resources)) {
+    if (/(^|[\/])install\.ps1$/i.test(String(name))) {
+      throw new Error(`Membrane NSIS payload must not embed a generated bootstrap: ${name}`);
+    }
+  }
   const config = JSON.stringify({ bundle: {
     createUpdaterArtifacts: false,
     externalBin: ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"],

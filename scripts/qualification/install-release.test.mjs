@@ -144,16 +144,18 @@ test("qualification proves startup workspace migration is native, strict, atomic
   assert.match(lower, /runtime\.json/);
 });
 
-test("installer failure captures extracted NSIS payload evidence instead of a bare exit code", () => {
+test("installer failure collects the NSIS install-step log instead of extracting a payload", () => {
   for (const term of [
     "Save-InstallerFailureEvidence",
     "RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT",
     "installer-failure.log",
     "installer-failure.json",
-    "7z.exe",
-    "-Version `\"$payloadVersion`\"",
-    "-ReleaseRoot `\"$releaseRoot`\"",
+    "membrane.installer-failure.v1",
+    "install-*.log",
+    "nsisExitCode = $ExitCode",
   ]) assert.ok(source.includes(term), term);
+  assert.match(source, /Join-Path \$env:LOCALAPPDATA 'Orthic Labs\\Membrane\\logs'/);
+  assert.doesNotMatch(lower, /7z\.exe|7-zip|expand the installer|-releaseroot `"\$releaseroot`"/);
   assert.match(lower, /if \(\$process\.exitcode -ne 0\) \{/);
   assert.match(lower, /payload log: \$logpath/);
 });

@@ -650,22 +650,68 @@ Section Install
   !insertmacro CheckIfAppIsRunning "membrane-daemon.exe" "Membrane"
 
   ; Embed exact protected-host direct release. App bytes are never copied flat
-  ; or rebuilt by NSIS; shared bootstrap verifies & atomically activates them.
+  ; or rebuilt by NSIS; Section Install lays the versioned payload down from
+  ; these signed-installer bytes and repoints the stable current junction, the
+  ; same shape legion.iss uses. Verification lives in the branded bootstrap.
   {{#each resources_dirs}}
     CreateDirectory "$PLUGINSDIR\release\\{{this}}"
   {{/each}}
   {{#each resources}}
     File /a "/oname={{this.[1]}}" "{{no-escape @key}}"
   {{/each}}
-  DetailPrint "Verifying & activating signed Membrane release"
-  !if "${ALLOWDOWNGRADES}" == "true"
-    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release$" -AllowDowngrade' $R0
-  !else
-    ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -ExecutionPolicy Bypass -File $"$PLUGINSDIR\release\install.ps1$" -Version $"${VERSION}$" -ReleaseRoot $"$PLUGINSDIR\release$"' $R0
-  !endif
-  ${If} $R0 != 0
-    Abort "Membrane installation failed (exit $R0). Prior release was restored."
+  DetailPrint "Installing signed Membrane release ${VERSION}"
+
+  ; (c) Mirror silentDowngrades: never silently replace a newer install.
+  !if "${ALLOWDOWNGRADES}" != "true"
+  ${If} ${Silent}
+    ReadRegStr $R2 SHCTX "${UNINSTKEY}" "DisplayVersion"
+    ${If} $R2 != ""
+      nsis_tauri_utils::SemverCompare "${VERSION}" "$R2"
+      Pop $R3
+      ${If} $R3 < 0
+        StrCpy $R1 "downgrade-guard"
+        StrCpy $R0 1
+        Goto membrane_install_failed
+      ${EndIf}
+    ${EndIf}
   ${EndIf}
+  !endif
+
+  ; (a) Place the versioned payload at $INSTDIR\versions\${VERSION}. One
+  ; Expand-Archive line, no module imports, no other logic.
+  StrCpy $R1 "expand-archive"
+  CreateDirectory "$INSTDIR\versions\${VERSION}"
+  ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command Expand-Archive -LiteralPath $"$PLUGINSDIR\release\membrane-${VERSION}-windows-x86_64.zip$" -DestinationPath $"$INSTDIR\versions\${VERSION}$" -Force' $R0
+  ${If} $R0 <> 0
+    Goto membrane_install_failed
+  ${EndIf}
+
+  ; (b) Create or repoint the $INSTDIR\current junction (same primitive the
+  ; Uninstall section already uses to drop it).
+  StrCpy $R1 "activate-junction"
+  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c rmdir $"$INSTDIR\current$"' $R0
+  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$"' $R0
+  ${If} $R0 <> 0
+    Goto membrane_install_failed
+  ${EndIf}
+
+  ; (d) Activate the freshly pointed install exactly once.
+  StrCpy $R1 "activate"
+  ExecWait '$"$INSTDIR\current\membrane.exe$" activate --install-root $"$INSTDIR\current$"' $R0
+  ${If} $R0 <> 0
+    Goto membrane_install_failed
+  ${EndIf}
+  Goto membrane_install_done
+
+  ; (e) Any non-zero step records "<step> exit=<code>" and aborts.
+  membrane_install_failed:
+    CreateDirectory "$INSTDIR\logs"
+    FileOpen $9 "$INSTDIR\logs\install-${VERSION}.log" a
+    FileWrite $9 "$R1 exit=$R0$\r$\n"
+    FileClose $9
+    Abort "Membrane installation failed at $R1 (exit $R0). See $INSTDIR\logs\install-${VERSION}.log"
+  membrane_install_done:
+
   SetOutPath $INSTDIR
 
   ; Create file associations
