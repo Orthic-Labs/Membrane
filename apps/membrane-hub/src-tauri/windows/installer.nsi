@@ -41,6 +41,10 @@ ManifestDPIAwareness PerMonitorV2
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
+; utils.nsh (Tauri) drives shortcut AppUserModelId and unpinning through COM;
+; it needs these two headers, and reads ${ARCH}, ${INSTALLMODE}, ${BUNDLEID}.
+!include "Win\COM.nsh"
+!include "Win\Propkey.nsh"
 !include "utils.nsh"
 
 {{#if installer_hooks}}
@@ -56,6 +60,7 @@ ManifestDPIAwareness PerMonitorV2
 !define MAINBINARYNAME "{{main_binary_name}}"
 ; utils.nsh selects the current-user process probes from this define.
 !define INSTALLMODE "{{install_mode}}"
+!define ARCH "{{arch}}"
 !define BUNDLEID "{{bundle_id}}"
 !define COPYRIGHT "{{copyright}}"
 !define OUTFILE "{{out_file}}"

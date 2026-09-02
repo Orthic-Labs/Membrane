@@ -30,10 +30,18 @@ test("the template never uses the invalid $\" quote form", () => {
   assert.doesNotMatch(nsi, /\$"/);
 });
 
-test("the template defines what utils.nsh reads", () => {
-  assert.match(nsi, /!define INSTALLMODE "\{\{install_mode\}\}"/);
-  assert.match(nsi, /!define MAINBINARYNAME "\{\{main_binary_name\}\}"/);
-  assert.match(nsi, /!include "utils\.nsh"/);
+test("the template defines and includes what utils.nsh needs", () => {
+  // utils.nsh reads these defines and uses the COM helper macros from the two
+  // Win headers; run 33638254274 failed at makensis with
+  // 'macro named "ComHlpr_CreateInProcInstance" not found' when they were absent.
+  for (const define of ["INSTALLMODE", "ARCH", "BUNDLEID", "MAINBINARYNAME", "PRODUCTNAME"]) {
+    assert.match(nsi, new RegExp(`^!define ${define} "\\{\\{[a-z_]+\\}\\}"`, "m"), define);
+  }
+  const includes = nsi.split(/\r?\n/).filter((line) => /^!include\b/.test(line)).map((line) => line.replace(/^!include\s+"?([^"]+)"?\s*$/, "$1"));
+  for (const header of ["MUI2.nsh", "FileFunc.nsh", "x64.nsh", "Win\\COM.nsh", "Win\\Propkey.nsh", "utils.nsh"]) {
+    assert.ok(includes.includes(header), `${header} included (have: ${includes.join(", ")})`);
+  }
+  assert.ok(includes.indexOf("Win\\Propkey.nsh") < includes.indexOf("utils.nsh"), "COM headers precede utils.nsh");
 });
 
 test("Section Install has exactly one ExecWait, the junction, and never waits on activate", () => {
