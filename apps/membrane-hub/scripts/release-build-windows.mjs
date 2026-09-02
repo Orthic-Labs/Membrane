@@ -17,8 +17,8 @@ function prepareNativeBinaries() {
   // `pnpm run build` writes current release identity before compiling & staging
   // cortex/membrane. Daemon/tray then compile against that same identity.
   run(["run", "build"]);
-  run(["exec", "rightkit", "cargo", "build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
-  run(["exec", "rightkit", "cargo", "build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc"]);
+  cargo(["build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
+  cargo(["build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc"]);
   const hub = fileURLToPath(new URL("../", import.meta.url));
   const target = "x86_64-pc-windows-msvc";
   const engineRelease = join(resolveTargetRoot(join(hub, "../../engine/Cargo.toml")), target, "release");
@@ -33,6 +33,26 @@ function prepareNativeBinaries() {
     if (!existsSync(source)) throw new Error(`native Windows artifact missing: ${source}`);
     cpSync(source, destination);
   }
+}
+
+// The workspace routes Cargo through RightKit; public CI has no RightKit and
+// compiles directly, which is what MEMBRANE_PUBLIC_CI_DIRECT_CARGO already
+// signals for the release candidate. Honour it here too, so the unsigned build
+// works on a hosted runner (run 33682896568 failed with `rightkit` not found).
+function cargo(args) {
+  if (process.env.MEMBRANE_PUBLIC_CI_DIRECT_CARGO === "1") {
+    const result = spawnSync("cargo", args, {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+      shell: true,
+      stdio: "inherit",
+      windowsHide: true,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error(`cargo exited ${result.status}`);
+    return;
+  }
+  run(["exec", "rightkit", "cargo", ...args]);
 }
 
 function run(args, env = process.env) {

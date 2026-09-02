@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T21:02:15.895Z",
+ "generatedAt": "2026-09-02T21:10:03.766Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1761,7 +1761,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "e2f0bd1931736a49c803eecabbb125648eac815cb5e6f44c60fcf394e45571d5"
+   "content_digest": "194d5d8ef4075850090ef302c3d94cdc1059ea986f0568ca3aa38941eac23dcb"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
