@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T08:19:26.573Z",
+ "generatedAt": "2026-09-02T08:34:41.470Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1715,7 +1715,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "9ebfe9fe1bde9f07aa22aad3fdd4ecbd022f22665e1352bcf6005efa3e8dc0ae"
+   "content_digest": "615db662d99159d90775fbd8686bdacb8a0736a3573f029d22ade7f0d8bc5407"
   },
   {
    "id": "hub-scripts-hub-scripts",

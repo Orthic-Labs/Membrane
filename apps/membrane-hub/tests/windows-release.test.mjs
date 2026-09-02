@@ -74,9 +74,12 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /CreateShortcut .*\$INSTDIR\\current\\membrane-tray\.exe" "--open-dashboard"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
-  assert.match(nsisTemplate, /PLUGINSDIR\\release\\install\.ps1/);
+  // Section Install lays versions/<v> down and activates directly; no generated payload rides inside the NSIS package.
+  assert.doesNotMatch(nsisTemplate, /install\.ps1/);
+  assert.match(nsisTemplate, /Expand-Archive .*\$INSTDIR\\versions\\\$\{VERSION\}/);
+  assert.match(nsisTemplate, /mklink \/J \$"\$INSTDIR\\current\$"/);
+  assert.equal((nsisTemplate.match(/membrane\.exe\$" activate --install-root/g) ?? []).length, 1);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
-  assert.match(nsisTemplate, /-ReleaseRoot/);
   assert.match(nsisTemplate, /ExecWait[\s\S]*Membrane installation failed/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);
   assert.match(nsisTemplate, /membrane\.exe.*deactivate --install-root/);
