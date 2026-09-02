@@ -332,7 +332,14 @@ function finalizeWindows() {
   const embeddedReceiptPath = join(portable, "nsis-embedded-receipt.json");
   if (!existsSync(embeddedReceiptPath)) throw new Error("NSIS embedded-release receipt is required before outer signing");
   const embeddedReceipt = JSON.parse(readFileSync(embeddedReceiptPath, "utf8"));
-  if (embeddedReceipt.contract !== "membrane-nsis-direct-release-embedding-v1" || embeddedReceipt.installerSha256 !== sha256(installer) || !Array.isArray(embeddedReceipt.embedded) || embeddedReceipt.embedded.length < 7) throw new Error("NSIS embedded-release receipt does not bind unsigned outer installer");
+  if (embeddedReceipt.contract !== "membrane-nsis-direct-release-embedding-v1" || embeddedReceipt.installerSha256 !== sha256(installer) || !Array.isArray(embeddedReceipt.embedded)) throw new Error("NSIS embedded-release receipt does not bind unsigned outer installer");
+  // The installer embeds the release files themselves; a generated install.ps1 payload no longer rides inside it.
+  const embeddedEntries = new Set(embeddedReceipt.embedded.map((entry) => String(entry.entry)));
+  for (const required of ["release-manifest.json", "release-manifest.cat", "checksums.json"]) {
+    if (!embeddedEntries.has(required)) throw new Error(`NSIS embedded-release receipt is missing ${required}`);
+  }
+  if (![...embeddedEntries].some((name) => /^membrane-.*-windows-x86_64\.zip$/.test(name))) throw new Error("NSIS embedded-release receipt is missing the versioned release archive");
+  if (embeddedEntries.has("install.ps1")) throw new Error("NSIS embedded-release receipt must not embed a generated install.ps1 payload");
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", installer]);
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", "--verify-only", installer]);
   const postSignEmbedded = embeddedReceipt.embedded.map((entry) => verifyNsisEmbeddedBinary({ installer, entryName: entry.entry, expectedSha256: entry.sha256 }));
