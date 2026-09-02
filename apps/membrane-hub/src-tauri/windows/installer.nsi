@@ -689,10 +689,25 @@ Section Install
 
   ; (b) Create or repoint the $INSTDIR\current junction (same primitive the
   ; Uninstall section already uses to drop it).
+  ; Drop any prior junction through the Win32 API (RemoveDirectory removes a
+  ; junction without touching its target). The dry run on 2026-09-02 showed the
+  ; cmd.exe rmdir form leaving the old junction in place, so mklink then failed
+  ; with "already exists".
+  StrCpy $R1 "remove-old-current"
+  StrCpy $R2 ""
+  ${If} ${FileExists} "$INSTDIR\current\*.*"
+    RMDir "$INSTDIR\current"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\current\*.*"
+    StrCpy $R0 1
+    StrCpy $R2 "prior current still present after RMDir"
+    Goto membrane_install_failed
+  ${EndIf}
   StrCpy $R1 "activate-junction"
-  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c rmdir $"$INSTDIR\current$"' $R0
-  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$"' $R0
-  ${If} $R0 <> 0
+  nsExec::ExecToStack '$"$SYSDIR\cmd.exe$" /d /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$"'
+  Pop $R0
+  Pop $R2
+  ${If} $R0 != 0
     Goto membrane_install_failed
   ${EndIf}
 
@@ -708,7 +723,7 @@ Section Install
   membrane_install_failed:
     CreateDirectory "$INSTDIR\logs"
     FileOpen $9 "$INSTDIR\logs\install-${VERSION}.log" a
-    FileWrite $9 "$R1 exit=$R0$\r$\n"
+    FileWrite $9 "$R1 exit=$R0 $R2$\r$\n"
     FileClose $9
     Abort "Membrane installation failed at $R1 (exit $R0). See $INSTDIR\logs\install-${VERSION}.log"
   membrane_install_done:
