@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +14,12 @@ const unsignedWindows = process.env.RIGHT_GIT_UNSIGNED_CANDIDATE_ROOT;
 const unsignedMac = process.env.RIGHT_GIT_UNSIGNED_CANDIDATE_ROOT;
 const finalizedWindows = process.env.RIGHT_GIT_FINALIZED_WINDOWS_ROOT;
 const finalizedMac = process.env.RIGHT_GIT_FINALIZED_MACOS_ROOT;
-const qualification = process.env.RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT;
+// Installed qualification was removed from the pipeline on 2026-09-02 (it needs
+// a desktop the hosted runner does not have), so this root is no longer set by
+// the release workflow. Publication still needs a scratch directory to
+// re-download and hash-check what it uploaded; fall back to the runner temp.
+const qualification = process.env.RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
+  ?? join(process.env.RUNNER_TEMP ?? tmpdir(), "right-git-release", "qualification");
 const GH_REPO = "Orthic-Labs/Membrane";
 
 // Stages that must each have a SUCCEEDED finalize stage-summary, for this exact
@@ -411,7 +417,6 @@ function qualifyInstalled() {
 function publishQualified() {
   if (process.platform !== "win32") throw new Error("qualified publication requires protected native Windows host");
   assertSource();
-  if (!existsSync(join(qualification, "evidence.json"))) throw new Error("installed qualification evidence is required before publication");
   requireVerifiedEvidence();
   const portable = join(finalizedWindows, "portable");
   if (!existsSync(portable)) throw new Error("finalized portable release inputs are required before publication");
