@@ -1,0 +1,51 @@
+{
+  "schema": "foundation-receipt.v1",
+  "product": "Membrane",
+  "mode": ["NORMALIZE", "RECONCILE"],
+  "generatedAt": "2026-09-02",
+  "authority": {
+    "kind": "explicit-user",
+    "scope": "one exploratory CTX-039 atom plus existing-atom and qualification reconciliation"
+  },
+  "currentProduct": {
+    "root": "D:/Claude/membrane",
+    "revision": "9481f2fc9eabec0879947ae59a0fc2b54ed3e1e9"
+  },
+  "scope": {
+    "canons": ["Cortex", "Membrane", "Pull"],
+    "capabilities": [
+      "CTX-004", "CTX-017", "CTX-038", "CTX-039",
+      "MEM-013", "MEM-029", "MEM-061", "MEM-062", "MEM-063", "MEM-064", "MEM-065", "MEM-066",
+      "PUL-017", "PUL-037", "PUL-039", "PUL-040"
+    ],
+    "runtimeSet": ["Cortex durable store", "Pull planner", "Membrane MCP", "tray-owned daemon"],
+    "platforms": ["shared", "windows", "macos"]
+  },
+  "corpus": [
+    {
+      "name": "Membrane",
+      "root": "D:/Claude/membrane",
+      "revision": "9481f2fc9eabec0879947ae59a0fc2b54ed3e1e9"
+    }
+  ],
+  "exclusions": [
+    "generic knowledge graph or ontology",
+    "new corpus-audit subsystem",
+    "new scheduler subsystem",
+    "donor benchmark numbers as verified evidence",
+    "Blueprint installed-package remediation"
+  ],
+  "protocol": {
+    "name": "Foundation",
+    "version": "2026-09-02"
+  },
+  "result": {
+    "requested": 16,
+    "evaluated": 16,
+    "unresolved": 15,
+    "excluded": 5,
+    "newCapabilities": 1,
+    "newCommittedCapabilities": 0,
+    "newExploratoryCapabilities": 1
+  }
+}
