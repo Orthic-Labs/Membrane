@@ -2,48 +2,114 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-// Section Install must lay versions/<v> down and activate the release directly.
-// The NSIS template cannot be compiled locally, so this asserts the structural
-// contract the reviewer relies on: one `membrane.exe activate` ExecWait, no
-// embedded RightRelease install.ps1 payload, a plain recursive copy of the
-// embedded version tree, and zero powershell.exe invocations.
+// The Windows installer does four things and records each: extract the
+// version tree into place and verify it, point the stable junction, register
+// uninstall and shortcuts, and write one log line per step. Silent installs
+// never activate; interactive installs run `membrane activate` hidden,
+// synchronously and non-fatally with its output captured. The template cannot
+// be compiled locally, so these tests pin the structural contract.
 const nsi = readFileSync(
   new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url),
   "utf8",
 );
 
-function sectionInstall(text) {
-  const start = text.indexOf("\nSection Install");
-  assert.ok(start >= 0, "Section Install is present");
+function section(text, name) {
+  const start = text.indexOf(`\nSection ${name}`);
+  assert.ok(start >= 0, `Section ${name} is present`);
   const end = text.indexOf("\nSectionEnd", start);
-  assert.ok(end > start, "Section Install is terminated");
+  assert.ok(end > start, `Section ${name} is terminated`);
   return text.slice(start, end);
 }
 
-const body = sectionInstall(nsi);
-const lines = body.split(/\r?\n/).filter((line) => !line.trim().startsWith(";"));
+const code = (body) => body.split(/\r?\n/).filter((line) => !line.trim().startsWith(";"));
+const install = section(nsi, "Install");
+const installLines = code(install);
+const uninstall = section(nsi, "Uninstall");
 
-test("Section Install activates through exactly one membrane.exe activate ExecWait", () => {
-  const activate = lines.filter((line) => /ExecWait\b/.test(line) && /membrane\.exe"\s+activate\b/.test(line));
-  assert.equal(activate.length, 1, activate.join(" | "));
-  assert.match(activate[0], /activate --install-root "\$INSTDIR\\current"/);
+test("the template never uses the invalid $\" quote form", () => {
+  assert.doesNotMatch(nsi, /\$"/);
 });
 
-test("Section Install no longer references the RightRelease install.ps1 payload", () => {
-  assert.doesNotMatch(body, /install\.ps1/i);
+test("the template defines what utils.nsh reads", () => {
+  assert.match(nsi, /!define INSTALLMODE "\{\{install_mode\}\}"/);
+  assert.match(nsi, /!define MAINBINARYNAME "\{\{main_binary_name\}\}"/);
+  assert.match(nsi, /!include "utils\.nsh"/);
 });
 
-test("Section Install invokes no powershell.exe at all", () => {
-  const psLines = lines.filter((line) => /powershell(\.exe)?/i.test(line));
-  assert.equal(psLines.length, 0, psLines.join(" | "));
-  assert.doesNotMatch(body, /Expand-Archive/);
+test("Section Install has exactly one ExecWait, the junction, and never waits on activate", () => {
+  const waits = installLines.filter((line) => /ExecWait\b/.test(line));
+  assert.equal(waits.length, 1, waits.join(" | "));
+  assert.match(waits[0], /mklink \/J "\$INSTDIR\\current" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
+  assert.doesNotMatch(install, /ExecWait[^\n]*activate/);
+  assert.doesNotMatch(install, /\bExec\s+'/);
 });
 
-test("Section Install lays the version tree down with a plain recursive copy", () => {
-  assert.match(body, /CopyFiles \/SILENT "\$PLUGINSDIR\\release\\versions\\\$\{VERSION\}\\\*\.\*" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
+test("interactive installs run activate hidden, captured, and non-fatal", () => {
+  const start = installLines.findIndex((line) => /\$\{IfNot\}\s+\$\{Silent\}/.test(line));
+  assert.ok(start >= 0, "interactive guard is present");
+  const end = installLines.findIndex((line, index) => index > start && /\$\{Else\}/.test(line));
+  const guarded = installLines.slice(start, end).join("\n");
+  assert.match(guarded, /nsExec::ExecToStack '"\$INSTDIR\\current\\membrane\.exe" activate --install-root "\$INSTDIR\\current"'/);
+  assert.match(guarded, /activate\.log/);
+  assert.doesNotMatch(guarded, /Goto install_failed|Abort/);
+  assert.match(installLines.slice(end).join("\n"), /\$\{Log\} "activate skipped \(silent install\)"/);
 });
 
-test("Section Install records a step-level failure log before aborting", () => {
-  assert.match(body, /FileOpen \$9 "\$INSTDIR\\logs\\install-\$\{VERSION\}\.log" a/);
-  assert.match(body, /FileWrite \$9 "\$R1 exit=\$R0/);
+test("Section Install invokes no powershell.exe and carries no install.ps1", () => {
+  assert.equal(installLines.filter((line) => /powershell(\.exe)?/i.test(line)).length, 0);
+  assert.doesNotMatch(install, /install\.ps1|Expand-Archive|CopyFiles|PLUGINSDIR\\release/i);
+});
+
+test("Section Install extracts straight into the product root and verifies every executable", () => {
+  assert.match(install, /SetOutPath "\$INSTDIR"\s*\n\s*\{\{#each resources_dirs\}\}/);
+  assert.match(install, /File \/a "\/oname=\{\{this\.\[1\]\}\}" "\{\{no-escape @key\}\}"/);
+  for (const exe of ["membrane.exe", "${MAINBINARYNAME}.exe", "membrane-tray.exe", "membrane-daemon.exe", "cortex.exe"]) {
+    assert.ok(install.includes(`"$INSTDIR\\versions\\\${VERSION}\\${exe}"`), exe);
+  }
+});
+
+test("Section Install removes the prior junction natively before creating the new one", () => {
+  const rm = install.indexOf('RMDir "$INSTDIR\\current"');
+  const link = install.indexOf('mklink /J "$INSTDIR\\current" "$INSTDIR\\versions\\${VERSION}"');
+  assert.ok(rm >= 0 && link > rm, "RMDir precedes mklink");
+  assert.match(install, /mklink[^\n]*>> "\$\{INSTALLLOG\}" 2>&1/);
+  assert.match(install, /\$\{FileExists\} "\$INSTDIR\\current\\membrane\.exe"/);
+});
+
+test("every step is logged and a failure aborts with the step name", () => {
+  for (const step of ["extract-version-tree", "verify-version-tree", "remove-old-current", "create-current-junction", "register"]) {
+    assert.match(install, new RegExp(`StrCpy \\$InstallStep "${step}"`), step);
+    assert.match(install, new RegExp(`\\$\\{Log\\} "${step} ok"`), `${step} ok`);
+  }
+  assert.match(install, /\$\{Log\} "\$InstallStep exit=\$R0"/);
+  assert.match(install, /Abort "Membrane installation failed at \$InstallStep \(exit \$R0\)\. See \$\{INSTALLLOG\}"/);
+  assert.match(nsi, /FileOpen \$9 "\$\{INSTALLLOG\}" a[\s\S]{0,160}FileWrite \$9 "\$\{text\}\$\\r\$\\n"/);
+  assert.match(nsi, /ClearErrors\s*\n\s*FileOpen \$9 "\$\{INSTALLLOG\}" a\s*\n\s*\$\{If\} \$\{Errors\}/);
+});
+
+test("Section WebView2 logs before every abort", () => {
+  const webview = section(nsi, "WebView2");
+  const aborts = code(webview).filter((line) => /^\s*Abort\b/.test(line)).length;
+  const logs = code(webview).filter((line) => /\$\{Log\} "webview2-[a-z]+ exit=/.test(line)).length;
+  assert.ok(aborts >= 1);
+  assert.equal(logs, aborts, `${logs} log lines for ${aborts} aborts`);
+});
+
+test("Section Uninstall deactivates without aborting, removes the junction before any recursive delete, and clears the product root", () => {
+  assert.match(uninstall, /membrane\.exe" deactivate --install-root "\$INSTDIR\\current"[^\n]*deactivate\.log/);
+  assert.doesNotMatch(uninstall, /Abort "Membrane deactivation/);
+  const rm = uninstall.indexOf('RMDir "$INSTDIR\\current"');
+  const guard = uninstall.indexOf("could not be removed as a junction");
+  const firstRecursive = uninstall.indexOf("RMDir /r");
+  assert.ok(rm >= 0 && guard > rm && firstRecursive > guard, "junction removal and guard precede every recursive delete");
+  assert.match(uninstall, /Delete "\$INSTDIR\\integration-journal\.json"/);
+  assert.match(uninstall, /RMDir \/r "\$INSTDIR"\n/);
+  assert.doesNotMatch(uninstall, /RMDir \/r "\$(APPDATA|LOCALAPPDATA|PROFILE|TEMP)/);
+  assert.match(uninstall, /DeleteRegKey HKCU "\$\{UNINSTKEY\}"/);
+  assert.match(uninstall, /DeleteRegValue HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Run" "Membrane"/);
+});
+
+test("the installer has no maintenance page and declares the in-place upgrade policy", () => {
+  assert.match(nsi, /!define RIGHTKIT_AUTOMATIC_IN_PLACE_UPGRADE/);
+  assert.doesNotMatch(nsi, /PageReinstall|MUI_PAGE_COMPONENTS|^\s*Page\s+custom\b/m);
 });

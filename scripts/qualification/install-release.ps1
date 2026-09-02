@@ -40,6 +40,7 @@ $script:State = $null
 $script:InitialInstallRoot = $null
 $script:InitialEvidence = $null
 $script:UpgradeEvidence = $null
+$script:ActivationDryRun = $null
 $script:PreviousMembraneWorkspaceConfig = $null
 $script:WorkspaceConfigPath = $null
 $script:WorkspaceConfigInitialSha256 = $null
@@ -155,6 +156,28 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
   Find-BoundDigest $manifest
   Require ($script:bound.Count -gt 0) 'release manifest JSON has no installer digest-bound entry'
   Remove-Variable bound -Scope Script -ErrorAction SilentlyContinue
+}
+
+function Invoke-ActivationDryRun([string]$Root) {
+  # `membrane activate --dry-run` validates the stable root, the version
+  # pointer and every client's config without launching or mutating anything.
+  # Its full output is kept as evidence either way; a non-zero exit fails
+  # qualification with that output in the message.
+  $membrane = Join-Path $Root 'membrane.exe'
+  Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
+  $output = & $membrane activate --install-root $Root --dry-run 2>&1 | Out-String
+  $exit = $LASTEXITCODE
+  $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
+  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  try {
+    New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
+    $output | Set-Content -LiteralPath (Join-Path $evidenceRoot 'activation-dry-run.log') -Encoding utf8
+  } catch {}
+  Require ($exit -eq 0) "membrane activate --dry-run exited $exit`n$output"
+  $parsed = $null
+  try { $parsed = $output | ConvertFrom-Json } catch { throw "membrane activate --dry-run did not emit JSON:`n$output" }
+  Require ([string]$parsed.runtimeOrigin -eq 'installed') "activation dry run reported runtimeOrigin $($parsed.runtimeOrigin)"
+  return [ordered]@{ exitCode = $exit; runtimeOrigin = [string]$parsed.runtimeOrigin; clients = @($parsed.clients | ForEach-Object { [ordered]@{ client = $_.client; before = $_.before; after = $_.after } }) }
 }
 
 function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version, [int]$ExitCode) {
@@ -1314,6 +1337,10 @@ $dataMarker = $null
 $dataHash = $null
 try {
   $initialTarget = Invoke-Installer $installerPath
+  # Silent installs never activate. Prove the installed layout passes the
+  # product's own activation validation, with its output on record, before the
+  # Hub is started.
+  $script:ActivationDryRun = Invoke-ActivationDryRun $InstallRoot
   $first = Start-AndVerifyHub 'initial install' $currentVersion $currentGeneration '' -Full
   $script:InitialEvidence = $first
   $script:WorkspaceConfigInitialSha256 = Assert-WorkspaceConfigMigrated $script:WorkspaceConfigPath 'initial startup'
@@ -1356,7 +1383,9 @@ try {
     $transitionContract = 'signed-version-liveness-durable-state-v1'
   } else {
     $repairTarget = Invoke-Installer $installerPath
-    Require ($repairTarget -ne $initialTarget) 'same-version repair did not create & switch to a unique version root'
+    # The installer lays versions\<version> down in place; a same-version repair
+    # replaces that tree and keeps current pointed at it.
+    Require ($repairTarget -eq $initialTarget) 'same-version repair did not reuse the version root'
     $upgrade = Start-AndVerifyHub 'same-version repair' $currentVersion $first.ReleaseGeneration '' -Full
     $rollback = [ordered]@{ status = 'not_applicable'; reason = 'first_stable_layout_release'; durableState = 'preserved' }
     $transitionContract = 'first-stable-layout-repair-v1'
@@ -1406,6 +1435,7 @@ try {
       timestampThumbprint = [string]$installerSignature.TimeStamperCertificate.Thumbprint
     }
     previousArtifact = $previousArtifactEvidence
+    activation = $script:ActivationDryRun
     inputs = [ordered]@{
       releaseManifest = [ordered]@{ path = $manifestPath; sha256 = Hash-File $manifestPath }
       sbom = [ordered]@{ path = $sbomPath; sha256 = Hash-File $sbomPath }

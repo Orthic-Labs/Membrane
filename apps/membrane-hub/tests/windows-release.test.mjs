@@ -69,23 +69,27 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /!define INSTALLIDENTITY "Membrane Hub"/);
   assert.match(nsisTemplate, /CurrentVersion\\Run" "Membrane" .*membrane-tray\.exe.*--login-launch/);
   assert.match(nsisTemplate, /DeleteRegValue HKCU .*CurrentVersion\\Run" "Membrane Tray"/);
-  assert.match(nsisTemplate, /Function RunMainBinary[\s\S]*RunAsUser "\$INSTDIR\\current\\membrane-tray\.exe"/);
-  assert.doesNotMatch(nsisTemplate, /Function RunMainBinary[\s\S]{0,200}RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"/);
+  assert.match(nsisTemplate, /Function RunTray[\s\S]*RunAsUser "\$INSTDIR\\current\\membrane-tray\.exe"/);
+  assert.doesNotMatch(nsisTemplate, /RunAsUser "\$INSTDIR\\\$\{MAINBINARYNAME\}\.exe"/);
   assert.match(nsisTemplate, /CreateShortcut .*\$INSTDIR\\current\\membrane-tray\.exe" "--open-dashboard"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-tray\.exe"/);
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
-  // Section Install lays versions/<v> down and activates directly; no generated payload rides inside the NSIS package.
+  // Section Install lays versions/<v> down and points current; activation is the product's own command, never awaited by the installer.
   assert.doesNotMatch(nsisTemplate, /install\.ps1/);
   // The installer must not invoke powershell.exe at all — the runner's Windows
   // PowerShell 5.1 throws FormatXmlUpdateException on module import.
   assert.doesNotMatch(nsisTemplate, /powershell(\.exe)?/i);
   assert.doesNotMatch(nsisTemplate, /Expand-Archive/);
-  assert.match(nsisTemplate, /CopyFiles \/SILENT "\$PLUGINSDIR\\release\\versions\\\$\{VERSION\}\\\*\.\*" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
+  assert.doesNotMatch(nsisTemplate, /CopyFiles|PLUGINSDIR\\release/);
+  assert.match(nsisTemplate, /SetOutPath "\$INSTDIR"\s*\n\s*\{\{#each resources_dirs\}\}/);
   assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\current"/);
   assert.doesNotMatch(nsisTemplate, /\$"/, 'NSIS escapes a quote as $\\"; $" is not an escape and breaks every ExecWait built with it');
   assert.equal((nsisTemplate.match(/membrane\.exe" activate --install-root/g) ?? []).length, 1);
+  assert.doesNotMatch(nsisTemplate, /ExecWait[^\n]*membrane\.exe" activate/);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
-  assert.match(nsisTemplate, /ExecWait[\s\S]*Membrane installation failed/);
+  const installSection = nsisTemplate.slice(nsisTemplate.indexOf("\nSection Install"), nsisTemplate.indexOf("\nSectionEnd", nsisTemplate.indexOf("\nSection Install")));
+  assert.equal((installSection.match(/ExecWait\b/g) ?? []).length, 1, "only the junction step waits on an external process");
+  assert.match(nsisTemplate, /Abort "Membrane installation failed at \$InstallStep/);
   assert.doesNotMatch(nsisTemplate, /File "\$\{MAINBINARYSRCPATH\}"/);
   assert.match(nsisTemplate, /membrane\.exe.*deactivate --install-root/);
   assert.match(trayStartup, /RUN_VALUE_NAME: &str = "Membrane"/);
