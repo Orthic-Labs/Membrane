@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T08:08:28.716Z",
+ "generatedAt": "2026-09-02T08:12:59.593Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1215,
+  "files": 1216,
   "rows": 55,
   "byRuntime": {
    "python": 7,
@@ -2109,6 +2109,7 @@
     "scripts/qualification/benchmark/run-whole-task-benchmark.mjs",
     "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
     "scripts/qualification/install-release.test.mjs",
+    "scripts/qualification/installer-nsi-activation-contract.test.mjs",
     "scripts/qualification/issue-native-only-seal.mjs",
     "scripts/qualification/issue-native-only-seal.test.mjs",
     "scripts/qualification/memory/run-memory-benchmarks.mjs",
@@ -2150,7 +2151,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "51845b939988b5737436c1626e9ea26db259742a7298a07e45d5ebe4d2860532"
+   "content_digest": "db27e308ff1f6a72b6c3a653dbde53fd7384ddd140178c7d1395829689bed634"
   },
   {
    "id": "tests-root-tests-root",
