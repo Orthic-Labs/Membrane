@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 import { verifyNsisEmbeddedBinary } from "@rightkit/release/nsis-payload.mjs";
@@ -22,6 +22,12 @@ if (!asset) throw new Error("finalized direct release has no Windows asset");
 
 function sha256(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
 function requireFile(path, label) { if (!existsSync(path)) throw new Error(`${label} is missing: ${path}`); return path; }
+function filesUnder(root) {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(root, entry.name);
+    return entry.isDirectory() ? filesUnder(full) : [full];
+  });
+}
 function run(command, args, env = process.env) {
   const executable = command === "pnpm" ? "pnpm.cmd" : command;
   const result = spawnSync(executable, args, { cwd: hub, env, stdio: "inherit", shell: executable.endsWith(".cmd"), windowsHide: true });
@@ -29,18 +35,30 @@ function run(command, args, env = process.env) {
   if (result.status !== 0) throw new Error(`${executable} exited ${result.status}`);
 }
 
-const releaseFiles = [
+const metadataFiles = [
   "release-manifest.json",
   "release-manifest.cat",
   "checksums.json",
-  asset.name,
   asset.provenanceName,
   asset.sbomName,
 ];
+const versionDirRelative = `versions/${pkg.version}`;
 rmSync(embedded, { recursive: true, force: true });
 mkdirSync(embedded, { recursive: true });
 try {
-  for (const name of releaseFiles) cpSync(requireFile(join(output, name), `direct-release ${name}`), join(embedded, name));
+  for (const name of metadataFiles) cpSync(requireFile(join(output, name), `direct-release ${name}`), join(embedded, name));
+
+  // Extract the signed portable archive into installer-release/versions/<v>/ so
+  // NSIS embeds the whole version tree as its own File payload. Section Install
+  // then lays it down with a plain recursive copy and no scripting host at all;
+  // the zip itself no longer needs embedding. `tar` ships on Windows 10+ and the
+  // GitHub runners.
+  const stagedVersion = join(embedded, "versions", pkg.version);
+  mkdirSync(stagedVersion, { recursive: true });
+  const archivePath = requireFile(join(output, asset.name), `direct-release ${asset.name}`);
+  const extraction = spawnSync("tar", ["-xf", archivePath, "-C", stagedVersion], { stdio: "inherit", windowsHide: true });
+  if (extraction.error) throw extraction.error;
+  if (extraction.status !== 0) throw new Error(`tar -xf ${asset.name} exited ${extraction.status}`);
 
   const executables = [
     ["membrane-hub.exe", join(managedRelease, "membrane-hub.exe")],
@@ -54,7 +72,10 @@ try {
     cpSync(requireFile(join(payload, name), `signed payload ${name}`), destination);
   }
 
-  const resources = Object.fromEntries(releaseFiles.map((name) => [`installer-release/${name}`, name]));
+  const versionTreeFiles = filesUnder(stagedVersion).map((absolute) => relative(embedded, absolute).replaceAll("\\", "/"));
+  const resources = {};
+  for (const name of metadataFiles) resources[`installer-release/${name}`] = name;
+  for (const relativePath of versionTreeFiles) resources[`installer-release/${relativePath}`] = relativePath;
   // Section Install now lays versions/<v> and activates directly. A generated
   // RightRelease install.ps1 must never re-enter the Membrane NSIS payload.
   for (const name of Object.values(resources)) {
@@ -79,7 +100,19 @@ try {
   const installer = join(output, `Membrane_Hub_${pkg.version}_x64-setup.exe`);
   cpSync(generated, installer);
 
-  const receipts = releaseFiles.map((name) => verifyNsisEmbeddedBinary({ installer, entryName: basename(name), expectedSha256: sha256(join(output, name)) }));
+  const receiptEntries = [
+    { entryName: "release-manifest.json", diskPath: join(output, "release-manifest.json") },
+    { entryName: "release-manifest.cat", diskPath: join(output, "release-manifest.cat") },
+    { entryName: "checksums.json", diskPath: join(output, "checksums.json") },
+    ...["membrane.exe", "membrane-tray.exe", "membrane-daemon.exe", "membrane-hub.exe", "cortex.exe"].map((name) => ({
+      entryName: `${versionDirRelative}/${name}`,
+      diskPath: join(stagedVersion, name),
+    })),
+  ];
+  const receipts = receiptEntries.map(({ entryName, diskPath }) => ({
+    ...verifyNsisEmbeddedBinary({ installer, entryName, expectedSha256: sha256(requireFile(diskPath, `embedded ${entryName}`)) }),
+    entry: entryName,
+  }));
   const receipt = { schemaVersion: 1, contract: "membrane-nsis-direct-release-embedding-v1", installer: basename(installer), installerSha256: sha256(installer), embedded: receipts };
   writeFileSync(join(output, "nsis-embedded-receipt.json"), `${JSON.stringify(receipt, null, 2)}\n`);
   console.log(JSON.stringify(receipt));

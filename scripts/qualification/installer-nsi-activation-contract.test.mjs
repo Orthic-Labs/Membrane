@@ -5,8 +5,8 @@ import test from "node:test";
 // Section Install must lay versions/<v> down and activate the release directly.
 // The NSIS template cannot be compiled locally, so this asserts the structural
 // contract the reviewer relies on: one `membrane.exe activate` ExecWait, no
-// embedded RightRelease install.ps1 payload, and powershell.exe used only for
-// the single Expand-Archive line.
+// embedded RightRelease install.ps1 payload, a plain recursive copy of the
+// embedded version tree, and zero powershell.exe invocations.
 const nsi = readFileSync(
   new URL("../../apps/membrane-hub/src-tauri/windows/installer.nsi", import.meta.url),
   "utf8",
@@ -33,11 +33,14 @@ test("Section Install no longer references the RightRelease install.ps1 payload"
   assert.doesNotMatch(body, /install\.ps1/i);
 });
 
-test("Section Install uses powershell.exe only for the single Expand-Archive line", () => {
+test("Section Install invokes no powershell.exe at all", () => {
   const psLines = lines.filter((line) => /powershell(\.exe)?/i.test(line));
-  assert.equal(psLines.length, 1, psLines.join(" | "));
-  assert.match(psLines[0], /Expand-Archive/);
-  assert.doesNotMatch(psLines[0], /Import-Module/);
+  assert.equal(psLines.length, 0, psLines.join(" | "));
+  assert.doesNotMatch(body, /Expand-Archive/);
+});
+
+test("Section Install lays the version tree down with a plain recursive copy", () => {
+  assert.match(body, /CopyFiles \/SILENT "\$PLUGINSDIR\\release\\versions\\\$\{VERSION\}\\\*\.\*" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
 });
 
 test("Section Install records a step-level failure log before aborting", () => {

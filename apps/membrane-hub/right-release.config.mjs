@@ -6,7 +6,13 @@ import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 const hubRoot = fileURLToPath(new URL("./", import.meta.url));
 const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8"));
 const version = packageJson.version;
-const cargoTargetRoot = resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml"));
+// RIGHT_RELEASE_OFFLINE=1 lets CI and tests import this config for its shape
+// without shelling out to `cargo metadata` (RightKit forbids cargo on this
+// public repo). The placeholder target root is never used to locate real bytes
+// in that mode — finalize/sign always run online on a native host.
+const cargoTargetRoot = process.env.RIGHT_RELEASE_OFFLINE === "1"
+  ? join(hubRoot, "target")
+  : resolveTargetRoot(join(hubRoot, "src-tauri", "Cargo.toml"));
 const cargoTriple = "x86_64-pc-windows-msvc";
 const releaseRoot = join(cargoTargetRoot, cargoTriple, "release");
 const macCargoTriple = "aarch64-apple-darwin";
@@ -34,7 +40,8 @@ export default {
   version,
   distribution: { provider: "github-releases", repository: "Orthic-Labs/Membrane" },
   packageManager: "pnpm",
-  checks: ["test"],
+  // Tests belong to the one CI gate; finalize only packages and signs bytes CI already proved.
+  checks: [],
   buildInputs,
   targets: {
     // Tauri seals nested app contents while assembling the DMG. RightKit then

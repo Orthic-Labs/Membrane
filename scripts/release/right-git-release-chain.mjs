@@ -338,7 +338,7 @@ function finalizeWindows() {
   for (const required of ["release-manifest.json", "release-manifest.cat", "checksums.json"]) {
     if (!embeddedEntries.has(required)) throw new Error(`NSIS embedded-release receipt is missing ${required}`);
   }
-  if (![...embeddedEntries].some((name) => /^membrane-.*-windows-x86_64\.zip$/.test(name))) throw new Error("NSIS embedded-release receipt is missing the versioned release archive");
+  if (![...embeddedEntries].some((name) => /versions\/.*\/membrane\.exe$/.test(name))) throw new Error("NSIS embedded-release receipt is missing the versioned membrane.exe");
   if (embeddedEntries.has("install.ps1")) throw new Error("NSIS embedded-release receipt must not embed a generated install.ps1 payload");
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", installer]);
   run("pnpm.cmd", ["--dir", hub, "exec", "right-release", "sign-windows", "--verify-only", installer]);

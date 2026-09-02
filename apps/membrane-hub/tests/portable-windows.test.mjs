@@ -46,7 +46,11 @@ test("public CI builds unsigned candidate & protected host seals it without reco
   assert.match(release, /bundle-portable-installer-windows\.mjs/);
   assert.doesNotMatch(release, /["']cargo["']|release:prepare:sidecars|rightkit:package/i);
   assert.match(installerBundler, /verifyNsisEmbeddedBinary/);
-  assert.match(installerBundler, /Object\.fromEntries\(releaseFiles\.map/);
+  // The zip is extracted at bundle time into installer-release/versions/<v>/ and
+  // embedded as a File tree; no powershell.exe / Expand-Archive at install time.
+  assert.match(installerBundler, /spawnSync\("tar", \["-xf", archivePath, "-C", stagedVersion\]/);
+  assert.doesNotMatch(installerBundler, /Expand-Archive|powershell/i);
+  assert.match(installerBundler, /for \(const relativePath of versionTreeFiles\) resources\[`installer-release\/\$\{relativePath\}`\] = relativePath;/);
   assert.match(installerBundler, /resources,/);
   assert.match(installerBundler, /nsis-embedded-receipt\.json/);
   assert.match(installerBundler, /membrane-nsis-direct-release-embedding-v1/);

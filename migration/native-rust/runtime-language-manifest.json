@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T08:56:52.776Z",
+ "generatedAt": "2026-09-02T09:37:58.092Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1715,7 +1715,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "615db662d99159d90775fbd8686bdacb8a0736a3573f029d22ade7f0d8bc5407"
+   "content_digest": "4ee72aad0d1d5a028c141c26d97e1c7e159ee2c0c5873efd5b7965071e6d9dc5"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1761,7 +1761,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "4b651661a0feb578d21b5bcc494664981709ce7d16c126b9bd8fc63ca47ddf37"
+   "content_digest": "27d68e6588852db0fcbca48537f2a45245c2449c8597f329968d1a3ed380825d"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2151,7 +2151,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "4baee4d3b3114ec7071685b18c70dc7e6465fe9dedce80434e713e5a9b033181"
+   "content_digest": "1e70276bcd70e15b46d50942b1bf43e920f4e54734130be5dbc11f07fc758a63"
   },
   {
    "id": "tests-root-tests-root",

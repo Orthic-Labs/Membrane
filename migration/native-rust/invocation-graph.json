@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "421bfaa49d6677a71d69ce9c4d8d7bfefaef1643",
- "generatedAt": "2026-09-02T08:19:25.821Z",
+ "baselineCommit": "f9822956bab312ac40ff821988ad0b82ba914e27",
+ "generatedAt": "2026-09-02T09:37:58.657Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -40894,6 +40894,12 @@
    "reference": "pathlib",
    "kind": "python-from-import",
    "reason": "module not resolved against known package roots"
+  },
+  {
+   "from": "apps/membrane-hub/scripts/bundle-portable-installer-windows.mjs",
+   "reference": "tar",
+   "kind": "spawn",
+   "reason": "bare executable name (PATH-resolved)"
   },
   {
    "from": "apps/membrane-hub/scripts/finalize-portable-release.mjs",

@@ -76,7 +76,11 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.match(nsisTemplate, /CheckIfAppIsRunning "membrane-daemon\.exe"/);
   // Section Install lays versions/<v> down and activates directly; no generated payload rides inside the NSIS package.
   assert.doesNotMatch(nsisTemplate, /install\.ps1/);
-  assert.match(nsisTemplate, /Expand-Archive .*\$INSTDIR\\versions\\\$\{VERSION\}/);
+  // The installer must not invoke powershell.exe at all — the runner's Windows
+  // PowerShell 5.1 throws FormatXmlUpdateException on module import.
+  assert.doesNotMatch(nsisTemplate, /powershell(\.exe)?/i);
+  assert.doesNotMatch(nsisTemplate, /Expand-Archive/);
+  assert.match(nsisTemplate, /CopyFiles \/SILENT "\$PLUGINSDIR\\release\\versions\\\$\{VERSION\}\\\*\.\*" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
   assert.match(nsisTemplate, /mklink \/J \$"\$INSTDIR\\current\$"/);
   assert.equal((nsisTemplate.match(/membrane\.exe\$" activate --install-root/g) ?? []).length, 1);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);

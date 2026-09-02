@@ -677,14 +677,15 @@ Section Install
   ${EndIf}
   !endif
 
-  ; (a) Place the versioned payload at $INSTDIR\versions\${VERSION}. One
-  ; Expand-Archive line, no module imports, no other logic.
-  StrCpy $R1 "expand-archive"
+  ; (a) Place the versioned payload at $INSTDIR\versions\${VERSION} from the
+  ; signed-installer bytes NSIS just extracted under $PLUGINSDIR\release. A plain
+  ; recursive file copy: no scripting host, no archive expansion, no module load.
+  StrCpy $R1 "stage-version-tree"
   CreateDirectory "$INSTDIR\versions\${VERSION}"
-  ExecWait '$"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe$" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command Expand-Archive -LiteralPath $"$PLUGINSDIR\release\membrane-${VERSION}-windows-x86_64.zip$" -DestinationPath $"$INSTDIR\versions\${VERSION}$" -Force' $R0
-  ${If} $R0 <> 0
+  CopyFiles /SILENT "$PLUGINSDIR\release\versions\${VERSION}\*.*" "$INSTDIR\versions\${VERSION}"
+  IfFileExists "$INSTDIR\versions\${VERSION}\membrane.exe" +3 0
+    StrCpy $R0 1
     Goto membrane_install_failed
-  ${EndIf}
 
   ; (b) Create or repoint the $INSTDIR\current junction (same primitive the
   ; Uninstall section already uses to drop it).
