@@ -714,14 +714,14 @@ Section Install
   ; mklink through it); nsExec::ExecToStack returned "error" without launching
   ; (run 33620223701). cmd.exe redirects mklink's own output into the step log.
   CreateDirectory "$INSTDIR\logs"
-  ExecWait '$"$SYSDIR\cmd.exe$" /d /c mklink /J $"$INSTDIR\current$" $"$INSTDIR\versions\${VERSION}$" >> $"$INSTDIR\logs\install-${VERSION}.log$" 2>&1' $R0
+  ExecWait '"$SYSDIR\cmd.exe" /d /c mklink /J "$INSTDIR\current" "$INSTDIR\versions\${VERSION}" >> "$INSTDIR\logs\install-${VERSION}.log" 2>&1' $R0
   ${If} $R0 <> 0
     Goto membrane_install_failed
   ${EndIf}
 
   ; (d) Activate the freshly pointed install exactly once.
   StrCpy $R1 "activate"
-  ExecWait '$"$INSTDIR\current\membrane.exe$" activate --install-root $"$INSTDIR\current$"' $R0
+  ExecWait '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"' $R0
   ${If} $R0 <> 0
     Goto membrane_install_failed
   ${EndIf}
@@ -881,12 +881,12 @@ Section Uninstall
 
   ; Remove only integrations owned by exact stable binding before payload.
   IfFileExists "$INSTDIR\current\membrane.exe" 0 deactivate_done
-    ExecWait '$"$INSTDIR\current\membrane.exe$" deactivate --install-root $"$INSTDIR\current$"' $R0
+    ExecWait '"$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current"' $R0
     ${If} $R0 != 0
       Abort "Membrane deactivation failed (exit $R0)."
     ${EndIf}
   deactivate_done:
-  ExecWait '$"$SYSDIR\cmd.exe$" /d /s /c rmdir $"$INSTDIR\current$"' $R0
+  ExecWait '"$SYSDIR\cmd.exe" /d /s /c rmdir "$INSTDIR\current"' $R0
   RMDir /r "$INSTDIR\versions"
   Delete "$INSTDIR\integration-journal.json"
   RMDir "$INSTDIR\.current-next"

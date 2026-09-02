@@ -24,9 +24,9 @@ const body = sectionInstall(nsi);
 const lines = body.split(/\r?\n/).filter((line) => !line.trim().startsWith(";"));
 
 test("Section Install activates through exactly one membrane.exe activate ExecWait", () => {
-  const activate = lines.filter((line) => /ExecWait\b/.test(line) && /membrane\.exe\$"\s+activate\b/.test(line));
+  const activate = lines.filter((line) => /ExecWait\b/.test(line) && /membrane\.exe"\s+activate\b/.test(line));
   assert.equal(activate.length, 1, activate.join(" | "));
-  assert.match(activate[0], /activate --install-root \$"\$INSTDIR\\current\$"/);
+  assert.match(activate[0], /activate --install-root "\$INSTDIR\\current"/);
 });
 
 test("Section Install no longer references the RightRelease install.ps1 payload", () => {
