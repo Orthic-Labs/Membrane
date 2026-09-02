@@ -196,8 +196,13 @@ function Invoke-Activation([string]$Root) {
   # Output is evidence either way; a non-zero exit fails qualification with it.
   $membrane = Join-Path $Root 'membrane.exe'
   Require (Test-Path -LiteralPath $membrane -PathType Leaf) "installed membrane.exe is missing at $membrane"
-  $output = & $membrane activate --install-root $Root --timeout-ms 90000 2>&1 | Out-String
-  $exit = $LASTEXITCODE
+  # Native stderr must not become a terminating error before it is captured.
+  $previousErrorAction = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $output = & $membrane activate --install-root $Root --timeout-ms 90000 2>&1 | ForEach-Object { "$_" } | Out-String
+    $exit = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $previousErrorAction }
   $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
   if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
   try {
