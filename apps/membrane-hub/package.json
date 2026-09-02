@@ -25,7 +25,8 @@
     "release:candidate:artifacts:win": "node scripts/release-build-candidate-windows.mjs",
     "release:candidate:check:win": "node scripts/release-check-candidate-windows.mjs",
     "release:publish:portable:win": "node scripts/publish-portable-release.mjs",
-    "release:qualify:win": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/qualification/install-release.ps1"
+    "release:qualify:win": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ../../scripts/qualification/install-release.ps1",
+    "release:build:win:unsigned": "node scripts/release-build-windows.mjs --unsigned"
   },
   "dependencies": {
     "@rightkit/platform-ui": "0.1.0",

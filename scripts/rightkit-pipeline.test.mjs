@@ -33,7 +33,15 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
 // a product-side Pages CNAME and wrapper are a second, conflicting control
 // plane. RightKit owns the bootstrap; this repository must carry none of it.
 test("no product-side GitHub Pages bootstrap competes with the Worker route", () => {
-  assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml"]);
+  // unsigned-installer.yml builds an installable package with no certificate
+  // and no publication path; it is the development loop, not a release lane.
+  assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml", "unsigned-installer.yml"]);
+  const unsigned = read(".github/workflows/unsigned-installer.yml");
+  assert.match(unsigned, /^permissions:\n  contents: read$/m, "the unsigned lane never holds write authority");
+  assert.doesNotMatch(unsigned, /secrets\./, "the unsigned lane never reads a secret");
+  const unsignedSteps = unsigned.split(/^# /m)[0].concat(unsigned.slice(unsigned.indexOf("\njobs:")));
+  assert.doesNotMatch(unsignedSteps, /gh release|git tag|right-release|release:publish|publish-qualified/, "the unsigned lane cannot publish");
+  assert.doesNotMatch(unsigned, /contents: write/, "the unsigned lane never writes to the repository");
   for (const retired of ["docs/CNAME", "docs/install.ps1", "docs/.nojekyll", "site/install.ps1"]) {
     assert.equal(existsSync(join(root, retired)), false, `retired Pages path must stay removed: ${retired}`);
   }

@@ -53,7 +53,11 @@ if (phase === "raw") {
   // phase.  Bundling at this point would let Tauri mutate a signed executable.
   // Sidecars are built, signed, & verified locally before RightKit starts its
   // raw/package contract. The hook never recurses into right-release.
-  if (process.env.MEMBRANE_SIGNED_SIDECARS_READY !== "1") {
+  // Signing is a release concern, not a build one: NSIS needs no certificate.
+  // MEMBRANE_UNSIGNED_INSTALLER=1 builds the same installer from unsigned
+  // sidecars so a change can be installed and tested on a real desktop without
+  // Azure or Apple in the loop. Release builds never set it.
+  if (process.env.MEMBRANE_UNSIGNED_INSTALLER !== "1" && process.env.MEMBRANE_SIGNED_SIDECARS_READY !== "1") {
     throw new Error("signed Windows sidecars are not prepared");
   }
   run("pnpm", ["run", "build"], { sidecarsReady: true });
@@ -66,7 +70,13 @@ if (phase === "raw") {
   // preparation strips Authenticode while generating installer inputs, so
   // preserve signed bytes, restore them, then rerun only deterministic NSIS.
   const signedRaw = join(managedRelease, rawRelative);
-  if (!existsSync(signedRaw)) throw new Error(`signed raw Hub executable is missing: ${signedRaw}`);
+  if (!existsSync(signedRaw)) {
+    throw new Error(
+      process.env.MEMBRANE_UNSIGNED_INSTALLER === "1"
+        ? `raw Hub executable is missing: ${signedRaw}`
+        : `signed raw Hub executable is missing: ${signedRaw}`,
+    );
+  }
   const temporaryRoot = mkdtempSync(join(tmpdir(), "membrane-hub-release-"));
   const signedBackup = join(temporaryRoot, rawRelative);
   cpSync(signedRaw, signedBackup);

@@ -52,6 +52,18 @@ if (process.argv.includes("--prepare-only")) {
   prepareNativeBinaries();
   process.exit(0);
 }
+
+// An installable build with no certificate anywhere in the path: the same
+// sidecars, the same Tauri build, the same NSIS script, no Authenticode and no
+// release chain. This is the loop for testing a change on a real desktop;
+// signing and publication stay a separate, later concern.
+if (process.argv.includes("--unsigned")) {
+  prepareNativeBinaries();
+  const unsigned = { ...process.env, MEMBRANE_UNSIGNED_INSTALLER: "1" };
+  run(["exec", "node", "scripts/build-windows-release.mjs", "raw"], unsigned);
+  run(["exec", "node", "scripts/build-windows-release.mjs", "package"], unsigned);
+  process.exit(0);
+}
 prepareNativeBinaries();
 run(["exec", "right-release", "sign-windows", ...sidecars]);
 run(["exec", "right-release", "sign-windows", "--verify-only", ...sidecars]);
