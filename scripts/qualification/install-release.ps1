@@ -186,7 +186,9 @@ function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version,
       $releaseRoot = Join-Path $extractDir '$PLUGINSDIR\release'
       $psi = [Diagnostics.ProcessStartInfo]::new()
       $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-      $psi.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$payload`" -Version `"$Version`" -ReleaseRoot `"$releaseRoot`""
+      # The NSIS template passes the bare SemVer (${VERSION}); the artifact version carries the tag prefix.
+      $payloadVersion = $Version.TrimStart('v')
+      $psi.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$payload`" -Version `"$payloadVersion`" -ReleaseRoot `"$releaseRoot`""
       $psi.UseShellExecute = $false
       $psi.RedirectStandardOutput = $true
       $psi.RedirectStandardError = $true
