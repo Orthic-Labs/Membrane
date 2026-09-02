@@ -1391,6 +1391,9 @@ fn read_client_config(path: &Path) -> Result<(Option<Vec<u8>>, serde_json::Value
     }
     let bytes = std::fs::read(path)
         .map_err(|error| format!("read client config {}: {error}", path.display()))?;
+    if std::str::from_utf8(&bytes).is_ok_and(|text| text.trim().is_empty()) {
+        return Ok((Some(bytes), serde_json::json!({})));
+    }
     let value = serde_json::from_slice::<serde_json::Value>(&bytes)
         .map_err(|error| format!("parse client config {}: {error}", path.display()))?;
     if !value.is_object() {
@@ -2152,6 +2155,27 @@ mod tests {
         assert_eq!(merged["mcpServers"]["membrane"]["command"], executable);
         assert_eq!(merged["mcpServers"]["membrane"]["args"], serde_json::json!(["stdio-mcp"]));
         assert!(matches!(config_client_state(&merged, executable).unwrap(), ClientState::AlreadyCorrect));
+    }
+
+    #[test]
+    fn read_client_config_treats_empty_file_as_empty_object() {
+        let dir = std::env::temp_dir().join(format!("membrane-activation-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("mcp_config.json");
+        std::fs::write(&path, b"").unwrap();
+        let (bytes, value) = read_client_config(&path).unwrap();
+        assert_eq!(bytes.as_deref(), Some(&b""[..]));
+        assert_eq!(value, serde_json::json!({}));
+
+        std::fs::write(&path, b"   \n\t  ").unwrap();
+        let (bytes, value) = read_client_config(&path).unwrap();
+        assert_eq!(bytes.as_deref(), Some(&b"   \n\t  "[..]));
+        assert_eq!(value, serde_json::json!({}));
+
+        std::fs::write(&path, b"not json").unwrap();
+        assert!(read_client_config(&path).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

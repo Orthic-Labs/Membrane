@@ -157,6 +157,67 @@ function Assert-BoundEvidence([string]$InstallerPath, [string]$ManifestPath, [st
   Remove-Variable bound -Scope Script -ErrorAction SilentlyContinue
 }
 
+function Save-InstallerFailureEvidence([string]$InstallerPath, [string]$Version, [int]$ExitCode) {
+  # NSIS exit 2 means "aborted by script" and hides the embedded install.ps1
+  # payload's own error text. Re-run that payload directly (extracted via
+  # 7-Zip, same arguments the .nsi template passes it) so the real failure
+  # reason survives into evidence instead of a bare exit code.
+  $evidenceRoot = $env:RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT
+  if (-not $evidenceRoot) { $evidenceRoot = $EvidencePath }
+  try {
+    New-Item -ItemType Directory -Path $evidenceRoot -Force -ErrorAction Stop | Out-Null
+    $logPath = Join-Path $evidenceRoot 'installer-failure.log'
+    $jsonPath = Join-Path $evidenceRoot 'installer-failure.json'
+    $sevenZip = (Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)
+    if (-not $sevenZip) {
+      $candidate = 'C:\Program Files\7-Zip\7z.exe'
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) { $sevenZip = $candidate }
+    }
+    if (-not $sevenZip) {
+      "7z.exe not found; could not extract installer payload for exit code $ExitCode" | Set-Content -LiteralPath $logPath -Encoding utf8
+      return $logPath
+    }
+    $extractDir = Join-Path ([IO.Path]::GetTempPath()) "membrane-installer-failure-$([Guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+    $extract = Start-Process -FilePath $sevenZip -ArgumentList @('x', "`"$InstallerPath`"", "-o`"$extractDir`"", '-y') -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $extractDir '7z-stdout.log') -RedirectStandardError (Join-Path $extractDir '7z-stderr.log')
+    $payload = Join-Path $extractDir '$PLUGINSDIR\release\install.ps1'
+    $stdout = ''; $stderr = ''; $payloadExit = $null
+    if ($extract.ExitCode -eq 0 -and (Test-Path -LiteralPath $payload -PathType Leaf)) {
+      $releaseRoot = Join-Path $extractDir '$PLUGINSDIR\release'
+      $psi = [Diagnostics.ProcessStartInfo]::new()
+      $psi.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+      $psi.Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$payload`" -Version `"$Version`" -ReleaseRoot `"$releaseRoot`""
+      $psi.UseShellExecute = $false
+      $psi.RedirectStandardOutput = $true
+      $psi.RedirectStandardError = $true
+      $payloadProcess = [Diagnostics.Process]::new(); $payloadProcess.StartInfo = $psi
+      $payloadProcess.Start() | Out-Null
+      $stdout = $payloadProcess.StandardOutput.ReadToEnd()
+      $stderr = $payloadProcess.StandardError.ReadToEnd()
+      $payloadProcess.WaitForExit()
+      $payloadExit = $payloadProcess.ExitCode
+    } else {
+      $stderr = "extraction failed or payload not found under $extractDir (7z exit $($extract.ExitCode))"
+    }
+    $record = [ordered]@{
+      installer = $InstallerPath
+      version = $Version
+      nsisExitCode = $ExitCode
+      payloadExitCode = $payloadExit
+      stdout = $stdout
+      stderr = $stderr
+    }
+    $record | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $jsonPath -Encoding utf8
+    @("nsis exit code: $ExitCode", "payload exit code: $payloadExit", '--- stdout ---', $stdout, '--- stderr ---', $stderr) -join "`n" | Set-Content -LiteralPath $logPath -Encoding utf8
+    Remove-Item -LiteralPath $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    return $logPath
+  } catch {
+    $fallback = Join-Path $evidenceRoot 'installer-failure.log'
+    try { "could not capture installer failure evidence: $($_.Exception.Message)" | Set-Content -LiteralPath $fallback -Encoding utf8 } catch {}
+    return $fallback
+  }
+}
+
 function Invoke-Installer([string]$Path) {
   $resolved = Resolve-File $Path 'installer'
   $expectedVersion = Get-ArtifactVersion $resolved 'installer'
@@ -168,7 +229,10 @@ function Invoke-Installer([string]$Path) {
   $actualVersion = $null
   for ($attempt = 1; $attempt -le 3; $attempt++) {
     $process = Start-Process -FilePath $resolved -ArgumentList @('/S') -Wait -PassThru -WindowStyle Hidden
-    Require ($process.ExitCode -eq 0) "installer failed with exit code $($process.ExitCode): $resolved"
+    if ($process.ExitCode -ne 0) {
+      $logPath = Save-InstallerFailureEvidence -InstallerPath $resolved -Version $expectedVersion -ExitCode $process.ExitCode
+      throw "installer failed with exit code $($process.ExitCode): $resolved (payload log: $logPath)"
+    }
     Start-Sleep -Milliseconds 750
     $installedHub = Join-Path $InstallRoot 'membrane-hub.exe'
     if (Test-Path -LiteralPath $installedHub -PathType Leaf) {

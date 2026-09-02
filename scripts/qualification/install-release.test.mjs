@@ -144,6 +144,20 @@ test("qualification proves startup workspace migration is native, strict, atomic
   assert.match(lower, /runtime\.json/);
 });
 
+test("installer failure captures extracted NSIS payload evidence instead of a bare exit code", () => {
+  for (const term of [
+    "Save-InstallerFailureEvidence",
+    "RIGHT_GIT_QUALIFICATION_EVIDENCE_ROOT",
+    "installer-failure.log",
+    "installer-failure.json",
+    "7z.exe",
+    "-Version `\"$Version`\"",
+    "-ReleaseRoot `\"$releaseRoot`\"",
+  ]) assert.ok(source.includes(term), term);
+  assert.match(lower, /if \(\$process\.exitcode -ne 0\) \{/);
+  assert.match(lower, /payload log: \$logpath/);
+});
+
 test("qualification binds Blueprint requests to Hub-enrolled workspace & typed one-shot states", () => {
   assert.match(source, /PreviousMembraneWorkspaceRoot/);
   assert.match(source, /MEMBRANE_WORKSPACE_ROOT\s*=\s*\$script:QualificationWorkspace/);
