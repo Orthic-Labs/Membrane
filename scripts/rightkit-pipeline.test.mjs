@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { assertCandidateSourceClean } from "./release/candidate-source-clean.mjs";
-import { REQUIRED_RELEASE_STAGES, assertSourceRevisionIsAncestorOfMain, runWithDraftCleanupOnFailure, selectPriorInstallerRelease } from "./release/right-git-release-chain.mjs";
+import { REQUIRED_RELEASE_STAGES, admitRelease, assertSourceRevisionIsAncestorOfMain, runWithDraftCleanupOnFailure, selectPriorInstallerRelease } from "./release/right-git-release-chain.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(root, relativePath), "utf8");
@@ -211,6 +211,25 @@ test("admission validates the SHA-bound dispatch envelope & emits admitted facts
 	assert.match(chain, /publish && !signedQualification/);
 	assert.match(chain, /tagOrReleaseExists\(releaseVersion\)/);
 	assert.match(chain, /appendFileSync\(outputPath, `\$\{key\}=\$\{value\}\\n`\)/);
+});
+
+test("admission dry_run accepts any branch ref, skips first-attempt, and refuses publish=true", () => {
+	const output = join(mkdtempSync(join(tmpdir(), "membrane-admission-dryrun-")), "out.txt");
+	writeFileSync(output, "");
+	const base = {
+		GITHUB_OUTPUT: output,
+		RIGHT_GIT_RELEASE_VERSION: "0.0.0",
+		RIGHT_GIT_SOURCE_REVISION: "0".repeat(40),
+	};
+	// A real dispatch still requires refs/heads/main.
+	assert.throws(() => admitRelease({ ...base, RIGHT_GIT_WORKFLOW_REF: "refs/heads/topic", RIGHT_GIT_RUN_ATTEMPT: "1" }), /refs\/heads\/main/);
+	// A dry run accepts a branch ref and a non-first attempt: it gets all the way
+	// to source-revision resolution (which fails only because the SHA is fake).
+	assert.throws(() => admitRelease({ ...base, RIGHT_GIT_DRY_RUN: "true", RIGHT_GIT_WORKFLOW_REF: "refs/heads/topic", RIGHT_GIT_RUN_ATTEMPT: "3" }), /known commit/);
+	// A dry run must never be combined with publish=true.
+	assert.throws(() => admitRelease({ ...base, RIGHT_GIT_DRY_RUN: "true", RIGHT_GIT_WORKFLOW_REF: "refs/heads/topic", RIGHT_GIT_PUBLISH: "true" }), /refuses publish=true together with dry_run=true/);
+	// A dry run from something that is not a branch is still rejected.
+	assert.throws(() => admitRelease({ ...base, RIGHT_GIT_DRY_RUN: "true", RIGHT_GIT_WORKFLOW_REF: "refs/tags/v1.2.3" }), /requires dispatch from a branch/);
 });
 
 test("stage-summary records init/finalize identity & evidence; evidence-verification requires every stage to have SUCCEEDED", () => {

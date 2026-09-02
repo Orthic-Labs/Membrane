@@ -127,24 +127,34 @@ function tagOrReleaseExists(candidateVersion) {
 // admission — validates the SHA-bound, admission-gated dispatch envelope for the
 // tag-last release chain and emits its admitted facts to $GITHUB_OUTPUT. Nothing
 // public (tag/release) is created here; this only decides whether the chain may run.
-function admitRelease() {
-  const outputPath = process.env.GITHUB_OUTPUT;
+export function admitRelease(env = process.env) {
+  const outputPath = env.GITHUB_OUTPUT;
   if (!outputPath) throw new Error("release chain admission requires GITHUB_OUTPUT");
-  const ref = process.env.RIGHT_GIT_WORKFLOW_REF;
-  if (ref !== "refs/heads/main") throw new Error(`release chain admission requires dispatch from refs/heads/main, got: ${ref}`);
-  const runAttempt = process.env.RIGHT_GIT_RUN_ATTEMPT;
-  if (!/^\d+$/.test(runAttempt ?? "") || Number(runAttempt) !== 1) throw new Error(`release chain admission requires the first run attempt, got: ${runAttempt}`);
-  const releaseVersion = process.env.RIGHT_GIT_RELEASE_VERSION ?? "";
+  // dry_run: a rehearsal dispatch from a branch that exercises packaging,
+  // signing & installed qualification with publication skipped. It accepts any
+  // refs/heads/* ref, skips the first-attempt, ancestor-of-main, and
+  // tag/release-existence checks, and refuses to be combined with publish=true.
+  const dryRun = env.RIGHT_GIT_DRY_RUN === "true";
+  const ref = env.RIGHT_GIT_WORKFLOW_REF;
+  if (dryRun) {
+    if (!/^refs\/heads\/.+/.test(ref ?? "")) throw new Error(`release chain admission dry run requires dispatch from a branch (refs/heads/*), got: ${ref}`);
+  } else if (ref !== "refs/heads/main") {
+    throw new Error(`release chain admission requires dispatch from refs/heads/main, got: ${ref}`);
+  }
+  const runAttempt = env.RIGHT_GIT_RUN_ATTEMPT;
+  if (!dryRun && (!/^\d+$/.test(runAttempt ?? "") || Number(runAttempt) !== 1)) throw new Error(`release chain admission requires the first run attempt, got: ${runAttempt}`);
+  const releaseVersion = env.RIGHT_GIT_RELEASE_VERSION ?? "";
   if (!/^\d+\.\d+\.\d+$/.test(releaseVersion)) throw new Error(`release chain admission requires an exact semver release version, got: ${releaseVersion}`);
-  const revision = process.env.RIGHT_GIT_SOURCE_REVISION ?? "";
+  const signedQualification = env.RIGHT_GIT_SIGNED_QUALIFICATION === "true";
+  const publish = env.RIGHT_GIT_PUBLISH === "true";
+  if (dryRun && publish) throw new Error("release chain admission refuses publish=true together with dry_run=true");
+  const revision = env.RIGHT_GIT_SOURCE_REVISION ?? "";
   if (!/^[a-f0-9]{40}$/.test(revision)) throw new Error("release chain admission requires an exact 40-character lowercase source revision SHA");
   if (spawnSync("git", ["cat-file", "-e", `${revision}^{commit}`], { cwd: repo, windowsHide: true }).status !== 0) throw new Error("release chain admission source revision does not resolve to a known commit");
-  assertSourceRevisionIsAncestorOfMain(revision);
-  const signedQualification = process.env.RIGHT_GIT_SIGNED_QUALIFICATION === "true";
-  const publish = process.env.RIGHT_GIT_PUBLISH === "true";
+  if (!dryRun) assertSourceRevisionIsAncestorOfMain(revision);
   if (publish && !signedQualification) throw new Error("release chain admission requires signed_qualification=true whenever publish=true");
-  if (tagOrReleaseExists(releaseVersion)) throw new Error(`release chain admission version v${releaseVersion} already has a tag or release (drafts included)`);
-  for (const [key, value] of [["version", releaseVersion], ["source_revision", revision], ["signed_qualification", String(signedQualification)], ["publish", String(publish)]]) {
+  if (!dryRun && tagOrReleaseExists(releaseVersion)) throw new Error(`release chain admission version v${releaseVersion} already has a tag or release (drafts included)`);
+  for (const [key, value] of [["version", releaseVersion], ["source_revision", revision], ["signed_qualification", String(signedQualification)], ["publish", String(publish)], ["dry_run", String(dryRun)], ["artifact_suffix", dryRun ? "-dry-run" : ""]]) {
     appendFileSync(outputPath, `${key}=${value}\n`);
   }
 }
