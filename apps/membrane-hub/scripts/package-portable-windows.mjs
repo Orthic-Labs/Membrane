@@ -140,6 +140,27 @@ const membraneInfo = spawnSync(join(payload, "membrane.exe"), ["cli", "build-inf
 });
 if (membraneInfo.error || membraneInfo.status !== 0) throw new Error("membrane build-info failed");
 const buildInfo = JSON.parse(membraneInfo.stdout);
+// The binary bakes its release generation at compile time from
+// dist/release-identity.json. A cached compile made before that file existed
+// produces a binary reporting "sha256:unknown", and the manifest, /health and
+// the activation receipt then all report an unidentifiable release — which is
+// exactly what shipped in 0.1.24. Refuse to package it.
+if (!buildInfo.release_generation || buildInfo.release_generation.endsWith("unknown")) {
+  throw new Error(
+    `membrane reports release_generation ${buildInfo.release_generation}: the binary was compiled without dist/release-identity.json (often a stale Cargo cache). Rebuild the sidecars after running release:identity.`,
+  );
+}
+{
+  const identityPath = join(hub, "dist", "release-identity.json");
+  if (existsSync(identityPath)) {
+    const identity = JSON.parse(readFileSync(identityPath, "utf8"));
+    if (identity.releaseGeneration !== buildInfo.release_generation) {
+      throw new Error(
+        `membrane reports release_generation ${buildInfo.release_generation} but this tree's identity is ${identity.releaseGeneration}: the packaged binary is not this source.`,
+      );
+    }
+  }
+}
 const manifest = {
   schemaVersion: 1,
   product: "membrane",

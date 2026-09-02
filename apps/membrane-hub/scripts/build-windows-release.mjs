@@ -56,7 +56,7 @@ if (phase === "raw") {
   // Signing is a release concern, not a build one: NSIS needs no certificate.
   // MEMBRANE_UNSIGNED_INSTALLER=1 builds the same installer from unsigned
   // sidecars so a change can be installed and tested on a real desktop without
-  // Azure or Apple in the loop. Release builds never set it.
+  // any certificate authority in the loop. Release builds never set it.
   if (process.env.MEMBRANE_UNSIGNED_INSTALLER !== "1" && process.env.MEMBRANE_SIGNED_SIDECARS_READY !== "1") {
     throw new Error("signed Windows sidecars are not prepared");
   }

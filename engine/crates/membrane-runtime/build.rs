@@ -14,6 +14,16 @@ fn main() {
     println!("cargo:rerun-if-changed={}", identity.display());
 
     let Ok(bytes) = fs::read(&identity) else {
+        // Without this file the binary embeds "unknown" as its release
+        // generation, and every consumer that checks release identity is
+        // silently degraded: /health, the activation receipt and the shipped
+        // manifest all reported sha256:unknown on the 0.1.24 builds because
+        // this returned quietly. Building without an identity stays allowed
+        // (a plain `cargo build` must still work), but it is no longer silent.
+        println!(
+            "cargo:warning=release identity missing at {}; MEMBRANE_SOURCE_TREE_SHA256 is unset and this build will report releaseGeneration sha256:unknown. Run `pnpm --dir apps/membrane-hub run release:identity` before compiling a release.",
+            identity.display()
+        );
         return;
     };
     let value: Value = serde_json::from_slice(&bytes).expect("release identity must be valid JSON");
