@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "d6bda90cb633f3f7cde0e44dc51652738b60789c",
- "generatedAt": "2026-09-01T14:34:08.526Z",
+ "baselineCommit": "421bfaa49d6677a71d69ce9c4d8d7bfefaef1643",
+ "generatedAt": "2026-09-02T08:19:25.821Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -8211,6 +8211,12 @@
   },
   {
    "id": "scripts/qualification/install-release.test.mjs",
+   "kind": "tracked-executable",
+   "runtime": "node",
+   "production_reachable": false
+  },
+  {
+   "id": "scripts/qualification/installer-nsi-activation-contract.test.mjs",
    "kind": "tracked-executable",
    "runtime": "node",
    "production_reachable": false
