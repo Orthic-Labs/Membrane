@@ -721,7 +721,9 @@ Section Install
 
   ; (d) Activate the freshly pointed install exactly once.
   StrCpy $R1 "activate"
-  ExecWait '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"' $R0
+  ; Wrapped in cmd.exe /s so activate's own stdout and stderr land in the step
+  ; log (dry run 33626034348 recorded "activate exit=1" with no message).
+  ExecWait '"$SYSDIR\cmd.exe" /d /s /c ""$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current" >> "$INSTDIR\logs\install-${VERSION}.log" 2>&1"' $R0
   ${If} $R0 <> 0
     Goto membrane_install_failed
   ${EndIf}
