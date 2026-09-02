@@ -42,7 +42,7 @@
   "result": {
     "requested": 16,
     "evaluated": 16,
-    "unresolved": 15,
+    "unresolved": 16,
     "excluded": 5,
     "newCapabilities": 1,
     "newCommittedCapabilities": 0,

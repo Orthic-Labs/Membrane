@@ -40,6 +40,12 @@ Excluded: generic entity ontology, alias/master-data registry, Neo4j/Kuzu adopti
 
 Donor measurements remain motivation only; no reported latency, multiplier, or token ratio is promoted as independently verified evidence.
 
+## Comparison disposition
+
+| Atom | Scope | Competitive disposition | Best mechanism | Current evidence | Donor evidence | Gap / action |
+|---|---|---|---|---|---|---|
+| CTX-039 | EXPLORATORY | NOT_COMMITTED | No proven winner | Current Cortex recall performs bounded one-hop augmentation only. | Donor multi-hop demonstrations are reference motivation; mechanisms & reported measurements were not independently compared in this reconciliation. | Hold exploratory; close CTX-004/017/038 gates, freeze CTX-Q039, then compare under one token/authority/scope contract. |
+
 ## Count disposition
 
 `CTX-039` is exploratory, so committed capability count is unchanged. Exploratory capability count increases by one. Implementations, qualifications, & decisions remain non-counted.
