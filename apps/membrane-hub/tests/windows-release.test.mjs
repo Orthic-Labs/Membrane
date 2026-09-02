@@ -82,7 +82,7 @@ test("Windows release is signed, sealed & stays local", () => {
   assert.doesNotMatch(nsisTemplate, /Expand-Archive/);
   assert.match(nsisTemplate, /CopyFiles \/SILENT "\$PLUGINSDIR\\release\\versions\\\$\{VERSION\}\\\*\.\*" "\$INSTDIR\\versions\\\$\{VERSION\}"/);
   assert.match(nsisTemplate, /mklink \/J "\$INSTDIR\\current"/);
-  assert.doesNotMatch(nsisTemplate, /$"/, "NSIS quote escape is $\\\" and single-quoted strings take plain quotes; $\" never escapes");
+  assert.doesNotMatch(nsisTemplate, /\$"/, 'NSIS escapes a quote as $\\"; $" is not an escape and breaks every ExecWait built with it');
   assert.equal((nsisTemplate.match(/membrane\.exe" activate --install-root/g) ?? []).length, 1);
   assert.doesNotMatch(nsisTemplate, /PLUGINSDIR\\release\\installer-release/);
   assert.match(nsisTemplate, /ExecWait[\s\S]*Membrane installation failed/);
