@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T02:57:21.589Z",
+ "generatedAt": "2026-09-02T04:49:16.313Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1155,7 +1155,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "0e4aa1730868f73f743f28caea4e7814111963040b459f3ab802b4baa568e600"
+   "content_digest": "7d9b26e972d8aaf50a435621c3021e1027a21c6025a587a446e474d200a0d361"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -2150,7 +2150,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "b9f5c7a73227b2cf7755a9538b78a4c188e01a15259701a7647da2d20afdf78a"
+   "content_digest": "303adc5680f2a924cc2b6c4a9161a4be834de9fb90e47f9cab0fd2a45aa9eb79"
   },
   {
    "id": "tests-root-tests-root",
