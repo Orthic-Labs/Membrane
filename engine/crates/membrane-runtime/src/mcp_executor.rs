@@ -242,6 +242,22 @@ struct UnavailableHubTransportExecutor {
     failure: String,
 }
 
+/// A short excerpt of a response body for an error message. Bounded so a
+/// large or binary payload cannot flood a log line. A bare "malformed" made
+/// an empty read, a truncated body, and a wrong listener indistinguishable.
+fn preview(bytes: &[u8]) -> String {
+    const LIMIT: usize = 200;
+    let text = String::from_utf8_lossy(&bytes[..bytes.len().min(LIMIT)])
+        .replace(['\r', '\n'], " ");
+    if bytes.len() > LIMIT {
+        format!("{text}... ({} bytes total)", bytes.len())
+    } else if text.trim().is_empty() {
+        "<empty>".to_owned()
+    } else {
+        text
+    }
+}
+
 fn hub_inactive_message(failure: impl AsRef<str>) -> String {
     let failure = failure.as_ref();
     if failure.contains("membrane_unavailable { hub_inactive }") {
@@ -328,10 +344,20 @@ impl HubTransportExecutor {
         let split = response
             .windows(4)
             .position(|window| window == b"\r\n\r\n")
-            .ok_or_else(|| "Hub health response malformed".to_owned())?;
+            .ok_or_else(|| {
+                format!(
+                    "Hub health response malformed: no header terminator in {} byte(s): {}",
+                    response.len(),
+                    preview(&response)
+                )
+            })?;
         let head = std::str::from_utf8(&response[..split]).map_err(|error| error.to_string())?;
-        if !head.lines().next().unwrap_or("").contains(" 200 ") {
-            return Err("Hub health unavailable".into());
+        let status = head.lines().next().unwrap_or("");
+        if !status.contains(" 200 ") {
+            return Err(format!(
+                "Hub health unavailable: hub answered {status}: {}",
+                preview(&response[split + 4..])
+            ));
         }
         serde_json::from_slice(&response[split + 4..]).map_err(|error| error.to_string())
     }
@@ -364,10 +390,20 @@ impl HubTransportExecutor {
         let split = response
             .windows(4)
             .position(|window| window == b"\r\n\r\n")
-            .ok_or_else(|| "Hub MCP response malformed".to_owned())?;
+            .ok_or_else(|| {
+                format!(
+                    "Hub MCP response malformed: no header terminator in {} byte(s): {}",
+                    response.len(),
+                    preview(&response)
+                )
+            })?;
         let head = std::str::from_utf8(&response[..split]).map_err(|e| e.to_string())?;
-        if !head.lines().next().unwrap_or("").contains(" 200 ") {
-            return Err("membrane_unavailable { hub_inactive }".into());
+        let status = head.lines().next().unwrap_or("");
+        if !status.contains(" 200 ") {
+            return Err(format!(
+                "membrane_unavailable {{ hub_inactive }}: hub answered {status} for {name}: {}",
+                preview(&response[split + 4..])
+            ));
         }
         let body: Value =
             serde_json::from_slice(&response[split + 4..]).map_err(|e| e.to_string())?;
