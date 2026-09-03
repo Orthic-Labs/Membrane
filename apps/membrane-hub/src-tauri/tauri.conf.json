@@ -7,7 +7,7 @@
   "bundle": {
     "publisher": "Adrian D'souza",
     "externalBin": ["binaries/cortex", "binaries/membrane"],
-    "resources": ["runtime"],
+    "resources": ["runtime", "versions"],
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
     "icon": [
       "../assets/Membrane-Icon-Pack/Drop-in/32x32.png",

@@ -5,6 +5,7 @@ node_modules/
 /.right-release/
 /apps/membrane-hub/src-tauri/binaries/
 /apps/membrane-hub/src-tauri/runtime/
+/apps/membrane-hub/src-tauri/versions/
 /apps/membrane-hub/src-tauri/installer-release/
 
 # Local runtime state (never belongs in the repo)

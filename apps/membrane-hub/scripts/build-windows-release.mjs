@@ -81,6 +81,19 @@ if (phase === "raw") {
   const signedBackup = join(temporaryRoot, rawRelative);
   cpSync(signedRaw, signedBackup);
   try {
+    // Stage the versions/<version> tree the installer must lay down. Until
+    // this existed the NSIS payload carried only `runtime`, so a "successful"
+    // install placed no executable at all and verify-version-tree passed
+    // solely on files an earlier install had left behind.
+    const versionTree = join(hubRoot, "src-tauri", "versions", packageJson.version);
+    rmSync(join(hubRoot, "src-tauri", "versions"), { recursive: true, force: true });
+    run("node", [
+      "scripts/package-portable-windows.mjs",
+      "--hub-exe", signedRaw,
+      "--started-at", new Date().toISOString(),
+      "--payload-dir", versionTree,
+      "--payload-only",
+    ], { sidecarsReady: true });
     run("pnpm", ["exec", "tauri", "bundle", "--target", triple, "--bundles", "nsis", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
     mirror(signedBackup, join(managedRelease, rawRelative), "preserved signed raw Hub executable");
     const localAppData = process.env.LOCALAPPDATA;

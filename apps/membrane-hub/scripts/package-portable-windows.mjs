@@ -32,7 +32,17 @@ const projectionRoot = inputRoot || repo;
 const descriptorRoot = projectionRoot;
 
 const output = join(hub, "dist", "portable");
-const payload = join(output, `membrane-${pkg.version}-windows-x86_64`);
+// The NSIS installer needs this exact payload as its versions/<version> tree.
+// Without it the installer ships only `runtime` and lands no executable at
+// all, which is how 0.1.24 could report a clean install while replacing
+// nothing. --payload-dir lets the bundler stage the tree in place, and
+// --payload-only stops before the archive and evidence the installer path
+// does not need.
+const payloadDirArg = process.argv.indexOf("--payload-dir");
+const payloadOnly = process.argv.includes("--payload-only");
+const payload = payloadDirArg >= 0
+  ? resolve(process.argv[payloadDirArg + 1])
+  : join(output, `membrane-${pkg.version}-windows-x86_64`);
 const portableCore = join(output, "agent-plugin-core");
 const archiveName = `membrane-${pkg.version}-windows-x86_64.zip`;
 const archive = join(output, archiveName);
@@ -129,10 +139,14 @@ for (const [source, destination] of hookFiles) {
 cpSync(join(projectionRoot, "LICENSE"), join(payload, "LICENSE"));
 cpSync(join(projectionRoot, "THIRD_PARTY_NOTICES.md"), join(payload, "THIRD_PARTY_NOTICES.md"));
 
-powershell(
-  "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",
-  executables.map(([, name]) => join(payload, name)),
-);
+// The unsigned development lane builds an installable product with no
+// certificate. Every other lane still proves each executable is signed.
+if (process.env.MEMBRANE_UNSIGNED_INSTALLER !== "1") {
+  powershell(
+    "$ErrorActionPreference='Stop'; foreach($p in $args){ $s=Get-AuthenticodeSignature -LiteralPath $p; if($s.Status -ne 'Valid'){ throw \"invalid Authenticode signature: $p ($($s.Status))\" } }",
+    executables.map(([, name]) => join(payload, name)),
+  );
+}
 
 const membraneInfo = spawnSync(join(payload, "membrane.exe"), ["cli", "build-info"], {
   encoding: "utf8",
@@ -161,6 +175,10 @@ if (!buildInfo.release_generation || buildInfo.release_generation.endsWith("unkn
     }
   }
 }
+// The installer path stops here: it needs the payload tree and the identity
+// guarantees above, not the archive and release evidence.
+if (payloadOnly) process.exit(0);
+
 const manifest = {
   schemaVersion: 1,
   product: "membrane",
