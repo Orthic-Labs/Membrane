@@ -273,6 +273,40 @@ Section Install
   CreateDirectory "$INSTDIR\logs"
   ${Log} "install ${VERSION} begin"
 
+  ; 0. Stop the running product before touching its files. Windows refuses to
+  ;    replace a running executable, so an upgrade on a live machine failed at
+  ;    extract-version-tree with the previous tree left in place. The upstream
+  ;    running-app check above did not free the handles, so stop every product
+  ;    executable explicitly and wait for the handles to drop, logging each
+  ;    step so a failure here is diagnosable from the install log alone.
+  StrCpy $InstallStep "stop-running-product"
+  ${If} ${FileExists} "$INSTDIR\current\membrane.exe"
+    nsExec::ExecToStack /TIMEOUT=30000 '"$INSTDIR\current\membrane.exe" deactivate --install-root "$INSTDIR\current"'
+    Pop $1
+    ${Log} "stop-running-product deactivate exit=$1"
+  ${EndIf}
+  StrCpy $2 0
+  stop_retry:
+    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c taskkill /F /T /IM membrane-tray.exe /IM membrane-daemon.exe /IM membrane-hub.exe /IM membrane.exe /IM cortex.exe 1>nul 2>nul & exit /b 0'
+    Pop $1
+    Pop $3
+    Sleep 1500
+    nsExec::ExecToStack /TIMEOUT=30000 'cmd /c tasklist /FI "IMAGENAME eq membrane-tray.exe" /FI "STATUS eq running" | find /I "membrane-tray.exe" >nul && exit /b 1 || exit /b 0'
+    Pop $1
+    Pop $3
+    ${If} $1 == 0
+      Goto stop_done
+    ${EndIf}
+    IntOp $2 $2 + 1
+    ${If} $2 < 5
+      Goto stop_retry
+    ${EndIf}
+    ${Log} "stop-running-product failed: product still running after $2 attempts"
+    StrCpy $R0 1
+    Goto install_failed
+  stop_done:
+  ${Log} "stop-running-product ok"
+
   ; 1. Extract the release straight into place. The bundler's resource entries
   ;    are already rooted at versions\<version>\..., so with $OUTDIR at the
   ;    product root each File lands in its final path: no staging copy, no
