@@ -37,7 +37,9 @@ test("no product-side GitHub Pages bootstrap competes with the Worker route", ()
   // and no publication path; it is the development loop, not a release lane.
   assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml", "unsigned-installer.yml"]);
   const unsigned = read(".github/workflows/unsigned-installer.yml");
-  assert.match(unsigned, /^permissions:\n  contents: read$/m, "the unsigned lane never holds write authority");
+  // The runner checks the file out with CRLF, so anchor on either ending
+  // rather than assuming the working tree's.
+  assert.match(unsigned, /^permissions:\r?\n {2}contents: read\r?$/m, "the unsigned lane never holds write authority");
   assert.doesNotMatch(unsigned, /secrets\./, "the unsigned lane never reads a secret");
   const unsignedSteps = unsigned.split(/^# /m)[0].concat(unsigned.slice(unsigned.indexOf("\njobs:")));
   assert.doesNotMatch(unsignedSteps, /gh release|git tag|right-release|release:publish|publish-qualified/, "the unsigned lane cannot publish");
