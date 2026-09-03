@@ -60,6 +60,10 @@ if (phase === "raw") {
   if (process.env.MEMBRANE_UNSIGNED_INSTALLER !== "1" && process.env.MEMBRANE_SIGNED_SIDECARS_READY !== "1") {
     throw new Error("signed Windows sidecars are not prepared");
   }
+  // Tauri resolves bundle resources on every invocation, so the versions
+  // directory has to exist even in the raw phase, which runs before there is
+  // a Hub executable to stage into it.
+  mkdirSync(join(hubRoot, "src-tauri", "versions", packageJson.version), { recursive: true });
   run("pnpm", ["run", "build"], { sidecarsReady: true });
   run("node", ["scripts/stage-runtime.mjs"], { sidecarsReady: true });
   run("pnpm", ["exec", "tauri", "build", "--target", triple, "--no-bundle", "--config", "src-tauri/tauri.windows.conf.json"], { sidecarsReady: true });
