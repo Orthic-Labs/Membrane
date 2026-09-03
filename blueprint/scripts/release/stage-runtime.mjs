@@ -17,6 +17,26 @@ const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 // Node executable discovery: prefer the active runtime; the CI release
 // matrix supplies a pinned Node LTS via setup-node.
 function nodeBinary() {
+  // Whatever Node runs this script becomes the runtime we ship. When that is
+  // below the engines floor, Blueprint refuses itself at run time
+  // (unsupported_node_runtime) and the product ships a graph engine that
+  // cannot start. Fail here, where the version is still a build input rather
+  // than a shipped artefact.
+  const declared = pkg.engines?.node?.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (declared) {
+    const required = declared.slice(1, 4).map(Number);
+    const actual = process.versions.node.split(".").map(Number);
+    for (let index = 0; index < 3; index += 1) {
+      if (actual[index] === required[index]) continue;
+      if (actual[index] < required[index]) {
+        throw new Error(
+          `staging Node ${process.versions.node} is below the engines floor ${pkg.engines.node}; `
+            + "the staged runtime would refuse itself with unsupported_node_runtime",
+        );
+      }
+      break;
+    }
+  }
   return process.execPath;
 }
 

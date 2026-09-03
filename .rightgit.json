@@ -11,7 +11,7 @@
       "windows-2025"
     ],
     "node": [
-      "22.13"
+      "22.22.3"
     ]
   },
   "packageManager": "pnpm@11.24.0",
