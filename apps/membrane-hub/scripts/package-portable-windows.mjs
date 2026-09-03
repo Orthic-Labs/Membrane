@@ -136,8 +136,15 @@ for (const [source, destination] of hookFiles) {
   mkdirSync(join(payload, destination, ".."), { recursive: true });
   cpSync(from, join(payload, destination));
 }
+// A prepared candidate root carries these beside the payload; the repository
+// root carries LICENSE and the canonical notices under docs/product/legal.
 cpSync(join(projectionRoot, "LICENSE"), join(payload, "LICENSE"));
-cpSync(join(projectionRoot, "THIRD_PARTY_NOTICES.md"), join(payload, "THIRD_PARTY_NOTICES.md"));
+const noticesCandidate = join(projectionRoot, "THIRD_PARTY_NOTICES.md");
+const notices = existsSync(noticesCandidate)
+  ? noticesCandidate
+  : join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt");
+if (!existsSync(notices)) throw new Error(`third-party notices missing: ${notices}`);
+cpSync(notices, join(payload, "THIRD_PARTY_NOTICES.md"));
 
 // The unsigned development lane builds an installable product with no
 // certificate. Every other lane still proves each executable is signed.
