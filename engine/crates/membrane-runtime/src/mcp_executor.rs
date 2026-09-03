@@ -565,10 +565,22 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Err(result) => return result,
                 };
                 if status != "ok" {
-                    let detail = federated
+                    // Refusals carry `kind` and `reason` beside `error`. Keeping
+                    // only `error` reduced every failure to a bare code such as
+                    // "request_time_selection_refused", which names the gate but
+                    // not the cause, leaving the caller nothing to act on.
+                    let code = federated
                         .get("error")
                         .and_then(Value::as_str)
                         .unwrap_or("federation is unavailable");
+                    let detail = match (
+                        federated.get("kind").and_then(Value::as_str),
+                        federated.get("reason").and_then(Value::as_str),
+                    ) {
+                        (Some(kind), Some(reason)) => format!("{code}: {kind}: {reason}"),
+                        (None, Some(reason)) | (Some(reason), None) => format!("{code}: {reason}"),
+                        (None, None) => code.to_owned(),
+                    };
                     return error(name, "context_unavailable", detail);
                 }
                 let packet = federated.get("packet").cloned().unwrap_or(Value::Null);
