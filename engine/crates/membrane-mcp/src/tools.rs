@@ -33,11 +33,43 @@ fn caller() -> Value {
       "scopeId":{"type":"string","minLength":1},"scopeDescriptor":{"type":"object"}
     },"additionalProperties":false})
 }
+/// RemainingContextCeilingV1, the host's observed remaining context. The
+/// runtime requires it on every context request and never substitutes a
+/// numeric fallback, so its shape belongs in the advertised schema.
+fn remaining_context_ceiling() -> Value {
+    json!({
+        "type": "object",
+        "description": "RemainingContextCeilingV1 (membrane-host-observation): the host's observed remaining context for this session and task. Required; never derived or defaulted by Membrane.",
+        "required": [
+            "schemaVersion",
+            "ceilingId",
+            "sessionId",
+            "taskId",
+            "requestedAtUnixMs",
+            "remainingTokens",
+            "provenanceReceipt"
+        ],
+        "properties": {
+            "schemaVersion": {"type": "integer", "minimum": 1},
+            "ceilingId": {"type": "string", "minLength": 1},
+            "sessionId": {"type": "string", "minLength": 1},
+            "taskId": {"type": "object", "description": "ObservedFieldV1<String> carrying the task identity this ceiling was observed against"},
+            "requestedAtUnixMs": {"type": "integer", "minimum": 0},
+            "remainingTokens": {"type": "object", "description": "TokenEstimateV1"},
+            "provenanceReceipt": {"type": "object", "description": "HostObservationProvenanceV1"}
+        }
+    })
+}
+
 fn schema(name: &str) -> Value {
     let (required, properties) = match name {
         "membrane_context" => (
-            vec!["task", "repository", "caller"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"}}),
+            // The runtime refuses every request without remainingContextCeiling
+            // (RequestTimeH8Error::Missing), so the tool must advertise it.
+            // Leaving it undeclared made the one entry tool impossible to call
+            // correctly from its own schema.
+            vec!["task", "repository", "caller", "remainingContextCeiling"],
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling()}),
         ),
         "membrane_source_read" => (
             vec![
