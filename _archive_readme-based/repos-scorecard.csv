@@ -1,0 +1,27 @@
+rank,repo_tag,repo_name,domains_covered,domains_missing_count,best_in_class_wins,sole_provider_atoms,value_index,missing_domains
+1,13,hindsight,18,4,33,5,51,2:Chunking;4:Graph Construction;8:Code Nav;9:Code Analysis
+2,15,infigraph,17,5,27,6,44,10:Memory Model;11:Memory Lifecycle;12:Temporal;14:Storage;20:Observability
+3,5,GitNexus,16,6,17,7,33,10:Memory Model;11:Memory Lifecycle;12:Temporal;16:LLM/Agent;18:Web UI;21:Extensibility
+4,22,superlocalmemory,18,4,15,7,33,2:Chunking;8:Code Nav;9:Code Analysis;17:IDE/CI
+5,2,MemOS,17,5,14,4,31,8:Code Nav;9:Code Analysis;12:Temporal;17:IDE/CI;18:Web UI
+6,10,graphiti,15,7,16,8,31,2:Chunking;6:Keyword/Lexical;8:Code Nav;9:Code Analysis;17:IDE/CI;18:Web UI;22:Ops/Deploy
+7,8,rag-rat,16,6,14,5,30,2:Chunking;3:Symbol/Entity;4:Graph Construction;13:Multi-tenant;16:LLM/Agent;18:Web UI
+8,6,caura,17,5,8,1,25,2:Chunking;8:Code Nav;9:Code Analysis;17:IDE/CI;18:Web UI
+9,3,octocode,15,7,9,4,24,9:Code Analysis;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;16:LLM/Agent;19:Security
+10,4,codebase-graph,19,3,4,2,23,10:Memory Model;13:Multi-tenant;22:Ops/Deploy
+11,23,supermemory,14,8,9,2,23,3:Symbol/Entity;4:Graph Construction;6:Keyword/Lexical;8:Code Nav;9:Code Analysis;12:Temporal;14:Storage;19:Security
+12,24,OpenViking,15,7,7,6,22,2:Chunking;3:Symbol/Entity;5:Embeddings/Vector;6:Keyword/Lexical;8:Code Nav;9:Code Analysis;12:Temporal
+13,7,codegraph,16,6,2,0,18,10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;16:LLM/Agent;18:Web UI
+14,16,sense,15,7,3,1,18,10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;14:Storage;16:LLM/Agent;19:Security
+15,17,mengram,12,10,6,3,18,2:Chunking;3:Symbol/Entity;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;9:Code Analysis;12:Temporal;14:Storage;18:Web UI;19:Security
+16,20,serena,9,13,8,3,17,2:Chunking;5:Embeddings/Vector;7:Hybrid/Retrieval;9:Code Analysis;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;14:Storage;16:LLM/Agent;18:Web UI;19:Security;20:Observability
+17,26,opengrok,10,12,6,2,16,4:Graph Construction;5:Embeddings/Vector;7:Hybrid/Retrieval;8:Code Nav;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;16:LLM/Agent;17:IDE/CI;18:Web UI;21:Extensibility
+18,1,Understand-Anything,10,12,4,1,14,6:Keyword/Lexical;8:Code Nav;9:Code Analysis;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;14:Storage;16:LLM/Agent;19:Security;20:Observability;22:Ops/Deploy
+19,12,codeql,6,16,8,2,14,1:Ingestion;2:Chunking;3:Symbol/Entity;4:Graph Construction;5:Embeddings/Vector;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;14:Storage;15:APIs/Protocols;16:LLM/Agent;19:Security
+20,19,mnemosyne,12,10,2,1,14,1:Ingestion;2:Chunking;5:Embeddings/Vector;6:Keyword/Lexical;8:Code Nav;9:Code Analysis;16:LLM/Agent;18:Web UI;19:Security;21:Extensibility
+21,11,graph-memory-starter,9,13,4,1,13,8:Code Nav;9:Code Analysis;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;15:APIs/Protocols;16:LLM/Agent;17:IDE/CI;18:Web UI;19:Security;20:Observability;21:Extensibility;22:Ops/Deploy
+22,25,joern,8,14,5,1,13,3:Symbol/Entity;5:Embeddings/Vector;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;10:Memory Model;11:Memory Lifecycle;12:Temporal;13:Multi-tenant;16:LLM/Agent;17:IDE/CI;18:Web UI;19:Security;20:Observability
+23,14,honcho,8,14,4,2,12,2:Chunking;3:Symbol/Entity;4:Graph Construction;5:Embeddings/Vector;6:Keyword/Lexical;8:Code Nav;9:Code Analysis;11:Memory Lifecycle;12:Temporal;16:LLM/Agent;18:Web UI;19:Security;20:Observability;21:Extensibility
+24,9,emulo,6,16,5,2,11,2:Chunking;3:Symbol/Entity;4:Graph Construction;5:Embeddings/Vector;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;9:Code Analysis;10:Memory Model;13:Multi-tenant;14:Storage;15:APIs/Protocols;16:LLM/Agent;18:Web UI;21:Extensibility;22:Ops/Deploy
+25,18,mnemon,7,15,4,2,11,1:Ingestion;2:Chunking;3:Symbol/Entity;5:Embeddings/Vector;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;9:Code Analysis;10:Memory Model;12:Temporal;14:Storage;18:Web UI;19:Security;20:Observability;22:Ops/Deploy
+26,21,potpie,7,15,2,0,9,2:Chunking;3:Symbol/Entity;4:Graph Construction;5:Embeddings/Vector;6:Keyword/Lexical;7:Hybrid/Retrieval;8:Code Nav;9:Code Analysis;10:Memory Model;11:Memory Lifecycle;12:Temporal;14:Storage;15:APIs/Protocols;16:LLM/Agent;19:Security

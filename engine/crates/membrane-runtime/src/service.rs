@@ -206,8 +206,8 @@ pub(crate) struct Runtime {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "membrane_source_commit": option_env!("MEMBRANE_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "membrane_source_commit": crate::release_identity::source_commit().unwrap_or("unknown"),
+        "source_tree_sha256": crate::release_identity::source_tree_sha256().unwrap_or("unknown"),
         "release_generation": crate::release_identity::release_generation(),
         "target": crate::release_identity::target_triple(),
     })

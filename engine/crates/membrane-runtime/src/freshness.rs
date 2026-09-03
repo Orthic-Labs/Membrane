@@ -902,7 +902,7 @@ mod tests {
             verdict.release_generation,
             format!(
                 "sha256:{}",
-                option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                crate::release_identity::source_tree_sha256().unwrap_or("unknown")
             )
         );
         assert_ne!(verdict.service_generation, verdict.release_generation);

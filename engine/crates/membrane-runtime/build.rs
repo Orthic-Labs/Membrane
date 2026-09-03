@@ -1,6 +1,28 @@
 use serde_json::Value;
 use std::{env, fs, path::PathBuf};
 
+// The identity must reach the compiler as SOURCE, not as a process env var.
+// `cargo:rustc-env` + `option_env!` looks equivalent, but sccache does not hash
+// arbitrary process env, so a cached object compiled before the identity
+// existed is reused verbatim and the binary ships "sha256:unknown" while the
+// build log shows the real digest. A generated file lands in the dep-info
+// sccache does hash, so a changed identity forces a real recompile.
+fn emit(commit: &str, tree: &str) {
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("out directory"))
+        .join("release_identity_generated.rs");
+    fs::write(
+        &out,
+        format!(
+            "pub const SOURCE_COMMIT: Option<&str> = {};
+pub const SOURCE_TREE_SHA256: Option<&str> = {};
+",
+            match commit { "" => "None".to_string(), value => format!("Some({value:?})") },
+            match tree { "" => "None".to_string(), value => format!("Some({value:?})") },
+        ),
+    )
+    .expect("write generated release identity");
+}
+
 fn lowercase_hex(value: &str, len: usize) -> bool {
     value.len() == len
         && value
@@ -24,6 +46,7 @@ fn main() {
             "cargo:warning=release identity missing at {}; MEMBRANE_SOURCE_TREE_SHA256 is unset and this build will report releaseGeneration sha256:unknown. Run `pnpm --dir apps/membrane-hub run release:identity` before compiling a release.",
             identity.display()
         );
+        emit("", "");
         return;
     };
     let value: Value = serde_json::from_slice(&bytes).expect("release identity must be valid JSON");
@@ -48,4 +71,5 @@ fn main() {
     );
     println!("cargo:rustc-env=MEMBRANE_SOURCE_COMMIT={commit}");
     println!("cargo:rustc-env=MEMBRANE_SOURCE_TREE_SHA256={tree}");
+    emit(commit, tree);
 }
