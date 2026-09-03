@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -32,4 +32,65 @@ test("admission library and schemas ship in the package surface", () => {
   assert.ok(existsSync(join(ROOT, "src/lib/receipt-store.mjs")));
   assert.ok(existsSync(join(ROOT, "src/lib/orientation-evidence.mjs")));
   assert.ok(existsSync(join(ROOT, "schemas/blueprint-admission-v1.schema.json")));
+});
+
+test("every src/ module reachable from a bin entry point is covered by files[]", () => {
+  // Regression for a packaging defect where src/providers/ was omitted from
+  // package.json `files[]`: the published tarball was missing a directory
+  // imported by src/graph/static-provider.mjs, so `blueprint graph build`
+  // died with ERR_MODULE_NOT_FOUND on every installed build. This walks the
+  // real static import graph from every `bin` entry point and asserts each
+  // reached src/<dir>/ has a matching files[] entry.
+  const binEntries = Object.values(pkg.bin).map((rel) => join(ROOT, rel));
+  assert.ok(binEntries.length > 0, "package.json must declare bin entries");
+
+  const importRe =
+    /(?:import|export)\s+(?:[^'"]*?from\s+)?['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)|require\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+
+  function isFile(candidate) {
+    try {
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  function resolveSpecifier(fromFile, spec) {
+    const base = join(dirname(fromFile), spec);
+    const candidates = [base, `${base}.mjs`, `${base}.js`, join(base, "index.mjs"), join(base, "index.js")];
+    return candidates.find((candidate) => isFile(candidate));
+  }
+
+  const visited = new Set();
+  const srcDirs = new Set();
+
+  function walk(file) {
+    const norm = file;
+    if (visited.has(norm) || !existsSync(norm)) return;
+    visited.add(norm);
+    const content = readFileSync(norm, "utf8");
+    let match;
+    importRe.lastIndex = 0;
+    while ((match = importRe.exec(content))) {
+      const spec = match[1] || match[2] || match[3];
+      if (!spec) continue;
+      const resolved = resolveSpecifier(norm, spec);
+      if (resolved) walk(resolved);
+    }
+    const rel = norm.slice(ROOT.length + 1).replace(/\\/g, "/");
+    if (rel.startsWith("src/")) {
+      const parts = rel.split("/");
+      srcDirs.add(`${parts[0]}/${parts[1]}/`);
+    }
+  }
+
+  for (const entry of binEntries) walk(entry);
+
+  assert.ok(srcDirs.size > 0, "expected the import walk to reach at least one src/ directory");
+  for (const dir of srcDirs) {
+    assert.ok(
+      pkg.files.includes(dir),
+      `files[] omits ${dir}, which is imported (directly or transitively) from a bin entry point`,
+    );
+  }
 });
