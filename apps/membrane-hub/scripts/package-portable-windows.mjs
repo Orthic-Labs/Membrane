@@ -129,6 +129,14 @@ const hookFiles = [
   ["mcp/host/observable-event.cjs", "mcp/host/observable-event.cjs"],
   ["mcp/host/observable-ingress.cjs", "mcp/host/observable-ingress.cjs"],
   ["mcp/context-renderer-lib.cjs", "mcp/context-renderer-lib.cjs"],
+  // Enrollment. Without these the installed product can register no
+  // repository at all, so every membrane_context call is denied at
+  // RepositoryScopeChain and the one entry tool serves nobody.
+  ["mcp/install.mjs", "mcp/install.mjs"],
+  ["mcp/project-registry.mjs", "mcp/project-registry.mjs"],
+  ["mcp/installation-binding.mjs", "mcp/installation-binding.mjs"],
+  ["mcp/repository-catalog.mjs", "mcp/repository-catalog.mjs"],
+  ["mcp/blueprint-readiness.mjs", "mcp/blueprint-readiness.mjs"],
 ];
 for (const [source, destination] of hookFiles) {
   const from = join(projectionRoot, source);
