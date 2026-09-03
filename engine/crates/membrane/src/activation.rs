@@ -18,7 +18,7 @@ use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Command, Output, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -638,6 +638,15 @@ fn launch_tray_with_mode(
         const DETACHED_PROCESS: u32 = 0x0000_0008;
         command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS);
     }
+    // DETACHED_PROCESS drops the console but not the inherited stdio handles.
+    // A resident tray that keeps the caller's stdout pipe open makes every
+    // scripted `membrane activate` hang until the tray exits — the readiness
+    // deadline expires long before the pipe closes, so the bound looks
+    // ignored. The tray writes to membrane-hub.log, not to our stdout.
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     command
         .spawn()
         .map(|_| ())
