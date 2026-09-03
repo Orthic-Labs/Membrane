@@ -355,32 +355,3 @@ Supporting files retain detail; only this generated file indexes pending state.
 ## Unclassified preserved work
 
 None.
-
-## Dogfood audit findings (2026-09-03)
-
-Findings confirmed live against the installed product and repo while validating
-two external reviews against
-`docs/DOGFOOD.md`. Filed here because they are still open after validation;
-findings that were already fixed, wrong, or unverifiable were not filed (see
-`docs/DOGFOOD.md` §5–6 for the full disposition).
-
-| Finding | Evidence | Fix required |
-|---|---|---|
-| Membrane user data is split across two undocumented roots: `%LOCALAPPDATA%\Membrane` (Blueprint/Ledger state) and `%LOCALAPPDATA%\Orthic Labs\Membrane\state` (Cortex/activation/memory-mirror state). No single doc names both. | Confirmed live 2026-09-03: both roots present with the contents listed in `docs/DOGFOOD.md` §2 rows 10–11 and §4 "Split data roots". `docs/product/troubleshooting/backups.md` names only one root. | Update `docs/product/troubleshooting/backups.md` and `docs/product/installation/roots.md` to name both roots explicitly, so a repair backs up both trees, not just one. |
-| `runtime_origin()` fails open to `"installed"` when `MEMBRANE_RUNTIME_ORIGIN` is unset. | Source-verified in `engine/crates/membrane-runtime/src/serve.rs` (`runtime_origin_from(None) == "installed"`), including the crate's own unit test asserting this behavior. | A dev binary run outside the `pnpm dev` wrappers without the env var set silently binds to the production state directory instead of a dev-scoped root. Needs a fail-closed default (or an explicit warning) so accidental dev runs cannot write into installed-origin state. |
-| Ten user-scope Claude Code hooks are registered with `matcher: ".*"` (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`), running a Node process on every matched tool call in every session; the `Stop` hook can gate session completion. | Confirmed live 2026-09-03: `%USERPROFILE%\.claude\settings.json` carries exactly 10 Membrane-owned hook events matching `activation.rs reconcile_claude_hooks`, 3 with matcher `.*`. This is designed fence behavior, not a bug. | Measure and document the per-call latency cost, and document that `Stop` can deny session completion — most users are not aware this gate exists. |
-
-## Dogfood audit findings (2026-09-03, second validation pass)
-
-Two external reviews of Membrane 0.1.24 were validated claim by claim against the
-installed product and the repo. Only findings that were CONFIRMED and are still
-open are filed below; findings that were already fixed, wrong, or unverifiable were
-not filed. Full disposition, including every rejected claim, is in
-`docs/DOGFOOD.md` §5–6. The findings filed in the first pass above
-(split data roots, `runtime_origin()` fail-open, ten `.*`-matched Claude hooks)
-remain open and are not restated here.
-
-| Finding | Evidence | Fix required |
-|---|---|---|
-| The installed 0.1.24 build writes no runtime log at all, so a live Hub problem leaves nothing to read. | Confirmed live 2026-09-03: `%LOCALAPPDATA%\Orthic Labs\Membrane\logs\` contains exactly one file, `install-0.1.24.log`, and the log root `membrane cli doctor paths` declares (`%LOCALAPPDATA%\Membrane`) contains no log file. The tray launched the Hub with stdout and stderr discarded. | Fixed in the repo — the tray now appends both Hub streams to `<log root>\membrane-hub.log`, falling back to the old behavior if logging fails. **Pending verification**: that fix is not in the installed 0.1.24 build. On the next installed build, confirm `%LOCALAPPDATA%\Membrane\membrane-hub.log` is created and grows; only then is this closed. |
-| `membrane cli doctor paths` declares a `log` root that nothing writes to, which sends triage to an empty directory. | Confirmed live 2026-09-03: `doctor paths` reports `log` = `%LOCALAPPDATA%\Membrane`; that tree holds only Blueprint/Ledger state (`Blueprint\state-keys\`, `context-delivery-ledger-v1\`, `ledger-index.sqlite3`) and no log. The only log on the machine is the NSIS installer log under `%LOCALAPPDATA%\Orthic Labs\Membrane\logs\`. | Either make the declared `log` root the root that is actually written (the committed tray fix does this), or have `doctor paths` report the roots the running Hub actually uses. The two must agree, because `doctor paths` is the documented triage entry point. Verify together with the row above on the next installed build. |
