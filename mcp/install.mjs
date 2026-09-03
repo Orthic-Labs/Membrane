@@ -2,7 +2,7 @@
 // Native client enrollment. Client configuration is changed only through native MCP CLIs.
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { mkdir, rename, writeFile, readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -327,7 +327,22 @@ async function token(subcommand, root, rest) {
   return { action: "token_rotate", registry: defaultRegistryPath(), dry_run: false, installation_binding: installation, ...rotated };
 }
 
-if (process.argv[1] === SELF) {
+// Compare real paths. The installed product is reached through the stable
+// `current` junction, so argv[1] and import.meta.url name the same file by
+// different paths; a string comparison made this entrypoint a silent no-op
+// on every installed invocation, exiting 0 having enrolled nothing.
+const invokedAsScript = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  if (entry === SELF) return true;
+  try {
+    return realpathSync(entry) === realpathSync(SELF);
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedAsScript) {
   if (command === "init") process.stdout.write(JSON.stringify(await init(args[0], args.slice(1))) + "\n");
   else if (command === "catalog") process.stdout.write(JSON.stringify(await catalog(args[0], args.slice(1))) + "\n");
   else if (command === "install") process.stdout.write(JSON.stringify(await install(args[0], args.slice(1))) + "\n");
