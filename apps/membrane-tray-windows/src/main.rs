@@ -15,6 +15,7 @@ slint::include_modules!();
 
 use std::{
     cell::RefCell,
+    fs::{create_dir_all, OpenOptions},
     io::Write,
     path::PathBuf,
     process::{Command, Stdio},
@@ -824,6 +825,30 @@ fn demo_state() -> Option<supervisor::State> {
     }
 }
 
+
+/// Append target for the Hub's stdout and stderr: `<log root>/membrane-hub.log`.
+/// The log root matches `membrane_runtime::paths::log_root()` on Windows
+/// (`%LOCALAPPDATA%\Membrane`, or `MEMBRANE_LOG_ROOT` when set), so `membrane
+/// cli doctor paths` names the directory these files actually appear in.
+/// Falls back to a discarded stream so a logging failure never stops the Hub.
+fn hub_log_target() -> Stdio {
+    let root = std::env::var_os("MEMBRANE_LOG_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("Membrane")));
+    let Some(root) = root else {
+        return Stdio::null();
+    };
+    if create_dir_all(&root).is_err() {
+        return Stdio::null();
+    }
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("membrane-hub.log"))
+        .map(Stdio::from)
+        .unwrap_or_else(|_| Stdio::null())
+}
+
 fn launch_dashboard(supervisor: &supervisor::Supervisor) -> bool {
     let (Some(endpoint), Some(token)) = (supervisor.endpoint(), supervisor.bearer_token()) else {
         return false;
@@ -845,10 +870,15 @@ fn launch_dashboard(supervisor: &supervisor::Supervisor) -> bool {
             })
     }
         .unwrap_or_else(|| PathBuf::from("membrane-hub.exe"));
+    // The Hub reports its own failures on stdout and stderr. Discarding them
+    // left the product with no diagnosis path at all: after thirty minutes of
+    // uptime the only file on disk was the installer's log, while log_root()
+    // stayed empty. Append both streams to that root instead; if the log
+    // cannot be opened the Hub still starts, just as before.
     let mut child = match Command::new(path)
         .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(hub_log_target())
+        .stderr(hub_log_target())
         .spawn()
     {
         Ok(child) => child,

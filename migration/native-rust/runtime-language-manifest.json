@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-02T23:09:11.174Z",
+ "generatedAt": "2026-09-03T03:42:16.306Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -2283,7 +2283,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "ea4fa1f0aac9339c45d2fbbe42b77cbdedaa46b39837831af1c2a6eb93ae0482"
+   "content_digest": "777759f54ae242e492987dec2989f77a4b340ab351a07cd8246ecd4503518880"
   }
  ]
 }
