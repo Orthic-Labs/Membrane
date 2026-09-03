@@ -547,6 +547,15 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 if let Some(contract) = sufficiency_contract {
                     body["sufficiencyContract"] = contract;
                 }
+                // The runtime refuses every context request without this
+                // (RequestTimeH8Error::Missing) and reads it from the request
+                // body, but the executor never forwarded it, so no client could
+                // satisfy the requirement no matter what it sent. Carried
+                // verbatim like the sufficiency contract: the host observed it,
+                // and Membrane never derives or defaults an observation.
+                if let Some(ceiling) = arguments.get("remainingContextCeiling").cloned() {
+                    body["remainingContextCeiling"] = ceiling;
+                }
                 let request = match serde_json::to_string(&body)
                     .map_err(|_| error(name, "context_envelope_invalid", "request is invalid"))
                 {
