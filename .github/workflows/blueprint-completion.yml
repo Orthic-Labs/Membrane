@@ -37,6 +37,9 @@ jobs:
           tests/incremental-phase2.test.mjs
           tests/semantic-incremental.test.mjs
           tests/freshness-barrier.test.mjs
+          tests/relationship-vocabulary.test.mjs
+          tests/relationship-parity.test.mjs
+          tests/compiler-adapters.test.mjs
 
   cargo-check:
     runs-on: ubuntu-24.04
