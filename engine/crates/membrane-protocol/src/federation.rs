@@ -55,7 +55,7 @@ where
 
 /// The only provider set admitted by federation V1.  Array order is the
 /// canonical merge order and is independent of completion order.
-pub const PROVIDER_ORDER: [&str; 9] = [
+pub const PROVIDER_ORDER: [&str; 10] = [
     "anchors",
     "blueprint",
     "rules",
@@ -65,6 +65,7 @@ pub const PROVIDER_ORDER: [&str; 9] = [
     "architect",
     "skills",
     "cortex",
+    "ledger",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -79,10 +80,11 @@ pub enum ProviderId {
     Architect,
     Skills,
     Cortex,
+    Ledger,
 }
 
 impl ProviderId {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Anchors,
         Self::Blueprint,
         Self::Rules,
@@ -92,6 +94,7 @@ impl ProviderId {
         Self::Architect,
         Self::Skills,
         Self::Cortex,
+        Self::Ledger,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -105,6 +108,7 @@ impl ProviderId {
             Self::Architect => "architect",
             Self::Skills => "skills",
             Self::Cortex => "cortex",
+            Self::Ledger => "ledger",
         }
     }
 

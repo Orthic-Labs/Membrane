@@ -49,6 +49,7 @@ pub(crate) fn active_owner() -> Result<Arc<LedgerService>, String> {
 #[derive(Clone)]
 pub(crate) struct Caller {
     pub root: String,
+    registry_root: String,
     pub repository_id: String,
     pub scope_id: String,
     descriptor: Option<Value>,
@@ -60,10 +61,10 @@ impl Caller {
             .and_then(Value::as_str).filter(|s| !s.trim().is_empty()).map(str::to_owned)
             .ok_or_else(|| "ledger_caller_required".to_owned());
         let root = resolve::normalized_root(Path::new(&get("root")?)).map_err(|e| e.to_string())?;
-        let caller = Self { root, repository_id: get("repositoryId")?, scope_id: get("scopeId")?,
+        let caller = Self { root, registry_root: get("root")?, repository_id: get("repositoryId")?, scope_id: get("scopeId")?,
             descriptor: arguments.pointer("/caller/scopeDescriptor").cloned(),
             level: arguments.get("taskGrantLevel").and_then(Value::as_str).map(str::to_owned) };
-        if arguments.get("repository").and_then(Value::as_str) != Some(&caller.repository_id) {
+        if arguments.get("repository").and_then(Value::as_str) != Some(caller.repository_id.as_str()) {
             return Err("ledger_repository_binding_denied".into());
         }
         Ok(caller)
@@ -80,15 +81,20 @@ impl Caller {
         let binding = registry.bindings().iter().find(|binding| {
             resolve::normalized_root(Path::new(&binding.root)).ok().as_deref() == Some(&canonical)
         }).ok_or("ledger_root_not_enrolled")?;
-        Ok(Self { root: canonical, repository_id: binding.repository_id.clone(),
+        Ok(Self { root: canonical, registry_root: binding.root.clone(), repository_id: binding.repository_id.clone(),
             scope_id: binding.scope_id.clone(), descriptor: binding.scope_descriptor.clone(), level: None })
     }
     pub(crate) fn authorize(&self, action: &str) -> Result<(), String> {
         authorization::authorize(&AuthorizationRequest {
-            caller_root: &self.root, caller_repository_id: &self.repository_id,
+            caller_root: &self.registry_root, caller_repository_id: &self.repository_id,
             caller_scope_id: &self.scope_id, caller_scope_descriptor: self.descriptor.as_ref(),
             target_repository: &self.repository_id, task_grant_level: self.level.as_deref(), action,
         }).map(|_| ()).map_err(|e| format!("{}:{}", e.code(), e))
+    }
+    pub(crate) fn envelope(&self) -> Value {
+        let mut value = json!({"root":self.registry_root,"repositoryId":self.repository_id,"scopeId":self.scope_id});
+        if let Some(descriptor) = &self.descriptor { value["scopeDescriptor"] = descriptor.clone(); }
+        value
     }
     fn digest(&self) -> String {
         resolve::digest(format!("{}\0{}\0{}", self.root, self.repository_id, self.scope_id).as_bytes())
@@ -298,7 +304,7 @@ pub(crate) fn validate_task_grant(id: Option<&str>, caller: &Caller, task: Optio
     Ok(())
 }
 
-fn permitted_path(db: &LedgerDb, root: &str, path: &str, budget: &WorkBudget) -> Result<(), String> {
+pub(crate) fn permitted_path(db: &LedgerDb, root: &str, path: &str, budget: &WorkBudget) -> Result<(), String> {
     let erased: bool = db.lock().query_row("SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
         params![root,resolve::digest(path.as_bytes())],|r|r.get(0)).map_err(|e| e.to_string())?;
     if erased { return Err("ledger_source_erased".into()); }

@@ -32,6 +32,7 @@ type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// composition. Empty owner state is represented by a typed empty response.
 #[derive(Clone)]
 pub struct NativeSourceBindings {
+    pub(crate) ledger: Option<Arc<crate::ledger::service::LedgerService>>,
     pub audit: Option<Arc<dyn AuditFindingSource>>,
     pub decisions: Option<Arc<dyn DecisionRecordSource>>,
     pub skills: Option<Arc<dyn SkillCatalogSource>>,
@@ -58,6 +59,7 @@ impl std::fmt::Debug for NativeSourceBindings {
             .field("blueprint", &self.blueprint.is_some())
             .field("blueprint_contextual", &self.blueprint_contextual.is_some())
             .field("release", &self.release.is_some())
+            .field("ledger", &self.ledger.is_some())
             .finish()
     }
 }
@@ -85,6 +87,7 @@ impl NativeSourceBindings {
         let temporal_queries = Arc::new(Mutex::new(HashMap::new()));
 
         Ok(Self {
+            ledger: crate::ledger::service::active_owner().ok(),
             audit: Some(Arc::new(EmptyAuditSource)),
             decisions: Some(Arc::new(EmptyDecisionSource)),
             skills: Some(Arc::new(RuntimeSkillsSource {

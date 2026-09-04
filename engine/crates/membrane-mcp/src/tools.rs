@@ -16,6 +16,7 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "membrane_ledger",
 ];
 const DIAGNOSTIC: &[&str] = &[
     "membrane_diagnostic_workspace",
@@ -62,7 +63,7 @@ fn remaining_context_ceiling() -> Value {
 }
 
 fn schema(name: &str) -> Value {
-    let (required, properties) = match name {
+    let (required, mut properties) = match name {
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
             // (RequestTimeH8Error::Missing), so the tool must advertise it.
@@ -80,6 +81,21 @@ fn schema(name: &str) -> Value {
                 "expectedContentHash",
             ],
             json!({"repository":{"type":"string"},"caller":caller(),"sourceRef":{"type":"string"},"anchorId":{"type":"string"},"expectedContentHash":{"type":"string"}}),
+        ),
+        "membrane_ledger" => (
+            vec!["repository", "caller", "operation"],
+            json!({"repository":{"type":"string"},"caller":caller(),
+                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","backlinks","manifests","drift","ingest"]},
+                "query":{"type":"string","minLength":1,"maxLength":4096},
+                "k":{"type":"integer","minimum":1,"maximum":32},
+                "path":{"type":"string"},"docId":{"type":"string"},"nodeId":{"type":"string"},
+                "expectedContentHash":{"type":"string"},"continuationCursor":{"type":"string"},
+                "maxSections":{"type":"integer","minimum":1,"maximum":256},
+                "limit":{"type":"integer","minimum":1,"maximum":256},
+                "mode":{"enum":["legacy_scan","shadow","ledger_fts"]},
+                "fromManifest":{"type":"string"},"toManifest":{"type":"string"},
+                "deadlineMs":{"type":"integer","minimum":1,"maximum":30000},
+                "taskGrantLevel":{"type":"string"}}),
         ),
         "membrane_blueprint" => (
             vec!["repository", "caller", "operation"],
@@ -125,6 +141,15 @@ fn schema(name: &str) -> Value {
             }),
         ),
     };
+    if name == "membrane_source_read" {
+        for field in ["docId","nodeId","expectedRevision","expectedSpanHash","continuationCursor","ledgerTicket"] {
+            properties[field] = json!({"type":"string","maxLength":8192});
+        }
+        properties["ledgerGeneration"] = json!({"type":"integer","minimum":0});
+        properties["maxBytes"] = json!({"type":"integer","minimum":1,"maximum":12000});
+        properties["deadlineMs"] = json!({"type":"integer","minimum":1,"maximum":30000});
+    }
+    if name == "membrane_context" { properties["scopeGrantId"] = json!({"type":"string"}); }
     json!({"type":"object","required":required,"properties":properties,"additionalProperties":false})
 }
 fn annotations(name: &str) -> Value {
@@ -161,7 +186,7 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let mut result = Vec::new();
     for value in list {
         let group = value.as_str()?;
-        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic")
+        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "ledger")
             || !seen.insert(group)
         {
             return None;
@@ -171,10 +196,11 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     Some(result)
 }
 pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
-    let mut names = vec!["membrane_context"];
+    let mut names = vec!["membrane_context", "membrane_source_read", "membrane_ledger"];
     for group in requested(params).unwrap_or_default() {
         let additions: &[&str] = match group {
-            "memory" => &CORE[3..],
+            "memory" => &CORE[3..10],
+            "ledger" => &["membrane_source_read", "membrane_ledger"],
             "blueprint" => &CORE[1..3],
             "diagnostic" => DIAGNOSTIC,
             _ => &[],

@@ -961,6 +961,11 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
         budget.check()?;
         let relative = file.strip_prefix(&root).map_err(|_| "ledger_path_denied")?
             .to_str().ok_or("ledger_path_unsupported")?.replace('\\', "/");
+        let erased: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
+            rusqlite::params![root_s,digest(relative.as_bytes())], |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        if erased { continue; }
         let bytes = super::resolve::confined_bytes(&root, &relative).map_err(|e| e.to_string())?;
         budget.charge_bytes(bytes.len())?;
         hashed += 1;
