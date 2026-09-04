@@ -1542,8 +1542,12 @@ fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
         // prevent, one level earlier. Writes stay enabled: this build has no
         // real embedder to wait for, and refusing every write would leave the
         // installed product unable to store anything at all.
+        // Reported through `embedder_issue` rather than printed: this runs on
+        // every store open, including one-shot commands whose stderr is a
+        // structured receipt a caller parses. The daemon states its embedder
+        // mode once at startup, and health, recall and doctor carry it from
+        // here.
         let issue = "built without the fastembed feature: embeddings are hash-256, not semantic. Recall matches lexically only, and a clean doctor run is not evidence of semantic health.".to_string();
-        eprintln!("[memory] {issue}");
         (Arc::new(HashEmbedder::new()), Some(issue), true)
     }
 }
