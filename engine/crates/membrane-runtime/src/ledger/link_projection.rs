@@ -104,16 +104,20 @@ pub(crate) fn replace_link_projection_tx(
     source_revision: &str,
     generation: i64,
 ) -> rusqlite::Result<()> {
-    tx.execute(
-        "DELETE FROM ledger_link_targets WHERE source_doc_id=?1",
-        [doc_id],
-    )?;
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.front_matter_delimiter = Some("---".to_owned());
     options.extension.autolink = true;
     options.render.sourcepos = true;
     let root = parse_document(&arena, markdown, &options);
+    replace_link_projection_from_ast_tx(tx, doc_id, path, markdown, source_revision, generation, root)
+}
+
+pub(crate) fn replace_link_projection_from_ast_tx<'a>(
+    tx: &Transaction<'_>, doc_id: &str, path: &str, markdown: &str,
+    source_revision: &str, generation: i64, root: &'a comrak::nodes::AstNode<'a>,
+) -> rusqlite::Result<()> {
+    tx.execute("DELETE FROM ledger_link_targets WHERE source_doc_id=?1", [doc_id])?;
     let starts = source_line_starts(markdown);
     for node in root.descendants() {
         let data = node.data();

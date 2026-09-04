@@ -98,7 +98,10 @@ fn eligible(
     let mut omissions = Vec::new();
     for document in rows {
         budget.visit()?;
-        if !policy.allows(&document.path, false, budget)? { continue; }
+        let erased: bool = db.lock().query_row(
+            "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
+            params![root,resolve::digest(document.path.as_bytes())],|r|r.get(0)).map_err(|e|e.to_string())?;
+        if erased || !policy.allows(&document.path, false, budget)? { continue; }
         if let Some(granted) = &scope.ranges {
             let matching = granted.iter().filter(|r| r.path == document.path).collect::<Vec<_>>();
             if matching.is_empty() { continue; }

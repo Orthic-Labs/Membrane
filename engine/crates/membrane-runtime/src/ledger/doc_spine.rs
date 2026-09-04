@@ -1030,6 +1030,7 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
                 .map_err(|e| e.to_string())?;
                 advance_unchanged_generation_tx(&tx, id, &revision, generation)
                     .map_err(|e| e.to_string())?;
+                super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())?;
                 registered += 1;
                 skipped += 1;
                 continue;

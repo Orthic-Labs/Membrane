@@ -103,6 +103,7 @@ impl Caller {
 
 pub(crate) struct LedgerService {
     db: LedgerDb,
+    catalog: crate::catalog::ContextCatalog,
     operation: Mutex<()>,
 }
 struct ResetProgress<'a>(&'a LedgerDb);
@@ -111,11 +112,19 @@ impl Drop for ResetProgress<'_> {
 }
 impl LedgerService {
     fn new(db: LedgerDb) -> Result<Self, String> {
+        let catalog = crate::catalog::ContextCatalog::open(crate::catalog::default_catalog_path().map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+        Self::with_catalog(db,catalog)
+    }
+    fn with_catalog(db:LedgerDb,catalog:crate::catalog::ContextCatalog)->Result<Self,String> {
+        db.lock().execute_batch(super::diagnostics::SCHEMA).map_err(|e|e.to_string())?;
+        if index::recall_mode(&db)? == index::LedgerRecallMode::LedgerFts {
+            index::activate(&db,index::LedgerRecallMode::Shadow,None)?;
+        }
         db.lock().execute_batch(OWNER_SCHEMA).map_err(|e| e.to_string())?;
-        Ok(Self { db, operation: Mutex::new(()) })
+        Ok(Self { db, catalog, operation: Mutex::new(()) })
     }
     #[cfg(test)]
-    pub(crate) fn in_memory() -> Self { Self::new(LedgerDb::open_in_memory()).unwrap() }
+    pub(crate) fn in_memory() -> Self { Self::with_catalog(LedgerDb::open_in_memory(),crate::catalog::ContextCatalog::open_in_memory()).unwrap() }
 
     fn run<T>(&self, caller: &Caller, action: &str, budget: &WorkBudget,
         work: impl FnOnce(&LedgerDb) -> Result<T, String>) -> Result<T, String>
@@ -132,6 +141,7 @@ impl LedgerService {
         let observed = budget.clone();
         self.db.lock().progress_handler(1000, Some(move || observed.interrupted()));
         let _reset = ResetProgress(&self.db);
+        super::erasure::synchronize(&self.catalog,&self.db,&caller.root,budget)?;
         let result = work(&self.db);
         budget.check()?;
         // Revocation is checked again before anything leaves the owner.
@@ -229,7 +239,38 @@ impl LedgerService {
                 index::activate(db, mode, None)?;
                 Ok(json!({"mode":mode.storage_name(),"providerDelivery":"shadow_unqualified"}))
             }),
-            "erase" => self.run(&caller, "checkpoint", budget, |db| erase(db, &caller, arguments)),
+            "erase" => self.run(&caller, "checkpoint", budget, |db| erase(db, &self.catalog, &caller, arguments)),
+            "backlinks" | "manifests" | "drift" => self.run(&caller, "context", budget, |db| {
+                let doc = required_string(arguments,"docId")?;
+                match operation {
+                    "backlinks" => super::diagnostics::backlinks(db,&caller.root,&doc,arguments.get("nodeId").and_then(Value::as_str),
+                        arguments.get("limit").and_then(Value::as_u64).unwrap_or(64) as usize,budget),
+                    "manifests" => super::diagnostics::manifests(db,&caller.root,&doc,budget),
+                    _ => super::diagnostics::drift(db,&caller.root,&doc,&required_string(arguments,"fromManifest")?,&required_string(arguments,"toManifest")?,budget),
+                }
+            }),
+            "ingest" => self.run(&caller,"checkpoint",budget,|db| {
+                use super::document_conversion::{DocumentInputFormatV1 as Format,DocumentConversionGrantV1,DocumentConversionInputV1};
+                let path=required_string(arguments,"path")?;
+                permitted_path(db,&caller.root,&path,budget)?;
+                let format=match arguments.get("format").and_then(Value::as_str) {
+                    Some("plain_text")=>Format::PlainText,Some("html")=>Format::Html,Some("json")=>Format::Json,
+                    _=>return Err("ledger_format_qualification_required".into()),
+                };
+                if path.to_ascii_lowercase().ends_with(".md") {return Err("ledger_markdown_uses_sync".into());}
+                let raw=resolve::confined_bytes(Path::new(&caller.root),&path).map_err(|e|e.to_string())?;
+                budget.charge_bytes(raw.len())?;
+                let expected=required_string(arguments,"expectedContentHash")?;
+                let hash=resolve::digest(&raw);
+                if !resolve::hash_matches(&expected,&hash) {return Err("ledger_source_stale".into());}
+                let grant=DocumentConversionGrantV1::new([format.clone()],resolve::MAX_SOURCE_BYTES);
+                let artifact=doc_spine::ingest_granted_document(db,&grant,doc_spine::GrantedDocumentIngestV1 {
+                    repository_root:caller.root.clone(),repository_id:caller.repository_id.clone(),revision:format!("snapshot:{hash}"),
+                    path:path.clone(),title:path.clone(),document:DocumentConversionInputV1 {source_ref:format!("snapshot:sha256:{hash}"),format,raw_input:raw},
+                })?;
+                permitted_path(db,&caller.root,&path,budget)?;
+                Ok(json!({"schemaVersion":1,"artifact":artifact,"sourceKind":"imported_snapshot","qualification":"pending","externalFreshnessClaimed":false}))
+            }),
             _ => Err("ledger_operation_unsupported".into()),
         }
     }
@@ -249,6 +290,11 @@ impl LedgerService {
             let ticket = arguments.get("ledgerTicket").and_then(Value::as_str);
             if request.node_id.is_some() || request.anchor_id.starts_with("ledger.node:") || request.source_ref.starts_with("ledger://") {
                 validate_ticket(db, &caller, ticket.ok_or("ledger_ticket_required")?, &request)?;
+            }
+            if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
+                let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
+                    params![caller.root,doc],|r|r.get(0)).map_err(|_|"ledger_source_missing")?;
+                permitted_path(db,&caller.root,&path,budget)?;
             }
             if let Ok(reference) = super::identifier::WorktreeDocRef::parse(&request.source_ref) {
                 permitted_path(db, &caller.root, reference.relative_path(), budget)?;
@@ -279,6 +325,11 @@ impl LedgerService {
                 Err(error) => return Err(error.to_string()),
             };
             if let Some(ticket) = ticket { validate_ticket(db, &caller, ticket, &request)?; }
+            if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
+                let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
+                    params![caller.root,doc],|r|r.get(0)).map_err(|_|"ledger_source_missing")?;
+                permitted_path(db,&caller.root,&path,budget)?;
+            }
             if let Ok(reference) = super::identifier::WorktreeDocRef::parse(&request.source_ref) {
                 permitted_path(db, &caller.root, reference.relative_path(), budget)?;
             }
@@ -345,7 +396,7 @@ fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &Resol
     validate_task_grant(grant.as_deref(),caller,None,None)
 }
 
-fn erase(db: &LedgerDb, caller: &Caller, arguments: &Value) -> Result<Value, String> {
+fn erase(db: &LedgerDb, catalog: &crate::catalog::ContextCatalog, caller: &Caller, arguments: &Value) -> Result<Value, String> {
     let doc_id = required_string(arguments,"docId")?;
     let expected = required_string(arguments,"expectedContentHash")?;
     let mut conn = db.lock();
@@ -353,10 +404,13 @@ fn erase(db: &LedgerDb, caller: &Caller, arguments: &Value) -> Result<Value, Str
     let (path, hash): (String,String) = tx.query_row("SELECT path,content_hash FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
         params![caller.root,doc_id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?.ok_or("ledger_source_missing")?;
     if !resolve::hash_matches(&expected,&hash) { return Err("ledger_source_stale".into()); }
+    let identities:i64=tx.query_row("SELECT COUNT(*) FROM ledger_doc_artifacts WHERE doc_id=?1",[&doc_id],|r|r.get(0)).map_err(|e|e.to_string())?;
+    if identities!=1 {return Err("ledger_ambiguous_source_identity".into());}
+    super::erasure::record(catalog,&caller.root,&resolve::digest(path.as_bytes()))?;
     tx.execute("INSERT OR REPLACE INTO ledger_erasure_fences VALUES (?1,?2,?3)",
         params![caller.root,resolve::digest(path.as_bytes()),crate::time::now_millis() as i64]).map_err(|e|e.to_string())?;
     for table in ["ledger_node_fts","ledger_nodes","ledger_index_publications","ledger_query_alias_evidence",
-        "ledger_query_aliases","ledger_document_conversions","ledger_resolution_tickets"] {
+        "ledger_query_aliases","ledger_document_conversions","ledger_resolution_tickets","ledger_document_manifests"] {
         tx.execute(&format!("DELETE FROM {table} WHERE doc_id=?1"),[&doc_id]).map_err(|e|e.to_string())?;
     }
     tx.execute("DELETE FROM ledger_doc_projections WHERE parent_doc_id=?1",[&doc_id]).map_err(|e|e.to_string())?;

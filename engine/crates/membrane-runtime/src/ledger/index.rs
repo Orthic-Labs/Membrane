@@ -1,13 +1,13 @@
 //! Generation-bound structural nodes, safe Unicode query processing, and Ledger-local FTS.
 
-use super::{outline::build_outline_page, LedgerDb};
+use super::{outline::build_outline_from_ast, LedgerDb};
 use comrak::{nodes::NodeValue, parse_document, Arena, Options};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v3";
+pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v4";
 pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
@@ -172,11 +172,22 @@ pub(crate) fn replace_document_index_tx(
     )?;
     tx.execute("DELETE FROM ledger_nodes WHERE doc_id=?1", [input.doc_id])?;
 
+    let arena = Arena::new();
+    let mut options = Options::default();
+    options.extension.front_matter_delimiter = Some("---".to_owned());
+    options.extension.table = true;
+    options.extension.strikethrough = true;
+    options.extension.tasklist = true;
+    options.extension.autolink = true;
+    options.extension.footnotes = true;
+    options.render.sourcepos = true;
+    let root = parse_document(&arena, input.markdown, &options);
+    // One AST supplies all section, block, and link projections.
     // Presentation pagination must never truncate the internal index.
-    let outline = build_outline_page(
+    let outline = build_outline_from_ast(
         &format!("doc://repo/worktree/{}", input.path),
         input.markdown,
-        input.parser_version,
+        root,
         usize::MAX,
         None,
     ).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
@@ -262,18 +273,9 @@ pub(crate) fn replace_document_index_tx(
             input.generation,
         )?;
     }
-    let arena = Arena::new();
-    let mut options = Options::default();
-    options.extension.front_matter_delimiter = Some("---".to_owned());
-    options.extension.table = true;
-    options.extension.strikethrough = true;
-    options.extension.tasklist = true;
-    options.extension.autolink = true;
-    options.extension.footnotes = true;
-    options.render.sourcepos = true;
-    let root = parse_document(&arena, input.markdown, &options);
     let line_starts = source_line_starts(input.markdown);
     let mut block_ordinal = outline.sections.len();
+    let mut block_parents = BTreeMap::<usize, String>::new();
     for node in root.descendants() {
         let data = node.data();
         let Some(node_kind) = ast_node_kind(&data.value) else {
@@ -303,7 +305,9 @@ pub(crate) fn replace_document_index_tx(
         let Some(containing_section) = containing_section else {
             continue;
         };
-        let parent_id = anchor_to_node.get(&containing_section.anchor_id).cloned();
+        let parent_id = node.ancestors().skip(1)
+            .find_map(|ancestor| block_parents.get(&(ancestor as *const _ as usize)).cloned())
+            .or_else(|| anchor_to_node.get(&containing_section.anchor_id).cloned());
         let heading_path = containing_section.breadcrumb.join(" > ");
         let span_hash = hex::encode(Sha256::digest(body.as_bytes()));
         let node_id = stable_node_id(
@@ -354,6 +358,7 @@ pub(crate) fn replace_document_index_tx(
                 aliases
             ],
         )?;
+        block_parents.insert(node as *const _ as usize, node_id.clone());
         block_ordinal += 1;
     }
     // Empty Markdown still receives a source-bound root node.
@@ -395,14 +400,16 @@ pub(crate) fn replace_document_index_tx(
             input.generation,
         ],
     )?;
-    super::link_projection::replace_link_projection_tx(
+    super::link_projection::replace_link_projection_from_ast_tx(
         tx,
         input.doc_id,
         input.path,
         input.markdown,
         input.source_revision,
         input.generation,
+        root,
     )?;
+    super::diagnostics::record_manifest_tx(tx, input.doc_id)?;
     Ok(())
 }
 

@@ -7,6 +7,8 @@ pub(crate) mod cli;
 pub(crate) mod service;
 pub(crate) mod provider;
 pub(crate) mod qualification;
+pub(crate) mod diagnostics;
+pub(crate) mod erasure;
 pub mod db;
 pub mod doc_candidate_provider;
 pub mod doc_projection;
