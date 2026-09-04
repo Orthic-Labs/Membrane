@@ -128,7 +128,19 @@ impl FreshnessBinding {
             .await
             .map_err(|error| FreshnessError::Unavailable(error.to_string()))?;
         if !response.complete {
-            return Err(FreshnessError::Unavailable("source_incomplete".to_owned()));
+            // The source states why it is incomplete -- it puts the verdict's
+            // own first reason on a warning. Refusing with a bare
+            // `source_incomplete` threw that away, so every distinct cause
+            // (an unstable graph, a missing snapshot, an unreadable overlay)
+            // reached the operator as one word.
+            let detail = response
+                .warnings
+                .iter()
+                .find_map(|warning| warning.detail_id.clone());
+            return Err(FreshnessError::Unavailable(match detail {
+                Some(detail) => format!("source_incomplete: {detail}"),
+                None => "source_incomplete".to_owned(),
+            }));
         }
         let mut binding = Self::from_snapshot(response.value, release)?;
         binding.provenance = response
