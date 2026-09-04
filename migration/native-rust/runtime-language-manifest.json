@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-04T10:46:29.854Z",
+ "generatedAt": "2026-09-04T10:54:41.386Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -1330,7 +1330,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "f09bbd70d856bf5c2cd4187bc744e03ec3a1b705ade666709a23da8448f933d2"
+   "content_digest": "64285ae6af1cbffeb20826f672ab03de3ab0cb2c1380d4fc822bec32e93cd8c5"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",

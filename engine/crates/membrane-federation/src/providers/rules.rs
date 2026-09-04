@@ -151,7 +151,18 @@ impl RulesProvider {
     /// Produce one typed rules lane.  Grant validation happens before source
     /// access, and every source/ledger failure remains explicit in output.
     pub async fn produce(&self, context: &ProviderContext) -> ProviderOutputV1 {
-        let mut output = empty_output(context.release_generation.clone());
+        // Prefer the snapshot generation over the release generation. A rules
+        // source answers with the content identity of what it indexed; the
+        // release generation is the Membrane build's own sha256. Keyed to the
+        // build, this lane disagreed with the admission check on every request
+        // and was gapped as generation_incoherent. Mirrors audit and skills.
+        let mut output = empty_output(
+            context
+                .freshness
+                .generation
+                .clone()
+                .or_else(|| context.release_generation.clone()),
+        );
         if context.is_cancelled() {
             output.status = FederationProviderStatusV1::Cancelled;
             output
@@ -218,6 +229,7 @@ impl RulesProvider {
         };
         output.generation = response
             .generation
+            .or_else(|| context.freshness.generation.clone())
             .or_else(|| context.release_generation.clone());
         let mut documents = response.documents;
         documents.sort_by(|left, right| {
