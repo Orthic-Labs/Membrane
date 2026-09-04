@@ -27,8 +27,8 @@ jobs:
           if test -f scripts/dev/apply-push-wiring.py; then
             python3 scripts/dev/apply-push-wiring.py
             git diff --check
-            git add engine/crates/membrane-runtime/src engine/crates/membrane-mcp/src mcp/client.mjs mcp/host/context-adapter.cjs scripts/dev/apply-push-wiring.py
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(push): connect shared recovery and fidelity owners to production routes'
+            git add -A -- engine/crates/cortex-core/src/accounting.rs engine/crates/membrane-runtime engine/crates/membrane-mcp mcp schemas/registry docs/canon docs/provenance docs/pending scripts/dev
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(push): integrate verified recovery, bounded execution and measured delivery'
             git push origin HEAD:push-end-to-end
           fi
           printf 'Validated source revision: ' >> "$GITHUB_STEP_SUMMARY"
@@ -50,12 +50,19 @@ jobs:
           node -e 'JSON.parse(require("fs").readFileSync("schemas/registry/push-tools.v1.json", "utf8"))'
       - name: Compile runtime and native MCP
         run: cargo check --manifest-path engine/Cargo.toml -p membrane-runtime -p membrane-mcp --locked
-      - name: Focused recovery, delivery, and AST regressions
+      - name: Focused Push regressions
         run: |
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push::recovery::tests -- --test-threads=1
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push::fidelity::tests -- --test-threads=1
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push::delivery::tests -- --test-threads=1
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push::ast::tests -- --test-threads=1
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push::skel::tests -- --test-threads=1
+          set -o pipefail
+          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push:: -- --test-threads=1 2>&1 | tee /tmp/push-tests.log
+      - name: Request-time H8 integration
+        run: cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test request_time_h8 --no-default-features --locked
       - name: Native MCP registry regressions
         run: cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: push-test-output
+          path: /tmp/push-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
