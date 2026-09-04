@@ -41,6 +41,7 @@ jobs:
           tests/relationship-parity.test.mjs
           tests/compiler-adapters.test.mjs
           tests/parse-cache-fingerprint.test.mjs
+          tests/scip-normalizer.test.mjs
 
   cargo-check:
     runs-on: ubuntu-24.04
