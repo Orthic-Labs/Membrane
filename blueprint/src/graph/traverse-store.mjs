@@ -11,6 +11,7 @@ import {
   traversalNeighbors,
 } from "./store-sqlite.mjs";
 
+import { traversalBinding, decodeTraversalCursor, encodeTraversalCursor } from "./traversal-cursor.mjs";
 import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
 import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
 
@@ -277,52 +278,6 @@ function edgeReference(edge) {
   };
 }
 
-function decodeCursor(cursor) {
-  if (!cursor) return { node: 0, edge: 0 };
-  try {
-    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
-    return { node: Math.max(0, Number(value.node ?? 0)), edge: Math.max(0, Number(value.edge ?? 0)) };
-  } catch {
-    return { node: 0, edge: 0 };
-  }
-}
-
-function encodeCursor(node, edge) {
-  return Buffer.from(JSON.stringify({ node, edge })).toString("base64url");
-}
-
-const PATH_CURSOR_POLICY = "directed_outgoing_shortest_path_v1";
-
-function pathCursorBinding(options, budget) {
-  return {
-    kind: "path",
-    generationId: options.freshness?.generationId ?? null,
-    from: String(options.from ?? ""),
-    to: String(options.to ?? ""),
-    maxDepth: Math.max(1, Number(options.maxDepth ?? 5)),
-    budget,
-    policy: PATH_CURSOR_POLICY,
-  };
-}
-
-function decodePathCursor(cursor, binding) {
-  if (!cursor) return { node: 0, edge: 0 };
-  try {
-    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
-    const validPosition = Number.isSafeInteger(value.node) && value.node >= 0
-      && Number.isSafeInteger(value.edge) && value.edge >= 0;
-    const validBinding = Object.entries(binding).every(([key, expected]) => value[key] === expected);
-    if (!validPosition || !validBinding) throw new Error("cursor binding mismatch");
-    return { node: value.node, edge: value.edge };
-  } catch {
-    throw Object.assign(new Error("Path cursor is malformed or does not match this traversal."), { code: "cursor_invalid" });
-  }
-}
-
-function encodePathCursor(binding, position) {
-  return Buffer.from(JSON.stringify({ ...binding, node: position.node, edge: position.edge })).toString("base64url");
-}
-
 function tierRank(edge) {
   return ({ EXACT_RESOLUTION: 0, SAME_FILE_LEXICAL: 1, CROSS_FILE_HEURISTIC: 2, UNRESOLVED: 3 })[edge.confidenceTier] ?? 4;
 }
@@ -370,10 +325,10 @@ function freshnessFields(freshness = {}) {
   };
 }
 
-function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root, budget = 2000, cursor }) {
+function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root, budget = 2000, cursor, binding }) {
   budget = safeBudget(budget);
   const { rankedNodes, rankedEdges } = rankedReferences(nodes, edges, depths, root);
-  const start = decodeCursor(cursor);
+  const start = decodeTraversalCursor(cursor, binding, { node: rankedNodes.length, edge: rankedEdges.length });
   const selectedNodes = [];
   const selectedEdges = [];
   let used = 0;
@@ -394,12 +349,12 @@ function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root,
     used += cost;
   }
   const truncated = nodeIndex < rankedNodes.length || edgeIndex < rankedEdges.length;
-  const nextCursor = truncated ? encodeCursor(nodeIndex, edgeIndex) : null;
+  const nextCursor = truncated ? encodeTraversalCursor(binding, nodeIndex, edgeIndex) : null;
   return {
     schemaVersion: 2,
     provider,
     kind,
-    ...freshnessFields(freshness),
+    ...freshnessFields({ ...freshness, generationId: binding.generationId }),
     root: root ?? undefined,
     counts: {
       nodes: nodes.length,
@@ -421,6 +376,11 @@ export function boundedNeighbors(db, options = {}) {
     provider: providerId(meta.provider),
     freshness: options.freshness,
     kind: "neighbors",
+    binding: traversalBinding(meta, "neighbors", {
+      root: String(options.nodeId ?? ""), direction: options.direction ?? "both",
+      depth: Math.max(1, Number(options.depth ?? 1)), budget: safeBudget(options.budget),
+      policy: "ranked_neighborhood_v1",
+    }, options.freshness),
     nodes: raw.nodes,
     edges: raw.edges,
     depths: raw.depths,
@@ -437,6 +397,10 @@ export function boundedImpact(db, options = {}) {
     provider: providerId(meta.provider),
     freshness: options.freshness,
     kind: "impact",
+    binding: traversalBinding(meta, "impact", {
+      root: String(options.nodeId ?? ""), depth: Math.max(1, Number(options.depth ?? 3)),
+      budget: safeBudget(options.budget), policy: "ranked_upstream_impact_v1",
+    }, options.freshness),
     nodes: [raw.target, ...raw.impacted.filter((node) => node.id !== raw.target.id)],
     edges: raw.edges,
     depths: raw.depths,
@@ -457,11 +421,11 @@ export function boundedPath(db, options = {}) {
   const raw = indexedPath(db, options);
   const meta = indexedMeta(db);
   const budget = safeBudget(options.budget ?? 2000);
-  const binding = pathCursorBinding(options, budget);
-  const position = decodePathCursor(options.cursor, binding);
-  if (position.node > raw.path.length || position.edge > raw.edges.length) {
-    throw Object.assign(new Error("Path cursor position is outside this traversal."), { code: "cursor_invalid" });
-  }
+  const binding = traversalBinding(meta, "path", {
+    from: String(options.from ?? ""), to: String(options.to ?? ""),
+    maxDepth: Math.max(1, Number(options.maxDepth ?? 5)), budget,
+    policy: "directed_outgoing_shortest_path_v1",
+  }, options.freshness);
   const payload = boundedPayload({
     provider: providerId(meta.provider),
     freshness: options.freshness,
@@ -471,14 +435,11 @@ export function boundedPath(db, options = {}) {
     depths: new Map(raw.path.map((node, index) => [node.id, index])),
     root: options.from,
     budget,
-    cursor: encodeCursor(position.node, position.edge),
+    cursor: options.cursor,
+    binding,
   });
-  const continuationCursor = payload.continuationCursor
-    ? encodePathCursor(binding, decodeCursor(payload.continuationCursor))
-    : null;
   return {
     ...payload,
-    continuationCursor,
     path: payload.nodes,
     nodes: undefined,
     from: options.from ?? "",
@@ -501,27 +462,24 @@ export function boundedArchitecture(db, options = {}) {
   const counts = countRows(db);
   const edgesByKind = Object.fromEntries([...new Set(edges.map((edge) => edge.kind))].sort().map((kind) => [kind, edges.filter((edge) => edge.kind === kind).length]));
   const budget = safeBudget(options.budget ?? 2000);
-  const ranked = rankedReferences(samples, [], new Map(), null).rankedNodes;
-  let used = 0;
-  const examples = [];
-  for (const node of ranked) {
-    const row = nodeReference(node);
-    const cost = rowTokens(row);
-    if (used + cost > budget && examples.length) break;
-    examples.push(row);
-    used += cost;
-  }
+  const payload = boundedPayload({
+    provider: providerId(meta.provider), kind: "architecture", freshness: options.freshness,
+    nodes: samples, edges: [], depths: new Map(), root: null, budget, cursor: options.cursor,
+    binding: traversalBinding(meta, "architecture", {
+      budget, policy: "ranked_architecture_examples_v1",
+    }, options.freshness),
+  });
   return {
     schemaVersion: 2,
-    provider: providerId(meta.provider),
+    provider: payload.provider,
     kind: "architecture",
-    ...freshnessFields(options.freshness),
+    ...freshnessFields({ ...options.freshness, generationId }),
     counts: { nodes: counts.files + counts.symbols, files: counts.files, symbols: counts.symbols, edges: counts.edges, edgesByKind },
     entryPoints: entryIds.length,
     terminals: terminalIds.length,
-    examples,
-    truncated: examples.length < samples.length,
-    continuationCursor: examples.length < samples.length ? encodeCursor(examples.length, 0) : null,
+    examples: payload.nodes,
+    truncated: payload.truncated,
+    continuationCursor: payload.continuationCursor,
     budget,
   };
 }
@@ -553,4 +511,4 @@ export function encodeTabular(payload) {
   return `${lines.join("\n")}\n`;
 }
 
-export const _internals = { decodeCursor, encodeCursor, decodePathCursor, encodePathCursor, nodeReference, edgeReference, rowTokens };
+export const _internals = { nodeReference, edgeReference, rowTokens };
