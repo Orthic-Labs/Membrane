@@ -1,9 +1,7 @@
 // Python SCIP adapter. Reads only out-of-band portable JSON under repo-read;
-// it never installs, invokes, or guesses. Exact symbol identity produces
-// COMPILER definitions/references/types. Absent, unreadable, unsupported
-// version/shape, or partial indexes degrade explicitly to AST without throws.
+// it never installs, invokes, or guesses. Transport parsing and occurrence-role
+// semantics are shared with every first-party SCIP lane via scip-normalize.mjs.
 
-import { existsSync, readFileSync } from "node:fs";
 import { basename, isAbsolute, resolve } from "node:path";
 
 import { defineProvider } from "../index.mjs";
@@ -11,38 +9,12 @@ import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../../graph/confidence-ti
 import { PRECISION_TIERS } from "../../graph/precision-tiers.mjs";
 import { findScipIndex } from "../../graph/scip-provider.mjs";
 import { assertRegisteredRelationshipKinds } from "../../graph/relationship-kinds.mjs";
+import { readNormalizedScipIndex, scipOccurrenceEvidence } from "./scip-normalize.mjs";
 
 const PROVIDER_ID = "scip-python";
-const ADAPTER_VERSION = "portable-index-v1";
+const ADAPTER_VERSION = "normalized-portable-index-v2";
 const SUPPORTED_SCIP_PYTHON_VERSION = "0.6.6";
 const DEGRADES_TO = PRECISION_TIERS.AST;
-
-// Normalizes SCIP roles from either portable form: an array of role-name
-// strings (the repo's documented portable shape) or the standard numeric
-// bitmask (1=definition, 2=reference, 4=read, 8=write).
-function roleNames(roles) {
-  if (Array.isArray(roles)) return new Set(roles.map((role) => String(role)));
-  const value = Number(roles);
-  if (Number.isNaN(value)) return new Set();
-  const names = new Set();
-  if ((value & 1) === 1) names.add("definition");
-  if ((value & 2) === 2) names.add("reference");
-  if ((value & 4) === 4) names.add("read");
-  if ((value & 8) === 8) names.add("write");
-  return names;
-}
-
-// A usable occurrence carries a non-empty symbol, a roles field that names at
-// least one of definition/reference, and a range. Anything else is
-// structurally incomplete: skipped and reported (partial), never guessed at.
-function isUsableOccurrence(occ) {
-  if (occ === null || typeof occ !== "object") return false;
-  if (typeof occ.symbol !== "string" || occ.symbol.length === 0) return false;
-  if (!Array.isArray(occ.range) || occ.range.length < 2) return false;
-  const roles = roleNames(occ.roles);
-  if (roles.size === 0) return false;
-  return roles.has("definition") || roles.has("reference");
-}
 
 // File-local scip-python symbols (`local 0`, `local 1`, ...) and parameter
 // descriptors (`...summarize().(item)`) carry no cross-document meaning.
@@ -54,14 +26,10 @@ function isParameterSymbol(symbol) {
   return /\([A-Za-z_]\w*\)$/.test(symbol);
 }
 
-// Drop the scheme/manager/package/version prefix; what remains is the module
-// path plus the descriptor chain, e.g. `pkg/models Item#total().`.
 function symbolTail(symbol) {
   return String(symbol).split(/\s+/).slice(4).join(" ");
 }
 
-// Display-name extraction from literal descriptor text — a presentation
-// layer only, never a resolution heuristic (resolution is symbol identity).
 function descriptorNames(symbol) {
   const pattern = /([A-Za-z_]\w*)(?=#|\(\)\.|\(|\.|$)/g;
   return [...symbolTail(symbol).matchAll(pattern)].map((match) => match[1]);
@@ -79,26 +47,26 @@ function symbolLabels(symbol) {
   return ["Symbol"];
 }
 
-function occurrenceEvidence(path, occ) {
-  const startLine = Number(occ.range[0] ?? 0) + 1;
-  const endLine = Number(occ.range[2] ?? occ.range[0] ?? 0) + 1;
-  return [{ path, startLine, endLine, symbol: occ.symbol }];
+function occurrenceEvidence(occurrence) {
+  return [scipOccurrenceEvidence(occurrence)];
 }
 
-function definitionNode(path, occ) {
-  const symbol = occ.symbol;
+function definitionNode(occurrence, info = null) {
+  const symbol = occurrence.symbol;
   return {
-    id: `symbol:${path}::${symbol}`,
+    id: `symbol:${occurrence.documentPath}::${symbol}`,
     kind: "symbol",
     labels: symbolLabels(symbol),
-    name: leafName(symbol),
+    name: info?.displayName ?? leafName(symbol),
     qualifiedName: descriptorNames(symbol).join(".") || symbol,
     symbol,
-    path,
+    path: occurrence.documentPath,
     precisionTier: PRECISION_TIERS.COMPILER,
     provider: PROVIDER_ID,
     confidence: 1,
-    evidence: occurrenceEvidence(path, occ),
+    ...(info?.documentation?.length ? { documentation: [...info.documentation] } : {}),
+    ...(info?.kind !== null && info?.kind !== undefined ? { symbolKind: info.kind } : {}),
+    evidence: occurrenceEvidence(occurrence),
   };
 }
 
@@ -121,20 +89,19 @@ function referenceEdge(kind, sourceId, target, evidence, reason, serial) {
   };
 }
 
-// Single pass over the whole index builds a symbol -> definition-node map, so
-// a reference in one document resolves to a definition in ANOTHER document by
-// exact symbol identity — the cross-document channel. No name matching.
-function buildFromIndex(parsed) {
+function includedOccurrence(occurrence) {
+  return !isLocalSymbol(occurrence.symbol) && !isParameterSymbol(occurrence.symbol);
+}
+
+function buildFromIndex(index) {
   const nodes = [];
   const edges = [];
   const definitionsBySymbol = new Map();
-  let skippedOccurrences = 0;
   let definitionCount = 0;
   let referenceCount = 0;
 
-  for (const doc of parsed.documents) {
-    const path = String(doc.relativePath ?? doc.path ?? "");
-    if (!path) continue;
+  for (const doc of index.documents) {
+    const path = doc.path;
     nodes.push({
       id: `file:${path}`,
       kind: "file",
@@ -147,18 +114,13 @@ function buildFromIndex(parsed) {
       confidence: 1,
       evidence: [{ path, startLine: 1, endLine: 1 }],
     });
-    for (const occ of doc.occurrences ?? []) {
-      if (!isUsableOccurrence(occ)) {
-        skippedOccurrences += 1;
-        continue;
-      }
-      if (isLocalSymbol(occ.symbol) || isParameterSymbol(occ.symbol)) continue;
-      const roles = roleNames(occ.roles);
-      if (roles.has("definition")) {
+    for (const occurrence of doc.occurrences) {
+      if (!includedOccurrence(occurrence)) continue;
+      if (occurrence.roles.has("definition")) {
         definitionCount += 1;
-        if (!definitionsBySymbol.has(occ.symbol)) {
-          const node = definitionNode(path, occ);
-          definitionsBySymbol.set(occ.symbol, node);
+        if (!definitionsBySymbol.has(occurrence.symbol)) {
+          const node = definitionNode(occurrence, index.symbolInformationBySymbol.get(occurrence.symbol) ?? null);
+          definitionsBySymbol.set(occurrence.symbol, node);
           nodes.push(node);
         }
       }
@@ -166,29 +128,22 @@ function buildFromIndex(parsed) {
   }
 
   let serial = 0;
-  for (const doc of parsed.documents) {
-    const path = String(doc.relativePath ?? doc.path ?? "");
-    if (!path) continue;
-    const sourceId = `file:${path}`;
-    for (const occ of doc.occurrences ?? []) {
-      if (!isUsableOccurrence(occ)) continue;
-      if (isLocalSymbol(occ.symbol) || isParameterSymbol(occ.symbol)) continue;
-      const roles = roleNames(occ.roles);
-      if (!roles.has("reference")) continue;
+  for (const doc of index.documents) {
+    const sourceId = `file:${doc.path}`;
+    for (const occurrence of doc.occurrences) {
+      if (!includedOccurrence(occurrence) || !occurrence.roles.has("reference")) continue;
       referenceCount += 1;
-      const target = definitionsBySymbol.get(occ.symbol) ?? null;
-      const evidence = occurrenceEvidence(path, occ);
+      const target = definitionsBySymbol.get(occurrence.symbol) ?? null;
+      const evidence = occurrenceEvidence(occurrence);
       edges.push(referenceEdge(
         "REFERENCES",
         sourceId,
         target,
         evidence,
-        target ? null : `no definition for symbol "${occ.symbol}" in the index; no name-match fallback`,
+        target ? null : `no definition for symbol "${occurrence.symbol}" in the index; no name-match fallback`,
         serial,
       ));
       serial += 1;
-      // A reference whose target symbol is a class IS a type usage — exact
-      // type resolution at COMPILER precision, same symbol identity rule.
       if (target?.labels?.includes("Class")) {
         edges.push(referenceEdge("TYPED", sourceId, target, evidence, null, serial));
         serial += 1;
@@ -196,7 +151,7 @@ function buildFromIndex(parsed) {
     }
   }
 
-  return { nodes, edges, skippedOccurrences, definitionCount, referenceCount };
+  return { nodes, edges, definitionCount, referenceCount };
 }
 
 function degradationReport(probe) {
@@ -228,32 +183,23 @@ function probeScipIndex(context = {}) {
       reason: "no SCIP index found (set BLUEPRINT_SCIP_INDEX or pass scipIndexPath, or place index.scip.json / .agent/index.scip.json at the repo root)",
     };
   }
-  let parsed;
+
+  let index;
   try {
-    parsed = JSON.parse(readFileSync(indexPath, "utf8"));
-  } catch (err) {
+    index = readNormalizedScipIndex(indexPath);
+  } catch (error) {
     return {
       state: "unavailable",
-      code: "scip_index_unreadable",
+      code: error?.code ?? "scip_index_unreadable",
       provider: PROVIDER_ID,
       precisionTier: PRECISION_TIERS.COMPILER,
       degradesTo: DEGRADES_TO,
       indexPath,
-      reason: `SCIP index at ${indexPath} could not be read/parsed as JSON: ${String(err?.message ?? err)}`,
+      reason: String(error?.message ?? error),
     };
   }
-  if (!Array.isArray(parsed?.documents)) {
-    return {
-      state: "unavailable",
-      code: "scip_index_incompatible",
-      provider: PROVIDER_ID,
-      precisionTier: PRECISION_TIERS.COMPILER,
-      degradesTo: DEGRADES_TO,
-      indexPath,
-      reason: `SCIP index at ${indexPath} has no "documents" array — not a recognized portable-SCIP-JSON shape`,
-    };
-  }
-  const indexVersion = String(parsed.metadata?.version ?? "");
+
+  const indexVersion = String(index.metadata?.version ?? "");
   if (indexVersion && indexVersion !== SUPPORTED_SCIP_PYTHON_VERSION) {
     return {
       state: "unavailable",
@@ -266,34 +212,17 @@ function probeScipIndex(context = {}) {
       reason: `SCIP index at ${indexPath} uses scip-python ${indexVersion}; supported version is ${SUPPORTED_SCIP_PYTHON_VERSION}`,
     };
   }
-  let skippedDocuments = 0;
-  let skippedOccurrences = 0;
+
   let definitionCount = 0;
   let referenceCount = 0;
-  for (const doc of parsed.documents) {
-    if (doc === null || typeof doc !== "object") {
-      skippedDocuments += 1;
-      continue;
-    }
-    const path = String(doc.relativePath ?? doc.path ?? "");
-    if (!path) {
-      skippedDocuments += 1;
-      continue;
-    }
-    for (const occ of doc.occurrences ?? []) {
-      if (!isUsableOccurrence(occ)) {
-        skippedOccurrences += 1;
-        continue;
-      }
-      if (isLocalSymbol(occ.symbol) || isParameterSymbol(occ.symbol)) continue;
-      const roles = roleNames(occ.roles);
-      if (roles.has("definition")) definitionCount += 1;
-      if (roles.has("reference")) referenceCount += 1;
-    }
+  for (const occurrence of index.occurrences) {
+    if (!includedOccurrence(occurrence)) continue;
+    if (occurrence.roles.has("definition")) definitionCount += 1;
+    if (occurrence.roles.has("reference")) referenceCount += 1;
   }
   const partialReasons = [];
-  if (skippedDocuments > 0) partialReasons.push(`${skippedDocuments} document(s) missing relativePath`);
-  if (skippedOccurrences > 0) partialReasons.push(`${skippedOccurrences} structurally incomplete occurrence(s)`);
+  if (index.skippedDocuments > 0) partialReasons.push(`${index.skippedDocuments} document(s) missing relativePath`);
+  if (index.skippedOccurrences > 0) partialReasons.push(`${index.skippedOccurrences} structurally incomplete occurrence(s)`);
   if (definitionCount === 0) partialReasons.push("index declares no definitions");
   if (partialReasons.length > 0) {
     return {
@@ -303,10 +232,10 @@ function probeScipIndex(context = {}) {
       precisionTier: PRECISION_TIERS.COMPILER,
       degradesTo: DEGRADES_TO,
       indexPath,
-      indexVersion: String(parsed.metadata?.version ?? ""),
+      indexVersion,
       reason: `SCIP index at ${indexPath} is partial: ${partialReasons.join("; ")}. Affected entries are skipped; no edges are fabricated for them.`,
-      skippedDocuments,
-      skippedOccurrences,
+      skippedDocuments: index.skippedDocuments,
+      skippedOccurrences: index.skippedOccurrences,
       definitionCount,
       referenceCount,
     };
@@ -316,8 +245,8 @@ function probeScipIndex(context = {}) {
     provider: PROVIDER_ID,
     precisionTier: PRECISION_TIERS.COMPILER,
     indexPath,
-    indexVersion: String(parsed.metadata?.version ?? ""),
-    documentCount: parsed.documents.length,
+    indexVersion,
+    documentCount: index.documents.length,
     definitionCount,
     referenceCount,
   };
@@ -338,21 +267,20 @@ export const pythonScipProvider = defineProvider({
     if (probe.state === "unavailable") {
       return { nodes: [], edges: [], reports: [degradationReport(probe)], index: probe };
     }
-    let parsed;
+    let index;
     try {
-      parsed = JSON.parse(readFileSync(probe.indexPath, "utf8"));
-    } catch (err) {
-      // The index changed between probe and read — same typed degradation.
+      index = readNormalizedScipIndex(probe.indexPath);
+    } catch (error) {
       const unavailable = {
         ...probe,
         state: "unavailable",
-        code: "scip_index_unreadable",
+        code: error?.code ?? "scip_index_unreadable",
         degradesTo: DEGRADES_TO,
-        reason: `SCIP index at ${probe.indexPath} could not be read/parsed as JSON: ${String(err?.message ?? err)}`,
+        reason: String(error?.message ?? error),
       };
       return { nodes: [], edges: [], reports: [degradationReport(unavailable)], index: unavailable };
     }
-    const built = buildFromIndex(parsed);
+    const built = buildFromIndex(index);
     assertRegisteredRelationshipKinds(built.edges, PROVIDER_ID);
     const reports = probe.state === "partial" ? [degradationReport(probe)] : [];
     return {
@@ -361,10 +289,10 @@ export const pythonScipProvider = defineProvider({
       reports,
       index: {
         provider: PROVIDER_ID,
-        indexer: parsed.metadata?.indexer ?? "scip-python",
-        version: String(parsed.metadata?.version ?? ""),
+        indexer: index.metadata?.indexer ?? "scip-python",
+        version: String(index.metadata?.version ?? ""),
         path: probe.indexPath,
-        documentCount: parsed.documents.length,
+        documentCount: index.documents.length,
         definitionCount: built.definitionCount,
         referenceCount: built.referenceCount,
         state: probe.state,
