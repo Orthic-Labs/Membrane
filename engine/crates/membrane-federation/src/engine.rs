@@ -229,10 +229,20 @@ impl FederationEngine {
         let release = self.bind_release(normalized.release_generation.as_deref())?;
         let freshness = self.bind_freshness(&query, release.clone()).await?;
         let scope_grant = self.bind_scope(&normalized, &query).await?;
-        let expected_generation = normalized
-            .release_generation
+        // Every provider output is admitted only when its generation equals
+        // this one, and a provider answers with the content identity of what
+        // it indexed — not with the Membrane build's release sha256. Checking
+        // the release generation first meant no provider could ever agree:
+        // measured on this machine as seven `generation_incoherent` omissions
+        // and zero candidates on a request whose sources had all answered.
+        // The snapshot is what the providers are keyed to; the release
+        // generation remains the fallback for a request that carries no
+        // snapshot.
+        let expected_generation = freshness
+            .snapshot
+            .generation
             .as_deref()
-            .or(freshness.snapshot.generation.as_deref());
+            .or(normalized.release_generation.as_deref());
 
         let deadline = Deadline::from_budget(&SystemClock, normalized.deadline);
         let provider_context = ProviderContext::new(
