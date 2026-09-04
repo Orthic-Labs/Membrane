@@ -741,10 +741,27 @@ fn parse_result(
             return Err(BlueprintClientError::Oversized("path_count"));
         }
     }
+    // Blueprint attaches its own provenance to each candidate — which recall
+    // circuit produced it, which evidence path, and the envelope itself.
+    // `CandidateV1` denies unknown fields, so their presence did not drop
+    // those keys: it rejected the whole provider output as malformed and took
+    // every Blueprint candidate with it. Measured on the installed build as
+    // `blueprint:provider_malformed` with zero candidates, while the daemon
+    // answered the same query with nine.
+    //
+    // They are carried on `payload`, which is kept whole below, so removing
+    // them here loses nothing.
+    const BLUEPRINT_PROVENANCE_KEYS: [&str; 3] =
+        ["recallCircuitId", "evidencePathId", "evidenceEnvelope"];
     let typed = candidates
         .iter()
         .cloned()
-        .map(|value| {
+        .map(|mut value| {
+            if let Some(object) = value.as_object_mut() {
+                for key in BLUEPRINT_PROVENANCE_KEYS {
+                    object.remove(key);
+                }
+            }
             serde_json::from_value::<CandidateV1>(value)
                 .map_err(|error| BlueprintClientError::Malformed(error.to_string()))
         })
