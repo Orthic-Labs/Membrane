@@ -431,7 +431,6 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
             Err("blueprint_enrollment_failed".into())
         } else {
             let detail: String = detail.replace(['\r', '\n'], " ").chars().take(300).collect();
-'], " ").chars().take(300).collect();
             Err(format!("blueprint_enrollment_failed: {detail}"))
         }
     }
