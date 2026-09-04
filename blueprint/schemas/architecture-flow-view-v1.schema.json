@@ -25,7 +25,8 @@
     "entryPoints": { "type": "integer", "minimum": 0 },
     "flows": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/flow" } },
     "truncated": { "type": "boolean" },
-    "continuationCursor": { "type": ["string", "null"] }
+    "continuationCursor": { "type": ["string", "null"] },
+    "omissions": { "type": "array", "items": { "type": "object" } }
   },
   "$defs": {
     "node": {
