@@ -82,11 +82,19 @@ impl BlueprintProvider {
             return Err(ProviderError::DeadlineExceeded);
         }
         let mut query = context.query();
+        // Only a scope grant can pin an expected Blueprint generation.
+        //
+        // `ProviderContext::query()` fills `generation` with the *release*
+        // generation — the Membrane build's `sha256:` identity — while
+        // Blueprint answers with its snapshot's content identity
+        // (`xxh128:<hash>`). Those are different things and can never be
+        // equal, so falling back to it gapped every Blueprint query as
+        // generation-incoherent: zero candidates, an empty packet, and a
+        // context request that failed with no sign the provider had answered.
         query.generation = context
             .scope_grant
             .as_ref()
-            .map(|grant| grant.blueprint_generation.clone())
-            .or(query.generation);
+            .map(|grant| grant.blueprint_generation.clone());
         let expected_generation = query.generation.clone();
         let response = match match self.contextual_source.as_ref() {
             Some(source) => {
