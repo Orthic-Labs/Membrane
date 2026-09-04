@@ -180,6 +180,34 @@ impl FreshnessBinding {
     }
 }
 
+/// A graph snapshot's generation is the provider's own content identity, not
+/// a release generation.
+///
+/// This was validated with `release::validate_generation`, which requires the
+/// release form `sha256:<64 hex>`. Blueprint content-addresses its generations
+/// as `xxh128:<32 hex>`, so every snapshot it produced was rejected as
+/// malformed and no installed Membrane could bind freshness at all. The
+/// snapshot only needs an algorithm-tagged digest it can be compared by, so
+/// that is what is required here — still strict enough to refuse an untagged
+/// or non-hex value.
+fn validate_snapshot_generation(generation: &str) -> Result<(), FreshnessError> {
+    let Some((algorithm, digest)) = generation.split_once(':') else {
+        return Err(FreshnessError::Malformed("generation is invalid"));
+    };
+    let algorithm_ok = (2..=16).contains(&algorithm.len())
+        && algorithm
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-');
+    let digest_ok = (16..=128).contains(&digest.len())
+        && digest.len() % 2 == 0
+        && digest.bytes().all(|byte| byte.is_ascii_hexdigit());
+    if algorithm_ok && digest_ok {
+        Ok(())
+    } else {
+        Err(FreshnessError::Malformed("generation is invalid"))
+    }
+}
+
 fn validate_snapshot(snapshot: &FreshnessSnapshotV1) -> Result<(), FreshnessError> {
     let graph_state = snapshot.graph_state.trim();
     if graph_state.is_empty() {
@@ -189,11 +217,43 @@ fn validate_snapshot(snapshot: &FreshnessSnapshotV1) -> Result<(), FreshnessErro
         return Ok(());
     }
     if let Some(generation) = snapshot.generation.as_deref() {
-        crate::release::validate_generation(generation)
-            .map_err(|_| FreshnessError::Malformed("generation is invalid"))?;
+        validate_snapshot_generation(generation)?;
     }
     if snapshot.overlay_digest.is_some() && snapshot.base_commit.is_none() {
         return Err(FreshnessError::Malformed("overlay requires base_commit"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod snapshot_generation_tests {
+    use super::validate_snapshot_generation;
+
+    #[test]
+    fn a_provider_content_digest_is_accepted_whatever_algorithm_named_it() {
+        // Blueprint's own generations. These were refused as malformed, so no
+        // installed Membrane could bind freshness against a real snapshot.
+        validate_snapshot_generation("xxh128:97eee85c7f1e8f6b0af54c9931f761f0")
+            .expect("Blueprint's content identity must bind");
+        validate_snapshot_generation(
+            "sha256:7074b672c150afc3c2be6879c5de547e18d4fbe660c50e370e86e1ac50e87fe1",
+        )
+        .expect("a sha256 generation must still bind");
+    }
+
+    #[test]
+    fn an_untagged_or_non_hex_generation_is_still_refused() {
+        for refused in [
+            "97eee85c7f1e8f6b0af54c9931f761f0",
+            "xxh128:",
+            "xxh128:zzzz85c7f1e8f6b0af54c9931f761f0",
+            "xxh128:97eee85c7f1e8f6b0af54c9931f761f",
+            ":97eee85c7f1e8f6b0af54c9931f761f0",
+        ] {
+            assert!(
+                validate_snapshot_generation(refused).is_err(),
+                "must refuse {refused}"
+            );
+        }
+    }
 }
