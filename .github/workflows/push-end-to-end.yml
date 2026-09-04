@@ -25,6 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           if test -f scripts/dev/apply-push-wiring.py; then
+            sed -i 's/tfWbJmGhu0/tfWbGhu0/g' scripts/dev/apply-push-wiring.py
             python3 scripts/dev/apply-push-wiring.py
             git diff --check
             git add -A -- engine/crates/cortex-core/src/accounting.rs engine/crates/membrane-runtime engine/crates/membrane-mcp mcp schemas/registry docs/canon docs/provenance docs/pending scripts/dev
@@ -46,8 +47,10 @@ jobs:
       - name: Static JavaScript and schema validation
         run: |
           node --check mcp/client.mjs
+          node --check mcp/server.mjs
           node --check mcp/host/context-adapter.cjs
           node -e 'JSON.parse(require("fs").readFileSync("schemas/registry/push-tools.v1.json", "utf8"))'
+          node --test mcp/host/push-tool-egress.test.mjs
       - name: Compile runtime and native MCP
         run: cargo check --manifest-path engine/Cargo.toml -p membrane-runtime -p membrane-mcp --locked
       - name: Focused Push regressions
