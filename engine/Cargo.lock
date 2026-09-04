@@ -2438,6 +2438,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-blueprint"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "membrane-client"
 version = "0.1.0"
 dependencies = [

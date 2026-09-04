@@ -133,6 +133,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 .map(|workspace| workspace.http_port)
         })
         .unwrap_or(47_851);
+    let blueprint_workspace_root = workspace_root.clone();
     let supervisor = Rc::new(RefCell::new(supervisor::Supervisor::new(
         workspace_root,
         daemon_path,
@@ -141,6 +142,34 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Ok(workspace) = resolved_workspace.as_ref() {
         supervisor.borrow_mut().set_origin(workspace.origin);
     }
+
+    // Start Blueprint alongside the daemon. Membrane's context freshness gate
+    // binds through Blueprint's named pipe, so without this the resident
+    // service answers every context request with source_incomplete. The
+    // launcher existed but no `mod` statement ever declared it, so nothing
+    // started Blueprint at all. It belongs here rather than in the dashboard:
+    // the service exits when the stdin it was launched with closes, so its
+    // owner has to be a process that stays running, and context must not
+    // require the operator to open a window.
+    let _blueprint = resolved_workspace
+        .as_ref()
+        .ok()
+        .filter(|workspace| workspace.origin == workspace::RuntimeOrigin::Installed)
+        .and_then(|workspace| workspace.product_root.clone())
+        .map(|product_root| {
+            let supervisor = membrane_blueprint::Supervisor::new(
+                blueprint_workspace_root,
+                product_root.join("runtime").join("blueprint"),
+            );
+            match supervisor.start() {
+                Ok(status) => eprintln!("membrane-tray: blueprint {}", status.as_str()),
+                // Blueprint being unavailable degrades context; it never stops
+                // the tray, and the reason is reported rather than swallowed.
+                Err(reason) => eprintln!("membrane-tray: blueprint unavailable ({reason})"),
+            }
+            supervisor
+        });
+
     let startup_path = resolved_workspace
         .as_ref()
         .ok()

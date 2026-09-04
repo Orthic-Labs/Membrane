@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 membrane-protocol = { path = "../../engine/crates/membrane-protocol" }
+membrane-blueprint = { path = "../../engine/crates/membrane-blueprint" }
 # `renderer-software` is already a default Slint feature; naming it explicitly
 # keeps the CPU fallback renderer available even if defaults are trimmed later.
 # The GPU renderer (`renderer-femtovg`) stays enabled for normal desktops.

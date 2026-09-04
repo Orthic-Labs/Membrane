@@ -1,4 +1,10 @@
-//! Hub-owned lifecycle for Blueprint installed with Membrane Hub.
+//! Lifecycle for the Blueprint service shipped inside an installed Membrane.
+//!
+//! This lived in the Hub application as a module no `mod` statement ever
+//! declared, so nothing in the shipped product started Blueprint at all and
+//! every context request failed its freshness gate. It is a crate now because
+//! the owner has to be a resident process: the service shuts down when the
+//! stdin it was launched with closes, so whoever starts it must outlive it.
 //!
 //! Blueprint stays a separately bounded installed component: Hub only enrolls
 //! active workspace, starts `service run` in foreground mode, exports one
