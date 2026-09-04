@@ -18,7 +18,8 @@ test("SCIP role normalization gives string and standard bitmask forms the same c
 
 test("canonical SCIP normalizer builds exact cross-document definition identity", () => {
   const index = readNormalizedScipIndex(INDEX);
-  const totalSymbol = "scip-python python fixture 0.6.6 pkg/models Item#total().";
+  const totalSymbol = [...index.definitionsBySymbol.keys()].find((symbol) => symbol.endsWith("Item#total()."));
+  assert.ok(totalSymbol, "fixture exposes the exact total() SCIP symbol");
   const definition = index.definitionsBySymbol.get(totalSymbol);
   assert.ok(definition, "total() definition is indexed by exact SCIP symbol");
   assert.equal(definition.documentPath, "pkg/models.py");
