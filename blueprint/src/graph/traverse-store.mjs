@@ -53,7 +53,7 @@ export function indexedResolve(db, nodeId, options = {}) {
   return {
     schemaVersion: 1,
     provider: providerId(meta.provider),
-    node: { ...node, fresh: options.sourceState !== "dirty_overlay" },
+    node: { ...node, fresh: options.sourceState === "clean" || options.sourceState === "fresh" },
   };
 }
 
@@ -320,7 +320,7 @@ function rankedReferences(nodes, edges, depths, root) {
 function freshnessFields(freshness = {}) {
   return {
     generationId: freshness.generationId ?? null,
-    sourceState: freshness.sourceState ?? "clean",
+    sourceState: freshness.sourceState ?? "unknown",
     dirtyFileCount: Number(freshness.dirtyFileCount ?? 0),
   };
 }
@@ -487,7 +487,7 @@ export function boundedArchitecture(db, options = {}) {
 export function encodeTabular(payload) {
   const lines = [
     `schemaVersion=${payload.schemaVersion} provider=${payload.provider} kind=${payload.kind}`,
-    `generationId=${payload.generationId ?? ""} sourceState=${payload.sourceState ?? "clean"} dirtyFileCount=${payload.dirtyFileCount ?? 0}`,
+    `generationId=${payload.generationId ?? ""} sourceState=${payload.sourceState ?? "unknown"} dirtyFileCount=${payload.dirtyFileCount ?? 0}`,
     `truncated=${Boolean(payload.truncated)} continuationCursor=${payload.continuationCursor ?? ""}`,
   ];
   for (const [key, value] of Object.entries(payload.counts ?? {})) {
