@@ -414,15 +414,26 @@ fn enroll_workspace(layout: &RuntimeLayout, workspace_root: &Path) -> Result<(),
         .arg(&child_root)
         .current_dir(&layout.package)
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        // Enrollment failure used to report a bare code with the reason
+        // discarded, so an operator saw `blueprint_enrollment_failed` and
+        // nothing about why. Capture the child's own words instead.
+        .stderr(Stdio::piped());
     suppress_windows_console(&mut command);
-    let status = command
-        .status()
+    let output = command
+        .output()
         .map_err(|_| "blueprint_enrollment_spawn_failed".to_string())?;
-    if status.success() || workspace_is_enrolled(workspace_root) {
+    if output.status.success() || workspace_is_enrolled(workspace_root) {
         Ok(())
     } else {
-        Err("blueprint_enrollment_failed".into())
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        if detail.is_empty() {
+            Err("blueprint_enrollment_failed".into())
+        } else {
+            let detail: String = detail.replace(['\r', '\n'], " ").chars().take(300).collect();
+'], " ").chars().take(300).collect();
+            Err(format!("blueprint_enrollment_failed: {detail}"))
+        }
     }
 }
 

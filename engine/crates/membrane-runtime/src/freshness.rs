@@ -323,7 +323,14 @@ pub fn evaluate_freshness(
         };
         let overlay = match probe.read_overlay() {
             Ok(overlay) => overlay,
-            Err(_) => return indeterminate(attempt, "overlay_unavailable", stage_elapsed_ms),
+            // The probe distinguishes an absent overlay from a malformed one.
+            // Discarding the error here put both under one code again, which
+            // is the whole reason a malformed overlay was undiagnosable.
+            Err(reason) => {
+                let mut verdict = indeterminate(attempt, "overlay_unavailable", stage_elapsed_ms);
+                verdict.reasons.push(reason);
+                return verdict;
+            }
         };
         merge_stage_elapsed(&mut stage_elapsed_ms, &overlay.stage_elapsed_ms);
         let after = match probe.read_epoch() {
@@ -611,7 +618,10 @@ pub struct FilesystemFreshnessProbe<'a> {
     repo_root: PathBuf,
     store: &'a MemoryStore,
     blueprint_endpoint: Option<PathBuf>,
-    pending_overlay: Option<OverlayObservation>,
+    /// The overlay this epoch read, or why it could not be used. Holding the
+    /// reason keeps a malformed overlay distinguishable from an absent one:
+    /// discarding the deserialization error reported both as "unavailable".
+    pending_overlay: Option<Result<OverlayObservation, String>>,
 }
 
 impl<'a> FilesystemFreshnessProbe<'a> {
@@ -645,7 +655,10 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
                 value.get("available").and_then(serde_json::Value::as_bool) == Some(true)
             })
             .cloned()
-            .and_then(|value| serde_json::from_value(value).ok());
+            .map(|value| {
+                serde_json::from_value::<OverlayObservation>(value)
+                    .map_err(|error| format!("Blueprint overlay evidence is malformed: {error}"))
+            });
         let head_commit = json_string(&status, &[&["result", "repository", "revision"]]);
         let manifest = status.get("result").and_then(|value| value.get("manifest"));
         let blueprint_generation = json_string(
@@ -686,9 +699,10 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     }
 
     fn read_overlay(&mut self) -> Result<OverlayObservation, String> {
-        self.pending_overlay
-            .take()
-            .ok_or_else(|| "Blueprint overlay evidence unavailable".to_string())
+        match self.pending_overlay.take() {
+            Some(overlay) => overlay,
+            None => Err("Blueprint overlay evidence unavailable".to_string()),
+        }
     }
 }
 
