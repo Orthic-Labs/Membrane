@@ -172,13 +172,13 @@ test("python SCIP collect resolves the cross-module total() reference to models.
   assert.equal(classRef.confidenceTier, "EXACT_RESOLUTION");
 });
 
-test("python SCIP collect emits exact TYPES edges for class references", async () => {
+test("python SCIP collect emits exact TYPED edges for class references", async () => {
   const collected = await pythonScipProvider.collect({ repoRoot: PYTHON_FIXTURE });
-  const types = collected.edges.filter((edge) => edge.kind === "TYPES");
-  assert.equal(types.length, 1);
-  assert.equal(types[0].evidence[0].path, "pkg/service.py");
-  assert.equal(types[0].confidenceTier, "EXACT_RESOLUTION");
-  assert.equal(types[0].precisionTier, "COMPILER");
+  const typed = collected.edges.filter((edge) => edge.kind === "TYPED");
+  assert.equal(typed.length, 1);
+  assert.equal(typed[0].evidence[0].path, "pkg/service.py");
+  assert.equal(typed[0].confidenceTier, "EXACT_RESOLUTION");
+  assert.equal(typed[0].precisionTier, "COMPILER");
 });
 
 test("python SCIP collect reports unknown symbols UNRESOLVED with no speculative match", async () => {

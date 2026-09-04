@@ -10,6 +10,7 @@ import { defineProvider } from "../index.mjs";
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../../graph/confidence-tiers.mjs";
 import { PRECISION_TIERS } from "../../graph/precision-tiers.mjs";
 import { findScipIndex } from "../../graph/scip-provider.mjs";
+import { assertRegisteredRelationshipKinds } from "../../graph/relationship-kinds.mjs";
 
 const PROVIDER_ID = "scip-python";
 const ADAPTER_VERSION = "portable-index-v1";
@@ -189,7 +190,7 @@ function buildFromIndex(parsed) {
       // A reference whose target symbol is a class IS a type usage — exact
       // type resolution at COMPILER precision, same symbol identity rule.
       if (target?.labels?.includes("Class")) {
-      edges.push(referenceEdge("TYPES", sourceId, target, evidence, null, serial));
+        edges.push(referenceEdge("TYPED", sourceId, target, evidence, null, serial));
         serial += 1;
       }
     }
@@ -352,6 +353,7 @@ export const pythonScipProvider = defineProvider({
       return { nodes: [], edges: [], reports: [degradationReport(unavailable)], index: unavailable };
     }
     const built = buildFromIndex(parsed);
+    assertRegisteredRelationshipKinds(built.edges, PROVIDER_ID);
     const reports = probe.state === "partial" ? [degradationReport(probe)] : [];
     return {
       nodes: built.nodes,
