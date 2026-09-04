@@ -396,6 +396,14 @@ impl<T: BlueprintTransport> BlueprintClient<T> {
             "task": query.task,
             "limit": query.bounds.max_candidates,
             "anchors": query.anchors,
+            // Blueprint refuses every query whose sealed generation predates
+            // the current worktree unless the caller accepts known-stale
+            // evidence — which is any repository that has been committed to
+            // since its last full build, i.e. one under active development.
+            // Membrane does not need that refusal: it runs its own freshness
+            // gate over the same snapshot and carries the staleness marker on
+            // the packet, so labelled evidence is strictly more use than none.
+            "allowStale": true,
         });
         if let Some(symbol) = &query.symbol {
             input["symbol"] = Value::String(symbol.clone());

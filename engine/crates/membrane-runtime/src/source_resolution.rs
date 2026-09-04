@@ -121,10 +121,18 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let overlay_identity = candidate_set
+    // An overlay identity that is present but unreadable is not the same as
+    // one that was never sent. Swallowing the parse left it as None, and every
+    // receipt then compared unequal and was reported as a generation
+    // mismatch — a wrong cause for a malformed field. `MissingIdentity` is
+    // the status that says what actually happened.
+    let raw_overlay_identity = candidate_set
         .get("freshness")
-        .and_then(|freshness| freshness.get("overlayIdentity"))
+        .and_then(|freshness| freshness.get("overlayIdentity"));
+    let overlay_identity_present = raw_overlay_identity.is_some_and(|value| !value.is_null());
+    let overlay_identity = raw_overlay_identity
         .and_then(|value| serde_json::from_value(value.clone()).ok());
+    let overlay_identity_malformed = overlay_identity_present && overlay_identity.is_none();
     let generation = candidate_set.as_object_mut().and_then(|object| object.remove("generationId")).and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_default();
     let Some(candidates) = candidate_set
         .get_mut("candidates")
@@ -141,7 +149,9 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
             .and_then(|value| serde_json::from_value(value).ok())
             .map(|value| verify(value, candidate, &provider, &generation))
             .unwrap_or_else(|| unresolved(candidate, &provider, &generation));
-        if receipt.overlay_identity != overlay_identity {
+        if overlay_identity_malformed {
+            receipt.status = SourceResolutionStatusV1::MissingIdentity;
+        } else if receipt.overlay_identity != overlay_identity {
             receipt.status = SourceResolutionStatusV1::GenerationMismatch;
         }
         receipt.overlay_identity = overlay_identity.clone();
