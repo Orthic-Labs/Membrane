@@ -300,14 +300,47 @@ pub fn prep_files_with_policy(
             continue;
         }
 
-        let bytes = std::fs::read(orig_path).unwrap_or_default();
+        // A file that cannot be read is not an empty file. Defaulting to empty
+        // bytes sent it down the "tiny content" branch and published a
+        // zero-length document as if that were its content; `missing` is the
+        // entry kind that already means "no content available here".
+        let Ok(bytes) = std::fs::read(orig_path) else {
+            out.push(PrepEntry {
+                orig: orig_str,
+                kind: "missing".into(),
+                prepared: None,
+                before_bytes: None,
+                after_bytes: None,
+                before_tok: None,
+                after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
+            });
+            continue;
+        };
         let before_bytes = bytes.len() as u64;
 
         // Branch 2: tiny/missing content -> copy (tiny beats code ext)
         if bytes.len() < min_bytes {
             let name = base_name(orig_path);
             let prepared_path = out_dir.join(&name);
-            let _ = std::fs::write(&prepared_path, &bytes);
+            // A prepared entry must point at a file that exists. Discarding
+            // the write error published a path the consumer would then fail to
+            // read, with the failure surfacing far from its cause.
+            if std::fs::write(&prepared_path, &bytes).is_err() {
+                out.push(PrepEntry {
+                    orig: orig_str,
+                    kind: "missing".into(),
+                    prepared: None,
+                    before_bytes: Some(before_bytes),
+                    after_bytes: None,
+                    before_tok: None,
+                    after_tok: None,
+                    budget_tok: None,
+                    drop_manifest: None,
+                });
+                continue;
+            }
             out.push(PrepEntry {
                 orig: orig_str,
                 kind: "copy".into(),
@@ -330,7 +363,23 @@ pub fn prep_files_with_policy(
         if is_structured_text(orig_path, &src) {
             let name = base_name(orig_path);
             let prepared_path = out_dir.join(&name);
-            let _ = std::fs::write(&prepared_path, &bytes);
+            // A prepared entry must point at a file that exists. Discarding
+            // the write error published a path the consumer would then fail to
+            // read, with the failure surfacing far from its cause.
+            if std::fs::write(&prepared_path, &bytes).is_err() {
+                out.push(PrepEntry {
+                    orig: orig_str,
+                    kind: "missing".into(),
+                    prepared: None,
+                    before_bytes: Some(before_bytes),
+                    after_bytes: None,
+                    before_tok: None,
+                    after_tok: None,
+                    budget_tok: None,
+                    drop_manifest: None,
+                });
+                continue;
+            }
             out.push(PrepEntry {
                 orig: orig_str,
                 kind: "copy-structured".into(),
@@ -383,7 +432,23 @@ pub fn prep_files_with_policy(
             } else {
                 ("skel".to_string(), sk)
             };
-            let _ = std::fs::write(&prepared_path, &payload);
+            // A prepared entry must point at a file that exists. Discarding
+            // the write error published a path the consumer would then fail to
+            // read, with the failure surfacing far from its cause.
+            if std::fs::write(&prepared_path, &payload).is_err() {
+                out.push(PrepEntry {
+                    orig: orig_str,
+                    kind: "missing".into(),
+                    prepared: None,
+                    before_bytes: Some(before_bytes),
+                    after_bytes: None,
+                    before_tok: None,
+                    after_tok: None,
+                    budget_tok: None,
+                    drop_manifest: None,
+                });
+                continue;
+            }
             out.push(PrepEntry {
                 orig: orig_str,
                 kind,
@@ -409,8 +474,37 @@ pub fn prep_files_with_policy(
                 orig_path.to_string_lossy().replace('\\', "/")
             );
             let projection = outline::build_outline(&source_ref, &src, "comrak-0.54.0");
-            let payload = serde_json::to_vec(&projection).unwrap_or_default();
-            let _ = std::fs::write(&prepared_path, &payload);
+            // Serializing to an empty payload and ignoring the write error
+            // published a zero-byte file as a finished outline. If either
+            // fails there is no projection to point at.
+            let Ok(payload) = serde_json::to_vec(&projection) else {
+                out.push(PrepEntry {
+                    orig: orig_str,
+                    kind: "missing".into(),
+                    prepared: None,
+                    before_bytes: Some(before_bytes),
+                    after_bytes: None,
+                    before_tok: None,
+                    after_tok: None,
+                    budget_tok: None,
+                    drop_manifest: None,
+                });
+                continue;
+            };
+            if std::fs::write(&prepared_path, &payload).is_err() {
+                out.push(PrepEntry {
+                    orig: orig_str,
+                    kind: "missing".into(),
+                    prepared: None,
+                    before_bytes: Some(before_bytes),
+                    after_bytes: None,
+                    before_tok: None,
+                    after_tok: None,
+                    budget_tok: None,
+                    drop_manifest: None,
+                });
+                continue;
+            }
             out.push(PrepEntry {
                 orig: orig_str,
                 kind: "outline".into(),
@@ -463,7 +557,23 @@ pub fn prep_files_with_policy(
             }
         };
         let after_tok = estimate_tokens(&compressed);
-        let _ = std::fs::write(&prepared_path, &compressed);
+        // A prepared entry must point at a file that exists. Discarding
+        // the write error published a path the consumer would then fail to
+        // read, with the failure surfacing far from its cause.
+        if std::fs::write(&prepared_path, &compressed).is_err() {
+            out.push(PrepEntry {
+                orig: orig_str,
+                kind: "missing".into(),
+                prepared: None,
+                before_bytes: Some(before_bytes),
+                after_bytes: None,
+                before_tok: None,
+                after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
+            });
+            continue;
+        }
         out.push(PrepEntry {
             orig: orig_str,
             kind: "compress".into(),
