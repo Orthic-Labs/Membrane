@@ -26,9 +26,12 @@ test("RecallCircuit resolves exact anchors, returns evidence paths, and is deter
       assert.ok(first.paths.length > 0);
       assert.ok(first.paths.every((path) => path.nodes.length === path.edges.length + 1));
       assert.ok(first.paths.every((path) => path.evidence.length > 0));
+      assert.ok(first.paths.every((path) => Number.isInteger(path.semanticAuthorityRank)));
+      assert.ok(first.paths.every((path) => !("meanEdgeConfidence" in path)));
       const candidates = recallCircuitToCandidateSet(first, { repoRoot: repo });
       assert.equal(candidates.recallCircuit.id, first.id);
       assert.ok(candidates.candidates.every((candidate) => candidate.evidencePathId));
+      assert.ok(candidates.candidates.every((candidate) => candidate.scoreComponents.semanticAuthority > 0));
     } finally {
       closeStore(db);
     }

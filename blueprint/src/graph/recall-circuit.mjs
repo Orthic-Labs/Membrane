@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { hydrateEdgesByIds, hydrateNodesByIds, traversalNeighbors } from "./store-sqlite.mjs";
+import { semanticAuthorityForFact, semanticAuthorityRankForFact } from "./evidence-authority.mjs";
 import { resolveSeeds } from "./seed-resolver.mjs";
 import { selectTraversalPolicy } from "./traversal-policy.mjs";
 
@@ -19,6 +20,8 @@ function adjacency(edgeRows, direction) {
     if (direction !== "in") add(edge.source, edge.target, edge);
     if (direction !== "out") add(edge.target, edge.source, edge);
   }
+  // Resolution specificity is structural traversal order only. It is not a
+  // scalar confidence competition between producers.
   for (const entries of result.values()) entries.sort((a, b) => tierRank(a.edge.confidence_tier) - tierRank(b.edge.confidence_tier) || a.edge.id.localeCompare(b.edge.id));
   return result;
 }
@@ -28,7 +31,10 @@ function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete, generation
   const edges = edgeIds.map((id) => edgeMap.get(id)).filter(Boolean);
   const evidence = [...nodes.flatMap(evidenceFor), ...edges.flatMap(evidenceFor)];
   const edgeTiers = edges.map((edge) => edge.confidenceTier).filter(Boolean);
-  const meanConfidence = edges.length ? edges.reduce((sum, edge) => sum + Number(edge.confidence ?? 0), 0) / edges.length : 1;
+  const authorityRanks = edges.map((edge) => semanticAuthorityRankForFact(edge));
+  const weakestAuthorityRank = authorityRanks.length ? Math.max(...authorityRanks) : 0;
+  const weakestAuthorityEdge = edges.find((edge) => semanticAuthorityRankForFact(edge) === weakestAuthorityRank) ?? null;
+  const minimumSemanticAuthority = weakestAuthorityEdge ? semanticAuthorityForFact(weakestAuthorityEdge) : null;
   const projection = { seed: seed.id, terminal: nodeIds.at(-1), nodeIds, edgeIds };
   const id = stableDigest(projection);
   const omissionReasons = complete ? [] : ["bound_reached"];
@@ -50,9 +56,10 @@ function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete, generation
     edges,
     evidence,
     minimumEdgeTier: edgeTiers.sort((a, b) => tierRank(b) - tierRank(a))[0] ?? "EXACT_RESOLUTION",
+    minimumSemanticAuthority,
+    semanticAuthorityRank: weakestAuthorityRank,
     seedExactness: seed.exactness,
     evidenceCoverage: (nodes.length + edges.length) ? evidence.length / (nodes.length + edges.length) : 0,
-    meanEdgeConfidence: meanConfidence,
     hopCount: edgeIds.length,
     state: complete ? "complete" : "partial",
     omissionReasons,
@@ -61,11 +68,15 @@ function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete, generation
 }
 
 function comparePaths(left, right) {
+  // The application freshness barrier has already established one served
+  // generation for this circuit. Within that source-coherent generation,
+  // semantic authority precedes resolution specificity. Scalar confidence is
+  // deliberately absent: it cannot compensate for a weaker evidence class.
   return (left.state === "complete" ? 0 : 1) - (right.state === "complete" ? 0 : 1)
+    || left.semanticAuthorityRank - right.semanticAuthorityRank
     || tierRank(left.minimumEdgeTier) - tierRank(right.minimumEdgeTier)
     || left.seedExactness - right.seedExactness
     || right.evidenceCoverage - left.evidenceCoverage
-    || right.meanEdgeConfidence - left.meanEdgeConfidence
     || left.hopCount - right.hopCount
     || left.id.localeCompare(right.id);
 }
@@ -203,7 +214,12 @@ export function recallCircuitToCandidateSet(circuit, options = {}) {
       trustClass: "workspace_tracked",
       instructionPolicy: "data_only",
       providerScore: 1 / (candidates.length + 1),
-      scoreComponents: { evidenceTier: 1 / (tierRank(path.minimumEdgeTier) + 1), pathCompleteness: path.state === "complete" ? 1 : 0, evidenceCoverage: path.evidenceCoverage },
+      scoreComponents: {
+        semanticAuthority: 1 / ((path.semanticAuthorityRank ?? 0) + 1),
+        evidenceTier: 1 / (tierRank(path.minimumEdgeTier) + 1),
+        pathCompleteness: path.state === "complete" ? 1 : 0,
+        evidenceCoverage: path.evidenceCoverage,
+      },
       estimatedTokens,
       actualTokens: null,
       truncation: null,
