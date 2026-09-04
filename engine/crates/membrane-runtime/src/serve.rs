@@ -3593,7 +3593,25 @@ fn route_with_context_ingest_lease(
             &context,
             &lifecycle,
         ) {
-            Ok(id) => (200, serde_json::json!({ "put": id }).to_string()),
+            Ok(id) => {
+                // Recall admits A1..A5 only, and an unspecified authority
+                // defaults to A0 — so the default write is invisible to the
+                // default read, and a bare `{"put": id}` gave no sign of it.
+                // Say it at the point of writing rather than leaving the
+                // caller to discover an empty recall later.
+                let recall_eligible = matches!(
+                    lifecycle.authority.as_deref(),
+                    Some("A1") | Some("A2") | Some("A3") | Some("A4") | Some("A5")
+                );
+                let mut body = serde_json::json!({ "put": id, "recallEligible": recall_eligible });
+                if !recall_eligible {
+                    body["note"] = serde_json::json!(format!(
+                        "stored at authority {}; recall admits A1..A5, so this row will not be recalled",
+                        lifecycle.authority.as_deref().unwrap_or("A0")
+                    ));
+                }
+                (200, body.to_string())
+            }
             Err(e) if e.starts_with("memory write attribution") => {
                 if let Some(response) = record_external_or_500(
                     store,
