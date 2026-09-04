@@ -577,8 +577,14 @@ fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
     loop {
         match std::fs::create_dir(&path) {
             Ok(()) => {
+                // The owner pid decides whether a later activation may break
+                // this lock, so a write that fails must not leave the lock
+                // looking ownerless — that is the state that gets it broken.
                 let owner = path.join("owner");
-                let _ = std::fs::write(owner, format!("{}\n", std::process::id()));
+                if let Err(error) = std::fs::write(&owner, format!("{}\n", std::process::id())) {
+                    let _ = std::fs::remove_dir_all(&path);
+                    return Err(format!("record activation lock owner: {error}"));
+                }
                 return Ok(ActivationLock { path });
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -587,7 +593,14 @@ fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
                     .ok()
                     .and_then(|modified| modified.elapsed().ok())
                     .is_some_and(|age| age > LOCK_STALE_AFTER);
-                if stale {
+                // Age alone is not evidence that the holder is gone. Breaking
+                // on age meant a slow-but-live activation had its lock taken
+                // away and a second one ran against the same install — and
+                // activations do exceed this window: one measured on Windows
+                // ran for minutes. The owner pid was already recorded here and
+                // never consulted; consult it, and fall back to age only when
+                // there is no owner to ask about.
+                if stale && !activation_owner_alive(&path) {
                     let _ = std::fs::remove_dir_all(&path);
                     continue;
                 }
@@ -598,6 +611,37 @@ fn acquire_lock(install_root: &Path) -> Result<ActivationLock, String> {
             }
             Err(error) => return Err(format!("create activation startup lock: {error}")),
         }
+    }
+}
+
+/// Is the process that recorded itself as this lock's owner still running?
+///
+/// An unreadable or absent owner file answers `false`: there is nobody to ask
+/// about, which is the case the age check was written for.
+fn activation_owner_alive(lock: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(lock.join("owner")) else {
+        return false;
+    };
+    let Ok(pid) = text.trim().parse::<u32>() else {
+        return false;
+    };
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        unsafe { CloseHandle(handle) };
+        true
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
     }
 }
 
