@@ -49,6 +49,7 @@ import { diffLedgerAgainstTree } from "./merkle-ledger.mjs";
 import { probeScip } from "./scip-provider.mjs";
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "./ignored-prefixes.mjs";
 import { withStoreLeaseSync } from "./store-lease.mjs";
+import { gitBaseCommit } from "./git-source-observation.mjs";
 import { augmentFileFactsWithFirstPartyProviders, augmentGenerationWithFirstPartyProviders } from "../providers/build.mjs";
 
 export { EDGE_CONFIDENCE_TIERS, EDGE_CONFIDENCE_TIER_ORDER, EDGE_CONFIDENCE_TIER_DESCRIPTIONS, tierConfidence };
@@ -1427,6 +1428,14 @@ function buildGenerationFromSources(root, source, options = {}) {
       rootName: root.split(/[\\/]/).at(-1),
       sourceHash: sourceFingerprint,
       fileCount: source.files.length,
+      // The commit this generation was built against. Blueprint's own
+      // consumers already read `manifest.repo.baseCommit` (application and
+      // findings services), and Membrane's freshness epoch needs it to
+      // classify a snapshot at all: without it every context request failed
+      // as an incomplete source. Null when the root is not a git checkout,
+      // which those consumers already handle. Generation identity is
+      // nodes + edges + sourceHash, so recording this cannot force a rebuild.
+      baseCommit: gitBaseCommit(root),
     },
     counts: {
       nodes: cleanNodes.length,
