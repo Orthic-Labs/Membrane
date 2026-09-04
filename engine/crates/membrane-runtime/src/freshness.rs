@@ -319,7 +319,15 @@ pub fn evaluate_freshness(
     for attempt in 1..=attempts {
         let before = match probe.read_epoch() {
             Ok(epoch) => epoch,
-            Err(_) => return indeterminate(attempt, "epoch_unavailable", stage_elapsed_ms),
+            // The probe says why it could not read the epoch -- an endpoint
+            // that would not answer, a status payload it could not parse.
+            // Discarding it left `epoch_unavailable` as the whole story, and
+            // a caller cannot act on that.
+            Err(reason) => {
+                let mut verdict = indeterminate(attempt, "epoch_unavailable", stage_elapsed_ms);
+                verdict.reasons.push(reason);
+                return verdict;
+            }
         };
         let overlay = match probe.read_overlay() {
             Ok(overlay) => overlay,
@@ -335,7 +343,11 @@ pub fn evaluate_freshness(
         merge_stage_elapsed(&mut stage_elapsed_ms, &overlay.stage_elapsed_ms);
         let after = match probe.read_epoch() {
             Ok(epoch) => epoch,
-            Err(_) => return indeterminate(attempt, "epoch_unavailable", stage_elapsed_ms),
+            Err(reason) => {
+                let mut verdict = indeterminate(attempt, "epoch_unavailable", stage_elapsed_ms);
+                verdict.reasons.push(reason);
+                return verdict;
+            }
         };
 
         if overlay.limit_exceeded {
