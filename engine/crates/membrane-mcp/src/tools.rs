@@ -39,7 +39,7 @@ fn caller() -> Value {
 fn remaining_context_ceiling() -> Value {
     json!({
         "type": "object",
-        "description": "RemainingContextCeilingV1 (membrane-host-observation): the host's observed remaining context for this session and task. Required; never derived or defaulted by Membrane.",
+        "description": "RemainingContextCeilingV1 (membrane-host-observation): the host's observed remaining context for this session and task. Required; never derived or defaulted by Membrane. Two cross-field bindings are enforced and refuse the request when broken: sessionId must equal caller.scopeId, and taskId.value must equal the request's task. taskId and remainingTokens.estimate must both carry coverage \"complete\", and requestedAtUnixMs and provenanceReceipt.observedAtUnixMs must both be non-zero.",
         "required": [
             "schemaVersion",
             "ceilingId",
