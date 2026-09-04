@@ -303,6 +303,38 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                 serde_json::from_value::<cortex_core::planner::ContextPacketV1>(packet)
                     .map_err(|error| format!("federation packet is invalid: {error}"))
             })?;
+        // An empty packet is refused two frames later as "packet blocks is
+        // empty", which says nothing about why federation produced nothing —
+        // a provider that answered with candidates and a provider that was
+        // skipped are indistinguishable there. Name the providers' own
+        // accounting instead: candidate count, and the omission reasons they
+        // recorded.
+        if packet.blocks.is_empty() {
+            let candidate_count = ccs
+                .get("candidates")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            let mut reasons = ccs
+                .get("omissions")
+                .and_then(Value::as_array)
+                .map(|omissions| {
+                    omissions
+                        .iter()
+                        .filter_map(|omission| {
+                            let id = omission.get("id").and_then(Value::as_str).unwrap_or("?");
+                            let reason =
+                                omission.get("reason").and_then(Value::as_str).unwrap_or("?");
+                            Some(format!("{id}:{reason}"))
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            reasons.truncate(8);
+            return Err(NativeRouteError::Internal(format!(
+                "federation produced no context blocks: {candidate_count} candidate(s), omissions [{}]",
+                reasons.join(", ")
+            )));
+        }
         let push_policy = push_policy_for_request(&value, task);
         let selection = crate::push::selection::select_packet_for_h8_with_policy(
             &packet,
