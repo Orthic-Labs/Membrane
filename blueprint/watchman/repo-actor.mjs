@@ -489,6 +489,13 @@ export class RepositoryActor extends EventEmitter {
     if (run && !this.active(run)) return Promise.resolve(0);
     if (this.drainInFlight) return this.drainInFlight;
     const db = this.openDbOnce();
+    // The lease exposes a heartbeat that nothing ever called, so `heartbeat_at`
+    // stayed pinned to the moment of acquisition and a live resident owner was
+    // indistinguishable from one that had wedged — the metadata is diagnostic
+    // only, but this is the field a reader reaches for first. Beating it here
+    // makes it mean "the holder was last doing work at". A metadata write is
+    // never allowed to affect the drain.
+    try { this.storeLease?.heartbeat?.(); } catch { /* diagnostic only */ }
     const signal = run?.controller.signal ?? this.stopController.signal;
     const drain = (async () => {
       let applied = 0;
