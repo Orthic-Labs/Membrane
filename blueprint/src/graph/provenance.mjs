@@ -27,8 +27,8 @@ export function confidenceForProvenance(provenance, confidence = null) {
   assertKnownProvenance(provenance);
   if (!INFERENTIAL.has(provenance)) return null;
   if (confidence === null || confidence === undefined) return null;
-  const value = Number(confidence);
-  if (!Number.isFinite(value) || value < 0 || value > 1) {
+  const value = confidence;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
     throw new TypeError(`inferential confidence must be a finite number in [0,1], got ${String(confidence)}`);
   }
   return value;

@@ -46,6 +46,7 @@ jobs:
           tests/javascript-module-resolution.test.mjs
           tests/provenance-semantics.test.mjs
           tests/evidence-authority.test.mjs
+          tests/evidence-authority-boundary.test.mjs
           tests/recall-circuit.test.mjs
           tests/semantic-conformance.test.mjs
           tests/publication-policy.test.mjs
