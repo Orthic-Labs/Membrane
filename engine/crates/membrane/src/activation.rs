@@ -1493,13 +1493,21 @@ fn write_client_config(path: &Path, original: Option<&[u8]>, value: &serde_json:
     replace_file(&staged, path).map_err(|error| format!("promote client config {}: {error}", path.display()))
 }
 
-fn restore_client_config(path: &Path, original: Option<&[u8]>) {
+/// Put one client config back the way it was, reporting whether it worked.
+///
+/// A rollback that fails leaves the operator's editor configuration modified
+/// by an activation that then reported only the original error — the config
+/// was changed and nothing said so.
+fn restore_client_config(path: &Path, original: Option<&[u8]>) -> Result<(), String> {
     match original {
         Some(bytes) => {
             let staged = path.with_extension(format!("json.{}.rollback", std::process::id()));
-            if std::fs::write(&staged, bytes).is_ok() { let _ = replace_file(&staged, path); }
+            std::fs::write(&staged, bytes)
+                .map_err(|error| format!("stage rollback for {}: {error}", path.display()))?;
+            replace_file(&staged, path)
         }
-        None => { let _ = std::fs::remove_file(path); }
+        None => std::fs::remove_file(path)
+            .map_err(|error| format!("remove {}: {error}", path.display())),
     }
 }
 
@@ -1523,10 +1531,20 @@ fn reconcile_config_clients(executable: &str, clients: &[HarnessClient], dry_run
         if changed {
             let next = config_with_membrane(value, executable)?;
             if let Err(error) = write_client_config(&path, original.as_deref(), &next) {
+                let mut unrestored = Vec::new();
                 for (done_path, done_original) in completed.iter().rev() {
-                    restore_client_config(done_path, done_original.as_deref());
+                    if let Err(failure) = restore_client_config(done_path, done_original.as_deref())
+                    {
+                        unrestored.push(failure);
+                    }
                 }
-                return Err(error);
+                if unrestored.is_empty() {
+                    return Err(error);
+                }
+                return Err(format!(
+                    "{error}; and rollback left client configuration modified: {}",
+                    unrestored.join("; ")
+                ));
             }
             completed.push((path, original));
         }
