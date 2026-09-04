@@ -353,10 +353,12 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             )));
         }
         let push_policy = push_policy_for_request(&value, task);
-        let selection = crate::push::selection::select_packet_for_h8_with_policy(
-            &packet,
-            &ceiling,
-            &push_policy,
+        let recovery_store = crate::push::recovery::RecoveryStore::configured();
+        let recovery_scope = crate::push::recovery::RecoveryScope::new(&root, &session).ok();
+        let recovery = recovery_scope.as_ref().and_then(|scope| value.get("pushResolverToken").and_then(Value::as_str).map(|token|
+            crate::push::selection::RecoveryContext {store:&recovery_store, scope, resolver_token:token}));
+        let selection = crate::push::selection::select_packet_for_h8_with_recovery(
+            &packet, &ceiling, &push_policy, recovery.as_ref(),
         )
         .map_err(NativeRouteError::RequestTime)?;
         let selected_content = selection.selected_representation.content.clone();

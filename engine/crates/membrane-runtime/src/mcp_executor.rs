@@ -593,6 +593,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 if let Some(ceiling) = arguments.get("remainingContextCeiling").cloned() {
                     body["remainingContextCeiling"] = ceiling;
                 }
+                if let Some(token) = arguments.get("pushResolverToken").and_then(Value::as_str) {
+                    body["pushResolverToken"] = json!(token);
+                }
                 let request = match serde_json::to_string(&body)
                     .map_err(|_| error(name, "context_envelope_invalid", "request is invalid"))
                 {
@@ -648,7 +651,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "scopeId":scope,
                         "status":status,
                         "packet":packet,
-                        "candidates":candidates,
+                        "candidates":candidates.iter().map(|b| json!({"id":b.get("id"),"resolver":b.get("resolver")})).collect::<Vec<_>>(),
                         "receipts":receipts,
                         "packetReduction":federated.get("packetReduction").and_then(|v| v.get("selectionReceipt")).cloned(),
                         "degradationReason":degradation_reason,

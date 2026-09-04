@@ -70,7 +70,7 @@ pub fn resolver_probe(store: &RecoveryStore, scope: &RecoveryScope) -> Result<Va
         "storeId":store_id,"expiresAt":now+300_000,"selectors":["whole","bytes","lines","json"],
         "maxRestoreBytes":recovery::MAX_RESTORE_BYTES,"disposition":"exact"}))
 }
-fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: Option<&str>) -> Result<bool, RecoveryError> {
+pub(crate) fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: Option<&str>) -> Result<bool, RecoveryError> {
     let Some(token) = token.filter(|t| t.len() == 64) else { return Ok(false); };
     let id = store.identity()?;
     let proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;

@@ -180,6 +180,7 @@ function loadInput({ inputArg, maxTokens }) {
     overlay: parsed.overlay,
     sufficiencyContract: parsed.sufficiencyContract,
     remainingContextCeiling: parsed.remainingContextCeiling,
+    pushResolverToken: parsed.pushResolverToken,
     ...boundedTrace(parsed),
   };
 }
@@ -223,7 +224,8 @@ function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs, sig
         let received = 0;
         res.on("data", (chunk) => {
           received += chunk.length;
-          if (received <= MAX_BODY_BYTES) chunks.push(chunk);
+          if (received > MAX_BODY_BYTES) { res.destroy(); req.destroy(new Error("resident_response_limit")); return; }
+          chunks.push(chunk);
         });
         res.on("end", () => {
           signal?.removeEventListener("abort", abort);

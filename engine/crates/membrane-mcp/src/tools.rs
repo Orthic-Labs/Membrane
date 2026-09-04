@@ -75,7 +75,7 @@ fn schema(name: &str) -> Value {
             // Leaving it undeclared made the one entry tool impossible to call
             // correctly from its own schema.
             vec!["task", "repository", "caller", "remainingContextCeiling"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling()}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
         ),
         "membrane_source_read" => (
             vec![
@@ -154,6 +154,10 @@ pub(crate) fn definitions() -> Value {
         CORE.iter()
             .chain(DIAGNOSTIC)
             .map(|name| {
+                if name.starts_with("membrane_push_") {
+                    let entries: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
+                    return entries.as_array().unwrap().iter().find(|v| v["name"] == *name).unwrap().clone();
+                }
                 json!({
                   "name":name,"description":format!("Native Membrane handler for {name}."),
                   "inputSchema":schema(name),"annotations":annotations(name)

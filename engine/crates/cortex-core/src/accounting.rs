@@ -48,6 +48,9 @@ pub struct ContextTokenAccounting {
 }
 
 impl ContextTokenAccounting {
+    /// Literal-data count with no heuristic fallback; basis o200k_base/1.
+    pub fn count_exact(text: &str) -> Result<usize, String> { count_o200k_exact(text) }
+
     pub fn new(budget: usize) -> Self {
         Self { budget, used: 0 }
     }
