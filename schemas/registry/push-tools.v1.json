@@ -1,0 +1,59 @@
+[
+  {
+    "name": "membrane_push_prepare",
+    "description": "Prepare already-authorized text for bounded delivery; never executes a command. Call membrane_push_resolve operation=probe first and pass its resolverToken to permit recoverable reduction. maxBytes is the serialized Push delivery byte budget, not a model context observation. Exact results never enter another lossy pass.",
+    "annotations": {"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false},
+    "inputSchema": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "caller", "request"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "caller": {"type": "object", "additionalProperties": false, "required": ["root", "repositoryId", "scopeId"], "properties": {"root": {"type": "string", "minLength": 1}, "repositoryId": {"type": "string", "minLength": 1}, "scopeId": {"type": "string", "minLength": 1, "maxLength": 256}, "scopeDescriptor": {"type": "object"}}},
+        "request": {
+          "type": "object", "additionalProperties": false, "required": ["text", "maxBytes"],
+          "properties": {
+            "text": {"type": "string", "maxLength": 1048576},
+            "kind": {"type": "string", "enum": ["text", "code", "json", "log"]},
+            "sourcePath": {"type": "string", "maxLength": 4096, "description": "Classification only; this operation does not read the path."},
+            "maxBytes": {"type": "integer", "minimum": 1, "maximum": 49152},
+            "resolverToken": {"type": "string", "minLength": 64, "maxLength": 64},
+            "exact": {"type": "boolean"},
+            "optimize": {"type": "boolean"},
+            "protectedSpans": {"type": "array", "maxItems": 4096, "items": {"type": "object", "additionalProperties": false, "required": ["start", "end"], "properties": {"start": {"type": "integer", "minimum": 0}, "end": {"type": "integer", "minimum": 1}}}}
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "membrane_push_resolve",
+    "description": "Probe the authorized Push resolver or restore exact immutable original bytes. Byte ranges are zero-based half-open; line ranges are one-based inclusive and preserve original terminators. JSON selection returns original value bytes including string quotes, never reformatted JSON. Key selectors match strings only and reject ambiguous matches. Restore results are exact and must not be recompressed; reads do not renew expiry.",
+    "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true},
+    "inputSchema": {
+      "type": "object", "additionalProperties": false, "required": ["repository", "caller", "operation"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "caller": {"type": "object", "additionalProperties": false, "required": ["root", "repositoryId", "scopeId"], "properties": {"root": {"type": "string", "minLength": 1}, "repositoryId": {"type": "string", "minLength": 1}, "scopeId": {"type": "string", "minLength": 1, "maxLength": 256}, "scopeDescriptor": {"type": "object"}}},
+        "operation": {"type": "string", "enum": ["probe", "resolve"]},
+        "handle": {"type": "string", "pattern": "^mr://anchor/[0-9a-f]{64}$"},
+        "maxBytes": {"type": "integer", "minimum": 1, "maximum": 262144},
+        "selector": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "whole"}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind", "start", "end"], "properties": {"kind": {"const": "bytes"}, "start": {"type": "integer", "minimum": 0}, "end": {"type": "integer", "minimum": 0}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind", "start", "end"], "properties": {"kind": {"const": "lines"}, "start": {"type": "integer", "minimum": 1}, "end": {"type": "integer", "minimum": 1}}},
+            {"type": "object", "additionalProperties": false, "required": ["kind", "path"], "properties": {"kind": {"const": "json"}, "path": {"type": "array", "maxItems": 64, "items": {"oneOf": [
+              {"type": "object", "additionalProperties": false, "required": ["kind", "name"], "properties": {"kind": {"const": "field"}, "name": {"type": "string"}}},
+              {"type": "object", "additionalProperties": false, "required": ["kind", "index"], "properties": {"kind": {"const": "index"}, "index": {"type": "integer", "minimum": 0}}},
+              {"type": "object", "additionalProperties": false, "required": ["kind", "field", "value"], "properties": {"kind": {"const": "key"}, "field": {"type": "string"}, "value": {"type": "string"}}}
+            ]}}}}
+          ]
+        }
+      },
+      "oneOf": [
+        {"properties": {"operation": {"const": "probe"}}, "not": {"anyOf": [{"required": ["handle"]}, {"required": ["selector"]}]}},
+        {"properties": {"operation": {"const": "resolve"}}, "required": ["handle"]}
+      ]
+    }
+  }
+]
