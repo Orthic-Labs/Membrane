@@ -163,6 +163,6 @@ pub fn canonical_omissions(mut omissions: Vec<ProviderOmissionV1>) -> Vec<Provid
     omissions
 }
 
-pub fn expected_lane_ids() -> &'static [ProviderId; 9] {
+pub fn expected_lane_ids() -> &'static [ProviderId] {
     &ProviderId::ALL
 }

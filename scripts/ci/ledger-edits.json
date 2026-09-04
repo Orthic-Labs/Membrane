@@ -1,1 +1,0 @@
-{"message":"fix(ledger): derive omission lane cardinality from the canonical provider set","files":[{"path":"engine/crates/membrane-federation/src/omission.rs","sha":"d3d03a1e04b4c4ca0c5fb5f6ff1b08bcca15d10b","replacements":[{"before":"pub fn expected_lane_ids() -> &'static [ProviderId; 9]","after":"pub fn expected_lane_ids() -> &'static [ProviderId]"}]}]}
