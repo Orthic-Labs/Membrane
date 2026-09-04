@@ -16,6 +16,9 @@ mod windows_impl {
         mem::size_of,
         os::windows::ffi::OsStrExt,
         ptr::{null, null_mut},
+        fs::{create_dir_all, OpenOptions},
+        io::Write,
+        path::PathBuf,
         sync::mpsc::{self, Sender},
         thread,
         time::Duration,
@@ -426,9 +429,37 @@ mod windows_impl {
         }
     }
 
+    /// Where the daemon's diagnostics are appended. Matches
+    /// `membrane_runtime::paths::log_root()` on Windows, so `membrane cli
+    /// doctor paths` names the directory this file actually appears in.
+    fn daemon_log_path() -> Option<PathBuf> {
+        let root = std::env::var_os("MEMBRANE_LOG_ROOT")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("Membrane"))
+            })?;
+        create_dir_all(&root).ok()?;
+        Some(root.join("membrane-daemon.log"))
+    }
+
+    /// Append the daemon's stderr to its own log file.
+    ///
+    /// These bytes were previously discarded on the reasoning that diagnostics
+    /// must not be mistaken for protocol events. That separation is real, but
+    /// discarding is not what preserves it — the file does. The daemon is the
+    /// process that serves every request, and with its only diagnostic channel
+    /// thrown away a request the daemon dropped left no trace anywhere: an
+    /// empty log root, a healthy-looking tray, and a client reporting nothing
+    /// but a closed socket. stdout still carries framed protocol and is still
+    /// never written here.
     fn drain_stderr(handle: HANDLE) {
-        // Diagnostics are deliberately discarded. They cannot be mistaken for
-        // protocol events or reveal stdin bearer frames.
+        let mut log = daemon_log_path().and_then(|path| {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .ok()
+        });
         let mut bytes = [0_u8; 2048];
         loop {
             let mut read = 0_u32;
@@ -444,6 +475,16 @@ mod windows_impl {
             if ok == 0 || read == 0 {
                 close_if_valid(handle);
                 return;
+            }
+            // A logging failure never stops the daemon: drop the sink and keep
+            // draining, or the pipe fills and the daemon blocks on its own
+            // diagnostics.
+            if let Some(file) = log.as_mut() {
+                if file.write_all(&bytes[..read as usize]).is_err() {
+                    log = None;
+                } else {
+                    let _ = file.flush();
+                }
             }
         }
     }

@@ -193,9 +193,31 @@ async fn handle_mcp_request(
         Ok(value) => value,
         Err(_) => return StatusCode::BAD_REQUEST.into_response(),
     };
-    match state.server.dispatch(&payload) {
-        Some(response) => (StatusCode::OK, axum::Json(response)).into_response(),
-        None => StatusCode::ACCEPTED.into_response(),
+    // A panic inside dispatch used to unwind the connection task itself: the
+    // socket closed having written zero bytes, so a client saw an unexplained
+    // empty read while the Hub stayed healthy and answered every other
+    // request. This router is merged after `build_router` applies its layers,
+    // so it inherits no panic boundary of its own. Convert a panic into a
+    // JSON-RPC internal error, and let the default hook print it to stderr
+    // where the daemon log now keeps it.
+    let dispatched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        state.server.dispatch(&payload)
+    }));
+    match dispatched {
+        Ok(Some(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(None) => StatusCode::ACCEPTED.into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": payload.get("id").cloned().unwrap_or(Value::Null),
+                "error": {
+                    "code": -32603,
+                    "message": "internal error: the MCP dispatcher panicked; see membrane-daemon.log"
+                }
+            })),
+        )
+            .into_response(),
     }
 }
 
