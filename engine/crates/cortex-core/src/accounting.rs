@@ -16,6 +16,13 @@ fn tokenizer() -> Option<&'static CoreBPE> {
         .ok()
 }
 
+/// Exact o200k_base count for literal data. Unlike estimate_tokens this never
+/// substitutes a ratio and never treats token-looking source strings as control.
+pub fn count_o200k_exact(text: &str) -> Result<usize, String> {
+    let bpe = tokenizer().ok_or_else(|| "o200k_base tokenizer unavailable".to_string())?;
+    Ok(bpe.encode_ordinary(text).len())
+}
+
 /// Count the tokens in `text`. Uses the o200k_base tokenizer (covers GPT-4o,
 /// GPT-4.1, GPT-5, o1/o3/o4 series, Codex — the vast majority of models routed
 /// through OpenAI-compat providers). Falls back to `chars / 4` if the tokenizer

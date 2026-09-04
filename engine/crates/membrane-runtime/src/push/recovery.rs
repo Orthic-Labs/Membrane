@@ -37,7 +37,21 @@ impl RecoveryError {
         }
     }
 }
-fn db_error(_: rusqlite::Error) -> RecoveryError { RecoveryError::Unavailable }
+fn db_error(error: rusqlite::Error) -> RecoveryError {
+    match error {
+        rusqlite::Error::IntegralValueOutOfRange(..) => RecoveryError::Corrupt,
+        rusqlite::Error::SqliteFailure(ref e, _) if e.code == rusqlite::ErrorCode::DiskFull => RecoveryError::Limit,
+        _ => RecoveryError::Unavailable,
+    }
+}
+fn sql_u64(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<u64> {
+    let value: i64 = row.get(index)?;
+    u64::try_from(value).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(index, value))
+}
+fn sql_size(row: &rusqlite::Row<'_>, index: usize) -> rusqlite::Result<usize> {
+    let value: i64 = row.get(index)?;
+    usize::try_from(value).map_err(|_| rusqlite::Error::IntegralValueOutOfRange(index, value))
+}
 pub fn digest(bytes: &[u8]) -> String { hex::encode(Sha256::digest(bytes)) }
 pub fn now_ms() -> u64 { crate::time::now_millis().min(u64::MAX as u128) as u64 }
 
@@ -137,7 +151,17 @@ impl RecoveryStore {
         if std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
             return Err(RecoveryError::Denied);
         }
-        let connection = Connection::open(path).map_err(db_error)?;
+        let connection = Connection::open(&path).map_err(db_error)?;
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| RecoveryError::Unavailable)?;
+        }
+        // Physical pages are independently bounded. SQLite reuses free pages;
+        // storage pressure is a refusal, never implicit eviction of a live lease.
+        let page_size: i64 = connection.query_row("PRAGMA page_size", [], |r| r.get(0)).map_err(db_error)?;
+        if page_size <= 0 { return Err(RecoveryError::Corrupt); }
+        connection.pragma_update(None, "max_page_count", 512_i64 * 1024 * 1024 / page_size).map_err(db_error)?;
         connection.busy_timeout(Duration::from_millis(250)).map_err(db_error)?;
         connection.execute_batch("PRAGMA synchronous=FULL;
             CREATE TABLE IF NOT EXISTS push_store (id INTEGER PRIMARY KEY CHECK(id=1), identity TEXT NOT NULL);
@@ -167,19 +191,19 @@ impl RecoveryStore {
         let hash = digest(bytes);
         let mut connection = self.connection()?;
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
-        // Expiry frees logical quota, not a live promise. No access extends expiry.
+        // No access extends expiry; explicit invalidation releases payload quota.
         // Expired/invalidation tombstones prevent an old handle silently becoming
         // valid again. Explicit retention maintenance is separate from publication.
         let old_size: Option<(usize, usize, u64)> = tx.query_row(
             "SELECT size,length(content),expires FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
+            params![scope.id, hash], |r| Ok((sql_size(r,0)?,sql_size(r,1)?,sql_u64(r,2)?))).optional().map_err(db_error)?;
         if let Some((size, actual, expires)) = old_size {
             if now >= expires { return Err(RecoveryError::Expired); }
             if size != actual || size > MAX_ARTIFACT_BYTES { return Err(RecoveryError::Corrupt); }
         }
         let existing: Option<(Vec<u8>, usize, u64, bool)> = tx.query_row(
             "SELECT content,size,expires,invalidated FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(db_error)?;
+            params![scope.id, hash], |r| Ok((r.get(0)?, sql_size(r,1)?, sql_u64(r,2)?, r.get(3)?))).optional().map_err(db_error)?;
         let expires = if let Some((retained, size, expires, invalidated)) = existing {
             if invalidated { return Err(RecoveryError::Invalidated); }
             if retained.len() != size || retained != bytes || digest(&retained) != hash { return Err(RecoveryError::Corrupt); }
@@ -187,13 +211,13 @@ impl RecoveryStore {
         } else {
             let (total, scoped, count): (u64, u64, u64) = tx.query_row(
                 "SELECT COALESCE(SUM(size),0), COALESCE(SUM(CASE WHEN scope=?1 THEN size ELSE 0 END),0), COUNT(*) FROM push_originals",
-                [&scope.id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(db_error)?;
+                [&scope.id], |r| Ok((sql_u64(r,0)?, sql_u64(r,1)?, sql_u64(r,2)?))).map_err(db_error)?;
             if total + bytes.len() as u64 > MAX_STORE_BYTES || scoped + bytes.len() as u64 > MAX_SCOPE_BYTES || count >= MAX_ARTIFACTS {
                 return Err(RecoveryError::Limit);
             }
             let expires = now + ttl_ms;
             tx.execute("INSERT INTO push_originals(scope,digest,content,size,created,expires) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![scope.id, hash, bytes, bytes.len(), now, expires]).map_err(db_error)?;
+                params![scope.id, hash, bytes, bytes.len() as i64, now as i64, expires as i64]).map_err(db_error)?;
             expires
         };
         // Read back inside the transaction before exposing a handle.
@@ -210,7 +234,7 @@ impl RecoveryStore {
         let tx = connection.transaction().map_err(db_error)?;
         let metadata: Option<(usize, usize, u64, bool)> = tx.query_row(
             "SELECT size,length(content),expires,invalidated FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(db_error)?;
+            params![scope.id, hash], |r| Ok((sql_size(r,0)?, sql_size(r,1)?, sql_u64(r,2)?, r.get(3)?))).optional().map_err(db_error)?;
         let (size, stored_size, expires, invalidated) = metadata.ok_or(RecoveryError::NotFound)?;
         if invalidated { return Err(RecoveryError::Invalidated); }
         if now >= expires { return Err(RecoveryError::Expired); }
@@ -227,9 +251,23 @@ impl RecoveryStore {
             start_byte: start, end_byte: end, selected_digest: format!("sha256:{}", digest(selected)),
             content_encoding, content, disposition: "exact", fidelity: "exact_bytes" })
     }
+    /// Explicit compare-and-swap renewal. Reads and duplicate publication never
+    /// call this operation; expired/invalidated handles cannot be resurrected.
+    pub fn renew(&self, scope: &RecoveryScope, handle: &str, expected_expiry: u64, ttl_ms: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
+        if ttl_ms == 0 || ttl_ms > MAX_TTL_MS || now > i64::MAX as u64 - ttl_ms { return Err(RecoveryError::Limit); }
+        let resolved = self.resolve(scope, handle, &Selector::Bytes {start:0,end:0}, 1, now)?;
+        if resolved.reference.expires_at != expected_expiry { return Err(RecoveryError::Denied); }
+        let hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
+        let expires = (now + ttl_ms).max(expected_expiry);
+        let connection = self.connection()?;
+        let changed = connection.execute("UPDATE push_originals SET expires=?1 WHERE scope=?2 AND digest=?3 AND expires=?4 AND invalidated=0",
+            params![expires as i64, scope.id, hash, expected_expiry as i64]).map_err(db_error)?;
+        if changed != 1 { return Err(RecoveryError::Denied); }
+        Self::reference(&connection, &hash, resolved.reference.size_bytes, expires, now)
+    }
     pub fn invalidate(&self, scope: &RecoveryScope, handle: &str) -> Result<(), RecoveryError> {
         let hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
-        let changed = self.connection()?.execute("UPDATE push_originals SET invalidated=1 WHERE scope=?1 AND digest=?2", params![scope.id, hash]).map_err(db_error)?;
+        let changed = self.connection()?.execute("UPDATE push_originals SET invalidated=1,content=x'',size=0 WHERE scope=?1 AND digest=?2", params![scope.id, hash]).map_err(db_error)?;
         if changed == 0 { Err(RecoveryError::NotFound) } else { Ok(()) }
     }
 }
@@ -411,6 +449,17 @@ mod tests {
         assert_eq!(store.resolve(&s, &empty.handle, &Selector::Whole, 10, 3).unwrap().content, "");
         store.invalidate(&s, &empty.handle).unwrap();
         assert!(matches!(store.resolve(&s, &empty.handle, &Selector::Whole, 10, 3), Err(RecoveryError::Invalidated)));
+    }
+    #[test]
+    fn explicit_renewal_is_cas_and_corrupt_sizes_fail_before_allocation() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = RecoveryStore::at(temp.path());
+        let s = scope(&temp, "a");
+        let reference = store.publish(&s, b"example", 1000, 100).unwrap();
+        assert_eq!(store.renew(&s, &reference.handle, 1100, 2000, 500).unwrap().expires_at, 2500);
+        assert!(store.renew(&s, &reference.handle, 1100, 2000, 600).is_err());
+        store.connection().unwrap().execute("UPDATE push_originals SET size=-1", []).unwrap();
+        assert!(matches!(store.resolve(&s, &reference.handle, &Selector::Whole, 100, 600), Err(RecoveryError::Corrupt)));
     }
     #[test]
     fn exact_json_selectors_preserve_spelling_and_reject_ambiguity() {
