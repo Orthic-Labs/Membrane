@@ -64,3 +64,18 @@ test("symbol SQL authority uses the central classifier and rejects unsafe aliase
     assert.equal(classify("not json"), classify(null));
   } finally { closeStore(db); }
 });
+
+test("legacy scalar order is compatible only after categorical authority", () => {
+  const db = openStore(":memory:");
+  try {
+    const generation = fixture();
+    const compiler = generation.nodes.at(-1);
+    const legacy = generation.nodes.slice(0, 2).map(({ provenance, ...node }, index) => ({ ...node, confidence: index === 0 ? 0.1 : 0.9 }));
+    generation.nodes = [legacy[0], legacy[1], compiler];
+    generation.manifest.counts.nodes = generation.nodes.length;
+    saveGeneration(db, generation);
+    assert.deepEqual(searchGenerationSymbols(db, generation.manifest.generationId, ["work"], 3).map((row) => row.id),
+      [compiler.id, legacy[1].id, legacy[0].id]);
+    assert.equal(searchGenerationSymbols(db, generation.manifest.generationId, ["work"], 1)[0].confidence, null);
+  } finally { closeStore(db); }
+});
