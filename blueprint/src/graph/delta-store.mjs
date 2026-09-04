@@ -15,6 +15,7 @@ import {
 import { incrementTelemetry } from "../lib/telemetry.mjs";
 import { canonicalProviderId, STATIC_PROVIDER } from "./provider-identity.mjs";
 import { normalizeRepoPath } from "./path-order.mjs";
+import { confidenceOrLegacyDefault } from "./provenance.mjs";
 
 export const STRUCTURAL_PROVIDER = Object.freeze({ id: "lexical", version: STATIC_PROVIDER.version });
 export const DOC_PROVIDER = Object.freeze({ id: "doctruth", version: "repo-local-doc-v1", freshnessDomain: "doc" });
@@ -182,7 +183,7 @@ function fileNode(node, generationId, digest, provider, fileReport = null) {
     labels: JSON.stringify(node.labels ?? ["File"]),
     name: node.name ?? node.path.split("/").at(-1),
     qualifiedName: node.qualifiedName ?? node.path,
-    confidence: node.confidence ?? 1,
+    confidence: confidenceOrLegacyDefault(node.confidence),
     evidence: JSON.stringify(node.evidence ?? []),
     extra: Object.keys(extra).length ? JSON.stringify(extra) : null,
   };
@@ -224,7 +225,7 @@ function insertParsedFacts(db, parsed, generationId, sourceDigest, provider, fil
       insertAnnotation.run(stored.id, nodeOrdinal, JSON.stringify(stored), generationId);
     } else {
       const extra = Object.fromEntries(Object.entries(stored).filter(([key]) => !["id", "kind", "labels", "name", "qualifiedName", "path", "confidence", "evidence"].includes(key)));
-      const values = [stored.id, stored.kind, JSON.stringify(stored.labels ?? []), stored.name ?? "", stored.qualifiedName ?? stored.name ?? "", stored.path, stored.confidence ?? 1, JSON.stringify(stored.evidence ?? []), generationId, Object.keys(extra).length ? JSON.stringify(extra) : null];
+      const values = [stored.id, stored.kind, JSON.stringify(stored.labels ?? []), stored.name ?? "", stored.qualifiedName ?? stored.name ?? "", stored.path, confidenceOrLegacyDefault(stored.confidence), JSON.stringify(stored.evidence ?? []), generationId, Object.keys(extra).length ? JSON.stringify(extra) : null];
       if (hasSymbolOrdinal) values.push(nodeOrdinal);
       insertSymbol.run(...values);
     }
@@ -238,7 +239,7 @@ function insertParsedFacts(db, parsed, generationId, sourceDigest, provider, fil
     const indexed = new Set(["id", "kind", "source", "target", "confidence", "confidenceTier", "evidence"]);
     const extra = Object.fromEntries(Object.entries(edge).filter(([key]) => !indexed.has(key)));
     const exists = db.prepare("SELECT 1 FROM edges WHERE id=?").get(edge.id);
-    if (!exists) insertEdge.run(edge.id, edge.kind, edge.source, edge.target ?? null, edge.confidence ?? 1, edge.resolved === false ? 0 : 1, edge.specifier ?? null, JSON.stringify(edge.evidence ?? []), generationId, edge.confidenceTier ?? null, Object.keys(extra).length ? JSON.stringify(extra) : null);
+    if (!exists) insertEdge.run(edge.id, edge.kind, edge.source, edge.target ?? null, confidenceOrLegacyDefault(edge.confidence), edge.resolved === false ? 0 : 1, edge.specifier ?? null, JSON.stringify(edge.evidence ?? []), generationId, edge.confidenceTier ?? null, Object.keys(extra).length ? JSON.stringify(extra) : null);
     const sourceNode = nodes.find((node) => node.id === edge.source);
     if (sourceNode && !exists) insertOwner.run(edge.id, "edge", sourceNode.path, sourceDigest, provider.id, provider.version, edge.kind, generationId, repoRoot);
   }

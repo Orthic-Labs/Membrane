@@ -16,6 +16,8 @@ import { statSync } from "node:fs";
 import { computeFullLedger } from "./merkle-ledger.mjs";
 import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
 import { canonicalProviderId } from "./provider-identity.mjs";
+import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
+import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
 
 const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
 const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
@@ -938,6 +940,9 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_named_snapshot_generation ON named_snapshot(generation_id);
     `);
   },
+  // Migration 19 — confidence is nullable for categorical facts. The existing
+  // migration runner supplies the backup and atomic commit/rollback boundary.
+  migrateNullableFactConfidence,
 ];
 
 /** Current schema version = number of migrations. Derived, so it cannot desync. */
@@ -1126,7 +1131,7 @@ function insertGenerationRows(db, generation, options = {}) {
         JSON.stringify(stored.labels ?? []),
         stored.name ?? null,
         stored.qualifiedName ?? null,
-        stored.confidence ?? 1,
+        confidenceOrLegacyDefault(stored.confidence),
         JSON.stringify(stored.evidence ?? []),
         extraOf(stored, NODE_COLUMN_KEYS),
         ...(hasFileOrdinal ? [nodeOrdinal] : []),
@@ -1142,7 +1147,7 @@ function insertGenerationRows(db, generation, options = {}) {
         stored.name,
         stored.qualifiedName,
         stored.path,
-        stored.confidence ?? 1,
+        confidenceOrLegacyDefault(stored.confidence),
         JSON.stringify(stored.evidence ?? []),
         generationId,
         extraOf(stored, NODE_COLUMN_KEYS),
@@ -1168,7 +1173,7 @@ function insertGenerationRows(db, generation, options = {}) {
       edge.kind,
       edge.source,
       edge.target ?? null,
-      edge.confidence ?? 1,
+      confidenceOrLegacyDefault(edge.confidence),
       edge.resolved === false ? 0 : 1,
       edge.specifier ?? null,
       JSON.stringify(edge.evidence ?? []),
@@ -2105,7 +2110,7 @@ function deserializeFileNodeRow(row) {
     name: row.name,
     qualifiedName: row.qualified_name,
     path: row.path,
-    confidence: row.confidence ?? 1,
+    confidence: confidenceOrLegacyDefault(row.confidence),
     evidence: parseJson(row.evidence, []),
     ...parseJson(row.extra, {}),
   };
@@ -2119,7 +2124,7 @@ function deserializeSymbolNodeRow(row) {
     name: row.name,
     qualifiedName: row.qualified_name,
     path: row.path,
-    confidence: row.confidence ?? 1,
+    confidence: confidenceOrLegacyDefault(row.confidence),
     evidence: parseJson(row.evidence, []),
     ...parseJson(row.extra, {}),
   };
@@ -2143,7 +2148,7 @@ function deserializeEdgeNodeRow(row) {
     kind: row.kind,
     source: row.source,
     target: row.target,
-    confidence: row.confidence ?? 1,
+    confidence: confidenceOrLegacyDefault(row.confidence),
     ...(row.confidence_tier === null || row.confidence_tier === undefined ? {} : { confidenceTier: row.confidence_tier }),
     evidence: parseJson(row.evidence, []),
     ...parseJson(row.extra, {}),
@@ -2252,7 +2257,7 @@ export function listEdgeCore(db, options = {}) {
     kind: row.kind,
     source: row.source,
     target: row.target,
-    confidence: row.confidence ?? 1,
+    confidence: confidenceOrLegacyDefault(row.confidence),
     ...(row.confidence_tier === null || row.confidence_tier === undefined ? {} : { confidenceTier: row.confidence_tier }),
   }));
 }
@@ -2319,29 +2324,21 @@ export function listEdges(db, options = {}) {
 }
 
 function deserializeSymbolRow(row) {
+  const fact = deserializeSymbolNodeRow(row);
   return {
-    id: row.id,
-    kind: row.kind,
-    labels: JSON.parse(row.labels),
-    name: row.name,
-    qualifiedName: row.qualified_name,
-    path: row.path,
-    confidence: row.confidence,
-    evidence: JSON.parse(row.evidence),
+    ...fact,
+    confidence: publicFactConfidence(fact),
     generationId: row.generation_id,
   };
 }
 
 function deserializeEdgeRow(row) {
+  const fact = deserializeEdgeNodeRow(row);
   return {
-    id: row.id,
-    kind: row.kind,
-    source: row.source,
-    target: row.target,
-    confidence: row.confidence,
+    ...fact,
+    confidence: publicFactConfidence(fact),
     resolved: Boolean(row.resolved),
     specifier: row.specifier,
-    evidence: JSON.parse(row.evidence),
     generationId: row.generation_id,
   };
 }

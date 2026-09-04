@@ -59,3 +59,17 @@ export function assertKnownProvenance(provenance) {
   if (!KNOWN.has(provenance)) throw new TypeError(`unknown Blueprint provenance class: ${String(provenance)}`);
   return provenance;
 }
+
+// Older producers omitted confidence and received the V1 default. Explicit
+// null is a real value in INV-004 and must survive storage/rehydration unchanged.
+export function confidenceOrLegacyDefault(confidence) {
+  return confidence === undefined ? 1 : confidence;
+}
+
+// Normalize a public view of a tagged legacy fact without rewriting its sealed
+// generation. Untagged V1 data retains its original compatibility semantics.
+export function publicFactConfidence(fact) {
+  return fact?.provenance === undefined || fact?.provenance === null
+    ? confidenceOrLegacyDefault(fact?.confidence)
+    : confidenceForProvenance(fact.provenance, fact.confidence);
+}
