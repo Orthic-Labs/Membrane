@@ -1,0 +1,42 @@
+[
+  {
+    "patch": "01.patch",
+    "sha256": "deb7416b08b16d503ea41e030c960b3539ada8fc7b2d166c88abe62e673b62a8",
+    "message": "fix(blueprint-traversal): bind continuations to store generation and query\n\nReplace permissive offset-only cursors with strict repository/generation/query-bound continuations across neighbors, impact, path and architecture. Read the generation from the actual store, reject malformed offsets and parameter replay, and advance architecture pages instead of repeating the first page. Add complete pagination and adversarial replay tests without relaxing root or freshness admission.",
+    "before": {"blueprint/src/graph/traversal-cursor.mjs": null, "blueprint/src/graph/traverse-store.mjs": "3736f4ae581eca50226805969e36e347bc190ee1", "blueprint/tests/traversal-cursor.test.mjs": null},
+    "after": {"blueprint/src/graph/traversal-cursor.mjs": "dfe07334658038db957e05a4679d119347ae98b6", "blueprint/src/graph/traverse-store.mjs": "69e51a38c90db87efd8e959e49bc5dce027133cd", "blueprint/tests/traversal-cursor.test.mjs": "f0f6da4b6651f3fa26ff59c3b5f2b126324294e7"},
+    "tests": ["tests/traversal-cursor.test.mjs", "tests/candidate-authority-selection.test.mjs"]
+  },
+  {
+    "patch": "02.patch",
+    "sha256": "aa35a6618f4ab876e55125d3fbd995d723fcadf2bbb3a698fe9b64dafddad14d",
+    "message": "fix(blueprint-query): pin application reads to one WAL snapshot\n\nHold a read transaction from the first envelope lookup until session close, so concurrent publication cannot mix old receipts with new graph rows. Make close idempotent and reject reuse of closed sessions. Restrict node fresh flags to positive source states and stop defaulting missing traversal freshness to clean. Add a real two-connection WAL regression; service tests require the supported Node runtime and are CI-validated.",
+    "before": {"blueprint/src/graph/traverse-store.mjs": "69e51a38c90db87efd8e959e49bc5dce027133cd", "blueprint/src/lib/application/service.mjs": "fb8b7824bf84f68dcc9e64f252d1387b5e90a0f4", "blueprint/tests/application-snapshot.test.mjs": null},
+    "after": {"blueprint/src/graph/traverse-store.mjs": "72a7699e579636817e1b4d0b3475ec98dbd00c5c", "blueprint/src/lib/application/service.mjs": "252d675660d77995dec817be7060eaee5812f17b", "blueprint/tests/application-snapshot.test.mjs": "eea0a5ace4961e8d5d509293c77412e5497bfb8c"},
+    "tests": ["tests/application-snapshot.test.mjs", "tests/traversal-cursor.test.mjs", "tests/application-service.test.mjs"]
+  },
+  {
+    "patch": "03.patch",
+    "sha256": "47367dbace1434256765b7f3c898223d07196f4726ede1f47a16ef1942436496",
+    "message": "test(blueprint-publication): distinguish capped extraction from unknown freshness\n\nPreserve the existing freshness-scan regression by beginning from a complete graph, then applying the scan cap. Add the separate negative extraction-cap test: an incomplete first extraction cannot claim a complete manifest. The legacy combined fixture incorrectly tested two distinct contracts as one.",
+    "before": {"blueprint/tests/graph-substrate.test.mjs": "1bb6d2779fc19d0413c38732eef7ca334418f966"},
+    "after": {"blueprint/tests/graph-substrate.test.mjs": "044378dc1de74dd2df68509c48c1afbe29611db5"},
+    "tests": ["tests/graph-substrate.test.mjs", "tests/publication-boundary.test.mjs"]
+  },
+  {
+    "patch": "04.patch",
+    "sha256": "b37256b58696e1716dd651d46d7eccb78b61763b62766c666bb1603b8bb78335",
+    "message": "fix(blueprint-retrieval): preserve legacy ordering behind categorical authority\n\nKeep the original frozen V1 retrieval corpus and MRR unchanged instead of rewriting golden answers to match a regression. Numeric ties are legal only within untagged legacy rows or explicitly heuristic evidence, always after categorical authority. Add a bounded test proving a null-confidence compiler fact still outranks every legacy scalar score.",
+    "before": {"blueprint/src/graph/store-sqlite.mjs": "969340fbb07013091bc070ec19e5fca189ab1816", "blueprint/src/graph/symbol-authority-order.mjs": "83d880e916cb1c6ab2333b59a7c703b5204fd9fa", "blueprint/tests/candidate-authority-selection.test.mjs": "bb147f83b1f4552785298fbccc9d431dbaaa9f51"},
+    "after": {"blueprint/src/graph/store-sqlite.mjs": "b519773db704a37911fff6184d17340ef43f22ae", "blueprint/src/graph/symbol-authority-order.mjs": "f6052e171007d1a0aab6e1970b16e5bff82a8d5f", "blueprint/tests/candidate-authority-selection.test.mjs": "0d96695cc77fae024034ecfd835e6bf24f4af5e0"},
+    "tests": ["tests/candidate-authority-selection.test.mjs", "tests/retrieval-equivalence.test.mjs"]
+  },
+  {
+    "patch": "05.patch",
+    "sha256": "8e2c2b471c452184fb9bba8b1aa77b2fc0e2537478947703cfc8899d802b209f",
+    "message": "fix(blueprint-recall): project strict CandidateV1 without losing circuit evidence\n\nKeep Recall path provenance in the containing rich response instead of leaking three internal keys into strict CandidateV1. Give canonical omissions deterministic IDs while preserving reason codes and leaving raw receipts unchanged. Refresh the obsolete pre-consolidation schema test pin after checking the unchanged Blueprint schema and its root/registry/Rust projections; do not relax the public schema. Add positive, empty and immutable projection tests.",
+    "before": {"blueprint/src/graph/recall-circuit.mjs": "736c224d6cf2f50bbdf6d3be2dfdf3d2b9397db9", "blueprint/tests/qualification-contract-binding.test.mjs": "c3b993bd0fb9fd1c7fbd16381df06302f73cec8b", "blueprint/tests/recall-candidate-contract.test.mjs": null},
+    "after": {"blueprint/src/graph/recall-circuit.mjs": "d552a65c217a01c8a000987015fe138e229d6c64", "blueprint/tests/qualification-contract-binding.test.mjs": "084c131b6909c316a57f2484fbcc21a769855f6a", "blueprint/tests/recall-candidate-contract.test.mjs": "c9a049d75d7007d651fed7123188e8bb44b6efdf"},
+    "tests": ["tests/recall-candidate-contract.test.mjs", "tests/qualification-contract-binding.test.mjs", "tests/workspace/graph-candidate-contract.test.mjs"]
+  }
+]

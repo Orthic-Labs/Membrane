@@ -1,0 +1,329 @@
+diff --git a/blueprint/src/graph/traversal-cursor.mjs b/blueprint/src/graph/traversal-cursor.mjs
+new file mode 100644
+index 0000000..dfe0733
+--- /dev/null
++++ b/blueprint/src/graph/traversal-cursor.mjs
+@@ -0,0 +1,39 @@
++// Continuations are views of one repository generation and one exact query.
++// They never authorize access; the application still enforces root/freshness.
++const VERSION = 1;
++const MAX_CURSOR_BYTES = 8192;
++
++function invalid() {
++  return Object.assign(new Error("Traversal cursor is malformed or does not match the served generation and query."), { code: "cursor_invalid" });
++}
++
++export function traversalBinding(meta, kind, parameters, freshness = {}) {
++  const generationId = meta?.manifest?.generationId;
++  if (typeof generationId !== "string" || !generationId.length) {
++    throw Object.assign(new Error("A sealed generation is required for traversal."), { code: "graph_missing" });
++  }
++  // Bind to the store, never to an unverified generation supplied by a caller.
++  if (freshness.generationId != null && freshness.generationId !== generationId) throw invalid();
++  return Object.freeze({ version: VERSION, kind, generationId,
++    repository: meta.repoRoot ?? meta.manifest.repo?.repoId ?? null, ...parameters });
++}
++
++export function decodeTraversalCursor(cursor, binding, counts) {
++  if (cursor === null || cursor === undefined) return { node: 0, edge: 0 };
++  try {
++    if (typeof cursor !== "string" || !cursor.length || cursor.length > MAX_CURSOR_BYTES || !/^[A-Za-z0-9_-]+$/.test(cursor)) throw invalid();
++    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
++    if (!value || Array.isArray(value) || typeof value !== "object") throw invalid();
++    const keys = [...Object.keys(binding), "node", "edge"];
++    if (Object.keys(value).length !== keys.length || !keys.every((key) => Object.hasOwn(value, key))) throw invalid();
++    if (!Object.entries(binding).every(([key, expected]) => value[key] === expected)) throw invalid();
++    for (const key of ["node", "edge"]) {
++      if (!Number.isSafeInteger(value[key]) || value[key] < 0 || value[key] > counts[key]) throw invalid();
++    }
++    return { node: value.node, edge: value.edge };
++  } catch { throw invalid(); }
++}
++
++export function encodeTraversalCursor(binding, node, edge) {
++  return Buffer.from(JSON.stringify({ ...binding, node, edge })).toString("base64url");
++}
+diff --git a/blueprint/src/graph/traverse-store.mjs b/blueprint/src/graph/traverse-store.mjs
+index 3736f4a..69e51a3 100644
+--- a/blueprint/src/graph/traverse-store.mjs
++++ b/blueprint/src/graph/traverse-store.mjs
+@@ -11,6 +11,7 @@ import {
+   traversalNeighbors,
+ } from "./store-sqlite.mjs";
+ 
++import { traversalBinding, decodeTraversalCursor, encodeTraversalCursor } from "./traversal-cursor.mjs";
+ import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
+ import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+ 
+@@ -277,52 +278,6 @@ function edgeReference(edge) {
+   };
+ }
+ 
+-function decodeCursor(cursor) {
+-  if (!cursor) return { node: 0, edge: 0 };
+-  try {
+-    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+-    return { node: Math.max(0, Number(value.node ?? 0)), edge: Math.max(0, Number(value.edge ?? 0)) };
+-  } catch {
+-    return { node: 0, edge: 0 };
+-  }
+-}
+-
+-function encodeCursor(node, edge) {
+-  return Buffer.from(JSON.stringify({ node, edge })).toString("base64url");
+-}
+-
+-const PATH_CURSOR_POLICY = "directed_outgoing_shortest_path_v1";
+-
+-function pathCursorBinding(options, budget) {
+-  return {
+-    kind: "path",
+-    generationId: options.freshness?.generationId ?? null,
+-    from: String(options.from ?? ""),
+-    to: String(options.to ?? ""),
+-    maxDepth: Math.max(1, Number(options.maxDepth ?? 5)),
+-    budget,
+-    policy: PATH_CURSOR_POLICY,
+-  };
+-}
+-
+-function decodePathCursor(cursor, binding) {
+-  if (!cursor) return { node: 0, edge: 0 };
+-  try {
+-    const value = JSON.parse(Buffer.from(String(cursor), "base64url").toString("utf8"));
+-    const validPosition = Number.isSafeInteger(value.node) && value.node >= 0
+-      && Number.isSafeInteger(value.edge) && value.edge >= 0;
+-    const validBinding = Object.entries(binding).every(([key, expected]) => value[key] === expected);
+-    if (!validPosition || !validBinding) throw new Error("cursor binding mismatch");
+-    return { node: value.node, edge: value.edge };
+-  } catch {
+-    throw Object.assign(new Error("Path cursor is malformed or does not match this traversal."), { code: "cursor_invalid" });
+-  }
+-}
+-
+-function encodePathCursor(binding, position) {
+-  return Buffer.from(JSON.stringify({ ...binding, node: position.node, edge: position.edge })).toString("base64url");
+-}
+-
+ function tierRank(edge) {
+   return ({ EXACT_RESOLUTION: 0, SAME_FILE_LEXICAL: 1, CROSS_FILE_HEURISTIC: 2, UNRESOLVED: 3 })[edge.confidenceTier] ?? 4;
+ }
+@@ -370,10 +325,10 @@ function freshnessFields(freshness = {}) {
+   };
+ }
+ 
+-function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root, budget = 2000, cursor }) {
++function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root, budget = 2000, cursor, binding }) {
+   budget = safeBudget(budget);
+   const { rankedNodes, rankedEdges } = rankedReferences(nodes, edges, depths, root);
+-  const start = decodeCursor(cursor);
++  const start = decodeTraversalCursor(cursor, binding, { node: rankedNodes.length, edge: rankedEdges.length });
+   const selectedNodes = [];
+   const selectedEdges = [];
+   let used = 0;
+@@ -394,12 +349,12 @@ function boundedPayload({ provider, freshness, kind, nodes, edges, depths, root,
+     used += cost;
+   }
+   const truncated = nodeIndex < rankedNodes.length || edgeIndex < rankedEdges.length;
+-  const nextCursor = truncated ? encodeCursor(nodeIndex, edgeIndex) : null;
++  const nextCursor = truncated ? encodeTraversalCursor(binding, nodeIndex, edgeIndex) : null;
+   return {
+     schemaVersion: 2,
+     provider,
+     kind,
+-    ...freshnessFields(freshness),
++    ...freshnessFields({ ...freshness, generationId: binding.generationId }),
+     root: root ?? undefined,
+     counts: {
+       nodes: nodes.length,
+@@ -421,6 +376,11 @@ export function boundedNeighbors(db, options = {}) {
+     provider: providerId(meta.provider),
+     freshness: options.freshness,
+     kind: "neighbors",
++    binding: traversalBinding(meta, "neighbors", {
++      root: String(options.nodeId ?? ""), direction: options.direction ?? "both",
++      depth: Math.max(1, Number(options.depth ?? 1)), budget: safeBudget(options.budget),
++      policy: "ranked_neighborhood_v1",
++    }, options.freshness),
+     nodes: raw.nodes,
+     edges: raw.edges,
+     depths: raw.depths,
+@@ -437,6 +397,10 @@ export function boundedImpact(db, options = {}) {
+     provider: providerId(meta.provider),
+     freshness: options.freshness,
+     kind: "impact",
++    binding: traversalBinding(meta, "impact", {
++      root: String(options.nodeId ?? ""), depth: Math.max(1, Number(options.depth ?? 3)),
++      budget: safeBudget(options.budget), policy: "ranked_upstream_impact_v1",
++    }, options.freshness),
+     nodes: [raw.target, ...raw.impacted.filter((node) => node.id !== raw.target.id)],
+     edges: raw.edges,
+     depths: raw.depths,
+@@ -457,11 +421,11 @@ export function boundedPath(db, options = {}) {
+   const raw = indexedPath(db, options);
+   const meta = indexedMeta(db);
+   const budget = safeBudget(options.budget ?? 2000);
+-  const binding = pathCursorBinding(options, budget);
+-  const position = decodePathCursor(options.cursor, binding);
+-  if (position.node > raw.path.length || position.edge > raw.edges.length) {
+-    throw Object.assign(new Error("Path cursor position is outside this traversal."), { code: "cursor_invalid" });
+-  }
++  const binding = traversalBinding(meta, "path", {
++    from: String(options.from ?? ""), to: String(options.to ?? ""),
++    maxDepth: Math.max(1, Number(options.maxDepth ?? 5)), budget,
++    policy: "directed_outgoing_shortest_path_v1",
++  }, options.freshness);
+   const payload = boundedPayload({
+     provider: providerId(meta.provider),
+     freshness: options.freshness,
+@@ -471,14 +435,11 @@ export function boundedPath(db, options = {}) {
+     depths: new Map(raw.path.map((node, index) => [node.id, index])),
+     root: options.from,
+     budget,
+-    cursor: encodeCursor(position.node, position.edge),
++    cursor: options.cursor,
++    binding,
+   });
+-  const continuationCursor = payload.continuationCursor
+-    ? encodePathCursor(binding, decodeCursor(payload.continuationCursor))
+-    : null;
+   return {
+     ...payload,
+-    continuationCursor,
+     path: payload.nodes,
+     nodes: undefined,
+     from: options.from ?? "",
+@@ -501,27 +462,24 @@ export function boundedArchitecture(db, options = {}) {
+   const counts = countRows(db);
+   const edgesByKind = Object.fromEntries([...new Set(edges.map((edge) => edge.kind))].sort().map((kind) => [kind, edges.filter((edge) => edge.kind === kind).length]));
+   const budget = safeBudget(options.budget ?? 2000);
+-  const ranked = rankedReferences(samples, [], new Map(), null).rankedNodes;
+-  let used = 0;
+-  const examples = [];
+-  for (const node of ranked) {
+-    const row = nodeReference(node);
+-    const cost = rowTokens(row);
+-    if (used + cost > budget && examples.length) break;
+-    examples.push(row);
+-    used += cost;
+-  }
++  const payload = boundedPayload({
++    provider: providerId(meta.provider), kind: "architecture", freshness: options.freshness,
++    nodes: samples, edges: [], depths: new Map(), root: null, budget, cursor: options.cursor,
++    binding: traversalBinding(meta, "architecture", {
++      budget, policy: "ranked_architecture_examples_v1",
++    }, options.freshness),
++  });
+   return {
+     schemaVersion: 2,
+-    provider: providerId(meta.provider),
++    provider: payload.provider,
+     kind: "architecture",
+-    ...freshnessFields(options.freshness),
++    ...freshnessFields({ ...options.freshness, generationId }),
+     counts: { nodes: counts.files + counts.symbols, files: counts.files, symbols: counts.symbols, edges: counts.edges, edgesByKind },
+     entryPoints: entryIds.length,
+     terminals: terminalIds.length,
+-    examples,
+-    truncated: examples.length < samples.length,
+-    continuationCursor: examples.length < samples.length ? encodeCursor(examples.length, 0) : null,
++    examples: payload.nodes,
++    truncated: payload.truncated,
++    continuationCursor: payload.continuationCursor,
+     budget,
+   };
+ }
+@@ -553,4 +511,4 @@ export function encodeTabular(payload) {
+   return `${lines.join("\n")}\n`;
+ }
+ 
+-export const _internals = { decodeCursor, encodeCursor, decodePathCursor, encodePathCursor, nodeReference, edgeReference, rowTokens };
++export const _internals = { nodeReference, edgeReference, rowTokens };
+diff --git a/blueprint/tests/traversal-cursor.test.mjs b/blueprint/tests/traversal-cursor.test.mjs
+new file mode 100644
+index 0000000..f0f6da4
+--- /dev/null
++++ b/blueprint/tests/traversal-cursor.test.mjs
+@@ -0,0 +1,82 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { openStore, closeStore, saveGeneration } from "../src/graph/store-sqlite.mjs";
++import { boundedNeighbors, boundedImpact, boundedPath, boundedArchitecture } from "../src/graph/traverse-store.mjs";
++
++function fixture(generationId = "gen-cursors") {
++  const nodes = Array.from({ length: 24 }, (_, i) => ({
++    id: `symbol:src/n${i}.ts::work`, kind: "symbol", name: "work", qualifiedName: "work", path: `src/n${i}.ts`,
++    labels: ["Symbol"], confidence: null, evidence: [{ path: `src/n${i}.ts`, startLine: 1, endLine: 1, contentHash: `h${i}` }],
++  }));
++  const edges = nodes.slice(1).map((node, i) => ({ id: `edge:${i}`, kind: "CALLS", source: node.id,
++    target: nodes[i < 10 ? 0 : i].id, confidence: null, confidenceTier: "EXACT_RESOLUTION", evidence: [{ path: node.path }] }));
++  return { schemaVersion: 1, provider: { id: "blueprint-static" }, repoRoot: "/repo/cursors", nodes, edges,
++    manifest: { generationId, complete: true, counts: { nodes: nodes.length, edges: edges.length } } };
++}
++const modes = [
++  ["neighbors", boundedNeighbors, { nodeId: "symbol:src/n0.ts::work", direction: "in", depth: 2 }, "nodes"],
++  ["impact", boundedImpact, { nodeId: "symbol:src/n0.ts::work", depth: 2 }, "impacted"],
++  ["path", boundedPath, { from: "symbol:src/n23.ts::work", to: "symbol:src/n10.ts::work", maxDepth: 15 }, "path"],
++  ["architecture", boundedArchitecture, {}, "examples"],
++];
++const invalid = (error) => error.code === "cursor_invalid";
++
++for (const [name, query, parameters, field] of modes) {
++  test(`${name} continuation visits all rows exactly once and advances`, () => {
++    const db = openStore(":memory:");
++    try {
++      saveGeneration(db, fixture());
++      const full = query(db, { ...parameters, budget: 100000 });
++      const rows = [], edges = [], seen = new Set();
++      let cursor;
++      for (let page = 0; page < 100; page += 1) {
++        const result = query(db, { ...parameters, budget: 100, cursor });
++        assert.equal(result.generationId, "gen-cursors");
++        rows.push(...result[field]); edges.push(...(result.edges ?? []));
++        if (!result.truncated) { assert.equal(result.continuationCursor, null); break; }
++        cursor = result.continuationCursor;
++        assert.ok(cursor && !seen.has(cursor), "continuation must make forward progress");
++        seen.add(cursor);
++      }
++      assert.ok(seen.size > 0, "fixture must actually paginate");
++      assert.deepEqual(rows, full[field]);
++      assert.deepEqual(edges, full.edges ?? []);
++      assert.equal(new Set(rows.map((row) => row.id)).size, rows.length);
++    } finally { closeStore(db); }
++  });
++
++  test(`${name} rejects a cursor from different generation, parameters or malformed position`, () => {
++    const db = openStore(":memory:");
++    try {
++      saveGeneration(db, fixture());
++      const options = { ...parameters, budget: 100 };
++      const cursor = query(db, options).continuationCursor;
++      assert.ok(cursor);
++      assert.throws(() => query(db, { ...options, budget: 101, cursor }), invalid);
++      assert.throws(() => query(db, { ...options, cursor: "not-valid-json" }), invalid);
++      const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString());
++      for (const position of [-1, 0.5, "1", 999999]) {
++        const bad = Buffer.from(JSON.stringify({ ...decoded, node: position })).toString("base64url");
++        assert.throws(() => query(db, { ...options, cursor: bad }), invalid);
++      }
++      const other = { ...decoded, kind: "other" };
++      assert.throws(() => query(db, { ...options, cursor: Buffer.from(JSON.stringify(other)).toString("base64url") }), invalid);
++      saveGeneration(db, fixture("next"));
++      assert.throws(() => query(db, { ...options, cursor }), invalid);
++      assert.throws(() => query(db, { ...options, cursor, freshness: { generationId: "gen-cursors" } }), invalid,
++        "a caller-supplied old generation cannot hide the actual store generation");
++    } finally { closeStore(db); }
++  });
++}
++
++test("neighbor cursor cannot be replayed for another root or direction", () => {
++  const db = openStore(":memory:");
++  try {
++    saveGeneration(db, fixture());
++    const options = { nodeId: "symbol:src/n0.ts::work", direction: "in", depth: 2, budget: 100 };
++    const cursor = boundedNeighbors(db, options).continuationCursor;
++    assert.throws(() => boundedNeighbors(db, { ...options, cursor, direction: "both" }), invalid);
++    assert.throws(() => boundedNeighbors(db, { ...options, cursor, nodeId: "symbol:src/n1.ts::work" }), invalid);
++    assert.throws(() => boundedImpact(db, { ...options, cursor }), invalid);
++  } finally { closeStore(db); }
++});
