@@ -1,93 +1,126 @@
-// Compiler/indexer-grade (SCIP) precision tier — blueprint B4.
+// Compiler/indexer-grade (SCIP) precision tier — Blueprint B4.
 //
-// blueprint NEVER vendors, installs, or invokes a SCIP indexer binary. This
-// module only READS an index if the repo already produced one out-of-band
-// (scip-typescript, scip-python, rust-analyzer's scip backend, ...) and
-// exported it to a portable JSON shape (e.g. `scip print --json`, or any
-// `{ documents: [{ relativePath, occurrences: [{ symbol, roles, range }] }] }`
-// shape). Absence — no index file, unreadable JSON, or a JSON file missing
-// the expected shape — is reported as `state: "unavailable"` with an honest
-// `reason`, exactly like augmentGenerationWithTreeSitter's WASM-load failure
-// path in static-provider.mjs. The graph then degrades to whatever the AST
-// tier (graph/treesitter-provider.mjs) already produced; this module never
-// invents edges to compensate for a missing index.
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "./confidence-tiers.mjs";
-import { PRECISION_TIERS } from "./precision-tiers.mjs";
+// Blueprint never vendors, installs, or invokes a SCIP indexer binary here.
+// This module consumes an index produced out-of-band and routes ALL transport
+// parsing through the canonical normalizer shared with first-party compiler
+// adapters. Policy remains here; SCIP shape/roles and exact symbol identity do
+// not get reimplemented per consumer.
 
-export const PROVIDER = {
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+import { EDGE_CONFIDENCE_TIERS } from "./confidence-tiers.mjs";
+import { compilerSemanticFact } from "./provenance.mjs";
+import { PRECISION_TIERS } from "./precision-tiers.mjs";
+import { assertRegisteredRelationshipKinds } from "./relationship-kinds.mjs";
+import { readNormalizedScipIndex, scipOccurrenceEvidence } from "../providers/compilers/scip-normalize.mjs";
+
+export const PROVIDER = Object.freeze({
   id: "blueprint-scip",
-  version: "index-optional-v1",
+  version: "normalized-index-v2",
   license: "workspace-owned",
-};
+});
 
 export function findScipIndex(repoRoot, options = {}) {
   const root = resolve(repoRoot);
   const explicit = options.scipIndexPath ?? process.env.BLUEPRINT_SCIP_INDEX ?? null;
   const candidates = explicit
     ? [resolve(root, explicit)]
-    : [
-        join(root, "index.scip.json"),
-        join(root, ".agent", "index.scip.json"),
-      ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
+    : [join(root, "index.scip.json"), join(root, ".agent", "index.scip.json")];
+  for (const candidate of candidates) if (existsSync(candidate)) return candidate;
   return null;
 }
 
-// Reports whether a SCIP index is present and readable, WITHOUT mutating a
-// generation. Mirrors the shape of the other providers' probe/capability
-// output so a consumer can inspect precision-tier availability up front.
+function unavailable(reason, code = "scip_index_unavailable", indexPath = null) {
+  return {
+    provider: PROVIDER,
+    precisionTier: PRECISION_TIERS.COMPILER,
+    state: "unavailable",
+    code,
+    reason,
+    indexPath,
+    degradesTo: PRECISION_TIERS.AST,
+  };
+}
+
 export function probeScip(repoRoot, options = {}) {
   const indexPath = findScipIndex(repoRoot, options);
   if (!indexPath) {
-    return {
-      provider: PROVIDER,
-      precisionTier: PRECISION_TIERS.COMPILER,
-      state: "unavailable",
-      reason: "no SCIP index found (set BLUEPRINT_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)",
-      degradesTo: PRECISION_TIERS.AST,
-    };
+    return unavailable(
+      "no SCIP index found (set BLUEPRINT_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)",
+      "scip_index_absent",
+    );
   }
-  let parsed;
+  let index;
   try {
-    parsed = JSON.parse(readFileSync(indexPath, "utf8"));
-  } catch (err) {
-    return {
-      provider: PROVIDER,
-      precisionTier: PRECISION_TIERS.COMPILER,
-      state: "unavailable",
-      reason: `SCIP index at ${indexPath} could not be parsed as JSON: ${String(err?.message ?? err)}`,
-      degradesTo: PRECISION_TIERS.AST,
-    };
+    index = readNormalizedScipIndex(indexPath);
+  } catch (error) {
+    return unavailable(String(error?.message ?? error), error?.code ?? "scip_index_unreadable", indexPath);
   }
-  if (!Array.isArray(parsed?.documents)) {
-    return {
-      provider: PROVIDER,
-      precisionTier: PRECISION_TIERS.COMPILER,
-      state: "unavailable",
-      reason: `SCIP index at ${indexPath} has no "documents" array — not a recognized portable-SCIP-JSON shape`,
-      degradesTo: PRECISION_TIERS.AST,
-    };
-  }
+  const definitionCount = [...index.occurrences].filter((occurrence) => occurrence.roles.has("definition")).length;
+  const referenceCount = [...index.occurrences].filter((occurrence) => occurrence.roles.has("reference")).length;
   return {
     provider: PROVIDER,
     precisionTier: PRECISION_TIERS.COMPILER,
     state: "ok",
     indexPath,
-    documentCount: parsed.documents.length,
+    documentCount: index.documents.length,
+    definitionCount,
+    referenceCount,
+    skippedDocuments: index.skippedDocuments,
+    skippedOccurrences: index.skippedOccurrences,
+    partial: index.skippedDocuments > 0 || index.skippedOccurrences > 0,
   };
 }
 
-// Additive augmentation, same contract shape as
-// static-provider.mjs::augmentGenerationWithTreeSitter: async at the build
-// boundary only, degrades honestly on any absence/failure, and only ever adds
-// REFERENCES edges that are literally present in the index's occurrence list
-// (roles including "reference") joined against nodes already in the
-// generation — it never fabricates a node or a reference that isn't in the
-// index.
+function exactNodeId(occurrence) {
+  return `symbol:${occurrence.documentPath}::${occurrence.symbol}`;
+}
+
+function symbolInfo(index, symbol) {
+  return index.symbolInformationBySymbol.get(symbol) ?? null;
+}
+
+function definitionNode(index, occurrence, fileNode) {
+  const info = symbolInfo(index, occurrence.symbol);
+  return compilerSemanticFact({
+    id: exactNodeId(occurrence),
+    kind: "symbol",
+    labels: ["Symbol", "CompilerSymbol"],
+    name: info?.displayName ?? occurrence.symbol,
+    qualifiedName: occurrence.symbol,
+    symbol: occurrence.symbol,
+    path: occurrence.documentPath,
+    precisionTier: PRECISION_TIERS.COMPILER,
+    provider: PROVIDER.id,
+    ...(info?.documentation?.length ? { documentation: [...info.documentation] } : {}),
+    ...(info?.kind !== null && info?.kind !== undefined ? { symbolKind: info.kind } : {}),
+    evidence: [scipOccurrenceEvidence(occurrence, { contentHash: fileNode?.evidence?.[0]?.contentHash ?? null })],
+  });
+}
+
+function referenceEdge(sourceNode, targetNode, occurrence, serial) {
+  const resolved = Boolean(targetNode);
+  const confidenceTier = resolved
+    ? EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION
+    : EDGE_CONFIDENCE_TIERS.UNRESOLVED;
+  return compilerSemanticFact({
+    id: `edge:REFERENCES:${sourceNode.id}->${targetNode?.id ?? `unresolved:${occurrence.symbol}`}:scip:${serial}`,
+    kind: "REFERENCES",
+    source: sourceNode.id,
+    target: targetNode?.id ?? null,
+    confidenceTier,
+    provider: PROVIDER.id,
+    precisionTier: PRECISION_TIERS.COMPILER,
+    resolved,
+    reason: resolved ? null : `no definition for SCIP symbol \"${occurrence.symbol}\" in the normalized index`,
+    evidence: [scipOccurrenceEvidence(occurrence, { contentHash: sourceNode.evidence?.[0]?.contentHash ?? null })],
+  }, { resolved });
+}
+
+// Add exact compiler-semantic definitions/references from the normalized index.
+// No path/name fallback exists: if an occurrence's exact SCIP symbol has no
+// definition in the index, it remains an explicit unresolved edge.
 export async function augmentGenerationWithScip(generation, repoRoot, options = {}) {
   const probe = probeScip(repoRoot, options);
   if (probe.state !== "ok") {
@@ -95,43 +128,57 @@ export async function augmentGenerationWithScip(generation, repoRoot, options = 
     return probe;
   }
 
-  const parsed = JSON.parse(readFileSync(probe.indexPath, "utf8"));
-  const nodesById = new Map(generation.nodes.map((node) => [node.id, node]));
-  const nodesByPathAndName = new Map(
-    generation.nodes
-      .filter((node) => node.kind === "symbol")
-      .map((node) => [`${node.path}::${node.qualifiedName}`, node]),
-  );
-  let edgesAdded = 0;
-  for (const doc of parsed.documents) {
-    const path = String(doc.relativePath ?? doc.path ?? "");
-    if (!path) continue;
-    const sourceNode = nodesById.get(`file:${path}`);
-    if (!sourceNode) continue;
-    for (const occ of doc.occurrences ?? []) {
-      if (!occ.symbol || !Array.isArray(occ.roles) || !occ.roles.includes("reference")) continue;
-      const targetNode = nodesByPathAndName.get(`${path}::${occ.symbol}`);
-      if (!targetNode) continue;
-      const range = Array.isArray(occ.range) ? occ.range : [1, 0, 1, 0];
-      generation.edges.push({
-        id: `edge:REFERENCES:${sourceNode.id}->${targetNode.id}:scip:${edgesAdded}`,
-        kind: "REFERENCES",
-        source: sourceNode.id,
-        target: targetNode.id,
-        confidenceTier: EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION,
-        confidence: tierConfidence(EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION),
-        provider: PROVIDER.id,
-        evidence: [{
-          path,
-          startLine: (range[0] ?? 0) + 1,
-          endLine: (range[2] ?? range[0] ?? 0) + 1,
-          contentHash: sourceNode.evidence?.[0]?.contentHash ?? null,
-        }],
-      });
-      edgesAdded += 1;
-    }
+  let index;
+  try {
+    index = readNormalizedScipIndex(probe.indexPath);
+  } catch (error) {
+    const failure = unavailable(String(error?.message ?? error), error?.code ?? "scip_index_unreadable", probe.indexPath);
+    generation.augmentation = { ...(generation.augmentation ?? {}), scip: failure };
+    return failure;
   }
-  const result = { ...probe, applied: true, edgesAdded };
+
+  const nodesById = new Map(generation.nodes.map((node) => [node.id, node]));
+  const fileNodes = new Map(generation.nodes.filter((node) => node.kind === "file").map((node) => [node.path, node]));
+  let nodesAdded = 0;
+  for (const occurrence of index.definitionsBySymbol.values()) {
+    const fileNode = fileNodes.get(occurrence.documentPath);
+    if (!fileNode) continue;
+    const id = exactNodeId(occurrence);
+    if (nodesById.has(id)) continue;
+    const node = definitionNode(index, occurrence, fileNode);
+    generation.nodes.push(node);
+    nodesById.set(id, node);
+    nodesAdded += 1;
+  }
+
+  const edges = [];
+  let serial = 0;
+  for (const occurrence of index.occurrences) {
+    if (!occurrence.roles.has("reference")) continue;
+    const sourceNode = fileNodes.get(occurrence.documentPath);
+    if (!sourceNode) continue;
+    const definition = index.definitionsBySymbol.get(occurrence.symbol) ?? null;
+    const targetNode = definition ? nodesById.get(exactNodeId(definition)) ?? null : null;
+    edges.push(referenceEdge(sourceNode, targetNode, occurrence, serial));
+    serial += 1;
+  }
+  assertRegisteredRelationshipKinds(edges, PROVIDER.id);
+  generation.edges.push(...edges);
+
+  if (generation.manifest?.counts) {
+    generation.manifest.counts = {
+      ...generation.manifest.counts,
+      nodes: generation.nodes.length,
+      edges: generation.edges.length,
+    };
+  }
+  const result = {
+    ...probe,
+    applied: true,
+    nodesAdded,
+    edgesAdded: edges.length,
+    unresolvedReferences: edges.filter((edge) => !edge.resolved).length,
+  };
   generation.augmentation = { ...(generation.augmentation ?? {}), scip: result };
   return result;
 }

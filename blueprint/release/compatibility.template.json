@@ -5,9 +5,9 @@
   "version": "0.2.0",
   "commit": "FULL_GIT_SHA",
   "sourceDateEpoch": 0,
-  "contracts": { "public": 1, "store": 18, "ipc": 1 },
+  "contracts": { "public": 1, "store": 19, "ipc": 1 },
   "storeMigration": {
-    "currentSchemaVersion": 18,
+    "currentSchemaVersion": 19,
     "minImportableSchemaVersion": 12,
     "backupBeforeMigration": true,
     "repairPath": "repairInterruptedMigration(dbPath, fromVersion)"

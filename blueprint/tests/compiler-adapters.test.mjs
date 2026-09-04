@@ -155,6 +155,8 @@ test("python SCIP collect resolves the cross-module total() reference to models.
   assert.equal(itemClass.precisionTier, "COMPILER");
   assert.equal(totalMethod.precisionTier, "COMPILER");
   assert.equal(totalMethod.labels[0], "Method");
+  assert.equal(totalMethod.provenance, "AUTHORITATIVE_SEMANTIC");
+  assert.equal(totalMethod.confidence, null);
   // pkg/service.py:5 `item.total()` — resolved EXACTLY to the definition in
   // pkg/models.py by SCIP symbol identity (no name match).
   const refs = collected.edges.filter((edge) => edge.kind === "REFERENCES");
@@ -162,7 +164,8 @@ test("python SCIP collect resolves the cross-module total() reference to models.
   assert.ok(totalRef, "cross-module total() reference edge present");
   assert.equal(totalRef.target, totalMethod.id);
   assert.equal(totalRef.confidenceTier, "EXACT_RESOLUTION");
-  assert.equal(totalRef.confidence, 1);
+  assert.equal(totalRef.provenance, "AUTHORITATIVE_SEMANTIC");
+  assert.equal(totalRef.confidence, null);
   assert.equal(totalRef.provider, "scip-python");
   assert.equal(totalRef.precisionTier, "COMPILER");
   // pkg/service.py:0 imports Item — the class reference resolves to the class.
@@ -170,15 +173,19 @@ test("python SCIP collect resolves the cross-module total() reference to models.
   assert.ok(classRef);
   assert.equal(classRef.target, itemClass.id);
   assert.equal(classRef.confidenceTier, "EXACT_RESOLUTION");
+  assert.equal(classRef.provenance, "AUTHORITATIVE_SEMANTIC");
+  assert.equal(classRef.confidence, null);
 });
 
-test("python SCIP collect emits exact TYPES edges for class references", async () => {
+test("python SCIP collect emits exact TYPED edges for class references", async () => {
   const collected = await pythonScipProvider.collect({ repoRoot: PYTHON_FIXTURE });
-  const types = collected.edges.filter((edge) => edge.kind === "TYPES");
-  assert.equal(types.length, 1);
-  assert.equal(types[0].evidence[0].path, "pkg/service.py");
-  assert.equal(types[0].confidenceTier, "EXACT_RESOLUTION");
-  assert.equal(types[0].precisionTier, "COMPILER");
+  const typed = collected.edges.filter((edge) => edge.kind === "TYPED");
+  assert.equal(typed.length, 1);
+  assert.equal(typed[0].evidence[0].path, "pkg/service.py");
+  assert.equal(typed[0].confidenceTier, "EXACT_RESOLUTION");
+  assert.equal(typed[0].precisionTier, "COMPILER");
+  assert.equal(typed[0].provenance, "AUTHORITATIVE_SEMANTIC");
+  assert.equal(typed[0].confidence, null);
 });
 
 test("python SCIP collect reports unknown symbols UNRESOLVED with no speculative match", async () => {
@@ -190,7 +197,8 @@ test("python SCIP collect reports unknown symbols UNRESOLVED with no speculative
   assert.ok(moduleRef, "unknown reference is kept, not dropped");
   assert.equal(moduleRef.target, null);
   assert.equal(moduleRef.confidenceTier, "UNRESOLVED");
-  assert.equal(moduleRef.confidence, 0);
+  assert.equal(moduleRef.provenance, "UNRESOLVED");
+  assert.equal(moduleRef.confidence, null);
   assert.ok(/no definition/.test(moduleRef.reason));
   for (const edge of collected.edges) {
     if (edge.confidenceTier === "UNRESOLVED") assert.equal(edge.target, null);

@@ -33,6 +33,7 @@ import {
 import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "./precision-tiers.mjs";
 import { STATIC_PROVIDER, TREESITTER_PROVIDER } from "./provider-identity.mjs";
 import { compareRepoPaths } from "./path-order.mjs";
+import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
 import {
   openStore,
   openStoreReadOnly,
@@ -558,7 +559,8 @@ export function queryGraph(generation, options = {}) {
     name: node.name,
     qualifiedName: node.qualifiedName,
     provider: generation.provider.id,
-    confidence: node.confidence ?? 1,
+    confidence: publicFactConfidence(node),
+    ...(node.provenance === undefined ? {} : { provenance: node.provenance }),
     evidence: node.evidence,
     fresh: evidenceFresh(generation, node.evidence),
     rank: index + 1,
@@ -607,7 +609,7 @@ export function createContextCandidateSet(generation, options = {}) {
         name: node.name,
         qualifiedName: node.qualifiedName,
         provider: generation.provider.id,
-        confidence: node.confidence ?? 1,
+        confidence: publicFactConfidence(node),
         evidence: node.evidence,
         fresh: evidenceFresh(generation, node.evidence),
         rank: ++syntheticRank,
@@ -1309,7 +1311,7 @@ function buildGenerationFromSources(root, source, options = {}) {
       name: node.name,
       qualifiedName: node.qualifiedName ?? node.name,
       path: normalizePath(node.path),
-      confidence: node.confidence ?? 1,
+      confidence: confidenceOrLegacyDefault(node.confidence),
       evidence: node.evidence,
     };
     nodes.push(normalized);

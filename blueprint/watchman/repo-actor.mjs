@@ -8,6 +8,7 @@ import { extractDoc, isDoc, loadConfig } from "../scripts/blueprint.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
 import { assertSafeMutableStorePath, collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
+import { completePendingDocDomain } from "../src/lib/phase2-completion.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 
@@ -374,6 +375,22 @@ export class RepositoryActor extends EventEmitter {
     });
   }
 
+  completeProductDomains(db = this.openDbOnce()) {
+    try {
+      const result = completePendingDocDomain(db, this.root, { outDir: this.outDir });
+      if (result.state !== "noop") db.prepare("DELETE FROM watch_state WHERE key='last_phase2_error'").run();
+      return result;
+    } catch (error) {
+      // Phase-2 projection trouble must never roll back or kill already-applied
+      // source deltas. Leave `doc` pending, record the typed failure, and let a
+      // later flush/start retry the same automatic consumer.
+      setState(db, "phase2_completion_state", "error");
+      setState(db, "last_phase2_error", String(error?.message ?? error).slice(0, 500));
+      this.log(error);
+      return { state: "error", error: String(error?.message ?? error) };
+    }
+  }
+
   async startRun(run) {
     try {
       if (!existsSync(this.root)) throw new Error(`watch root is unavailable: ${this.root}`);
@@ -413,6 +430,7 @@ export class RepositoryActor extends EventEmitter {
       this.reconcileInFlight = startupReconcile;
       try { await startupReconcile; } finally { if (this.active(run) && this.reconcileInFlight === startupReconcile) this.reconcileInFlight = null; if (this.active(run) && this.reconcilePending) this.runPendingReconcile(run); }
       if (!this.active(run)) return;
+      this.completeProductDomains();
       await this.track(run, this.adapter.writeSnapshot(this.root, this.snapshotPath, this.ignore));
       this.failures = 0;
     } catch (error) {
@@ -507,6 +525,8 @@ export class RepositoryActor extends EventEmitter {
         applied += await drainJournal(db, this.root, { force, maxDependentFiles: this.maxDependentFiles, readStable: this.readStable, signal });
         force = true;
       } while (this.eventBuffer.length);
+      throwIfAborted(signal);
+      this.completeProductDomains(db);
       return applied;
     })();
     const settledDrain = drain.then((applied) => {

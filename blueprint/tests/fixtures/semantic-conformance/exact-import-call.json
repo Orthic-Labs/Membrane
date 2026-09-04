@@ -1,0 +1,54 @@
+{
+  "name": "exact-import-call-and-negative",
+  "files": {
+    "src/worker.ts": "export function work() { return 1; }\n",
+    "src/entry.ts": "import { work } from './worker';\nexport function main() { return work(); }\n"
+  },
+  "assertions": [
+    {
+      "id": "worker-definition",
+      "type": "node_exists",
+      "description": "worker function is represented as a symbol with source evidence",
+      "where": {
+        "path": "src/worker.ts",
+        "name": "work",
+        "labels": { "$includes": "Function" },
+        "evidence.0.path": "src/worker.ts",
+        "evidence.0.contentHash": { "$exists": true }
+      }
+    },
+    {
+      "id": "entry-imports-worker",
+      "type": "edge_exists",
+      "description": "relative module import resolves to the worker file",
+      "where": {
+        "kind": "IMPORTS",
+        "source": "file:src/entry.ts",
+        "target": "file:src/worker.ts",
+        "resolved": true,
+        "evidence.0.path": "src/entry.ts"
+      }
+    },
+    {
+      "id": "main-calls-work",
+      "type": "edge_exists",
+      "description": "main reaches work through the resolved call relation",
+      "where": {
+        "kind": "CALLS",
+        "source": "symbol:src/entry.ts::main",
+        "target": "symbol:src/worker.ts::work",
+        "evidence.0.path": "src/entry.ts"
+      }
+    },
+    {
+      "id": "no-fabricated-call",
+      "type": "edge_absent",
+      "description": "the verifier can assert that a known false edge is absent",
+      "where": {
+        "kind": "CALLS",
+        "source": "symbol:src/entry.ts::main",
+        "target": "symbol:src/worker.ts::missing"
+      }
+    }
+  ]
+}

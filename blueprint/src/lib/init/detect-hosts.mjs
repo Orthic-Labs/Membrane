@@ -16,7 +16,7 @@ const HOST_CONFIG_PATHS = Object.freeze({
 });
 
 const HOST_COMMANDS = Object.freeze({
-  "claude-code": ["claude", "codex"],
+  "claude-code": ["claude"],
   codex: ["codex"],
   cursor: ["cursor"],
 });
@@ -28,10 +28,10 @@ function probeCommand(name) {
   return result.status === 0 && String(result.stdout ?? "").trim().length > 0;
 }
 
-export function detectHosts({ explicit = null, root = process.cwd() } = {}) {
+export function detectHosts({ explicit = null, root = process.cwd(), commandProbe = probeCommand } = {}) {
   if (explicit) {
     const value = String(explicit);
-    if (value === "auto") return detectHosts({ explicit: null, root });
+    if (value === "auto") return detectHosts({ explicit: null, root, commandProbe });
     if (!HOSTS.includes(value)) throw new Error(`--host must be auto, ${HOSTS.join(", ")}`);
     return [value];
   }
@@ -42,7 +42,7 @@ export function detectHosts({ explicit = null, root = process.cwd() } = {}) {
   }
   if (detected.size === 0) {
     for (const host of HOSTS) {
-      const found = (HOST_COMMANDS[host] ?? []).some((cmd) => probeCommand(cmd));
+      const found = (HOST_COMMANDS[host] ?? []).some((cmd) => commandProbe(cmd));
       if (found) detected.add(host);
     }
   }

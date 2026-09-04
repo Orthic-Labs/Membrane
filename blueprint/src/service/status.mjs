@@ -56,14 +56,19 @@ export function serviceStatus({ target = null, fleetStatus = readFleetStatus } =
   }
   const enrolledRepos = (fleet.repos ?? []).map((repo) => ({ root: repo.root, enabled: true }));
   const active = (fleet.repos ?? []).find((repo) => repo.alive);
+  const targetRepo = target ? (fleet.repos ?? [])[0] ?? null : null;
   return {
     schemaVersion: 1,
     ...(fleetError ? { fleetError } : {}),
     platform: process.platform,
     registered: false, // D-S03: no OS registration
     running: Boolean(active),
+    serviceLive: Boolean(active),
+    hubAvailable: fleetError === null,
+    targetEnrolled: target ? Boolean(targetRepo) : false,
+    targetWatcherLive: target ? Boolean(targetRepo?.alive) : false,
     pid: active?.pid ?? null,
-    target: null,
+    target: target ? resolve(target) : null,
     enrolledRepos,
     foreground: "blueprint service run",
   };
