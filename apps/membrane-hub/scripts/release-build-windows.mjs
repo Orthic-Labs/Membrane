@@ -17,6 +17,10 @@ function prepareNativeBinaries() {
   // `pnpm run build` writes current release identity before compiling & staging
   // cortex/membrane. Daemon/tray then compile against that same identity.
   run(["run", "build"]);
+  // Type-check the whole workspace first. A compile error anywhere used to
+  // surface only after this release build had linked the daemon, minutes in;
+  // check reports it up front and the release build reuses the same cache.
+  cargo(["check", "--manifest-path", "../../engine/Cargo.toml", "--workspace", "--all-targets", "--locked", "--target", "x86_64-pc-windows-msvc"]);
   cargo(["build", "--manifest-path", "../../engine/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane-runtime", "--bin", "membrane-daemon"]);
   cargo(["build", "--manifest-path", "../membrane-tray-windows/Cargo.toml", "--release", "--target", "x86_64-pc-windows-msvc"]);
   const hub = fileURLToPath(new URL("../", import.meta.url));

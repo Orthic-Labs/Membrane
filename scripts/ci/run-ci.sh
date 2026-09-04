@@ -13,6 +13,12 @@ if [[ -n "$untracked_scripts" ]]; then
   exit 1
 fi
 if [[ "${RIGHT_GIT_RUST_CHANGED:-true}" != "false" ]]; then
+  # Fail on a compile error before spending the test phase on it. A missing
+  # dependency or a type mismatch used to surface only after the full suite,
+  # or later still in the installer build; this reports it in the time it
+  # takes to type-check. Test compilation reuses the same warm cache, so the
+  # cost when everything compiles is small.
+  cargo check --manifest-path engine/Cargo.toml --workspace --all-targets --locked
   cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
 else
   echo "Building test-required Membrane binaries from cache: right-git found no Rust-impacting changes."
