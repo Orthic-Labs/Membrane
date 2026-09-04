@@ -3,13 +3,14 @@
 // Blueprint never vendors, installs, or invokes a SCIP indexer binary here.
 // This module consumes an index produced out-of-band and routes ALL transport
 // parsing through the canonical normalizer shared with first-party compiler
-// adapters. Policy (edge kinds/confidence) remains here; SCIP shape/roles and
-// exact symbol identity do not get reimplemented per consumer.
+// adapters. Policy remains here; SCIP shape/roles and exact symbol identity do
+// not get reimplemented per consumer.
 
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "./confidence-tiers.mjs";
+import { EDGE_CONFIDENCE_TIERS } from "./confidence-tiers.mjs";
+import { compilerSemanticFact } from "./provenance.mjs";
 import { PRECISION_TIERS } from "./precision-tiers.mjs";
 import { assertRegisteredRelationshipKinds } from "./relationship-kinds.mjs";
 import { readNormalizedScipIndex, scipOccurrenceEvidence } from "../providers/compilers/scip-normalize.mjs";
@@ -82,7 +83,7 @@ function symbolInfo(index, symbol) {
 
 function definitionNode(index, occurrence, fileNode) {
   const info = symbolInfo(index, occurrence.symbol);
-  return {
+  return compilerSemanticFact({
     id: exactNodeId(occurrence),
     kind: "symbol",
     labels: ["Symbol", "CompilerSymbol"],
@@ -92,11 +93,10 @@ function definitionNode(index, occurrence, fileNode) {
     path: occurrence.documentPath,
     precisionTier: PRECISION_TIERS.COMPILER,
     provider: PROVIDER.id,
-    confidence: 1,
     ...(info?.documentation?.length ? { documentation: [...info.documentation] } : {}),
     ...(info?.kind !== null && info?.kind !== undefined ? { symbolKind: info.kind } : {}),
     evidence: [scipOccurrenceEvidence(occurrence, { contentHash: fileNode?.evidence?.[0]?.contentHash ?? null })],
-  };
+  });
 }
 
 function referenceEdge(sourceNode, targetNode, occurrence, serial) {
@@ -104,19 +104,18 @@ function referenceEdge(sourceNode, targetNode, occurrence, serial) {
   const confidenceTier = resolved
     ? EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION
     : EDGE_CONFIDENCE_TIERS.UNRESOLVED;
-  return {
+  return compilerSemanticFact({
     id: `edge:REFERENCES:${sourceNode.id}->${targetNode?.id ?? `unresolved:${occurrence.symbol}`}:scip:${serial}`,
     kind: "REFERENCES",
     source: sourceNode.id,
     target: targetNode?.id ?? null,
     confidenceTier,
-    confidence: tierConfidence(confidenceTier),
     provider: PROVIDER.id,
     precisionTier: PRECISION_TIERS.COMPILER,
     resolved,
     reason: resolved ? null : `no definition for SCIP symbol \"${occurrence.symbol}\" in the normalized index`,
     evidence: [scipOccurrenceEvidence(occurrence, { contentHash: sourceNode.evidence?.[0]?.contentHash ?? null })],
-  };
+  }, { resolved });
 }
 
 // Add exact compiler-semantic definitions/references from the normalized index.

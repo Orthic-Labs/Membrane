@@ -43,6 +43,7 @@ jobs:
           tests/parse-cache-fingerprint.test.mjs
           tests/scip-normalizer.test.mjs
           tests/javascript-module-resolution.test.mjs
+          tests/provenance-semantics.test.mjs
 
   cargo-check:
     runs-on: ubuntu-24.04

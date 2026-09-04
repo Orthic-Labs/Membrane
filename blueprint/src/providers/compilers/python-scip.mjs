@@ -5,7 +5,8 @@
 import { basename, isAbsolute, resolve } from "node:path";
 
 import { defineProvider } from "../index.mjs";
-import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../../graph/confidence-tiers.mjs";
+import { EDGE_CONFIDENCE_TIERS } from "../../graph/confidence-tiers.mjs";
+import { compilerSemanticFact } from "../../graph/provenance.mjs";
 import { PRECISION_TIERS } from "../../graph/precision-tiers.mjs";
 import { findScipIndex } from "../../graph/scip-provider.mjs";
 import { assertRegisteredRelationshipKinds } from "../../graph/relationship-kinds.mjs";
@@ -53,7 +54,7 @@ function occurrenceEvidence(occurrence) {
 
 function definitionNode(occurrence, info = null) {
   const symbol = occurrence.symbol;
-  return {
+  return compilerSemanticFact({
     id: `symbol:${occurrence.documentPath}::${symbol}`,
     kind: "symbol",
     labels: symbolLabels(symbol),
@@ -63,30 +64,28 @@ function definitionNode(occurrence, info = null) {
     path: occurrence.documentPath,
     precisionTier: PRECISION_TIERS.COMPILER,
     provider: PROVIDER_ID,
-    confidence: 1,
     ...(info?.documentation?.length ? { documentation: [...info.documentation] } : {}),
     ...(info?.kind !== null && info?.kind !== undefined ? { symbolKind: info.kind } : {}),
     evidence: occurrenceEvidence(occurrence),
-  };
+  });
 }
 
 function referenceEdge(kind, sourceId, target, evidence, reason, serial) {
   const resolved = target !== null && typeof target.id === "string";
   const targetId = resolved ? target.id : null;
   const tier = resolved ? EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION : EDGE_CONFIDENCE_TIERS.UNRESOLVED;
-  return {
+  return compilerSemanticFact({
     id: `edge:${kind}:${sourceId}->${targetId ?? `unresolved:${evidence[0].symbol}`}:scip:${serial}`,
     kind,
     source: sourceId,
     target: targetId,
     confidenceTier: tier,
-    confidence: tierConfidence(tier),
     provider: PROVIDER_ID,
     precisionTier: PRECISION_TIERS.COMPILER,
     resolved,
     reason: reason ?? null,
     evidence,
-  };
+  }, { resolved });
 }
 
 function includedOccurrence(occurrence) {
@@ -102,7 +101,7 @@ function buildFromIndex(index) {
 
   for (const doc of index.documents) {
     const path = doc.path;
-    nodes.push({
+    nodes.push(compilerSemanticFact({
       id: `file:${path}`,
       kind: "file",
       labels: ["File"],
@@ -111,9 +110,8 @@ function buildFromIndex(index) {
       path,
       precisionTier: PRECISION_TIERS.COMPILER,
       provider: PROVIDER_ID,
-      confidence: 1,
       evidence: [{ path, startLine: 1, endLine: 1 }],
-    });
+    }));
     for (const occurrence of doc.occurrences) {
       if (!includedOccurrence(occurrence)) continue;
       if (occurrence.roles.has("definition")) {
