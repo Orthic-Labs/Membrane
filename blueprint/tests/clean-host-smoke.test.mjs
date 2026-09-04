@@ -76,15 +76,25 @@ function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 
 function sha256File(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
 
+// The bundled tar is a GNU build: it uses "/" as the separator and reads a
+// leading "C:" as a remote host. A Windows path therefore has to arrive as
+// a forward-slash path, with --force-local keeping the drive letter local.
+function tarPath(value) {
+  return value.split("\\").join("/");
+}
+
 function repackWithShippedRoot(tarballPath, keys) {
   const dir = join(tmpdir(), `blueprint-clean-host-repack-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   const unpacked = join(dir, "unpacked");
   mkdirSync(unpacked, { recursive: true });
-  const extract = spawnSync("tar", ["-xzf", tarballPath, "-C", unpacked], { encoding: "utf8" });
+  // --force-local: a Windows path like C:\\... is otherwise read by GNU tar
+  // as a remote `host:path` spec, so it tried to resolve the host "C" and
+  // the whole suite failed on this platform with "Cannot connect to C".
+  const extract = spawnSync("tar", ["--force-local", "-xzf", tarPath(tarballPath), "-C", tarPath(unpacked)], { encoding: "utf8" });
   if (extract.status !== 0) throw new Error(`tar extract failed: ${extract.stderr || extract.stdout}`);
   writeFileSync(join(unpacked, "package", "src", "lib", "update", "trusted-update-keys.json"), `${JSON.stringify({ schemaVersion: 1, keys })}\n`);
-  const repack = spawnSync("tar", ["-czf", join(dir, "repacked.tgz"), "-C", unpacked, "package"], { encoding: "utf8" });
+  const repack = spawnSync("tar", ["--force-local", "-czf", tarPath(join(dir, "repacked.tgz")), "-C", tarPath(unpacked), "package"], { encoding: "utf8" });
   if (repack.status !== 0) throw new Error(`tar repack failed: ${repack.stderr || repack.stdout}`);
   const packed = join(dir, "repacked.tgz");
   writeFileSync(tarballPath, readFileSync(packed));
