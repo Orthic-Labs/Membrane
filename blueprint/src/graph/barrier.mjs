@@ -140,10 +140,14 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
   // `stale_blocked` for every query until someone rebuilt by hand. Caught up
   // with no event gap and nothing pending is precisely the state in which the
   // graph does describe the current tree, so that is when it is recorded.
+  // `domains_pending` is deliberately not part of this test. It tracks
+  // phase-2 products (doc, semantic), which only `blueprint phase2 seal`
+  // clears — so requiring it empty would mean the observation could never be
+  // advanced once a single document changed. What is being recorded here is
+  // the source the *graph* was applied from, and caught up with no event gap
+  // is exactly that.
   const reseal =
-    barrierResult === "caught_up"
-    && finalState.event_gap !== "1"
-    && pendingDomains(finalState).length === 0
+    barrierResult === "caught_up" && finalState.event_gap !== "1"
       ? gitSourceObservation(repoRoot)
       : null;
   db.exec("BEGIN;");
