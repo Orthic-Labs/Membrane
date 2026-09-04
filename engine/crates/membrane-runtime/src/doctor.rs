@@ -65,6 +65,18 @@ pub fn run_with_policy(
             "reindex after selecting the intended embed model",
         )?,
         embedding_check,
+        // A corpus embedded by the hash embedder matches lexically only, so a
+        // clean doctor run over it is not evidence of semantic health. The
+        // existing model-drift check only fires on a NULL or empty model, so
+        // a uniform "hash-256" passed silently — which is exactly the state an
+        // installed build without the fastembed feature leaves behind.
+        check(
+            &connection,
+            "MRD-EMBED-DEGRADED",
+            "warning",
+            "SELECT id FROM memories WHERE embed_model LIKE 'hash-%'",
+            "rebuild with a semantic embedder and reindex; recall over these rows is lexical only",
+        )?,
         check_scope_anomalies(&connection)?,
         check(
             &connection,
