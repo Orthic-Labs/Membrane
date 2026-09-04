@@ -56,6 +56,7 @@ jobs:
           tests/recall-circuit.test.mjs
           tests/semantic-conformance.test.mjs
           tests/publication-policy.test.mjs
+          tests/readiness-status.test.mjs
 
   cargo-check:
     runs-on: ubuntu-24.04
