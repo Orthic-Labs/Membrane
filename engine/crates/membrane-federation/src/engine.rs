@@ -712,7 +712,29 @@ fn merge_scheduled_outputs(
             continue;
         };
         if admit_generation(output, expected_generation).is_err() {
+            // The lane stays gapped -- no candidate from a generation this
+            // request is not bound to is ever admitted. But a provider that
+            // already said why it produced nothing (an unavailable index, a
+            // stale snapshot, a refused scope) had that reason replaced here
+            // by a bare `generation_incoherent`, so the operator saw one
+            // opaque code for every distinct failure. Carry the provider's
+            // own attributed accounting through beside the admission
+            // omission; only the candidates are dropped.
             omissions.push(generation_omission(provider));
+            omissions.extend(
+                output
+                    .omissions
+                    .iter()
+                    .filter(|omission| omission.provider == provider)
+                    .cloned(),
+            );
+            warnings.extend(
+                output
+                    .warnings
+                    .iter()
+                    .filter(|warning| warning.provider == provider)
+                    .cloned(),
+            );
             continue;
         }
         match normalize_provider_output(output, provider) {

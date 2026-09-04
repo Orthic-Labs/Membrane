@@ -314,24 +314,41 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                 .get("candidates")
                 .and_then(Value::as_array)
                 .map_or(0, Vec::len);
-            let mut reasons = ccs
-                .get("omissions")
-                .and_then(Value::as_array)
-                .map(|omissions| {
-                    omissions
-                        .iter()
-                        .filter_map(|omission| {
-                            let id = omission.get("id").and_then(Value::as_str).unwrap_or("?");
-                            let reason =
-                                omission.get("reason").and_then(Value::as_str).unwrap_or("?");
-                            Some(format!("{id}:{reason}"))
-                        })
-                        .collect::<Vec<_>>()
+            // Read the typed response rather than the serialized set: the
+            // wire schema for an omission is closed over id/layer/reason, so
+            // the provider's own `detail_id` -- the field that says which
+            // failure this was -- never reaches the JSON. Every distinct
+            // cause therefore printed as the same generic code. The typed
+            // record still has it.
+            let mut reasons = response
+                .omissions
+                .iter()
+                .map(|omission| {
+                    let id = omission
+                        .candidate_id
+                        .clone()
+                        .unwrap_or_else(|| omission.provider.as_str().to_owned());
+                    let reason = omission.reason.as_str();
+                    match (omission.detail_id.as_deref(), omission.stage.as_deref()) {
+                        (Some(detail), Some(stage)) => format!("{id}:{reason}({detail}@{stage})"),
+                        (Some(detail), None) => format!("{id}:{reason}({detail})"),
+                        (None, Some(stage)) => format!("{id}:{reason}(@{stage})"),
+                        (None, None) => format!("{id}:{reason}"),
+                    }
                 })
-                .unwrap_or_default();
-            reasons.truncate(8);
+                .collect::<Vec<_>>();
+            // A lane can now record both its admission omission and its own
+            // reason, so a fixed cap of eight silently hid whole providers.
+            // Say what was elided rather than dropping it unannounced.
+            let total = reasons.len();
+            reasons.truncate(16);
+            let elided = if total > reasons.len() {
+                format!(", {} more", total - reasons.len())
+            } else {
+                String::new()
+            };
             return Err(NativeRouteError::Internal(format!(
-                "federation produced no context blocks: {candidate_count} candidate(s), omissions [{}]",
+                "federation produced no context blocks: {candidate_count} candidate(s), omissions [{}{elided}]",
                 reasons.join(", ")
             )));
         }
