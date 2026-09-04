@@ -549,8 +549,36 @@ fn emit_background_observations(
     scheduler: &BackgroundReviewScheduler,
     sink: &JsonlBackgroundReviewObservationSink,
 ) {
-    if scheduler.persist_observations(sink).is_err() {
-        eprintln!("{BACKGROUND_REVIEW_OBSERVATION_PREFIX}sink_unavailable");
+    // A persistent sink failure repeats on every tick. Reporting it each time
+    // buried the log in thousands of identical lines that said nothing about
+    // the cause; report the reason, and only when it changes.
+    static LAST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    match scheduler.persist_observations(sink) {
+        Ok(()) => {
+            if let Ok(mut last) = LAST.lock() {
+                *last = None;
+            }
+        }
+        Err(error) => {
+            let reason = format!("{error}");
+            let repeated = LAST
+                .lock()
+                .map(|mut last| {
+                    let same = last.as_deref() == Some(reason.as_str());
+                    if !same {
+                        *last = Some(reason.clone());
+                    }
+                    same
+                })
+                .unwrap_or(false);
+            if !repeated {
+                eprintln!(
+                    "{BACKGROUND_REVIEW_OBSERVATION_PREFIX}sink_unavailable {} ({})",
+                    reason,
+                    sink.path().display()
+                );
+            }
+        }
     }
 }
 

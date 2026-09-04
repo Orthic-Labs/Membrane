@@ -198,8 +198,19 @@ impl BackgroundReviewObservationSink for JsonlBackgroundReviewObservationSink {
         let existing = fs::metadata(&self.path)
             .map(|metadata| metadata.len())
             .unwrap_or(0);
+        // The cap bounds disk, but refusing the write forever is not what
+        // bounds it — rotation does. A full sidecar used to kill the
+        // observation rail permanently and make the daemon log
+        // `sink_unavailable` on every tick, with no recovery short of an
+        // operator deleting the file. Keep one previous generation and
+        // continue: at most two files, and the rail stays alive.
         if existing.saturating_add(payload.len() as u64) > MAX_OBSERVATION_FILE_BYTES {
-            return Err(BackgroundReviewSinkError::FileLimit);
+            if payload.len() as u64 > MAX_OBSERVATION_FILE_BYTES {
+                return Err(BackgroundReviewSinkError::FileLimit);
+            }
+            let rotated = self.path.with_extension("jsonl.1");
+            fs::rename(&self.path, &rotated)
+                .map_err(|error| BackgroundReviewSinkError::Io(error.to_string()))?;
         }
         if let Some(parent) = self
             .path
@@ -2775,6 +2786,32 @@ mod tests {
         );
         assert_eq!(accepted.proposals.len(), 1);
     }
+
+    #[test]
+    fn a_full_sink_rotates_instead_of_refusing_every_later_write() {
+        let scheduler = scheduler();
+        scheduler.observe_idle(1);
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("h5.jsonl");
+        // Fill the sidecar to its cap, the state a long-running daemon reaches.
+        std::fs::write(&path, vec![b'x'; MAX_OBSERVATION_FILE_BYTES as usize - 16]).unwrap();
+        let sink = JsonlBackgroundReviewObservationSink::new(&path);
+
+        assert_eq!(scheduler.persist_observations(&sink).unwrap(), 1);
+
+        let rotated = path.with_extension("jsonl.1");
+        assert!(rotated.is_file(), "the previous generation is kept");
+        let current = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            current.lines().count() == 1,
+            "the live sidecar restarts with the write that triggered rotation"
+        );
+        assert!(
+            std::fs::metadata(&path).unwrap().len() < MAX_OBSERVATION_FILE_BYTES,
+            "the cap still bounds the live file"
+        );
+    }
+
 
     #[test]
     fn durable_sink_is_bounded_and_preserves_queue_on_success() {
