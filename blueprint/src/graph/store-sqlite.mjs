@@ -16,6 +16,7 @@ import { statSync } from "node:fs";
 import { computeFullLedger } from "./merkle-ledger.mjs";
 import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
 import { canonicalProviderId } from "./provider-identity.mjs";
+import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
 import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
 
@@ -1495,7 +1496,7 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
   const columns = "s.id, s.name, s.qualified_name AS qualifiedName, s.path, s.confidence, s.evidence, s.generation_id AS generationId";
   const join = "FROM symbol_terms st JOIN symbols s ON s.id=st.symbol_id AND s.generation_id=st.generation_id";
   const select = (token) => db.prepare(`SELECT ${columns} ${join} WHERE st.generation_id=? AND st.token=?
-    ORDER BY s.confidence DESC, s.path, s.id LIMIT ?`).all(generation, token, cap);
+    ORDER BY ${symbolAuthorityOrder(db, "s")}, s.path, s.id LIMIT ?`).all(generation, token, cap);
   for (const token of normalized.sort((left, right) => right.length - left.length || left.localeCompare(right))) {
     const matched = select(token);
     if (matched.length) return matched;

@@ -11,6 +11,9 @@ import {
   traversalNeighbors,
 } from "./store-sqlite.mjs";
 
+import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
+import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+
 function providerId(provider) {
   return typeof provider === "string" ? provider : provider?.id ?? "unknown";
 }
@@ -93,7 +96,7 @@ export function indexedQueryGeneration(db, query, options = {}) {
   if (terms.length === 1) {
     ids.push(...db.prepare(`SELECT id FROM symbols
       WHERE generation_id = ? AND (name = ? OR qualified_name = ?)
-      ORDER BY confidence DESC, path, id LIMIT ?`)
+      ORDER BY ${symbolAuthorityOrder(db)}, path, id LIMIT ?`)
       .all(generationId, terms[0], terms[0], poolLimit)
       .map((row) => row.id));
   }
@@ -106,7 +109,7 @@ export function indexedQueryGeneration(db, query, options = {}) {
   const nodes = hydrateNodesByIds(db, [...new Set(ids)])
     .map((node) => ({ node, score: scalarNodeScore(node, terms) }))
     .filter((item) => item.score > 0 || item.node.path === exactPath || (options.anchors ?? []).includes(item.node.path))
-    .sort((a, b) => b.score - a.score || a.node.id.localeCompare(b.node.id))
+    .sort((a, b) => b.score - a.score || semanticAuthorityRankForFact(a.node) - semanticAuthorityRankForFact(b.node) || a.node.id.localeCompare(b.node.id))
     .slice(0, poolLimit)
     .map((item) => item.node);
   return {
