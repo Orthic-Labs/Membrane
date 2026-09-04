@@ -554,7 +554,7 @@ fn emit_background_observations(
     // the cause; report the reason, and only when it changes.
     static LAST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
     match scheduler.persist_observations(sink) {
-        Ok(()) => {
+        Ok(_) => {
             if let Ok(mut last) = LAST.lock() {
                 *last = None;
             }
