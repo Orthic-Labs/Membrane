@@ -1,0 +1,231 @@
+diff --git a/blueprint/src/graph/seed-resolver.mjs b/blueprint/src/graph/seed-resolver.mjs
+index 9598683..b4db3fe 100644
+--- a/blueprint/src/graph/seed-resolver.mjs
++++ b/blueprint/src/graph/seed-resolver.mjs
+@@ -1,4 +1,5 @@
+ import { hydrateNodesByIds } from "./store-sqlite.mjs";
++import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
+ 
+ const STOPWORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "with"]);
+ 
+@@ -17,7 +18,12 @@ function nodeEvidence(node) {
+ }
+ 
+ function rowsToCandidates(db, rows, exactness, reason, maxSeeds) {
+-  const ids = [...new Set(rows.map((row) => String(row.id)))].slice(0, maxSeeds + 1);
++  // Merge per-term bounded results categorically BEFORE the global seed cap.
++  // Explicit node IDs and file addresses retain their requested order.
++  const ordered = rows.some((row) => Number.isInteger(row.authorityRank))
++    ? [...rows].sort((a, b) => a.authorityRank - b.authorityRank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
++    : rows;
++  const ids = [...new Set(ordered.map((row) => String(row.id)))].slice(0, maxSeeds + 1);
+   const nodes = new Map(hydrateNodesByIds(db, ids).map((node) => [node.id, node]));
+   return ids.map((id) => {
+     const node = nodes.get(id);
+@@ -69,7 +75,7 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
+ 
+   const queryTerms = terms(task);
+   const qualifiedRows = [];
+-  const byQualified = db.prepare("SELECT id FROM symbols WHERE generation_id = ? AND qualified_name = ? ORDER BY confidence DESC,id LIMIT ?");
++  const byQualified = db.prepare(`SELECT id, ${symbolAuthorityOrder(db)} AS authorityRank FROM symbols WHERE generation_id = ? AND qualified_name = ? ORDER BY authorityRank,id LIMIT ?`);
+   for (const term of queryTerms) qualifiedRows.push(...byQualified.all(generationId, term, maxSeeds + 1));
+   const qualified = rowsToCandidates(db, qualifiedRows, 2, "qualified_symbol", maxSeeds);
+   attempts.push({ lane: "qualified_symbol", requested: queryTerms.length, matched: qualified.length });
+@@ -77,7 +83,7 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
+   if (qualifiedDecision) return qualifiedDecision;
+ 
+   const exactRows = [];
+-  const byName = db.prepare("SELECT id FROM symbols WHERE generation_id = ? AND name = ? ORDER BY confidence DESC,path,id LIMIT ?");
++  const byName = db.prepare(`SELECT id, ${symbolAuthorityOrder(db)} AS authorityRank FROM symbols WHERE generation_id = ? AND name = ? ORDER BY authorityRank,path,id LIMIT ?`);
+   for (const term of queryTerms) exactRows.push(...byName.all(generationId, term, maxSeeds + 1));
+   const exact = rowsToCandidates(db, exactRows, 3, "exact_term", maxSeeds);
+   attempts.push({ lane: "exact_term", requested: queryTerms.length, matched: exact.length });
+@@ -85,7 +91,9 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
+   if (exactDecision) return exactDecision;
+ 
+   const indexedRows = [];
+-  const byTerm = db.prepare("SELECT symbol_id AS id FROM symbol_terms WHERE generation_id = ? AND token = ? ORDER BY symbol_id LIMIT ?");
++  const byTerm = db.prepare(`SELECT s.id, ${symbolAuthorityOrder(db, "s")} AS authorityRank
++    FROM symbol_terms st JOIN symbols s ON s.id=st.symbol_id AND s.generation_id=st.generation_id
++    WHERE st.generation_id = ? AND st.token = ? ORDER BY authorityRank,s.path,s.id LIMIT ?`);
+   for (const term of queryTerms) {
+     indexedRows.push(...byTerm.all(generationId, term, maxSeeds + 1));
+     if (indexedRows.length > maxSeeds) break;
+diff --git a/blueprint/src/graph/static-provider.mjs b/blueprint/src/graph/static-provider.mjs
+index e8abf30..0d2a7d2 100644
+--- a/blueprint/src/graph/static-provider.mjs
++++ b/blueprint/src/graph/static-provider.mjs
+@@ -34,6 +34,7 @@ import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "./precision-tiers.mjs";
+ import { STATIC_PROVIDER, TREESITTER_PROVIDER } from "./provider-identity.mjs";
+ import { compareRepoPaths } from "./path-order.mjs";
+ import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
++import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+ import {
+   openStore,
+   openStoreReadOnly,
+@@ -551,7 +552,7 @@ export function queryGraph(generation, options = {}) {
+   const nodes = generation.nodes
+     .map((node) => ({ node, score: scoreNode(node, terms) }))
+     .filter((item) => item.score > 0)
+-    .sort((left, right) => right.score - left.score || left.node.id.localeCompare(right.node.id))
++    .sort((left, right) => right.score - left.score || semanticAuthorityRankForFact(left.node) - semanticAuthorityRankForFact(right.node) || left.node.id.localeCompare(right.node.id))
+     .slice(0, limit);
+   return nodes.map(({ node }, index) => ({
+     id: node.id,
+diff --git a/blueprint/src/graph/store-sqlite.mjs b/blueprint/src/graph/store-sqlite.mjs
+index 70e754d..973d9ec 100644
+--- a/blueprint/src/graph/store-sqlite.mjs
++++ b/blueprint/src/graph/store-sqlite.mjs
+@@ -16,6 +16,7 @@ import { statSync } from "node:fs";
+ import { computeFullLedger } from "./merkle-ledger.mjs";
+ import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
+ import { canonicalProviderId } from "./provider-identity.mjs";
++import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
+ import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
+ import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
+ 
+@@ -1495,7 +1496,7 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
+   const columns = "s.id, s.name, s.qualified_name AS qualifiedName, s.path, s.confidence, s.evidence, s.generation_id AS generationId";
+   const join = "FROM symbol_terms st JOIN symbols s ON s.id=st.symbol_id AND s.generation_id=st.generation_id";
+   const select = (token) => db.prepare(`SELECT ${columns} ${join} WHERE st.generation_id=? AND st.token=?
+-    ORDER BY s.confidence DESC, s.path, s.id LIMIT ?`).all(generation, token, cap);
++    ORDER BY ${symbolAuthorityOrder(db, "s")}, s.path, s.id LIMIT ?`).all(generation, token, cap);
+   for (const token of normalized.sort((left, right) => right.length - left.length || left.localeCompare(right))) {
+     const matched = select(token);
+     if (matched.length) return matched;
+diff --git a/blueprint/src/graph/symbol-authority-order.mjs b/blueprint/src/graph/symbol-authority-order.mjs
+new file mode 100644
+index 0000000..83d880e
+--- /dev/null
++++ b/blueprint/src/graph/symbol-authority-order.mjs
+@@ -0,0 +1,26 @@
++// Bounded SQL selection must use the same categorical authority as the later
++// graph ranking. Sorting nullable confidence first discards compiler facts
++// before an application-level comparator ever sees them.
++import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
++
++const registered = new WeakSet();
++const FUNCTION_NAME = "blueprint_symbol_authority_rank";
++
++export function symbolAuthorityOrder(db, alias = "") {
++  if (alias !== "" && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(alias)) {
++    throw new TypeError("symbol authority SQL alias must be an identifier");
++  }
++  if (!registered.has(db)) {
++    // Connection-local and read-only: no schema changes, writes, or graph-wide
++    // hydration. The central evaluator remains the sole provenance classifier.
++    db.function(FUNCTION_NAME, { deterministic: true }, (extra) => {
++      let fact = {};
++      if (typeof extra === "string" && extra.length) {
++        try { fact = JSON.parse(extra); } catch { /* malformed metadata has no authority */ }
++      }
++      return semanticAuthorityRankForFact(fact);
++    });
++    registered.add(db);
++  }
++  return `${FUNCTION_NAME}(${alias ? `${alias}.` : ""}extra)`;
++}
+diff --git a/blueprint/src/graph/traverse-store.mjs b/blueprint/src/graph/traverse-store.mjs
+index 55e7130..3736f4a 100644
+--- a/blueprint/src/graph/traverse-store.mjs
++++ b/blueprint/src/graph/traverse-store.mjs
+@@ -11,6 +11,9 @@ import {
+   traversalNeighbors,
+ } from "./store-sqlite.mjs";
+ 
++import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
++import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
++
+ function providerId(provider) {
+   return typeof provider === "string" ? provider : provider?.id ?? "unknown";
+ }
+@@ -93,7 +96,7 @@ export function indexedQueryGeneration(db, query, options = {}) {
+   if (terms.length === 1) {
+     ids.push(...db.prepare(`SELECT id FROM symbols
+       WHERE generation_id = ? AND (name = ? OR qualified_name = ?)
+-      ORDER BY confidence DESC, path, id LIMIT ?`)
++      ORDER BY ${symbolAuthorityOrder(db)}, path, id LIMIT ?`)
+       .all(generationId, terms[0], terms[0], poolLimit)
+       .map((row) => row.id));
+   }
+@@ -106,7 +109,7 @@ export function indexedQueryGeneration(db, query, options = {}) {
+   const nodes = hydrateNodesByIds(db, [...new Set(ids)])
+     .map((node) => ({ node, score: scalarNodeScore(node, terms) }))
+     .filter((item) => item.score > 0 || item.node.path === exactPath || (options.anchors ?? []).includes(item.node.path))
+-    .sort((a, b) => b.score - a.score || a.node.id.localeCompare(b.node.id))
++    .sort((a, b) => b.score - a.score || semanticAuthorityRankForFact(a.node) - semanticAuthorityRankForFact(b.node) || a.node.id.localeCompare(b.node.id))
+     .slice(0, poolLimit)
+     .map((item) => item.node);
+   return {
+diff --git a/blueprint/tests/candidate-authority-selection.test.mjs b/blueprint/tests/candidate-authority-selection.test.mjs
+new file mode 100644
+index 0000000..bb147f8
+--- /dev/null
++++ b/blueprint/tests/candidate-authority-selection.test.mjs
+@@ -0,0 +1,66 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { openStore, openStoreReadOnly, closeStore, saveGeneration, searchGenerationSymbols } from "../src/graph/store-sqlite.mjs";
++import { indexedQueryGeneration } from "../src/graph/traverse-store.mjs";
++import { resolveSeeds } from "../src/graph/seed-resolver.mjs";
++import { queryGraph } from "../src/graph/static-provider.mjs";
++import { symbolAuthorityOrder } from "../src/graph/symbol-authority-order.mjs";
++
++function fixture() {
++  const node = (id, provenance, confidence) => ({
++    id, kind: "symbol", labels: ["Symbol", "Function"],
++    name: "work", qualifiedName: "work", path: `${id}.ts`,
++    provenance, confidence,
++    evidence: [{ path: `${id}.ts`, startLine: 1, endLine: 1, contentHash: id }],
++  });
++  const nodes = Array.from({ length: 40 }, (_, i) => node(`a-${String(i).padStart(2, "0")}`, "HEURISTIC_BRIDGE", 0.999));
++  nodes.push(node("z-compiler", "AUTHORITATIVE_SEMANTIC", null));
++  return { schemaVersion: 1, provider: { id: "blueprint-static" }, nodes, edges: [],
++    manifest: { generationId: "authority-selection", complete: true, counts: { nodes: nodes.length, edges: 0 } } };
++}
++
++for (const readOnly of [false, true]) {
++  test(`bounded selection retains authoritative null-confidence facts (${readOnly ? "read-only" : "writer"})`, () => {
++    const root = mkdtempSync(join(tmpdir(), "blueprint-authority-pool-"));
++    const path = join(root, "graph.db");
++    let db = openStore(path);
++    try {
++      const generation = fixture();
++      saveGeneration(db, generation);
++      if (readOnly) { closeStore(db); db = openStoreReadOnly(path); }
++      const rows = searchGenerationSymbols(db, generation.manifest.generationId, ["work"], 1);
++      assert.equal(rows[0].id, "z-compiler", "SQL LIMIT must run after categorical authority");
++      assert.equal(rows[0].confidence, null);
++      const pool = indexedQueryGeneration(db, "work", { limit: 1 });
++      assert.ok(pool.nodes.some((node) => node.id === "z-compiler"));
++      const publicResults = queryGraph(pool, { query: "work", limit: 1 });
++      assert.equal(publicResults[0].id, "z-compiler", "final lexical tie-break must not discard the retained fact");
++      assert.equal(publicResults[0].confidence, null);
++      const seeds = resolveSeeds(db, "work", { generationId: generation.manifest.generationId, maxSeeds: 1 });
++      assert.equal(seeds.state, "ambiguous", "authority must not invent uniqueness among distinct entities");
++      assert.ok(seeds.candidates.some((candidate) => candidate.id === "z-compiler"));
++    } finally { closeStore(db); rmSync(root, { recursive: true, force: true }); }
++  });
++}
++
++test("in-memory search and SQL search agree on authority without rewriting input", () => {
++  const generation = fixture();
++  const before = JSON.stringify(generation);
++  assert.equal(queryGraph(generation, { query: "work", limit: 1 })[0].id, "z-compiler");
++  assert.equal(JSON.stringify(generation), before);
++});
++
++test("symbol SQL authority uses the central classifier and rejects unsafe aliases", () => {
++  const db = openStore(":memory:");
++  try {
++    assert.throws(() => symbolAuthorityOrder(db, "s; DROP TABLE symbols"), TypeError);
++    const rank = symbolAuthorityOrder(db);
++    const classify = (extra) => db.prepare(`SELECT ${rank} AS rank FROM (SELECT ? AS extra)`).get(extra).rank;
++    assert.ok(classify(JSON.stringify({ provenance: "AUTHORITATIVE_SEMANTIC" })) < classify(JSON.stringify({ provenance: "HEURISTIC_BRIDGE" })));
++    assert.ok(classify(JSON.stringify({ provider: "scip-python", resolved: false })) > classify(JSON.stringify({ provenance: "STRUCTURAL_RESOLVED" })));
++    assert.equal(classify("not json"), classify(null));
++  } finally { closeStore(db); }
++});

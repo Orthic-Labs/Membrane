@@ -16,6 +16,8 @@ jobs:
   node-checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -29,22 +31,9 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without package build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Temporary source and installed test-dependency snapshot
-        id: snapshot
-        continue-on-error: true
-        run: |
-          git archive --format=tar --output="$RUNNER_TEMP/blueprint-source.tar" HEAD
-          tar --format=posix --hard-dereference --create --file="$RUNNER_TEMP/blueprint-deps.tar" node_modules blueprint/node_modules
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: steps.snapshot.outcome == 'success'
-        continue-on-error: true
-        with:
-          name: blueprint-check-inputs-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/blueprint-source.tar
-            ${{ runner.temp }}/blueprint-deps.tar
-          retention-days: 1
-          if-no-files-found: error
+      - name: Apply source-hash-bound reviewed commits
+        if: ${{ hashFiles('.github/blueprint-completion-input/apply.py') != '' }}
+        run: python3 .github/blueprint-completion-input/apply.py
       - name: Blueprint focused Node tests
         working-directory: blueprint
         run: >-
@@ -76,9 +65,9 @@ jobs:
           tests/delta-store.test.mjs
           tests/production-provider-cluster.test.mjs
           tests/graph-query.test.mjs
-      - name: Full Blueprint Node corpus
+      - name: Full no-build Blueprint Node corpus
         working-directory: blueprint
-        run: node scripts/test-random.mjs --ordered --batch-size=32
+        run: node scripts/test-random.mjs --ordered --no-build --keep-going --batch-size=32
 
   cargo-check:
     runs-on: ubuntu-24.04

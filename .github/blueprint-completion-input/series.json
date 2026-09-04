@@ -1,0 +1,60 @@
+[
+  {
+    "patch": "01.patch",
+    "sha256": "b93af21673962be209baaac83f4e7cd849674d3c3e4e919534fec5f9d6c21844",
+    "message": "fix(blueprint-retrieval): retain categorical authority before SQL limits\n\nUse the shared evidence-authority evaluator in connection-local SQL ordering, before candidate bounds discard rows. Null-confidence compiler facts now survive symbol search, seed resolution and the indexed lexical pool. Keep exact-anchor ambiguity rather than guessing a unique winner; lexical ties no longer consult scalar confidence. Test writable and read-only SQLite handles, bounded pools, malformed metadata and immutable in-memory queries.",
+    "before": {
+      "blueprint/src/graph/seed-resolver.mjs": "9598683475ae846c7fdb35d2dfc3f60700df8764",
+      "blueprint/src/graph/static-provider.mjs": "e8abf3055f2a5a349c606c8647f0dd2c1092f41c",
+      "blueprint/src/graph/store-sqlite.mjs": "70e754df90b3e595b82defe948d0fd62c538d3c6",
+      "blueprint/src/graph/symbol-authority-order.mjs": null,
+      "blueprint/src/graph/traverse-store.mjs": "55e71300334f8742d5b40c1f7c28ec3021e79faa",
+      "blueprint/tests/candidate-authority-selection.test.mjs": null
+    },
+    "after": {
+      "blueprint/src/graph/seed-resolver.mjs": "b4db3fec55fe6a0ddc4edd98f65dc89a9bad4329",
+      "blueprint/src/graph/static-provider.mjs": "0d2a7d235c3cbf795424a3551445c454a66887c1",
+      "blueprint/src/graph/store-sqlite.mjs": "973d9eced1754311ee1aa09ade0fff513a593e28",
+      "blueprint/src/graph/symbol-authority-order.mjs": "83d880e916cb1c6ab2333b59a7c703b5204fd9fa",
+      "blueprint/src/graph/traverse-store.mjs": "3736f4ae581eca50226805969e36e347bc190ee1",
+      "blueprint/tests/candidate-authority-selection.test.mjs": "bb147f83b1f4552785298fbccc9d431dbaaa9f51"
+    },
+    "tests": ["tests/candidate-authority-selection.test.mjs", "tests/recall-circuit.test.mjs", "tests/provenance-roundtrip.test.mjs"]
+  },
+  {
+    "patch": "02.patch",
+    "sha256": "dbedbe895941167f114eb279f80c944a249051477d8a02bceef6ca2cdf2640d8",
+    "message": "fix(blueprint-publication): enforce complete-generation admission at store boundaries\n\nWire INV-014 into the actual transactional save/adoption path; reject partial, truncated and incoherent replacements before they can supersede a complete graph. Prevent raw bulk writes from bypassing a sealed envelope. Preserve explicitly provisional initial stores, and treat an empty incremental changed-path set as authority to remove no facts. Reject explicitly truncated file batches before deleting owned facts or acknowledging source clocks. All refusal paths preserve the previous generation and watcher state; source-limit manifests now declare incompleteness honestly.",
+    "before": {
+      "blueprint/src/graph/delta-store.mjs": "a6ecd5535168aa9d879c2d6b70c18a496c85bd13",
+      "blueprint/src/graph/publication-policy.mjs": "bbc73ca250bd0bbbee83048d217c7e761f24d387",
+      "blueprint/src/graph/static-provider.mjs": "0d2a7d235c3cbf795424a3551445c454a66887c1",
+      "blueprint/src/graph/store-sqlite.mjs": "973d9eced1754311ee1aa09ade0fff513a593e28",
+      "blueprint/tests/publication-boundary.test.mjs": null
+    },
+    "after": {
+      "blueprint/src/graph/delta-store.mjs": "5f0dda0e77ed12342a52ab35efefffe0265dcc56",
+      "blueprint/src/graph/publication-policy.mjs": "a20373c240a3721da622a78fc483c5f22afd953a",
+      "blueprint/src/graph/static-provider.mjs": "889cbdda7e7c533d765b133b90d47f22f03e07f9",
+      "blueprint/src/graph/store-sqlite.mjs": "969340fbb07013091bc070ec19e5fca189ab1816",
+      "blueprint/tests/publication-boundary.test.mjs": "9104689665d48eba1a558a73a16ac6f44202f49e"
+    },
+    "tests": ["tests/publication-policy.test.mjs", "tests/publication-boundary.test.mjs", "tests/p0-publish-identity.test.mjs", "tests/provenance-roundtrip.test.mjs", "tests/store-sqlite.test.mjs", "tests/delta-store.test.mjs"]
+  },
+  {
+    "patch": "03.patch",
+    "sha256": "8ecaa14ed1b9383b47e48f50365916db0650807ffa4b7e8c3331287e42d81def",
+    "message": "test(blueprint-scip): await fixtures and assert definition-bound resolution\n\nThe broader corpus exposed a floating async fixture and an obsolete name-fallback expectation. Await augmentation before deleting source fixtures; require an actual compiler definition for an exact reference and add the negative same-name lexical case. Assert the canonical typed unreadable-index code rather than incidental parser wording.",
+    "before": {"blueprint/tests/confidence-precision-tiers.test.mjs": "36da70aeb057caff83e98dc913bb348820bec4b9"},
+    "after": {"blueprint/tests/confidence-precision-tiers.test.mjs": "f5bbcb47c8a452de2580c1e65530900a358491fc"},
+    "tests": ["tests/confidence-precision-tiers.test.mjs", "tests/scip-normalizer.test.mjs"]
+  },
+  {
+    "patch": "04.patch",
+    "sha256": "9336b69a071b3c3ba8541d1c7d9a08b2a71bdffac85c2b29273fc7bf51cbd7f6",
+    "message": "test(blueprint): separate no-build validation from release rehearsals\n\nAdd an explicit --no-build mode that reports the three package-producing test-file exclusions while keeping all source/runtime tests enabled. Default full-suite behavior is unchanged. Add --keep-going to collect failures from every batch without turning failures into success. Test exact omission accounting and path normalization.",
+    "before": {"blueprint/scripts/test-random.mjs": "7ec92c1df3450c45a4f63be6a41e2f00bc583dbb", "blueprint/tests/test-runner-policy.test.mjs": null},
+    "after": {"blueprint/scripts/test-random.mjs": "9a0b4eea5ec2f576556febdd34dcdd9e1f97021b", "blueprint/tests/test-runner-policy.test.mjs": "70bc95721c6a948af48910c187f4d07edf802e7e"},
+    "tests": ["tests/test-runner-policy.test.mjs"]
+  }
+]

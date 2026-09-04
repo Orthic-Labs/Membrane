@@ -1,0 +1,91 @@
+diff --git a/blueprint/tests/confidence-precision-tiers.test.mjs b/blueprint/tests/confidence-precision-tiers.test.mjs
+index 36da70a..f5bbcb4 100644
+--- a/blueprint/tests/confidence-precision-tiers.test.mjs
++++ b/blueprint/tests/confidence-precision-tiers.test.mjs
+@@ -28,9 +28,15 @@ function withFiles(files, run) {
+       fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+       fs.writeFileSync(absolutePath, contents);
+     }
+-    run(repo);
+-  } finally {
++    const result = run(repo);
++    if (result && typeof result.then === "function") {
++      return result.finally(() => fs.rmSync(repo, { recursive: true, force: true }));
++    }
++    fs.rmSync(repo, { recursive: true, force: true });
++    return result;
++  } catch (error) {
+     fs.rmSync(repo, { recursive: true, force: true });
++    throw error;
+   }
+ }
+ 
+@@ -195,7 +201,8 @@ test("probeScip degrades honestly when index.scip.json exists but is malformed",
+   withFiles({ "index.scip.json": "{ not valid json" }, (repo) => {
+     const probe = probeScip(repo);
+     assert.equal(probe.state, "unavailable");
+-    assert.ok(/could not be parsed as JSON/.test(probe.reason));
++    assert.equal(probe.code, "scip_index_unreadable");
++    assert.match(probe.reason, /JSON/);
+   });
+ });
+ 
+@@ -221,7 +228,7 @@ test("probeScip reports ok and reads a well-formed portable SCIP index without i
+ });
+ 
+ test("augmentGenerationWithScip: absence degrades the generation's augmentation report, does not touch edges", async () => {
+-  withFiles({ "src/a.ts": "export function foo() { return 1; }\n" }, async (repo) => {
++  await withFiles({ "src/a.ts": "export function foo() { return 1; }\n" }, async (repo) => {
+     const generation = buildGraphGeneration(repo);
+     const edgesBefore = generation.edges.length;
+     const result = await augmentGenerationWithScip(generation, repo);
+@@ -231,15 +238,18 @@ test("augmentGenerationWithScip: absence degrades the generation's augmentation
+   });
+ });
+ 
+-test("augmentGenerationWithScip: presence adds only real REFERENCES edges tagged EXACT_RESOLUTION, joined against existing nodes", async () => {
+-  withFiles({
++test("augmentGenerationWithScip: exact reference resolution requires a definition in the compiler index", async () => {
++  await withFiles({
+     "src/a.ts": "export function foo() { return 1; }\n",
+   }, async (repo) => {
+     const generation = buildGraphGeneration(repo);
+     const symbolNode = generation.nodes.find((n) => n.kind === "symbol" && n.qualifiedName === "foo");
+     assert.ok(symbolNode, "fixture must actually produce a foo symbol node to join against");
+     fs.writeFileSync(path.join(repo, "index.scip.json"), JSON.stringify({
+-      documents: [{ relativePath: "src/a.ts", occurrences: [{ symbol: "foo", roles: ["reference"], range: [0, 0, 0, 3] }] }],
++      documents: [{ relativePath: "src/a.ts", occurrences: [
++        { symbol: "foo", roles: ["definition"], range: [0, 16, 0, 19] },
++        { symbol: "foo", roles: ["reference"], range: [0, 0, 0, 3] },
++      ] }],
+     }));
+     const edgesBefore = generation.edges.length;
+     const result = await augmentGenerationWithScip(generation, repo);
+@@ -250,6 +260,27 @@ test("augmentGenerationWithScip: presence adds only real REFERENCES edges tagged
+     assert.equal(added.kind, "REFERENCES");
+     assert.equal(added.confidenceTier, "EXACT_RESOLUTION");
+     assert.equal(added.target, symbolNode.id);
++    assert.equal(added.provenance, "AUTHORITATIVE_SEMANTIC");
++    assert.equal(added.confidence, null);
++  });
++});
++
++test("SCIP reference without a compiler definition cannot borrow a same-name lexical target", async () => {
++  await withFiles({
++    "src/a.ts": "export function foo() { return 1; }\n",
++    "index.scip.json": JSON.stringify({ documents: [{ relativePath: "src/a.ts", occurrences: [
++      { symbol: "foo", roles: ["reference"], range: [0, 0, 0, 3] },
++    ] }] }),
++  }, async (repo) => {
++    const generation = buildGraphGeneration(repo);
++    assert.ok(generation.nodes.some((node) => node.qualifiedName === "foo"));
++    const report = await augmentGenerationWithScip(generation, repo);
++    const added = generation.edges.at(-1);
++    assert.equal(report.unresolvedReferences, 1);
++    assert.equal(added.target, null);
++    assert.equal(added.resolved, false);
++    assert.equal(added.provenance, "UNRESOLVED");
++    assert.equal(added.confidenceTier, "UNRESOLVED");
+   });
+ });
+ 
