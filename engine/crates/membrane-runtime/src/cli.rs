@@ -4131,14 +4131,14 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     let checkpoint = store
                         .load_checkpoint(&id, as_of_ms.unwrap_or_else(now_ms))
                         .map_err(|error| error.to_string())?;
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "status": "needs_review",
-                            "proposal": {"kind": "KnowledgeEmission", "checkpoint_id": checkpoint.checkpoint_id,
-                                "scope_id": checkpoint.scope_id, "content": checkpoint.summary, "source_refs": checkpoint.source_refs}
-                        })
-                    );
+                    let receipt = crate::cortex_lifecycle::propose(
+                        &store, &checkpoint.repository_id, &checkpoint.scope_id,
+                        &serde_json::json!({"text":checkpoint.summary,"kind":"episodic",
+                            "scopeId":checkpoint.scope_id,"checkpointId":checkpoint.checkpoint_id,
+                            "sessionId":checkpoint.session_id,"sourceRefs":checkpoint.source_refs,
+                            "worktreeRevision":checkpoint.worktree_rev}),
+                    ).map_err(|error| error.to_string())?;
+                    println!("{}", receipt);
                 }
             }
         }

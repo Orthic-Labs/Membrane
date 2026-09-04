@@ -34,6 +34,7 @@ getrandom = "0.4"
 flate2 = "1"
 sha2 = "0.11"
 hex = { workspace = true }
+ring = "0.17.14"
 comrak = "0.54"
 unicode-normalization = "0.1"
 tree-sitter = "0.26"

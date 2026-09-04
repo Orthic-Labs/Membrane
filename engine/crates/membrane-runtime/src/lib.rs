@@ -13,6 +13,7 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
 pub mod code_batch;
+pub mod cortex_lifecycle;
 pub mod cortex_relevance_spotcheck;
 pub mod delivery_trace_view;
 pub mod diagnostic_bundle;

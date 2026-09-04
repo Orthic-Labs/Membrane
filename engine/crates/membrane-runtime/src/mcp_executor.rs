@@ -5,7 +5,6 @@ use crate::{
     authorization::{self, AuthorizationRequest},
     checkpoint::CheckpointV1,
     feedback, scratchpad,
-    store::ApprovedProposalAdmissionV1,
     DiagnosticsService, MemoryStore,
 };
 use cortex_store::{TemporalFact, TemporalFactQuery};
@@ -50,10 +49,21 @@ impl RuntimeMcpExecutor {
 }
 
 fn success(operation: &str, data: Value) -> Value {
-    json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"success","data":data}})
+    let (schema_version,error_version)=membrane_protocol::operations::operation_versions(operation);
+    json!({"schemaVersion":schema_version,"operation":operation,"errorVersion":error_version,"result":{"kind":"success","data":data}})
 }
 fn error(operation: &str, code: &str, message: impl AsRef<str>) -> Value {
-    json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"error","code":code,"message":message.as_ref(),"retryable":false}})
+    let (schema_version,error_version)=membrane_protocol::operations::operation_versions(operation);
+    json!({"schemaVersion":schema_version,"operation":operation,"errorVersion":error_version,"result":{"kind":"error","code":code,"message":message.as_ref(),"retryable":false}})
+}
+
+fn lifecycle_result(name: &str, result: Result<Value, crate::cortex_lifecycle::LifecycleError>) -> Value {
+    let (schema_version,error_version)=membrane_protocol::operations::operation_versions(name);
+    match result {
+        Ok(value) => success(name, value),
+        Err(failure) => json!({"schemaVersion":schema_version,"operation":name,"errorVersion":error_version,
+            "result":{"kind":"error","code":failure.code,"message":failure.message,"retryable":failure.retryable}}),
+    }
 }
 
 fn blueprint_failure(operation: &str, failure: BlueprintClientError) -> Value {
@@ -138,7 +148,8 @@ fn native_action_for(name: &str, arguments: &Value) -> &'static str {
             }
         }
         "membrane_feedback" => "feedback",
-        "membrane_knowledge_propose" => "proposal",
+        "membrane_knowledge_propose" | "membrane_knowledge_review" => "proposal",
+        "membrane_memory" => if arguments["operation"] == "checkpoint_promote" { "proposal" } else { "source_read" },
         "membrane_diagnostic_workspace"
             if arguments.get("operation").and_then(Value::as_str) == Some("status") => "context",
         "membrane_diagnostic_snapshot"
@@ -446,6 +457,9 @@ fn parse<T: serde::de::DeserializeOwned>(
 
 impl NativeMcpExecutor for RuntimeMcpExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
+        if let Err(message) = membrane_mcp::validate_arguments(name, arguments) {
+            return error(name, membrane_mcp::invalid_envelope_code(name), message);
+        }
         let diagnostic = name.starts_with("membrane_diagnostic_");
         // Only these repository-independent diagnostic views remain outside
         // AuthorizationGateV1: fence evaluation, capabilities, and provider
@@ -793,6 +807,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 }
             }
             "membrane_knowledge_propose" => self.propose(name, arguments, repository, scope),
+            "membrane_knowledge_review" => lifecycle_result(name,
+                crate::cortex_lifecycle::review(&self.store, repository, scope, &arguments["review"])),
+            "membrane_memory" => self.memory_operation(name, arguments, repository, scope),
             "membrane_checkpoint_save" => {
                 let checkpoint: CheckpointV1 = match parse(
                     name,
@@ -866,10 +883,10 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "fact scope must match caller",
                         );
                     }
-                    match self.store.temporal_facts().record(fact, true) {
-                        Ok(receipt) => success(name, json!({"receipt":receipt})),
-                        Err(e) => error(name, "temporal_fact_invalid", e),
-                    }
+                    let emission = json!({"kind":"temporal","scopeId":scope,
+                        "text":serde_json::to_string(&fact).unwrap_or_default(),"fact":fact});
+                    lifecycle_result(name, crate::cortex_lifecycle::propose(
+                        &self.store, repository, scope, &emission))
                 } else if operation == "query" {
                     let query = TemporalFactQuery {
                         scope_chain: vec![scope.to_owned()],
@@ -971,361 +988,23 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
 }
 
 impl RuntimeMcpExecutor {
-    /// §16.1 review transition: operate on the NAMED proposal row. When
-    /// `review.proposalId` is present the emission arguments carry no new
-    /// text — the row's stored emission is loaded and re-admitted; when a
-    /// review names an unknown id, that is a typed review failure, never a
-    /// new quarantine row.
     fn propose(&self, name: &str, arguments: &Value, repository: &str, scope: &str) -> Value {
-        let named_review = arguments
-            .get("review")
-            .and_then(|review| review.get("proposalId"))
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        let emission = match (&named_review, arguments.get("emission")) {
-            (Some(_), _) => serde_json::json!({"text": "named-proposal-review"}),
-            (None, Some(emission)) => emission.clone(),
-            (None, None) => {
-                return error(
-                    name,
-                    "proposal_emission_text_required",
-                    "emission is required",
-                )
-            }
+        lifecycle_result(name, crate::cortex_lifecycle::propose(
+            &self.store, repository, scope, &arguments["emission"]))
+    }
+
+    fn memory_operation(&self, name: &str, args: &Value, repository: &str, scope: &str) -> Value {
+        let id = args.get("id").and_then(Value::as_str).unwrap_or("");
+        let result = match args["operation"].as_str().unwrap_or("") {
+            "get" => crate::cortex_lifecycle::resolve_memory(&self.store, scope, id,
+                args.get("expectedContentHash").and_then(Value::as_str).unwrap_or(""),
+                args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize,
+                args.get("maxChars").and_then(Value::as_u64).unwrap_or(12000) as usize),
+            "proposal_status" => crate::cortex_lifecycle::proposal_status(&self.store, repository, scope, id),
+            "checkpoint_promote" => crate::cortex_lifecycle::promote_checkpoint(&self.store, repository, scope, id),
+            _ => return error(name, "memory_envelope_invalid", "unsupported memory operation"),
         };
-        let bytes = match bounded(&emission, name, "proposal_payload_too_large") {
-            Ok(bytes) => bytes,
-            Err(result) => return result,
-        };
-        let text = emission
-            .get("text")
-            .or_else(|| emission.get("content"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim();
-        if text.is_empty() {
-            return error(
-                name,
-                "proposal_emission_text_required",
-                "emission text is required",
-            );
-        }
-        // This table is a proposal quarantine only. No row can become Cortex
-        // durable truth, Taste, or Insights without separate qualified review.
-        let proposal_id = match &named_review {
-            Some(named) => named.clone(),
-            None => crate::digest::digest_bytes(
-                format!("{repository}\0{scope}\0{}", String::from_utf8_lossy(&bytes)).as_bytes(),
-            ),
-        };
-        // New-emission rows serialize the caller's payload; named reviews load
-        // the row's stored emission below, before any admission.
-        let mut emission_json: String = match serde_json::to_string(&emission) {
-            Ok(value) => value,
-            Err(_) => return error(name, "proposal_payload_too_large", "emission is invalid"),
-        };
-        let mut emission_sha: String = crate::digest::digest_str(&emission_json);
-        let Some(event_db) = self.store.db().event_db_path() else {
-            return error(
-                name,
-                "proposal_binding_unresolvable",
-                "Hub event store is unavailable",
-            );
-        };
-        let db = match rusqlite::Connection::open(event_db) {
-            Ok(value) => value,
-            Err(failure) => {
-                return error(name, "proposal_binding_unresolvable", failure.to_string())
-            }
-        };
-        if let Err(failure) = db.execute_batch(
-            "CREATE TABLE IF NOT EXISTS membrane_knowledge_proposal(\
-             proposal_id TEXT PRIMARY KEY,repository_id TEXT NOT NULL,scope_id TEXT NOT NULL,\
-             emission_json TEXT NOT NULL,emission_sha256 TEXT NOT NULL,\
-             state TEXT NOT NULL CHECK(state IN ('pending','approved','rejected')),\
-             created_at TEXT NOT NULL,decided_at TEXT,reviewer TEXT) STRICT;",
-        ) {
-            return error(name, "proposal_durable_write_failed", failure.to_string());
-        }
-        let existing_row: Option<(String, String)> = if named_review.is_some() {
-            let row = match db
-                .query_row(
-                    "SELECT repository_id,scope_id,emission_json,emission_sha256 FROM membrane_knowledge_proposal WHERE proposal_id=?1",
-                    params![proposal_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                            row.get::<_, String>(3)?,
-                        ))
-                    },
-                )
-                .optional()
-                .map_err(|failure| {
-                    error(name, "proposal_durable_write_failed", failure.to_string())
-                }) {
-                Ok(row) => row,
-                Err(result) => return result,
-            };
-            let Some((row_repository, row_scope, row_emission_json, row_emission_sha)) = row else {
-                return error(
-                    name,
-                    "proposal_review_unknown",
-                    "reviewed proposalId does not exist",
-                );
-            };
-            if row_repository != repository || row_scope != scope {
-                return error(
-                    name,
-                    "proposal_scope_denied",
-                    "reviewed proposal belongs to a different repository or scope",
-                );
-            }
-            // The admission payload is the row's stored emission — never the
-            // review carrier's.
-            emission_json = row_emission_json;
-            emission_sha = row_emission_sha;
-            Some((row_repository, row_scope))
-        } else {
-            None
-        };
-        if existing_row.is_none() {
-            if let Err(failure) = db.execute(
-                "INSERT OR IGNORE INTO membrane_knowledge_proposal(proposal_id,repository_id,scope_id,emission_json,emission_sha256,state,created_at) VALUES(?1,?2,?3,?4,?5,'pending',?6)",
-                params![proposal_id, repository, scope, emission_json, emission_sha, crate::time::now_iso()],
-            ) {
-                return error(name, "proposal_durable_write_failed", failure.to_string());
-            }
-            let readback: Option<(String, String, String)> = db.query_row(
-                "SELECT repository_id,scope_id,emission_sha256 FROM membrane_knowledge_proposal WHERE proposal_id=?1",
-                params![proposal_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            ).optional().unwrap_or(None);
-            if readback.as_ref()
-                != Some(&(
-                    repository.to_owned(),
-                    scope.to_owned(),
-                    emission_sha.clone(),
-                ))
-            {
-                return error(
-                    name,
-                    "proposal_durable_write_failed",
-                    "proposal readback mismatch",
-                );
-            }
-        }
-        // §16.1: `approved`/`rejected` are already legal states of this table; without a
-        // transition the `approved` state would be a silent promise of promotion that nothing
-        // consumes. The out-of-band reviewer marks the decision here through the one governed
-        // transition (only pending rows move, only via review), and ONLY `approved` is then
-        // consumed into Cortex admission — `rejected` and `pending` stay quarantine-only.
-        let review_decision = arguments
-            .get("review")
-            .and_then(|review| review.get("decision"))
-            .and_then(Value::as_str);
-        if named_review.is_some() && review_decision.is_none() {
-            return error(
-                name,
-                "proposal_review_invalid",
-                "review.decision must be approve or reject",
-            );
-        }
-        let review_note = arguments
-            .get("review")
-            .and_then(|review| review.get("note"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .trim()
-            .to_owned();
-        let admission = match review_decision {
-            Some("approve") => {
-                let reviewer = arguments
-                    .get("review")
-                    .and_then(|review| review.get("reviewer"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .trim();
-                if reviewer.is_empty() {
-                    return error(
-                        name,
-                        "proposal_review_invalid",
-                        "review.reviewer is required",
-                    );
-                }
-                let decided = match db
-                    .execute(
-                        "UPDATE membrane_knowledge_proposal SET state='approved', decided_at=?2, reviewer=?3 WHERE proposal_id=?1 AND state='pending'",
-                        params![proposal_id, crate::time::now_iso(), reviewer],
-                    )
-                    .map_err(|failure| {
-                        error(name, "proposal_durable_write_failed", failure.to_string())
-                    }) {
-                    Ok(decided) => decided,
-                    Err(result) => return result,
-                };
-                if decided != 1 {
-                    let state: String = db
-                        .query_row(
-                            "SELECT state FROM membrane_knowledge_proposal WHERE proposal_id=?1",
-                            params![proposal_id],
-                            |row| row.get(0),
-                        )
-                        .unwrap_or_default();
-                    return match state.as_str() {
-                        "approved" | "rejected" => error(
-                            name,
-                            "proposal_already_decided",
-                            format!("proposal is already {state}"),
-                        ),
-                        _ => error(
-                            name,
-                            "proposal_durable_write_failed",
-                            "proposal review transition failed",
-                        ),
-                    };
-                }
-                // Frozen interface 1 — the admission side. Exactly one outcome per the §14
-                // contract: the proposal reaches Cortex admission, or `approved` is
-                // unreachable because the admission write failed — a failed admission is
-                // reverted to `pending` (review not yet consumed), never left approved and
-                // silently unconsumed.
-                match self
-                    .store
-                    .admit_approved_proposal(&proposal_id, &emission_json)
-                {
-                    Ok(admission) => Some(admission),
-                    Err(failure) => {
-                        if let Err(revert) = db.execute(
-                            "UPDATE membrane_knowledge_proposal SET state='pending', decided_at=NULL, reviewer=NULL WHERE proposal_id=?1 AND state='approved'",
-                            params![proposal_id],
-                        ) {
-                            return error(
-                                name,
-                                "proposal_admission_failed",
-                                format!(
-                                    "{} (admission revert also failed: {revert})",
-                                    failure
-                                ),
-                            );
-                        }
-                        return error(name, "proposal_admission_failed", failure.to_string());
-                    }
-                }
-            }
-            Some("reject") => {
-                let reviewer = arguments
-                    .get("review")
-                    .and_then(|review| review.get("reviewer"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .trim();
-                if reviewer.is_empty() {
-                    return error(
-                        name,
-                        "proposal_review_invalid",
-                        "review.reviewer is required",
-                    );
-                }
-                let decided = match db
-                    .execute(
-                        "UPDATE membrane_knowledge_proposal SET state='rejected', decided_at=?2, reviewer=?3 WHERE proposal_id=?1 AND state='pending'",
-                        params![proposal_id, crate::time::now_iso(), reviewer],
-                    )
-                    .map_err(|failure| {
-                        error(name, "proposal_durable_write_failed", failure.to_string())
-                    }) {
-                    Ok(decided) => decided,
-                    Err(result) => return result,
-                };
-                if decided != 1 {
-                    let state: String = db
-                        .query_row(
-                            "SELECT state FROM membrane_knowledge_proposal WHERE proposal_id=?1",
-                            params![proposal_id],
-                            |row| row.get(0),
-                        )
-                        .unwrap_or_default();
-                    return match state.as_str() {
-                        "approved" | "rejected" => error(
-                            name,
-                            "proposal_already_decided",
-                            format!("proposal is already {state}"),
-                        ),
-                        _ => error(
-                            name,
-                            "proposal_durable_write_failed",
-                            "proposal review transition failed",
-                        ),
-                    };
-                }
-                None
-            }
-            Some(_) => {
-                return error(
-                    name,
-                    "proposal_review_invalid",
-                    "review.decision must be approve or reject",
-                )
-            }
-            None => None,
-        };
-        if let Some(review_decision) = review_decision {
-            if let Some(decision) = admission {
-                let event_id =
-                    crate::digest::digest_str(&format!("knowledge_review:{proposal_id}"));
-                let (status, provenance_status) = match &decision {
-                    ApprovedProposalAdmissionV1::Admitted { memory_id } => {
-                        ("approved", json!({"memoryId":memory_id}))
-                    }
-                    ApprovedProposalAdmissionV1::Duplicate { existing_id } => {
-                        ("duplicate", json!({"existingId":existing_id}))
-                    }
-                    ApprovedProposalAdmissionV1::Conflict { existing_id } => {
-                        ("conflict", json!({"existingId":existing_id}))
-                    }
-                };
-                return success(
-                    name,
-                    json!({
-                        "status":"reviewed","durable":true,"proposalId":proposal_id,"durableId":proposal_id,
-                        "reviewState":"approved","reviewDecision":review_decision,
-                        "admission":{
-                            "schema":"membrane.approved-proposal-admission.v1",
-                            "outcome":status,
-                            "provenance":provenance_status,
-                        },
-                        "lifecycleReceipt":{"schema":"membrane.lifecycle-receipt.v1",
-                        "operation":"knowledge_review","status":status,"durableId":proposal_id,
-                        "eventId":event_id,"readbackDigest":emission_sha,"recordedAt":crate::time::now_iso()},
-                        "provenance":{"repositoryId":repository,"scopeId":scope,"reviewNote":review_note}
-                    }),
-                );
-            }
-            let event_id = crate::digest::digest_str(&format!("knowledge_review:{proposal_id}"));
-            return success(
-                name,
-                json!({
-                    "status":"reviewed","durable":true,"proposalId":proposal_id,"durableId":proposal_id,
-                    "reviewState":"rejected","reviewDecision":review_decision,
-                    "lifecycleReceipt":{"schema":"membrane.lifecycle-receipt.v1",
-                    "operation":"knowledge_review","status":"rejected","durableId":proposal_id,
-                    "eventId":event_id,"readbackDigest":emission_sha,"recordedAt":crate::time::now_iso()},
-                    "provenance":{"repositoryId":repository,"scopeId":scope,"reviewNote":review_note}
-                }),
-            );
-        }
-        let event_id = crate::digest::digest_str(&format!("knowledge_propose:{proposal_id}"));
-        success(
-            name,
-            json!({
-                "status":"needs_review","durable":true,"proposalId":proposal_id,"durableId":proposal_id,
-                "reviewState":"pending","lifecycleReceipt":{"schema":"membrane.lifecycle-receipt.v1",
-                "operation":"knowledge_propose","status":"needs_review","durableId":proposal_id,
-                "eventId":event_id,"readbackDigest":emission_sha,"recordedAt":crate::time::now_iso()},
-                "provenance":{"repositoryId":repository,"scopeId":scope,"authority":"proposal_only"}
-            }),
-        )
+        lifecycle_result(name, result)
     }
 
     fn working_context(

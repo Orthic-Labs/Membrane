@@ -372,6 +372,30 @@ impl ExecutorSandbox {
         MemoryStore::open(MemDb::open(&self.event_db).expect("file-backed memdb opens"))
     }
 
+    /// A fixed private key exists only in this disposable test fixture. The
+    /// real executor never enrolls keys or accepts reviewer-name authority.
+    fn signed_review(&self, store: &MemoryStore, id: &str, decision: &str) -> Value {
+        use membrane_runtime::cortex_lifecycle::{self, ReviewerTrustV1, ReviewerKeyV1, ReviewedEffectV1};
+        use ring::signature::{Ed25519KeyPair, KeyPair};
+        let key=Ed25519KeyPair::from_seed_unchecked(&[31;32]).unwrap();
+        let repo=self.installation.caller_repository_id; let scope=self.installation.caller_scope_id;
+        let trust=ReviewerTrustV1 {schema_version:1,installation_id:store.installation_id().into(),
+            cortex_store_id:store.cortex_store_id(),reviewers:vec![ReviewerKeyV1 {
+                key_id:"test-human".into(),public_key_hex:hex::encode(key.public_key().as_ref()),
+                repository_id:repo.into(),scope_id:scope.into(),allowed_operations:vec!["approve".into(),"reject".into()],revoked:false}]};
+        fs::write(cortex_lifecycle::trust_path(store).unwrap(),serde_json::to_vec(&trust).unwrap()).unwrap();
+        let hash=store.db().lock_events().query_row("SELECT emission_sha256 FROM membrane_knowledge_proposal WHERE proposal_id=?1",[id],|r|r.get::<_,String>(0))
+            .unwrap_or_else(|_| membrane_runtime::digest::digest_str("unknown"));
+        let now=membrane_runtime::time::now_millis() as u64;
+        let mut effect=ReviewedEffectV1 {schema_version:1,policy_version:cortex_lifecycle::REVIEW_POLICY.into(),
+            installation_id:store.installation_id().into(),cortex_store_id:store.cortex_store_id(),
+            repository_id:repo.into(),scope_id:scope.into(),operation:decision.into(),target_id:id.into(),
+            expected_content_hash:hash,expected_control_revision:None,key_id:"test-human".into(),nonce:format!("{decision}:{id}"),
+            issued_at_ms:now,expires_at_ms:now+60_000,signature_hex:String::new()};
+        effect.signature_hex=hex::encode(key.sign(&effect.signing_bytes().unwrap()).as_ref());
+        j!(effect)
+    }
+
     /// Durable DB probe through the store's own event connection — the test
     /// crate has no direct rusqlite dependency.
     fn proposal_state(&self, store: &MemoryStore, proposal_id: &str) -> Option<String> {
@@ -449,11 +473,11 @@ fn approved_proposal_reaches_cortex_admission_via_the_executor_review_path() {
     // stored emission; no second carrier row is created.
     let review = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "review": {"proposalId": proposal_id, "decision": "approve", "reviewer": "human-reviewer"}
+            "review": sandbox.signed_review(&store, &proposal_id, "approve")
         }),
     );
     assert_eq!(
@@ -467,7 +491,7 @@ fn approved_proposal_reaches_cortex_admission_via_the_executor_review_path() {
         .expect("admission outcome");
     assert_eq!(outcome, "approved", "approved reaches admission: {review}");
     let memory_id = review
-        .pointer("/result/data/admission/provenance/memoryId")
+        .pointer("/result/data/admission/memoryId")
         .and_then(Value::as_str)
         .expect("memoryId")
         .to_owned();
@@ -511,11 +535,11 @@ fn rejected_and_pending_proposals_never_become_durable_truth() {
         .to_owned();
     let review = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "review": {"proposalId": proposal_id, "decision": "reject", "reviewer": "human-reviewer"}
+            "review": sandbox.signed_review(&store, &proposal_id, "reject")
         }),
     );
     assert_eq!(
@@ -553,11 +577,11 @@ fn an_already_decided_proposal_cannot_be_re_decided() {
         .to_owned();
     let first = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "review": {"proposalId": proposal_id, "decision": "approve", "reviewer": "human-reviewer"}
+            "review": sandbox.signed_review(&store, &proposal_id, "approve")
         }),
     );
     assert_eq!(
@@ -567,11 +591,11 @@ fn an_already_decided_proposal_cannot_be_re_decided() {
     );
     let second = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "review": {"proposalId": proposal_id, "decision": "reject", "reviewer": "human-reviewer"}
+            "review": sandbox.signed_review(&store, &proposal_id, "reject")
         }),
     );
     assert_eq!(result_code(&second), "proposal_already_decided", "{second}");
@@ -584,11 +608,11 @@ fn review_of_an_unknown_proposal_id_is_typed_and_creates_nothing() {
     let executor = RuntimeMcpExecutor::for_hub(store.clone()).expect("executor constructs");
     let response = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "review": {"proposalId": "proposal-does-not-exist", "decision": "approve", "reviewer": "human-reviewer"}
+            "review": sandbox.signed_review(&store, "proposal-does-not-exist", "approve")
         }),
     );
     assert_eq!(
@@ -635,4 +659,15 @@ fn frozen_interface_duplicate_disposition_is_typed_not_a_second_record() {
             panic!("a duplicate proposal must never admit a second record: {memory_id}");
         }
     }
+}
+
+#[test]
+fn native_proposer_cannot_approve_by_adding_undeclared_reviewer_json() {
+    let sandbox=ExecutorSandbox::new(); let store=sandbox.store();
+    let executor=RuntimeMcpExecutor::for_hub(store.clone()).unwrap();
+    let response=execute(&executor,"membrane_knowledge_propose",&j!({
+        "repository":sandbox.installation.caller_repository_id,"caller":sandbox.caller_envelope(),
+        "emission":{"text":"Proposed only"},"review":{"decision":"approve","reviewer":"human"}}));
+    assert_eq!(result_code(&response),"proposal_envelope_invalid");
+    assert!(store.entries(100).is_empty());
 }

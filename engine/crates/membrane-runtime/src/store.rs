@@ -404,7 +404,7 @@ pub(crate) struct AdmissionNearDuplicateHit {
 /// duplicate, metadata union, or conflict is a classified disposition, never
 /// a caller-parsed error string. `Err` stays reserved for invalid requests,
 /// storage failures, or unavailable infrastructure.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum AdmissionDispositionV1 {
     /// No near-duplicate found; a new durable record was created.
     Inserted { id: String },
@@ -2058,7 +2058,7 @@ fn recall_eligible_ids_on(
         " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
     };
     let query = format!(
-        "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+        "SELECT id FROM memories WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s WHERE s.memory_id=memories.id AND s.suppressed=1) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
     );
     connection
         .prepare(&query)?
@@ -2109,7 +2109,7 @@ fn recall_eligible_ids_among(
             .collect::<Vec<_>>()
             .join(",");
         let query = format!(
-            "SELECT id FROM memories WHERE id IN ({placeholders}) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+            "SELECT id FROM memories WHERE id IN ({placeholders}) AND NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s WHERE s.memory_id=memories.id AND s.suppressed=1) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
         );
         let mut statement = connection.prepare(&query)?;
         let mut params: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk.len() + 1);
@@ -2317,6 +2317,8 @@ impl MemoryStore {
         db: MemDb,
         attribution: OperationAttribution,
     ) -> Result<Self, String> {
+        crate::cortex_lifecycle::ensure_memory_schema(&db.lock())
+            .map_err(|error| format!("Cortex lifecycle schema: {error}"))?;
         let mut registry = if vector_dispatch_v2_enabled() {
             MemoryRegistry::new_indexed()
         } else {
@@ -8064,8 +8066,38 @@ impl MemoryStore {
         context: &MemoryEventContext,
         lifecycle: &MemoryLifecycleInputV1,
     ) -> Result<AdmissionDispositionV1, String> {
+        self.try_admit_idempotent_observed(
+            name, content, scope, tier, updated_at, source_ids,
+            supplied_metadata, context, lifecycle, None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_admit_idempotent_observed(
+        &self,
+        name: &str,
+        content: &str,
+        scope: &str,
+        tier: MemoryTier,
+        updated_at: &str,
+        source_ids: &[String],
+        supplied_metadata: Option<MemoryRecordMetadata>,
+        context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
+        admission_receipt: Option<(&str, &str)>,
+    ) -> Result<AdmissionDispositionV1, String> {
         if updated_at.trim().is_empty() {
             return Err("updated_at is required".into());
+        }
+        // An acknowledged effect must replay without model availability. The
+        // second lookup under BEGIN IMMEDIATE still fences concurrent writers.
+        if let Some((key, hash)) = admission_receipt {
+            if let Some(disposition) = self.reviewed_admission_disposition(key, hash)? {
+                return Ok(disposition);
+            }
+        }
+        if !self.writes_enabled {
+            return Err("memory writes disabled: embedder unavailable".into());
         }
         let scope = crate::scope::normalize_scope(scope);
         let id = format!("{scope}/{name}");
@@ -8083,6 +8115,24 @@ impl MemoryStore {
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|e| self.persist_error(format!("memory transaction failed: {e}")))?;
+        if let Some((key, expected_hash)) = admission_receipt {
+            let previous: Option<(String, String)> = tx.query_row(
+                "SELECT payload_hash,disposition_json FROM cortex_admission_receipts_v1 WHERE request_id=?1",
+                [key], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional().map_err(|error| self.persist_error(error.to_string()))?;
+            if let Some((hash, disposition)) = previous {
+                if hash != expected_hash { return Err("proposal admission identity conflict".into()); }
+                return serde_json::from_str(&disposition).map_err(|error| self.persist_error(error.to_string()));
+            }
+        }
+        let persist_admission_receipt = |disposition: &AdmissionDispositionV1| -> Result<(), String> {
+            if let Some((key, hash)) = admission_receipt {
+                let encoded = serde_json::to_string(disposition).map_err(|error| error.to_string())?;
+                tx.execute("INSERT INTO cortex_admission_receipts_v1 VALUES(?1,?2,?3)",
+                    rusqlite::params![key,hash,encoded]).map_err(|error| self.persist_error(error.to_string()))?;
+            }
+            Ok(())
+        };
         let existing = {
             tx.query_row(
                 "SELECT access_count, created_at, artifact_family, producer, record_type
@@ -8189,6 +8239,9 @@ impl MemoryStore {
                         .map_err(|e| {
                             self.persist_error(format!("memory admission event failed: {e}"))
                         })?;
+                        persist_admission_receipt(&AdmissionDispositionV1::UpdateMetadataOnly {
+                            existing_id: hit.existing_id.clone(),
+                        })?;
                         tx.commit().map_err(|e| {
                             self.persist_error(format!("memory commit failed: {e}"))
                         })?;
@@ -8221,6 +8274,9 @@ impl MemoryStore {
                     )
                     .map_err(|e| {
                         self.persist_error(format!("memory admission event failed: {e}"))
+                    })?;
+                    persist_admission_receipt(&AdmissionDispositionV1::NoOp {
+                        existing_id: hit.existing_id.clone(),
                     })?;
                     tx.commit()
                         .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
@@ -8294,6 +8350,9 @@ impl MemoryStore {
                     })),
                 )
                 .map_err(|e| self.persist_error(format!("memory admission event failed: {e}")))?;
+                persist_admission_receipt(&AdmissionDispositionV1::ConflictQuarantined {
+                    candidate_id: id.clone(), conflicts_with: hit.existing_id.clone(), similarity: hit.similarity,
+                })?;
                 tx.commit()
                     .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
                 drop(conn);
@@ -8332,6 +8391,7 @@ impl MemoryStore {
             Some(&metadata),
         )
         .map_err(|e| self.persist_error(format!("memory {event_kind} event failed: {e}")))?;
+        persist_admission_receipt(&AdmissionDispositionV1::Inserted { id: id.clone() })?;
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
         drop(conn);
@@ -8765,6 +8825,66 @@ impl MemoryStore {
             registry.insert(entry);
         }
         Ok(())
+    }
+
+    fn reviewed_admission_disposition(&self, request_id: &str, payload_hash: &str)
+        -> Result<Option<AdmissionDispositionV1>, String> {
+        let db = self.db.lock();
+        let previous: Option<(String, String)> = db.query_row(
+            "SELECT payload_hash,disposition_json FROM cortex_admission_receipts_v1 WHERE request_id=?1",
+            [request_id], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(|error| error.to_string())?;
+        match previous {
+            Some((hash, _)) if hash != payload_hash => Err("proposal admission identity conflict".into()),
+            Some((_, disposition)) => serde_json::from_str(&disposition).map(Some).map_err(|e| e.to_string()),
+            None => Ok(None),
+        }
+    }
+
+    pub(crate) fn reviewed_admission_receipt(&self, request_id: &str, payload_hash: &str)
+        -> Result<Option<serde_json::Value>, String> {
+        let disposition = self.reviewed_admission_disposition(request_id, payload_hash)?;
+        if disposition.is_some() { self.reload_registry_from_db()?; }
+        Ok(disposition.map(Self::reviewed_disposition_json))
+    }
+
+    fn reviewed_disposition_json(disposition: AdmissionDispositionV1) -> serde_json::Value {
+        match disposition {
+            AdmissionDispositionV1::Inserted { id } => serde_json::json!({"outcome":"approved","memoryId":id}),
+            AdmissionDispositionV1::NoOp { existing_id } | AdmissionDispositionV1::UpdateMetadataOnly { existing_id } =>
+                serde_json::json!({"outcome":"duplicate","existingId":existing_id}),
+            AdmissionDispositionV1::ConflictQuarantined { candidate_id, conflicts_with, .. } =>
+                serde_json::json!({"outcome":"conflict","candidateId":candidate_id,"existingId":conflicts_with}),
+        }
+    }
+
+    /// Replay-safe effect of an independently authorized proposal review.
+    /// The payload hash comes from the immutable pending row. The receipt is
+    /// committed in the same canonical transaction as the classified effect.
+    pub(crate) fn admit_reviewed_proposal(
+        &self, proposal_id: &str, payload_hash: &str, payload: &serde_json::Value, scope: &str,
+    ) -> Result<serde_json::Value, String> {
+        let text = payload.get("text").or_else(|| payload.get("content"))
+            .and_then(serde_json::Value::as_str).filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| "proposal has no durable text".to_owned())?;
+        let name = format!("proposal-{}", &crate::digest::digest_str(proposal_id)[7..39]);
+        let sources = vec![proposal_id.to_owned()];
+        let lifecycle = MemoryLifecycleInputV1 {
+            authority: Some("A4".into()), influence_class: Some("reference".into()),
+            ..Default::default()
+        };
+        let tier = if payload.get("kind").and_then(serde_json::Value::as_str) == Some("episodic") {
+            MemoryTier::Episodic
+        } else { MemoryTier::Semantic };
+        let disposition = self.try_admit_idempotent_observed(
+            &name, text, scope, tier, &crate::time::now_iso(), &sources, None,
+            &MemoryEventContext::new("proposal_admission"), &lifecycle,
+            Some((proposal_id, payload_hash)),
+        )?;
+        // A previous process may have committed the effect before updating its
+        // resident registry. Replay must repair that projection too.
+        self.reload_registry_from_db()?;
+        Ok(Self::reviewed_disposition_json(disposition))
     }
 
     /// Frozen interface 1 (§16.1 admission side): route one approved proposal

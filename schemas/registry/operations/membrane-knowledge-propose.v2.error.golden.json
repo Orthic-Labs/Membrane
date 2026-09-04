@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "operation": "membrane_knowledge_propose",
+  "errorVersion": 2,
+  "result": {
+    "kind": "error",
+    "code": "proposal_emission_text_required",
+    "message": "Fixture typed failure",
+    "retryable": false
+  }
+}

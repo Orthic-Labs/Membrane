@@ -10,7 +10,7 @@ fn discovery_matches_initialize_contract() {
         initialize_response()["protocolVersion"]
     );
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
-    assert_eq!(discovery["tools"].as_array().unwrap().len(), 17);
+    assert_eq!(discovery["tools"].as_array().unwrap().len(), 19);
 }
 
 #[test]
@@ -44,6 +44,6 @@ fn tool_calls_are_typed_and_never_use_legacy_fallback() {
     );
     assert_eq!(
         response["result"]["structuredContent"]["result"]["code"],
-        "context_unavailable"
+        "context_envelope_invalid"
     );
 }

@@ -62,7 +62,7 @@
     "runtimeExecutionHost": "tray-owned-daemon",
     "dashboardResidency": "on-demand",
     "inactiveReasonCompatibilityToken": "hub_inactive",
-    "mcpToolCount": 17,
+    "mcpToolCount": 19,
     "mcpTools": [
       "membrane_blueprint",
       "membrane_checkpoint_load",
@@ -77,6 +77,8 @@
       "membrane_diagnostic_workspace",
       "membrane_feedback",
       "membrane_knowledge_propose",
+      "membrane_knowledge_review",
+      "membrane_memory",
       "membrane_scratchpad",
       "membrane_source_read",
       "membrane_temporal_fact",

@@ -61,6 +61,8 @@ pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
         "membrane_source_read" => Some(SubsystemAxis::Ledger),
         "membrane_blueprint" => Some(SubsystemAxis::Blueprint),
         "membrane_knowledge_propose"
+        | "membrane_memory"
+        | "membrane_knowledge_review"
         | "membrane_checkpoint_save"
         | "membrane_checkpoint_load"
         | "membrane_working_context"
@@ -218,7 +220,7 @@ fn entry(
 
 /// The canonical cross-operation registry, in stable order. The TS binding
 /// (`bindings/operations.mjs`) mirrors this list; both sides are required
-/// to expose the SAME 12 operations in the SAME order so the index-round-trip
+/// to expose the SAME operations in the SAME order so the index-round-trip
 /// test can pin a single digest.
 pub fn operations() -> Vec<OperationIndexEntry> {
     vec![
@@ -275,11 +277,11 @@ pub fn operations() -> Vec<OperationIndexEntry> {
         ),
         entry(
             "membrane_knowledge_propose",
-            1,
-            1,
-            "schemas/operations/membrane-knowledge-propose.v1.schema.json",
-            "schemas/registry/operations/membrane-knowledge-propose.v1.golden.json",
-            "schemas/registry/operations/membrane-knowledge-propose.v1.error.golden.json",
+            2,
+            2,
+            "schemas/operations/membrane-knowledge-propose.v2.schema.json",
+            "schemas/registry/operations/membrane-knowledge-propose.v2.golden.json",
+            "schemas/registry/operations/membrane-knowledge-propose.v2.error.golden.json",
             &[
                 "proposal_emission_text_required",
                 "proposal_payload_too_large",
@@ -287,6 +289,31 @@ pub fn operations() -> Vec<OperationIndexEntry> {
                 "proposal_binding_unresolvable",
                 "proposal_durable_write_failed",
                 "proposal_scope_denied",
+                "caller_required",
+                "installation_grant_denied",
+                "repository_scope_chain_denied",
+                "caller_scope_binding_denied",
+                "caller_not_authorized",
+                "cross_root_binding_denied",
+                "authorization_revoked",
+                "context_unavailable",
+                "cortex_storage_unavailable",
+                "proposal_review_unknown",
+                "proposal_already_decided",
+                "cortex_review_unavailable",
+                "cortex_review_binding_denied",
+                "cortex_review_invalid",
+                "cortex_review_denied",
+                "cortex_review_replay_conflict",
+                "cortex_review_version_conflict",
+                "cortex_control_version_conflict",
+                "memory_unavailable",
+                "memory_version_conflict",
+                "memory_envelope_invalid",
+                "memory_ineligible",
+                "checkpoint_scope_denied",
+                "temporal_admission_requires_policy",
+                "proposal_envelope_invalid",
             ],
         ),
         entry(
@@ -338,11 +365,11 @@ pub fn operations() -> Vec<OperationIndexEntry> {
         ),
         entry(
             "membrane_temporal_fact",
-            1,
-            1,
-            "schemas/operations/membrane-temporal-fact.v1.schema.json",
-            "schemas/registry/operations/membrane-temporal-fact.v1.golden.json",
-            "schemas/registry/operations/membrane-temporal-fact.v1.error.golden.json",
+            2,
+            2,
+            "schemas/operations/membrane-temporal-fact.v2.schema.json",
+            "schemas/registry/operations/membrane-temporal-fact.v2.golden.json",
+            "schemas/registry/operations/membrane-temporal-fact.v2.error.golden.json",
             &[
                 "temporal_fact_payload_too_large",
                 "temporal_fact_scope_denied",
@@ -350,6 +377,34 @@ pub fn operations() -> Vec<OperationIndexEntry> {
                 "temporal_fact_query_invalid",
                 "temporal_fact_operation_invalid",
                 "temporal_fact_envelope_invalid",
+                "caller_required",
+                "installation_grant_denied",
+                "repository_scope_chain_denied",
+                "caller_scope_binding_denied",
+                "caller_not_authorized",
+                "cross_root_binding_denied",
+                "authorization_revoked",
+                "context_unavailable",
+                "cortex_storage_unavailable",
+                "proposal_payload_too_large",
+                "proposal_emission_text_required",
+                "proposal_scope_denied",
+                "proposal_review_unknown",
+                "proposal_already_decided",
+                "cortex_review_unavailable",
+                "cortex_review_binding_denied",
+                "cortex_review_invalid",
+                "cortex_review_denied",
+                "cortex_review_replay_conflict",
+                "cortex_review_version_conflict",
+                "cortex_control_version_conflict",
+                "memory_unavailable",
+                "memory_version_conflict",
+                "memory_envelope_invalid",
+                "memory_ineligible",
+                "checkpoint_scope_denied",
+                "temporal_admission_requires_policy",
+                "temporal_fact_invalid",
             ],
         ),
         entry(
@@ -385,13 +440,89 @@ pub fn operations() -> Vec<OperationIndexEntry> {
             ],
         ),
         entry(
+            "membrane_memory",
+            1,
+            1,
+            "schemas/operations/membrane-memory.v1.schema.json",
+            "schemas/registry/operations/membrane-memory.v1.golden.json",
+            "schemas/registry/operations/membrane-memory.v1.error.golden.json",
+            &[
+                "caller_required",
+                "installation_grant_denied",
+                "repository_scope_chain_denied",
+                "caller_scope_binding_denied",
+                "caller_not_authorized",
+                "cross_root_binding_denied",
+                "authorization_revoked",
+                "context_unavailable",
+                "cortex_storage_unavailable",
+                "proposal_payload_too_large",
+                "proposal_emission_text_required",
+                "proposal_scope_denied",
+                "proposal_review_unknown",
+                "proposal_already_decided",
+                "cortex_review_unavailable",
+                "cortex_review_binding_denied",
+                "cortex_review_invalid",
+                "cortex_review_denied",
+                "cortex_review_replay_conflict",
+                "cortex_review_version_conflict",
+                "cortex_control_version_conflict",
+                "memory_unavailable",
+                "memory_version_conflict",
+                "memory_envelope_invalid",
+                "memory_ineligible",
+                "checkpoint_scope_denied",
+                "temporal_admission_requires_policy",
+            ],
+        ),
+        entry(
+            "membrane_knowledge_review",
+            1,
+            1,
+            "schemas/operations/membrane-knowledge-review.v1.schema.json",
+            "schemas/registry/operations/membrane-knowledge-review.v1.golden.json",
+            "schemas/registry/operations/membrane-knowledge-review.v1.error.golden.json",
+            &[
+                "caller_required",
+                "installation_grant_denied",
+                "repository_scope_chain_denied",
+                "caller_scope_binding_denied",
+                "caller_not_authorized",
+                "cross_root_binding_denied",
+                "authorization_revoked",
+                "context_unavailable",
+                "cortex_storage_unavailable",
+                "proposal_payload_too_large",
+                "proposal_emission_text_required",
+                "proposal_scope_denied",
+                "proposal_review_unknown",
+                "proposal_already_decided",
+                "cortex_review_unavailable",
+                "cortex_review_binding_denied",
+                "cortex_review_invalid",
+                "cortex_review_denied",
+                "cortex_review_replay_conflict",
+                "cortex_review_version_conflict",
+                "cortex_control_version_conflict",
+                "memory_unavailable",
+                "memory_version_conflict",
+                "memory_envelope_invalid",
+                "memory_ineligible",
+                "checkpoint_scope_denied",
+                "temporal_admission_requires_policy",
+            ],
+        ),
+        entry(
             "hub.capabilities",
             1,
             1,
             "schemas/operations/hub-capabilities.v1.schema.json",
             "schemas/registry/operations/hub-capabilities.v1.golden.json",
             "schemas/registry/operations/hub-capabilities.v1.error.golden.json",
-            &["hub_unavailable"],
+            &[
+                "hub_unavailable",
+            ],
         ),
         entry(
             "hub.snapshot",
@@ -400,7 +531,9 @@ pub fn operations() -> Vec<OperationIndexEntry> {
             "schemas/operations/hub-snapshot.v1.schema.json",
             "schemas/registry/operations/hub-snapshot.v1.golden.json",
             "schemas/registry/operations/hub-snapshot.v1.error.golden.json",
-            &["hub_unavailable"],
+            &[
+                "hub_unavailable",
+            ],
         ),
     ]
 }
@@ -461,6 +594,8 @@ pub static OPERATIONS: &[OperationSpec] = &[
         help: "Record bounded receipt-bound outcome feedback for quarantine review.",
         parameters: &[],
     },
+    OperationSpec { id: "membrane_memory", help: "Resolve exact bounded memory or inspect and promote pending knowledge.", parameters: &[] },
+    OperationSpec { id: "membrane_knowledge_review", help: "Apply an independently signed, exact-target reviewed effect.", parameters: &[] },
     OperationSpec { id: "hub.capabilities", help: "Read-only Hub capability manifest.", parameters: &[] },
     OperationSpec { id: "hub.snapshot", help: "Read-only Hub status snapshot.", parameters: &[] },
 ];
@@ -468,4 +603,11 @@ pub static OPERATIONS: &[OperationSpec] = &[
 /// Helper: get the canonical index entries (initializes the cache on first call).
 pub fn operations_slice() -> &'static [OperationIndexEntry] {
     OPERATION_INDEX_ENTRIES.get_or_init(operations).as_slice()
+}
+
+/// Native response versions. Historical V1 shapes are retained on disk; V2
+/// makes proposal-only temporal recording and actual proposal status explicit.
+pub fn operation_versions(name: &str) -> (u32, u32) {
+    operations_slice().iter().find(|entry| entry.name == name)
+        .map(|entry| (entry.schema_version, entry.error_version)).unwrap_or((1,1))
 }

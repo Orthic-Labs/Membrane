@@ -244,7 +244,7 @@ fn operations_index_canonical_digest_is_pinned() {
     let raw = load_repo_file("schemas/registry/operations/operations-index.v1.golden.json");
     let value: Value = serde_json::from_str(&raw).expect("index fixture parses");
     let digest = digest_str(&canonicalize(&value));
-    let expected = "sha256:e376b5f684b191102342ecd038a2f2e16a64cbb7ccebb2e68b883e61d20cecb5";
+    let expected = "sha256:47c14b7d18eae33ee28f10b5e36ea9333fde5aaec6dc2403c025fdcc6bae9fff";
     // The pin is computed once over the canonicalized operations-index
     // fixture (sorted keys, no whitespace, sha256). The TypeScript binding
     // recomputes the same digest in `bindings/operations.test.mjs` from the

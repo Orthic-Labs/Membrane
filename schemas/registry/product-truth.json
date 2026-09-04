@@ -61,7 +61,7 @@
   "residentServiceAuthority": "tray",
   "runtimeExecutionHost": "tray-owned-daemon",
   "schema": "membrane.product-truth.v1",
-  "toolCount": 17,
+  "toolCount": 19,
   "tools": [
     "membrane_blueprint",
     "membrane_checkpoint_load",
@@ -76,6 +76,8 @@
     "membrane_diagnostic_workspace",
     "membrane_feedback",
     "membrane_knowledge_propose",
+    "membrane_knowledge_review",
+    "membrane_memory",
     "membrane_scratchpad",
     "membrane_source_read",
     "membrane_temporal_fact",

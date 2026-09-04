@@ -1114,7 +1114,8 @@ fn memory_candidates_payload_for_descriptor_inner(
                     "protected": false,
                     "exact": false,
                     "recoverable": true,
-                    "resolver": format!("cortex get {}", e.id),
+                    "resolver": format!("membrane_memory operation=get id={} expectedContentHash={}",
+                        serde_json::to_string(&e.id).unwrap_or_default(), sha256_hex(&e.content)),
                     "text": preview,
                 })
             }

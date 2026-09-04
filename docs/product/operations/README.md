@@ -13,7 +13,7 @@ node scripts/tools/productization/check-docs.mjs --check               # full ga
 ```
 
 The gate fails on a broken README link, a stale generated doc, a wrong claimed
-tool count (source truth: 17), or a stale platform status
+tool count (source truth: 19), or a stale platform status
 (source truth: Windows).
 
 ## Running the product
