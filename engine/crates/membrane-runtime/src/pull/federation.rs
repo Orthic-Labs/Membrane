@@ -647,7 +647,13 @@ fn native_response_to_ccs(
         .enumerate()
         .map(|(index, omission)| {
             serde_json::json!({
-                "id": omission.candidate_id.clone().unwrap_or_else(|| format!("omission:{index}")),
+                // A provider-level omission carries no candidate id, so this
+                // read `omission:0`, `omission:1` and so on — which says a
+                // provider was dropped but never which one. The provider is
+                // right there on the record.
+                "id": omission.candidate_id.clone().unwrap_or_else(|| {
+                    format!("{}:{index}", omission.provider.as_str())
+                }),
                 "layer": Value::Null,
                 "reason": omission.reason.as_str(),
             })
