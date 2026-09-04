@@ -68,7 +68,7 @@ pub fn resolver_probe(store: &RecoveryStore, scope: &RecoveryScope) -> Result<Va
     proofs.insert(token.clone(), ConsumerProof { scope: scope.binding().into(), store_id: store_id.clone(), expires: now + 300_000 });
     Ok(json!({"schemaVersion":1,"resolver":"membrane_push_resolve","resolverToken":token,
         "storeId":store_id,"expiresAt":now+300_000,"selectors":["whole","bytes","lines","json"],
-        "maxRestoreBytes":recovery::MAX_RESTORE_BYTES,"disposition":"exact"}))
+        "maxRestoreBytes":recovery::MAX_RESTORE_BYTES,"disposition":"exact","telemetry":super::telemetry::status()}))
 }
 pub(crate) fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: Option<&str>) -> Result<bool, RecoveryError> {
     let Some(token) = token.filter(|t| t.len() == 64) else { return Ok(false); };
@@ -170,7 +170,10 @@ pub fn prepare(store: &RecoveryStore, scope: &RecoveryScope, request: PrepareReq
     reduced.receipt.segment_count = segments;
     reduced.receipt.representation_digest = format!("sha256:{}", recovery::digest(reduced.text.as_bytes()));
     let measured = measure(&mut reduced, Some(original_bytes))?;
-    if measured < original_bytes && measured <= request.max_bytes { return Ok(reduced); }
+    if measured < original_bytes && measured <= request.max_bytes {
+        super::telemetry::record("prepare", original_bytes, measured, Some("status=reduced;scope=serialized_delivery"), Some(&reduced.receipt.source_digest));
+        return Ok(reduced);
+    }
     if original_bytes <= request.max_bytes { Ok(exact) } else { Err(RecoveryError::Limit) }
 }
 use std::path::Path;

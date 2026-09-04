@@ -236,6 +236,11 @@ pub fn install_executor(
 ) -> Result<(), Arc<dyn NativeMcpExecutor>> {
     EXECUTOR.set(executor)
 }
+/// Canonical result serializer shared with runtime final-wire measurement.
+pub fn tool_result(result: Value) -> Value {
+    let is_error = result.pointer("/result/kind").and_then(Value::as_str) != Some("success");
+    json!({"content":[{"type":"text","text":result.to_string()}],"structuredContent":result,"isError":is_error})
+}
 /// Typed fail-closed seam. No interpreter fallback is ever attempted.
 pub(crate) fn call(name: &str, arguments: &Value) -> Value {
     if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) {
@@ -243,8 +248,7 @@ pub(crate) fn call(name: &str, arguments: &Value) -> Value {
     }
     if let Some(executor) = EXECUTOR.get() {
         let result = executor.execute(name, arguments);
-        let is_error = result.pointer("/result/kind").and_then(Value::as_str) != Some("success");
-        return json!({"content":[{"type":"text","text":result.to_string()}],"structuredContent":result,"isError":is_error});
+        return tool_result(result);
     }
     let (code, message) = if !arguments.is_object() {
         (invalid_envelope_code(name), "arguments must be an object")

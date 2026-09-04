@@ -8,6 +8,9 @@ fn failure(operation: &str, code: &str) -> Value {
 }
 pub fn execute(operation: &str, arguments: &Value) -> Value {
     let result = (|| -> Result<Value, String> {
+        if serde_json::to_vec(arguments).map_err(|_| "push_invalid_request")?.len() > 1024 * 1024 {
+            return Err("push_resource_limit".into());
+        }
         let caller = arguments.get("caller").ok_or("caller_required")?;
         let root = caller.get("root").and_then(Value::as_str).ok_or("caller_required")?;
         let repository = caller.get("repositoryId").and_then(Value::as_str).ok_or("caller_required")?;
@@ -54,7 +57,12 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
         Ok(data)
     })();
     match result {
-        Ok(data) => json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"success","data":data}}),
+        Ok(data) => {
+            let envelope = json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"success","data":data}});
+            if membrane_mcp::tool_result(envelope.clone()).to_string().len() > 120 * 1024 {
+                failure(operation,"push_resource_limit")
+            } else { envelope }
+        },
         Err(code) => failure(operation, &code),
     }
 }

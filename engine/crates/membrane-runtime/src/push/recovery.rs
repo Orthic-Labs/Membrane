@@ -81,6 +81,21 @@ pub fn workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     cwd.ancestors().find(|p| p.join(".git").exists()).unwrap_or(&cwd).to_path_buf()
 }
+/// File-bound inputs cannot allocate beyond the same original-size ceiling.
+pub fn read_file_bounded(path: &Path) -> Result<Vec<u8>, RecoveryError> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|_| RecoveryError::Unavailable)?;
+    let metadata = file.metadata().map_err(|_| RecoveryError::Unavailable)?;
+    if !metadata.is_file() || metadata.len() > MAX_ARTIFACT_BYTES as u64 { return Err(RecoveryError::Limit); }
+    let mut bytes = Vec::new();
+    file.take((MAX_ARTIFACT_BYTES+1) as u64).read_to_end(&mut bytes).map_err(|_| RecoveryError::Unavailable)?;
+    if bytes.len() > MAX_ARTIFACT_BYTES { return Err(RecoveryError::Limit); }
+    Ok(bytes)
+}
+pub fn read_text_bounded(path: &Path) -> Result<String, RecoveryError> {
+    String::from_utf8(read_file_bounded(path)?).map_err(|_| RecoveryError::Corrupt)
+}
+
 pub fn default_directory() -> PathBuf {
     std::env::var_os("MEMBRANE_ANCHOR_DIR").map(PathBuf::from)
         .unwrap_or_else(|| workspace_root().join("tools/.cache/runc"))
@@ -247,6 +262,7 @@ impl RecoveryStore {
         let (content_encoding, content) = match std::str::from_utf8(selected) {
             Ok(text) => ("utf-8", text.to_owned()), Err(_) => ("hex", hex::encode(selected)),
         };
+        super::telemetry::record("restore", size, selected.len(), Some("status=verified"), Some(&hash));
         Ok(ResolvedArtifact { reference: Self::reference(&tx, &hash, size, expires, now)?,
             start_byte: start, end_byte: end, selected_digest: format!("sha256:{}", digest(selected)),
             content_encoding, content, disposition: "exact", fidelity: "exact_bytes" })

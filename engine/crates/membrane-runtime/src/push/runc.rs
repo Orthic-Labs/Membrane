@@ -485,8 +485,14 @@ fn publish_spill_scoped(
     ),
     String,
 > {
-    let (capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
+    let (mut capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
         line_preview(capture, head, tail)?;
+    if dropped_len == 0 {
+        // Binary-only publication is not truncation; never print a fictitious
+        // zero-line elision marker for a complete lossy UTF-8 preview.
+        let bytes = std::fs::read(&capture.path).map_err(|e| e.to_string())?;
+        capped = String::from_utf8_lossy(&bytes).into_owned();
+    }
     if capture.byte_count > super::recovery::MAX_ARTIFACT_BYTES { return Err("push_capture_byte_limit".into()); }
     let original = std::fs::read(&capture.path).map_err(|e| format!("capture read: {e}"))?;
     let retained = super::recovery::RecoveryStore::at(spill_dir).publish(scope, &original,

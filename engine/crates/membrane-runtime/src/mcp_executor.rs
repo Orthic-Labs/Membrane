@@ -632,33 +632,37 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     };
                     return error(name, "context_unavailable", detail);
                 }
-                let packet = federated.get("packet").cloned().unwrap_or(Value::Null);
-                let candidates = federated
-                    .pointer("/packet/blocks")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let receipts = federated.get("receipts").cloned().unwrap_or(Value::Null);
-                let degradation_reason = federated
-                    .get("degradationReason")
-                    .filter(|value| !value.is_null())
-                    .cloned()
-                    .unwrap_or_else(|| json!("none"));
-                success(
-                    name,
-                    json!({
-                        "repositoryId":repository,
-                        "scopeId":scope,
-                        "status":status,
-                        "packet":packet,
+                let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 = match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
+                    Ok(value) => value, Err(_) => return error(name,"context_capacity_invalid","validated H8 is required"),
+                };
+                let selection: crate::push::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
+                    Ok(value) => value, Err(_) => return error(name,"context_selection_invalid","selection receipt is required"),
+                };
+                // Reuse the already validated ladder; no provider re-execution,
+                // guessed ceiling, or post-fit silent truncation is permitted.
+                for representation in &selection.plan.representations {
+                    if representation.tokens > ceiling.remaining_tokens.estimate.value.unwrap_or(0) { continue; }
+                    let mut receipt = selection.selection_receipt.clone();
+                    receipt.selected_representation_id = representation.id.clone();
+                    receipt.selected_tokens = representation.tokens;
+                    let candidates = representation.content["blocks"].as_array().cloned().unwrap_or_default();
+                    let result = success(name, json!({
+                        "repositoryId":repository,"scopeId":scope,"status":status,
+                        "packet":representation.content,
                         "candidates":candidates.iter().map(|b| json!({"id":b.get("id"),"resolver":b.get("resolver")})).collect::<Vec<_>>(),
-                        "receipts":receipts,
-                        "packetReduction":federated.get("packetReduction").and_then(|v| v.get("selectionReceipt")).cloned(),
-                        "degradationReason":degradation_reason,
+                        "receipts":federated.get("receipts"),"packetReduction":receipt,
+                        "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated":arguments.get("sufficiencyContract").is_some(),
-                    }),
-                )
+                    }));
+                    match crate::push::egress::fit_native_response(result,&ceiling) {
+                        Ok(fitted) => return fitted,
+                        Err(crate::push::recovery::RecoveryError::Limit) => continue,
+                        Err(failure) => return error(name,"context_delivery_invalid",failure.to_string()),
+                    }
+                }
+                error(name,"context_delivery_capacity_exceeded","no complete measured MCP representation fits the observed capacity")
             }
+
             "membrane_source_read" => {
                 let source_ref = arguments
                     .get("sourceRef")

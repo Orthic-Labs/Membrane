@@ -4898,8 +4898,12 @@ fn route_with_context_ingest_lease(
         let text = v.get("text").and_then(|x| x.as_str()).unwrap_or("");
         let rate = v.get("rate").and_then(|x| x.as_f64()).unwrap_or(0.5) as f32;
         let no_onnx = v.get("no_onnx").and_then(|x| x.as_bool()).unwrap_or(false);
-        let out = crate::push::compress::compress_with_options(text, rate, no_onnx);
-        (200, serde_json::json!({ "out": out }).to_string())
+        let _ = (rate, no_onnx);
+        // Legacy callers supplied no repository/session or resolver proof.
+        // Preserve their output field but do not silently externalize authority
+        // or discard bytes. Scoped clients use /push/prepare instead.
+        (200, serde_json::json!({ "out": text, "disposition":"exact",
+            "reason":"scoped_push_prepare_required_for_reduction" }).to_string())
     } else {
         (404, "{\"error\":\"unknown\"}".to_string())
     }

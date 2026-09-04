@@ -30,3 +30,5 @@ pub mod ast;
 pub mod api;
 
 pub mod packet_selection;
+
+pub mod egress;

@@ -51,6 +51,7 @@ pub fn protected_lines(source: &str) -> Vec<Span> {
         let words = line.split(|c: char| !c.is_alphanumeric() && c != '_')
             .map(str::to_ascii_lowercase).collect::<Vec<_>>();
         let critical = words.iter().any(|w| ["not", "never", "must", "shall", "cannot", "don't", "error", "failed", "failure", "panic", "warning", "exception", "decision", "approved", "rejected"].contains(&w.as_str()))
+            || line.to_ascii_lowercase().contains("don't") || line.to_ascii_lowercase().contains("can't")
             || line.chars().any(|c| c.is_numeric()) || line.contains('`') || line.contains("::")
             || line.contains("http") || line.contains('/') || line.contains('\\');
         if fence.is_some() || delimiter.is_some() || critical {

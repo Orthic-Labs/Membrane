@@ -554,6 +554,14 @@ enum PushPrepPolicyArg {
 
 #[derive(Subcommand)]
 enum PushCmd {
+    /// Explicit local retention change; restore never renews a lease.
+    Lease {
+        anchor: String,
+        #[arg(long)] expected_expiry: Option<u64>,
+        #[arg(long, conflicts_with="invalidate")] renew_ms: Option<u64>,
+        #[arg(long)] invalidate: bool,
+        #[arg(long)] spill_dir: Option<PathBuf>,
+    },
     /// Shared reversible preparation for an already-executed tool result.
     Prepare {
         /// Read a PushPrepareRequest JSON file, or stdin when omitted.
@@ -3616,6 +3624,20 @@ fn publish_cli_push_original(original: &[u8], rendered: &str) -> Result<(), Stri
 
 fn run_push(command: PushCmd) -> Result<(), String> {
     match command {
+        PushCmd::Lease { anchor, expected_expiry, renew_ms, invalidate, spill_dir } => {
+            let store = crate::push::recovery::RecoveryStore::at(spill_dir.unwrap_or_else(crate::push::recovery::default_directory));
+            let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+            if invalidate {
+                store.invalidate(&scope, &anchor).map_err(|e| e.to_string())?;
+                println!("{}", serde_json::json!({"anchor":anchor,"state":"invalidated"}));
+            } else {
+                let ttl = renew_ms.ok_or("--renew-ms or --invalidate is required")?;
+                let expected = expected_expiry.ok_or("--expected-expiry is required for renewal")?;
+                let reference = store.renew(&scope, &anchor, expected, ttl, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
+                println!("{}", serde_json::to_string(&reference).map_err(|e| e.to_string())?);
+            }
+            Ok(())
+        }
         PushCmd::Prepare { input } => {
             let mut bytes = Vec::new();
             let mut reader: Box<dyn std::io::Read> = match input {
@@ -3640,7 +3662,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             budget,
             opportunity,
         } => {
-            let src = std::fs::read_to_string(&file).map_err(|error| {
+            let src = crate::push::recovery::read_text_bounded(&file).map_err(|error| {
                 crate::push::telemetry::record(
                     "skel",
                     0,
@@ -3690,7 +3712,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             let mut input = String::new();
             match file {
                 Some(path) => {
-                    input = std::fs::read_to_string(path).map_err(|error| {
+                    input = crate::push::recovery::read_text_bounded(&path).map_err(|error| {
                         crate::push::telemetry::record(
                             "compress",
                             0,
@@ -3702,11 +3724,12 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     })?;
                 }
                 None => {
-                    std::io::stdin()
+                    std::io::stdin().take((crate::push::recovery::MAX_ARTIFACT_BYTES+1) as u64)
                         .read_to_string(&mut input)
                         .map_err(|error| error.to_string())?;
                 }
             }
+            if input.len() > crate::push::recovery::MAX_ARTIFACT_BYTES { return Err("push_input_limit".into()); }
             let (out, meta) = if let Some(budget) = budget {
                 let result =
                     crate::push::compress::compress_to_budget_with_options(&input, budget, no_onnx);
@@ -3813,13 +3836,13 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 .as_deref()
                 .and_then(|path| std::fs::metadata(path).ok())
                 .map(|metadata| metadata.len() as usize)
-                .unwrap_or_else(|| result.capped.chars().count());
+                .unwrap_or_else(|| result.capped.len());
             let status = if result.exit_code == 0 { "ok" } else { "error" };
             let metadata = format!("status={status};exit_code={}", result.exit_code);
             crate::push::telemetry::record(
                 "runc",
                 before,
-                result.capped.chars().count(),
+                result.capped.len(),
                 Some(&metadata),
                 opportunity.as_deref(),
             );

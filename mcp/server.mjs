@@ -1187,11 +1187,12 @@ export function buildServer({ shutdownSignal } = {}) {
         const push = ctx.mcpReq._meta?.["membrane.push.v1"];
         // Only our own declared output boundary and an explicit consumer proof.
         // A plain MCP installation is not an external-tool interception claim.
-        if (push && !tool.name.startsWith("membrane_push_") && args.caller && args.repository) {
+        if (push && !tool.name.startsWith("membrane_push_") && tool.name !== "membrane_source_read" && !tool.name.startsWith("membrane_diagnostic_") && args.caller && args.repository) {
           const binding = await authorize(args, "source_read");
           const prepared = await prepareToolEgress(rendered, { repository:args.repository, caller:args.caller },
             { resolverToken:push.resolverToken, maxBytes:push.maxBytes, kind:push.kind || "text", env:await bindingEnv(binding), signal:requestSignal });
-          return prepared.result;
+          if (prepared.state === "refused") throw new Error("push_final_envelope_capacity_refused");
+            return prepared.result;
         }
         return rendered;
       } catch (error) {

@@ -7,8 +7,8 @@ const digest = (text) => `sha256:${createHash("sha256").update(text).digest("hex
 
 export async function prepareToolEgress(result, binding, options = {}) {
   const { resolverToken, maxBytes, kind = "text", env = process.env, signal, request = pushRequest } = options;
-  const kept = (reason) => ({ result, state: "passthrough", receipt: { reason, observed: true, savingsBytes: 0 } });
-  if (!result || result.isError || result.disposition === "exact" || result.structuredContent?.data?.disposition === "exact") return kept("exact_or_error");
+  const kept = (reason) => ({ result, state: Number.isSafeInteger(maxBytes) && maxBytes >= 2048 && size(result) > maxBytes ? "refused" : "passthrough", receipt: { reason, observed: true, savingsBytes: 0 } });
+  if (!result || result.isError || result.disposition === "exact" || result.structuredContent?.data?.disposition === "exact" || result.structuredContent?.result?.data?.disposition === "exact" || result.structuredContent?.data?.pushRepresentation) return kept("exact_or_error");
   if (!Array.isArray(result.content) || result.content.length !== 1 || result.content[0]?.type !== "text" || typeof result.content[0].text !== "string") return kept("unsupported_parts");
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 2048 || maxBytes > 49152) return kept("invalid_budget");
   if (typeof resolverToken !== "string" || !/^[a-f0-9]{64}$/.test(resolverToken)) return kept("resolver_unavailable");
