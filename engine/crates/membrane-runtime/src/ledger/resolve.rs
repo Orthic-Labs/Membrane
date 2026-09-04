@@ -132,6 +132,11 @@ pub(crate) fn confined_bytes(root: &Path, relative: &str) -> Result<Vec<u8>, Res
 /// Imported bytes are immutable snapshots; their presence never proves that
 /// an external live source is current.
 pub(crate) fn load_source(db: &LedgerDb, root: &str, doc_id: &str) -> Result<Source, ResolveError> {
+    let identities: i64 = db.lock().query_row(
+        "SELECT COUNT(*) FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
+        params![root, doc_id], |r| r.get(0),
+    )?;
+    if identities > 1 { return Err(ResolveError::Ambiguous); }
     let (path, revision, raw_hash, generation, lifecycle, sensitivity) = db.lock().query_row(
         "SELECT path,revision,content_hash,index_generation,lifecycle_state,sensitivity
          FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
@@ -141,7 +146,9 @@ pub(crate) fn load_source(db: &LedgerDb, root: &str, doc_id: &str) -> Result<Sou
     ).optional()?.ok_or(ResolveError::Missing)?;
     if lifecycle != "active" || sensitivity != "normal" { return Err(ResolveError::Ineligible); }
     let conversion = db.lock().query_row(
-        "SELECT raw_input,raw_sha256,markdown,markdown_sha256,converter,converter_version,
+        "SELECT CASE WHEN length(raw_input)<=8388608 THEN raw_input ELSE NULL END,raw_sha256,
+                CASE WHEN length(CAST(markdown AS BLOB))<=8388608 THEN markdown ELSE NULL END,
+                markdown_sha256,converter,converter_version,
                 config_digest,losses_json,omissions_json,source_revision,ledger_generation
          FROM ledger_document_conversions WHERE doc_id=?1",
         [doc_id], |r| Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, String>(1)?,
@@ -268,7 +275,7 @@ pub fn resolve(db: &LedgerDb, repository_root: &Path, request: &ResolveRequest)
             breadcrumb: headings.split(" > ").filter(|s| !s.is_empty()).map(str::to_owned).collect(),
             span: outline::DocSpanV1 { start_byte: start, end_byte: end,
                 start_line: source.markdown[..start].bytes().filter(|b| *b == b'\n').count() + 1,
-                end_line: source.markdown[..end.saturating_sub(1)].bytes().filter(|b| *b == b'\n').count() + 1,
+                end_line: source.markdown.as_bytes().iter().take(end.saturating_sub(1)).filter(|b| **b == b'\n').count() + 1,
                 span_hash },
             neighbor_anchors: outline::NeighborAnchorsV1 { parent: parent.clone(), previous: sibling(true)?, next: sibling(false)? },
             truncated, continuation_cursor }

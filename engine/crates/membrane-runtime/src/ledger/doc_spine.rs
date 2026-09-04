@@ -1007,14 +1007,14 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     // A sync publishes one database-wide generation. Previously verified rows from other roots
     // advance in the same transaction; recall still hash-checks their live source before emit.
     tx.execute(
-        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2",
+        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)",
         rusqlite::params![generation, root_s],
     )
     .map_err(|error| error.to_string())?;
     tx.execute(
         "UPDATE ledger_doc_projections SET index_generation=?1
          WHERE parent_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
@@ -1022,7 +1022,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     tx.execute(
         "UPDATE ledger_nodes SET ledger_generation=?1
          WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
@@ -1030,7 +1030,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     tx.execute(
         "UPDATE ledger_index_publications SET ledger_generation=?1
          WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
@@ -1038,7 +1038,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     tx.execute(
         "UPDATE ledger_query_aliases SET ledger_generation=?1
          WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
@@ -1046,7 +1046,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     tx.execute(
         "UPDATE ledger_link_targets SET ledger_generation=?1
          WHERE source_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
@@ -1054,7 +1054,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     tx.execute(
         "UPDATE ledger_document_conversions SET ledger_generation=?1
          WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
+             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
          )",
         rusqlite::params![generation, root_s],
     )
