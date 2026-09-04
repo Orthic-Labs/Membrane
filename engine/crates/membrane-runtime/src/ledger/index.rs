@@ -1,6 +1,6 @@
 //! Generation-bound structural nodes, safe Unicode query processing, and Ledger-local FTS.
 
-use super::{outline::build_outline, LedgerDb};
+use super::{outline::build_outline_page, LedgerDb};
 use comrak::{nodes::NodeValue, parse_document, Arena, Options};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
@@ -172,11 +172,14 @@ pub(crate) fn replace_document_index_tx(
     )?;
     tx.execute("DELETE FROM ledger_nodes WHERE doc_id=?1", [input.doc_id])?;
 
-    let outline = build_outline(
+    // Presentation pagination must never truncate the internal index.
+    let outline = build_outline_page(
         &format!("doc://repo/worktree/{}", input.path),
         input.markdown,
         input.parser_version,
-    );
+        usize::MAX,
+        None,
+    ).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let mut anchor_to_node = BTreeMap::<String, String>::new();
     for (ordinal, section) in outline.sections.iter().enumerate() {
         let parent_id = section

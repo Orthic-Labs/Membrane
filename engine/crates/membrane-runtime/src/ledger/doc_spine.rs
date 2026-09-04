@@ -720,7 +720,9 @@ fn recall_legacy(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHi
         ) else {
             continue;
         };
-        let outline = super::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+        let outline = super::outline::build_outline_page(
+            &source_ref, &markdown, DOC_PARSER_VERSION, usize::MAX, None,
+        ).map_err(|error| error.to_string())?;
         let Some(section) = outline
             .sections
             .iter()
@@ -1084,7 +1086,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         let hash = digest(&bytes);
         let existing = match tx.query_row(
             "SELECT doc_id, content_hash, parser_version, superseded_by, \
-                        EXISTS(SELECT 1 FROM ledger_doc_artifacts child \
+                        lifecycle_state, EXISTS(SELECT 1 FROM ledger_doc_artifacts child \
                                WHERE child.repository_root=ledger_doc_artifacts.repository_root \
                                  AND child.superseded_by=ledger_doc_artifacts.doc_id) \
                  FROM ledger_doc_artifacts \
@@ -1096,7 +1098,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, bool>(4)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, bool>(5)?,
                 ))
             },
         ) {
@@ -1104,7 +1107,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(error) => return Err(error.to_string()),
         };
-        if let Some((id, old_hash, parser_version, superseded_by, supersedes)) = &existing {
+        if let Some((id, old_hash, parser_version, superseded_by, lifecycle, supersedes)) = &existing {
             let has_projection = projections_available
                 && tx
                     .query_row(
@@ -1120,6 +1123,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             if old_hash == &hash
                 && parser_version == DOC_PARSER_VERSION
                 && superseded_by.is_none()
+                && matches!(lifecycle.as_str(), "active" | "draft" | "retired")
                 && !supersedes
                 && has_projection
                 && has_current_index
@@ -1148,7 +1152,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                 invalidated += 1;
             }
         }
-        let markdown = String::from_utf8_lossy(&bytes).into_owned();
+        let markdown = String::from_utf8(bytes)
+            .map_err(|_| "ledger_document_unsupported_encoding".to_owned())?;
         parsed += 1;
         let frontmatter = parse_frontmatter(&markdown)?;
         let (class, influence, sensitivity, generated) = classify(&relative);
@@ -1157,13 +1162,10 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             digest(root_s.as_bytes())[..16].to_string(),
             digest(relative.as_bytes())[..16].to_string()
         );
-        let id: String = tx
-            .query_row(
-                "SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root=?1 AND content_hash=?2 AND lifecycle_state='active' AND path<>?3 ORDER BY updated_at_ms DESC LIMIT 1",
-                rusqlite::params![root_s, hash, relative],
-                |row| row.get(0),
-            )
-            .unwrap_or(default_id);
+        // A content hash identifies bytes, not a source. In particular, copying
+        // a document must not replace the original's nodes or authorization.
+        // A separate, qualified relocation operation owns move history.
+        let id = existing.as_ref().map(|row| row.0.clone()).unwrap_or(default_id);
         let lifecycle = frontmatter.status.as_deref().unwrap_or("active");
         let keywords_json =
             serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
@@ -1230,7 +1232,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     for (new_id, _, target_path) in &supersessions {
         tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
     }
-    let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2 AND NOT EXISTS(SELECT 1 FROM ledger_document_conversions conversion WHERE conversion.doc_id=ledger_doc_artifacts.doc_id)", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
     super::link_projection::resolve_link_targets_tx(&tx, &root_s)
         .map_err(|error| error.to_string())?;
     for input in &projection_inputs {
