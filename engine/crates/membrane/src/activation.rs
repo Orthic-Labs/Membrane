@@ -642,15 +642,41 @@ fn launch_tray_with_mode(
     // A resident tray that keeps the caller's stdout pipe open makes every
     // scripted `membrane activate` hang until the tray exits — the readiness
     // deadline expires long before the pipe closes, so the bound looks
-    // ignored. The tray writes to membrane-hub.log, not to our stdout.
+    // ignored. Redirecting to null fixed the hang but threw the tray's own
+    // diagnostics away with it, which hid why Blueprint failed to serve; send
+    // them to a log under the same root doctor reports instead.
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(tray_log_target())
+        .stderr(tray_log_target());
     command
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("launch installed tray {}: {error}", tray.display()))
+}
+
+/// Append the tray's own output to `membrane-tray.log` under the Windows log
+/// root. Falls back to a discarded stream so a logging failure never stops
+/// activation — but never back to inheriting the caller's pipe, which is what
+/// made `membrane activate` hang.
+fn tray_log_target() -> Stdio {
+    let Some(root) = std::env::var_os("MEMBRANE_LOG_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("Membrane"))
+        })
+    else {
+        return Stdio::null();
+    };
+    if std::fs::create_dir_all(&root).is_err() {
+        return Stdio::null();
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("membrane-tray.log"))
+        .map(Stdio::from)
+        .unwrap_or(Stdio::null())
 }
 
 fn wait_for_shutdown(
