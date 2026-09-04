@@ -1,0 +1,59 @@
+{
+ "message":"feat(ledger): wire the daemon owner through CLI, native MCP and Pull\n\nKeep operational clients stateless, advertise a complete resolver contract,\nregister a native document provider, and retain the qualification fence.\nNo build, runtime activation or release qualification is claimed.",
+ "files":[
+  {"path":"engine/crates/membrane-runtime/src/ledger/mod.rs","sha":"ee5f15e07fb4d2e1a56e2e14f0ec7661e502371f","replacements":[{"before":"pub mod db;","after":"pub(crate) mod cli;\npub(crate) mod service;\npub(crate) mod provider;\npub(crate) mod qualification;\npub mod db;"}]},
+  {"path":"engine/crates/membrane-runtime/src/ledger/service.rs","sha":"c49e3eb378ee8e74228ad39904a89d90af5c5eb1","replacements":[
+   {"before":"    pub root: String,\n    pub repository_id:","after":"    pub root: String,\n    registry_root: String,\n    pub repository_id:"},
+   {"before":"let caller = Self { root, repository_id:","after":"let caller = Self { root, registry_root: get(\"root\")?, repository_id:"},
+   {"before":"Some(&caller.repository_id)","after":"Some(caller.repository_id.as_str())"},
+   {"before":"Ok(Self { root: canonical, repository_id:","after":"Ok(Self { root: canonical, registry_root: binding.root.clone(), repository_id:"},
+   {"before":"caller_root: &self.root, caller_repository_id:","after":"caller_root: &self.registry_root, caller_repository_id:"},
+   {"before":"    fn digest(&self) -> String {","after":"    pub(crate) fn envelope(&self) -> Value {\n        let mut value = json!({\"root\":self.registry_root,\"repositoryId\":self.repository_id,\"scopeId\":self.scope_id});\n        if let Some(descriptor) = &self.descriptor { value[\"scopeDescriptor\"] = descriptor.clone(); }\n        value\n    }\n    fn digest(&self) -> String {"},
+   {"before":"fn permitted_path(db:","after":"pub(crate) fn permitted_path(db:"}
+  ]},
+  {"path":"engine/crates/membrane-protocol/src/federation.rs","sha":"8589f5fc4c4d159f0bd6fa01b64dbe9dbbc5c318","replacements":[
+   {"before":"pub const PROVIDER_ORDER: [&str; 9]","after":"pub const PROVIDER_ORDER: [&str; 10]"},
+   {"before":"    \"cortex\",\n];","after":"    \"cortex\",\n    \"ledger\",\n];"},
+   {"before":"    Cortex,\n}","after":"    Cortex,\n    Ledger,\n}"},
+   {"before":"pub const ALL: [Self; 9]","after":"pub const ALL: [Self; 10]"},
+   {"before":"        Self::Cortex,\n    ];","after":"        Self::Cortex,\n        Self::Ledger,\n    ];"},
+   {"before":"            Self::Cortex => \"cortex\",","after":"            Self::Cortex => \"cortex\",\n            Self::Ledger => \"ledger\","}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/pull/federation_sources.rs","sha":"8635270028bcebb17797268713eddd072fe924ac","replacements":[
+   {"before":"pub struct NativeSourceBindings {","after":"pub struct NativeSourceBindings {\n    pub(crate) ledger: Option<Arc<crate::ledger::service::LedgerService>>,"},
+   {"before":"            .field(\"release\", &self.release.is_some())","after":"            .field(\"release\", &self.release.is_some())\n            .field(\"ledger\", &self.ledger.is_some())"},
+   {"before":"            audit: Some(Arc::new(EmptyAuditSource)),","after":"            ledger: crate::ledger::service::active_owner().ok(),\n            audit: Some(Arc::new(EmptyAuditSource)),"}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/pull/native_federation.rs","sha":"ff3df7e9fcbbb3f90969bd5c2ef3c9e281785328","replacements":[
+   {"before":"        ];\n        let registry = ProviderRegistry::new(providers)","after":"            registration(ProviderId::Ledger, \"native.ledger\",\n                Arc::new(crate::ledger::provider::LedgerProvider::new(bindings.ledger.clone())), vec![]),\n        ];\n        let registry = ProviderRegistry::new(providers)"}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/cli.rs","sha":"3db09dac444e3b581e0983ce3f0f5234512c4ab8","regions":[
+   {"start":"#[derive(Subcommand)]\nenum LedgerCmd {","end":"#[derive(Subcommand)]\nenum CheckpointCmd","content":"use crate::ledger::cli::LedgerCmd;\n\n"},
+   {"start":"    if let Cmd::Ledger { command } = &cli.cmd {","end":"    if matches!(cli.cmd, Cmd::Adapt { .. }) {","content":"    if let Cmd::Ledger { command } = &cli.cmd {\n        return crate::ledger::cli::run(command);\n    }\n"}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/mcp_executor.rs","sha":"8411edf36daf7ed36b2d479a70693ea4f512f581","replacements":[
+   {"before":"pub struct RuntimeMcpExecutor {","after":"pub struct RuntimeMcpExecutor {\n    ledger: Option<Arc<crate::ledger::service::LedgerService>>,"},
+   {"before":"    pub fn for_hub(store: MemoryStore) -> Result<Self, String> {\n        Ok(Self {","after":"    pub fn for_hub(store: MemoryStore) -> Result<Self, String> {\n        crate::ledger::service::install_daemon_owner();\n        Ok(Self {\n            ledger: crate::ledger::service::active_owner().ok(),"},
+   {"before":"            diagnostics: Mutex::new(diagnostics),","after":"            diagnostics: Mutex::new(diagnostics),\n            ledger: Some(Arc::new(crate::ledger::service::LedgerService::in_memory())),"},
+   {"before":"impl NativeMcpExecutor for HubTransportExecutor {","after":"pub(crate) fn active_hub_client() -> Result<Box<dyn NativeMcpExecutor>, String> {\n    Ok(Box::new(HubTransportExecutor::active()?))\n}\n\nimpl NativeMcpExecutor for HubTransportExecutor {"},
+   {"before":"        \"membrane_source_read\" => \"source_read\",","after":"        \"membrane_source_read\" => \"source_read\",\n        \"membrane_ledger\" => match arguments.get(\"operation\").and_then(Value::as_str) {\n            Some(\"erase\" | \"activate\" | \"ingest\") => \"checkpoint\",\n            Some(\"status\") => \"system_status\",\n            _ => \"context\",\n        },"}
+  ],"regions":[
+   {"start":"            \"membrane_source_read\" => {\n","end":"            \"membrane_blueprint\" => {\n","content":"            \"membrane_source_read\" | \"membrane_ledger\" => {\n                let Some(owner) = self.ledger.as_ref() else {\n                    return error(name, \"ledger_unavailable\", \"tray-owned Ledger service is unavailable\");\n                };\n                let deadline = arguments.get(\"deadlineMs\").and_then(Value::as_u64).unwrap_or(2000).clamp(1,30000);\n                let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_millis(deadline));\n                let result = if name == \"membrane_source_read\" { owner.read(arguments, &budget) }\n                    else { owner.operation(arguments, &budget) };\n                match result {\n                    Ok(value) => success(name, value),\n                    Err(reason) => {\n                        let code = if name == \"membrane_source_read\" {\n                            if reason.contains(\"stale\") || reason == \"source_changed\" { \"source_read_hash_mismatch\" }\n                            else if reason.contains(\"denied\") || reason.contains(\"ineligible\") || reason.contains(\"erased\") { \"source_read_scope_denied\" }\n                            else if reason.contains(\"relocated\") { \"source_read_anchor_missing\" }\n                            else if reason.contains(\"required\") || reason.contains(\"invalid\") || reason.contains(\"mismatch\") { \"source_read_envelope_invalid\" }\n                            else { \"source_read_unavailable\" }\n                        } else { \"ledger_operation_failed\" };\n                        error(name, code, reason)\n                    }\n                }\n            }\n"}
+  ]},
+  {"path":"engine/crates/membrane-mcp/src/tools.rs","sha":"a7b41d086af54acc9771d1cc1f7df8166864eb8f","replacements":[
+   {"before":"    \"membrane_feedback\",\n];","after":"    \"membrane_feedback\",\n    \"membrane_ledger\",\n];"},
+   {"before":"    let (required, properties) = match name {","after":"    let (required, mut properties) = match name {"},
+   {"before":"        \"membrane_blueprint\" => (","after":"        \"membrane_ledger\" => (\n            vec![\"repository\", \"caller\", \"operation\"],\n            json!({\"repository\":{\"type\":\"string\"},\"caller\":caller(),\n                \"operation\":{\"enum\":[\"recall\",\"literal\",\"outline\",\"sync\",\"status\",\"activate\",\"erase\",\"backlinks\",\"manifests\",\"drift\",\"ingest\"]},\n                \"query\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":4096},\n                \"k\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":32},\n                \"path\":{\"type\":\"string\"},\"docId\":{\"type\":\"string\"},\"nodeId\":{\"type\":\"string\"},\n                \"expectedContentHash\":{\"type\":\"string\"},\"continuationCursor\":{\"type\":\"string\"},\n                \"maxSections\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":256},\n                \"limit\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":256},\n                \"mode\":{\"enum\":[\"legacy_scan\",\"shadow\",\"ledger_fts\"]},\n                \"fromManifest\":{\"type\":\"string\"},\"toManifest\":{\"type\":\"string\"},\n                \"deadlineMs\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30000},\n                \"taskGrantLevel\":{\"type\":\"string\"}}),\n        ),\n        \"membrane_blueprint\" => ("},
+   {"before":"    json!({\"type\":\"object\",\"required\":required,\"properties\":properties,\"additionalProperties\":false})","after":"    if name == \"membrane_source_read\" {\n        for field in [\"docId\",\"nodeId\",\"expectedRevision\",\"expectedSpanHash\",\"continuationCursor\",\"ledgerTicket\"] {\n            properties[field] = json!({\"type\":\"string\",\"maxLength\":8192});\n        }\n        properties[\"ledgerGeneration\"] = json!({\"type\":\"integer\",\"minimum\":0});\n        properties[\"maxBytes\"] = json!({\"type\":\"integer\",\"minimum\":1,\"maximum\":12000});\n        properties[\"deadlineMs\"] = json!({\"type\":\"integer\",\"minimum\":1,\"maximum\":30000});\n    }\n    if name == \"membrane_context\" { properties[\"scopeGrantId\"] = json!({\"type\":\"string\"}); }\n    json!({\"type\":\"object\",\"required\":required,\"properties\":properties,\"additionalProperties\":false})"},
+   {"before":"\"default\" | \"memory\" | \"blueprint\" | \"diagnostic\"","after":"\"default\" | \"memory\" | \"blueprint\" | \"diagnostic\" | \"ledger\""},
+   {"before":"let mut names = vec![\"membrane_context\"];","after":"let mut names = vec![\"membrane_context\", \"membrane_source_read\", \"membrane_ledger\"];"},
+   {"before":"\"memory\" => &CORE[3..],","after":"\"memory\" => &CORE[3..10],\n            \"ledger\" => &[\"membrane_source_read\", \"membrane_ledger\"],"}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/ledger/db.rs","sha":"03240b3efaf4d9cb76936b04465638953cd12cd2","replacements":[
+   {"before":"const LEDGER_SCHEMA: &str = r#\"","after":"const LEDGER_SCHEMA: &str = r#\"\nCREATE TABLE IF NOT EXISTS ledger_erasure_fences (\n repository_root TEXT NOT NULL,path_digest TEXT NOT NULL,erased_at_ms INTEGER NOT NULL,\n PRIMARY KEY(repository_root,path_digest));"}
+  ]},
+  {"path":"engine/crates/membrane-runtime/src/ledger/doc_spine.rs","sha":"0dbbe3e7631a2b7123370377ffcc6df4642e45b1","replacements":[
+   {"before":"        let bytes = super::resolve::confined_bytes(&root, &relative)","after":"        let erased: bool = tx.query_row(\n            \"SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)\",\n            rusqlite::params![root_s,digest(relative.as_bytes())], |r| r.get(0),\n        ).map_err(|e| e.to_string())?;\n        if erased { continue; }\n        let bytes = super::resolve::confined_bytes(&root, &relative)"}
+  ]}
+ ]
+}
