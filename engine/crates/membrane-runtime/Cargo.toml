@@ -20,7 +20,7 @@ membrane-federation = { path = "../membrane-federation" }
 membrane-provider-sdk = { path = "../membrane-provider-sdk" }
 membrane-adapt = { path = "../membrane-adapt" }
 membrane-transcript = { path = "../membrane-transcript" }
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "hooks"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -35,6 +35,7 @@ flate2 = "1"
 sha2 = "0.11"
 hex = { workspace = true }
 comrak = "0.54"
+ignore = "=0.4.33"
 unicode-normalization = "0.1"
 tree-sitter = "0.26"
 tree-sitter-rust = "0.24"

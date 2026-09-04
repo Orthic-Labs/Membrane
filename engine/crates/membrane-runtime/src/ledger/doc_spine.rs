@@ -13,7 +13,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub struct GrantedDocumentIngestV1 {
@@ -356,6 +356,8 @@ pub struct DocSyncReport {
     pub skipped: usize,
     pub deleted: usize,
     pub invalidated: usize,
+    pub policy_digest: String,
+    pub complete: bool,
 }
 
 const DOC_PARSER_VERSION: &str = "comrak-0.54.0";
@@ -856,132 +858,14 @@ pub struct DocRecallHitV1 {
     pub normalized_query: String,
 }
 
-#[derive(Debug)]
-struct IgnoreRule {
-    base: PathBuf,
-    pattern: String,
-}
-
-fn ignored(root: &Path, path: &Path, rules: &[IgnoreRule]) -> bool {
-    rules.iter().any(|rule| {
-        let Ok(relative) = path.strip_prefix(&rule.base) else {
-            return false;
-        };
-        let relative = relative.to_string_lossy().replace('\\', "/");
-        let pattern = rule.pattern.trim_matches('/');
-        if pattern.is_empty() {
-            return false;
-        }
-        if pattern.contains('/') {
-            relative == pattern || relative.starts_with(&format!("{pattern}/"))
-        } else {
-            relative.split('/').any(|part| part == pattern)
-                || path
-                    .strip_prefix(root)
-                    .ok()
-                    .and_then(|p| p.file_name())
-                    .is_some_and(|name| name == pattern)
-        }
-    })
-}
-
-fn load_gitignore(dir: &Path, rules: &mut Vec<IgnoreRule>) {
-    let Ok(contents) = std::fs::read_to_string(dir.join(".gitignore")) else {
-        return;
-    };
-    for line in contents.lines() {
-        let line = line.trim();
-        if !line.is_empty() && !line.starts_with('#') && !line.starts_with('!') {
-            rules.push(IgnoreRule {
-                base: dir.to_path_buf(),
-                pattern: line.to_string(),
-            });
-        }
-    }
-}
-
-fn has_health_component(path: &Path) -> bool {
-    path.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .is_some_and(|name| name.eq_ignore_ascii_case("health"))
-    })
-}
-
-fn hard_excluded(path: &Path) -> bool {
-    let components = path
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .map(|component| component.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    components.iter().any(|component| {
-        matches!(
-            component.as_str(),
-            ".git" | "node_modules" | ".cache" | "target" | ".venv" | "vendor" | "memory-mirror"
-        )
-    }) || components.last().is_some_and(|name| name == "memory.md")
-}
-
-fn walk(
-    root: &Path,
-    output: &mut Vec<PathBuf>,
-    excluded_health: &mut usize,
-) -> std::io::Result<()> {
-    let mut pending = vec![(root.to_path_buf(), 0usize)];
-    let mut ignore_rules = Vec::new();
-    while let Some((dir, depth)) = pending.pop() {
-        if depth > 64 {
-            continue;
-        }
-        load_gitignore(&dir, &mut ignore_rules);
-        for item in std::fs::read_dir(&dir)? {
-            let item = item?;
-            let path = item.path();
-            let relative = path.strip_prefix(root).unwrap_or(&path);
-            let kind = item.file_type()?;
-            if kind.is_symlink() {
-                continue;
-            }
-            if has_health_component(relative) {
-                *excluded_health += 1;
-                continue;
-            }
-            if hard_excluded(relative) {
-                continue;
-            }
-            if ignored(root, &path, &ignore_rules) {
-                continue;
-            }
-            if kind.is_dir() {
-                let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
-                if matches!(
-                    name,
-                    ".git"
-                        | "node_modules"
-                        | "target"
-                        | ".cache"
-                        | ".venv"
-                        | "vendor"
-                        | "memory-mirror"
-                ) {
-                    continue;
-                }
-                pending.push((path, depth + 1));
-            } else if path
-                .extension()
-                .and_then(|v| v.to_str())
-                .is_some_and(|v| v.eq_ignore_ascii_case("md"))
-            {
-                output.push(path);
-            }
-        }
-    }
-    Ok(())
-}
-
 #[inline(never)]
 pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
+    let budget = super::limits::WorkBudget::bounded(std::time::Duration::from_secs(30));
+    sync_bounded(db, root, &budget)
+}
+
+pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudget) -> Result<DocSyncReport, String> {
+    budget.check()?;
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
     let root_s = root.to_string_lossy().replace('\\', "/");
     let revision = std::process::Command::new("git")
@@ -992,9 +876,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "worktree".into());
-    let mut files = Vec::new();
-    let mut excluded_health = 0;
-    walk(&root, &mut files, &mut excluded_health).map_err(|e| e.to_string())?;
+    let (files, excluded_health, mut policy) = super::policy::walk_markdown(&root, budget)?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let generation: i64 = tx
@@ -1076,13 +958,12 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     let mut projection_inputs = Vec::new();
     let mut supersessions = Vec::new();
     for file in files {
-        let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+        budget.check()?;
+        let relative = file.strip_prefix(&root).map_err(|_| "ledger_path_denied")?
+            .to_str().ok_or("ledger_path_unsupported")?.replace('\\', "/");
+        let bytes = super::resolve::confined_bytes(&root, &relative).map_err(|e| e.to_string())?;
+        budget.charge_bytes(bytes.len())?;
         hashed += 1;
-        let relative = file
-            .strip_prefix(&root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
         let hash = digest(&bytes);
         let existing = match tx.query_row(
             "SELECT doc_id, content_hash, parser_version, superseded_by, \
@@ -1232,12 +1113,14 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     for (new_id, _, target_path) in &supersessions {
         tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
     }
-    let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2 AND NOT EXISTS(SELECT 1 FROM ledger_document_conversions conversion WHERE conversion.doc_id=ledger_doc_artifacts.doc_id)", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    let tombstoned = super::reconcile::markdown_absences(&tx, &root_s, generation, now, &mut policy, budget)?;
     super::link_projection::resolve_link_targets_tx(&tx, &root_s)
         .map_err(|error| error.to_string())?;
     for input in &projection_inputs {
         replace_doc_projections_tx(&tx, input).map_err(|e| e.to_string())?;
     }
+    budget.check()?;
+    policy.revalidate(budget)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(DocSyncReport {
         registered,
@@ -1250,5 +1133,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         skipped,
         deleted: tombstoned,
         invalidated,
+        policy_digest: policy.digest(),
+        complete: true,
     })
 }
