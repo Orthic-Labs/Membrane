@@ -548,7 +548,11 @@ fn native_request(
     membrane_protocol::FederationRequestV1 {
         schema_version: membrane_protocol::FEDERATION_REQUEST_SCHEMA_VERSION,
         request_id,
-        trace_id: String::new(),
+        // Every packet built from this request is refused without one, so an
+        // empty trace id meant no context request could ever produce a packet
+        // — the reduction plan rejects `traceId` before it looks at anything
+        // else. The same generator already stamps the verify path.
+        trace_id: new_trace_id(),
         task: task.to_owned(),
         repository_root: repository_root.clone(),
         client: client.to_owned(),
