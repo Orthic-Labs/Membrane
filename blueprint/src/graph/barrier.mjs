@@ -8,6 +8,9 @@ import { withStoreLease } from "./store-lease.mjs";
 import { gitSourceObservation } from "./git-source-observation.mjs";
 import { computeManifestDigest } from "./generation-identity.mjs";
 
+// Cleared only by `blueprint phase2 seal`, never by reconciliation.
+const PHASE2_PRODUCT_DOMAINS = ["doc", "semantic"];
+
 const POLL_MS = 25;
 function canonicalRoot(value) { const root = resolve(value); try { return realpathSync(root); } catch { return root; } }
 
@@ -140,14 +143,27 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
   // `stale_blocked` for every query until someone rebuilt by hand. Caught up
   // with no event gap and nothing pending is precisely the state in which the
   // graph does describe the current tree, so that is when it is recorded.
-  // `domains_pending` is deliberately not part of this test. It tracks
-  // phase-2 products (doc, semantic), which only `blueprint phase2 seal`
-  // clears — so requiring it empty would mean the observation could never be
-  // advanced once a single document changed. What is being recorded here is
-  // the source the *graph* was applied from, and caught up with no event gap
-  // is exactly that.
+  // A gap whose only cause is a phase-2 product does not mean the graph is
+  // behind the tree.
+  //
+  // `doc` and `semantic` are cleared only by `blueprint phase2 seal`, never by
+  // reconciliation, so reconcile leaves `event_gap` latched at 1 after any
+  // document change. That is the reconcile contract and stays as it is — but
+  // it must not also mean the observation can never be advanced, because then
+  // freshness never returns to `fresh`, recall collapses to
+  // `no_relevant_seed`, and a resident reader refuses every query with no path
+  // back short of a manual rebuild.
+  //
+  // What is recorded here is the source the *graph* was applied from: nothing
+  // of the tree left unapplied, and no gap owed to anything but those
+  // products.
+  const pending = pendingDomains(finalState);
+  const sourceGapOnly = pending.some((domain) => !PHASE2_PRODUCT_DOMAINS.includes(domain));
+  const graphMatchesTree =
+    Number(finalState.applied_clock ?? 0) >= targetClock
+    && (finalState.event_gap !== "1" || !sourceGapOnly);
   const reseal =
-    barrierResult === "caught_up" && finalState.event_gap !== "1"
+    (barrierResult === "caught_up" || graphMatchesTree) && !sourceGapOnly
       ? gitSourceObservation(repoRoot)
       : null;
   db.exec("BEGIN;");

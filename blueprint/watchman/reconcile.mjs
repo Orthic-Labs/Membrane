@@ -84,16 +84,7 @@ export function evaluateConvergenceOracle(db, sourceFiles, { traversalTruncated 
     .split(",").map((value) => value.trim()).filter(Boolean).sort();
   const eventGap = eventGapOverride ?? (db.prepare("SELECT value FROM watch_state WHERE key='event_gap'").get()?.value === "1");
   const mismatches = Object.freeze({ changed: delta.changed, added: delta.added, removed: delta.removed });
-  // Convergence is a statement about the source: the tree was fully traversed,
-  // every observed event has been applied, and the ledger matches what is on
-  // disk. `domainsPending` is not part of that — it tracks phase-2 products
-  // (doc, semantic) that only `blueprint phase2 seal` clears. Requiring it
-  // empty made convergence unreachable after any document change, which left
-  // `event_gap` latched at 1 forever: the barrier then answered `gap_blocked`
-  // to every caller and a resident reader refused every query as stale, with
-  // no path back short of a manual rebuild. It is still reported below, so a
-  // caller that does care about phase-2 freshness can still see it.
-  const converged = !traversalTruncated && !eventGap && pendingEvents === 0
+  const converged = !traversalTruncated && !eventGap && pendingEvents === 0 && domainsPending.length === 0
     && mismatches.changed.length === 0 && mismatches.added.length === 0 && mismatches.removed.length === 0;
   return Object.freeze({
     schemaVersion: 1,
