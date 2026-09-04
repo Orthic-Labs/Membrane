@@ -5,6 +5,8 @@ import { reconcile } from "../../watchman/reconcile.mjs";
 import { closeStore, getGenerationEnvelope, insertGenerationReceipt, openStore, openStoreReadOnly } from "./store-sqlite.mjs";
 import { recordBarrierDuration } from "../lib/telemetry.mjs";
 import { withStoreLease } from "./store-lease.mjs";
+import { gitSourceObservation } from "./git-source-observation.mjs";
+import { computeManifestDigest } from "./generation-identity.mjs";
 
 const POLL_MS = 25;
 function canonicalRoot(value) { const root = resolve(value); try { return realpathSync(root); } catch { return root; } }
@@ -127,10 +129,40 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
       error: error?.message ?? null,
     },
   };
+  // Re-seal the observation freshness is judged against once the watcher has
+  // provably applied everything it saw.
+  //
+  // `evaluateFreshness` compares the sealed `sourceObservation` with the
+  // worktree right now, but only a full `graph build` ever wrote that field.
+  // So an ordinary commit — which moves HEAD without changing a single
+  // indexed byte — left the graph permanently `changed_since_generation`:
+  // recall degraded to `no_relevant_seed`, and a resident reader answered
+  // `stale_blocked` for every query until someone rebuilt by hand. Caught up
+  // with no event gap and nothing pending is precisely the state in which the
+  // graph does describe the current tree, so that is when it is recorded.
+  const reseal =
+    barrierResult === "caught_up"
+    && finalState.event_gap !== "1"
+    && pendingDomains(finalState).length === 0
+      ? gitSourceObservation(repoRoot)
+      : null;
   db.exec("BEGIN;");
   try {
     recordBarrierDuration(db, receipt.details.elapsedMs);
     insertGenerationReceipt(db, receipt);
+    if (reseal?.head && envelope?.manifest) {
+      // `manifestDigest` is a checksum over an identity surface that includes
+      // the observation, so the two move together or `manifestDigestValid`
+      // goes false and the same staleness returns by another route. The
+      // generation's own identity — nodes, edges, sourceHash — is untouched.
+      const manifest = { ...envelope.manifest, manifestDigest: undefined };
+      manifest.manifestDigest = computeManifestDigest(manifest, reseal);
+      const put = db.prepare(
+        "INSERT INTO generation (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      );
+      put.run("sourceObservation", JSON.stringify(reseal));
+      put.run("manifest", JSON.stringify(manifest));
+    }
     db.exec("COMMIT;");
   } catch (persistError) {
     db.exec("ROLLBACK;");
