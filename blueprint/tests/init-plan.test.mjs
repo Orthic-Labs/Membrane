@@ -67,6 +67,23 @@ test("auto host falls back to generic with no configs", (t) => {
   }
 });
 
+
+
+test("codex command does not imply Claude Code is installed", () => {
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-codex-only-"));
+  try {
+    const hosts = detectHosts({
+      explicit: "auto",
+      root,
+      commandProbe: (command) => command === "codex",
+    });
+    assert.deepEqual(hosts, ["codex"]);
+    assert.ok(!hosts.includes("claude-code"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("mcp auto enables only for claude-code; explicit on/off respected", () => {
   const root = mkdtempSync(join(tmpdir(), "blueprint-init-mcp-"));
   try {
