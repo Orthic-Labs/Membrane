@@ -19,7 +19,7 @@ All 28 donor-better atoms now have production-path implementations at final hard
 | BPT-009 | DELIVERED | `blueprint/src/providers/schemas/sql.mjs` | `blueprint/src/providers/build.mjs`; graph generation | COMPLETE |
 | BPT-018 | DELIVERED | `blueprint/src/providers/modules/javascript.mjs`; `blueprint/src/providers/modules/python-resolver.mjs` | `blueprint/src/providers/build.mjs`; graph generation | COMPLETE |
 | BPT-019 | DELIVERED | `blueprint/src/graph/freshness-receipt.mjs` | `blueprint/src/lib/application/service.mjs`; query response boundary | COMPLETE |
-| BPT-021 | DELIVERED | `blueprint/watchman/reconcile.mjs`; `blueprint/src/providers/build.mjs` | full/incremental convergence oracle | COMPLETE |
+| BPT-021 | PARTIAL | `blueprint/watchman/reconcile.mjs`; `blueprint/src/providers/build.mjs` | full/incremental convergence oracle | OPEN |
 | BPT-023 | DELIVERED | `blueprint/src/graph/seed-resolver.mjs` | `blueprint/src/graph/recall-circuit.mjs`; application service | COMPLETE |
 | BPT-025 | DELIVERED | `blueprint/src/graph/recall-circuit.mjs` | `blueprint/src/lib/application/service.mjs`; SDK/protocol | COMPLETE |
 | BPT-029 | DELIVERED | `blueprint/src/graph/seed-resolver.mjs` | `blueprint/src/lib/application/service.mjs`; SDK/protocol | COMPLETE |

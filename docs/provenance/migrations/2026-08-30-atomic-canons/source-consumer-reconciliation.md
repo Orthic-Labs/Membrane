@@ -56,7 +56,7 @@ Freshness: `2026-08-30`.
 | BPT-032 | PARTIAL | `blueprint/src/graph/traverse-store.mjs:239-288,430-451` | `blueprint/src/lib/application/service.mjs:345-360` | Only resolved anchor exists; seed families remain. |
 | BPT-036 | DELIVERED | `blueprint/src/graph/snapshots.mjs:30-58` | `blueprint/scripts/blueprint.mjs:2433` | COMPLETE |
 | BPT-041 | PARTIAL | `blueprint/src/lib/admission.mjs:24-42,180-323,330-599`; `blueprint/src/lib/orientation-evidence.mjs:50-92` | `blueprint/src/lib/admission.mjs:167`; `blueprint/scripts/blueprint.mjs:3042-3170` | Full cross-adapter envelope & host enforcement remain absent. |
-| BPT-043 | DELIVERED | `blueprint/watchman/repo-actor.mjs:233-470,535-601`; `blueprint/watchman/supervisor.mjs:147-248` | `blueprint/src/service/server.mjs:122-166` | COMPLETE |
+| BPT-043 | PARTIAL | `blueprint/watchman/repo-actor.mjs:233-470,535-601`; `blueprint/watchman/supervisor.mjs:147-248` | `blueprint/src/service/server.mjs:122-166` | OPEN |
 | BPT-046 | DELIVERED | `blueprint/src/lib/operations/doctor.mjs:83-160` | `blueprint/scripts/blueprint.mjs:3853-3897` | COMPLETE |
 | BPT-047 | PARTIAL | `blueprint/src/lib/federation/index.mjs:7-28` | NONE | Wire multi-repository slices. |
 | BPT-053 | PARTIAL | `blueprint/src/providers/frameworks/index.mjs:6-51` | NONE | Register/invoke framework extractors in generation build/provider path & bind output to generation/provider evidence. |
