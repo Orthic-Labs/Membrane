@@ -12,19 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 0
           persist-credentials: false
-      - name: Export tracked source and commit history only
+      - name: Export current tracked source only
         shell: bash
         run: |
           set -euo pipefail
-          git bundle create "$RUNNER_TEMP/membrane.bundle" HEAD
-          git bundle verify "$RUNNER_TEMP/membrane.bundle"
-          sha256sum "$RUNNER_TEMP/membrane.bundle"
+          git archive --format=tar HEAD | gzip -1 > "$RUNNER_TEMP/membrane-source.tar.gz"
+          sha256sum "$RUNNER_TEMP/membrane-source.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
-          name: cortex-source-bundle
-          path: ${{ runner.temp }}/membrane.bundle
+          name: cortex-source-tree
+          path: ${{ runner.temp }}/membrane-source.tar.gz
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
