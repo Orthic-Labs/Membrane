@@ -78,24 +78,34 @@ pub fn run_federate(
     );
     let admitted_grant = admitted_publication_grant(&request)?;
     let started = Instant::now();
-    let (response, native_metrics, freshness) = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("create native federation runtime: {error}"))?
-        .block_on(async {
-            let bindings = federation_sources::NativeSourceBindings::for_repository(
-                &root,
-                scope_grant_id.as_deref(),
-            )?;
-            let native = native_federation::NativeFederation::new(bindings)?;
-            let response = native
-                .federate(&request, tokio_util::sync::CancellationToken::new())
-                .await?;
-            let freshness = native
-                .freshness_snapshot()
-                .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
-            Ok::<_, String>((response, native.metrics_snapshot(), freshness))
-        })?;
+    // Same hazard as the request path below: a synchronous entry that built
+    // a runtime inline panicked when it was reached from the resident
+    // Hub's async worker. Drive it on its own thread instead.
+    let (response, native_metrics, freshness) = std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| format!("create native federation runtime: {error}"))?
+                    .block_on(async {
+                    let bindings = federation_sources::NativeSourceBindings::for_repository(
+                        &root,
+                        scope_grant_id.as_deref(),
+                    )?;
+                    let native = native_federation::NativeFederation::new(bindings)?;
+                    let response = native
+                        .federate(&request, tokio_util::sync::CancellationToken::new())
+                        .await?;
+                    let freshness = native
+                        .freshness_snapshot()
+                        .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
+                    Ok::<_, String>((response, native.metrics_snapshot(), freshness))
+                    })
+            })
+            .join()
+            .map_err(|_| "native federation thread panicked".to_owned())?
+    })?;
     let ccs = native_response_to_ccs(&response, &request, &freshness);
     let native_receipts = collect_native_receipts(&response);
     let mut payload = envelope_from_ccs(
@@ -241,11 +251,26 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             scope_grant_id.as_deref(),
         )?;
         let native = native_federation::NativeFederation::new(bindings)?;
-        let response = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| format!("create native federation runtime: {error}"))?
-            .block_on(native.federate(&request, tokio_util::sync::CancellationToken::new()))?;
+        // This routine is synchronous and is called from two places: a stdio
+        // process with no reactor, and the resident Hub's async worker. Building
+        // a runtime inline panicked in the second case ("Cannot start a runtime
+        // from within a runtime"), which unwound the connection task and closed
+        // the socket with no response at all. Drive the future on its own
+        // thread so the caller's context does not decide whether this works.
+        let response = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|error| format!("create native federation runtime: {error}"))?
+                        .block_on(
+                            native.federate(&request, tokio_util::sync::CancellationToken::new()),
+                        )
+                })
+                .join()
+                .map_err(|_| "native federation thread panicked".to_owned())?
+        })?;
         let native_metrics = native.metrics_snapshot();
         let freshness = native
             .freshness_snapshot()
