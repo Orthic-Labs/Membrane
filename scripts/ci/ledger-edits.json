@@ -1,0 +1,21 @@
+{
+  "message": "feat(ledger): add exact registered-node resolution and snapshot integrity checks\n\nIntroduce a root-bound resolver with independent raw/projection/span verification,\nUTF-8 safe resumable node reads, typed refusals, and imported-snapshot provenance.\nKeep converted source generations coherent during Markdown-only reconciliation.\nThe daemon and MCP adapters are connected in the following integration change.",
+  "files": [
+    {
+      "path":"engine/crates/membrane-runtime/src/ledger/resolve.rs",
+      "sha":"a430063e9a6ff55507d8885530ea18423f8b0351",
+      "replacements":[
+        {"before":"    let (path, revision, raw_hash, generation, lifecycle, sensitivity) = db.lock().query_row(","after":"    let identities: i64 = db.lock().query_row(\n        \"SELECT COUNT(*) FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2\",\n        params![root, doc_id], |r| r.get(0),\n    )?;\n    if identities > 1 { return Err(ResolveError::Ambiguous); }\n    let (path, revision, raw_hash, generation, lifecycle, sensitivity) = db.lock().query_row("},
+        {"before":"\"SELECT raw_input,raw_sha256,markdown,markdown_sha256,converter,converter_version,","after":"\"SELECT CASE WHEN length(raw_input)<=8388608 THEN raw_input ELSE NULL END,raw_sha256,\n                CASE WHEN length(CAST(markdown AS BLOB))<=8388608 THEN markdown ELSE NULL END,\n                markdown_sha256,converter,converter_version,"},
+        {"before":"end_line: source.markdown[..end.saturating_sub(1)].bytes().filter(|b| *b == b'\\n').count() + 1,","after":"end_line: source.markdown.as_bytes().iter().take(end.saturating_sub(1)).filter(|b| **b == b'\\n').count() + 1,"}
+      ]
+    },
+    {
+      "path":"engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+      "sha":"c40b3414e5b20f08fa1a0f1d06b83bcc713141e7",
+      "replacements":[
+        {"before":"WHERE repository_root<>?2","after":"WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)","count":7}
+      ]
+    }
+  ]
+}

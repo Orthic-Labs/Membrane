@@ -14,6 +14,7 @@ pub mod index;
 pub mod link_projection;
 pub mod outline;
 pub mod query_alias;
+pub mod resolve;
 pub mod session_projection;
 
 pub use db::LedgerDb;
