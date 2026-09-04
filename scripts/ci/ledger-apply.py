@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Apply a reviewed, content-addressed edit batch on the Ledger branch only.
+"""Materialize reviewed edits on the dedicated branch, with exact blob guards.
 
-The connected GitHub API cannot apply partial-file edits and the authoring shell
-has no network. This temporary bridge preserves original files, refuses drift,
-and materializes source changes as a separate inspectable commit. It does not
-compile, install, activate, deploy, force-push, or evaluate supplied code.
+Only declared file edits, Cargo lock resolution, and canon index generation are
+supported. No build/test binaries, installation, activation, release or forced
+ref update is performed. This authoring bridge is removed after integration.
 """
 import hashlib
 import json
@@ -55,8 +54,15 @@ def main():
             if not before or text.count(before) != count:
                 raise SystemExit("replacement ambiguity in " + relative + ": " + before[:80])
             text = text.replace(before, after)
+        for region in edit.get("regions", []):
+            start, end = region["start"], region["end"]
+            if not start or not end or text.count(start) != 1 or text.count(end) != 1:
+                raise SystemExit("region ambiguity in " + relative)
+            first, last = text.index(start), text.index(end)
+            if first >= last:
+                raise SystemExit("region order invalid in " + relative)
+            text = text[:first] + region["content"] + text[last:]
         pending[relative] = (data, text.encode("utf-8"))
-    # Revalidate the entire batch before writing any source file.
     for relative, (old, _) in pending.items():
         path = ROOT / relative
         if (path.read_bytes() if path.exists() else None) != old:
@@ -65,13 +71,23 @@ def main():
         path = ROOT / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(new)
+    extra = []
+    if batch.get("refresh_lock"):
+        # Metadata resolves the existing lockfile incrementally; it compiles
+        # nothing and does not upgrade unrelated dependencies deliberately.
+        subprocess.run(["cargo", "metadata", "--manifest-path", "engine/Cargo.toml",
+                        "--format-version", "1", "--no-deps"], cwd=ROOT,
+                       stdout=subprocess.DEVNULL, check=True)
+        extra.append("engine/Cargo.lock")
     BATCH.unlink()
     git("config", "user.name", "github-actions[bot]")
     git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
-    git("add", "--", *pending, "scripts/ci/ledger-edits.json")
+    git("add", "--", *pending, *extra, "scripts/ci/ledger-edits.json")
+    if batch.get("regenerate_canons"):
+        subprocess.run(["node", "scripts/ci/check-atomic-canons.mjs", "--write"], cwd=ROOT, check=True)
+        git("add", "--", "docs/canon/README.md", "docs/pending/README.md")
     git("diff", "--cached", "--check")
     git("commit", "-m", message + "\n\n[skip ci]")
-    # A concurrent writer is a failure, never justification for a force push.
     git("push", "origin", "HEAD:refs/heads/" + BRANCH)
     print("Materialized revision: " + git("rev-parse", "HEAD"))
     print("Changed files: " + ", ".join(pending))

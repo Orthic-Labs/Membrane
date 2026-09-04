@@ -11,9 +11,12 @@ pub mod doc_spine;
 pub mod document_conversion;
 pub mod identifier;
 pub mod index;
+pub mod limits;
 pub mod link_projection;
 pub mod outline;
+pub mod policy;
 pub mod query_alias;
+pub(crate) mod reconcile;
 pub mod resolve;
 pub mod session_projection;
 
