@@ -23,7 +23,7 @@ pub struct PrepareRequest {
     #[serde(default)] pub optimize: bool,
     #[serde(default)] pub protected_spans: Vec<Span>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeliveryReceipt {
     pub source_digest: String,
@@ -102,7 +102,7 @@ fn measure(delivery: &mut PreparedDelivery, baseline: Option<usize>) -> Result<u
 fn fold_log(source: &str) -> Result<String, RecoveryError> {
     let mut runs: Vec<(String, usize)> = Vec::new();
     for line in source.split_inclusive('\n') {
-        if let Some((last, count)) = runs.last_mut().filter(|(last, _)| last == line) { let _ = last; *count += 1; }
+        if let Some((last, count)) = runs.last_mut().filter(|(last, _)| last.as_str() == line) { let _ = last; *count += 1; }
         else { runs.push((line.into(), 1)); }
         if runs.len() > 100_000 { return Err(RecoveryError::Limit); }
     }

@@ -113,7 +113,7 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
         "membrane_context" | "membrane_blueprint" => "context",
-        "membrane_source_read" => "source_read",
+        "membrane_source_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_checkpoint_save" => "checkpoint",
         "membrane_checkpoint_load" => "checkpoint_load",
         "membrane_working_context" => {
@@ -554,6 +554,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             }
         }
         match name {
+            "membrane_push_prepare" | "membrane_push_resolve" => crate::push::api::execute(name, arguments),
             "membrane_context" => {
                 let task = arguments
                     .get("task")
@@ -649,6 +650,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "packet":packet,
                         "candidates":candidates,
                         "receipts":receipts,
+                        "packetReduction":federated.get("packetReduction").and_then(|v| v.get("selectionReceipt")).cloned(),
                         "degradationReason":degradation_reason,
                         "sufficiencyEvaluated":arguments.get("sufficiencyContract").is_some(),
                     }),

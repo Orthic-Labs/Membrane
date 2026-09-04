@@ -529,7 +529,9 @@ fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushP
         .and_then(Value::as_str)
         .is_some_and(|policy| policy.eq_ignore_ascii_case("queryAware"));
     if opts_into_query_aware && !task.trim().is_empty() {
-        crate::push::prep::PushPolicy::query_aware(task.to_owned(), true, true)
+        // A mode request is not admission/freshness proof. Until the owner
+        // supplies a receipt-bound policy, this is a terminal exact refusal.
+        crate::push::prep::PushPolicy::query_aware(task.to_owned(), false, false)
     } else {
         crate::push::prep::PushPolicy::Control
     }

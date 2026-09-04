@@ -83,6 +83,7 @@ function buildRequest(event, root) {
     session,
     client: event.client || defaultClient(),
     maxTokens: Number.isInteger(event.max_tokens) ? event.max_tokens : 6420,
+    remainingContextCeiling: event.remainingContextCeiling,
     anchors: Array.isArray(event.anchors) ? event.anchors.join(',') : String(event.anchors || ''),
     taskEnvelope: {
       schema: 'membrane.task-envelope.v1', task_id: id, session_id: session,
@@ -142,6 +143,7 @@ function runResident(request, root) {
     client: request.client,
     session: request.session,
     anchors: request.anchors || '',
+    remainingContextCeiling: request.remainingContextCeiling,
   });
   const result = childProcess.spawnSync(
     'curl',

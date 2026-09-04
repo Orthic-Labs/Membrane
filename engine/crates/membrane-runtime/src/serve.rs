@@ -447,6 +447,13 @@ fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u1
         Ok(content) => content,
         Err(_) => return (400, json!({"error":"anchor unreadable"}).to_string()),
     };
+    let marker = std::fs::read_to_string(&metadata).ok()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+        .and_then(|value| value.get("recovery").cloned())
+        .and_then(|value| serde_json::from_value::<crate::push::compress::RecoveryMarkerV1>(value).ok());
+    if sha256_bytes(content.as_bytes()) != digest || !marker.as_ref().is_some_and(|marker| crate::push::compress::verify_recovery_marker(marker, content.as_bytes(), crate::push::recovery::now_ms())) {
+        return (409, json!({"error":"anchor integrity or metadata invalid"}).to_string());
+    }
     (
         200,
         json!({"anchor":anchor,"sha256":sha256_bytes(content.as_bytes()),"content":content})
@@ -3096,8 +3103,11 @@ fn route_with_context_ingest_lease(
             Err(error) => (409, serde_json::json!({"error": error}).to_string()),
         };
     }
-    if method == "POST" && path == "/expand" {
-        return expand_anchor_response(body, &configured_anchor_directory());
+    if method == "POST" && matches!(path, "/expand" | "/push/resolve") {
+        return crate::push::api::http_response("membrane_push_resolve", body);
+    }
+    if method == "POST" && path == "/push/prepare" {
+        return crate::push::api::http_response("membrane_push_prepare", body);
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(body);

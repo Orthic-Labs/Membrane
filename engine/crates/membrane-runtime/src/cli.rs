@@ -3739,12 +3739,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             opportunity,
             cmd,
         } => {
-            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(|| {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| home())
-                    .join(".cache")
-                    .join("runc")
-            });
+            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(crate::push::recovery::default_directory);
             let command_line = cmd.join(" ");
             let result = crate::push::runc::run_capped(&command_line, head, tail, &directory)
                 .map_err(|error| {
@@ -3784,7 +3779,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     serde_json::to_string(marker).map_err(|error| error.to_string())?
                 );
             }
-            println!("[anchor] {}", result.anchor);
+            if !result.anchor.is_empty() { println!("[anchor] {}", result.anchor); }
             if let Some(path) = result.spill_path {
                 eprintln!("runc: exit={} full={}", result.exit_code, path.display());
             } else {

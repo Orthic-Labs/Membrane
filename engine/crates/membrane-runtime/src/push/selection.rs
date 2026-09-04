@@ -430,12 +430,7 @@ fn reduce_block_for_push(block: &mut BlockV1, policy: &PushPolicy) -> &'static s
             ),
         };
         if skeletonized.trim().is_empty() || skeletonized == block.text {
-            // Skeletonization did not reduce this block (e.g. an unsupported
-            // language extension) — fall back to compression rather than
-            // publishing the block unreduced.
-            let compressed = compress::compress_to_budget_with_options(&block.text, budget, true);
-            block.text = compressed.text;
-            "compress-skel-fallback"
+            "kept-exact"
         } else {
             block.text = skeletonized;
             "skel"

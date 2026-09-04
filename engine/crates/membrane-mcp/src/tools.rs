@@ -16,6 +16,8 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "membrane_push_prepare",
+    "membrane_push_resolve",
 ];
 const DIAGNOSTIC: &[&str] = &[
     "membrane_diagnostic_workspace",
@@ -62,6 +64,10 @@ fn remaining_context_ceiling() -> Value {
 }
 
 fn schema(name: &str) -> Value {
+    if name.starts_with("membrane_push_") {
+        let definitions: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
+        return definitions.as_array().unwrap().iter().find(|v| v["name"] == name).expect("Push tool registered")["inputSchema"].clone();
+    }
     let (required, properties) = match name {
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
@@ -129,7 +135,8 @@ fn schema(name: &str) -> Value {
 }
 fn annotations(name: &str) -> Value {
     match name {
-        "membrane_context"
+        "membrane_push_resolve"
+        | "membrane_context"
         | "membrane_source_read"
         | "membrane_blueprint"
         | "membrane_diagnostic_fence"
@@ -161,7 +168,7 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let mut result = Vec::new();
     for value in list {
         let group = value.as_str()?;
-        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic")
+        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "push")
             || !seen.insert(group)
         {
             return None;
@@ -174,7 +181,8 @@ pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
     let mut names = vec!["membrane_context"];
     for group in requested(params).unwrap_or_default() {
         let additions: &[&str] = match group {
-            "memory" => &CORE[3..],
+            "memory" => &CORE[3..10],
+            "push" => &CORE[10..],
             "blueprint" => &CORE[1..3],
             "diagnostic" => DIAGNOSTIC,
             _ => &[],

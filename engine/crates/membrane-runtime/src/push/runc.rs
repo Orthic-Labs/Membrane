@@ -810,7 +810,7 @@ fn run_command_capped(
     Ok(RuncResult {
         capped,
         spill_path: spill_path.clone(),
-        anchor: format!("mr://anchor/{digest}"),
+        anchor: if recovery_marker.is_some() { format!("mr://anchor/{digest}") } else { String::new() },
         exit_code,
         recovery_marker,
     })

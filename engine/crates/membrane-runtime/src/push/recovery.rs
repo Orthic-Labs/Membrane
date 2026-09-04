@@ -54,6 +54,7 @@ impl RecoveryScope {
             .map_err(|_| RecoveryError::Denied)?;
         Ok(Self { id: digest(&identity) })
     }
+    pub fn binding(&self) -> &str { &self.id }
     pub fn local() -> Result<Self, RecoveryError> {
         let session = std::env::var("MEMBRANE_PUSH_SESSION").unwrap_or_else(|_| "local".into());
         Self::new(&workspace_root(), &session)
@@ -149,6 +150,9 @@ impl RecoveryStore {
             .map_err(db_error)?;
         Ok(connection)
     }
+    pub fn identity(&self) -> Result<String, RecoveryError> {
+        self.connection()?.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)
+    }
     fn reference(connection: &Connection, hash: &str, size: usize, expires: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
         let store_id = connection.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)?;
         Ok(RecoveryReference { schema_version: 1, handle: format!("mr://anchor/{hash}"),
@@ -164,7 +168,15 @@ impl RecoveryStore {
         let mut connection = self.connection()?;
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         // Expiry frees logical quota, not a live promise. No access extends expiry.
-        tx.execute("DELETE FROM push_originals WHERE expires <= ?1", [now]).map_err(db_error)?;
+        // Expired/invalidation tombstones prevent an old handle silently becoming
+        // valid again. Explicit retention maintenance is separate from publication.
+        let old_size: Option<(usize, usize, u64)> = tx.query_row(
+            "SELECT size,length(content),expires FROM push_originals WHERE scope=?1 AND digest=?2",
+            params![scope.id, hash], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(db_error)?;
+        if let Some((size, actual, expires)) = old_size {
+            if now >= expires { return Err(RecoveryError::Expired); }
+            if size != actual || size > MAX_ARTIFACT_BYTES { return Err(RecoveryError::Corrupt); }
+        }
         let existing: Option<(Vec<u8>, usize, u64, bool)> = tx.query_row(
             "SELECT content,size,expires,invalidated FROM push_originals WHERE scope=?1 AND digest=?2",
             params![scope.id, hash], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(db_error)?;

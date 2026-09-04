@@ -179,6 +179,7 @@ function loadInput({ inputArg, maxTokens }) {
     clientEnvelope: parsed.clientEnvelope,
     overlay: parsed.overlay,
     sufficiencyContract: parsed.sufficiencyContract,
+    remainingContextCeiling: parsed.remainingContextCeiling,
     ...boundedTrace(parsed),
   };
 }
@@ -386,6 +387,7 @@ async function federatePayload(payload, { env = process.env, signal, request = p
     degradationReason: parsed.degradationReason ?? "none",
     sourceGeneration: parsed.sourceGeneration ?? null,
     packet: parsed.packet ?? null,
+    packetReduction: parsed.packetReduction?.selectionReceipt ?? parsed.packetReduction ?? null,
     receipts: parsed.receipts ?? [],
     structuredEvent: parsed.structuredEvent ?? null,
     persistedReceipts: parsed.persistedReceipts ?? 0,
@@ -578,6 +580,7 @@ async function main() {
     degradationReason: parsed.degradationReason ?? "none",
     sourceGeneration: parsed.sourceGeneration ?? null,
     packet: parsed.packet ?? null,
+    packetReduction: parsed.packetReduction?.selectionReceipt ?? parsed.packetReduction ?? null,
     receipts: parsed.receipts ?? [],
     structuredEvent: parsed.structuredEvent ?? null,
     persistedReceipts: parsed.persistedReceipts ?? 0,
