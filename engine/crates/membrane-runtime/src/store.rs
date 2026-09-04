@@ -1535,7 +1535,16 @@ fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     }
     #[cfg(not(feature = "fastembed"))]
     {
-        (Arc::new(HashEmbedder::new()), None, true)
+        // A binary compiled without fastembed can only produce hash vectors.
+        // Reporting `None` here claimed there was no issue, so /health,
+        // doctor, and recall all looked healthy while recall was lexical
+        // only — the same silence the FAIL-LOUD branch above exists to
+        // prevent, one level earlier. Writes stay enabled: this build has no
+        // real embedder to wait for, and refusing every write would leave the
+        // installed product unable to store anything at all.
+        let issue = "built without the fastembed feature: embeddings are hash-256, not semantic. Recall matches lexically only, and a clean doctor run is not evidence of semantic health.".to_string();
+        eprintln!("[memory] {issue}");
+        (Arc::new(HashEmbedder::new()), Some(issue), true)
     }
 }
 

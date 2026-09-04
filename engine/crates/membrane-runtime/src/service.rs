@@ -502,6 +502,23 @@ fn run_runtime(runtime: Runtime) -> Result<(), String> {
     std::env::set_var("MEMBRANE_RUNTIME_ORIGIN", runtime.origin);
     let catalog_path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
     std::env::set_var("MEMBRANE_CATALOG", catalog_path);
+    // State the embedder mode once at startup. Whether recall is semantic or
+    // lexical decides how much its results are worth, and the daemon log is
+    // the one place that answer is available before any command is run.
+    if cfg!(feature = "fastembed") {
+        let ort = runtime.ort.display().to_string();
+        if runtime.ort.is_file() {
+            eprintln!("[startup] embedder: fastembed compiled in, ORT_DYLIB_PATH={ort}");
+        } else {
+            eprintln!(
+                "[startup] embedder: fastembed compiled in but {ort} is missing; memory writes will be refused rather than store hash vectors"
+            );
+        }
+    } else {
+        eprintln!(
+            "[startup] embedder: hash-256 (this build has no fastembed feature); recall matches lexically only"
+        );
+    }
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
     let workspace_root = &runtime.workspace_root;
     // Publish the IPC handshake manifest before any peer can connect. This

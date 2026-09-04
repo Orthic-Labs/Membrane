@@ -4315,11 +4315,17 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             if hits.is_empty()
                 && store.last_recall_status().as_deref() == Some("insufficient_confidence")
             {
+                // Say why confidence is low. A bare status made a build with
+                // no real embedder indistinguishable from a corpus that
+                // genuinely had nothing to say.
+                let health = store.health();
                 println!(
                     "{}",
                     serde_json::json!({
                         "status": "insufficient_confidence",
-                        "hits": []
+                        "hits": [],
+                        "embedderModel": health.embedder_model,
+                        "embedderIssue": health.embedder_issue
                     })
                 );
             }
