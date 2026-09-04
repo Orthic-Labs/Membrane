@@ -1,23 +1,23 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-03T04:08:04.749Z",
+ "generatedAt": "2026-09-04T04:01:44.355Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1217,
-  "rows": 55,
+  "files": 1218,
+  "rows": 56,
   "byRuntime": {
    "python": 7,
    "shell": 1,
    "node": 25,
-   "rust": 22
+   "rust": 23
   },
   "byDisposition": {
    "migration-oracle": 5,
    "dev-only": 32,
    "external-typed-service": 4,
-   "native-port": 14
+   "native-port": 15
   },
   "productionInterpreterRows": 0,
   "boundedExternalInterpreterRows": 4
@@ -287,7 +287,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "0fb925b2d120556bc44d5fd29e42914dae020f6e408f980a88fee44d6b11abd4"
+   "content_digest": "10c916b5e91ae44482d11b13b0df48681796475a3146567b1b8ddc47f177096d"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -793,7 +793,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "8161c1badb3ecf34be39f4a6bfae00f627fe16bf0a4644bcdb0ef75d76f76859"
+   "content_digest": "c594335320922e2014317a121c7678565b08b001120405abbdfefab24fedcdd8"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -940,6 +940,26 @@
     "engine/crates/cortex/tests/skill_read_test.rs"
    ],
    "content_digest": "4d45a3f75d2ef9b5d6715ddcf31a5bcb6a8e2e05cf1f1b94bae95852043addcf"
+  },
+  {
+   "id": "engine-crates-engine/crates/membrane-blueprint",
+   "rule": "engine-crates",
+   "runtime": "rust",
+   "kind": "native-crate",
+   "product_surface": "all axes",
+   "production_reachable": false,
+   "packaged": true,
+   "target_disposition": "native-port",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": null,
+   "seal_blocker_note": null,
+   "notes": "Already-native authoritative implementations (one row per crate).",
+   "files": [
+    "engine/crates/membrane-blueprint/src/lib.rs"
+   ],
+   "content_digest": "c0c3561d4a297fdbcc3ea83eb1d292f047bcd1a9d3c18a54f580737168c6dbe4"
   },
   {
    "id": "engine-dev-rust-engine-dev-rust",
@@ -1155,7 +1175,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "7d9b26e972d8aaf50a435621c3021e1027a21c6025a587a446e474d200a0d361"
+   "content_digest": "58bed02d5d6b1c32a2c2f24efbd2f65604cbad44f3d3d63989d00ff0463d335b"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1339,7 +1359,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "de9e63d1f439a6e2641c0bf6d63cddc9e2bcbcc6bc5f84de25ffe523d0796b31"
+   "content_digest": "6b6c072fe2b508ee78375b29e6a8ea15fd7124686edab7489024582682e98a3a"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1560,7 +1580,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "193b1c59e6ca4acbc79e6d10217c4cf3cb5557525287b15bd8a8f4d8c4731066"
+   "content_digest": "43370e3a811a40db06d57697c6ba8a5ab14afeca7f8d9bbb19ea48e0c774c1f3"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1654,7 +1674,6 @@
    "notes": "workspace.rs enforces strict v3 workspace configuration; v2 python_executable is accepted only by atomic startup migration and never by native runtime resolution.",
    "files": [
     "apps/membrane-hub/src-tauri/src/adapt_launch.rs",
-    "apps/membrane-hub/src-tauri/src/blueprint.rs",
     "apps/membrane-hub/src-tauri/src/dashboard_connection.rs",
     "apps/membrane-hub/src-tauri/src/hub_contract_tests.rs",
     "apps/membrane-hub/src-tauri/src/hub_telemetry.rs",
@@ -1664,7 +1683,7 @@
     "apps/membrane-hub/src-tauri/src/workspace.rs",
     "apps/membrane-hub/src-tauri/src/workspace_contract_tests.rs"
    ],
-   "content_digest": "d1e67d0fd65d58679e2ae69bc6437ad06fc3076ed8628ea53fe7dca4c032ae1d"
+   "content_digest": "2fed33cfeed1f4c7e00d0cc7f98b5d99036b075214429f1ebf968f596a313ad8"
   },
   {
    "id": "hub-rest-hub-rest",
@@ -1715,7 +1734,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "51838ce05197ae54e70680a0ffe3e1451f7edb548197dfcd8e81cb2ff01c01b3"
+   "content_digest": "a25278eb35c1d6f2fd3ccb2f8e675252bb5b34b8dc6c52fdcf762646b719fa35"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1761,7 +1780,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "6155593f2e6cee8b708693efd30cb19a2af097bd3355878badf6ca5382c46d3f"
+   "content_digest": "3ed3b2052919e38252c727e6d9fb278bd078f426241892296a2cb9c3752b46c2"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -1923,7 +1942,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "86aef06fc7410d4f953263ad8c4b6553a37b86b08da2ba6f91368b30f4b2b13c"
+   "content_digest": "9ed22410763fefd7b7ccf43857a8735e734075232db51158cfe3be876c4fdab5"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -2110,6 +2129,7 @@
     "scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs",
     "scripts/qualification/install-release.test.mjs",
     "scripts/qualification/installer-nsi-activation-contract.test.mjs",
+    "scripts/qualification/installer-nsi-compiles.test.mjs",
     "scripts/qualification/issue-native-only-seal.mjs",
     "scripts/qualification/issue-native-only-seal.test.mjs",
     "scripts/qualification/memory/run-memory-benchmarks.mjs",
@@ -2151,7 +2171,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "7417bdb6fe7eecff0b59ade27b247a58e6729c325cc344565bf63f369153e5c0"
+   "content_digest": "88d83525c524dbc380280517615452f056aff41296f16d5ec2b853326a6c8e6e"
   },
   {
    "id": "tests-root-tests-root",
@@ -2283,7 +2303,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "777759f54ae242e492987dec2989f77a4b340ab351a07cd8246ecd4503518880"
+   "content_digest": "797edd80938399299076851866546c9ffc27a3d835481732a662b13917433de8"
   }
  ]
 }
