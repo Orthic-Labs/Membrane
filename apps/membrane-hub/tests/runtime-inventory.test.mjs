@@ -43,7 +43,10 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.equal(blueprint.delivery, "resource"); assert.equal(blueprint.transport, "named-pipe");
   for (const forbidden of ["cortex-store/src", "membrane-runtime/src/pull", "membrane-runtime/src/push", "../../blueprint", "../../adapt/src/adapt", "node"]) assert.ok(!RUNTIME_SPECS.some((spec) => spec.path.includes(forbidden)), forbidden);
   const tauri = readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8");
-  assert.match(tauri, /"resources": \["runtime"\]/);
+  // `versions` joined `runtime` when the installer was fixed to carry a
+  // product executable at all: declaring only `runtime` shipped a payload
+  // with no binary in it. Both must stay declared.
+  assert.match(tauri, /"resources": \["runtime", "versions"\]/);
   assert.match(tauri, /"externalBin": \["binaries\/cortex", "binaries\/membrane"\]/);
   const windowsTauri = JSON.parse(readFileSync(new URL("../src-tauri/tauri.windows.conf.json", import.meta.url), "utf8"));
   assert.deepEqual(windowsTauri.bundle.externalBin, ["binaries/cortex", "binaries/membrane", "binaries/membrane-tray", "binaries/membrane-daemon"]);
