@@ -15,6 +15,7 @@ pub mod limits;
 pub mod link_projection;
 pub mod outline;
 pub mod policy;
+pub mod query;
 pub mod query_alias;
 pub(crate) mod reconcile;
 pub mod resolve;

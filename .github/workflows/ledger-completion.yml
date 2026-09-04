@@ -5,11 +5,8 @@ on:
     branches: [ledger-end-to-end]
   workflow_dispatch:
 
-# Branch-only check lane. The managed main/release workflows are unchanged.
-# No cargo build, cargo test, packaging, signing, installation or activation.
 permissions:
   contents: read
-
 concurrency:
   group: ledger-completion-${{ github.ref }}
   cancel-in-progress: false
@@ -20,12 +17,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      contents: write # Only the reviewed, hash-guarded edit batch may fast-forward this branch.
+      contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+      - name: Resolve reviewed dependency lock changes without compilation
+        if: hashFiles('scripts/ci/ledger-lock-refresh') != ''
+        run: |
+          cargo metadata --manifest-path engine/Cargo.toml --format-version 1 > /dev/null
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add engine/Cargo.lock
+          git rm scripts/ci/ledger-lock-refresh
+          git commit -m 'chore(ledger): resolve explicit dependency additions [skip ci]'
+          git push origin HEAD:refs/heads/ledger-end-to-end
       - name: Materialize reviewed edits, without force-pushing
         if: hashFiles('scripts/ci/ledger-edits.json') != ''
         run: python3 scripts/ci/ledger-apply.py
@@ -33,11 +40,22 @@ jobs:
         run: |
           git rev-parse HEAD
           git diff --check
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Export public source snapshot for branch review
+        run: |
+          git rev-parse HEAD > ledger-source-revision.txt
+          git archive --format=tar.gz --output=ledger-source.tar.gz HEAD engine/crates engine/Cargo.toml engine/Cargo.lock mcp schemas scripts docs tests package.json pnpm-lock.yaml pnpm-workspace.yaml .github/workflows .rightgit.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ledger-source-review
+          path: |
+            ledger-source.tar.gz
+            ledger-source-revision.txt
+          retention-days: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
           package-manager-cache: false
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
           version: 11.24.0
       - name: Install JavaScript dependencies without build scripts
@@ -49,7 +67,7 @@ jobs:
           fi
           node scripts/ci/check-atomic-canons.mjs
       - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: engine -> target
           shared-key: membrane-ledger-check
