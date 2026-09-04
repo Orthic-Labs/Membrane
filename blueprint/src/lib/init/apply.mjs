@@ -154,8 +154,28 @@ export function applyInitPlan({ root = process.cwd(), plan = null, build = true,
     saveState(root, state);
     return { ok: true, applied: completed, buildRan: buildRan.ran, uninstallCommand: resolved.uninstallCommand };
   } catch (error) {
-    if (stateTrusted && operationStarted) try { restore(root, state); if (state.watch?.added) unenrollWatch(root, watchConfigPath); rmSync(statePath(root), { force: true }); removeInstallStateKey(root); } catch {}
-    return { ok: false, applied: completed, error: String(error.message ?? error), uninstallCommand: resolved.uninstallCommand };
+    // A rollback that fails leaves a half-installed repository. Swallowing it
+    // reported only the original error, so the operator was told what went
+    // wrong but not that the recovery had also failed and the tree was left
+    // mid-change.
+    let rollbackError = null;
+    if (stateTrusted && operationStarted) {
+      try {
+        restore(root, state);
+        if (state.watch?.added) unenrollWatch(root, watchConfigPath);
+        rmSync(statePath(root), { force: true });
+        removeInstallStateKey(root);
+      } catch (failure) {
+        rollbackError = String(failure?.message ?? failure);
+      }
+    }
+    return {
+      ok: false,
+      applied: completed,
+      error: String(error.message ?? error),
+      ...(rollbackError ? { rollbackError } : {}),
+      uninstallCommand: resolved.uninstallCommand,
+    };
   }
 }
 

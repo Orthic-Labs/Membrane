@@ -44,12 +44,21 @@ function readFleetStatus(target = null, configPath = join(homedir(), ".blueprint
 }
 
 export function serviceStatus({ target = null, fleetStatus = readFleetStatus } = {}) {
+  // An unreadable fleet status reported an empty repo list, which reads
+  // exactly like "nothing is enrolled". Keep the failure so a caller can tell
+  // the two apart.
   let fleet = { repos: [] };
-  try { fleet = fleetStatus(target); } catch {}
+  let fleetError = null;
+  try {
+    fleet = fleetStatus(target);
+  } catch (error) {
+    fleetError = String(error?.message ?? error);
+  }
   const enrolledRepos = (fleet.repos ?? []).map((repo) => ({ root: repo.root, enabled: true }));
   const active = (fleet.repos ?? []).find((repo) => repo.alive);
   return {
     schemaVersion: 1,
+    ...(fleetError ? { fleetError } : {}),
     platform: process.platform,
     registered: false, // D-S03: no OS registration
     running: Boolean(active),

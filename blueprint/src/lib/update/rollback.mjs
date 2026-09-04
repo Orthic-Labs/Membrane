@@ -54,9 +54,17 @@ export function rollback({ appDir, priorDir, storeBackup, receiptPath, outDir = 
     rmSync(failed, { recursive: true, force: true }); rmSync(failedDb, { force: true }); rmSync(journalPath, { force: true }); if (receiptPath) rmSync(receiptPath, { force: true });
     return { ok: true };
   } catch (error) {
-    try { recoverPendingUpdate(root); } catch {}
+    // Recovery failing during a rollback is the worst case, not a detail to
+    // drop: reporting only the original problem hid that the update was left
+    // pending with nothing to resume it.
+    const problems = [String(error.message ?? error)];
+    try {
+      recoverPendingUpdate(root);
+    } catch (failure) {
+      problems.push(`recovery_failed: ${String(failure?.message ?? failure)}`);
+    }
     rmSync(next, { recursive: true, force: true });
-    return { ok: false, problems: [String(error.message ?? error)] };
+    return { ok: false, problems };
   }
 }
 
