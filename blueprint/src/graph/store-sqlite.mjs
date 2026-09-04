@@ -17,6 +17,7 @@ import { computeFullLedger } from "./merkle-ledger.mjs";
 import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
 import { canonicalProviderId } from "./provider-identity.mjs";
 import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
+import { assertPublicationCandidate } from "./publication-policy.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
 import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
 
@@ -1506,8 +1507,12 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
 
 export function bulkInsertGeneration(db, generation, options = {}) {
   if (options.mode === "append") throw typedStoreError("store_append_unsupported", "single_current_generation");
-  db.exec("BEGIN;");
+  db.exec("BEGIN IMMEDIATE;");
   try {
+    // A rows-only replacement would leave the previous manifest describing a
+    // different graph. Fixtures may populate an unsealed store; production
+    // replacements must pass through saveGeneration's atomic admission gate.
+    if (getGenerationEnvelope(db, "manifest")) throw typedStoreError("store_sealed_replace_unsupported", "use_saveGeneration");
     const summary = insertGenerationRows(db, generation, options);
     db.exec("COMMIT;");
     return summary;
@@ -1530,6 +1535,19 @@ export function bulkInsertGeneration(db, generation, options = {}) {
 // snapshot from a dirty-overlay build without opening git.
 const ENVELOPE_KEYS = ["schemaVersion", "provider", "manifest", "repoRoot", "augmentation", "sourceObservation"];
 
+// Read only identity/ownership metadata for incremental shrink comparison.
+// Routine full writes never hydrate a second whole graph just to admit it.
+function publicationFactInventory(db) {
+  const nodes = db.prepare(`SELECT node_id AS id, path FROM files
+    UNION ALL SELECT id, path FROM symbols
+    UNION ALL SELECT a.id, n.source_path AS path FROM annotation_nodes a
+      LEFT JOIN node_provider n ON n.node_id=a.id`).all();
+  const edges = db.prepare(`SELECT e.id, e.source, MIN(o.source_path) AS path
+    FROM edges e LEFT JOIN fact_owner o ON o.fact_id=e.id AND o.fact_kind='edge'
+    GROUP BY e.id, e.source`).all();
+  return { nodes, edges };
+}
+
 /**
  * Persist a complete generation: nodes, edges, and envelope in ONE transaction.
  *
@@ -1543,8 +1561,17 @@ export function saveGeneration(db, generation, options = {}) {
   const put = db.prepare(
     "INSERT INTO generation (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   );
-  db.exec("BEGIN;");
+  db.exec("BEGIN IMMEDIATE;");
   try {
+    const priorManifest = getGenerationEnvelope(db, "manifest");
+    // Legacy/provisional initial stores remain explicitly incomplete. They may
+    // never overwrite a known-complete generation, even with omitted metadata.
+    if (priorManifest?.complete === true || generation?.manifest?.complete === true || options.requireComplete === true) {
+      assertPublicationCandidate(generation, {
+        changedPaths: options.changedPaths,
+        priorGeneration: Array.isArray(options.changedPaths) ? publicationFactInventory(db) : null,
+      });
+    }
     const summary = insertGenerationRows(db, generation, options);
     assertDenseNodeOrdinals(db);
     if (options.populateState) populateGenerationState(db, generation);

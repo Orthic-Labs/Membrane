@@ -23,22 +23,23 @@ function candidateCompletenessProblems(generation) {
   }
   const manifest = generation.manifest ?? {};
   if (manifest.complete !== true) problems.push("manifest_not_complete");
-  if (generation.truncated === true) problems.push("generation_truncated");
+  if (generation.truncated === true || manifest.truncated === true) problems.push("generation_truncated");
   if (generation.docTruth?.truncated === true) problems.push("doc_truth_truncated");
   if (manifest.repo?.traversalTruncated === true || manifest.traversalTruncated === true) problems.push("source_traversal_truncated");
 
   const counts = manifest.counts ?? null;
   if (counts) {
-    if (Number.isFinite(counts.nodes) && Number(counts.nodes) !== generation.nodes.length) problems.push("manifest_node_count_mismatch");
-    if (Number.isFinite(counts.edges) && Number(counts.edges) !== generation.edges.length) problems.push("manifest_edge_count_mismatch");
+    if (counts.nodes !== undefined && (!Number.isSafeInteger(counts.nodes) || counts.nodes !== generation.nodes.length)) problems.push("manifest_node_count_mismatch");
+    if (counts.edges !== undefined && (!Number.isSafeInteger(counts.edges) || counts.edges !== generation.edges.length)) problems.push("manifest_edge_count_mismatch");
   }
   return problems;
 }
 
 function removedFactsOutsideChangedPaths(prior, candidate, changedPaths) {
-  if (!prior) return [];
-  const changed = new Set((changedPaths ?? []).map(normalizePath));
-  if (changed.size === 0) return [];
+  // An absent set means a full replacement; an explicit empty set means an
+  // incremental operation that is authorized to remove no prior facts.
+  if (!prior || !Array.isArray(changedPaths) || !Array.isArray(candidate?.nodes) || !Array.isArray(candidate?.edges)) return [];
+  const changed = new Set(changedPaths.map(normalizePath));
 
   const priorNodesById = new Map((prior.nodes ?? []).map((node) => [node.id, node]));
   const candidateNodeIds = new Set((candidate.nodes ?? []).map((node) => node.id));
@@ -60,7 +61,7 @@ function removedFactsOutsideChangedPaths(prior, candidate, changedPaths) {
 
 export function evaluatePublicationCandidate(generation, options = {}) {
   const problems = candidateCompletenessProblems(generation);
-  const unexpectedShrink = removedFactsOutsideChangedPaths(options.priorGeneration ?? null, generation, options.changedPaths ?? []);
+  const unexpectedShrink = removedFactsOutsideChangedPaths(options.priorGeneration ?? null, generation, options.changedPaths);
   if (unexpectedShrink.length) problems.push("unexpected_unrelated_fact_shrink");
   return Object.freeze({
     schemaVersion: 1,
@@ -82,4 +83,20 @@ export function assertPublicationCandidate(generation, options = {}) {
     throw error;
   }
   return decision;
+}
+
+/** Refuse explicit partial provider batches before a file delta deletes rows. */
+export function assertCompleteFileBatches(batches, path) {
+  for (const batch of batches) {
+    const parsed = batch?.parsed;
+    if (parsed?.truncated === true || parsed?.complete === false
+        || batch?.fileReport?.truncated === true || batch?.fileReport?.complete === false) {
+      const error = new Error(`blueprint publication blocked: partial_file_extraction:${path}`);
+      error.code = "publication_incomplete";
+      error.decision = Object.freeze({ schemaVersion: 1, kind: "BlueprintPublicationDecision",
+        action: "block", reasonCode: "partial_file_extraction", path,
+        provider: batch?.provider?.id ?? null, problems: ["partial_file_extraction"] });
+      throw error;
+    }
+  }
 }

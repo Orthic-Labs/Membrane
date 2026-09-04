@@ -1420,7 +1420,7 @@ function buildGenerationFromSources(root, source, options = {}) {
     // on unchanged rebuilds is preserved.
     generatedAt: `gen:${generationId.replace(/^xxh128:/, "").slice(0, 16)}`,
     generationId,
-    complete: true,
+    complete: !source.fileLimitReached && !source.traversalTruncated,
     // The fileLimit the build was run with (0 = unlimited). graphStatus and
     // downstream consumers use this to scope their re-scan so a huge real
     // workspace (D:\Claude has 1M+ directories) does not OOM the doctor.
