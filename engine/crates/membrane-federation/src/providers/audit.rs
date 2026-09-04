@@ -101,10 +101,19 @@ pub async fn provide_from_source(
         return Err(ProviderError::DeadlineExceeded);
     }
 
+    // Prefer the snapshot generation over the release generation.
+    //
+    // A source here answers with the content identity of what it indexed;
+    // the release generation is the Membrane build's own sha256. Checking
+    // the build's identity first meant every source disagreed with it and
+    // was gapped as generation_incoherent — measured on this machine as
+    // seven such omissions and zero candidates on a request whose sources
+    // had answered normally.
     let expected_generation = context
-        .release_generation
+        .freshness
+        .generation
         .as_deref()
-        .or(context.freshness.generation.as_deref());
+        .or(context.release_generation.as_deref());
     let observed_generation = response.generation.clone().or_else(|| {
         response
             .value

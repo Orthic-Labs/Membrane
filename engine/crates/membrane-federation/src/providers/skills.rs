@@ -109,10 +109,19 @@ impl SkillsProvider {
                 "generation_missing",
             ));
         };
+        // Prefer the snapshot generation over the release generation.
+        //
+        // A source here answers with the content identity of what it indexed;
+        // the release generation is the Membrane build's own sha256. Checking
+        // the build's identity first meant every source disagreed with it and
+        // was gapped as generation_incoherent — measured on this machine as
+        // seven such omissions and zero candidates on a request whose sources
+        // had answered normally.
         let expected = context
-            .release_generation
+            .freshness
+            .generation
             .as_deref()
-            .or(context.freshness.generation.as_deref());
+            .or(context.release_generation.as_deref());
         if expected.is_some_and(|value| value != generation) {
             return Ok(generation_gap(expected.unwrap_or_default(), &generation));
         }

@@ -185,7 +185,32 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     }
     throwIfAborted(signal);
     const authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
-    const convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
+    let convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
+    // A ledger entry the scanner no longer yields cannot be repaired by an
+    // event: the file is often still on disk, so no delete is ever observed.
+    // The scanner skips a file whose bytes contain a NUL, and this repository
+    // has ten such documents — they were indexed by an earlier full build,
+    // and every incremental reconcile since reported them `removed`, so
+    // convergence was unreachable and `event_gap` stayed latched at 1
+    // forever. The scan is authoritative about what is indexable, so retire
+    // those entries here and settle, once, before judging convergence.
+    if (convergence.mismatches.removed.length > 0) {
+      appendWatchEvents(
+        db,
+        convergence.mismatches.removed.map((path) => ({
+          eventKind: "delete",
+          path,
+          observedMs: Date.now(),
+        })),
+      );
+      await drainJournal(db, root, {
+        force: true,
+        maxDependentFiles: options.maxDependentFiles,
+        signal,
+      });
+      throwIfAborted(signal);
+      convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
+    }
     db.exec("BEGIN;");
     try {
       db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(convergence.converged ? "0" : "1");
