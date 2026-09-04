@@ -1,0 +1,15 @@
+# GitHub Pages builds this directory with Jekyll, which runs every Markdown
+# file through Liquid before rendering it.
+#
+# `research/legacy-source-corpus/papers` holds 49 papers extracted from PDFs.
+# They are source material for the research corpus, not website content, and
+# they are full of mathematical notation -- `{{R(t)}` in 2502.11127 is what
+# broke the build, because Liquid reads it as an unterminated variable. There
+# is no way to escape that on GitHub Pages: `render_with_liquid` is Jekyll 4,
+# and Pages pins Jekyll 3.10.
+#
+# So keep the corpus out of the site. It stays in the repository, where the
+# things that actually read it -- Blueprint's scanner and the recall corpus --
+# look for it.
+exclude:
+  - research/legacy-source-corpus
