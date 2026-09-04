@@ -1,0 +1,43 @@
+{
+  "name": "same-tier-module-ambiguity",
+  "files": {
+    "src/main.ts": "import { choose } from './choice';\nexport const result = choose();\n",
+    "src/choice.ts": "export function choose() { return 'ts'; }\n",
+    "src/choice.js": "export function choose() { return 'js'; }\n"
+  },
+  "assertions": [
+    {
+      "id": "ambiguous-import-retained",
+      "type": "edge_exists",
+      "description": "same-tier extension ambiguity stays explicit rather than promoting a target",
+      "where": {
+        "kind": "IMPORTS",
+        "source": "file:src/main.ts",
+        "target": null,
+        "specifier": "./choice",
+        "resolved": false,
+        "resolutionStatus": "AMBIGUOUS",
+        "reason": "ambiguous_extension",
+        "candidates": { "$containsAll": ["src/choice.js", "src/choice.ts"] }
+      }
+    },
+    {
+      "id": "no-choice-ts-promotion",
+      "type": "edge_absent",
+      "where": {
+        "kind": "IMPORTS",
+        "source": "file:src/main.ts",
+        "target": "file:src/choice.ts"
+      }
+    },
+    {
+      "id": "no-choice-js-promotion",
+      "type": "edge_absent",
+      "where": {
+        "kind": "IMPORTS",
+        "source": "file:src/main.ts",
+        "target": "file:src/choice.js"
+      }
+    }
+  ]
+}
