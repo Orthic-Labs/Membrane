@@ -169,6 +169,32 @@ pub fn canonical_endpoint() -> Result<String, String> {
 /// Mint one high-entropy capability per Hub-owned child launch. The child
 /// receives this through its private stdin handshake as well as its inherited
 /// environment, so an env-only spoof cannot authorize residency.
+/// Append the Blueprint service's diagnostics to `membrane-blueprint.log`
+/// under the Windows log root, beside the daemon's and the tray's.
+///
+/// These were discarded, so when the service wedged mid-reconciliation there
+/// was nothing on disk saying why: its stdout is the launch protocol and is
+/// drained by the supervisor, and stderr — the only channel carrying its
+/// errors — went to null. A logging failure still never stops the service.
+fn service_log_target() -> Stdio {
+    let Some(root) = env::var_os("MEMBRANE_LOG_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("Membrane")))
+    else {
+        return Stdio::null();
+    };
+    if fs::create_dir_all(&root).is_err() {
+        return Stdio::null();
+    }
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(root.join("membrane-blueprint.log"))
+        .map(Stdio::from)
+        .unwrap_or(Stdio::null())
+}
+
+
 pub fn launch_token() -> Result<String, String> {
     let mut bytes = [0_u8; 32];
     fill_launch_random(&mut bytes)
@@ -277,7 +303,7 @@ impl Supervisor {
             .env(SERVICE_LAUNCH_TOKEN_ENV, &launch_token)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+            .stderr(service_log_target());
         suppress_windows_console(&mut command);
         let mut child = command
             .spawn()
