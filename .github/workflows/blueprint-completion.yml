@@ -15,18 +15,14 @@ concurrency:
 jobs:
   node-checks:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Temporary: needed only for the hash-bound, test-gated source commit below.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Temporary tracked-source snapshot (no builds or dependencies)
-        run: git archive --format=tar --output="$RUNNER_TEMP/blueprint-source.tar" HEAD
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: blueprint-source-${{ github.sha }}
-          path: ${{ runner.temp }}/blueprint-source.tar
-          retention-days: 1
-          if-no-files-found: error
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
@@ -36,6 +32,9 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without package build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Apply reviewed nullable-confidence change with source-hash preconditions
+        if: ${{ hashFiles('.github/blueprint-provenance-input/apply.py') != '' }}
+        run: python3 .github/blueprint-provenance-input/apply.py apply
       - name: Blueprint focused Node tests
         working-directory: blueprint
         run: >-
@@ -58,6 +57,17 @@ jobs:
           tests/publication-policy.test.mjs
           tests/readiness-status.test.mjs
           tests/init-plan.test.mjs
+          tests/confidence-migration.test.mjs
+          tests/provenance-roundtrip.test.mjs
+          tests/store-sqlite.test.mjs
+          tests/store-migrations.test.mjs
+          tests/store-rollback.test.mjs
+          tests/delta-store.test.mjs
+          tests/production-provider-cluster.test.mjs
+          tests/graph-query.test.mjs
+      - name: Commit only the validated scoped change and remove temporary inputs
+        if: ${{ success() && hashFiles('.github/blueprint-provenance-input/apply.py') != '' }}
+        run: python3 .github/blueprint-provenance-input/apply.py commit
 
   cargo-check:
     runs-on: ubuntu-24.04
