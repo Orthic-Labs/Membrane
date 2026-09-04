@@ -1766,6 +1766,18 @@ fn service_api_token() -> Result<Option<String>, String> {
     if let Some(path) = std::env::var_os("MEMBRANE_API_TOKEN_FILE")
         .map(PathBuf::from)
         .or_else(|| deployed.map(|runtime| runtime.token_file))
+        // An installed runtime has no `tools/lib/memory/runtime.json` beside
+        // the binary, so `current_deployed_runtime` does not recognize it and
+        // the CLI sent no token at all — every write against its own installed
+        // Hub came back 401 while the token sat on disk beside the store.
+        // The endpoint and the credential have to come from one resolved
+        // runtime; this is the same resolver the native transport uses.
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| crate::service::runtime_from_exe(&exe).ok())
+                .map(|runtime| runtime.token)
+        })
     {
         let token = std::fs::read_to_string(&path)
             .map_err(|error| format!("read MEMBRANE_API_TOKEN_FILE {}: {error}", path.display()))?
