@@ -1637,8 +1637,14 @@ where
             }
         })();
         if let Err(error) = result {
-            rollback_clients(client, &state, &completed, &mut runner);
-            return Err(error);
+            let unrestored = rollback_clients(client, &state, &completed, &mut runner);
+            if unrestored.is_empty() {
+                return Err(error);
+            }
+            return Err(format!(
+                "{error}; and rollback left these clients registered: {}",
+                unrestored.join(", ")
+            ));
         }
         completed.push((client, state));
     }
@@ -1758,30 +1764,47 @@ where
         })
 }
 
+/// Undo the client registrations this activation made, naming any it could
+/// not undo.
+///
+/// Every step discarded its result, so an activation that failed halfway
+/// could leave a client registered against a Membrane that is not running,
+/// and report only the original error.
 fn rollback_clients<F>(
     active_client: HarnessClient,
     active_state: &ClientState,
     completed: &[(HarnessClient, ClientState)],
     runner: &mut F,
-) where
+) -> Vec<String>
+where
     F: FnMut(HarnessClient, &[String]) -> CommandResult,
 {
-    let _ = runner(active_client, &remove_args(active_client));
+    let mut unrestored = Vec::new();
+    let mut step = |client: HarnessClient, args: &[String], runner: &mut F| {
+        if !runner(client, args).success() {
+            unrestored.push(client.as_str().to_string());
+        }
+    };
+    step(active_client, &remove_args(active_client), runner);
     if let ClientState::Conflict(prior) = active_state {
-        let _ = runner(
+        step(
             active_client,
             &add_args(active_client, &prior.command, &prior.args),
+            runner,
         );
     }
     for (client, state) in completed.iter().rev() {
         if !matches!(state, ClientState::Absent | ClientState::Conflict(_)) {
             continue;
         }
-        let _ = runner(*client, &remove_args(*client));
+        step(*client, &remove_args(*client), runner);
         if let ClientState::Conflict(prior) = state {
-            let _ = runner(*client, &add_args(*client, &prior.command, &prior.args));
+            step(*client, &add_args(*client, &prior.command, &prior.args), runner);
         }
     }
+    unrestored.sort();
+    unrestored.dedup();
+    unrestored
 }
 
 fn get_args(client: HarnessClient) -> Vec<String> {
