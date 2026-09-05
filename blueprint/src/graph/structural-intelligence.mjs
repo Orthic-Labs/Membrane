@@ -358,14 +358,16 @@ export function augmentStructuralIntelligence(generation, files = []) {
   addOverrides(generation, hierarchyEdges, edges, frontiers);
   canonicalEventTopics(generation, edges);
   const tests = classifyTests(generation, files, edges);
-  generation.edges.push(...edges);
+  const existingEdgeIds = new Set(generation.edges.map((edge) => edge.id));
+  const newEdges = edges.filter((edge) => !existingEdgeIds.has(edge.id));
+  generation.edges.push(...newEdges);
   const mro = mroProjection(generation, hierarchyEdges);
   const summary = Object.freeze({
     provider: STRUCTURAL_INTELLIGENCE_PROVIDER.id,
     version: STRUCTURAL_INTELLIGENCE_PROVIDER.version,
     hierarchyEdges: hierarchyEdges.length,
-    overrideEdges: edges.filter((edge) => edge.kind === "OVERRIDES").length,
-    dynamicDispatchEdges: edges.filter((edge) => edge.kind === "HANDLES").length,
+    overrideEdges: newEdges.filter((edge) => edge.kind === "OVERRIDES").length,
+    dynamicDispatchEdges: newEdges.filter((edge) => edge.kind === "HANDLES").length,
     tests,
     mro,
     frontiers: frontiers.sort((a, b) => a.id.localeCompare(b.id)),
