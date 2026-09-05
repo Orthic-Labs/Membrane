@@ -70,7 +70,7 @@ fn schema(name: &str) -> Value {
             // Leaving it undeclared made the one entry tool impossible to call
             // correctly from its own schema.
             vec!["task", "repository", "caller", "remainingContextCeiling"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling()}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"taskId":{"type":"string","minLength":1},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling()}),
         ),
         "membrane_source_read" => (
             vec![
@@ -85,10 +85,11 @@ fn schema(name: &str) -> Value {
         "membrane_ledger" => (
             vec!["repository", "caller", "operation"],
             json!({"repository":{"type":"string"},"caller":caller(),
-                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","backlinks","manifests","drift","ingest"]},
+                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","backlinks","related","manifests","drift"]},
                 "query":{"type":"string","minLength":1,"maxLength":4096},
                 "k":{"type":"integer","minimum":1,"maximum":32},
                 "path":{"type":"string"},"docId":{"type":"string"},"nodeId":{"type":"string"},
+"scopeGrantId":{"type":"string"},"taskId":{"type":"string","minLength":1},
                 "expectedContentHash":{"type":"string"},"continuationCursor":{"type":"string"},
                 "maxSections":{"type":"integer","minimum":1,"maximum":256},
                 "limit":{"type":"integer","minimum":1,"maximum":256},
@@ -173,7 +174,12 @@ pub(crate) fn definitions() -> Value {
             .chain(DIAGNOSTIC)
             .map(|name| {
                 json!({
-                  "name":name,"description":format!("Native Membrane handler for {name}."),
+                  "name":name,"description":match *name {
+                    "membrane_context" => "Federate bounded, grant-aware context through the resident Membrane planner.",
+                    "membrane_source_read" => "Resolve a hash/revision/span-bound source reference. Ledger node reads may require the opaque ledgerTicket returned by Ledger retrieval; continuationCursor resumes the same captured span and never grants authority.",
+                    "membrane_ledger" => "Navigate the resident Ledger document index: scoped recall/literal search, paged outlines, related nodes, backlinks, named structural drift, status, sync, activation gates, or scoped erasure. Final prompt admission remains Pull-owned.",
+                    _ => "Native Membrane operation.",
+                  },
                   "inputSchema":schema(name),"annotations":annotations(name)
                 })
             })
@@ -227,6 +233,7 @@ fn envelope(operation: &str, code: &str, message: &str) -> Value {
 fn invalid_envelope_code(name: &str) -> &'static str {
     match name {
         "membrane_source_read" => "source_read_envelope_invalid",
+        "membrane_ledger" => "ledger_envelope_invalid",
         "membrane_blueprint" => "blueprint_envelope_invalid",
         "membrane_checkpoint_save" => "checkpoint_envelope_invalid",
         "membrane_checkpoint_load" => "checkpoint_envelope_invalid",

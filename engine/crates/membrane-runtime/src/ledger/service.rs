@@ -185,12 +185,20 @@ impl LedgerService {
         let operation = arguments.get("operation").and_then(Value::as_str).ok_or("ledger_operation_required")?;
         match operation {
             "recall" | "literal" => {
-                // The generic operation is a repository-enrollment read. A
-                // partial task grant cannot be represented by dropping it.
-                if arguments.get("scopeGrantId").is_some() { return Err("ledger_scope_ranges_unavailable".into()); }
                 let query = arguments.get("query").and_then(Value::as_str).ok_or("ledger_query_required")?;
                 let k = arguments.get("k").and_then(Value::as_u64).unwrap_or(6) as usize;
-                let (result, tickets) = self.search(&caller, query, k, operation == "literal", None, None, budget)?;
+                let grant_id = arguments.get("scopeGrantId").and_then(Value::as_str);
+                let ranges = if let Some(grant_id) = grant_id {
+                    let task_id = arguments.get("taskId").and_then(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .ok_or("ledger_task_id_required")?;
+                    validate_task_grant(Some(grant_id), &caller, Some(task_id), Some(&caller.scope_id))?;
+                    let grant = crate::catalog::lookup_grant(&self.catalog, grant_id)
+                        .map_err(|e|e.to_string())?.ok_or("ledger_scope_grant_missing")?;
+                    if grant.read_paths.is_empty() { return Err("ledger_scope_ranges_unavailable".into()); }
+                    Some(grant.read_paths)
+                } else { None };
+                let (result, tickets) = self.search(&caller, query, k, operation == "literal", ranges, grant_id, budget)?;
                 let mut value = serde_json::to_value(result).map_err(|e| e.to_string())?;
                 if let Some(hits) = value.get_mut("hits").and_then(Value::as_array_mut) {
                     for (hit, ticket) in hits.iter_mut().zip(tickets) { hit["ledgerTicket"] = json!(ticket); }
@@ -240,36 +248,16 @@ impl LedgerService {
                 Ok(json!({"mode":mode.storage_name(),"providerDelivery":"shadow_unqualified"}))
             }),
             "erase" => self.run(&caller, "checkpoint", budget, |db| erase(db, &self.catalog, &caller, arguments)),
-            "backlinks" | "manifests" | "drift" => self.run(&caller, "context", budget, |db| {
+            "backlinks" | "related" | "manifests" | "drift" => self.run(&caller, "context", budget, |db| {
                 let doc = required_string(arguments,"docId")?;
                 match operation {
                     "backlinks" => super::diagnostics::backlinks(db,&caller.root,&doc,arguments.get("nodeId").and_then(Value::as_str),
                         arguments.get("limit").and_then(Value::as_u64).unwrap_or(64) as usize,budget),
+                    "related" => super::diagnostics::related(db,&caller.root,&doc,&required_string(arguments,"nodeId")?,
+                        arguments.get("limit").and_then(Value::as_u64).unwrap_or(64) as usize,budget),
                     "manifests" => super::diagnostics::manifests(db,&caller.root,&doc,budget),
                     _ => super::diagnostics::drift(db,&caller.root,&doc,&required_string(arguments,"fromManifest")?,&required_string(arguments,"toManifest")?,budget),
                 }
-            }),
-            "ingest" => self.run(&caller,"checkpoint",budget,|db| {
-                use super::document_conversion::{DocumentInputFormatV1 as Format,DocumentConversionGrantV1,DocumentConversionInputV1};
-                let path=required_string(arguments,"path")?;
-                permitted_path(db,&caller.root,&path,budget)?;
-                let format=match arguments.get("format").and_then(Value::as_str) {
-                    Some("plain_text")=>Format::PlainText,Some("html")=>Format::Html,Some("json")=>Format::Json,
-                    _=>return Err("ledger_format_qualification_required".into()),
-                };
-                if path.to_ascii_lowercase().ends_with(".md") {return Err("ledger_markdown_uses_sync".into());}
-                let raw=resolve::confined_bytes(Path::new(&caller.root),&path).map_err(|e|e.to_string())?;
-                budget.charge_bytes(raw.len())?;
-                let expected=required_string(arguments,"expectedContentHash")?;
-                let hash=resolve::digest(&raw);
-                if !resolve::hash_matches(&expected,&hash) {return Err("ledger_source_stale".into());}
-                let grant=DocumentConversionGrantV1::new([format.clone()],resolve::MAX_SOURCE_BYTES);
-                let artifact=doc_spine::ingest_granted_document(db,&grant,doc_spine::GrantedDocumentIngestV1 {
-                    repository_root:caller.root.clone(),repository_id:caller.repository_id.clone(),revision:format!("snapshot:{hash}"),
-                    path:path.clone(),title:path.clone(),document:DocumentConversionInputV1 {source_ref:format!("snapshot:sha256:{hash}"),format,raw_input:raw},
-                })?;
-                permitted_path(db,&caller.root,&path,budget)?;
-                Ok(json!({"schemaVersion":1,"artifact":artifact,"sourceKind":"imported_snapshot","qualification":"pending","externalFreshnessClaimed":false}))
             }),
             _ => Err("ledger_operation_unsupported".into()),
         }
@@ -350,6 +338,7 @@ pub(crate) fn validate_task_grant(id: Option<&str>, caller: &Caller, task: Optio
     let grant = crate::catalog::lookup_grant(&catalog,id).map_err(|e| e.to_string())?.ok_or("ledger_scope_grant_missing")?;
     let canonical = membrane_federation::root::canonical_repository_id(Path::new(&caller.root));
     if !grant.permits() || !grant.repository_ids.iter().any(|id| id == &caller.repository_id || id == &canonical)
+        || !grant.permitted_edge_types.iter().any(|edge| edge == "source_read")
         || task.is_some_and(|task| grant.task_id != task) || session.is_some_and(|session| grant.session_id != session)
     { return Err("ledger_scope_grant_invalid".into()); }
     Ok(())
@@ -393,7 +382,7 @@ fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &Resol
         || expected.expected_revision != request.expected_revision || expected.expected_span_hash != request.expected_span_hash
         || expected.ledger_generation != request.ledger_generation
     { return Err("ledger_ticket_binding_mismatch".into()); }
-    validate_task_grant(grant.as_deref(),caller,None,None)
+    validate_task_grant(grant.as_deref(),caller,None,Some(&caller.scope_id))
 }
 
 fn erase(db: &LedgerDb, catalog: &crate::catalog::ContextCatalog, caller: &Caller, arguments: &Value) -> Result<Value, String> {

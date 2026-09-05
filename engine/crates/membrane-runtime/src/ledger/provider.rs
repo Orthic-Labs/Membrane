@@ -56,13 +56,16 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
     let (ranges, grant_id) = match &context.scope_grant {
         None => (None,None), // Separately verified repository-enrollment grant.
         Some(grant) => {
-            validate_task_grant(Some(&grant.id),&caller,Some(&context.task),Some(&context.session_id))?;
+            validate_task_grant(Some(&grant.id),&caller,Some(&grant.task_id),Some(&context.session_id))?;
             if grant.repository_root != context.repository_root || grant.repository_id != context.repository_id
-                || grant.task_id != context.task || grant.session_id != context.session_id {
+                || grant.session_id != context.session_id {
                 return Err("ledger_scope_grant_binding_mismatch".into());
             }
             // The current catalog mirror loses exact ranges. Missing evidence
             // is a typed refusal, not an unrestricted source set.
+            if !grant.permitted_edge_types.iter().any(|edge| edge == "source_read") {
+                return Err("ledger_source_read_not_granted".into());
+            }
             if grant.read_paths.is_empty() { return Err("ledger_scope_ranges_unavailable".into()); }
             let mut ranges = Vec::new();
             for value in &grant.read_paths {
@@ -112,14 +115,14 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
         extensions:BTreeMap::from([("ledger".into(),json!({"observedCandidates":observed_count,
             "complete":result.complete,"omissions":result.omissions,"lane":result.lane,
             "sourceBytesChecked":result.source_bytes_checked,"policyDigest":result.policy_digest,
-            "publicationGeneration":result.publication_generation,"delivered":live}))])};
+            "publicationGeneration":result.publication_generation,"graph":result.graph,"delivered":live}))])};
     if !live { output.omissions.push(omission(ReasonCode::ProviderUnavailable,"ledger_delivery_qualification_required")); }
     if !result.complete {
         output.warnings.push(ProviderWarningV1 {provider:ProviderId::Ledger,reason:ReasonCode::ProviderFailed,
             severity:WarningSeverity::Warning,detail_id:Some("ledger_source_incomplete".into()),stage:Some("source".into()),message:None});
     }
     caller.authorize("context")?;
-    validate_task_grant(grant_id,&caller,Some(&context.task),Some(&context.session_id))?;
+    validate_task_grant(grant_id,&caller,None,Some(&context.session_id))?;
     budget.check()?;
     Ok(output)
 }

@@ -868,13 +868,10 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
     budget.check()?;
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
     let root_s = root.to_string_lossy().replace('\\', "/");
-    let revision = std::process::Command::new("git")
-        .args(["-C", &root_s, "rev-parse", "HEAD"])
-        .output()
+    let revision = membrane_federation::providers::git::RepositoryAdapter::open(&root)
+        .and_then(|repository| repository.head())
         .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
+        .and_then(|head| head.revision)
         .unwrap_or_else(|| "worktree".into());
     let (files, excluded_health, mut policy) = super::policy::walk_markdown(&root, budget)?;
     let mut conn = db.lock();
@@ -886,61 +883,10 @@ pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudg
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    // A sync publishes one database-wide generation. Previously verified rows from other roots
-    // advance in the same transaction; recall still hash-checks their live source before emit.
-    tx.execute(
-        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_doc_projections SET index_generation=?1
-         WHERE parent_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_nodes SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_index_publications SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_query_aliases SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_link_targets SET ledger_generation=?1
-         WHERE source_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_document_conversions SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2 OR EXISTS(SELECT 1 FROM ledger_document_conversions owned_conversion WHERE owned_conversion.doc_id=ledger_doc_artifacts.doc_id)
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
+    // A source-owner publication advances only the documents it actually
+    // reconciles. Unrelated roots and converted/imported collections retain
+    // their own last complete generation; a Markdown scan cannot invalidate
+    // their resolver tickets or manufacture a freshness transition.
     let projections_available: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",

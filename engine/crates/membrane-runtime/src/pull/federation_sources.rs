@@ -455,6 +455,11 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
                     membrane_provider_sdk::ProviderError::Unavailable("scope_grant_missing".into())
                 })?;
             let complete = grant.permits();
+            if !grant.repository_ids.iter().any(|repository_id| repository_id == &query.repository_id) {
+                return Err(membrane_provider_sdk::ProviderError::Unavailable(
+                    "scope_grant_repository_mismatch".into(),
+                ));
+            }
             let value = membrane_provider_sdk::ScopeGrantView {
                 id: grant.id,
                 repository_id: query.repository_id,
@@ -464,7 +469,9 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
                 manifest_digest: grant.manifest_digest,
                 blueprint_generation: query.generation.unwrap_or_else(|| "unknown".to_owned()),
                 permitted_edge_types: grant.permitted_edge_types,
-                read_paths: Vec::new(),
+                read_paths: grant.read_paths.into_iter()
+                    .map(|path| format!("{}:{}-{}", path.path, path.start_line, path.end_line))
+                    .collect(),
             };
             Ok(SourceResponse {
                 value,

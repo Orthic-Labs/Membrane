@@ -66,6 +66,18 @@ pub struct QueryResult {
     pub lane: String,
     pub query_digest: String,
     pub source_bytes_checked: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<GraphReceipt>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphReceipt {
+    pub seed_documents: Vec<String>,
+    pub expanded_documents: Vec<String>,
+    pub edges_considered: usize,
+    pub max_hops: usize,
+    pub capped: bool,
 }
 
 #[derive(Clone)]
@@ -189,21 +201,89 @@ fn fts_nodes(db: &LedgerDb, root: &str, query: &str) -> Result<Vec<Node>, String
 }
 
 fn exact_nodes(db: &LedgerDb, root: &str, query: &str) -> Result<Vec<Node>, String> {
+    let alias = index::normalize_query(query.trim());
+    let alias = (!alias.is_empty() && !alias.chars().any(char::is_whitespace)).then_some(alias);
     let conn = db.lock();
     let mut statement = conn.prepare(
         "SELECT n.doc_id,n.node_id,n.node_kind,n.source_start_byte,n.source_end_byte,n.span_hash,1.0,1
          FROM ledger_nodes n JOIN ledger_doc_artifacts a ON a.doc_id=n.doc_id
+         LEFT JOIN ledger_node_fts f ON f.doc_id=n.doc_id AND f.node_id=n.node_id
          WHERE a.repository_root=?1 AND a.lifecycle_state='active' AND a.sensitivity='normal'
            AND n.ledger_generation=a.index_generation AND n.source_revision=a.revision
            AND n.projection_schema_version=?3
            AND (n.anchor_id=?2 OR n.node_id=?2 OR n.heading=?2
-                OR ((a.path=?2 OR a.title=?2) AND n.node_kind IN ('document','section','preamble')))
+                OR ((a.path=?2 OR a.title=?2) AND n.node_kind IN ('document','section','preamble'))
+                OR (?4 IS NOT NULL AND instr(' ' || f.identifier_aliases || ' ', ' ' || ?4 || ' ') > 0))
            AND EXISTS(SELECT 1 FROM ledger_query_scope allowed WHERE allowed.doc_id=n.doc_id
                       AND n.source_start_byte>=allowed.start_byte AND n.source_end_byte<=allowed.end_byte)
          ORDER BY a.doc_id,n.ordinal LIMIT 257").map_err(|e| e.to_string())?;
-    let rows = statement.query_map(params![root, query, index::PROJECTION_SCHEMA_VERSION], node_row)
+    let rows = statement.query_map(params![root, query, index::PROJECTION_SCHEMA_VERSION, alias], node_row)
         .map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(rows)
+}
+
+
+fn graph_candidates(
+    db: &LedgerDb,
+    seeds: &[(String, f64)],
+    budget: &WorkBudget,
+) -> Result<(Vec<Node>, GraphReceipt), String> {
+    const MAX_GRAPH_NODES: usize = 8;
+    const MAX_GRAPH_EDGES: usize = 24;
+    let mut output = Vec::new();
+    let mut expanded = BTreeSet::new();
+    let mut considered = 0usize;
+    let mut capped = false;
+    for (source_doc, strength) in seeds {
+        budget.visit()?;
+        let edges = {
+            let conn = db.lock();
+            let mut statement = conn.prepare(
+                "SELECT link.target_doc_id,link.target_span_hash
+                 FROM ledger_link_targets link
+                 JOIN ledger_doc_artifacts source ON source.doc_id=link.source_doc_id
+                 JOIN ledger_doc_artifacts target ON target.doc_id=link.target_doc_id
+                 WHERE link.source_doc_id=?1 AND link.resolution_state='resolved'
+                   AND source.lifecycle_state='active' AND target.lifecycle_state='active'
+                   AND source.sensitivity='normal' AND target.sensitivity='normal'
+                   AND link.source_revision=source.revision
+                   AND link.ledger_generation=source.index_generation
+                   AND link.target_revision=target.revision
+                   AND link.target_content_hash=target.content_hash
+                   AND EXISTS(SELECT 1 FROM ledger_query_scope allowed WHERE allowed.doc_id=target.doc_id)
+                 ORDER BY link.target_doc_id,link.source_start_byte LIMIT 25"
+            ).map_err(|e|e.to_string())?;
+            statement.query_map([source_doc], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?)))
+                .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?
+        };
+        if edges.len() > MAX_GRAPH_EDGES.saturating_sub(considered) { capped = true; }
+        for (target_doc,target_span) in edges {
+            budget.visit()?;
+            if considered == MAX_GRAPH_EDGES || expanded.len() == MAX_GRAPH_NODES { capped = true; break; }
+            considered += 1;
+            if seeds.iter().any(|(seed,_)| seed == &target_doc) || !expanded.insert(target_doc.clone()) { continue; }
+            let node = {
+                let conn = db.lock();
+                conn.query_row(
+                    "SELECT n.doc_id,n.node_id,n.node_kind,n.source_start_byte,n.source_end_byte,n.span_hash,?3,0
+                     FROM ledger_nodes n JOIN ledger_doc_artifacts a ON a.doc_id=n.doc_id
+                     WHERE n.doc_id=?1 AND n.ledger_generation=a.index_generation AND n.source_revision=a.revision
+                       AND n.projection_schema_version=?2
+                       AND EXISTS(SELECT 1 FROM ledger_query_scope allowed WHERE allowed.doc_id=n.doc_id
+                                  AND n.source_start_byte>=allowed.start_byte AND n.source_end_byte<=allowed.end_byte)
+                     ORDER BY CASE WHEN n.span_hash=?4 THEN 0 ELSE 1 END,n.ordinal LIMIT 1",
+                    params![target_doc,index::PROJECTION_SCHEMA_VERSION,strength * 0.5,target_span.unwrap_or_default()],
+                    node_row,
+                ).optional().map_err(|e|e.to_string())?
+            };
+            if let Some(node) = node { output.push(node); }
+        }
+        if capped { break; }
+    }
+    let mut seed_documents = seeds.iter().map(|(doc,_)|doc.clone()).collect::<Vec<_>>();
+    seed_documents.sort(); seed_documents.dedup();
+    let expanded_documents = expanded.into_iter().collect::<Vec<_>>();
+    Ok((output, GraphReceipt { seed_documents, expanded_documents, edges_considered: considered, max_hops: 1, capped }))
 }
 
 fn source_hit(source: &resolve::Source, node: &Node, lane: &str, score: f64) -> Result<LedgerHit, String> {
@@ -232,7 +312,11 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
     let mut hits = Vec::new();
     let mut sources = BTreeMap::new();
     let mut candidates = Vec::new();
-    if !literal { candidates.extend(exact_nodes(db, &scope.root, query.trim())?); }
+    if !literal {
+        let exact = exact_nodes(db, &scope.root, query.trim())?;
+        if exact.len() > MAX_POOL { omissions.push("exact_candidate_pool_truncated".into()); }
+        candidates.extend(exact.into_iter().take(MAX_POOL));
+    }
     if !literal && mode == index::LedgerRecallMode::LedgerFts {
         let rows = fts_nodes(db, &scope.root, query)?;
         if rows.len() > MAX_POOL { omissions.push("candidate_pool_truncated".into()); }
@@ -275,6 +359,43 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
     }
     candidates.sort_by(|a,b| b.exact.cmp(&a.exact).then_with(|| b.score.total_cmp(&a.score))
         .then_with(|| (a.end-a.start).cmp(&(b.end-b.start))).then_with(|| a.doc.cmp(&b.doc)).then_with(|| a.id.cmp(&b.id)));
+    let mut graph = None;
+    let mut graph_node_ids = BTreeSet::new();
+    if !literal {
+        let terms = index::query_terms(query).into_iter().collect::<BTreeSet<_>>();
+        if terms.len() >= 2 {
+            let mut seed_docs = BTreeSet::new();
+            let mut seeds = Vec::new();
+            for node in candidates.iter().take(12) {
+                if seed_docs.contains(&node.doc) { continue; }
+                if !sources.contains_key(&node.doc) {
+                    match resolve::load_source(db, &scope.root, &node.doc) {
+                        Ok(source) => { budget.charge_bytes(source.markdown.len())?; sources.insert(node.doc.clone(), source); }
+                        Err(error) => { omissions.push(format!("source_{error}")); continue; }
+                    }
+                }
+                let source = &sources[&node.doc];
+                let Some(text) = source.markdown.get(node.start..node.end) else { omissions.push("span_stale".into()); continue; };
+                let normalized = index::normalize_query(text);
+                let matched = terms.iter().filter(|term| normalized.contains(term.as_str())).count();
+                let strength = matched as f64 / terms.len() as f64;
+                if strength >= 0.60 {
+                    seed_docs.insert(node.doc.clone());
+                    seeds.push((node.doc.clone(), strength));
+                    if seeds.len() == 4 { break; }
+                }
+            }
+            if !seeds.is_empty() {
+                let (expanded, receipt) = graph_candidates(db, &seeds, budget)?;
+                if receipt.capped { omissions.push("graph_expansion_capped".into()); }
+                graph_node_ids.extend(expanded.iter().map(|node|node.id.clone()));
+                candidates.extend(expanded);
+                graph = Some(receipt);
+                candidates.sort_by(|a,b| b.exact.cmp(&a.exact).then_with(|| b.score.total_cmp(&a.score))
+                    .then_with(|| (a.end-a.start).cmp(&(b.end-b.start))).then_with(|| a.doc.cmp(&b.doc)).then_with(|| a.id.cmp(&b.id)));
+            }
+        }
+    }
     let mut seen = BTreeSet::new();
     for node in candidates {
         budget.visit()?;
@@ -287,7 +408,8 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
         }
         let source = &sources[&node.doc];
         let score = if node.exact { 1.0 } else { 1.0 / (2.0 + hits.len() as f64) };
-        match source_hit(source, &node, if node.exact { "exact" } else { lane }, score) {
+        let hit_lane = if node.exact { "exact" } else if graph_node_ids.contains(&node.id) { "ledger_graph" } else { lane };
+        match source_hit(source, &node, hit_lane, score) {
             Ok(hit) => hits.push(hit),
             Err(_) => omissions.push("span_stale".into()),
         }
@@ -306,5 +428,33 @@ pub(crate) fn search(db: &LedgerDb, scope: &QueryScope, query: &str, k: usize, l
     omissions.sort(); omissions.dedup();
     Ok(QueryResult { schema_version: 1, hits: unique, complete: omissions.is_empty(), omissions,
         publication_generation: generation, policy_digest: policy.digest(), lane: lane.to_owned(),
-        query_digest: resolve::digest(query.as_bytes()), source_bytes_checked: budget.consumed_bytes() })
+        query_digest: resolve::digest(query.as_bytes()), source_bytes_checked: budget.consumed_bytes(), graph })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ledger::doc_spine;
+    use std::fs;
+    use std::time::Duration;
+
+    #[test]
+    fn production_query_expands_only_into_scope_eligible_link_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = LedgerDb::open_in_memory();
+        fs::write(dir.path().join("a.md"), "# A\n\nalpha beta [details](b.md)\n").unwrap();
+        fs::write(dir.path().join("b.md"), "# B\n\nlinked evidence only\n").unwrap();
+        doc_spine::sync(&db, dir.path()).unwrap();
+        let root = dir.path().canonicalize().unwrap().to_str().unwrap().replace('\\', "/");
+        let result = search(
+            &db,
+            &QueryScope { root, ranges: None },
+            "alpha beta",
+            2,
+            false,
+            &WorkBudget::bounded(Duration::from_secs(5)),
+        ).unwrap();
+        assert!(result.graph.as_ref().is_some_and(|graph| graph.expanded_documents.len() == 1));
+        assert!(result.hits.iter().any(|hit| hit.lane == "ledger_graph" && hit.source_ref.ends_with("/b.md")));
+    }
 }

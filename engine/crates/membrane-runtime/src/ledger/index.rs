@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v4";
+pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v5";
 pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
@@ -192,6 +192,7 @@ pub(crate) fn replace_document_index_tx(
         None,
     ).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let mut anchor_to_node = BTreeMap::<String, String>::new();
+    let mut identity_collisions = BTreeMap::<String, usize>::new();
     for (ordinal, section) in outline.sections.iter().enumerate() {
         let parent_id = section
             .parent_anchor_id
@@ -203,12 +204,11 @@ pub(crate) fn replace_document_index_tx(
             "preamble" => "preamble",
             _ => "section",
         };
+        let collision = next_collision_ordinal(
+            &mut identity_collisions, parent_id.as_deref(), node_kind, &section.span_hash,
+        );
         let node_id = stable_node_id(
-            input.doc_id,
-            parent_id.as_deref(),
-            node_kind,
-            &section.span_hash,
-            ordinal,
+            input.doc_id, parent_id.as_deref(), node_kind, &section.span_hash, collision,
         );
         anchor_to_node.insert(section.anchor_id.clone(), node_id.clone());
         let body = &input.markdown[section.start_byte..section.end_byte];
@@ -310,12 +310,11 @@ pub(crate) fn replace_document_index_tx(
             .or_else(|| anchor_to_node.get(&containing_section.anchor_id).cloned());
         let heading_path = containing_section.breadcrumb.join(" > ");
         let span_hash = hex::encode(Sha256::digest(body.as_bytes()));
+        let collision = next_collision_ordinal(
+            &mut identity_collisions, parent_id.as_deref(), node_kind, &span_hash,
+        );
         let node_id = stable_node_id(
-            input.doc_id,
-            parent_id.as_deref(),
-            node_kind,
-            &span_hash,
-            block_ordinal,
+            input.doc_id, parent_id.as_deref(), node_kind, &span_hash, collision,
         );
         let aliases = identifier_aliases(body).join(" ");
         tx.execute(
@@ -637,17 +636,38 @@ fn add_component_aliases(component: &str, output: &mut BTreeSet<String>) {
     }
 }
 
+fn next_collision_ordinal(
+    collisions: &mut BTreeMap<String, usize>,
+    parent_id: Option<&str>,
+    kind: &str,
+    span_hash: &str,
+) -> usize {
+    let key = format!("{}\0{kind}\0{span_hash}", parent_id.unwrap_or(""));
+    let ordinal = collisions.get(&key).copied().unwrap_or(0);
+    collisions.insert(key, ordinal + 1);
+    ordinal
+}
+
 fn stable_node_id(
     doc_id: &str,
     parent_id: Option<&str>,
     kind: &str,
     span_hash: &str,
-    ordinal: usize,
+    collision_ordinal: usize,
 ) -> String {
-    let evidence = format!(
-        "{doc_id}\0{}\0{kind}\0{span_hash}\0{ordinal}",
-        parent_id.unwrap_or("")
-    );
+    // Source order is not identity. An unrelated insertion before this node
+    // leaves the ID unchanged. Only truly indistinguishable same-parent,
+    // same-kind, same-span duplicates receive a local collision suffix;
+    // inserting another identical duplicate is deliberately an ambiguous
+    // relocation case rather than a false stable-identity claim.
+    let evidence = if collision_ordinal == 0 {
+        format!("{doc_id}\0{}\0{kind}\0{span_hash}", parent_id.unwrap_or(""))
+    } else {
+        format!(
+            "{doc_id}\0{}\0{kind}\0{span_hash}\0duplicate:{collision_ordinal}",
+            parent_id.unwrap_or("")
+        )
+    };
     format!(
         "ledger.node:{}",
         hex::encode(Sha256::digest(evidence.as_bytes()))

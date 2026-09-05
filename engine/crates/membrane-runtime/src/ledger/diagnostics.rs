@@ -188,6 +188,57 @@ pub(crate) fn backlinks(db:&LedgerDb,root:&str,doc:&str,node:Option<&str>,limit:
         "authorityEffect":"none","rankingEffect":"none"}))
 }
 
+pub(crate) fn related(
+    db: &LedgerDb, root: &str, doc: &str, node: &str, limit: usize, budget: &WorkBudget,
+) -> Result<Value, String> {
+    if limit == 0 || limit > 256 { return Err("ledger_limit_invalid".into()); }
+    let source = authorize_document(db, root, doc, budget)?;
+    let (parent, ordinal, heading_path, span_hash): (Option<String>, i64, String, String) = db.lock().query_row(
+        "SELECT parent_id,ordinal,heading_path,span_hash FROM ledger_nodes
+         WHERE doc_id=?1 AND node_id=?2 AND source_revision=?3 AND ledger_generation=?4",
+        params![doc,node,source.revision,source.generation],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
+    ).optional().map_err(|e|e.to_string())?.ok_or("ledger_node_missing")?;
+    let neighbor = |previous: bool| -> Result<Option<Value>,String> {
+        let conn=db.lock();
+        let sql=if previous {
+            "SELECT node_id,node_kind,span_hash FROM ledger_nodes WHERE doc_id=?1 AND parent_id IS ?2
+             AND ordinal<?3 AND source_revision=?4 AND ledger_generation=?5 ORDER BY ordinal DESC LIMIT 1"
+        } else {
+            "SELECT node_id,node_kind,span_hash FROM ledger_nodes WHERE doc_id=?1 AND parent_id IS ?2
+             AND ordinal>?3 AND source_revision=?4 AND ledger_generation=?5 ORDER BY ordinal LIMIT 1"
+        };
+        conn.query_row(sql,params![doc,parent.as_deref(),ordinal,source.revision,source.generation],|r|
+            Ok(json!({"nodeId":r.get::<_,String>(0)?,"nodeKind":r.get::<_,String>(1)?,"spanHash":r.get::<_,String>(2)?})))
+            .optional().map_err(|e|e.to_string())
+    };
+    let parent_value = if let Some(parent_id)=parent.as_deref() {
+        db.lock().query_row(
+            "SELECT node_id,node_kind,span_hash FROM ledger_nodes WHERE doc_id=?1 AND node_id=?2
+             AND source_revision=?3 AND ledger_generation=?4",
+            params![doc,parent_id,source.revision,source.generation],|r|
+                Ok(json!({"nodeId":r.get::<_,String>(0)?,"nodeKind":r.get::<_,String>(1)?,"spanHash":r.get::<_,String>(2)?})))
+            .optional().map_err(|e|e.to_string())?
+    } else { None };
+    let children={
+        let conn=db.lock();
+        let mut statement=conn.prepare(
+            "SELECT node_id,node_kind,span_hash FROM ledger_nodes WHERE doc_id=?1 AND parent_id=?2
+             AND source_revision=?3 AND ledger_generation=?4 ORDER BY ordinal LIMIT ?5")
+            .map_err(|e|e.to_string())?;
+        statement.query_map(params![doc,node,source.revision,source.generation,(limit+1) as i64],|r|
+            Ok(json!({"nodeId":r.get::<_,String>(0)?,"nodeKind":r.get::<_,String>(1)?,"spanHash":r.get::<_,String>(2)?})))
+            .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?
+    };
+    let truncated=children.len()>limit;
+    let children=children.into_iter().take(limit).collect::<Vec<_>>();
+    authorize_document(db,root,doc,budget)?;
+    Ok(json!({"schemaVersion":1,"docId":doc,"nodeId":node,"spanHash":span_hash,
+        "breadcrumb":heading_path.split(" > ").filter(|v|!v.is_empty()).collect::<Vec<_>>(),
+        "parent":parent_value,"previous":neighbor(true)?,"next":neighbor(false)?,
+        "children":children,"childrenTruncated":truncated,"generation":source.generation}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

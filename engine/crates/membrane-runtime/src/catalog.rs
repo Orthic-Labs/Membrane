@@ -23,6 +23,7 @@
 //! independent handles; the catalog connection is wrapped in its own mutex so a
 //! poisoned/panicked helper degrades without poisoning the route's other DB.
 
+use membrane_protocol::ReadPathV1;
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -33,7 +34,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Schema-version of the catalog. Migrations are additive (`ALTER TABLE ADD` /
 /// `CREATE INDEX`) — never re-shape the Cortex DB, never delete a previously
 /// persisted column.
-pub const CATALOG_SCHEMA_VERSION: i64 = 2;
+pub const CATALOG_SCHEMA_VERSION: i64 = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -360,8 +361,12 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     params![new_catalog_installation_id()?, ContextCatalog::now_unix()],
                 )?;
             }
-            // Placeholder for additive future columns — handlers go here, never
-            // a rewrite of an existing table.
+            3 => {
+                // Preserve the exact source ranges of an admitted scope grant.
+                // Older rows migrate to an explicit empty set, which means no
+                // range authority rather than unrestricted access.
+                add_column(&tx, "scope_grants", "read_paths_json", "TEXT NOT NULL DEFAULT '[]'")?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -580,6 +585,7 @@ pub struct ScopeGrant {
     pub client: String,
     pub repository_ids: Vec<String>,
     pub permitted_edge_types: Vec<String>,
+    pub read_paths: Vec<ReadPathV1>,
     pub task_id: String,
     pub session_id: String,
     pub issued_at_unix: i64,
@@ -624,6 +630,7 @@ pub fn issue_scope_grant(
     client: &str,
     repository_ids: &[String],
     permitted_edge_types: &[String],
+    read_paths: &[ReadPathV1],
     task_id: &str,
     session_id: &str,
     ttl_seconds: i64,
@@ -634,19 +641,22 @@ pub fn issue_scope_grant(
     let expires = now.saturating_add(ttl_seconds.max(1));
     let repo_csv = repository_ids.join(",");
     let edge_csv = permitted_edge_types.join(",");
+    let read_paths_json = serde_json::to_string(read_paths)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let conn = catalog.lock();
     conn.execute(
         "INSERT INTO scope_grants
-            (id, issuer, client, repository_ids, permitted_edges,
+            (id, issuer, client, repository_ids, permitted_edges, read_paths_json,
              task_id, session_id, issued_at_unix, expires_at_unix,
              status, nonce, manifest_digest, revoked_at_unix)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, NULL)",
         params![
             id,
             "membrane-gateway",
             client,
             repo_csv,
             edge_csv,
+            read_paths_json,
             task_id,
             session_id,
             now,
@@ -662,6 +672,7 @@ pub fn issue_scope_grant(
         client: client.to_string(),
         repository_ids: repository_ids.to_vec(),
         permitted_edge_types: permitted_edge_types.to_vec(),
+        read_paths: read_paths.to_vec(),
         task_id: task_id.to_string(),
         session_id: session_id.to_string(),
         issued_at_unix: now,
@@ -677,6 +688,10 @@ fn grant_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScopeGrant> {
     let repo_csv: String = row.get("repository_ids")?;
     let edge_csv: String = row.get("permitted_edges")?;
     let status_str: String = row.get("status")?;
+    let read_paths_json: String = row.get("read_paths_json")?;
+    let read_paths = serde_json::from_str::<Vec<ReadPathV1>>(&read_paths_json)
+        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(
+            0, rusqlite::types::Type::Text, Box::new(error)))?;
     Ok(ScopeGrant {
         id: row.get("id")?,
         issuer: row.get("issuer")?,
@@ -691,6 +706,7 @@ fn grant_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ScopeGrant> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .collect(),
+        read_paths,
         task_id: row.get("task_id")?,
         session_id: row.get("session_id")?,
         issued_at_unix: row.get("issued_at_unix")?,
@@ -1112,12 +1128,14 @@ mod tests {
     #[test]
     fn grant_issuance_lookup_expiry_and_revocation() {
         let catalog = ContextCatalog::open_in_memory();
+        let expected_ranges = vec![ReadPathV1 { path: "docs/setup.md".into(), start_line: 2, end_line: 9 }];
         let grant = issue_scope_grant(
             &catalog,
             "sg-1",
             "claude-mm",
             &["D--Claude".into()],
             &["exact".into(), "lexical".into()],
+            &expected_ranges,
             "task-a",
             "sess-1",
             30,
@@ -1129,6 +1147,7 @@ mod tests {
         let looked = lookup_grant(&catalog, "sg-1").unwrap().unwrap();
         assert_eq!(looked.id, "sg-1");
         assert_eq!(looked.client, "claude-mm");
+        assert_eq!(looked.read_paths, expected_ranges);
         assert!(looked.permits());
         assert!(revoke_scope_grant(&catalog, "sg-1").unwrap());
         let revoked = lookup_grant(&catalog, "sg-1").unwrap().unwrap();
@@ -1147,6 +1166,7 @@ mod tests {
             "claude-mm",
             &["D--Claude".into()],
             &["exact".into()],
+            &[],
             "task-t",
             "sess-t",
             1,

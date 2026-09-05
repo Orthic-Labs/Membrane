@@ -46,10 +46,10 @@ pub(crate) enum LedgerCmd {
         #[arg(long)] doc_id: String,
         #[arg(long)] expected_hash: String,
     },
-    Backlinks {
+    Related {
         #[arg(long)] repo: PathBuf,
         #[arg(long)] doc_id: String,
-        #[arg(long)] node_id: Option<String>,
+        #[arg(long)] node_id: String,
         #[arg(long,default_value_t=64)] limit: usize,
     },
     Drift {
@@ -114,9 +114,9 @@ pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
             let mut args=arguments(repo,"erase")?;args["docId"]=json!(doc_id);
             args["expectedContentHash"]=json!(expected_hash);("membrane_ledger",args)
         },
-        LedgerCmd::Backlinks{repo,doc_id,node_id,limit} => {
-            let mut args=arguments(repo,"backlinks")?;args["docId"]=json!(doc_id);
-            args["limit"]=json!(limit);optional(&mut args,"nodeId",node_id);("membrane_ledger",args)
+        LedgerCmd::Related{repo,doc_id,node_id,limit} => {
+            let mut args=arguments(repo,"related")?;args["docId"]=json!(doc_id);
+            args["nodeId"]=json!(node_id);args["limit"]=json!(limit);("membrane_ledger",args)
         },
         LedgerCmd::Drift{repo,doc_id,from_manifest,to_manifest} => {
             let mut args=arguments(repo,"drift")?;args["docId"]=json!(doc_id);

@@ -119,7 +119,7 @@ fn native_action_for(name: &str, arguments: &Value) -> &'static str {
         "membrane_context" | "membrane_blueprint" => "context",
         "membrane_source_read" => "source_read",
         "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
-            Some("erase" | "activate" | "ingest") => "checkpoint",
+            Some("erase" | "activate") => "checkpoint",
             Some("status") => "system_status",
             _ => "context",
         },
@@ -595,6 +595,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 });
                 if let Some(contract) = sufficiency_contract {
                     body["sufficiencyContract"] = contract;
+                }
+                if let Some(task_id) = arguments.get("taskId").and_then(Value::as_str) {
+                    body["taskId"] = json!(task_id);
                 }
                 // The runtime refuses every context request without this
                 // (RequestTimeH8Error::Missing) and reads it from the request

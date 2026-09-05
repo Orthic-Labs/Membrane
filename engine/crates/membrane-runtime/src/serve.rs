@@ -5140,6 +5140,7 @@ fn planner_post_scope_grants(catalog: &ContextCatalog, v: &Value) -> (u16, Strin
                         "repositoryIds": grant.repository_ids,
                         "repositoryRoot": repository_root,
                         "manifestDigest": grant.manifest_digest,
+                        "readPaths": grant.read_paths,
                         "nonce": grant.nonce,
                         "expiresAtUnix": grant.expires_at_unix,
                     })
@@ -5216,12 +5217,46 @@ fn planner_post_scope_grants(catalog: &ContextCatalog, v: &Value) -> (u16, Strin
                 .collect()
         })
         .unwrap_or_default();
+    let read_paths_value = v.get("read_paths").or_else(|| v.get("readPaths"));
+    let read_paths = match read_paths_value {
+        None => Vec::new(),
+        Some(Value::Array(items)) => {
+            if items.len() > 256 {
+                return (400, json!({"error":"read_paths exceeds maximum of 256 ranges"}).to_string());
+            }
+            let mut parsed = Vec::with_capacity(items.len());
+            for item in items {
+                let Some(path) = item.get("path").and_then(Value::as_str).filter(|value| !value.trim().is_empty()) else {
+                    return (400, json!({"error":"read_paths[].path required"}).to_string());
+                };
+                if path.len() > 4096 || path != path.trim() || path.chars().any(char::is_control) {
+                    return (400, json!({"error":"read_paths[].path invalid"}).to_string());
+                }
+                let start_line = item.get("startLine").or_else(|| item.get("start_line")).and_then(Value::as_u64);
+                let end_line = item.get("endLine").or_else(|| item.get("end_line")).and_then(Value::as_u64);
+                let (Some(start_line), Some(end_line)) = (start_line, end_line) else {
+                    return (400, json!({"error":"read_paths[] start/end lines required"}).to_string());
+                };
+                if start_line == 0 || end_line < start_line || end_line > u32::MAX as u64 {
+                    return (400, json!({"error":"read_paths[] line range invalid"}).to_string());
+                }
+                parsed.push(membrane_protocol::ReadPathV1 {
+                    path: path.to_owned(),
+                    start_line: start_line as u32,
+                    end_line: end_line as u32,
+                });
+            }
+            parsed
+        }
+        Some(_) => return (400, json!({"error":"read_paths must be an array"}).to_string()),
+    };
     let grant = match catalog::issue_scope_grant(
         catalog,
         id,
         client,
         &repo_ids,
         &edges,
+        &read_paths,
         task_id,
         session_id,
         ttl_seconds,

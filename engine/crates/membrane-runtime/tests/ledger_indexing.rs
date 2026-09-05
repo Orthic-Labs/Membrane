@@ -335,9 +335,11 @@ fn multi_root_shadow_recall_pins_one_complete_generation() {
         2,
         "both roots must remain visible in the pinned snapshot"
     );
-    assert!(hits
-        .iter()
-        .all(|hit| hit.ledger_generation == Some(second.index_generation)));
+    let first_hit = hits.iter().find(|hit| hit.source_ref.ends_with("/first.md")).unwrap();
+    let second_hit = hits.iter().find(|hit| hit.source_ref.ends_with("/second.md")).unwrap();
+    assert_ne!(first_hit.ledger_generation, Some(second.index_generation),
+        "syncing another root must not manufacture a new generation for first.md");
+    assert_eq!(second_hit.ledger_generation, Some(second.index_generation));
 }
 
 #[test]
