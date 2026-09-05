@@ -1,1107 +1,475 @@
 # Ledger Markdown Indexing and Document Navigation Canon
 
-**Date:** 2026-08-25  
-**Status:** canonical Ledger product & implementation architecture
-**Supersedes:** `04-GUIDE-MARKDOWN-INDEXING-REVIEW.md` in full  
-**Canonical subsystem rename:** **Guide → Ledger**  
-**Historical names:** Spine / Markdown Doc Spine / Guide  
-**Parent system:** Membrane  
-**Scope:** Markdown/document registration, source-bound projection, indexing, recall, exact resolution, generated virtual documents, migration, qualification, rollout, and rollback
+**Revision date:** 2026-09-05
+**Status:** selected architecture with source implementation on `ledger-end-to-end`; release qualification and installed-host verification remain pending
+**Audit baseline:** `75c257ad711d19ffce69258d132a45dbffa9b4ac`
+**Implementation branch:** `ledger-end-to-end` at `62243a9c099b53e5ef1694739aec8b9ca277b055` (source/type-check evidence; not a release receipt)
+**Intended path:** `docs/architecture/subsystems/ledger.md`
+**Supersession:** replaces the 2026-08-25 edition at this path when adopted, retaining its ownership boundaries, naming migration, source-authority model and qualification discipline
+**Atomic state:** `docs/canon/ledger.md`
+**Parent system:** Membrane
+**Scope:** granted document registration, structural projections, source-local search, exact resolution, navigation, conversion, lifecycle, qualification and delivery
 
 ## Executive decision
 
-The Membrane document-navigation subsystem is renamed **Ledger**.
+Complete Ledger as a daemon-owned, source-bound document service reachable through the normal harness path. Retain its existing SQLite/FTS5 and structural mechanisms. Correct identity, lifecycle, complete-projection and resolver defects before enabling native document-provider delivery.
 
-This is a complete product/architecture rename, not a nickname and not a new seventh subsystem.
+The six named Membrane subsystems remain Pull, Push, Cortex, Blueprint, Ledger and Adapt. Ledger replaces Guide; it is not a seventh subsystem. Source bytes remain authoritative with their source owner. Ledger indexes are rebuildable projections, not repository truth or durable semantic memory.
 
-The six Membrane axes become:
+This revision strengthens seventeen existing atomic contracts and adds three distinct observable capabilities: **LDG-029 inbound references/link health; LDG-030 literal source-span matching; LDG-031 structural drift diagnostics**. The revised atomic inventory is 31 rows: 30 committed scope and one exploratory. Source implementations for the three new atoms are present on the implementation branch; verification, qualification and release delivery remain pending. **LDG-023 and Cortex CTX-033 remain exploratory/HOLD.** The three additions do not require a new search engine, graph database, protocol authority, resident process or Ledger crate.
 
-1. Pull
-2. Push
-3. Cortex
-4. Blueprint
-5. **Ledger**
-6. Adapt
+Normative statements below define the selected target. Section 5 is the separate commit-pinned implementation diagnosis. Writing this canon does not turn its target diagram into current behavior.
 
-Historical `Guide` and `Spine` terminology is retired from current-product code, docs, generated truth, CLI names, status/read-model fields, tests, and operator surfaces after the bounded compatibility window described below.
+## Runtime lifecycle binding — normative
 
-Ledger answers:
+Membrane runtime exists only in the headless child daemon of the visible native tray, with OS-enforced lifetime coupling. CodeRight binds to that active daemon; there is no embedded CodeRight Membrane backend.
 
-> **Where in the registered document corpus is the relevant material, and can the exact current source bytes be resolved safely?**
+Operational MCP, CLI and host surfaces are stateless authenticated clients. They MUST NOT open operational Ledger storage, start a replacement runtime, silently fall back to local index execution or create an index when reporting inactive status. Tray off returns the canonical typed `membrane_unavailable { reason: hub_inactive, retryable: true }` response. An explicitly retained offline developer utility must be separately named and excluded from normal product context behavior.
 
-Ledger is the canonical **document registry, Markdown structural index, retrieval, and source-resolution subsystem**.
-
-It registers all eligible Markdown/document sources under the active grants, tracks their identities/revisions/hashes, projects them into document/section/block structure, indexes those projections, and returns source-bound navigation candidates.
-
-Ledger does **not** become repository truth, durable learned knowledge, or the final context planner.
-
-The source document bytes remain authoritative at their canonical source. Ledger's indexes and optional cached bytes are rebuildable projections.
-
-
-## Runtime lifecycle binding (normative)
-
-These decisions are canonical and take precedence over any wording later in this
-document that implies a different runtime topology:
-
-- Membrane runtime exists only inside the headless child daemon of the visible
-  native tray, with OS-enforced lifetime coupling. There is no standalone or
-  orphanable Membrane runtime.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds to
-  the active tray-owned daemon, or it has no binding.
-- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
-  launch, auto-start, or register a Membrane process.
-- **Tray off → no Membrane context.** Requests return typed
-  `membrane_unavailable { reason: hub_inactive, retryable: true }`.
-- **Ledger** is the canonical subsystem name; it replaces Guide.
-- Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
-  access is an explicit bounded one-shot operation that never daemonizes.
+Blueprint remains independently usable but not independently resident. Its bounded one-shot exception is not permission for a resident or fallback Ledger service. All continuous Ledger update work uses the existing daemon's scheduling and cancellation mechanisms.
 
 ---
 
-# 1. Supersession of the previous Guide plan
+# 1. Supersession and interpretation
 
-This document supersedes the uploaded `04-GUIDE-MARKDOWN-INDEXING-REVIEW.md`.
+The Guide-to-Ledger rename and the earlier rejection of whole-document substring scanning as a finished retrieval design remain in force. This revision does not repeat already completed implementation work merely because an older diagnosis described it as missing.
 
-The prior document's core technical diagnosis is retained:
+The older current-state descriptions of ASCII-only queries, absent FTS execution and absent persisted links are historical. The audited revision contains Unicode/identifier processing, operative weighted FTS, typed block nodes and source-derived link expansion. Their existence is not evidence of complete source coverage, safe lifecycle reconciliation or delivery through the agent.
 
-- whole-document scan is inadequate;
-- the shipped FTS experiment is not production recall;
-- the ASCII-only query tokenizer is a live correctness defect;
-- AST/source-position projection is the correct structural basis;
-- Ledger-local FTS5 is appropriate;
-- source hashes/revisions must fail stale;
-- relation expansion must remain document-structural and bounded;
-- evaluation must precede activation;
-- Cortex/Blueprint storage must remain separate.
-
-The prior naming decision is reversed.
-
-Where it said **keep Guide**, this document requires **full Guide → Ledger rename**.
-
-Where it used `guide::*`, `GuideDb`, `guide_doc_*`, `guide-index.sqlite3`, or `membrane guide`, the target names are `ledger::*`, `LedgerDb`, `ledger_doc_*`, `ledger-index.sqlite3`, and `membrane ledger`.
-
-The previous `guide::ledger` generated-session module creates a naming collision under the new subsystem name and MUST be renamed as part of the migration.
-
----
+The final improvement plan is a delivery document; this file owns architecture and the atomic canon owns capability state. Historical audit/comparison/qualification records are retained at their original revisions. Revised contracts need their own applicable evidence rather than silently inheriting a narrower successful result.
 
 # 2. Naming and migration contract
 
-## 2.1 Canonical name
+## 2.1 Canonical names
 
-**Ledger** is the only current-product subsystem name after cutover.
+Use Ledger, `ledger`, `membrane_runtime::ledger`, `LedgerDb`, `ledger-index.sqlite3` and Ledger-labeled product diagnostics. Public command spelling must follow the actual dispatcher; the inspected executable uses `membrane cli ledger ...`. Documentation must not advertise an unimplemented shorter alias.
 
-Use:
+Guide and Spine remain only in historical documents, compatibility tests, rename records and bounded upgrade diagnostics. Existing storage may be explicitly retired/rebuilt or migrated; no new operational store may prefer the old names. A legacy file retained for rollback is included in retention and erasure accounting.
 
-- `Ledger`
-- `ledger`
-- `membrane ledger`
-- `membrane_runtime::ledger`
-- `LedgerDb`
-- `ledger-index.sqlite3`
+## 2.2 Session projection naming
 
-Do not use `Guide` or `Spine` in current architecture except in:
-
-- historical documents;
-- migration compatibility tests;
-- explicit rename ledgers;
-- one-release upgrade/error messages.
-
-## 2.2 Existing session-ledger collision
-
-Current code contains a generated per-session document under `guide::ledger`.
-
-After the subsystem rename, do not create `ledger::ledger`.
-
-Rename that mechanism to:
+Keep `ledger::session_projection`, not `ledger::ledger`. Preserve the earlier migration mappings where old serialized forms still require bounded compatibility:
 
 ```text
-ledger::session_projection
+SessionLedgerInputV1       -> SessionDocumentProjectionInputV1
+SessionLedgerDocumentV1    -> SessionDocumentProjectionV1
+LedgerSourceCursor        -> SessionProjectionSourceCursor
+LedgerEventV1              -> SessionProjectionEventV1
+LedgerTaskV1               -> SessionProjectionTaskV1
+LedgerArtifactV1           -> SessionProjectionArtifactV1
+LedgerDecisionV1           -> SessionProjectionDecisionV1
+build_session_ledger       -> build_session_projection
+index_session_ledger       -> index_session_projection
 ```
 
-Recommended public/internal type migration:
+Do not revive old names as parallel APIs. User-facing prose may describe a human-readable artifact as a session ledger without creating another code owner.
 
-```text
-SessionLedgerInputV1        -> SessionDocumentProjectionInputV1
-SessionLedgerDocumentV1     -> SessionDocumentProjectionV1
-LedgerSourceCursor          -> SessionProjectionSourceCursor
-LedgerEventV1               -> SessionProjectionEventV1
-LedgerTaskV1                -> SessionProjectionTaskV1
-LedgerArtifactV1            -> SessionProjectionArtifactV1
-LedgerDecisionV1            -> SessionProjectionDecisionV1
-build_session_ledger        -> build_session_projection
-index_session_ledger        -> index_session_projection
-```
+## 2.3 Migration coverage and rollback
 
-If wire/storage compatibility requires retaining old serialized tags for one migration window, preserve them through explicit versioned conversion code. Do not keep the old names as parallel canonical APIs.
+Rename coverage includes architecture, generated truth sources, subsystem enums, CLI/MCP/host capability names where exposed, tests, schemas, fixtures, telemetry, installer diagnostics, Hub read models and cross-subsystem references. Regenerate generated files rather than hand-editing them.
 
-The generated human-readable artifact may still be described in UI copy as a **session ledger** if that phrase is useful, but the code owner is Ledger and the module/API name should avoid `ledger::ledger`.
-
-## 2.3 Rename surface
-
-The full rename MUST cover at minimum:
-
-- canonical Membrane doctrine;
-- subsystem map/system docs;
-- historical `docs/subsystems/guide.md` → archived derived `docs/archive/architecture/derived/subsystems/ledger.md`;
-- generated product truth and its source generator;
-- Adapt references;
-- Pull/Push/Cortex/Blueprint cross-references;
-- native migration documents;
-- Hub six-subsystem read model;
-- Tauri/CLI status labels;
-- internal subsystem enums;
-- telemetry/diagnostic subsystem labels;
-- CLI `membrane guide *` → `membrane ledger *`;
-- Rust module/directory `membrane_runtime::guide` → `membrane_runtime::ledger`;
-- `GuideDb` and Guide-owned table/file names;
-- fixtures, benchmarks, golden files, schemas, and docs;
-- CodeRight Membrane capability names;
-- MCP/host-facing names if exposed;
-- installer/support diagnostics.
-
-Generated files MUST be regenerated from their owning sources; do not hand-edit generated truth.
-
-## 2.4 Compatibility policy
-
-This is a rename, not a permanent dual identity.
-
-During upgrade only:
-
-- old persisted Guide index state may be recognized and migrated/rebuilt;
-- old CLI invocations may return a typed `renamed_to_ledger` diagnostic for one release if required;
-- old configuration keys may be read only through an explicit migration;
-- old Hub/read-model fields may be decoded only at the compatibility boundary if installed-version interoperability requires it.
-
-After the compatibility window:
-
-- no new current-product output says Guide;
-- no runtime path prefers or emits Guide;
-- no new database/table/file is created under Guide naming;
-- no current docs teach Guide.
-
----
+Retire incompatible projections explicitly. Rebuild from canonical eligible sources; refuse unavailable source sets rather than fabricate a successful migration. Keep the previous compatible retrieval path for the qualified rollback window. Do not delete legacy state or remove `legacy_scan` solely because this revision was authored. Verify upgrade, migration, activation and rollback on the exact supported package before retirement.
 
 # 3. Canonical ownership
 
 ## 3.1 Ledger owns
 
-Ledger owns:
+Ledger owns the grant-bound document registry, source/revision/hash metadata, source-positioned GFM document/section/block projections, logical/version/alias identity, source-derived links, source-local FTS and literal matching, bounded hierarchy/backlink navigation, exact source resolution, conversion projections, transactional publication, incremental reconciliation, tombstones, scoped erasure and diagnostic structural deltas.
 
-- eligible document-source registration;
-- canonical Ledger document identity metadata;
-- source path/reference, revision and content-hash tracking;
-- Markdown/GFM parsing for document navigation;
-- source-positioned document/section/block projections;
-- stable source-bound node identities;
-- exact anchor/alias/relocation records;
-- internal Markdown link/reference resolution;
-- Ledger-local lexical retrieval;
-- document structural traversal;
-- generated virtual-document projection after source/lifecycle qualification;
-- stale-source refusal and typed relocation;
-- incremental sync and tombstones;
-- complete transactional index generations;
-- Ledger-owned rebuildable SQLite state;
-- Ledger retrieval/resolution metrics and receipts.
+It also owns source-local provenance, coverage and omission accounting. It materializes candidates for Pull; it does not decide final cross-provider admission.
 
-## 3.2 Ledger does not own
+## 3.2 Other owners remain authoritative
 
-Ledger does not own:
+Blueprint owns repository semantics, source identity/truth services and code re-anchoring. Cortex owns admitted durable knowledge, conflicts, supersession and memory lifecycle. Adapt emits proposals rather than rewriting durable truth or Ledger policy. Pull/Membrane owns final eligibility, authority/freshness/sufficiency, fusion, context budgets and publication. Push owns faithful reduction after selection. CodeRight owns agent execution and host observations.
 
-- repository/code truth — Blueprint;
-- durable learned knowledge, memories, Taste, or Insights — Cortex after admission;
-- behavioral learning — Adapt;
-- final evidence fusion/admission/attention policy — Pull/Membrane planner;
-- faithful reduction/compression — Push;
-- CodeRight execution traces or generic eval datasets;
-- source document authority when the canonical bytes live in Git/filesystem/external source;
-- generic semantic relation graphs;
-- LLM-authored indexing authority.
+Ledger never opens Blueprint SQLite or Cortex durable storage. Integrations use typed owner handles. Shared source references do not authorize cross-owner database access. A `RuntimeDeliveryLedger` used by a rules provider is not the document subsystem.
 
-## 3.3 "Ledger holds all Markdown" — precise meaning
+## 3.3 Registry, caches and source authority
 
-The intended product statement is:
+“Ledger holds all documents” means it registers and structurally indexes all eligible sources covered by a declared source manifest and grant. It does not own authoritative filesystem, Git or external-source bytes.
 
-> **Ledger holds the canonical registry and searchable structural projection of all eligible Markdown/document sources under its grants.**
+Caches must bind raw and projection hashes, source identity/revision, converter/parser versions and deterministic invalidation. Current-source claims require freshness evidence from the source owner. An immutable imported snapshot is explicitly labeled a snapshot; the presence of cached bytes does not make it a live external-source view.
 
-This means Ledger knows:
-
-- every registered document;
-- where its authoritative source lives;
-- its revision/hash;
-- its structural nodes;
-- its index entries;
-- its links/aliases;
-- how to resolve exact current bytes.
-
-It does **not** require Ledger to become the authoritative owner of the source file bytes.
-
-Optional raw-text caching is permitted as a rebuildable performance optimization when:
-
-- the cached bytes are hash-bound to the authoritative source;
-- cache invalidation is deterministic;
-- stale bytes can never be silently served;
-- erasure removes the cache;
-- a rebuild can reconstruct Ledger from source.
-
-Generated virtual documents are different because they may not have a filesystem source. They require a typed virtual-source authority/lifecycle contract before becoming recallable.
-
----
+Document identity is not content equality. Separate sources may share a physical content-addressed blob while preserving different grants, lifecycles and citations. Rebuild reproduces current projections; historical alias or drift claims require retained source-backed history. Lost history is reported as unavailable, not reconstructed as fact from similar text.
 
 # 4. Locked invariants
 
-1. Raw source bytes plus canonical source identity/revision are authoritative; Ledger projections are rebuildable.
-2. Ledger returns navigation/index candidates and exact source resolution, never repository truth or durable-memory authority.
-3. Scope/path/lifecycle/trust/influence/sensitivity eligibility runs before ranking.
-4. Pull retains final authority/freshness/sufficiency/fusion/admission/budget/receipt policy.
-5. Every returned node binds source range, span hash, source revision, Ledger generation, parser version, index schema version, and tokenizer/query-normalization version.
-6. Hash/revision mismatch never returns silently changed text.
-7. Parent/sibling/link expansion traverses source-derived document structure only.
-8. Expansion is bounded by explicit `max_hops`, `max_nodes`, `max_edges`, cycle detection, and abstention.
-9. Readers pin one published complete Ledger generation.
-10. Mixed-generation artifact/node/link/FTS rows are never observable.
-11. Ledger FTS lives in Ledger-owned storage and never opens Cortex storage.
-12. Ledger never opens Blueprint SQLite directly.
-13. Ledger has no vector/embedding store in this plan.
-14. Semantic document retrieval is a future architecture decision triggered only by measured lexical/structural deficiency.
-15. Unknown parser/schema/tokenizer versions degrade or rebuild explicitly.
-16. Corrupt Ledger state rebuilds or fails closed.
-17. Generated virtual session projections are non-recallable until their source/lifecycle contract and real consumer are qualified.
-18. LLM output cannot manufacture source identity, document truth, links, or node authority.
-19. An index existing on disk is not evidence it is shipped.
-20. A capability is not landed until production-path reachability and acceptance evidence prove it.
+1. Canonical source identity/revision and raw bytes remain authoritative; Ledger projections are rebuildable.
+2. Ledger candidates are document-navigation evidence, never repository truth or durable-memory authority.
+3. Scope, path, lifecycle, trust, influence and sensitivity eligibility precede ranking and expansion and are rechecked before byte release.
+4. Pull/Membrane retains final fusion, admission, sufficiency, budgeting, publication and receipt authority.
+5. A returned node binds source identity, expected revision/hash, supported span/range/hash, publication generation and parser/projection/query configuration.
+6. Changed source, converter or span evidence never yields silently substituted bytes.
+7. Document hierarchy and links are source-derived. Generic semantic relation inference is outside Ledger.
+8. Expansion, enumeration, conversion, loading and reads obey inherited deadlines, cancellation and explicit work/output bounds.
+9. A request carries a coherent publication/source tuple; concurrent change yields an explicit retry/refusal where coherence cannot be maintained.
+10. Mixed-generation artifacts, nodes, links or FTS rows are not a publishable complete result.
+11. Ledger owns its FTS state and never reuses Cortex storage.
+12. Ledger never directly opens Blueprint storage.
+13. No vector/embedding store is introduced by this revision.
+14. A different search engine or semantic lane requires a measured deficiency and a separate architecture decision.
+15. Unknown parser/schema/tokenizer/converter versions cause typed degradation, refusal or rebuild.
+16. Corrupt projection state is rebuilt or refused, not served as verified evidence.
+17. Generated session documents remain non-recallable until consumer, source authority, lifecycle, privacy and replay value qualify.
+18. Repository or model text cannot grant authority, invent source identity or manufacture verified links.
+19. An index on disk and an implemented helper are not proof of shipped behavior.
+20. Production-path reachability and applicable acceptance evidence are required for capability closure.
+21. API presentation pagination never silently truncates the internal index.
+22. Equal bytes never merge distinct live document identities or authorization scopes.
+23. A source collection may be tombstoned only by its authoritative, complete reconciliation; temporary observation failure is not deletion.
+24. Every emitted resolver-backed reference is usable through the recipient host's advertised/negotiated operations.
+25. Operational CLI/MCP calls use the daemon owner; inactive status creates neither storage nor runtime.
+26. Search completeness and relevance are separate. Partial search cannot establish complete no-answer.
+27. Literal-match claims require exact verification against the named source/projection bytes; FTS quoting is not such proof.
+28. Backlink counts measure references within declared coverage, not truth, independent corroboration or higher authority.
+29. Structural drift is diagnostic; change magnitude or low edit frequency is not an automatic ranking or truth rule.
+30. Indexing must not insert block IDs into source text or rewrite source references. Author-provided IDs may be consumed as aliases.
+31. Engine, provider, transport and host-delivery qualification are separate and release/configuration-bound.
+32. Automatically marked pending work has an automatic completion path or typed terminal failure; it cannot remain dependent on an unrelated manual seal.
 
----
+# 5. Current implementation reconciliation
 
-# 5. Verified current-state diagnosis
+Audit baseline: `75c257ad711d19ffce69258d132a45dbffa9b4ac`. Implementation source reviewed through `62243a9c099b53e5ef1694739aec8b9ca277b055` on `ledger-end-to-end`. Managed branch check `33952026427` passed the atomic-canon/source checks and `cargo check --manifest-path engine/Cargo.toml --workspace --tests --locked`. That type-checks library, binary and test source; it does **not** execute Rust tests, package/install a build, activate automatic Ledger delivery or establish release qualification.
 
-The current implementation has useful components, but production recall remains materially shallower than the target.
+| Boundary | Source state on implementation branch | Remaining closure |
+|---|---|---|
+| Storage and search | Repository-scoped exact metadata/identifier routing, weighted FTS5 machinery, explicit literal-span verification, source eligibility before rank, and bounded graph alternatives are in the daemon owner path. | No-answer/relevance corpus qualification and release-compatible provider activation remain pending. |
+| Projection | Complete internal outline is independent of presentation paging; one Comrak AST feeds section, typed-block and link projections; nested block parent relationships are retained. | Publication preparation still performs substantial filesystem/parse work while holding the Ledger transaction; concurrency/latency qualification remains partial. |
+| Identity and lifecycle | Equal-content copies retain distinct document identities; unchanged tombstoned sources are reprocessed; Markdown reconciliation excludes imported conversions; stable node IDs no longer use unrelated global order; erasure policy survives index rebuild. | Qualified move/rename identity and alias-history transitions remain partial. |
+| Scope and source policy | Exact scope-grant read ranges survive catalog persistence and native federation; repository-local Git-ignore semantics, mandatory exclusions, source-read authority, cancellation/deadline and byte/item bounds are shared across scan/query/read. | Runtime revocation/race behavior still needs executed and packaged acceptance evidence. |
+| Links and navigation | Forward links, scope-filtered backlinks/link health, parent/previous/next/children/breadcrumb navigation, bounded one-hop strong-seed graph expansion and structural manifests/drift diagnostics are source-wired. | LDG-029/031 remain unqualified until their acceptance cases execute through the managed/product path. |
+| Native federation | `ProviderId::Ledger`, daemon owner binding and native provider registration are present; candidates retain exact resolver evidence and Pull remains final admission/fusion authority. | Automatic live candidate delivery remains intentionally gated: the release-specific qualification allowlist is empty and the provider enable flag defaults off. |
+| Source reading | Exact registered nodes, imported snapshots, raw/projection/span hashes, continuation cursors, source-bound tickets and current policy checks share the daemon resolver. | Installed host round-trip and revocation-between-retrieval/read acceptance are not yet qualified. |
+| CLI/MCP | Operational Ledger CLI is a daemon client; MCP exposes `membrane_ledger` plus enhanced `membrane_source_read`, including `related`, backlinks, manifests and drift. | Product-host capability negotiation still needs installed evidence; tray-off behavior is source-designed but not package-tested in this change. |
+| Conversion | Deterministic internal conversion, raw/projection provenance and imported-snapshot resolution remain available internally. Public conversion ingest was withheld from the generic MCP/CLI surface. | Per-format semantic/integrity/installed round-trip qualification is required before a format is advertised. |
+| Delivery | Source and test targets compile under the managed check lane; previous FTS engine evidence remains historical. | No release, package, runtime activation, installed CodeRight session or delivered-evidence qualification is claimed. |
 
-Verified strengths include:
+The earlier held-out engine result (legacy Recall@5 0.14 versus Ledger FTS 0.68 on 50 queries) remains historical evidence for retaining FTS5. It does not qualify this changed owner/provider/resolver composition.
 
-- Comrak/GFM parsing;
-- source positions;
-- headings/breadcrumbs;
-- content and span hashes;
-- hash-checked section reads;
-- separate rebuildable SQLite state;
-- lifecycle and sensitivity filtering;
-- document projection code;
-- tombstones/incremental metadata;
-- deterministic stale-source refusal;
-- generated session-document projection code.
-
-Verified current weaknesses include:
-
-- shipped sync writes one broad lexical document projection instead of wiring full AST/block projection;
-- shipped recall scans all eligible whole-document lexical rows and scores them in Rust;
-- production recall does not execute FTS `MATCH`/BM25;
-- query tokenization is ASCII-alphanumeric only;
-- a CJK-only query produces no terms and no results;
-- node identity is too dependent on heading slug/ordinal;
-- duplicate/renamed headings have weak relocation semantics;
-- non-ASCII heading alias behavior is unsafe;
-- durable typed nodes for lists/tables/blockquotes/HTML/references/longer fences are incomplete;
-- persisted link/reference graph is absent;
-- query-side identifier normalization is inadequate;
-- quality tests emphasize mechanics rather than held-out retrieval outcomes;
-- synthetic shadow replay is not operational activation evidence;
-- generated session projection is not a first-class recallable virtual source.
-
-One important landed behavior must be preserved: lifecycle and sensitivity eligibility already occur before scoring on the current SQL path.
-
----
+The source branch therefore closes the principal implementation and wiring defects identified by the audit, while deliberately leaving **qualification and a small set of behavioral contracts partial**. In particular, LDG-004/024 move history, LDG-017/018 publication/concurrency behavior, LDG-022 installed automatic delivery, and LDG-028 per-format qualification must not be promoted from source presence alone.
 
 # 6. Selected target architecture
 
 ```text
-eligible document source bytes
-        |
-        v
-canonical source identity + revision
-        |
-        v
-Comrak/GFM parse with source positions
-        |
-        v
-document / section / typed-block tree
-        |
-        +--> exact anchor / alias / relocation
-        +--> Ledger-local FTS5/BM25
-        +--> source-derived link graph
-        |
-        v
-query normalization + lane retrieval
-        |
-        v
-bounded structural/link expansion
-        |
-        v
-Ledger candidates
-        |
-        v
-Pull hard policy + fusion + admission + budget
-        |
-        v
-hash-verified Ledger resolve
-        |
-        v
-Push representation if selected
+canonical granted source + source-collection manifest
+    -> deterministic conversion, only where qualified
+    -> one complete source-positioned GFM parse per changed projection
+    -> document / section / typed-block projection
+       + identity / aliases / revision and span evidence
+       + Ledger-local FTS5
+       + source-derived forward/reverse link projections
+       + bounded structural-manifest diagnostics
+    -> eligible exact-key / lexical / explicit-literal candidate lanes
+    -> bounded structural and strong-seed link alternatives
+    -> daemon-owned native Ledger source/provider
+    -> Pull's existing fusion, admission, budget and publication gates
+    -> shared exact resolver with current grant and captured source tuple
+    -> optional Push representation with raw recovery
+    -> actual host-delivered evidence and omission receipts
 ```
 
-Ledger owns its candidate ranks and provenance. Pull decides cross-provider fusion and final attention.
+MCP/CLI/CodeRight use the existing authenticated transport; none owns another index. Engine mode, index readiness and provider-delivery activation remain separate state dimensions.
 
----
+# 7. Projection and identity model
 
-# 7. Projection model
+## 7.1 Parse once; keep internal completeness separate from presentation
 
-## 7.1 Parse once, preserve source positions
+The internal projection builder consumes the full bounded source revision, not a paginated outline response. It covers document roots, headings, paragraphs, fenced and indented code, lists/items, blockquotes, tables/rows/cells, HTML blocks, thematic breaks where useful, links/images/reference definitions, footnotes where supported and nested containers.
 
-Parse Markdown once per source revision into a source-positioned AST.
+Page the external outline only after constructing the internal tree. An explicit ingestion limit can produce typed incomplete coverage; it cannot produce a complete publication claim. Avoid arbitrary character chunks as the primary model. Keep genuine parent relationships for nested containers.
 
-Required block coverage includes:
+For a conversion, the parse input is the verified normalized projection. Raw-source and normalized-source coordinates are different domains; never present a Markdown byte offset as a raw PDF/DOCX offset without a qualified mapping.
 
-- document root;
-- headings;
-- paragraphs;
-- fenced code;
-- indented code;
-- lists/list items;
-- blockquotes;
-- GFM tables;
-- HTML blocks;
-- thematic breaks where useful;
-- inline/reference links;
-- link definitions;
-- footnotes where supported;
-- nested containers.
+## 7.2 Persisted node evidence
 
-Do not use arbitrary character chunks as the primary structural model.
-
-## 7.2 Persisted node contract
-
-Persist per node/block:
+The internal record includes, at minimum:
 
 ```text
-doc_id
-node_id
-parent_id?
-ordinal
-node_kind
-heading_path
-source_range
-span_hash
-searchable_text
-link_targets[]
-parser_version
-projection_schema_version
-fts_schema_version
-tokenizer_id
-query_normalizer_version
-source_revision
-ledger_generation
+doc_id; source_collection_id; logical_node_id; node_version_id
+parent_id; ordinal; node_kind; heading_path; human_anchor_aliases
+raw_source_identity; raw_revision; raw_content_hash
+projection_hash; projection_version; converter_config_digest, when applicable
+source_range; span_hash; searchable_text; source-derived link_targets
+parser_version; projection_schema_version; fts_schema_version
+tokenizer_id; query_normalizer_version; ledger_generation
+coverage; supported_resolution_unit
 ```
 
-Optional:
+These are internal requirements, not permission to invent unversioned public V2 fields. Map them to existing contracts or approved compatible extensions with schemas/handlers/tests updated together.
 
-```text
-cached_raw_text
-human_anchor_aliases[]
-prior_node_ids[]
-relocation_reason?
-```
+## 7.3 Identity, copies, moves and aliases
 
-## 7.3 Identity
+Separate four concepts: authoritative document identity, logical structural node identity, versioned source-span evidence and human-readable alias. Hashes identify bytes, not uniquely the source or authorizing scope. An ordinal or slug is not a stable identity across edits.
 
-`doc_id` binds the canonical source identity, not merely the content hash.
+Resolve identities through complete source manifests, source-owner move evidence, stable explicit source IDs where available, structural context and qualified history. Two simultaneous equal-content files remain different documents. Move/copy ambiguity yields a typed unresolved transition rather than choosing the first hash match. Ordinary edits preserve the correct source identity.
 
-`node_id` should be derived from stable structural evidence such as:
+Indexing is read-only with respect to source documents. Do not insert HTML comments into code fences or other source text. Do not repoint inbound source links during indexing. Source editing, if separately requested, remains an authorized action outside ordinary indexing.
 
-- document identity;
-- parent identity;
-- node kind;
-- structural fingerprint;
-- source span hash;
-- bounded ordinal context.
+## 7.4 Exact range resolution
 
-Heading slugs are human aliases, not canonical identity.
+For native Markdown, `span_hash = sha256(source_bytes[source_range])`. Resolve the requested supported unit with the caller's captured source identity/revision/raw hash and span evidence, and return the actual byte range served. A versioned node reference must resolve through the registry owner, not be reinterpreted as a section slug.
 
-Rename/move/duplicate insertion should produce explicit relocation/alias history rather than silently changing identity.
+Return a larger parent only as an explicit bounded expansion with its own identity and cost. A matched table cell or paragraph must not silently become a document-sized answer. A chunked transport must report page ranges separately from the enclosing source span and guarantee forward progress for nonempty pages.
 
-## 7.4 Span integrity
-
-```text
-span_hash = sha256(source_bytes[source_range])
-```
-
-Resolution verifies the current source bytes against the expected revision/hash before serving.
-
-If mismatch:
-
-- exact relocation if qualified;
-- otherwise typed `stale`;
-- otherwise typed `missing`.
-
-Never serve best-effort changed bytes as though they matched the retrieved node.
-
----
+Identical spans in different locations retain distinct citation context. A content-fingerprint tie alone cannot justify a relocation. Relocation returns verified replacement identity/provenance, or ambiguity; it is not merely a label for a missing anchor.
 
 # 8. Query processing contract
 
-The previous plan was index-heavy and under-specified query handling. This section is mandatory.
+## 8.1 Unicode and identifiers
 
-## 8.1 Unicode normalization
+Retain the original query as request data and derive a versioned normalized query. Evaluate normalization/case handling/combining marks, paths, Markdown punctuation, CJK, mixed scripts and short identifiers. Nonempty text must not silently disappear into a success-with-no-terms path.
 
-Queries MUST not be ASCII-only.
+Preserve developer identifiers while admitting bounded components, such as `LedgerDb` and `ledger`/`db`, or a path plus its components. Do not explode aliases so broadly that query cost or false positives become unbounded. Actual implementation terminology must match its normalization behavior; a case-folding label is not proof of full Unicode case folding.
 
-Pre-register and test the normalization policy for:
+## 8.2 Exact-first short queries
 
-- Unicode normalization;
-- case handling where language-appropriate;
-- combining marks;
-- punctuation;
-- path separators;
-- Markdown punctuation;
-- CJK text;
-- mixed-script queries.
+LDG-008 remains the exact path/title/anchor/identifier lane ahead of broad lexical retrieval and strong-seed expansion. It is distinct from literal content matching. Safe query construction must own all FTS syntax, control Boolean policy and expose the executed lane/configuration in bounded receipts. Raw user strings must not become SQL or FTS operators.
 
-Do not silently convert a non-empty user query into zero retrieval terms.
+## 8.3 Explicit literal matching — LDG-030
 
-## 8.2 Developer-identifier expansion
+A caller can explicitly request a literal match. A qualified quote-syntax convention may select that mode, but the system must not reinterpret arbitrary task prose or silently normalize literal bytes. Match case, punctuation and whitespace according to a named explicit mode; the default literal proof is exact byte equality within the named supported source span.
 
-Developer-document retrieval must recognize identifiers.
+FTS may narrow candidate discovery but cannot establish exactness or complete literal absence. Verify matches against hash-validated bytes, returning exact positions and source evidence. Tokenization can miss punctuation-only or normalization-sensitive literals. Such requests need a bounded source-span scan or another qualified candidate mechanism; otherwise return unsupported/incomplete, not complete no-match. Exhausting a top-k candidate list is also not proof of global absence.
 
-For a query token such as:
+Initially cover supported code blocks. Inline code/configuration tables may be covered only when their supported resolution units and fixtures qualify. Literal matching of converted Markdown is explicitly against the normalized projection, unless a qualified raw-source locator is requested. Do not imply that normalized text appeared byte-for-byte in a binary original.
 
-```text
-doc_spine
-LedgerDb
-membrane-runtime
-ledger_doc_fts5
-foo.bar.baz
-src/ledger/doc_spine.rs
-HTTPServerV2
-```
+## 8.4 No-answer and coverage
 
-generate a deterministic query representation that preserves the original term and may additionally expose components such as:
-
-```text
-doc_spine -> doc_spine, doc, spine
-LedgerDb -> LedgerDb, ledger, db
-membrane-runtime -> membrane-runtime, membrane, runtime
-foo.bar.baz -> foo.bar.baz, foo, bar, baz
-```
-
-Rules MUST be deterministic and benchmarked.
-
-Do not explode identifiers so aggressively that precision collapses.
-
-## 8.3 Short queries
-
-One- and two-token queries need an explicit lane policy.
-
-Prefer:
-
-1. exact path/title/anchor/identifier matches;
-2. lexical FTS;
-3. structural/link expansion from strong seeds.
-
-Do not treat short queries as an excuse for broad full-corpus traversal.
-
-## 8.4 Query operator safety
-
-User text must not become raw FTS syntax.
-
-Implement one safe query builder that:
-
-- quotes/escapes terms;
-- controls AND/OR policy;
-- prevents column/operator injection;
-- records the normalized query and lane behavior in debug/qualification receipts.
-
----
+Evaluate false-positive acceptance and justified abstention separately from positive-query recall. Carry searchable corpus coverage, candidate-discovery limits and stale/unsupported omissions safely. Do not leak denied file names, counts or links while explaining an incomplete result. Pull decides whether the overall task has sufficient evidence.
 
 # 9. Ledger-local FTS
 
-## 9.1 Storage
+Retain the Ledger-owned FTS5 schema and weighted path/title/heading/body/identifier fields. SQLite's `bm25()` accepts query-time column weights; hardcoded values in current code are a configurable policy choice, not a reason to replace the engine. A generic second-engine abstraction is not required here.
 
-Use Ledger-owned FTS5 tables.
+Tokenizer alternatives, field weights, Boolean query strategy, field normalization and breadcrumb augmentation are tuned only on development data. Freeze a candidate before held-out evaluation. Query-weight profiles, if introduced, must be named, versioned, bounded and host-policy controlled, not arbitrary authority granted by document text.
 
-Recommended weighted fields:
+Active FTS qualification proves that the shipped recall path executes `MATCH`/ranking. Index existence, unchanged output in a test or a switch set in storage is not that proof. Track source-local rank and lane evidence; Pull owns heterogeneous fusion and does not compare raw BM25 values directly with unrelated provider scores.
 
-```text
-path
-title
-heading
-body
-identifier_aliases
-```
+An alternative engine requires a measured unmet requirement and explicit cost/compatibility review. DisMax or another ranking operator cannot enforce eligibility, freshness or safety, regardless of its numeric aggregation rule.
 
-No Cortex table reuse and no `cortex-store` dependency.
+# 10. Structural, link and reverse-reference navigation
 
-## 9.2 Tokenizer selection
+## 10.1 Hierarchy and candidate budgets
 
-Do **not** freeze the tokenizer before measuring it.
+Expose bounded parent, child, same-parent sibling and ancestry queries. Distinguish result-count budgets from candidate-pool and expansion-work budgets. Graph alternatives may compete when base top-k is full, but must not create unbounded expansion or bypass Pull admission. Preserve expansion provenance and typed abstention through the final service response rather than discarding the trace.
 
-Evaluation procedure:
+## 10.2 One link resolver
 
-1. define a development split;
-2. compare at least the relevant Unicode-capable FTS tokenizer options and trigram behavior;
-3. include CJK-only, mixed CJK/Latin, identifiers, paths, short terms, and prose;
-4. tune tokenizer and BM25 field weights on the dev split only;
-5. freeze the winner;
-6. run held-out promotion exactly once per frozen candidate.
+Generator, validator, indexing, navigation and resolution share one semantic resolver for inline/reference/autolink/image/relative/fragment/Unicode/broken targets. Edges bind the exact source link span and current target identity/revision/span where resolved. A link never grants access to its target. Broken, denied and ambiguous states remain distinct without exposing inaccessible target metadata.
 
-## 9.3 BM25 weights
+## 10.3 Strong-seed expansion
 
-BM25 field weights are tunable parameters, not doctrine.
+Use qualified strong seeds only. Enforce maximum hops, nodes, edges, source bytes, elapsed work and inherited cancellation; detect cycles and explicitly abstain on weak/unusable evidence. No generic semantic relation traversal is introduced.
 
-Tune only on the dev set.
+## 10.4 Inbound references and link health — LDG-029
 
-Publish the frozen configuration alongside:
+Add a bounded reverse-navigation operation over the existing source-derived edges and target indexes. Return which eligible document/section spans cite a target, with generation and resolution provenance. Reuse the existing storage/edge model; do not create a second graph authority.
 
-- schema version;
-- tokenizer id;
-- query-normalizer version;
-- corpus version;
-- benchmark receipt.
+Reference counts, orphan candidates, broken links and cycles are diagnostic views. Counts apply only to the caller-visible declared source set and graph coverage. A document with zero visible inbound edges is not necessarily globally orphaned. Return unknown/partial when coverage or freshness cannot justify a complete claim. Materialized reverse indexes are allowed if deterministic, rebuildable and generation-bound; derived does not mean everything must be recomputed at read time.
 
-## 9.4 Production reachability
+Link popularity is not independent corroboration and does not increase authority. Any influence on relevance ranking needs a separate ablation with no-authority-gain tests. Return bounded query results; do not place the full graph in every receipt.
 
-Activation evidence MUST demonstrate that production recall executes FTS `MATCH`/ranking.
+# 11. Contextualization and result-granularity experiments
 
-An FTS table existing on disk, or a test proving results are unchanged when it is present, does not count.
+Retain title-chain contextualization as an experiment, not an assumed improvement. Compare no prefix, deterministic breadcrumbs and alternative field weighting using retrieval quality, index cost, latency and delivered-token cost.
 
-Required proof includes at least one:
+Group overlapping document/section/block results so the same source text is not counted repeatedly as useful evidence. A bounded parent merge is permitted as a candidate representation when it improves complete evidence per delivered token, preserves source order and retains exact child/source provenance. It is not automatic whole-document expansion.
 
-- instrumentation counter;
-- trace/span;
-- deterministic debug receipt;
-- integration assertion bound to the production recall call path.
-
----
-
-# 10. Structural and link retrieval
-
-## 10.1 Section hierarchy
-
-Persist the document hierarchy so strong hits can expose:
-
-- parent section;
-- child blocks;
-- adjacent siblings;
-- heading ancestry.
-
-## 10.2 Link graph
-
-Resolve source-derived Markdown links into typed navigation edges.
-
-One canonical resolver must handle:
-
-- inline links;
-- reference links;
-- autolinks where applicable;
-- image references;
-- relative file paths;
-- fragments;
-- Unicode anchors;
-- broken targets.
-
-Generator, validator, visualization, sync, recall, and resolve must share the same link-resolution semantics.
-
-## 10.3 Expansion
-
-Only expand from strong seeds.
-
-Caps:
-
-```text
-max_hops
-max_nodes
-max_edges
-```
-
-must be frozen before activation and appear in receipts.
-
-No generic relation-neighborhood traversal belongs in Ledger.
-
----
-
-# 11. Title-chain contextualization is an experiment
-
-Do not lock deterministic title-chain prefixes as an assumed retrieval improvement.
-
-Candidate searchable augmentation:
-
-```text
-document title > H1 > H2 > H3
-```
-
-must be evaluated as a preregistered ablation:
-
-- no prefix;
-- deterministic breadcrumb prefix;
-- optional alternative structural field weighting.
-
-Measure:
-
-- Recall@k;
-- MRR;
-- nDCG where appropriate;
-- index bytes;
-- query latency;
-- context-token cost after resolution.
-
-Only retain the prefix if it earns its cost.
-
-This is not equivalent to LLM-generated contextual retrieval and must not be described as such.
-
----
+Future-question aliases remain non-authoritative, source-evidence-bound, separately weighted and shadow-qualified under LDG-027. They invalidate on revision/span drift. No LLM-authored identity, authority or ungrounded document truth is permitted. Structural drift and backlink counts are diagnostic by default, not automatic freshness/quality proxies.
 
 # 12. Evaluation architecture
 
-## 12.1 Do not tune on held-out
+Use authoring/train, development/tuning and held-out splits. Freeze tokenizer, weights, normalization, exact/literal routing, expansion limits and representation experiments before held-out promotion. Do not turn repeated runs on the old held-out set into a tuning loop.
 
-The previous plan's freeze order is corrected.
+Use at least the real Membrane documentation and a second real corpus with a different authoring style. Include exact-document/heading, paraphrase, no-answer, path/identifier, CJK/mixed-script, table/list/code, link/reference, stale/moved/duplicate and multi-section synthesis queries. Add literal punctuation/case/whitespace fixtures, scoped backlink queries and structural-baseline expiry cases.
 
-Use:
+Predeclare practical effect size, corpus sizing or paired-bootstrap intervals. Fifty queries do not establish arbitrary small improvements. Mechanics fixtures diagnose failures but do not replace real-corpus promotion.
 
-```text
-authoring/train split
-        |
-        v
-development/tuning split
-        |
-        v
-freeze candidate
-        |
-        v
-held-out test split
-```
+Measure Recall@k, MRR and suitable nDCG, exact source/span resolution, stale/relocation/ambiguity correctness, false-positive/no-answer behavior, corpus coverage, delivered unique evidence per token, duplicate-span overhead, p50/p95 cold/warm latency, index/WAL/payload bytes, memory delta and production lane execution counts. For each active operation record the applicable release/configuration and actual host-delivery boundary.
 
-Tokenizer choice, BM25 weights, query normalization, title-chain treatment, expansion parameters, and any rank tuning use the development split.
+# 13. Runtime, conversion and diagnostic contracts
 
-The final held-out set is not a tuning loop.
+## 13.1 Operation boundaries
 
-## 12.2 Corpus size and statistical gate
-
-Do not assume 50–100 questions can support arbitrary small quality thresholds.
-
-Before collecting the final corpus:
-
-- state the minimum detectable effect or practical improvement needed;
-- choose sample size accordingly;
-- or use paired per-query comparisons with predeclared bootstrap confidence intervals.
-
-Because every candidate can be run on the same query, paired evaluation SHOULD be the default where appropriate.
-
-## 12.3 Corpus design
-
-Use real document corpora.
-
-Minimum query classes:
-
-- exact document;
-- exact heading;
-- paraphrase;
-- negative/no-answer;
-- path/identifier;
-- CJK/non-ASCII;
-- mixed-script;
-- table;
-- list;
-- fenced code;
-- link/reference;
-- stale/renamed/moved section;
-- multi-section synthesis.
-
-Use at least:
-
-- real Membrane documentation;
-- a second real corpus with different authoring style/structure.
-
-Synthetic fixtures remain mechanics tests, not promotion evidence.
-
-## 12.4 Metrics
-
-Record:
-
-- Recall@k;
-- MRR;
-- nDCG where ranking depth makes it meaningful;
-- exact resolution rate;
-- stale refusal correctness;
-- relocation correctness;
-- false-positive/no-answer behavior;
-- p50/p95 cold and warm latency;
-- index bytes;
-- payload/WAL bytes;
-- RSS delta;
-- context-token cost for equivalent evidence;
-- production-path lane execution counts.
-
----
-
-# 13. Runtime contracts
-
-| Operation | Input | Output / failure |
+| Operation | Required input | Outcome |
 |---|---|---|
-| **Sync** | source identity, revision, bytes, labels, grant, root | one verified atomic Ledger generation; typed omission/denial/rebuild failures |
-| **Recall** | query, grant, eligibility, lane/budget | ranked source-bound candidates, normalized-query receipt, lane provenance, pinned generation |
-| **Resolve** | doc/node id, expected revision/hash, pagination | exact bytes + metadata; typed stale/relocated/missing/ineligible |
-| **Expansion** | strong seeds + caps | bounded source-derived parent/sibling/link nodes or typed abstention |
-| **Pull consumption** | Ledger candidates + other providers | planner-owned fusion/admission/omission receipt |
-| **Activation** | mode + qualification receipt | `legacy_scan`, `shadow`, or `ledger_fts` |
-| **Migration** | prior Guide state/current sources | rebuild or typed conversion into Ledger generation |
-| **Erasure** | granted document/source identity | delete Ledger-owned nodes/FTS/links/aliases/caches/exports |
-| **Rebuild** | canonical source set + versions | deterministic equivalent Ledger projection |
+| Sync | Authoritative source collection, manifest coverage, grant, source bytes/revisions, effective policy and bounds | Complete atomic generation or typed partial/failure; no cross-owner deletion |
+| Recall | Authenticated repository/worktree/source set, query intent, publication, lane/candidate limits, deadline/cancellation | Source-bound candidates, coverage/omissions and lane provenance |
+| Resolve | Grant plus captured source/node/version/hash tuple and continuation | Exact supported bytes or typed refusal/relocation/ambiguity |
+| Expansion | Eligible strong seeds plus all caps | Bounded structural/link alternatives with provenance |
+| Backlinks/health | Named source/section, visible corpus, publication and limits | Coverage-qualified inbound refs and diagnostic counts |
+| Drift | Two named source-bound manifests and limits | Deterministic structural delta or explicit missing/expired/incompatible baseline |
+| Activation | Mode, trusted receipt and compatible release/configuration tuple | Explicit active mode or typed refusal |
+| Erasure | Authorized source identity and projection inventory | Transactional logical erasure plus readback/retention accounting |
+| Rebuild | Canonical eligible source manifest and versions | Equivalent current projection; historical coverage explicitly bounded |
 
----
+Operational requests flow through one daemon-owned service. Membrane owns deadline creation and propagation; Ledger honors the inherited deadline rather than constructing an independent scheduling authority. Existing public V1 shapes remain unless a real consumer requires a versioned/compatible extension.
+
+## 13.2 Per-format conversion qualification — LDG-028
+
+The backend boundary declares actual supported formats, input/resource limits, deterministic configuration, supported structural outputs, raw-source resolution and typed error/loss behavior. Prefer a simple declarative conversion path where available; a paginated/recognition path is a separate complexity tier, not a dependency of basic document retrieval.
+
+The inspected code's text/HTML/JSON mechanisms do not establish support for DOCX, PDF, CSV, EPUB, spreadsheets or presentations. A format may be advertised only after its installed conversion → registration → search → exact-resolution path qualifies. No format count is copied from a donor into Membrane product claims.
+
+Each supported format needs frozen input/expected-output fixtures and semantic invariants for applicable headings, ordering, tables, code, links and Unicode; repeated conversion; dual raw/normalized hash checks; converter/configuration drift; corrupt/unsupported input; output growth and work bounds; loss propagation; and source-ref round trips. Character coverage alone is insufficient. Archive/container limits and denied remote-resource fetches must be addressed by applicable formats rather than hidden inside a generic success result.
+
+Verify the preserved raw input and normalized Markdown independently. Distinguish an immutable snapshot from a live external source. The latter needs current owner freshness; the former keeps snapshot identity and retention. Do not overwrite a caller's expected hash with the newest database hash to make a stale reference resolve.
+
+Media ingestion, page rendering, stochastic structure generation, OCR/VLM pipelines and multimedia embeddings are not added by this revision. Any expansion beyond the existing exclusions needs a separate architecture/scope decision. Borrowing a Docling-style interface does not make Docling a mandatory runtime dependency.
+
+## 13.3 Structural drift diagnostics — LDG-031
+
+Compare two explicitly named source-bound structural manifests. Include document identity, raw/projection revisions and hashes, configuration identity, counts/IDs of added and removed units, qualified moves and ambiguous mappings. Define units and denominators before reporting a percentage; separate parser/converter changes from source edits.
+
+Retain only the bounded compact manifests/history needed by this operation under explicit privacy/retention policy. No indefinite full-document version store is implied. A missing, expired, erased, unreadable or incompatible baseline is not an empty prior document and cannot justify mass-removal claims. Retained diagnostic metadata is erased with the owning source where required.
+
+The result is read-only evidence. It does not prefer stable documents, rewrite knowledge, issue semantic contradictions or automatically invalidate the truth of a Cortex record.
+
+## 13.4 Coverage, status and operational observability
+
+Status distinguishes daemon liveness, enrollment, grant/source-set validity, last successful sync, publication and source clocks, pending updates, corpus coverage, retrieval mode, provider delivery mode, qualification compatibility and resolver capability. Inspecting inactive status does not create a store.
+
+Content-free lifecycle events allow operators to diagnose update, conversion, query, resolution, erasure, cancellation and rollback failures. Raw document/query content is not logged by default. Selected candidates, resolver-backed references, successful reads and host-rendered evidence are different observations and must not be conflated in delivery accounting.
 
 # 14. Session document projection
 
-The existing generated per-session "ledger" mechanism is not the Ledger subsystem itself.
+Session Markdown is a derived human-readable projection of underlying typed events/tasks/artifacts/decisions. It is not the document subsystem itself, durable learned memory or a replacement for structured source data.
 
-Rename it to a session document projection.
+A projection carries source session identity, source cursor/digest, derivation version, content hash, omissions and invalidation parent. It remains non-recallable until a real consumer, authority contract, privacy/retention, lifecycle and replay value qualify. Keep session records distinct from document registrations. Adapt consumes authoritative structured observations instead of derived Markdown when both are available.
 
-## 14.1 Purpose
-
-It creates a human-readable Markdown representation of selected session facts such as:
-
-- recent events;
-- tasks;
-- artifacts;
-- decisions;
-- omissions;
-- source cursor/hash.
-
-It is useful for:
-
-- human handoff;
-- document-shaped navigation;
-- cross-session orientation;
-- export.
-
-## 14.2 Authority
-
-The projection is derived.
-
-Its authoritative parents remain the underlying typed events/tasks/artifacts/decisions.
-
-It MUST carry:
-
-- source session identity;
-- source cursor;
-- source digest;
-- derivation version;
-- content hash;
-- omission list;
-- invalidation parent.
-
-## 14.3 Recallability
-
-It is non-recallable by default until:
-
-1. a real consumer is defined;
-2. a typed virtual-source authority exists;
-3. lifecycle/invalidation is explicit;
-4. privacy/retention policy is defined;
-5. replay proves it adds value without duplicating stronger structured evidence.
-
-Adapt SHOULD consume underlying structured events rather than this derived Markdown whenever both exist.
-
----
+Retain LDG-020/021/025 distinctions. Do not close a missing production consumer by simply making all generated session documents searchable.
 
 # 15. Cross-subsystem effects
 
-## 15.1 Pull
+## 15.1 Pull and host delivery
 
-Pull consumes Ledger candidate lanes and owns cross-provider fusion.
+Ledger materializes source-local candidates through the native owner handle. Pull owns provider admission/invocation, cross-provider fusion, eligibility fences, sufficiency, the final budget and publication. Those responsibilities remain separate in LDG-022 and PUL-015.
 
-Ledger does not calibrate its BM25 score against Cortex vector similarity or Blueprint confidence.
+A normal context request must prove the native Ledger source actually ran. Every selected resolver-backed result must have a usable operation in the recipient host's negotiated capability set, a valid source tuple and recoverable continuation. A generic discovery payload or knowledge of an unadvertised tool name is not sufficient. Prefer the existing generic source reader; add bounded navigation operations only where a named consumer requires them.
 
-A candidate fusion strategy such as Reciprocal Rank Fusion may be evaluated in Pull because it combines heterogeneous ranks without assuming comparable score scales.
+## 15.2 Cortex and conditional source-change work
 
-## 15.2 Cortex
+Cortex may retain Ledger references without importing the document corpus. Current source resolution/re-anchoring goes through Ledger. Both LDG-023 change notifications and CTX-033 document-derived semantic revalidation remain exploratory/HOLD in this revision.
 
-Cortex stores admitted durable knowledge and may retain Ledger source references.
+If separately promoted, an owner-local ordered journal carries reference-only notices, publication identity and idempotency identity. Define durable cursor checkpoints, floor/head, bounded retention, restart/replay, duplicate handling and typed `rescan_required` on gaps. A reset-to-zero shortcut is not recovery once history has been compacted. Notices do not remove the need to resolve current bounded evidence under the current grant.
 
-Cortex does not copy the entire registered Markdown corpus merely because Ledger indexes it.
-
-If a durable record cites a document section, re-resolution/re-anchoring should go through Ledger.
+A changed or unavailable reference can trigger Cortex-owned reference revalidation; it does not prove a durable statement false. Keep reference health distinct from semantic truth, contradiction, supersession and retirement. Ledger never directly modifies Cortex records or supplies an authoritative truth class. No new Cortex atom is allocated by this Ledger revision; any future promotion must update Cortex's owner canon explicitly.
 
 ## 15.3 Blueprint
 
-Blueprint remains repository/source truth owner.
-
-Ledger consumes source identity/revision information but does not open Blueprint's database or validate code/document truth itself.
+Consume typed source/revision and repository-truth services without direct database access. Respect Blueprint's document-domain convergence dependency and do not claim Ledger repair alone solves it. Any automatically pending domain needs a bounded automatic completion or a visible terminal failure.
 
 ## 15.4 Push
 
-Push may reduce Ledger-resolved blocks after Pull selects them.
-
-Reduction must preserve:
-
-- code fences;
-- tables;
-- links;
-- protected spans;
-- source order;
-- raw recovery.
+After Pull selection, Push may reduce resolved blocks while preserving code fences, tables, links, protected spans, source order and raw recovery. Keep the exact source and representation provenance distinct. Compression is not permission to alter literal-match evidence or hide material omissions.
 
 ## 15.5 Adapt
 
-Adapt may learn from retrieval outcomes and propose:
+Adapt may consume structured retrieval/use/failure observations and propose alias, normalization, projection or ranking changes. Proposals pass Ledger's development/held-out and promotion gates; Adapt does not directly mutate active policies or projections.
 
-- alias additions;
-- query-normalization changes;
-- chunk/projection changes;
-- ranking changes;
-- failure detectors/evaluators.
+Useful evidence includes repeated irrelevant hits, sections later found manually, failed relocation, eligible identifier/CJK/literal misses, selected evidence never used, user corrections and evaluator outcomes. Distinguish advisory feedback from verified host/outcome evidence.
 
-Examples of useful structured outcome evidence:
+## 15.6 CodeRight and other harnesses
 
-- Ledger returned irrelevant sections repeatedly;
-- Ledger omitted a section the agent later found manually;
-- stale relocation failed;
-- a CJK/identifier query returned zero despite an eligible source;
-- Pull selected Ledger evidence that was repeatedly ignored;
-- a ranking change reduced repeated manual searches.
+Hosts emit the existing task/session identity, genuine context-capacity observations, context receipt, used candidate/source IDs, resolver outcomes, manual recovery searches and trusted task outcome where available. Do not invent a large capacity value merely to bypass the production request contract.
 
-Adapt cannot directly mutate Ledger index/ranking policy.
-
-A proposed change must pass Ledger's own dev/held-out replay and promotion gate.
-
-## 15.6 CodeRight
-
-CodeRight should emit:
-
-- query/task identity;
-- Membrane context receipt;
-- Ledger candidate ids/lanes used;
-- resolver success/failure;
-- subsequent manual searches;
-- user correction;
-- task/evaluator outcome.
-
-That lets Adapt identify recurring document-retrieval failures and lets Ledger measure actual utility.
-
----
+A host cannot claim Ledger access because it can read a filesystem file or run a local CLI manually. The relevant proof is discovery → native retrieval → Pull decision → exact resolution/continuation → delivered evidence through the supported installed binding.
 
 # 16. Production-path evidence invariant
 
-Ledger inherits the Membrane-wide rule:
+A capability is not landed until production reachability and frozen applicable acceptance prove it. ASTs must be emitted by shipped sync, active search must execute the real lane, links/backlinks must be used by their supported consumers, source reads must work through advertised transports, and exact installed builds must exercise the same path where packaging matters.
 
-> **A capability is not landed until a test proves the production path executes it and frozen evidence shows it satisfies the acceptance baseline.**
+Keep four qualification dimensions separate: retrieval-engine quality, provider admission/materialization, installed transport/resolver compatibility and actual host delivery. A trusted receipt's validity does not prove applicability to a new release/configuration. Bind release/build, parser/projection/tokenizer/normalizer/converter configuration, source/provider/resolver versions and corpus/query-set identities.
 
-For Ledger this specifically means:
-
-- AST projections must be produced by shipped sync, not only helper tests;
-- FTS must be queried by shipped recall;
-- link edges must be used by shipped bounded expansion before "link navigation" is claimed;
-- Unicode/CJK retrieval must work through the active production path;
-- performance gates must run in qualification, not remain ignored;
-- activation must have a receipt;
-- rollback must actually select the old path;
-- exact installed builds must exercise the same path where packaging matters.
-
----
+Documentation updates cannot promote implementation, focused verification, qualification, delivery or competitive closure. Reopen a widened acceptance contract while preserving earlier evidence as historical. Never fabricate a run ID, verifier, receipt hash, successful test or installed state.
 
 # 17. Implementation sequence
 
-## L0 — Rename authority first
+| Package | Work | Exit boundary |
+|---|---|---|
+| P0 — Reproduce and reconcile | Capture source-derived failures, update this architecture/atomic intake and keep earlier evidence intact | Minimal fixtures and explicit baseline; no successful runtime claim |
+| P1 — Source integrity | Grant/source manifests, copy/move identity, Git-ignore semantics, source-owner reconciliation, resurrection, erasure | Multi-root, equal-content, mixed-format, revoked-source and rebuild correctness |
+| P2 — Complete projection/resolution | One complete parse, full typed ancestry, exact node/source tuples, dual conversion hashes and transport continuation | Query-to-exact-read round trip for every advertised source kind |
+| P3 — One daemon owner | Replace operational local Ledger CLI paths with existing authenticated service operations | Tray-off/no-index parity and common CLI/MCP owner |
+| P4 — Native provider/host closure | Bind document source, native provider and usable host resolver through Pull | Installed normal-context request yields candidate, decision and exact delivered bytes |
+| P5 — Measured query/navigation | Exact-first, overlap handling, bounded structural/graph alternatives, LDG-029 and LDG-030 | Frozen quality, literal integrity, scope and boundedness evidence |
+| P6 — Diagnostics/update bounds | Coalesced source updates, short publication windows, truthful coverage/status, LDG-031 | Drift-baseline safety, crash/cancellation and bounded cross-root interference |
+| P7 — Qualification/release | Applicable receipts, package/host tests, rollback and generated state reconciliation | Exact release evidence for each claimed capability |
 
-Before broad retrieval work:
-
-- approve Guide → Ledger as canonical;
-- update Membrane doctrine/system map;
-- update generated-truth sources;
-- rename current-product docs;
-- define the compatibility window;
-- reserve target runtime/module/database names;
-- rename the existing `guide::ledger` session module to `session_projection`.
-
-Do not leave two current subsystem names while new implementation is landing.
-
-## L1 — Fix live tokenizer correctness
-
-Ship a bounded correction so non-ASCII-only queries cannot silently become zero terms.
-
-Add tests for:
-
-- CJK;
-- accented text;
-- mixed script;
-- identifiers;
-- short queries.
-
-This fix is independent of the larger FTS architecture.
-
-## L2 — Freeze evaluation methodology
-
-Before tuning retrieval:
-
-- define train/dev/test or authoring/dev/held-out corpus split;
-- define MDE or paired-bootstrap gate;
-- freeze metric definitions;
-- freeze corpus inclusion policy;
-- freeze no-answer cases;
-- define performance hardware/method.
-
-## L3 — Land shadow structural projection
-
-- wire Comrak source-position AST projections into sync;
-- persist typed nodes;
-- persist links/aliases/relocation;
-- publish complete transactional Ledger generations;
-- keep production recall on legacy scan.
-
-## L4 — Develop Ledger FTS on dev only
-
-- implement Ledger-owned FTS;
-- implement query normalizer;
-- compare tokenizer options;
-- tune field weights;
-- run title-chain ablation;
-- tune expansion caps if needed;
-- freeze candidate.
-
-## L5 — Shadow held-out replay
-
-Run old vs frozen new candidate on the untouched held-out corpus.
-
-Compare quality, latency, storage, stale refusal, no-answer behavior, and provenance.
-
-## L6 — Activate `ledger_fts`
-
-Activation requires a qualification receipt.
-
-Prove active production recall executes FTS and structural resolution.
-
-Keep atomic `legacy_scan` rollback for one release.
-
-## L7 — Qualify structural/link expansion
-
-Enable only after source-backed edges and caps pass held-out and operational tests.
-
-## L8 — Normalize virtual session projection
-
-Migrate the old session-ledger module/API to the session-projection identity.
-
-Keep non-recallable until its own consumer contract qualifies.
-
-## L9 — Retire legacy scan and Guide naming
-
-After the rollback window and upgrade tests:
-
-- remove `legacy_scan`;
-- remove current-product Guide aliases;
-- remove old Guide DB/table creation;
-- delete/tombstone old Guide docs;
-- ensure generated truth contains Ledger only.
-
----
+P5/P6 are selected scope but are not pretexts to postpone the integrity and reachability repairs. A core-path milestone is not “all Ledger complete” while any committed atom remains open. LDG-023/CTX-033 and a second search engine are not dependencies of P1–P7.
 
 # 18. Test architecture
 
-| Layer | Required coverage |
+| Layer | Required cases |
 |---|---|
-| Parser | headings, duplicate/Unicode headings, tables, lists, blockquotes, HTML, references, indented code, longer fences, source ranges |
-| Identity | rename, move, duplicate insertion, relocation, alias, exact span/hash |
-| Storage | atomic publication, crash before publish, corruption, version mismatch, rebuild |
-| Query | Unicode, CJK, mixed script, identifier splitting, short query, escaping |
-| FTS | real production `MATCH`, field weights, ties, degradation |
-| Resolver | exact bytes, stale refusal, relocation, pagination, deleted/ineligible source |
-| Links | inline/reference/autolink/image/relative/fragments/Unicode/broken targets |
-| Expansion | caps, cycles, abstention, provenance |
-| Pull seam | lane ranks, eligibility unchanged, fusion owner, omissions |
-| Push | block-type fidelity and raw restoration |
-| Adapt seam | retrieval outcome observations and proposal-only improvement loop |
-| Session projection | derived-source binding, invalidation, non-recallable default |
-| Quality | real paired held-out corpus and confidence intervals |
-| Operational | installed path, crash recovery, activation/rollback, no mixed generation |
+| Parser/projection | 255/256/257/1,000 headings; headingless text; Unicode/duplicate headings; nested lists/quotes/tables; code fences/indented code; links; exact ranges; parse-count instrumentation |
+| Identity | Two roots/same relative path; equal-content copies; divergent edits; true moves; ambiguous copies/merges; duplicate spans; source bytes unchanged by indexing |
+| Lifecycle | Add/delete/sync/identical-byte reappearance; converted source plus Markdown scan; unavailable scan; ignored/excluded/revoked source; no resurrection after erase |
+| Query/FTS | Unicode/CJK/identifier/short queries; safe operators; deterministic ranking; actual active `MATCH`; exact-first and no-answer ablations |
+| Literal | Case/punctuation/spacing/mixed-script distinctions; punctuation-only/no-token fallback; partial candidate discovery; normalized-versus-raw coordinate labeling |
+| Resolver | Exact registry-supported node; captured revision/hash/span; all continuation pages; changed source between pages; explicit parent expansion; current grant on every read |
+| Conversion | Each advertised format's semantic preservation and typed losses; dual hashes; config drift; immutable snapshot/live-source differences; resource/error fixtures; installed round trip |
+| Links/backlinks | Forward/reverse parity; fragments; broken/ambiguous/Unicode refs; denied targets; cycle/weak seed; coverage-qualified orphans; stale/deleted link source; full top-k expansion pool |
+| Drift | Named manifest delta; qualified versus ambiguous move; baseline expiry/erasure/unavailability; converter-only changes; defined denominators; deterministic output and retention |
+| Storage/concurrency | Crash before publish; corrupt/unknown versions; coherent request tuple or typed retry; bounded generation updates; cancellation; full/incremental equivalence |
+| Service/host | Native provider execution; advertised source reader and consumable cursor; tray off; no status-created DB; same handler across transports; actual delivered-evidence receipt |
+| Qualification | Config/release mismatch; separate engine/provider/host promotion; real rollback; no old proof relabeled as current |
+| Cross-owner safety | No Cortex/Blueprint direct DB reads; no Ledger source mutation; no reference-count authority gain; no changed-source fact retirement; session recall remains gated |
 
----
+All cases are required tests, not results claimed by this revision. Use repository-managed CI for Rust/package execution and supported-host evidence for installed behavior.
 
 # 19. Acceptance gates
 
 ## Hard gates
 
-- Guide → Ledger rename complete on current-product surfaces;
-- exact source resolution and stale refusal pass;
-- CJK/non-ASCII-only queries do not silently become zero;
-- identifier and short-query behavior is explicitly tested;
-- production recall demonstrably uses Ledger FTS when active;
-- readers see one complete Ledger generation;
-- link resolution is deterministic;
-- expansion is source-backed and bounded;
-- full rebuild and randomized incremental rebuild are recall-equivalent;
-- erasure removes all Ledger-owned payload/projections;
-- Session projection remains non-recallable until separately qualified;
-- no Ledger access to Cortex/Blueprint databases;
-- no generic semantic graph/vector store sneaks in.
+The relevant active capability must satisfy source identity, current grant, exact range/hash, complete-or-explicitly-partial coverage, supported-format qualification, coherent generation, bounded work, correct erasure, usable host operations and genuine production-path execution. The former source-identity, 256-section, lifecycle and transport defects have branch source repairs and must not regress; their source presence still does not justify a claim of complete automatic document delivery without executed release-specific evidence.
+
+No candidate score, backlink count, source stability, model assertion or valid-but-inapplicable receipt can compensate for failure of a hard gate. Session projection stays gated; cross-owner DB reads, source rewriting and unapproved semantic/media scope remain prohibited.
 
 ## Measured gates
 
-- candidate is frozen before held-out;
-- no tuning on final held-out;
-- quality delta reported with predeclared paired statistics/intervals;
-- latency/storage/RSS limits declared;
-- equivalent evidence does not increase context-token cost without justified quality gain;
-- production-path counters/receipts confirm the active capability;
-- rollback is tested.
-
----
+Freeze candidates before held-out; use predeclared paired quality/uncertainty, latency/storage/memory and delivered-evidence efficiency. Prove useful graph alternatives, literal precision and justified negative behavior. Backlinks/drift need correctness and operational value, not a presumed ranking win. Qualification must bind the actual compatible package and rollback path.
 
 # 20. Rejected designs
 
-Reject:
+Reject a second Guide identity, `ledger::ledger`, dual-source authoritative Markdown caches, a second planner, direct Cortex/Blueprint storage use, default vectors, unbounded graphs or query rewriting, arbitrary structure-blind chunks, generated summaries as truth, source-mutating ID insertion, first-hash-match move detection, whole-corpus erasure inferred from one scanner, presentation-limit index truncation, false complete-empty after observation failure and local operational CLI fallback.
 
-- Guide as a second current subsystem name after cutover;
-- Guide-to-Ledger as a cosmetic docs-only rename;
-- `ledger::ledger` naming collision;
-- authoritative Ledger copies of repository Markdown that create dual-source truth;
-- YAML/frontmatter as the primary indexing strategy;
-- whole-file substring scans presented as finished search;
-- fixed chunks that ignore Markdown structure;
-- generated summaries as document truth;
-- unbounded relation traversal;
-- automatic LLM-extracted prose claims as truth;
-- semantic-only retrieval;
-- Ledger-owned vector store without a new measured architecture decision;
-- Cortex FTS/schema reuse;
-- direct Blueprint DB reads;
-- LLM-generated indexing authority;
-- tuning tokenizer/BM25/expansion on the held-out set;
-- an unused index satisfying a performance claim.
+Also reject immediate Tantivy/`LexicalEngine` adoption without measured need, DisMax as policy enforcement, FTS phrases as byte-exact evidence, link counts as corroboration, low edit rate as correctness, raw source content in change notices, cursor-zero recovery without retained history, automatic Cortex truth retirement on source change and exploratory scope promotion hidden in an implementation plan.
 
----
+# 21. Research basis, source register and disposition
 
-# 21. Research basis and disposition
+This revision uses the supplied commit-pinned audit, companion `membrane-ledger.md` and the subsequent acceptance/correction review. The companion's donor labels are not independently adopted as comprehensive code-audit or performance claims. Source-specific ideas are adapted within Ledger's existing ownership boundaries.
 
-The previous review's research basis remains useful:
+| Reference | Retained design contribution | Limit |
+|---|---|---|
+| Pagefind | Heading-level result grouping and matched-location affordances | Not another authoritative search store |
+| Marksman / markymark | Consistent navigation/reference semantics and shared engine-to-agent interface | Not another required resident or unreviewed dependency/license adoption |
+| ripgrep `ignore` | Mature matching/precedence semantics for source enumeration | Ignore rules never grant access |
+| LlamaIndex parent merging / PageIndex | Bounded structural navigation/representation experiments | No mandatory vector or LLM tree-search dependency |
+| Docling backend contract | Declared formats and declarative/paginated backend separation | No wholesale converter replacement or transferred format count |
+| Siyuan companion reference | Block-addressability and explicit relocation as design ideas | No imported source mutation or automatic link rewriting |
+| SQLite FTS5 documentation | Column weights and tokenized phrase behavior | Ranking configuration does not prove literal equality or delivery |
+| Tantivy companion reference | Possible future measured engine comparison | Not selected; numeric ranking is not hard eligibility |
 
-- GFM/CommonMark/AST source-position discipline;
-- structure-aware Markdown chunking;
-- document-structure-aware retrieval;
-- Late Chunking as adjacent research;
-- Anthropic Contextual Retrieval as an ablation reference, not a justification for LLM-authored Ledger index content;
-- graph-memory-starter's build-time intelligence / deterministic traversal principle;
-- OpenWiki's deterministic index/link hygiene;
-- Omni's receipt/cache/recovery patterns where they belong in Push rather than Ledger.
+The older research disposition remains: GFM/CommonMark/source-position structure, build-time projections and deterministic navigation are directly relevant; title chains and contextual retrieval are ablations. Heterogeneous fusion belongs in Pull; query-aware reduction and raw recovery belong in Push. No research name is itself a production gate.
 
-Additional cross-cutting retrieval research belongs mainly in Pull/Push:
+Primary baseline and verification references:
 
-- Reciprocal Rank Fusion for heterogeneous rank lists;
-- CRAG/Self-RAG for retrieval-quality assessment/corrective re-query patterns;
-- Lost in the Middle for context ordering evaluation;
-- LongLLMLingua for the principle that query-aware compression can outperform query-agnostic reduction.
+- [Atomic Ledger baseline](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/docs/canon/ledger.md).
+- [Prior architecture, including preserved ownership and rollout](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/docs/architecture/subsystems/ledger.md).
+- [Indexing, FTS, query normalization and block nodes](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/ledger/index.rs).
+- [Source registration, lifecycle, recall and converted-source loader](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/ledger/doc_spine.rs).
+- [Outline, span identity and continuation](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/ledger/outline.rs).
+- [Storage and link-target indexes](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/ledger/db.rs).
+- [Native source composition](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/pull/federation_sources.rs) and [provider registry](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/pull/native_federation.rs).
+- [MCP executor](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-runtime/src/mcp_executor.rs) and [tools/negotiation](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/engine/crates/membrane-mcp/src/tools.rs).
+- [Earlier recorded Ledger evaluation](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/docs/evidence/qualification/ledger-metrics.json).
+- [Cortex exploratory reference-revalidation contract](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/docs/canon/cortex.md).
+- [Atomic-canon checker and register/receipt requirements](https://github.com/Orthic-Labs/Membrane/blob/75c257ad711d19ffce69258d132a45dbffa9b4ac/scripts/ci/check-atomic-canons.mjs).
+- [SQLite FTS5](https://www.sqlite.org/fts5.html), [Docling backend interface](https://github.com/docling-project/docling/blob/main/docling/backend/abstract_backend.py), and [Tantivy DisjunctionMaxQuery API](https://docs.rs/tantivy/latest/tantivy/query/struct.DisjunctionMaxQuery.html).
 
-Ledger should expose strong, source-bound candidate lanes and measurements. Pull and Push decide what to do with them.
-
----
+Source-derived current-state claims are confined to the reviewed baseline. Normative additions are the selected design for this authored revision, not facts asserted about currently installed software.
 
 # 22. Final canonical statement
 
-> **Ledger is Membrane's document registry, Markdown structural indexing, navigation, retrieval, and exact source-resolution subsystem. It replaces Guide completely as the canonical subsystem name. Ledger registers all eligible document sources, maintains rebuildable source-bound AST/FTS/link projections, and returns exact hash/revision-bound navigation candidates. The authoritative source bytes remain with their canonical source; Blueprint owns repository truth, Cortex owns durable knowledge, Adapt owns behavioral learning, Pull owns final evidence admission/fusion, Push owns faithful reduction, and CodeRight owns agent execution.**
+> Ledger is Membrane's granted document registry, structural indexing, navigation, source-local retrieval and exact source-resolution subsystem. It owns rebuildable source-bound AST/FTS/link/conversion projections and bounded reference/drift diagnostics, while authoritative bytes remain with their source owner. It is operated by the tray-owned daemon and consumed through usable host contracts. Blueprint owns repository truth, Cortex durable knowledge, Adapt proposals, Pull final context admission/fusion, Push faithful reduction, and CodeRight agent execution. A capability is complete only when its actual supported production path and applicable acceptance evidence prove it—not when its table, helper or architecture diagram exists.

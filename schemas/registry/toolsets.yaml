@@ -2,7 +2,9 @@
   "version": "membrane.toolsets.v1",
   "groups": {
     "default": [
-      "membrane_context"
+      "membrane_context",
+      "membrane_source_read",
+      "membrane_ledger"
     ],
     "memory": [
       "membrane_context",
@@ -17,6 +19,10 @@
     "blueprint": [
       "membrane_source_read",
       "membrane_blueprint"
+    ],
+    "ledger": [
+      "membrane_source_read",
+      "membrane_ledger"
     ],
     "diagnostic": [
       "membrane_diagnostic_workspace",

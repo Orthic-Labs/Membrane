@@ -1,16 +1,16 @@
 import { readFile } from "node:fs/promises";
 
 const version = "membrane.toolsets.v1";
-const fallback = ["membrane_context"];
+const fallback = ["membrane_context", "membrane_source_read", "membrane_ledger"];
 const names = new Set([
   "membrane_push_prepare", "membrane_push_resolve",
-  "membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save",
+  "membrane_context", "membrane_source_read", "membrane_ledger", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save",
   "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback",
   "membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence",
   "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider",
 ]);
 
-const groupNames = ["default", "memory", "blueprint", "diagnostic", "push"];
+const groupNames = ["default", "memory", "blueprint", "diagnostic", "ledger", "push"];
 
 export function parseToolsetConfig(raw) {
   try {
@@ -21,7 +21,7 @@ export function parseToolsetConfig(raw) {
     for (const group of groupNames) {
       if (!Array.isArray(groups[group]) || new Set(groups[group]).size !== groups[group].length || groups[group].some((name) => typeof name !== "string" || !names.has(name))) return null;
     }
-    if (groups.default.length !== 1 || groups.default[0] !== "membrane_context") return null;
+    if (groups.default.length !== 3 || groups.default.join(",") !== "membrane_context,membrane_source_read,membrane_ledger") return null;
     return groups;
   } catch { return null; }
 }
