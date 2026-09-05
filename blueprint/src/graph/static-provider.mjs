@@ -1024,7 +1024,7 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       source: codeNode.id,
       target: `doc:${doc.path}`,
       confidence: 0.9,
-      confidenceClass: "INFERRED",
+      confidenceClass: "HEURISTIC_BRIDGE",
       reason: "claim references supersedes/replaced",
       evidence: baseEvidence,
     };
@@ -1034,8 +1034,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "contradicts",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=${status || "claim"} mentions stale/drift/missing/contradict; code node exists`,
       evidence: baseEvidence,
     };
@@ -1045,8 +1045,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "supports",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=implemented; code node exists`,
       evidence: baseEvidence,
     };

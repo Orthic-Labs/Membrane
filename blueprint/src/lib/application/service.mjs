@@ -4,6 +4,7 @@ import { observeCurrentSourceAtPath, syncToCurrentSourceAtPath } from "../../gra
 import {
   closeStore,
   listClaimSlice,
+  listDocumentSupersession,
   loadGeneration,
   openStoreReadOnly,
 } from "../../graph/store-sqlite.mjs";
@@ -28,6 +29,7 @@ import { resolveSeeds } from "../../graph/seed-resolver.mjs";
 import { resolveImpactSeedEnvelope } from "../../graph/analytics/change-impact.mjs";
 import { decomposeChangeRisk } from "../../graph/analytics/index.mjs";
 import { buildDisposableArchitectureProjection } from "../../graph/architecture-model.mjs";
+import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
@@ -580,18 +582,31 @@ export function createBlueprintApplicationService({
     },
 
     async documentTruth(input = {}, options = {}) {
-      return withCurrentDb(input, ({ db, meta, receipt }) => ({
-        schemaVersion: 1,
-        generationId: meta.manifest.generationId,
-        claims: listClaimSlice(db, meta.manifest.generationId, {
+      return withCurrentDb(input, ({ db, meta, receipt }) => {
+        const claims = listClaimSlice(db, meta.manifest.generationId, {
           limit: Number(input.limit ?? 200),
           claimId: input.claimId,
           kind: input.kind,
-        }),
-        freshnessReceipt: receipt,
-        omissions: [],
-        truncated: false,
-      }), options);
+        });
+        const supersedes = listDocumentSupersession(db, meta.manifest.generationId, { limit: Number(input.limit ?? 200) });
+        const grounding = projectDocumentTruth({
+          claims,
+          supersedes,
+          generationId: meta.manifest.generationId,
+          freshness: receipt.freshness,
+        });
+        return {
+          schemaVersion: 1,
+          generationId: meta.manifest.generationId,
+          claims,
+          grounding: grounding.claims,
+          groundingCounts: grounding.counts,
+          supersedes: grounding.supersedes,
+          freshnessReceipt: receipt,
+          omissions: [],
+          truncated: false,
+        };
+      }, options);
     },
   });
 }

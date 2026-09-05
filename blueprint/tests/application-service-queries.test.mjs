@@ -131,6 +131,8 @@ test("documentTruth service result lists claims with receipts", async () => {
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.generationId);
     assert.ok(Array.isArray(result.claims));
+    assert.ok(Array.isArray(result.grounding));
+    assert.ok(result.groundingCounts && typeof result.groundingCounts === "object");
     assert.ok(result.freshnessReceipt);
     assert.equal(result.truncated, false);
   } finally {
