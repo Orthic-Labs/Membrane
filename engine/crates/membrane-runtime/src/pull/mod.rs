@@ -6,10 +6,12 @@
 //! depend on.
 
 pub mod admission;
+pub mod delivery_state;
 pub mod cli;
 pub mod federation;
 pub(crate) mod federation_sources;
 pub mod metrics;
+pub mod placement;
 pub(crate) mod native_federation;
 pub mod publication;
 

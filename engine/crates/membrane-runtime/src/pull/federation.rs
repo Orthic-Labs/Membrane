@@ -33,6 +33,7 @@ fn federation_session_id(session: Option<String>) -> String {
 #[derive(Debug)]
 enum NativeRouteError {
     Internal(String),
+    PolicyChanged(String),
     RequestTime(crate::push::selection::PacketReductionRequestError),
 }
 
@@ -121,6 +122,7 @@ pub fn run_federate(
                 accepted_receipt_versions
             },
             scope_grant_present: scope_grant_id.is_some(),
+            consumer_resolvers: Vec::new(),
             scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
             gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
         },
@@ -170,7 +172,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .get("maxWaitMs")
         .and_then(Value::as_u64)
         .unwrap_or(2_000)
-        .clamp(1, 2_000);
+        .clamp(1, 60_000);
     let client = value
         .get("client")
         .and_then(Value::as_str)
@@ -178,21 +180,33 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .to_owned();
     let session = federation_session_id(
         value
-            .get("session")
+            .get("sessionId")
+            .or_else(|| value.get("session"))
             .and_then(Value::as_str)
             .map(str::to_owned),
     );
-    let anchors = value
-        .get("anchors")
+    let task_id = value
+        .get("taskId")
         .and_then(Value::as_str)
-        .map(|text| {
-            text.split(',')
-                .map(str::trim)
-                .filter(|item| !item.is_empty())
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(task)
+        .to_owned();
+    let anchors = match value.get("anchors") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        Some(Value::String(text)) => text
+            .split(',')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+            .map(str::to_owned)
+            .collect(),
+        _ => Vec::new(),
+    };
     let scope_grant_id = value
         .get("scopeGrantId")
         .and_then(Value::as_str)
@@ -214,7 +228,7 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         },
         None => None,
     };
-    let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, task) {
+    let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, &task_id) {
         Ok(ceiling) => ceiling,
         Err(error) => {
             return request_time_refusal(crate::push::selection::PacketReductionRequestError::H8(
@@ -238,8 +252,30 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             sufficiency_contract,
             &ceiling,
         );
-        if let Some(task_id) = value.get("taskId").and_then(Value::as_str) {
-            request.extensions.insert("taskId".to_owned(), Value::String(task_id.to_owned()));
+        request
+            .extensions
+            .insert("taskId".to_owned(), Value::String(task_id.clone()));
+        if let Some(request_id) = value
+            .get("requestId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            request.request_id = request_id.to_owned();
+        }
+        if let Some(generation) = value
+            .get("generation")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+        {
+            request.extensions.insert(
+                "hostGeneration".to_owned(),
+                Value::String(generation.to_owned()),
+            );
+        }
+        if let Some(capabilities) = value.get("consumerCapabilities").cloned() {
+            request
+                .extensions
+                .insert("consumerCapabilities".to_owned(), capabilities);
         }
         if let Some(temporal_query) = temporal_query.clone() {
             request.extensions.insert(
@@ -294,11 +330,12 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                     .map(str::to_owned),
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: scope_grant_id.is_some(),
+                consumer_resolvers: negotiated_consumer_resolvers(&value),
                 scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
-        let packet = payload
+        let mut packet = payload
             .get("packet")
             .cloned()
             .ok_or_else(|| "federation envelope omitted packet".to_owned())
@@ -350,10 +387,34 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             } else {
                 String::new()
             };
-            return Err(NativeRouteError::Internal(format!(
-                "federation produced no context blocks: {candidate_count} candidate(s), omissions [{}{elided}]",
-                reasons.join(", ")
-            )));
+            let fields = payload.as_object_mut().ok_or_else(|| "federation envelope is not an object".to_owned())?;
+            fields.insert("status".to_owned(), Value::String("insufficient_confidence".to_owned()));
+            fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+            fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            fields.insert("emptyEvidenceSummary".to_owned(), serde_json::json!({
+                "candidateCount": candidate_count, "omissions": reasons, "elided": total.saturating_sub(16),
+            }));
+            merge_native_receipts(fields, native_receipts);
+            return Ok(payload);
+        }
+        let placement_receipt = crate::pull::placement::place(&mut packet);
+        payload["packet"] = serde_json::to_value(&packet).map_err(|error| format!("serialize placed packet: {error}"))?;
+        payload["placementReceipt"] = serde_json::to_value(&placement_receipt).map_err(|error| format!("serialize placement receipt: {error}"))?;
+        let repository_id = membrane_federation::root::canonical_repository_id(&root);
+        let host_retains_delivered_evidence = value.pointer("/consumerCapabilities/retainsDeliveredEvidence").and_then(Value::as_bool).unwrap_or(false);
+        let explicit_refresh = value.get("refresh").and_then(Value::as_bool).unwrap_or(false);
+        let suppression_receipts = crate::pull::delivery_state::suppress_packet(&mut packet, &repository_id, &session, host_retains_delivered_evidence, explicit_refresh);
+        if !suppression_receipts.is_empty() {
+            payload["packet"] = serde_json::to_value(&packet).map_err(|error| format!("serialize suppressed packet: {error}"))?;
+            payload["suppressionReceipts"] = serde_json::to_value(&suppression_receipts).map_err(|error| format!("serialize suppression receipts: {error}"))?;
+        }
+        if packet.blocks.is_empty() && !suppression_receipts.is_empty() {
+            let fields = payload.as_object_mut().ok_or_else(|| "federation envelope is not an object".to_owned())?;
+            fields.insert("status".to_owned(), Value::String("unchanged_context".to_owned()));
+            fields.insert("transport".to_owned(), Value::String("native".to_owned()));
+            fields.insert("federationMetrics".to_owned(), serde_json::json!(native_metrics));
+            merge_native_receipts(fields, native_receipts);
+            return Ok(payload);
         }
         let push_policy = push_policy_for_request(&value, task);
         let recovery_store = crate::push::recovery::RecoveryStore::configured();
@@ -365,10 +426,15 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         )
         .map_err(NativeRouteError::RequestTime)?;
         let selected_content = selection.selected_representation.content.clone();
+        let previous_packet = crate::pull::delivery_state::previous_packet(&repository_id, &session);
+        let cache_prefix_diagnostic = crate::cache_prefix::diagnose_cache_prefix(
+            &selected_content,
+            previous_packet.as_ref(),
+        );
         let fields = payload
             .as_object_mut()
             .ok_or_else(|| "federation envelope is not an object".to_owned())?;
-        fields.insert("packet".to_owned(), selected_content);
+        fields.insert("packet".to_owned(), selected_content.clone());
         fields.insert("transport".to_owned(), Value::String("native".to_owned()));
         fields.insert(
             "federationMetrics".to_owned(),
@@ -379,6 +445,19 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             "packetReduction".to_owned(),
             serde_json::to_value(selection)
                 .map_err(|error| format!("serialize packet reduction selection: {error}"))?,
+        );
+        fields.insert(
+            "cachePrefixDiagnostic".to_owned(),
+            serde_json::to_value(cache_prefix_diagnostic)
+                .map_err(|error| format!("serialize cache prefix diagnostic: {error}"))?,
+        );
+        if let Err(error) = fence_packet_emission(post_fusion_publication_fence(&admitted_grant)?) {
+            return Err(NativeRouteError::PolicyChanged(error));
+        }
+        crate::pull::delivery_state::record_selected_packet(
+            &selected_content,
+            &repository_id,
+            &session,
         );
         Ok(payload)
     })();
@@ -392,6 +471,15 @@ pub fn native_route_response(body: &str) -> (u16, String) {
                 )
             }),
         Err(NativeRouteError::RequestTime(error)) => request_time_refusal(error),
+        Err(NativeRouteError::PolicyChanged(reason)) => (
+            409,
+            serde_json::json!({
+                "error": "policy_changed",
+                "kind": "publication_fence",
+                "reason": reason,
+            })
+            .to_string(),
+        ),
         Err(NativeRouteError::Internal(error)) => {
             (502, serde_json::json!({"error": error}).to_string())
         }
@@ -556,9 +644,34 @@ fn request_time_refusal(
     )
 }
 
+fn negotiated_consumer_resolvers(body: &Value) -> Vec<String> {
+    // Intersection, not caller assertion: only resolver surfaces owned by this
+    // runtime can be negotiated into Pull representation eligibility.  Today
+    // membrane_source_read is the sole generic evidence-handle reader.
+    const SUPPORTED: &[&str] = &["membrane_source_read"];
+    let mut resolvers = body
+        .pointer("/consumerCapabilities/resolvers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|value| SUPPORTED.contains(value))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    resolvers.sort();
+    resolvers.dedup();
+    resolvers
+}
+
 fn collect_native_receipts(response: &membrane_protocol::FederationResponseV1) -> Value {
     let mut receipts = serde_json::Map::new();
-    for key in ["fusionReceipt", "correctiveRetrieval", "publicationFence"] {
+    for key in [
+        "fusionReceipt",
+        "correctiveRetrieval",
+        "publicationFence",
+        "insufficientConfidence",
+    ] {
         if let Some(value) = response.extensions.get(key) {
             receipts.insert(key.to_owned(), value.clone());
         }
@@ -663,8 +776,39 @@ fn native_response_to_ccs(
     request: &membrane_protocol::FederationRequestV1,
     freshness: &membrane_protocol::FreshnessSnapshotV1,
 ) -> Value {
-    let candidates =
+    let mut candidates =
         serde_json::to_value(&response.candidates).unwrap_or_else(|_| Value::Array(Vec::new()));
+    let mut source_resolutions = std::collections::BTreeMap::new();
+    let mut atomic_evidence_paths = Vec::new();
+    for provider in &response.providers {
+        if let Some(items) = provider
+            .extensions
+            .get("sourceResolutions")
+            .and_then(Value::as_array)
+        {
+            for item in items {
+                if let Some(id) = item.get("candidateId").and_then(Value::as_str) {
+                    source_resolutions.insert(id.to_owned(), item.clone());
+                }
+            }
+        }
+        if let Some(items) = provider
+            .extensions
+            .get("atomicEvidencePaths")
+            .and_then(Value::as_array)
+        {
+            atomic_evidence_paths.extend(items.iter().cloned());
+        }
+    }
+    if let Some(items) = candidates.as_array_mut() {
+        for candidate in items {
+            if let Some(id) = candidate.get("id").and_then(Value::as_str) {
+                if let Some(receipt) = source_resolutions.get(id) {
+                    candidate["sourceResolution"] = receipt.clone();
+                }
+            }
+        }
+    }
     let omissions = response
         .omissions
         .iter()
@@ -690,10 +834,21 @@ fn native_response_to_ccs(
         "task": request.task,
         "mode": "native",
         "provider": "federation",
+        "generationId": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+        "atomicEvidencePaths": atomic_evidence_paths,
         "freshness": {
             "revision": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
             "indexedAt": freshness.snapshot_id.clone().unwrap_or_default(),
             "stale": freshness.stale,
+            "snapshotId": freshness.snapshot_id.clone(),
+            "baseCommit": freshness.base_commit.clone(),
+            "overlayDigest": freshness.overlay_digest.clone(),
+            "overlayIdentity": freshness.overlay_digest.as_ref().map(|digest| serde_json::json!({
+                "sessionId": request.session_id,
+                "worktreePath": request.repository_root,
+                "generationId": freshness.generation.clone().or_else(|| request.release_generation.clone()).unwrap_or_default(),
+                "overlayDigest": digest,
+            })),
         },
         "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": request.max_tokens},
         "candidates": candidates,
@@ -711,6 +866,8 @@ pub struct EnvelopeInput {
     pub packet_char_budget_model: Option<String>,
     pub accepted_receipt_versions: Vec<u32>,
     pub scope_grant_present: bool,
+    /// Resolver mechanisms the consumer has negotiated and can call.
+    pub consumer_resolvers: Vec<String>,
     /// Publication fence input (pending §17.2). The grant owner re-validated
     /// the bound scope grant after fusion and passes the typed verdict here:
     /// `None` is honest only when no grant was ever bound (scope-free
@@ -781,6 +938,10 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     // the last admission boundary before the packet reaches a client.
     let publication_fence = fence_packet_emission(input.scope_grant_fence)?;
     let observability = gateway_observability(&raw_value);
+    let atomic_evidence_paths = raw_value
+        .as_object_mut()
+        .and_then(|object| object.remove("atomicEvidencePaths"))
+        .unwrap_or_else(|| Value::Array(Vec::new()));
     let source_resolution_receipts =
         crate::source_resolution::gate_source_resolutions(&mut raw_value);
     let ccs: ContextCandidateSetV1 = match serde_json::from_value(raw_value) {
@@ -801,6 +962,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         accepted_receipt_versions: input.accepted_receipt_versions,
         trace_id_override: None,
         scope_grant_present: input.scope_grant_present,
+        consumer_resolvers: input.consumer_resolvers,
     };
     let planner_started = Instant::now();
     let out = match plan(&planner_input) {
@@ -820,6 +982,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         "releaseGenerationStatus": out.release_generation_status,
         "structuredEvent": out.structured_event,
         "sourceResolutionReceipts": source_resolution_receipts,
+        "atomicEvidencePaths": atomic_evidence_paths,
     });
     if let Some(fence) = publication_fence {
         payload["publicationFence"] = serde_json::to_value(fence)
@@ -1344,6 +1507,16 @@ mod tests {
     }
 
     #[test]
+    fn consumer_resolver_negotiation_intersects_runtime_owned_surfaces() {
+        let body = serde_json::json!({
+            "consumerCapabilities": {
+                "resolvers": ["unknown_resolver", "membrane_source_read", "membrane_source_read"]
+            }
+        });
+        assert_eq!(negotiated_consumer_resolvers(&body), vec!["membrane_source_read"]);
+    }
+
+    #[test]
     fn native_request_forwards_explicit_sufficiency_contract_only() {
         let contract = serde_json::json!({
             "schemaVersion": 1,
@@ -1463,6 +1636,7 @@ mod tests {
                 packet_char_budget_model: None,
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: false,
+                consumer_resolvers: Vec::new(),
                 scope_grant_fence: None,
                 gateway_process_ms: 0.0,
             },

@@ -1,4 +1,4 @@
-//! Frozen registry for the nine canonical federation lanes.
+//! Frozen registry for the ten canonical federation lanes.
 
 use crate::error::RegistryError;
 use membrane_protocol::ProviderId;

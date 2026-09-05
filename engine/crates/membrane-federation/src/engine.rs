@@ -516,13 +516,10 @@ impl FederationEngine {
             return Err(FederationEngineError::Scope("source_incomplete".to_owned()));
         }
         let grant = response.value;
-        let task_id = request.extensions.get("taskId").and_then(serde_json::Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .ok_or_else(|| FederationEngineError::Scope("task_id_missing".to_owned()))?;
         if grant.id != grant_id
             || grant.repository_id != request.repository_id
             || grant.repository_root != request.repository_root
-            || grant.task_id != task_id
+            || grant.task_id != request.task_id
             || grant.session_id != request.session_id
             || request
                 .manifest_digest

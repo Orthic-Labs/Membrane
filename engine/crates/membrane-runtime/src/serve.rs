@@ -5411,6 +5411,7 @@ fn planner_post_plan_context(
                 accepted_receipt_versions: vec![2],
                 trace_id_override: None,
                 scope_grant_present: true,
+                consumer_resolvers: Vec::new(),
             };
             let out = match plan_context(&input) {
                 Ok(out) => out,

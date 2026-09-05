@@ -62,6 +62,7 @@ pub struct NormalizedFederationRequest {
     pub request_id: String,
     pub trace_id: String,
     pub task: String,
+    pub task_id: String,
     pub repository_root: String,
     pub repository_id: String,
     pub worktree_root: String,
@@ -114,6 +115,9 @@ pub fn normalize_request<S: RootPathSource>(
     // are owned strings and cannot change underneath the coordinator.
     let request_id = required("requestId", &request.request_id)?;
     let task = required("task", &request.task)?;
+    let task_id = optional_string(&request.extensions, "taskId")?
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| task.clone());
     let requested_root = required("repositoryRoot", &request.repository_root)?;
     let client = required("client", &request.client)?;
     let session_id = required("sessionId", &request.session_id)?;
@@ -179,6 +183,7 @@ pub fn normalize_request<S: RootPathSource>(
         request_id,
         trace_id,
         task,
+        task_id,
         repository_root: canonical.path.to_string_lossy().into_owned(),
         repository_id: canonical.repository_id,
         worktree_root: canonical.worktree_root.to_string_lossy().into_owned(),

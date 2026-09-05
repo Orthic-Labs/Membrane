@@ -23,7 +23,9 @@
 //! safe; the lock discipline remains required because concurrent readers would
 //! still race the value.
 
-use membrane_runtime::authorization::{authorize, can_reach_target, AuthorizationRequest};
+use membrane_runtime::authorization::{
+    authorize, authorized_workspace_targets, can_reach_target, AuthorizationRequest,
+};
 use membrane_runtime::{AuthorityLevel, AuthorizationGate};
 use serde_json::{json, Map, Value};
 use std::fs;
@@ -87,7 +89,7 @@ impl TestInstallation {
         let dir = tempfile::tempdir().expect("temp installation dir");
         let workspace = dir.path().join("workspace");
         let caller_root = workspace.join("caller");
-        let child_root = workspace.join("child");
+        let child_root = caller_root.join("child");
         fs::create_dir_all(&caller_root).expect("create caller root");
         fs::create_dir_all(&child_root).expect("create child root");
 
@@ -289,6 +291,39 @@ fn can_reach_target_mutating_action_without_task_grant_is_denied() {
         "context",
     );
     assert_eq!(reached_read, Some(AuthorityLevel::ReadOnly));
+}
+
+#[test]
+fn workspace_targets_include_only_enrolled_authorized_children() {
+    let installation = TestInstallation::new(true);
+    let _env = SerialEnv::install(&installation.registry_path_str());
+    let targets = authorized_workspace_targets(
+        &installation.caller_root,
+        installation.caller_repository_id,
+        installation.caller_scope_id,
+        None,
+        &[],
+    )
+    .expect("workspace targets should resolve");
+    assert_eq!(targets.len(), 2);
+    assert_eq!(targets[0].repository_id, installation.caller_repository_id);
+    assert_eq!(targets[1].repository_id, installation.child_repository_id);
+    assert!(targets.iter().all(|target| !target.root.trim().is_empty()));
+}
+
+#[test]
+fn workspace_targets_reject_ungranted_child() {
+    let installation = TestInstallation::new(false);
+    let _env = SerialEnv::install(&installation.registry_path_str());
+    let error = authorized_workspace_targets(
+        &installation.caller_root,
+        installation.caller_repository_id,
+        installation.caller_scope_id,
+        None,
+        &[installation.child_repository_id.to_owned()],
+    )
+    .expect_err("ungranted child must be rejected");
+    assert_eq!(error.gate(), AuthorizationGate::CrossRootDenial);
 }
 
 #[test]

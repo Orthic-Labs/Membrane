@@ -62,6 +62,7 @@ pub struct NormalizedProviderOutput {
     pub candidates: Vec<NormalizedCandidate>,
     pub warnings: Vec<ProviderWarningV1>,
     pub omissions: Vec<ProviderOmissionV1>,
+    pub extensions: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -168,6 +169,7 @@ pub fn normalize_provider_output(
         candidates,
         warnings: output.warnings.clone(),
         omissions: output.omissions.clone(),
+        extensions: output.extensions.clone(),
     })
 }
 

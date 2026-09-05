@@ -835,6 +835,103 @@ pub fn authorize_diagnostic_identity(
     }
 }
 
+/// One repository admitted to a workspace-scoped Pull request.  The root and
+/// scope identity come only from the installation registry after the ordinary
+/// six-gate authorization pass; callers never supply either value as authority.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkspaceTargetV1 {
+    pub repository_id: String,
+    pub root: String,
+    pub scope_id: String,
+}
+
+/// Resolve the repositories that a workspace Pull may read.  An empty
+/// `requested_repository_ids` means the enrolled caller plus every explicitly
+/// granted child.  A non-empty list is a caller-selected subset, but every row
+/// still runs through the same read-only fan-out authorization gate as a direct
+/// request.  Results are canonicalized by repository id so budget allocation
+/// and receipts are deterministic.
+pub fn authorized_workspace_targets(
+    caller_root: &str,
+    caller_repository_id: &str,
+    caller_scope_id: &str,
+    caller_scope_descriptor: Option<&Value>,
+    requested_repository_ids: &[String],
+) -> Result<Vec<WorkspaceTargetV1>, AuthorizationDenial> {
+    const MAX_WORKSPACE_TARGETS: usize = 32;
+
+    let registry = load_installation_registry()?;
+    let caller_binding = registry.binding_for_root(caller_root).ok_or_else(|| {
+        AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            format!("caller root {caller_root} is not enrolled in the installation registry"),
+        )
+    })?;
+    if caller_binding.repository_id != caller_repository_id
+        || caller_binding.scope_id != caller_scope_id
+    {
+        return Err(AuthorizationDenial::new(
+            AuthorizationGate::CallerTargetBinding,
+            "workspace caller identity does not match the installation registry",
+        ));
+    }
+
+    let mut ids = if requested_repository_ids.is_empty() {
+        let mut ids = Vec::with_capacity(caller_binding.child_repository_ids.len() + 1);
+        ids.push(caller_binding.repository_id.clone());
+        ids.extend(caller_binding.child_repository_ids.iter().cloned());
+        ids
+    } else {
+        requested_repository_ids
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    ids.sort();
+    ids.dedup();
+    if ids.is_empty() {
+        return Err(AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            "workspace request resolved no repository targets",
+        ));
+    }
+    if ids.len() > MAX_WORKSPACE_TARGETS {
+        return Err(AuthorizationDenial::new(
+            AuthorizationGate::RepositoryScopeChain,
+            format!("workspace target count {} exceeds {MAX_WORKSPACE_TARGETS}", ids.len()),
+        ));
+    }
+
+    let mut targets = Vec::with_capacity(ids.len());
+    for repository_id in ids {
+        authorize(&AuthorizationRequest {
+            caller_root,
+            caller_repository_id,
+            caller_scope_id,
+            caller_scope_descriptor,
+            target_repository: &repository_id,
+            task_grant_level: Some("read-only"),
+            action: "context",
+        })?;
+        let binding = registry
+            .binding_for_repository(&repository_id)
+            .ok_or_else(|| {
+                AuthorizationDenial::new(
+                    AuthorizationGate::RepositoryScopeChain,
+                    format!("workspace target {repository_id} disappeared from the registry"),
+                )
+            })?;
+        targets.push(WorkspaceTargetV1 {
+            repository_id: binding.repository_id.clone(),
+            root: binding.root.clone(),
+            scope_id: binding.scope_id.clone(),
+        });
+    }
+    Ok(targets)
+}
+
 /// The workspace aggregate must exercise exactly the same per-target
 /// authorization primitive as a direct repository call (MBR-003). Returns the
 /// effective level when the caller may reach the target for `action`; `None`
