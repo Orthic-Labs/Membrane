@@ -1,0 +1,28 @@
+name: cortex-current-source
+on:
+  push:
+    branches: [cortex-current-source]
+    paths: [.github/workflows/cortex-current-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Export current tracked source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD | gzip -1 > "$RUNNER_TEMP/membrane-current.tar.gz"
+          sha256sum "$RUNNER_TEMP/membrane-current.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-current-source-tree
+          path: ${{ runner.temp }}/membrane-current.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
