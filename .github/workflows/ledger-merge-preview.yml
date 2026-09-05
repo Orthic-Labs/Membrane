@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   integrate:
-    if: github.ref == 'refs/heads/ledger-end-to-end' && hashFiles('scripts/ci/ledger-merge-main.py') != ''
+    if: github.ref == 'refs/heads/ledger-end-to-end'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -21,4 +21,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
       - name: Merge current main using reviewed two-file resolution
-        run: python3 scripts/ci/ledger-merge-main.py
+        run: |
+          test -f scripts/ci/ledger-merge-main.py
+          python3 scripts/ci/ledger-merge-main.py
