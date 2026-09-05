@@ -31,6 +31,7 @@ import { decomposeChangeRisk } from "../../graph/analytics/index.mjs";
 import { buildDisposableArchitectureProjection } from "../../graph/architecture-model.mjs";
 import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
 import { buildLivenessProjection } from "../../graph/liveness.mjs";
+import { recommendTestsForImpact } from "../../graph/test-recommendation.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
@@ -462,12 +463,18 @@ export function createBlueprintApplicationService({
             stale: receipt.freshness !== "fresh",
             cochangeScore: input.cochangeScore,
           });
+          const testRecommendations = recommendTestsForImpact(db, {
+            generationId: meta.manifest.generationId,
+            impactedIds: [...seedEnvelope.seeds.map((seed) => seed.id), ...impacted.map((node) => node.id)].filter(Boolean),
+            maxRecommendations: input.maxTestRecommendations,
+          });
           return {
             ...primary,
             seedEnvelope,
             risk,
             slices,
-            omissions: [...(primary.omissions ?? []), ...seedEnvelope.omissions],
+            testRecommendations,
+            omissions: [...(primary.omissions ?? []), ...seedEnvelope.omissions, ...testRecommendations.omissions],
           };
         }, scopedOptions);
       } finally {
