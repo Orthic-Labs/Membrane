@@ -29,6 +29,6 @@ Automatic provider delivery remains disabled until a release-specific end-to-end
 
 ## Validation boundary
 
-During concurrent subsystem integration the branch must pass Ledger wiring checks and `cargo check --manifest-path engine/Cargo.toml --workspace --tests --locked`. Rust test binaries, application binaries, packaging, installation, activation and release qualification are intentionally not run under the current no-build constraint.
+During concurrent subsystem integration the branch must pass Ledger wiring checks and `cargo check --manifest-path engine/Cargo.toml --workspace --tests --locked`. `tests/ledger-wiring-contracts.test.mjs` freezes native/JavaScript MCP discoverability, daemon ownership, provider registration, Push coexistence and the qualification fence. Rust test binaries, application binaries, packaging, installation, activation and release qualification are intentionally not run under the current no-build constraint.
 
 Before declaring every committed Ledger atom `RELEASED`, run the frozen installed-host qualification: exact release → normal harness request → Ledger provider → Pull decision/receipt → exact source read → evidence delivered, plus the per-capability negative, stale, revocation, concurrency and format suites recorded in the Ledger canon.
