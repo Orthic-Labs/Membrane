@@ -1,0 +1,274 @@
+name: adapt-finalize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/adapt-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.13'
+      - name: Reconcile Adapt canon and comparison truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+
+          const mergeSha = '6be4981dd8964fd5d3372a5de6b9b41bea496902';
+          const canonPath = 'docs/canon/adapt.md';
+          const comparisonPath = 'docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md';
+          const handoffPath = 'docs/pending/ADAPT-MEMBRANE-CODEX-HANDOFF-2026-09-05.md';
+
+          const delivered = new Set([
+            'ADP-005','ADP-017','ADP-018','ADP-038','ADP-053','ADP-054',
+            'ADP-057','ADP-058','ADP-059','ADP-062','ADP-073'
+          ]);
+          const partial = new Set([
+            'ADP-036','ADP-040','ADP-043','ADP-044','ADP-045','ADP-046','ADP-047',
+            'ADP-048','ADP-049','ADP-050','ADP-051','ADP-052','ADP-055','ADP-056',
+            'ADP-060','ADP-061','ADP-063','ADP-064','ADP-072'
+          ]);
+          const changed = new Set([...delivered, ...partial]);
+
+          const impl = {
+            'ADP-I005': ['engine/crates/membrane-transcript/src/evidence.rs; engine/crates/membrane-adapt/src/taste.rs', 'Eligible external-user preference/correction evidence preserves UserAuthoritative through Taste extraction and mandatory review; lower-authority evidence cannot manufacture Taste authority.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-adapt/src/taste.rs; resident Adapt review/admission path'],
+            'ADP-I017': ['engine/crates/membrane-adapt/src/detector_contract.rs; engine/crates/membrane-adapt/src/cli_api.rs', 'Frozen V1 catalog binds all 32 native Insights detector families to detector/input versions, evidence policy and family-specific hard negatives; production mining fails closed on family drift.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-adapt/src/cli_api.rs'],
+            'ADP-I018': ['engine/crates/membrane-adapt/src/insights/mod.rs', 'FailureEpisodeV1 carries deterministic applicability; an exact single host binds client applicability, mixed hosts are not generalized, and blank dimensions are rejected.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-adapt/src/insights/detectors.rs; engine/crates/membrane-adapt/src/cli_api.rs'],
+            'ADP-I036': ['engine/crates/membrane-runtime/src/adapt_effectiveness.rs', 'Exact H4 asset-content versions are separated and ambiguous H6 attribution is excluded; final host-loaded representation acknowledgement remains absent, so effectiveness intentionally remains unavailable.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_effectiveness.rs'],
+            'ADP-I038': ['engine/crates/membrane-runtime/src/adapt_observations.rs; engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'adapt.detector-coverage.v2 persists detector family/catalog/input identity, input digest, typed coverage state, missing fields, findings and honesty limits through the resident observation path.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I040': ['engine/crates/membrane-runtime/src/adapt_observations.rs', 'Coverage is joined to evaluator, dataset/case and exact task/session identity; the H4-to-H6 execution-episode receipt bridge and exact loaded-exposure binding remain explicitly unavailable.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I043': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Versioned detector runs in production coverage; H4 lacks an independent assignment_id for classifying multi-worker execution as duplicate assignment.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I044': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Agent role is observable and the detector runs; exact lane-owner identity and lane execution boundary are absent for positive leakage classification.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I045': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Accepted completions are observable; lane_id and accepted_work_scope are absent for exact overlap classification.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I046': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Qualified usage/cost facts are available, but H4 has no declared lane budget to compare against.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I047': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Typed detector coverage exists; current H4 cannot distinguish a genuinely absent required efficiency budget from an uninstrumented budget.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I048': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Fanout is mechanically observable; exact incremental accepted-value identity per worker is absent.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I049': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Subagent fanout is observable; H4 does not carry each subagent loaded-context digest.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I050': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Repeated Membrane retrievals are observable; exact replay content digest and replay size are absent.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I051': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Cache-write usage is observable; cache-key and semantic rebuild identity are absent.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I052': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Typed detector coverage exists; H4 lacks cache invalidation events and cache-key identity.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I053': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector emits after three exact same-model ModelCallFailed observations without an intervening progress-bearing H4 event.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I054': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector reports repeated exact H4 tool plus subject identity without inferring semantic equivalence or necessity.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I055': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Tool-call multiplicity is observable; H4 lacks a canonical semantic-work digest for overlap classification.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I056': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'ToolResult identity is observable; exact result size and replay-content digest are absent.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I057': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector identifies retry loops and sums only exact cost buckets with identical unit and basis; missing cost remains unavailable.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I058': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector reports three or more VerificationStarted events for the same exact call/subject identity.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I059': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector reports three or more PlanRevised events without an intervening progress-bearing H4 event.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I060': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Selected route and observed costs are available; the declared expected/allowed route-cost baseline is absent.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I061': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Typed detector coverage exists; H4 cannot express a sealed causal link from lane failure to later integration rework.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I062': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Production detector reports a terminal task event while an exact started subagent identity has no matching SubagentFinished in the bounded window.', 'ADAPT', 'DELIVERED', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I063': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Typed detector coverage exists; H4 lacks frozen background-learning identity and budget facts.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I064': ['engine/crates/membrane-runtime/src/adapt_efficiency.rs', 'Qualified task-window duration/token/cost reporting runs with basis separation; independent assignment_id remains unavailable.', 'ADAPT', 'PARTIAL', 'engine/crates/membrane-runtime/src/adapt_observations.rs'],
+            'ADP-I072': ['engine/crates/membrane-adapt/src/clarification.rs', 'Persisted bounded nonmutating clarification state, one-answer binding, stale/expiry/cancel handling and same-lineage resume exist; independent human/adjudicator authentication remains transport-owned.', 'BEHAVIORAL_REIMPLEMENT', 'PARTIAL', 'Adapt clarification/review domain; authenticated operator transport pending'],
+            'ADP-I073': ['engine/crates/membrane-adapt/src/proposal_state.rs', 'Semantic target plus target-version exclusion, exact replay convergence, typed target conflict and persisted revision checks are implemented.', 'BEHAVIORAL_REIMPLEMENT', 'DELIVERED', 'engine/crates/membrane-adapt/src/proposal_state.rs']
+          };
+
+          const comparison = {
+            'ADP-005': ['User-authoritative Taste evidence classification', 'Merged Taste extraction preserves UserAuthoritative for eligible external-user preference/correction evidence; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-017': ['Versioned 32-family Insights detector contract', 'Merged V1 catalog binds family/version/input/evidence/hard-negative semantics and production mining fails closed on drift; verification remains pending.', 'Run held-out/focused qualification; no remaining catalog implementation gap.'],
+            'ADP-018': ['Applicability-bound FailureEpisode', 'Merged FailureEpisodeV1 carries deterministic applicability without mixed-host generalization; verification remains pending.', 'Run focused/release qualification of applicability and replay semantics.'],
+            'ADP-036': ['Exact-version procedural-effectiveness projection', 'Merged runtime separates exact asset-content versions and excludes ambiguous H6 attribution.', 'Exact host-loaded representation acknowledgement remains required before effectiveness classification.'],
+            'ADP-038': ['Persisted typed detector coverage v2', 'Merged resident observation path persists detector family/version/input identity, typed coverage and honesty limits.', 'Run real-host/release qualification of persisted coverage.'],
+            'ADP-040': ['Coverage-to-outcome partial join', 'Merged outcome path binds coverage receipt/digest, detector family, evaluator, dataset/case and task/session identity.', 'Add exact H4-to-H6 execution-episode receipt bridge and exact loaded-exposure binding.'],
+            'ADP-043': ['Versioned duplicate-assignment coverage detector', 'Detector executes in the resident coverage family and returns typed unavailable when assignment identity is missing.', 'Host must supply independent assignment_id for multi-worker duplicate classification.'],
+            'ADP-044': ['Versioned orchestrator-leakage coverage detector', 'Detector executes over exact role observations and refuses to infer leakage without lane ownership.', 'Host must supply lane-owner identity and lane execution boundary.'],
+            'ADP-045': ['Versioned lane-overlap coverage detector', 'Detector executes and can rule out overlap in bounded single-acceptance windows.', 'Host must supply lane_id and accepted_work_scope for positive overlap classification.'],
+            'ADP-046': ['Versioned lane-budget coverage detector', 'Detector executes with typed unavailable coverage over existing H4 cost/usage facts.', 'Host must supply declared_lane_budget.'],
+            'ADP-047': ['Versioned required-budget coverage detector', 'Detector identity and typed coverage execute in production.', 'Host contract must distinguish required budget absence from uninstrumented budget.'],
+            'ADP-048': ['Versioned fanout-value coverage detector', 'Fanout is mechanically observed without relabeling missing value evidence as waste.', 'Host must supply incremental accepted-value identity per worker.'],
+            'ADP-049': ['Versioned subagent-context coverage detector', 'Subagent fanout is mechanically observed with typed missing evidence.', 'Host must supply exact subagent loaded-context digests.'],
+            'ADP-050': ['Versioned replay-amplification coverage detector', 'Repeated Membrane retrievals are mechanically observed without inferring byte/token replay.', 'Host must supply replay-content digest and replay size.'],
+            'ADP-051': ['Versioned cold-cache coverage detector', 'Cache-write usage is observed and missing key/rebuild evidence remains typed unavailable.', 'Host must supply cache-key and rebuild identity.'],
+            'ADP-052': ['Versioned invalidation-churn coverage detector', 'Detector identity and typed unavailable coverage execute in production.', 'Host must supply cache invalidation events and cache-key identity.'],
+            'ADP-053': ['Exact no-progress model-loop detector', 'Merged detector emits on three same-model failures without an intervening progress-bearing H4 event; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-054': ['Exact duplicate-tool-work detector', 'Merged detector reports repeated exact tool plus subject identity without semantic overclaim; verification remains pending.', 'Run focused/release qualification; semantic overlap remains separately ADP-055.'],
+            'ADP-055': ['Versioned semantic-tool-overlap coverage detector', 'Tool multiplicity is observed and semantic overlap remains unavailable rather than inferred.', 'Host must supply canonical semantic_work_digest.'],
+            'ADP-056': ['Versioned tool-result-replay coverage detector', 'ToolResult presence is observed with typed unavailable replay classification.', 'Host must supply exact result size and replay-content identity.'],
+            'ADP-057': ['Qualified retry-loop cost detector', 'Merged detector identifies retry loops and aggregates exact cost only within identical unit+basis buckets; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-058': ['Exact verification-churn detector', 'Merged detector reports repeated starts for the same call/subject identity; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-059': ['Exact replan-churn detector', 'Merged detector reports repeated plan revisions without intervening progress; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-060': ['Versioned routing-cost coverage detector', 'Selected route and observed costs are visible without inventing an expected baseline.', 'Host must supply declared route-cost expectation.'],
+            'ADP-061': ['Versioned lane-failure rework coverage detector', 'Detector identity and typed unavailable coverage execute in production.', 'Host must supply a sealed lane-failure causal link and integration-rework identity.'],
+            'ADP-062': ['Exact stranded-worker detector', 'Merged detector reports terminal task events with an exact started worker lacking a matching finish; verification remains pending.', 'Run focused/release qualification; no remaining Membrane source implementation gap.'],
+            'ADP-063': ['Versioned background-learning budget coverage detector', 'Detector identity and typed unavailable coverage execute without relabeling ordinary spend.', 'Host must supply frozen background-learning identity and budget.'],
+            'ADP-064': ['Qualified execution-efficiency reporting', 'Merged reporting aggregates exact task-window duration/token/cost facts with estimator/unit/basis separation.', 'Host must supply independent assignment_id before these metrics can be assignment-qualified.'],
+            'ADP-072': ['Persisted evidence-bound clarification state machine', 'Merged bounded file-backed state supports one answer, stale/expiry/cancel and same-lineage resume.', 'Existing operator/auth transport must independently authenticate the human/adjudicator receipt.'],
+            'ADP-073': ['Target/version proposal exclusion', 'Merged ProposalPlanStore enforces one live Proposed/Approved slot per semantic target+version; exact replay converges and competing variants conflict.', 'Run focused/release qualification; no remaining Membrane source implementation gap.']
+          };
+
+          function cells(line) {
+            return line.trim().slice(1, -1).split('|').map((cell) => cell.trim());
+          }
+          function emit(row) { return `| ${row.join(' | ')} |`; }
+          function patchRows(text, table, updater, label) {
+            const seen = new Set();
+            const lines = text.replace(/\r\n/g, '\n').split('\n').map((line) => {
+              if (!line.trim().startsWith('|')) return line;
+              const row = cells(line);
+              const cfg = table[row[0]];
+              if (!cfg) return line;
+              if (seen.has(row[0])) throw new Error(`${label}: duplicate ${row[0]}`);
+              seen.add(row[0]);
+              updater(row, cfg);
+              return emit(row);
+            });
+            for (const id of Object.keys(table)) if (!seen.has(id)) throw new Error(`${label}: missing ${id}`);
+            return lines.join('\n');
+          }
+
+          let canon = fs.readFileSync(canonPath, 'utf8').replace(/\r\n/g, '\n');
+          canon = canon.replace(
+            /^\*\*Revision:\*\*.*$/m,
+            `**Revision:** 2026-09-05 post-merge implementation reconciliation at \`${mergeSha}\`; runtime/release qualification remains independent.`
+          );
+          canon = canon.replace(
+            /^The 71 baseline capability rows.*$/m,
+            `The 71 baseline capability identities and implementation-row identities are preserved. This edition adds ADP-074–077 and reconciles descriptive implementation state to merged Membrane source at \`${mergeSha}\`. Implementation, verification, qualification, delivery, and competitive closure remain independent; all release qualification remains PENDING. Host-unobservable facts remain PARTIAL or typed unavailable rather than being promoted by inference.`
+          );
+
+          const capCfg = {};
+          for (const id of changed) {
+            const isDelivered = delivered.has(id);
+            capCfg[id] = {
+              implementation: isDelivered ? 'DELIVERED' : 'PARTIAL',
+              verification: 'PENDING',
+              qualification: 'PENDING',
+              delivery: 'PUSHED',
+              action: isDelivered ? 'VERIFY' : 'REPAIR_WIRE',
+              evidence: 'PENDING',
+              competitive: isDelivered ? 'UNRESOLVED' : 'CURRENT_INCOMPLETE'
+            };
+          }
+          canon = patchRows(canon, capCfg, (row, cfg) => {
+            if (row.length !== 13) throw new Error(`${row[0]} capability width ${row.length}`);
+            row[5] = cfg.implementation;
+            row[6] = cfg.verification;
+            row[7] = cfg.qualification;
+            row[8] = cfg.delivery;
+            row[9] = cfg.action;
+            row[10] = cfg.evidence;
+            row[11] = cfg.competitive;
+          }, 'capability');
+
+          canon = patchRows(canon, impl, (row, cfg) => {
+            if (row.length !== 7) throw new Error(`${row[0]} implementation width ${row.length}`);
+            row[2] = cfg[0];
+            row[3] = cfg[1];
+            row[4] = cfg[2];
+            row[5] = cfg[3];
+            row[6] = cfg[4];
+          }, 'implementation');
+
+          let comp = fs.readFileSync(comparisonPath, 'utf8').replace(/\r\n/g, '\n');
+          const oldCompHash = execFileSync('git', ['hash-object', comparisonPath], {encoding:'utf8'}).trim();
+          comp = patchRows(comp, comparison, (row, cfg) => {
+            if (row.length !== 7) throw new Error(`${row[0]} comparison width ${row.length}`);
+            row[2] = delivered.has(row[0]) ? 'UNRESOLVED' : 'CURRENT_INCOMPLETE';
+            row[3] = cfg[0];
+            row[4] = cfg[1];
+            row[6] = cfg[2];
+          }, 'comparison');
+
+          const counts = {CURRENT_BEST:0,DONOR_BETTER:0,CURRENT_INCOMPLETE:0,UNRESOLVED:0,NOT_COMMITTED:0};
+          for (const line of comp.split('\n')) {
+            if (!/^\| ADP-\d{3} \|/.test(line)) continue;
+            const row = cells(line);
+            if (counts[row[2]] !== undefined) counts[row[2]] += 1;
+          }
+          comp = comp.replace(
+            /^Summary:.*$/m,
+            `Summary: CURRENT_BEST ${counts.CURRENT_BEST}; DONOR_BETTER ${counts.DONOR_BETTER}; CURRENT_INCOMPLETE ${counts.CURRENT_INCOMPLETE}; UNRESOLVED ${counts.UNRESOLVED}; NOT_COMMITTED ${counts.NOT_COMMITTED}; total ${Object.values(counts).reduce((a,b)=>a+b,0)}.`
+          );
+          fs.writeFileSync(comparisonPath, comp.endsWith('\n') ? comp : comp + '\n');
+          const newCompHash = execFileSync('git', ['hash-object', comparisonPath], {encoding:'utf8'}).trim();
+          const receiptPrefix = 'docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md@';
+          const oldRef = receiptPrefix + oldCompHash;
+          const newRef = receiptPrefix + newCompHash;
+          const pinCount = canon.split(oldRef).length - 1;
+          if (pinCount < 1) throw new Error(`canon has no comparison pins for ${oldCompHash}`);
+          canon = canon.split(oldRef).join(newRef);
+          fs.writeFileSync(canonPath, canon.endsWith('\n') ? canon : canon + '\n');
+
+          let handoff = fs.readFileSync(handoffPath, 'utf8').replace(/\r\n/g, '\n');
+          handoff = handoff
+            .replace(/^Branch:.*$/m, 'Merged source branch: `work/adapt-membrane-completion-20260905` (deleted after merge)')
+            .replace(/^PR:.*$/m, 'PR: `#18` — merged')
+            .replace(/^Current `main` reconciled into branch:.*$/m, `Merge revision on \`main\`: \`${mergeSha}\``)
+            .replace(/^Reconciliation merge:.*$/m, 'Pre-merge reconciliation: `bcb2851044594e3c0ce8236290b0a7d9e60ec61a`');
+          handoff = handoff.replace(
+            /## Current repository state[\s\S]*?## What PR #17 already established/,
+            `## Current repository state\n\nPR #18 is merged on \`main\` at \`${mergeSha}\`. The source branch was deleted after merge. The post-merge finalization reconciles \`docs/canon/adapt.md\` to that merged source, regenerates derived canon truth, and removes the superseded Adapt working branches.\n\nThe Membrane-owned source mechanisms in this handoff are therefore landed. Remaining items described below are cross-owner/host-observability or empirical/release qualification boundaries; do not recreate the completion branch to address them.\n\n## What PR #17 already established`
+          );
+          handoff = handoff.replace(
+            /## Review checklist before merging PR #18[\s\S]*?## Post-merge completion criterion for the Membrane side/,
+            `## Post-merge continuation checklist\n\n1. Treat \`${mergeSha}\` and later \`main\` as the Adapt source baseline; do not recreate PR #18 or its source branch.\n2. Preserve Cortex durable-admission ownership and Pull final packet ownership.\n3. Keep host-unobservable efficiency facts typed unavailable until the owning host contract supplies them.\n4. Keep ADP-041 partial until persisted production multiwriter convergence is proven through the Cortex-owned writer path.\n5. Keep ADP-072 partial until the real operator/adjudicator transport independently authenticates the human receipt.\n6. Keep exact outcome/effectiveness claims partial until the execution-episode and loaded-representation joins exist.\n7. Keep release/installed-platform and held-out detector qualification independent from source implementation state.\n\n## Post-merge completion criterion for the Membrane side`
+          );
+          handoff = handoff.replace(
+            /## Final instruction to Codex[\s\S]*$/,
+            `## Final instruction to Codex\n\nPR #18 is already merged. Do not reopen or redesign the Membrane Adapt completion slice. Continue only the explicitly residual cross-owner/host/qualification work from current \`main\`, preserving typed unavailability and existing subsystem ownership boundaries.\n`
+          );
+          fs.writeFileSync(handoffPath, handoff.endsWith('\n') ? handoff : handoff + '\n');
+
+          console.log(`Patched ${changed.size} capability rows, ${Object.keys(impl).length} implementation rows, ${Object.keys(comparison).length} comparison rows; repinned ${pinCount} comparison references ${oldCompHash} -> ${newCompHash}.`);
+          NODE
+      - name: Regenerate atomic canon truth
+        run: node scripts/ci/check-atomic-canons.mjs --write
+      - name: Validate atomic canon truth
+        run: node scripts/ci/check-atomic-canons.mjs
+      - name: Validate Adapt ontology tests
+        run: node --test scripts/ci/check-adapt-ontology.test.mjs
+      - name: Validate Adapt ontology
+        run: node scripts/ci/check-adapt-ontology.mjs
+      - name: Validate patch whitespace
+        run: git diff --check
+      - name: Delete superseded Adapt branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            codex/adapt-close-remaining-20260905 \
+            codex/adapt-governed-runtime-20260905 \
+            codex/adapt-governed-runtime-integrated-20260905
+          do
+            if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+              git push origin --delete "$branch"
+            fi
+          done
+      - name: Commit reconciled canon
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/canon/adapt.md docs/canon/README.md docs/pending/README.md \
+            docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md \
+            docs/pending/ADAPT-MEMBRANE-CODEX-HANDOFF-2026-09-05.md
+          if git diff --cached --quiet; then
+            echo "No canon changes to commit"
+          else
+            git commit -m "docs(adapt): reconcile merged implementation truth [skip ci]"
+            git push origin HEAD:main
+          fi
+      - name: Verify obsolete branches are gone
+        shell: bash
+        run: |
+          set -euo pipefail
+          stale="$(git ls-remote --heads origin 'refs/heads/*adapt*' | awk '{print $2}' || true)"
+          if [[ -n "$stale" ]]; then
+            echo "Stale Adapt branches remain:"
+            echo "$stale"
+            exit 1
+          fi
