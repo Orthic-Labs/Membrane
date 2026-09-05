@@ -30,6 +30,7 @@ import { resolveImpactSeedEnvelope } from "../../graph/analytics/change-impact.m
 import { decomposeChangeRisk } from "../../graph/analytics/index.mjs";
 import { buildDisposableArchitectureProjection } from "../../graph/architecture-model.mjs";
 import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
+import { buildLivenessProjection } from "../../graph/liveness.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
@@ -521,6 +522,14 @@ export function createBlueprintApplicationService({
           const filtered = suppressRows(payload.flows, receipt, "architecture_flow");
           return { ...payload, flows: filtered.rows, omissions: filtered.omissions };
         }
+        if (view === "liveness") {
+          return { ...buildLivenessProjection(loadGeneration(db), {
+            sourceState: receipt.freshness === "fresh" ? "clean" : "stale",
+            maxNodes: input.maxNodes,
+            maxEdges: input.maxEdges,
+            maxHops: input.maxHops,
+          }), freshnessReceipt: receipt };
+        }
         if (view === "projection") {
           const generation = loadGeneration(db);
           const projection = buildDisposableArchitectureProjection({
@@ -544,7 +553,7 @@ export function createBlueprintApplicationService({
             limit: input.limit,
           }), freshnessReceipt: receipt };
         }
-        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, projection, or changes.");
+        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, projection, or changes.");
         return suppressTraversalPayload({ ...boundedArchitecture(db, {
           budget: Number(input.budget ?? 2000),
           cursor: input.cursor,
