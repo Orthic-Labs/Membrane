@@ -23,10 +23,7 @@ jobs:
         with:
           version: 11.24.0
       - name: Prepare generated references
-        shell: bash
-        run: |
-          set -euo pipefail
-          node scripts/ci/generate-cli-reference.mjs
+        run: node engine/crates/membrane/scripts/generate-cli-subcommands.mjs --write
       - name: Install JS dependencies without scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Static contract checks
@@ -35,7 +32,8 @@ jobs:
           set -euo pipefail
           node scripts/ci/check-atomic-canons.mjs --write
           node scripts/ci/check-atomic-canons.mjs
-          node scripts/ci/check-generated-cli.mjs
+          node engine/crates/membrane/scripts/generate-cli-subcommands.mjs --check
+          node scripts/ci/check-generated.mjs
           node scripts/ci/check-protocol-generation.mjs
           node --test scripts/ci/check-atomic-canons.test.mjs
           node --test tests/contracts/native-mcp-contract.test.mjs tests/mcp-native-execution.test.mjs tests/cli/native-dispatch.test.mjs tests/cli/cli-surface.test.mjs
