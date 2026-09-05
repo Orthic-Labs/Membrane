@@ -3,25 +3,35 @@ import subprocess
 
 ROOT = Path.cwd()
 SERVICE = ROOT / "blueprint/src/lib/application/service.mjs"
+BM25 = ROOT / "blueprint/src/graph/bm25-code-index.mjs"
 WORKFLOW = ROOT / ".github/workflows/blueprint-completion.yml"
 SELF = ROOT / ".github/blueprint-completion-input/apply-search-freshness-fix.py"
 
-old = '''          bm25Projection.value.search(query, { limit }).map((row) => ({ ...row.document.node, lexicalScore: row.score, lexicalExactName: row.exactName })),
+# A symbol-like node can be source-addressed only through evidence. BM25 must
+# retain that canonical path or a stale generation can re-surface the symbol
+# after the exact lane correctly suppresses it.
+bm25_text = BM25.read_text()
+bm25_old = '      path: node.path ?? "",\n'
+bm25_new = '      path: node.path ?? node.evidence?.[0]?.path ?? "",\n'
+if bm25_text.count(bm25_old) != 1:
+    raise SystemExit(f"expected one BM25 document path site, found {bm25_text.count(bm25_old)}")
+BM25.write_text(bm25_text.replace(bm25_old, bm25_new, 1))
+
+service_text = SERVICE.read_text()
+service_old = '''          bm25Projection.value.search(query, { limit }).map((row) => ({ ...row.document.node, lexicalScore: row.score, lexicalExactName: row.exactName })),
 '''
-new = '''          bm25Projection.value.search(query, { limit }).map((row) => ({
+service_new = '''          bm25Projection.value.search(query, { limit }).map((row) => ({
             ...row.document.node,
-            // Freshness suppression is path-addressed. Preserve the BM25 document's
-            // canonical source path even for projection nodes whose public node shape
-            // omitted it; enrichment must never bypass the stale-source boundary.
-            path: row.document.node?.path || row.document.path || null,
+            // Freshness suppression is path-addressed. BM25 owns a canonical
+            // source path even when the projected public node omits one.
+            path: row.document.path || row.document.node?.path || row.document.node?.evidence?.[0]?.path || null,
             lexicalScore: row.score,
             lexicalExactName: row.exactName,
           })),
 '''
-text = SERVICE.read_text()
-if text.count(old) != 1:
-    raise SystemExit(f"expected one BM25 mapping site, found {text.count(old)}")
-SERVICE.write_text(text.replace(old, new, 1))
+if service_text.count(service_old) != 1:
+    raise SystemExit(f"expected one BM25 mapping site, found {service_text.count(service_old)}")
+SERVICE.write_text(service_text.replace(service_old, service_new, 1))
 
 subprocess.run([
     "node", "--test",
@@ -33,11 +43,11 @@ subprocess.run([
 
 subprocess.run(["git", "config", "user.name", "Blueprint completion automation"], cwd=ROOT, check=True)
 subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], cwd=ROOT, check=True)
-subprocess.run(["git", "add", str(SERVICE.relative_to(ROOT))], cwd=ROOT, check=True)
+subprocess.run(["git", "add", str(SERVICE.relative_to(ROOT)), str(BM25.relative_to(ROOT))], cwd=ROOT, check=True)
 subprocess.run([
     "git", "commit",
-    "-m", "fix(blueprint-search): preserve source path through BM25 enrichment",
-    "-m", "Keep BM25-enriched candidates addressable by the canonical stale-source boundary. A changed source must remain suppressible even when an enrichment projection omits path metadata from its public node shape.",
+    "-m", "fix(blueprint-search): preserve source identity through BM25 enrichment",
+    "-m", "Derive every BM25 document's source path from the canonical node path or source evidence, then carry that path across result enrichment. This keeps stale-source suppression authoritative even for projection nodes whose compact public shape omits path metadata.",
 ], cwd=ROOT, check=True)
 
 workflow = WORKFLOW.read_text()
