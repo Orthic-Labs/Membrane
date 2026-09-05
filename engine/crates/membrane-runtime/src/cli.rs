@@ -180,8 +180,9 @@ fn run_skill_read(
     }
     let privacy_values = match privacy_values {
         Some(path) => serde_json::from_str::<std::collections::BTreeMap<String, String>>(
-            &std::fs::read_to_string(&path)
-                .map_err(|error| format!("skill-read privacy values {}: {error}", path.display()))?,
+            &std::fs::read_to_string(&path).map_err(|error| {
+                format!("skill-read privacy values {}: {error}", path.display())
+            })?,
         )
         .map_err(|error| format!("skill-read privacy values must be a string map: {error}"))?,
         None => std::collections::BTreeMap::new(),
@@ -253,8 +254,7 @@ fn run_skill_read(
         if let Ok(memdb) = crate::MemDb::open(&db) {
             if let Ok(store) = MemoryStore::try_open(memdb) {
                 if store.skill_from_db(&name).is_some() {
-                    let resolved =
-                        store.skill_read_bounded(&name, max_chars, &privacy_values)?;
+                    let resolved = store.skill_read_bounded(&name, max_chars, &privacy_values)?;
                     let receipt = serde_json::json!({
                         "schemaVersion": resolved.schema_version,
                         "name": &resolved.name,
@@ -315,7 +315,7 @@ struct RuntimeConfig {
 }
 
 #[derive(Debug)]
-struct DeployedRuntime {
+pub(crate) struct DeployedRuntime {
     port: u16,
     db: PathBuf,
     token_file: PathBuf,
@@ -359,7 +359,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     })
 }
 
-fn current_deployed_runtime() -> Option<DeployedRuntime> {
+pub(crate) fn current_deployed_runtime() -> Option<DeployedRuntime> {
     deployed_runtime_from_exe(&std::env::current_exe().ok()?)
 }
 
@@ -603,8 +603,24 @@ enum PushCmd {
     },
 }
 
-#[derive(Subcommand)]
-enum AdaptCmd {
+#[derive(Debug, Clone, Subcommand, Serialize, Deserialize)]
+#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum AdaptCmd {
+    /// Inspect live Adapt progress. Requires the active installed daemon.
+    Status {
+        #[arg(long, default_value = "global")]
+        scope: String,
+    },
+    /// Evaluate a bounded candidate comparison; never applies its winner.
+    Compare {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Evaluate learned guard rollout eligibility; never grants host permission.
+    GuardEligibility {
+        #[arg(long)]
+        input: PathBuf,
+    },
     /// Execute one sealed model-proposal lifecycle transition. This never
     /// writes durable knowledge; Apply remains separate admission authority.
     ProposalPlan {
@@ -2908,10 +2924,18 @@ fn command_requires_db(command: &Cmd) -> bool {
 }
 
 fn read_adapt_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
-    let body = std::fs::read_to_string(path)
-        .map_err(|error| format!("read Adapt input {}: {error}", path.display()))?;
-    serde_json::from_str(&body)
-        .map_err(|error| format!("parse Adapt input {}: {error}", path.display()))
+    let file = std::fs::File::open(path).map_err(|e| format!("read Adapt input: {e}"))?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("Adapt input must be a regular file".into());
+    }
+    let mut body = Vec::new();
+    file.take(1_048_577)
+        .read_to_end(&mut body)
+        .map_err(|e| e.to_string())?;
+    if body.len() > 1_048_576 {
+        return Err("Adapt input exceeds 1 MiB".into());
+    }
+    serde_json::from_slice(&body).map_err(|error| format!("parse Adapt input: {error}"))
 }
 
 fn read_push_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
@@ -3082,11 +3106,80 @@ pub fn run_native_adapt_mine(request: NativeAdaptMineRequest) -> Result<serde_js
     }))
 }
 
+fn adapt_value<T: Serialize>(value: &T) -> Result<serde_json::Value, String> {
+    serde_json::to_value(value).map_err(|error| error.to_string())
+}
+
+impl AdaptCmd {
+    pub(crate) fn requires_resident(&self) -> bool {
+        !matches!(
+            self,
+            Self::Mine { .. }
+                | Self::Review { .. }
+                | Self::Report { .. }
+                | Self::Benchmark { .. }
+                | Self::ContextCost { .. }
+                | Self::Doctor { input: Some(_) }
+        )
+    }
+
+    fn resolve_inputs(&mut self) -> Result<(), String> {
+        let path = match self {
+            Self::ReviewTaste { input, .. }
+            | Self::ApplyInsights { input, .. }
+            | Self::Compare { input }
+            | Self::GuardEligibility { input } => Some(input),
+            Self::Apply { manifest, .. } => Some(manifest),
+            Self::ProposalPlan { input, store } => {
+                // A caller-selected proposal store remains intermediate state, not Cortex.
+                if !store.is_absolute() {
+                    *store = std::env::current_dir()
+                        .map_err(|e| e.to_string())?
+                        .join(&*store);
+                }
+                Some(input)
+            }
+            Self::AdjudicateTaste {
+                manifest,
+                decisions,
+                ..
+            } => {
+                *decisions = decisions.canonicalize().map_err(|e| e.to_string())?;
+                Some(manifest)
+            }
+            _ => None,
+        };
+        if let Some(path) = path {
+            *path = path.canonicalize().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
 fn run_adapt(
-    command: AdaptCmd,
+    mut command: AdaptCmd,
     db_arg: Option<String>,
     deployed: Option<&DeployedRuntime>,
 ) -> Result<(), String> {
+    if command.requires_resident() {
+        if db_arg.is_some() {
+            return Err(
+                "Adapt canonical operations use the installed daemon; --db is not permitted".into(),
+            );
+        }
+        command.resolve_inputs()?;
+        let request = adapt_value(&command)?;
+        let result = crate::mcp_executor::adapt_daemon_request(&request)?;
+        return print_adapt_json(&result);
+    }
+    print_adapt_json(&execute_adapt_command(command, None, deployed)?)
+}
+
+pub(crate) fn execute_adapt_command(
+    command: AdaptCmd,
+    resident: Option<&MemoryStore>,
+    deployed: Option<&DeployedRuntime>,
+) -> Result<serde_json::Value, String> {
     use membrane_adapt::cli_api;
 
     match command {
@@ -3094,7 +3187,7 @@ fn run_adapt(
             let request: crate::adapt::AdaptProposalPlanRequestV1 = read_adapt_json(&input)?;
             let plan = crate::adapt::execute_adapt_proposal_plan(&store, request)
                 .map_err(|error| format!("execute Adapt proposal plan: {error}"))?;
-            print_adapt_json(&serde_json::json!({
+            adapt_value(&serde_json::json!({
                 "contract": crate::adapt::ADAPT_PROPOSAL_SERVICE_CONTRACT,
                 "plan": plan,
             }))
@@ -3104,7 +3197,7 @@ fn run_adapt(
             host,
             scope,
             min_recurrence,
-        } => print_adapt_json(&run_native_adapt_mine(NativeAdaptMineRequest {
+        } => adapt_value(&run_native_adapt_mine(NativeAdaptMineRequest {
             transcripts,
             host,
             scope,
@@ -3115,7 +3208,7 @@ fn run_adapt(
             let mined: cli_api::MineResponse =
                 serde_json::from_value(value.get("response").cloned().unwrap_or(value))
                     .map_err(|error| format!("parse Adapt mine response: {error}"))?;
-            print_adapt_json(&cli_api::handle_review(&cli_api::ReviewRequest {
+            adapt_value(&cli_api::handle_review(&cli_api::ReviewRequest {
                 issue_ids,
                 issues: mined.issues,
             }))
@@ -3174,12 +3267,10 @@ fn run_adapt(
             if taste_candidate_set_sha256(&candidates) != review.candidate_set_sha256 {
                 return Err("Taste candidate set does not match reverified native sources".into());
             }
-            let db = resolve_db(
-                db_arg,
-                std::env::var("CORTEX_DB").ok(),
-                deployed.map(|runtime| runtime.db.as_path()),
-            )?;
-            let store = open(&db)?;
+            let store = resident.ok_or("membrane_unavailable { hub_inactive }")?;
+            if installation_id != store.installation_id() {
+                return Err("Adapt installation identity mismatch".into());
+            }
             let gate1 = store
                 .taste_gate1_review_context()
                 .map_err(|error| format!("load complete Taste Gate 1 context: {error}"))?;
@@ -3193,7 +3284,7 @@ fn run_adapt(
                 &gate1,
             )
             .map_err(|error| format!("build Taste review manifest: {error}"))?;
-            print_adapt_json(&manifest)
+            adapt_value(&manifest)
         }
         AdaptCmd::AdjudicateTaste {
             manifest,
@@ -3229,7 +3320,7 @@ fn run_adapt(
             .map_err(|error| format!("verify Taste semantic adjudication: {error}"))?;
             let finalised = membrane_adapt::proposal::adjudicate_manifest(&pending, &verified)
                 .map_err(|error| format!("adjudicate Taste manifest: {error}"))?;
-            print_adapt_json(&finalised)
+            adapt_value(&finalised)
         }
         AdaptCmd::Apply { manifest, dry_run } => {
             let manifest: membrane_adapt::manifest::PreferenceManifestV1 =
@@ -3258,12 +3349,10 @@ fn run_adapt(
                 trust.as_ref(),
             )
             .map_err(|error| format!("verify Taste semantic adjudication before apply: {error}"))?;
-            let db = resolve_db(
-                db_arg,
-                std::env::var("CORTEX_DB").ok(),
-                deployed.map(|runtime| runtime.db.as_path()),
-            )?;
-            let store = open(&db)?;
+            let store = resident.ok_or("membrane_unavailable { hub_inactive }")?;
+            if manifest.installation_id != store.installation_id() {
+                return Err("Adapt installation identity mismatch".into());
+            }
             if dry_run {
                 let manifest_record_payloads: std::collections::BTreeMap<String, String> = manifest
                     .records
@@ -3280,12 +3369,12 @@ fn run_adapt(
                 dry_run,
             });
             if !response.valid || dry_run || response.accepted_record_ids.is_empty() {
-                return print_adapt_json(&serde_json::json!({"response": response}));
+                return adapt_value(&serde_json::json!({"response": response}));
             }
             let receipt = store
                 .try_put_verified_adapt_taste_manifest(&manifest, trust.as_ref())
                 .map_err(|error| error.to_string())?;
-            print_adapt_json(&serde_json::json!({
+            adapt_value(&serde_json::json!({
                 "response": response,
                 "cortex_receipt": receipt,
             }))
@@ -3315,23 +3404,18 @@ fn run_adapt(
             );
             let envelopes = insight_admission_requests(&issues, &installation_id);
             if dry_run || issues.is_empty() {
-                return print_adapt_json(&serde_json::json!({
+                return adapt_value(&serde_json::json!({
                     "valid": true,
                     "dry_run": dry_run,
                     "batch_id": batch_id,
                     "admission_requests": envelopes,
                 }));
             }
-            let db = resolve_db(
-                db_arg,
-                std::env::var("CORTEX_DB").ok(),
-                deployed.map(|runtime| runtime.db.as_path()),
-            )?;
-            let store = open(&db)?;
+            let store = resident.ok_or("membrane_unavailable { hub_inactive }")?;
             let receipt = store
                 .try_put_verified_adapt_insights(&issues)
                 .map_err(|error| error.to_string())?;
-            print_adapt_json(&serde_json::json!({
+            adapt_value(&serde_json::json!({
                 "valid": true,
                 "batch_id": batch_id,
                 "admission_requests": envelopes,
@@ -3339,65 +3423,49 @@ fn run_adapt(
             }))
         }
         AdaptCmd::Recall {
-            query,
+            query: _,
             k,
             scope,
             dimensions,
         } => {
-            let context = adapt_scope_dimensions(&dimensions)?;
-            let db = resolve_db(
-                db_arg,
-                std::env::var("CORTEX_DB").ok(),
-                deployed.map(|runtime| runtime.db.as_path()),
+            let store = resident.ok_or("membrane_unavailable { hub_inactive }")?;
+            let dimensions = adapt_scope_dimensions(&dimensions)?;
+            crate::adapt_service::inspect_preferences(store, &scope, dimensions, None, None, k)
+        }
+        AdaptCmd::Status { scope } => crate::adapt_service::status(
+            resident.ok_or("membrane_unavailable { hub_inactive }")?,
+            &scope,
+            None,
+        ),
+        AdaptCmd::Compare { input } => {
+            let request: membrane_adapt::comparison::CandidateComparisonV1 =
+                read_adapt_json(&input)?;
+            let decision = membrane_adapt::comparison::compare(&request)?;
+            let receipt = crate::adapt_service::journal(
+                resident.ok_or("membrane_unavailable { hub_inactive }")?,
+                &request.scope,
+                "adapt.comparison",
+                &request.comparison_id,
+                adapt_value(&decision)?,
             )?;
-            let store = open(&db)?;
-            let chain = crate::scope_chain(&normalize_scope(&scope), &store.scopes());
-            let candidates = store.recall_scored(&query, k.saturating_mul(8).max(k), &chain);
-            let conn = store.db().lock();
-            let mut rows = Vec::new();
-            for (entry, score) in candidates {
-                let metadata = conn.query_row(
-                    "SELECT artifact_family,record_type,lifecycle_state FROM memories WHERE id=?1",
-                    [&entry.id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, String>(2)?,
-                        ))
-                    },
-                );
-                let Ok((family, kind, state)) = metadata else {
-                    continue;
-                };
-                if family != "adapt" || kind != "taste_preference" || state != "active" {
-                    continue;
-                }
-                let mut record: membrane_adapt::manifest::ManifestRecord =
-                    match serde_json::from_str(&entry.content) {
-                        Ok(record) => record,
-                        Err(_) => continue,
-                    };
-                // Cortex owns lifecycle truth; return its current projection,
-                // never stale candidate state embedded in admission evidence.
-                record.lifecycle_state = state;
-                let record_dimensions =
-                    membrane_adapt::scope::ScopeDimensions::normalize(&record.scope_dimensions.0)
-                        .map_err(|error| {
-                        format!("stored Adapt scope invalid for {}: {error}", record.id)
-                    })?;
-                if record_dimensions.matches(&context) {
-                    rows.push(serde_json::json!({"score": score, "record": record}));
-                }
-                if rows.len() >= k {
-                    break;
-                }
-            }
-            print_adapt_json(&serde_json::json!({"records": rows}))
+            Ok(serde_json::json!({"decision":decision,"receipt":receipt}))
+        }
+        AdaptCmd::GuardEligibility { input } => {
+            let request: membrane_adapt::guard_rollout::GuardTransitionRequestV1 =
+                read_adapt_json(&input)?;
+            let decision = membrane_adapt::guard_rollout::evaluate(&request)?;
+            let receipt = crate::adapt_service::journal(
+                resident.ok_or("membrane_unavailable { hub_inactive }")?,
+                &request.proposed_scope,
+                "adapt.guard_eligibility",
+                &decision.request_sha256,
+                adapt_value(&decision)?,
+            )?;
+            Ok(serde_json::json!({"decision":decision,"receipt":receipt}))
         }
         AdaptCmd::Report { input } => {
             let request: cli_api::ReportRequest = read_adapt_json(&input)?;
-            print_adapt_json(&cli_api::handle_report(&request))
+            adapt_value(&cli_api::handle_report(&request))
         }
         AdaptCmd::Benchmark { input } => {
             let body = std::fs::read_to_string(&input)
@@ -3423,23 +3491,26 @@ fn run_adapt(
                     cli_api::BenchmarkRequest { corpus }
                 }
             };
-            print_adapt_json(&cli_api::handle_benchmark(&request))
+            adapt_value(&cli_api::handle_benchmark(&request))
         }
         AdaptCmd::Doctor { input } => {
             let request = match input {
                 Some(input) => read_adapt_json(&input)?,
-                None => cli_api::DoctorRequest {
-                    issues: Vec::new(),
-                    episodes: Vec::new(),
-                },
+                None => {
+                    return crate::adapt_service::status(
+                        resident.ok_or("membrane_unavailable { hub_inactive }")?,
+                        "global",
+                        None,
+                    )
+                }
             };
-            print_adapt_json(&cli_api::handle_doctor(&request))
+            adapt_value(&cli_api::handle_doctor(&request))
         }
         AdaptCmd::ContextCost { input } => {
             let request: cli_api::ContextCostRequest = read_adapt_json(&input)?;
             let response = cli_api::handle_context_cost(&request)
                 .map_err(|error| format!("analyze Adapt context cost: {error}"))?;
-            print_adapt_json(&response)
+            adapt_value(&response)
         }
     }
 }

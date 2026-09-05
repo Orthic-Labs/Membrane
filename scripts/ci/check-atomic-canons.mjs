@@ -259,6 +259,27 @@ function focusedProofLooksExact(command, evidence) {
   }
   return candidates.some((candidate) => focusedAssertionCorpus.includes(candidate));
 }
+const revisionLocatorLineCounts = new Map();
+function validateRevisionLocators(value, label, revision) {
+  const pattern = /((?:engine|blueprint|scripts|docs|migration|schemas|mcp|clients)\/[A-Za-z0-9_./@+-]+):(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*)/g;
+  for (const match of value.matchAll(pattern)) {
+    const relative = match[1];
+    const key = `${revision}:${relative}`;
+    if (!revisionLocatorLineCounts.has(key)) {
+      let source;
+      try {
+        source = execFileSync("git", ["show", `${revision}:${relative}`], { cwd: root, encoding: "utf8" });
+      } catch {
+        throw new Error(`${label}: locator path does not exist at ${revision}: ${relative}`);
+      }
+      revisionLocatorLineCounts.set(key, source.replace(/\r\n/g, "\n").split("\n").length);
+    }
+    const maximum = Math.max(...match[2].split(",").map((range) => Number.parseInt(range.split("-").at(-1), 10)));
+    if (maximum > revisionLocatorLineCounts.get(key)) {
+      throw new Error(`${label}: locator line ${maximum} exceeds ${relative} at ${revision}`);
+    }
+  }
+}
 function validateReceiptReferences(parsed) {
   const receipts = new Map();
   for (const canon of parsed) for (const row of canon.capabilities) {
@@ -282,8 +303,6 @@ function validateReceiptReferences(parsed) {
         .map((line) => Object.fromEntries(headers.reconciliation.map((name, index) => [name, cells(line)[index]])));
       const byCapability = new Map();
       for (const receiptRow of rows) {
-        validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);
-        validateLiveLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`);
         if (byCapability.has(receiptRow.Capability)) throw new Error(`${relative}: duplicate receipt row ${receiptRow.Capability}`);
         byCapability.set(receiptRow.Capability, receiptRow);
       }
@@ -291,6 +310,8 @@ function validateReceiptReferences(parsed) {
     }
     const receiptRow = receipts.get(relative).get(row.ID);
     if (!receiptRow) throw new Error(`${canon.file}:${row.ID}: evidence receipt lacks acceptance row`);
+    validateRevisionLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`, proof.revision);
+    validateRevisionLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`, proof.revision);
     if (receiptRow.State !== row.Implementation) throw new Error(`${canon.file}:${row.ID}: receipt implementation state differs`);
     if (row.Implementation === "DELIVERED" && receiptRow.Residual !== "COMPLETE") throw new Error(`${canon.file}:${row.ID}: delivered receipt residual must be COMPLETE`);
   }

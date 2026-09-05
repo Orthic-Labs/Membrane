@@ -20,6 +20,7 @@ const CORE: &[&str] = &[
     "membrane_push_prepare",
     "membrane_push_resolve",
 ];
+const ADAPT: &[&str] = &["membrane_adapt_inspect"];
 const DIAGNOSTIC: &[&str] = &[
     "membrane_diagnostic_workspace",
     "membrane_diagnostic_mutation",
@@ -66,16 +67,38 @@ fn remaining_context_ceiling() -> Value {
 
 fn schema(name: &str) -> Value {
     if name.starts_with("membrane_push_") {
-        let definitions: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
-        return definitions.as_array().unwrap().iter().find(|v| v["name"] == name).expect("Push tool registered")["inputSchema"].clone();
+        let definitions: Value = serde_json::from_str(include_str!(
+            "../../../../schemas/registry/push-tools.v1.json"
+        ))
+        .expect("Push schemas parse");
+        return definitions
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["name"] == name)
+            .expect("Push tool registered")["inputSchema"]
+            .clone();
     }
     let (required, mut properties) = match name {
+        "membrane_adapt_inspect" => (
+            vec!["repository", "caller", "operation"],
+            json!({"repository":{"type":"string","minLength":1},"caller":caller(),
+        "operation":{"type":"string","enum":["preferences","explain","insights","proposals","status"]},
+        "limit":{"type":"integer","minimum":0,"maximum":32},"hostContext":host_context()}),
+        ),
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
             // (RequestTimeH8Error::Missing), so the tool must advertise it.
             // Leaving it undeclared made the one entry tool impossible to call
             // correctly from its own schema.
-            vec!["task", "taskId", "sessionId", "repository", "caller", "remainingContextCeiling"],
+            vec![
+                "task",
+                "taskId",
+                "sessionId",
+                "repository",
+                "caller",
+                "remainingContextCeiling",
+            ],
             json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"taskId":{"type":"string","minLength":1,"description":"Stable task identity; distinct from task prose"},"sessionId":{"type":"string","minLength":1,"description":"Stable host session identity; distinct from caller.scopeId"},"requestId":{"type":"string","minLength":1},"generation":{"type":"string","minLength":1},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1,"description":"Legacy native budget units (1024 tokens each); prefer budgetTokens"},"budgetTokens":{"type":"integer","minimum":1,"description":"Explicit final Pull attention ceiling in tokens"},"scope":{"type":"string","enum":["repo","workspace"]},"workspaceTargets":{"type":"array","description":"Optional repository-id subset for workspace scope. Omit to use the caller plus all explicitly granted child repositories.","items":{"type":"string","minLength":1},"maxItems":32,"uniqueItems":true},"deadlineMs":{"type":"integer","minimum":1},"scopeGrantId":{"type":"string","minLength":1},"anchors":{"type":"array","items":{"type":"string","minLength":1},"maxItems":64},"refresh":{"type":"boolean"},"consumerCapabilities":{"type":"object","description":"Negotiated capabilities of the consuming host. Resolver-only representations are eligible only when their resolver is listed here.","properties":{"resolvers":{"type":"array","items":{"type":"string","enum":["membrane_source_read"]},"maxItems":32,"uniqueItems":true},"retainsDeliveredEvidence":{"type":"boolean"}},"additionalProperties":false},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
         ),
         "membrane_source_read" => (
@@ -149,19 +172,29 @@ fn schema(name: &str) -> Value {
         ),
     };
     if name == "membrane_source_read" {
-        for field in ["docId","nodeId","expectedRevision","expectedSpanHash","continuationCursor","ledgerTicket"] {
+        for field in [
+            "docId",
+            "nodeId",
+            "expectedRevision",
+            "expectedSpanHash",
+            "continuationCursor",
+            "ledgerTicket",
+        ] {
             properties[field] = json!({"type":"string","maxLength":8192});
         }
         properties["ledgerGeneration"] = json!({"type":"integer","minimum":0});
         properties["maxBytes"] = json!({"type":"integer","minimum":1,"maximum":12000});
         properties["deadlineMs"] = json!({"type":"integer","minimum":1,"maximum":30000});
     }
-    if name == "membrane_context" { properties["scopeGrantId"] = json!({"type":"string"}); }
+    if name == "membrane_context" {
+        properties["scopeGrantId"] = json!({"type":"string"});
+    }
     json!({"type":"object","required":required,"properties":properties,"additionalProperties":false})
 }
 fn annotations(name: &str) -> Value {
     match name {
-        "membrane_push_resolve"
+        "membrane_adapt_inspect"
+        | "membrane_push_resolve"
         | "membrane_context"
         | "membrane_source_read"
         | "membrane_blueprint"
@@ -178,7 +211,7 @@ fn annotations(name: &str) -> Value {
 pub(crate) fn definitions() -> Value {
     Value::Array(
         CORE.iter()
-            .chain(DIAGNOSTIC)
+            .chain(DIAGNOSTIC).chain(ADAPT)
             .map(|name| {
                 if name.starts_with("membrane_push_") {
                     let entries: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
@@ -189,6 +222,7 @@ pub(crate) fn definitions() -> Value {
                     "membrane_context" => "Federate bounded, grant-aware context through the resident Membrane planner.",
                     "membrane_source_read" => "Resolve a hash/revision/span-bound source reference. Ledger node reads may require the opaque ledgerTicket returned by Ledger retrieval; continuationCursor resumes the same captured span and never grants authority.",
                     "membrane_ledger" => "Navigate the resident Ledger document index: scoped recall/literal search, paged outlines, related nodes, backlinks, named structural drift, status, sync, activation gates, or scoped erasure. Final prompt admission remains Pull-owned.",
+                    "membrane_adapt_inspect" => "Read scoped Taste decisions, Insights and live Adapt progress. Inspection cannot approve, apply, widen scope, or change lifecycle.",
                     _ => "Native Membrane operation.",
                   },
                   "inputSchema":schema(name),"annotations":annotations(name)
@@ -203,8 +237,10 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let mut result = Vec::new();
     for value in list {
         let group = value.as_str()?;
-        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "ledger" | "push")
-            || !seen.insert(group)
+        if !matches!(
+            group,
+            "default" | "memory" | "blueprint" | "diagnostic" | "ledger" | "adapt" | "push"
+        ) || !seen.insert(group)
         {
             return None;
         }
@@ -213,7 +249,11 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     Some(result)
 }
 pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
-    let mut names = vec!["membrane_context", "membrane_source_read", "membrane_ledger"];
+    let mut names = vec![
+        "membrane_context",
+        "membrane_source_read",
+        "membrane_ledger",
+    ];
     for group in requested(params).unwrap_or_default() {
         let additions: &[&str] = match group {
             "memory" => &CORE[3..10],
@@ -221,6 +261,7 @@ pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
             "push" => &CORE[11..],
             "blueprint" => &CORE[1..3],
             "diagnostic" => DIAGNOSTIC,
+            "adapt" => ADAPT,
             _ => &[],
         };
         for name in additions {
@@ -276,7 +317,7 @@ pub fn tool_result(result: Value) -> Value {
 }
 /// Typed fail-closed seam. No interpreter fallback is ever attempted.
 pub(crate) fn call(name: &str, arguments: &Value) -> Value {
-    if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) {
+    if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) && !ADAPT.contains(&name) {
         return json!({"content":[{"type":"text","text":"unknown_tool"}],"isError":true});
     }
     if let Some(executor) = EXECUTOR.get() {
@@ -295,4 +336,11 @@ pub(crate) fn call(name: &str, arguments: &Value) -> Value {
     };
     let result = envelope(name, code, message);
     json!({"content":[{"type":"text","text":result.to_string()}],"structuredContent":result,"isError":true})
+}
+
+fn host_context() -> Value {
+    json!({"type":"object","additionalProperties":false,"properties":{
+        "client":{"type":"string","minLength":1},"model":{"type":"string","minLength":1},
+        "machine":{"type":"string","minLength":1},"dimensions":{"type":"object","additionalProperties":{"type":"string"}}
+    },"description":"Actual host context. Omitted fields remain unavailable, never inferred from the transport."})
 }

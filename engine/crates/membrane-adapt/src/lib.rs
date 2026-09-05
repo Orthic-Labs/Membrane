@@ -46,3 +46,7 @@ pub mod remediation;
 pub mod scope;
 pub mod seal;
 pub mod taste;
+
+pub mod clarification;
+pub mod comparison;
+pub mod guard_rollout;

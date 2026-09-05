@@ -2,8 +2,8 @@
 //! Blueprint, Ledger, and Adapt. Cortex durable storage remains isolated from
 //! Pull acquisition and Push reduction.
 
-pub mod admission_producer;
 pub mod adapt;
+pub mod admission_producer;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod authorization;
@@ -120,3 +120,7 @@ pub use team_policy::{
     admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
     TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
 };
+
+pub mod adapt_service;
+
+pub mod adapt_observations;

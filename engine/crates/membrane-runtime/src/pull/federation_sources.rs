@@ -43,8 +43,7 @@ pub struct NativeSourceBindings {
     pub blueprint_contextual: Option<Arc<dyn ContextualBlueprintSource>>,
     pub release: Option<RuntimeReleaseSource>,
     pub(crate) cancellations: Arc<Mutex<HashMap<String, CancellationToken>>>,
-    pub(crate) temporal_queries:
-        Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
+    pub(crate) temporal_queries: Arc<Mutex<HashMap<String, cortex_store::TemporalFactQuery>>>,
 }
 
 impl std::fmt::Debug for NativeSourceBindings {
@@ -75,6 +74,14 @@ impl NativeSourceBindings {
             .map_err(|error| format!("open Cortex database: {error}"))?;
         let store = crate::MemoryStore::try_open(db)
             .map_err(|error| format!("open Cortex store: {error}"))?;
+        Self::with_store(repository_root, scope_grant_id, store)
+    }
+
+    pub fn with_store(
+        _repository_root: &Path,
+        scope_grant_id: Option<&str>,
+        store: crate::MemoryStore,
+    ) -> Result<Self, String> {
         let catalog_path = crate::catalog::default_catalog_path()
             .map_err(|error| format!("resolve context catalog: {error}"))?;
         let catalog = crate::catalog::ContextCatalog::open(catalog_path)
@@ -286,10 +293,17 @@ impl MemoryCandidateSource for RuntimeMemorySource {
             let completeness = payload
                 .get("completeness")
                 .cloned()
-                .and_then(|value| serde_json::from_value::<crate::store::CortexCompletenessV1>(value).ok())
-                .unwrap_or_else(|| crate::store::CortexCompletenessV1::lower_bound(
-                    "completeness_unavailable", candidates.len(), candidates.len(), 0
-                ));
+                .and_then(|value| {
+                    serde_json::from_value::<crate::store::CortexCompletenessV1>(value).ok()
+                })
+                .unwrap_or_else(|| {
+                    crate::store::CortexCompletenessV1::lower_bound(
+                        "completeness_unavailable",
+                        candidates.len(),
+                        candidates.len(),
+                        0,
+                    )
+                });
             let warnings = completeness
                 .causes
                 .iter()

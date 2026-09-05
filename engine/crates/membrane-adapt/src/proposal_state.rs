@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::seal::{verify_seal, SemanticPayloadV1};
@@ -75,6 +76,21 @@ pub struct ProposalPlanV1 {
     pub committed_at: Option<u64>,
 }
 
+/// Stable identity of the semantic surface being mutated. Candidate wording,
+/// evidence receipts and authority effect deliberately do not participate: two
+/// variants for the same surface/version must contend for one apply-eligible
+/// slot rather than evade exclusion by changing their text.
+pub fn semantic_target_sha256(payload: &SemanticPayloadV1) -> String {
+    crate::canonical::sha256_canonical(&json!({
+        "record_kind": &payload.record_kind,
+        "category": &payload.category,
+        "scope": &payload.scope,
+        "scope_dimensions": &payload.scope_dimensions,
+        "record_class": &payload.record_class,
+        "machine_binding": &payload.machine_binding,
+    }))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ProposalPlanFileV1 {
     schema_version: u32,
@@ -119,6 +135,12 @@ pub enum ProposalStateError {
     RiskApprovalInsufficient,
     #[error("target version changed: expected {expected}, observed {observed}")]
     VersionConflict { expected: u64, observed: u64 },
+    #[error("apply-eligible proposal already exists for semantic target {target_sha256} at version {target_version}: {existing_plan_id}")]
+    TargetConflict {
+        target_sha256: String,
+        target_version: u64,
+        existing_plan_id: String,
+    },
     #[error("verification receipt does not bind plan, seal, version, time, or passing result")]
     VerificationRejected,
     #[error("proposal lifecycle timestamp precedes its required prior state")]
@@ -170,10 +192,48 @@ impl ProposalPlanStore {
         if self.state.plans.contains_key(plan_id) {
             return Err(ProposalStateError::PlanExists(plan_id.into()));
         }
+
+        let target_sha256 = semantic_target_sha256(&semantic_payload);
+        let seal_digest = semantic_payload.seal_digest();
+        let existing = self
+            .state
+            .plans
+            .values()
+            .find(|candidate| {
+                matches!(
+                    candidate.state,
+                    ProposalPlanState::Proposed | ProposalPlanState::Approved
+                ) && candidate.expires_at > now
+                    && candidate.expected_target_version == expected_target_version
+                    && semantic_target_sha256(&candidate.semantic_payload) == target_sha256
+            })
+            .map(|candidate| {
+                (
+                    candidate.plan_id.clone(),
+                    candidate.seal_digest.clone(),
+                    candidate.risk,
+                )
+            });
+        if let Some((existing_plan_id, existing_seal, existing_risk)) = existing {
+            if existing_seal == seal_digest && existing_risk == risk {
+                // Exact semantic replay converges on the existing pending plan;
+                // no second mutation or store revision is created.
+                return Ok(self
+                    .state
+                    .plans
+                    .get(&existing_plan_id)
+                    .expect("existing plan was selected from this store"));
+            }
+            return Err(ProposalStateError::TargetConflict {
+                target_sha256,
+                target_version: expected_target_version,
+                existing_plan_id,
+            });
+        }
+
         let expires_at = now
             .checked_add(ttl_seconds)
             .ok_or(ProposalStateError::InvalidTtl)?;
-        let seal_digest = semantic_payload.seal_digest();
         let previous = self.state.clone();
         let mut plan = ProposalPlanV1 {
             contract: PROPOSAL_PLAN_CONTRACT.into(),

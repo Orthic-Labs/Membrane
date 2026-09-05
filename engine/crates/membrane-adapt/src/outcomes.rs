@@ -85,6 +85,9 @@ pub struct OutcomeLedger {
 }
 
 fn adjust(raw: RawOutcome, exposure: &Exposure) -> AdjustedOutcome {
+    if exposure.opportunities == 0 || exposure.baseline == 0 {
+        return AdjustedOutcome::Indeterminate;
+    }
     let r = exposure.ratio();
     match raw {
         RawOutcome::NoRecurrence if r >= 0.8 => AdjustedOutcome::Effective,
