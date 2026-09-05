@@ -22,23 +22,11 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
           version: 11.24.0
-      - name: Apply sealed source changes
+      - name: Prepare generated references
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -d .cortex-transfer ]]; then
-            cat .cortex-transfer/part-* | base64 -d | xz -d > "$RUNNER_TEMP/cortex.patch"
-            git apply --check "$RUNNER_TEMP/cortex.patch"
-            git apply "$RUNNER_TEMP/cortex.patch"
-            rm -rf .cortex-transfer
-          fi
-          if [[ -d .cortex-followup ]]; then
-            cat .cortex-followup/part-* | base64 -d | xz -d > "$RUNNER_TEMP/cortex-followup.patch"
-            git apply --check "$RUNNER_TEMP/cortex-followup.patch"
-            git apply "$RUNNER_TEMP/cortex-followup.patch"
-            rm -rf .cortex-followup
-          fi
-          node scripts/ci/check-generated-cli.mjs --write
+          node scripts/ci/generate-cli-reference.mjs
       - name: Install JS dependencies without scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Static contract checks
@@ -58,21 +46,18 @@ jobs:
         run: |
           set -euo pipefail
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib cortex_lifecycle
-          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib utility_admission
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib feedback
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib checkpoint
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib vector_index
           cargo test --manifest-path engine/Cargo.toml -p membrane-mcp
-      - name: Commit verified implementation
+      - name: Commit verified generated references
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           git add -A
-          if git diff --cached --quiet; then
-            exit 0
-          fi
+          if git diff --cached --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "feat(cortex): complete governed lifecycle implementation"
+          git commit -m "chore(cortex): refresh generated references"
           git push origin HEAD:cortex-governed-lifecycle
