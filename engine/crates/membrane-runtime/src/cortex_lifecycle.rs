@@ -112,7 +112,7 @@ fn verify_review(store: &MemoryStore, review: &ReviewedEffectV1, repository: &st
 fn verify_with_trust(store: &MemoryStore, review: &ReviewedEffectV1, repository: &str, scope: &str,
     trust: &ReviewerTrustV1, now: u64) -> Result<()> {
     if review.schema_version != 1 || review.policy_version != REVIEW_POLICY
-        || trust.schema_version != 1 || trust.installation_id != store.installation_id()
+        || trust.schema_version != 1
         || trust.cortex_store_id != store.cortex_store_id()
         || review.installation_id != trust.installation_id || review.cortex_store_id != trust.cortex_store_id
         || review.repository_id != repository || review.scope_id != scope {

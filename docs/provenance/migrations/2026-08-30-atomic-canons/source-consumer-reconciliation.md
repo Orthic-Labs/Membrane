@@ -126,9 +126,9 @@ Freshness: `2026-08-30`.
 | MEM-029 | PARTIAL | `engine/crates/membrane-runtime/src/memory_sentinel_producer.rs:35-111; engine/crates/membrane-runtime/src/memory_sentinel_view.rs:65-120` | engine/crates/membrane-runtime/src/hub_inputs.rs:416-431 | Missing duplication/recall-health projection & not_evaluated gate. |
 | MEM-030 | PARTIAL | `engine/crates/membrane-runtime/src/delivery_trace_view.rs:74-153` | engine/crates/membrane-runtime/src/serve.rs:454-467 | No authoritative internal packet/host/event/outcome join. |
 | MEM-032 | PARTIAL | `engine/crates/membrane-runtime/src/notifications.rs:65-168` | NONE | Wire thresholded observer to tray. |
-| MEM-033 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:338-445,576-757` | engine/crates/membrane-runtime/src/mcp_executor.rs:1463-1493 | COMPLETE |
-| MEM-034 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:446-575` | engine/crates/membrane-runtime/src/mcp_executor.rs:1495-1515 | COMPLETE |
-| MEM-035 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:321-337,954-1038,1162-1237` | engine/crates/membrane-runtime/src/mcp_executor.rs:1534-1577 | COMPLETE |
+| MEM-033 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:338-445,576-757` | engine/crates/membrane-runtime/src/mcp_executor.rs:1179-1232 | COMPLETE |
+| MEM-034 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:446-575` | engine/crates/membrane-runtime/src/mcp_executor.rs:1233-1254 | COMPLETE |
+| MEM-035 | DELIVERED | `engine/crates/membrane-runtime/src/live_diagnostics_service.rs:321-337,954-1038,1162-1237` | engine/crates/membrane-runtime/src/mcp_executor.rs:1271-1360 | COMPLETE |
 | MEM-039 | DELIVERED | `engine/crates/membrane-runtime/src/doctor.rs:25-113; engine/crates/membrane-runtime/src/diagnostic_bundle.rs:68-168` | engine/crates/membrane-runtime/src/cli.rs:4038-4062 | COMPLETE |
 | MEM-051 | PARTIAL | `engine/crates/membrane-runtime/src/team_policy.rs:60-91,134-148` | NONE | Wire signed team-policy ingress. |
 | MEM-052 | PARTIAL | `engine/crates/membrane-runtime/src/background_review.rs:315-367,1688-1735` | `engine/crates/membrane-runtime/src/bin/membrane-daemon.rs:128-147,287` | Admission policy & permit gating only; scheduling/single-flight, cancellation, retry, budgets, & H5 remain MEM-061–MEM-066. |

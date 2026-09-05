@@ -1,5 +1,5 @@
 // GENERATED — DO NOT EDIT
-// operation_registry_version: sha256:5a8e2bdcade6d57c7d91aae00821252262cf0b7929322e2882e57f64feb6fa82
+// operation_registry_version: sha256:e63d052c1bd4a9975a4bb310fe0aac6e735a72ae9926c67605a5b42609fda53b
 match name {
     "" => Some(vec![
         ("membrane_context".to_string(), String::new()),
@@ -12,6 +12,8 @@ match name {
         ("membrane_temporal_fact".to_string(), String::new()),
         ("membrane_scratchpad".to_string(), String::new()),
         ("membrane_feedback".to_string(), String::new()),
+        ("membrane_memory".to_string(), String::new()),
+        ("membrane_knowledge_review".to_string(), String::new()),
         ("hub-capabilities".to_string(), String::new()),
         ("hub-snapshot".to_string(), String::new()),
     ]),
@@ -34,6 +36,10 @@ match name {
     "membrane_scratchpad" => Some(vec![
     ]),
     "membrane_feedback" => Some(vec![
+    ]),
+    "membrane_memory" => Some(vec![
+    ]),
+    "membrane_knowledge_review" => Some(vec![
     ]),
     "hub-capabilities" => Some(vec![
     ]),
