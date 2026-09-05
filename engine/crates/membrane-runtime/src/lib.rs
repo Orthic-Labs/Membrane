@@ -3,6 +3,7 @@
 //! Pull acquisition and Push reduction.
 
 pub mod adapt;
+pub mod adapt_effectiveness;
 pub mod adapt_efficiency;
 pub mod admission_producer;
 pub mod agent_adapter_producer;
@@ -62,6 +63,7 @@ pub use provenance::{
 pub mod push;
 pub mod working_context;
 
+pub use adapt_effectiveness::project_joined_effectiveness_exact;
 pub use authorization::{
     authorize as authorize_native_request, intersect_authority, permits_level, AuthorityLevel,
     AuthorizationDecisionV1, AuthorizationDenial, AuthorizationGate, InstallationRegistryV1,
