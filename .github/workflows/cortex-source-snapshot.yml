@@ -21,9 +21,9 @@ jobs:
           sha256sum "$RUNNER_TEMP/membrane-source.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
-          name: cortex-source-tree
+          name: cortex-source-tree-recovered
           path: ${{ runner.temp }}/membrane-source.tar.gz
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
-# refreshed after focused CI failure triage
+# recovered implementation snapshot
