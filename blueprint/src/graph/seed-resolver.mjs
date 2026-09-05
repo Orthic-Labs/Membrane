@@ -1,4 +1,5 @@
 import { hydrateNodesByIds } from "./store-sqlite.mjs";
+import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
 
 const STOPWORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "with"]);
 
@@ -17,7 +18,12 @@ function nodeEvidence(node) {
 }
 
 function rowsToCandidates(db, rows, exactness, reason, maxSeeds) {
-  const ids = [...new Set(rows.map((row) => String(row.id)))].slice(0, maxSeeds + 1);
+  // Merge per-term bounded results categorically BEFORE the global seed cap.
+  // Explicit node IDs and file addresses retain their requested order.
+  const ordered = rows.some((row) => Number.isInteger(row.authorityRank))
+    ? [...rows].sort((a, b) => a.authorityRank - b.authorityRank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    : rows;
+  const ids = [...new Set(ordered.map((row) => String(row.id)))].slice(0, maxSeeds + 1);
   const nodes = new Map(hydrateNodesByIds(db, ids).map((node) => [node.id, node]));
   return ids.map((id) => {
     const node = nodes.get(id);
@@ -69,7 +75,7 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
 
   const queryTerms = terms(task);
   const qualifiedRows = [];
-  const byQualified = db.prepare("SELECT id FROM symbols WHERE generation_id = ? AND qualified_name = ? ORDER BY confidence DESC,id LIMIT ?");
+  const byQualified = db.prepare(`SELECT id, ${symbolAuthorityOrder(db)} AS authorityRank FROM symbols WHERE generation_id = ? AND qualified_name = ? ORDER BY authorityRank,id LIMIT ?`);
   for (const term of queryTerms) qualifiedRows.push(...byQualified.all(generationId, term, maxSeeds + 1));
   const qualified = rowsToCandidates(db, qualifiedRows, 2, "qualified_symbol", maxSeeds);
   attempts.push({ lane: "qualified_symbol", requested: queryTerms.length, matched: qualified.length });
@@ -77,7 +83,7 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
   if (qualifiedDecision) return qualifiedDecision;
 
   const exactRows = [];
-  const byName = db.prepare("SELECT id FROM symbols WHERE generation_id = ? AND name = ? ORDER BY confidence DESC,path,id LIMIT ?");
+  const byName = db.prepare(`SELECT id, ${symbolAuthorityOrder(db)} AS authorityRank FROM symbols WHERE generation_id = ? AND name = ? ORDER BY authorityRank,path,id LIMIT ?`);
   for (const term of queryTerms) exactRows.push(...byName.all(generationId, term, maxSeeds + 1));
   const exact = rowsToCandidates(db, exactRows, 3, "exact_term", maxSeeds);
   attempts.push({ lane: "exact_term", requested: queryTerms.length, matched: exact.length });
@@ -85,7 +91,9 @@ export function resolveSeeds(db, task, { generationId, seedIds = [], anchors = [
   if (exactDecision) return exactDecision;
 
   const indexedRows = [];
-  const byTerm = db.prepare("SELECT symbol_id AS id FROM symbol_terms WHERE generation_id = ? AND token = ? ORDER BY symbol_id LIMIT ?");
+  const byTerm = db.prepare(`SELECT s.id, ${symbolAuthorityOrder(db, "s")} AS authorityRank
+    FROM symbol_terms st JOIN symbols s ON s.id=st.symbol_id AND s.generation_id=st.generation_id
+    WHERE st.generation_id = ? AND st.token = ? ORDER BY authorityRank,s.path,s.id LIMIT ?`);
   for (const term of queryTerms) {
     indexedRows.push(...byTerm.all(generationId, term, maxSeeds + 1));
     if (indexedRows.length > maxSeeds) break;

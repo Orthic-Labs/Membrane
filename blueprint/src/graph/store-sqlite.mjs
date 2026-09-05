@@ -16,8 +16,10 @@ import { statSync } from "node:fs";
 import { computeFullLedger } from "./merkle-ledger.mjs";
 import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
 import { canonicalProviderId } from "./provider-identity.mjs";
+import { symbolAuthorityOrder, symbolConfidenceTieOrder } from "./symbol-authority-order.mjs";
+import { assertPublicationCandidate } from "./publication-policy.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
-import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
+import { migrateNullableFactConfidence, migrateNullableDocTruthConfidence } from "./confidence-migration.mjs";
 
 const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
 const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
@@ -940,9 +942,10 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_named_snapshot_generation ON named_snapshot(generation_id);
     `);
   },
-  // Migration 19 — confidence is nullable for categorical facts. The existing
-  // migration runner supplies the backup and atomic commit/rollback boundary.
+  // Migration 19 — confidence is nullable for categorical graph facts.
   migrateNullableFactConfidence,
+  // Migration 20 — deterministic doc↔code joins use the same nullable contract.
+  migrateNullableDocTruthConfidence,
 ];
 
 /** Current schema version = number of migrations. Derived, so it cannot desync. */
@@ -1311,7 +1314,7 @@ function insertDocTruthRows(db, docTruth, generationId) {
       join.kind ?? "supports",
       join.source ?? "",
       join.target ?? "",
-      join.confidence ?? 1,
+      join.confidence === undefined ? 1 : join.confidence,
       join.confidenceClass ?? null,
       join.reason ?? null,
       docPath,
@@ -1495,7 +1498,7 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
   const columns = "s.id, s.name, s.qualified_name AS qualifiedName, s.path, s.confidence, s.evidence, s.generation_id AS generationId";
   const join = "FROM symbol_terms st JOIN symbols s ON s.id=st.symbol_id AND s.generation_id=st.generation_id";
   const select = (token) => db.prepare(`SELECT ${columns} ${join} WHERE st.generation_id=? AND st.token=?
-    ORDER BY s.confidence DESC, s.path, s.id LIMIT ?`).all(generation, token, cap);
+    ORDER BY ${symbolAuthorityOrder(db, "s")}, ${symbolConfidenceTieOrder(db, "s")}, s.path, s.id LIMIT ?`).all(generation, token, cap);
   for (const token of normalized.sort((left, right) => right.length - left.length || left.localeCompare(right))) {
     const matched = select(token);
     if (matched.length) return matched;
@@ -1505,8 +1508,12 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
 
 export function bulkInsertGeneration(db, generation, options = {}) {
   if (options.mode === "append") throw typedStoreError("store_append_unsupported", "single_current_generation");
-  db.exec("BEGIN;");
+  db.exec("BEGIN IMMEDIATE;");
   try {
+    // A rows-only replacement would leave the previous manifest describing a
+    // different graph. Fixtures may populate an unsealed store; production
+    // replacements must pass through saveGeneration's atomic admission gate.
+    if (getGenerationEnvelope(db, "manifest")) throw typedStoreError("store_sealed_replace_unsupported", "use_saveGeneration");
     const summary = insertGenerationRows(db, generation, options);
     db.exec("COMMIT;");
     return summary;
@@ -1529,6 +1536,19 @@ export function bulkInsertGeneration(db, generation, options = {}) {
 // snapshot from a dirty-overlay build without opening git.
 const ENVELOPE_KEYS = ["schemaVersion", "provider", "manifest", "repoRoot", "augmentation", "sourceObservation"];
 
+// Read only identity/ownership metadata for incremental shrink comparison.
+// Routine full writes never hydrate a second whole graph just to admit it.
+function publicationFactInventory(db) {
+  const nodes = db.prepare(`SELECT node_id AS id, path FROM files
+    UNION ALL SELECT id, path FROM symbols
+    UNION ALL SELECT a.id, n.source_path AS path FROM annotation_nodes a
+      LEFT JOIN node_provider n ON n.node_id=a.id`).all();
+  const edges = db.prepare(`SELECT e.id, e.source, MIN(o.source_path) AS path
+    FROM edges e LEFT JOIN fact_owner o ON o.fact_id=e.id AND o.fact_kind='edge'
+    GROUP BY e.id, e.source`).all();
+  return { nodes, edges };
+}
+
 /**
  * Persist a complete generation: nodes, edges, and envelope in ONE transaction.
  *
@@ -1542,8 +1562,17 @@ export function saveGeneration(db, generation, options = {}) {
   const put = db.prepare(
     "INSERT INTO generation (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   );
-  db.exec("BEGIN;");
+  db.exec("BEGIN IMMEDIATE;");
   try {
+    const priorManifest = getGenerationEnvelope(db, "manifest");
+    // Legacy/provisional initial stores remain explicitly incomplete. They may
+    // never overwrite a known-complete generation, even with omitted metadata.
+    if (priorManifest?.complete === true || generation?.manifest?.complete === true || options.requireComplete === true) {
+      assertPublicationCandidate(generation, {
+        changedPaths: options.changedPaths,
+        priorGeneration: Array.isArray(options.changedPaths) ? publicationFactInventory(db) : null,
+      });
+    }
     const summary = insertGenerationRows(db, generation, options);
     assertDenseNodeOrdinals(db);
     if (options.populateState) populateGenerationState(db, generation);
@@ -2057,7 +2086,7 @@ function loadDocTruth(db, generationId, provider = null) {
     kind: row.kind,
     source: row.source,
     target: row.target,
-    confidence: row.confidence ?? 1,
+    confidence: row.confidence,
     confidenceClass: row.confidence_class ?? undefined,
     reason: row.reason ?? undefined,
     evidence: {

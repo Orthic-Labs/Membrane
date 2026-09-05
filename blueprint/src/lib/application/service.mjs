@@ -4,6 +4,7 @@ import { observeCurrentSourceAtPath, syncToCurrentSourceAtPath } from "../../gra
 import {
   closeStore,
   listClaimSlice,
+  listDocumentSupersession,
   loadGeneration,
   openStoreReadOnly,
 } from "../../graph/store-sqlite.mjs";
@@ -28,6 +29,9 @@ import { resolveSeeds } from "../../graph/seed-resolver.mjs";
 import { resolveImpactSeedEnvelope } from "../../graph/analytics/change-impact.mjs";
 import { decomposeChangeRisk } from "../../graph/analytics/index.mjs";
 import { buildDisposableArchitectureProjection } from "../../graph/architecture-model.mjs";
+import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
+import { buildLivenessProjection } from "../../graph/liveness.mjs";
+import { recommendTestsForImpact } from "../../graph/test-recommendation.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
@@ -204,7 +208,20 @@ export function createBlueprintApplicationService({
     }
     throwIfAborted(signal);
     const db = openStoreReadOnly(dbPath);
+    let closed = false;
+    let snapshotOpen = false;
+    const closeSnapshot = () => {
+      if (closed) return;
+      closed = true;
+      try { if (snapshotOpen) db.exec("ROLLBACK;"); }
+      finally { closeStore(db); }
+    };
     try {
+      // Pin the first envelope read and every subsequent fact query to one
+      // committed WAL snapshot. Concurrent writers may publish a new graph;
+      // this session must never mix its rows with the old generation receipt.
+      db.exec("BEGIN;");
+      snapshotOpen = true;
       const meta = readIndexedMeta(db);
       if (!meta?.manifest?.generationId) fail("graph_missing", "No sealed generation is available.");
       if (meta.schemaVersion !== 1 || (!meta.provider || (typeof meta.provider !== "string" && typeof meta.provider.id !== "string")) || !meta.manifest.manifestDigest) {
@@ -242,20 +259,16 @@ export function createBlueprintApplicationService({
       if (freshnessReceipt.barrierResult !== "caught_up" && !input.allowStale) {
         fail("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt: freshnessReceipt });
       }
-      let closed = false;
       return Object.freeze({
         root,
         db,
         meta,
         receipt: freshnessReceipt,
-        close() {
-          if (closed) return;
-          closed = true;
-          closeStore(db);
-        },
+        get closed() { return closed; },
+        close: closeSnapshot,
       });
     } catch (error) {
-      closeStore(db);
+      closeSnapshot();
       throw error;
     }
   }
@@ -263,6 +276,7 @@ export function createBlueprintApplicationService({
   async function withCurrentDb(input, callback, { signal, session = null } = {}) {
     const current = session ?? await openFreshnessSession(input, { signal });
     try {
+      if (current.closed) fail("session_closed", "Blueprint freshness session is already closed.");
       throwIfAborted(signal);
       const result = await callback(current);
       throwIfAborted(signal);
@@ -449,12 +463,18 @@ export function createBlueprintApplicationService({
             stale: receipt.freshness !== "fresh",
             cochangeScore: input.cochangeScore,
           });
+          const testRecommendations = recommendTestsForImpact(db, {
+            generationId: meta.manifest.generationId,
+            impactedIds: [...seedEnvelope.seeds.map((seed) => seed.id), ...impacted.map((node) => node.id)].filter(Boolean),
+            maxRecommendations: input.maxTestRecommendations,
+          });
           return {
             ...primary,
             seedEnvelope,
             risk,
             slices,
-            omissions: [...(primary.omissions ?? []), ...seedEnvelope.omissions],
+            testRecommendations,
+            omissions: [...(primary.omissions ?? []), ...seedEnvelope.omissions, ...testRecommendations.omissions],
           };
         }, scopedOptions);
       } finally {
@@ -509,6 +529,14 @@ export function createBlueprintApplicationService({
           const filtered = suppressRows(payload.flows, receipt, "architecture_flow");
           return { ...payload, flows: filtered.rows, omissions: filtered.omissions };
         }
+        if (view === "liveness") {
+          return { ...buildLivenessProjection(loadGeneration(db), {
+            sourceState: receipt.freshness === "fresh" ? "clean" : "stale",
+            maxNodes: input.maxNodes,
+            maxEdges: input.maxEdges,
+            maxHops: input.maxHops,
+          }), freshnessReceipt: receipt };
+        }
         if (view === "projection") {
           const generation = loadGeneration(db);
           const projection = buildDisposableArchitectureProjection({
@@ -532,7 +560,7 @@ export function createBlueprintApplicationService({
             limit: input.limit,
           }), freshnessReceipt: receipt };
         }
-        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, projection, or changes.");
+        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, projection, or changes.");
         return suppressTraversalPayload({ ...boundedArchitecture(db, {
           budget: Number(input.budget ?? 2000),
           cursor: input.cursor,
@@ -570,18 +598,31 @@ export function createBlueprintApplicationService({
     },
 
     async documentTruth(input = {}, options = {}) {
-      return withCurrentDb(input, ({ db, meta, receipt }) => ({
-        schemaVersion: 1,
-        generationId: meta.manifest.generationId,
-        claims: listClaimSlice(db, meta.manifest.generationId, {
+      return withCurrentDb(input, ({ db, meta, receipt }) => {
+        const claims = listClaimSlice(db, meta.manifest.generationId, {
           limit: Number(input.limit ?? 200),
           claimId: input.claimId,
           kind: input.kind,
-        }),
-        freshnessReceipt: receipt,
-        omissions: [],
-        truncated: false,
-      }), options);
+        });
+        const supersedes = listDocumentSupersession(db, meta.manifest.generationId, { limit: Number(input.limit ?? 200) });
+        const grounding = projectDocumentTruth({
+          claims,
+          supersedes,
+          generationId: meta.manifest.generationId,
+          freshness: receipt.freshness,
+        });
+        return {
+          schemaVersion: 1,
+          generationId: meta.manifest.generationId,
+          claims,
+          grounding: grounding.claims,
+          groundingCounts: grounding.counts,
+          supersedes: grounding.supersedes,
+          freshnessReceipt: receipt,
+          omissions: [],
+          truncated: false,
+        };
+      }, options);
     },
   });
 }

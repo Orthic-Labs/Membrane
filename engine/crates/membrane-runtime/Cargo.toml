@@ -43,6 +43,7 @@ tree-sitter-python = "0.25"
 tree-sitter-javascript = "0.25"
 tree-sitter-typescript = "0.23"
 tokenizers = { version = "0.23", optional = true }
+tempfile = "3"
 [target."cfg(windows)".dependencies]
 ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "directml", "ndarray"] }
 [target."cfg(not(windows))".dependencies]
@@ -52,9 +53,6 @@ ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, fea
 default = ["llmlingua-onnx"]
 fastembed = ["cortex-core/fastembed", "dep:ort"]
 llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
-
-[dev-dependencies]
-tempfile = "3"
 
 [build-dependencies]
 serde_json.workspace = true

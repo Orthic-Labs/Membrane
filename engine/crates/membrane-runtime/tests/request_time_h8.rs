@@ -37,7 +37,7 @@ fn block(id: &str, protected: bool, tokens: usize) -> BlockV1 {
         text: if protected {
             "protected task evidence ".repeat(tokens)
         } else {
-            "ordinary context evidence ".repeat(tokens)
+            "ordinary context evidence more prose for useful review\n".repeat(tokens)
         },
     }
 }
@@ -83,79 +83,68 @@ fn ceiling(remaining: TokenEstimateV1) -> RemainingContextCeilingV1 {
 
 #[test]
 fn selects_largest_membrane_representation_for_same_request() {
-    let h8 = ceiling(TokenEstimateV1::complete(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
-        120,
-    ));
+    let h8 = ceiling(TokenEstimateV1::complete(EstimatorBasisV1::new("o200k_base", "1"), 100_000));
     let selected = select_packet_for_h8(&packet(), &h8).expect("exact H8 should select");
-
-    assert_eq!(selected.selected_representation.id, "reduced_1");
-    assert_eq!(selected.selected_representation.tokens, 112);
+    assert_eq!(selected.selected_representation.id, "full");
+    assert_eq!(selected.selected_representation.tokens,
+        membrane_runtime::push::selection::measure_packet(&selected.selected_representation.content, &h8.remaining_tokens.basis).unwrap());
+    assert!(selected.selected_representation.tokens > 128, "metadata allocations must not masquerade as measured size");
     assert_eq!(selected.selection_receipt.ceiling_id, h8.ceiling_id);
     assert_eq!(selected.selection_receipt.session_id, h8.session_id);
     assert_eq!(selected.selection_receipt.plan_ref, "packet://trace-h8");
-    assert_eq!(
-        selected.selection_receipt.estimator_basis,
-        EstimatorBasisV1::new("fixture-estimator", "v1")
-    );
+    assert_eq!(selected.selection_receipt.estimator_basis, h8.remaining_tokens.basis);
 }
 
 #[test]
 fn selected_content_is_complete_for_full_reduced_and_floor() {
-    let basis = EstimatorBasisV1::new("fixture-estimator", "v1");
-    let full = select_packet_for_h8(
-        &packet(),
-        &ceiling(TokenEstimateV1::complete(basis.clone(), 200)),
-    )
-    .expect("full representation should fit");
-    let reduced = select_packet_for_h8(
-        &packet(),
-        &ceiling(TokenEstimateV1::complete(basis.clone(), 120)),
-    )
-    .expect("reduced representation should fit");
-    let floor = select_packet_for_h8(&packet(), &ceiling(TokenEstimateV1::complete(basis, 32)))
-        .expect("protected floor should fit");
+    use membrane_runtime::push::{delivery, recovery, selection};
+    let temp = tempfile::tempdir().unwrap();
+    let store = recovery::RecoveryStore::at(temp.path());
+    let scope = recovery::RecoveryScope::new(temp.path(), "session-h8").unwrap();
+    let proof = delivery::resolver_probe(&store, &scope).unwrap();
+    let owner = selection::RecoveryContext {store:&store,scope:&scope,resolver_token:proof["resolverToken"].as_str().unwrap()};
+    let basis = EstimatorBasisV1::new("o200k_base", "1");
+    let result = selection::select_packet_for_h8_with_recovery(&packet(),
+        &ceiling(TokenEstimateV1::complete(basis.clone(),100_000)),
+        &membrane_runtime::push::prep::PushPolicy::Control, Some(&owner)).unwrap();
+    let representations = &result.plan.representations;
+    assert!(representations[0].tokens > representations[1].tokens);
+    assert!(representations[1].tokens > representations[2].tokens);
+    for representation in representations {
+        let h8 = ceiling(TokenEstimateV1::complete(basis.clone(), representation.tokens));
+        let chosen = result.plan.select_for_capacity(&h8).unwrap();
+        assert_eq!(chosen.id, representation.id);
+        assert_eq!(chosen.tokens, selection::measure_packet(&chosen.content,&basis).unwrap());
+        assert_eq!(chosen.content["blocks"][0]["text"], packet().blocks[0].text);
+        // Omitted bodies retain explicit evidence identity and an authorized
+        // original, rather than silently disappearing from the floor packet.
+        assert_eq!(chosen.content["blocks"].as_array().unwrap().len(),2);
+        if chosen.id != "full" {
+            let handle = chosen.content["blocks"][1]["resolver"].as_str().unwrap();
+            let original = store.resolve(&scope, handle, &recovery::Selector::Whole, recovery::MAX_RESTORE_BYTES, recovery::now_ms()).unwrap();
+            assert_eq!(original.content, packet().blocks[1].text);
+        }
+    }
+}
 
-    assert_eq!(full.selected_representation.id, "full");
-    assert_eq!(reduced.selected_representation.id, "reduced_1");
-    assert_eq!(floor.selected_representation.id, "floor");
+#[test]
+fn structured_passthrough_cannot_fit_by_claiming_a_smaller_allocation() {
+    let mut packet = packet();
+    packet.blocks[1].source_ref = "data.json".into();
+    packet.blocks[1].text = format!("[{}]", vec!["{\"a\":123456,\"b\":\"long\"}";100].join(","));
+    packet.blocks[1].selected_tokens = Some(1000);
+    packet.blocks[1].allotted_tokens = Some(2);
+    packet.budget.admitted_tokens = 1100;
+    let basis = EstimatorBasisV1::new("o200k_base", "1");
+    let plan = build_packet_reduction_plan(&packet,basis.clone()).unwrap();
+    let measured = plan.representations[0].tokens;
+    assert!(measured > 1100);
+    assert!(select_packet_for_h8(&packet,&ceiling(TokenEstimateV1::complete(basis,350))).is_err());
+}
 
-    let full_bytes = serde_json::to_vec(&full.selected_representation.content).unwrap();
-    let reduced_bytes = serde_json::to_vec(&reduced.selected_representation.content).unwrap();
-    let floor_bytes = serde_json::to_vec(&floor.selected_representation.content).unwrap();
-    assert_ne!(full_bytes, reduced_bytes);
-    assert_ne!(reduced_bytes, floor_bytes);
-    assert_ne!(full_bytes, floor_bytes);
-
-    assert_eq!(
-        full.selected_representation.content["blocks"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        reduced.selected_representation.content["blocks"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
-    );
-    assert_eq!(
-        floor.selected_representation.content["blocks"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
-    assert_ne!(
-        full.selected_representation.content["blocks"][1]["text"],
-        reduced.selected_representation.content["blocks"][1]["text"]
-    );
-    assert_eq!(
-        floor.selected_representation.content["blocks"][0]["id"],
-        "protected"
-    );
+#[test]
+fn unknown_counter_is_not_relabelled_as_a_host_tokenizer() {
+    assert!(build_packet_reduction_plan(&packet(),EstimatorBasisV1::new("unregistered-provider","1")).is_err());
 }
 
 #[test]
@@ -167,7 +156,7 @@ fn rejects_missing_or_inexact_request_time_capacity_without_fallback() {
     ));
 
     let h8 = ceiling(TokenEstimateV1::unavailable(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
         ObservationUnavailableReasonV1::HostUnsupported,
     ));
     let body = serde_json::json!({
@@ -183,7 +172,7 @@ fn rejects_missing_or_inexact_request_time_capacity_without_fallback() {
 #[test]
 fn refuses_identity_mismatch_as_typed_request_error() {
     let h8 = ceiling(TokenEstimateV1::complete(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
         120,
     ));
     let body = serde_json::json!({"remainingContextCeiling": h8});
@@ -201,7 +190,7 @@ fn refuses_identity_mismatch_as_typed_request_error() {
 #[test]
 fn refuses_unbound_task_identity_as_inexact_request_time_h8() {
     let mut h8 = ceiling(TokenEstimateV1::complete(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
         120,
     ));
     h8.task_id = ObservedFieldV1::unavailable(ObservationUnavailableReasonV1::HostUnsupported);
@@ -216,7 +205,7 @@ fn refuses_unbound_task_identity_as_inexact_request_time_h8() {
 fn refuses_mismatched_estimator_basis_in_request_selection() {
     let plan = build_packet_reduction_plan(
         &packet(),
-        EstimatorBasisV1::new("packet-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
     )
     .expect("packet plan should be valid");
     let h8 = ceiling(TokenEstimateV1::complete(
@@ -235,7 +224,7 @@ fn refuses_mismatched_estimator_basis_in_request_selection() {
 #[test]
 fn refuses_cached_or_next_request_ceiling_without_direct_request_time_field() {
     let h8 = ceiling(TokenEstimateV1::complete(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
         120,
     ));
     let cached = serde_json::json!({
@@ -251,7 +240,7 @@ fn refuses_cached_or_next_request_ceiling_without_direct_request_time_field() {
 #[test]
 fn refuses_request_when_no_viable_floor_fits() {
     let h8 = ceiling(TokenEstimateV1::complete(
-        EstimatorBasisV1::new("fixture-estimator", "v1"),
+        EstimatorBasisV1::new("o200k_base", "1"),
         31,
     ));
     let error = select_packet_for_h8(&packet(), &h8)

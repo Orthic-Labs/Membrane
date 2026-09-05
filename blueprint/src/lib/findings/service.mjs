@@ -32,12 +32,15 @@ import { closeStore, openStoreReadOnly } from "../../graph/store-sqlite.mjs";
 import { readIndexedMeta } from "../../graph/traverse-store.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { fail } from "../application/errors.mjs";
+import { buildEvidencePack } from "../evidence-pack.mjs";
 import { toSarif } from "../sarif.mjs";
 import { detectFindings } from "./detect.mjs";
 import { normalizeRepoPath } from "./specifier.mjs";
 
 export const FINDINGS_SERVICE_METHODS = Object.freeze([
   "findings.get",
+  "findings.explain",
+  "findings.evidence_pack",
   "findings.baseline.capture",
   "findings.baseline.list",
   "findings.sarif",
@@ -237,6 +240,7 @@ function defaultSealedGeneration(root, outDir) {
     if (!generationId) fail("graph_missing", "No sealed generation is available.");
     return {
       generationId,
+      repoId: meta.manifest.repo?.repoId ?? null,
       manifestDigest: meta.manifest.manifestDigest ?? null,
       baseCommit: meta.manifest.repo?.baseCommit ?? null,
       schemaVersion: meta.schemaVersion ?? null,
@@ -489,6 +493,98 @@ export function createFindingsService({
     };
   }
 
+  function findingEvidenceRows(finding, bundle) {
+    return (finding.evidencePath ?? []).map((path, index) => ({
+      path,
+      startLine: index === 0 ? finding.startLine ?? null : null,
+      endLine: index === 0 ? finding.endLine ?? finding.startLine ?? null : null,
+      contentHash: finding.perFileContentHashes?.[path] ?? bundle.perFileContentHashes?.[path] ?? null,
+    }));
+  }
+
+  async function governedFindingContext(input = {}, { signal } = {}) {
+    const { root, effectiveOutDir, sealed } = await currentGeneration(input, { signal });
+    const overlay = await Promise.resolve(freshnessOverlay(root, sealed.baseCommit));
+    const stale = !isCurrentOverlay(overlay);
+    enforceFreshnessTolerance(stale, overlay, sealed, input);
+    const bundle = await bundleFor(root, effectiveOutDir, sealed, { signal });
+    throwIfAborted(signal);
+    return { root, sealed, overlay, stale, bundle };
+  }
+
+  /** findings.explain {fingerprint, generation?, allowStale?}
+   * Explain one exact finding from the same generation-bound bundle that
+   * findings.get serves. The result contains rule reasoning and source/hash
+   * evidence only; it never invents remediation evidence or executes code. */
+  async function findingsExplain(input = {}, options = {}) {
+    const fingerprint = String(input.fingerprint ?? "").trim();
+    if (!fingerprint) fail("finding_id_invalid", "findings.explain requires a finding fingerprint.");
+    const { root, sealed, overlay, stale, bundle } = await governedFindingContext(input, options);
+    const finding = bundle.findings.find((entry) => entry.fingerprint === fingerprint);
+    if (!finding) fail("finding_not_found", `Finding ${fingerprint} is not present in generation ${sealed.generationId}.`, { fingerprint, generationId: sealed.generationId });
+    return {
+      schemaVersion: 1,
+      kind: "findings.explain",
+      root,
+      generationId: sealed.generationId,
+      freshness: stale ? "stale" : "current",
+      finding: {
+        fingerprint: finding.fingerprint,
+        ruleId: finding.ruleId,
+        severity: finding.severity,
+        path: finding.path,
+        startLine: finding.startLine ?? null,
+        endLine: finding.endLine ?? finding.startLine ?? null,
+        name: finding.name ?? null,
+        specifier: finding.specifier ?? null,
+      },
+      reasoning: {
+        ruleName: finding.ruleName,
+        description: finding.ruleDescription,
+        message: finding.message,
+        remediation: finding.remediation,
+        precisionTier: finding.precisionTier,
+        confidenceTier: finding.confidenceTier,
+      },
+      evidence: findingEvidenceRows(finding, bundle),
+      omissions: stale ? stalenessOmissions(overlay) : [],
+    };
+  }
+
+  /** findings.evidence_pack {fingerprints:[...], generation?, allowStale?}
+   * Produce a portable, redacted pack only for explicitly selected findings.
+   * The resident service owns generation/freshness admission; buildEvidencePack
+   * is only the deterministic rendering step. */
+  async function findingsEvidencePack(input = {}, options = {}) {
+    const fingerprints = [...new Set((Array.isArray(input.fingerprints) ? input.fingerprints : []).map((value) => String(value).trim()).filter(Boolean))];
+    if (!fingerprints.length) fail("finding_selection_empty", "findings.evidence_pack requires at least one finding fingerprint.");
+    if (fingerprints.length > 100) fail("finding_selection_too_large", "findings.evidence_pack accepts at most 100 finding fingerprints.");
+    const { root, sealed, overlay, stale, bundle } = await governedFindingContext(input, options);
+    const byFingerprint = new Map(bundle.findings.map((finding) => [finding.fingerprint, finding]));
+    const missing = fingerprints.filter((fingerprint) => !byFingerprint.has(fingerprint));
+    if (missing.length) fail("finding_not_found", "One or more selected findings are not present in the served generation.", { fingerprints: missing, generationId: sealed.generationId });
+    const selected = fingerprints.map((fingerprint) => byFingerprint.get(fingerprint));
+    const pack = buildEvidencePack({
+      repoId: sealed.repoId ?? repositoryStateKey(root),
+      generationId: sealed.generationId,
+      providerTiers: [...new Set(selected.map((finding) => finding.precisionTier).filter(Boolean))].sort(),
+      results: selected.map((finding) => ({
+        id: finding.fingerprint,
+        path: finding.path,
+        span: { startLine: finding.startLine ?? 1, endLine: finding.endLine ?? finding.startLine ?? 1 },
+        contentHash: finding.perFileContentHashes?.[finding.path] ?? bundle.perFileContentHashes?.[finding.path] ?? null,
+        confidenceTier: finding.confidenceTier ?? null,
+        evidence: findingEvidenceRows(finding, bundle),
+      })),
+      omissions: [
+        ...(stale ? stalenessOmissions(overlay).map((entry) => ({ reason: entry.code, detail: entry.detail })) : []),
+        ...(bundle.omissions.length ? [{ reason: "source_coverage_omissions", count: bundle.omissions.length }] : []),
+      ],
+      redact: true,
+    });
+    return { schemaVersion: 1, kind: "findings.evidence_pack", root, generationId: sealed.generationId, freshness: stale ? "stale" : "current", pack };
+  }
+
   /** findings.baseline.capture {name} — persist the current bundle as a named
    * generation baseline beside existing daemon state (~/.blueprint). */
   async function baselineCapture(input = {}, { signal } = {}) {
@@ -572,6 +668,8 @@ export function createFindingsService({
 
   return Object.freeze({
     "findings.get": findingsGet,
+    "findings.explain": findingsExplain,
+    "findings.evidence_pack": findingsEvidencePack,
     "findings.baseline.capture": baselineCapture,
     "findings.baseline.list": baselineList,
     "findings.sarif": findingsSarif,

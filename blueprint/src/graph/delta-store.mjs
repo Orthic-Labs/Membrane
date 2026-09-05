@@ -16,6 +16,7 @@ import { incrementTelemetry } from "../lib/telemetry.mjs";
 import { canonicalProviderId, STATIC_PROVIDER } from "./provider-identity.mjs";
 import { normalizeRepoPath } from "./path-order.mjs";
 import { confidenceOrLegacyDefault } from "./provenance.mjs";
+import { assertCompleteFileBatches } from "./publication-policy.mjs";
 
 export const STRUCTURAL_PROVIDER = Object.freeze({ id: "lexical", version: STATIC_PROVIDER.version });
 export const DOC_PROVIDER = Object.freeze({ id: "doctruth", version: "repo-local-doc-v1", freshnessDomain: "doc" });
@@ -313,6 +314,7 @@ export function applyFileDelta(db, delta, options = {}) {
         rootDigest: db.prepare("SELECT digest FROM generation_leaf WHERE path = '' AND kind = 'dir'").get()?.digest ?? null,
       };
     }
+    if (eventKind !== "delete") assertCompleteFileBatches(factBatches, newPath);
     const structuralProviders = [...new Set(factBatches.map((batch) => batch.provider?.id).filter(Boolean))];
     const oldOwners = (isDocumentDelta || eventKind === "delete" || eventKind === "rename" || structuralProviders.length === 0)
       ? db.prepare("SELECT fact_id, fact_kind FROM fact_owner WHERE source_path = ?").all(path)

@@ -34,6 +34,8 @@ import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "./precision-tiers.mjs";
 import { STATIC_PROVIDER, TREESITTER_PROVIDER } from "./provider-identity.mjs";
 import { compareRepoPaths } from "./path-order.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
+import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+import { buildEntryPointRegistry } from "./entry-points.mjs";
 import {
   openStore,
   openStoreReadOnly,
@@ -551,7 +553,7 @@ export function queryGraph(generation, options = {}) {
   const nodes = generation.nodes
     .map((node) => ({ node, score: scoreNode(node, terms) }))
     .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score || left.node.id.localeCompare(right.node.id))
+    .sort((left, right) => right.score - left.score || semanticAuthorityRankForFact(left.node) - semanticAuthorityRankForFact(right.node) || left.node.id.localeCompare(right.node.id))
     .slice(0, limit);
   return nodes.map(({ node }, index) => ({
     id: node.id,
@@ -1023,7 +1025,7 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       source: codeNode.id,
       target: `doc:${doc.path}`,
       confidence: 0.9,
-      confidenceClass: "INFERRED",
+      confidenceClass: "HEURISTIC_BRIDGE",
       reason: "claim references supersedes/replaced",
       evidence: baseEvidence,
     };
@@ -1033,8 +1035,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "contradicts",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=${status || "claim"} mentions stale/drift/missing/contradict; code node exists`,
       evidence: baseEvidence,
     };
@@ -1044,8 +1046,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "supports",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=implemented; code node exists`,
       evidence: baseEvidence,
     };
@@ -1117,10 +1119,8 @@ function compareCanonicalText(left, right) {
 export function graphFlowInventory(generation, options = {}) {
   const complete = Boolean(options.complete);
   const maxFlows = Number(options.maxFlows ?? (complete ? 5000 : 200));
-  const outgoing = new Set(generation.edges.map((edge) => edge.source));
-  const incoming = new Set(generation.edges.map((edge) => edge.target));
-  const entryPoints = generation.nodes
-    .filter((node) => node.kind === "symbol" && outgoing.has(node.id) && !incoming.has(node.id))
+  const entryPoints = buildEntryPointRegistry(generation, { includeStructuralCandidates: true })
+    .map((entry) => entry.node)
     .sort((left, right) => compareCanonicalText(left.id, right.id));
   // NOTE: the spec's third flow status, "unsupported", is intentionally NOT emitted
   // here. It is only honest once we can DETECT a flow crossing into untraceable
@@ -1419,7 +1419,7 @@ function buildGenerationFromSources(root, source, options = {}) {
     // on unchanged rebuilds is preserved.
     generatedAt: `gen:${generationId.replace(/^xxh128:/, "").slice(0, 16)}`,
     generationId,
-    complete: true,
+    complete: !source.fileLimitReached && !source.traversalTruncated,
     // The fileLimit the build was run with (0 = unlimited). graphStatus and
     // downstream consumers use this to scope their re-scan so a huge real
     // workspace (D:\Claude has 1M+ directories) does not OOM the doctor.

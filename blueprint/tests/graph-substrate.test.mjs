@@ -270,7 +270,7 @@ test("graph status is indeterminate when freshness traversal hits a directory ca
     fs.mkdirSync(path.join(repo, "b"));
     fs.writeFileSync(path.join(repo, "a", "a.ts"), "export const a = 1;\n");
     fs.writeFileSync(path.join(repo, "b", "b.ts"), "export const b = 1;\n");
-    buildGraphGeneration(repo, { outDir, maxDirs: 1, persist: true });
+    buildGraphGeneration(repo, { outDir, persist: true });
 
     const status = graphStatus(repo, outDir, { maxDirs: 1 });
     assert.equal(status.state, "indeterminate");
@@ -378,6 +378,7 @@ test("doc-code truth joins are typed and evidence-backed without polluting graph
   assert.ok(truth.joins.some((join) => join.kind === "supports" && join.target === "file:src/store.ts"));
   assert.ok(truth.joins.some((join) => join.kind === "contradicts" && join.evidence.docRef.line === 4));
   assert.ok(truth.joins.every((join) => join.confidenceClass && join.evidence.codeNode.contentHash === "abc123"));
+  assert.ok(truth.joins.filter((join) => ["supports", "contradicts"].includes(join.kind)).every((join) => join.confidence === null));
   assert.ok(!truth.joins.some((join) => join.evidence.codeRef.path === "src/missing.ts"));
   assert.deepEqual(truth.supersedes, [{
     kind: "supersedes",
@@ -396,4 +397,17 @@ test("static graph mermaid output is bounded and deterministic", () => {
   assert.match(mermaid, /%% provider: blueprint-static/);
   assert.match(mermaid, /OrderService\.placeOrder/);
   assert.ok(mermaid.split("\n").filter((line) => /^\s+n\d+\["/.test(line)).length <= 6);
+});
+
+// A cap DURING extraction is a known incomplete generation, distinct from an
+// inconclusive freshness scan over a previously complete generation above.
+test("a directory-capped extraction is never sealed as complete", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-extraction-cap-"));
+  try {
+    fs.mkdirSync(path.join(repo, "a"));
+    fs.writeFileSync(path.join(repo, "a/a.ts"), "export const a = 1;\n");
+    const generation = buildGraphGeneration(repo, { outDir: ".agent", maxDirs: 1, persist: true });
+    assert.equal(generation.manifest.complete, false);
+    assert.equal(graphStatus(repo, ".agent").state, "incomplete");
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });

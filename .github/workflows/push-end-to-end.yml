@@ -1,0 +1,77 @@
+name: push-end-to-end
+on:
+  push:
+    branches: [push-end-to-end]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: push-end-to-end-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  integrate-and-check:
+    if: github.ref == 'refs/heads/push-end-to-end'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: push-end-to-end
+          fetch-depth: 0
+      - name: Apply guarded one-time source wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f scripts/dev/apply-push-wiring.py; then
+            python3 scripts/dev/apply-push-wiring.py
+            git diff --check
+            git add -A -- engine/crates/cortex-core/src/accounting.rs engine/crates/membrane-runtime engine/crates/membrane-mcp mcp schemas/registry docs/canon docs/architecture/subsystems/push.md docs/provenance docs/pending scripts/dev
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(push): complete measured egress, capture and recovery integration'
+            git push origin HEAD:push-end-to-end
+          fi
+          printf 'Validated source revision: ' >> "$GITHUB_STEP_SUMMARY"
+          git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: engine -> target
+          shared-key: push-end-to-end
+          cache-on-failure: true
+      - name: Static JavaScript and schema validation
+        run: |
+          node --check mcp/client.mjs
+          node --check mcp/server.mjs
+          node --check mcp/host/context-adapter.cjs
+          node -e 'JSON.parse(require("fs").readFileSync("schemas/registry/push-tools.v1.json", "utf8"))'
+          node --test mcp/host/push-tool-egress.test.mjs
+      - name: Compile runtime and native MCP
+        run: cargo check --manifest-path engine/Cargo.toml -p membrane-runtime -p membrane-mcp --locked
+      - name: Focused and transport regressions
+        shell: bash
+        run: |
+          set +e
+          set -o pipefail
+          failed=0
+          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked push:: -- --test-threads=1 2>&1 | tee /tmp/push-unit.log
+          test ${PIPESTATUS[0]} -eq 0 || failed=1
+          for suite in request_time_h8 push_end_to_end; do
+            cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test "$suite" --no-default-features --locked 2>&1 | tee "/tmp/push-$suite.log"
+            test ${PIPESTATUS[0]} -eq 0 || failed=1
+          done
+          cargo test --manifest-path engine/Cargo.toml -p membrane-mcp --locked 2>&1 | tee /tmp/push-native-mcp.log
+          test ${PIPESTATUS[0]} -eq 0 || failed=1
+          exit "$failed"
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: push-test-output
+          path: /tmp/push-*.log
+          if-no-files-found: ignore
+          retention-days: 7

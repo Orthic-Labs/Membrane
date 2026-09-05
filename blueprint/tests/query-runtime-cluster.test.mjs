@@ -121,9 +121,11 @@ test("ambiguous seed resolution abstains with explicit candidates while evidence
       assert.equal(ambiguous.candidateCount, 2);
       assert.ok(ambiguous.candidates.every((candidate) => Array.isArray(candidate.evidence)));
       const circuit = executeRecallCircuit(db, "trace", { generationId, anchors: ["src/a.js"], policy: "dependency.forward" });
+      const richCandidates = recallCircuitToCandidateSet(circuit);
       const candidates = recallCircuitToCandidateSet(circuit, { canonical: true });
       assert.ok(circuit.paths.every((path) => path.evidenceEnvelope.kind === "AtomicEvidencePath"));
-      assert.ok(candidates.candidates.every((candidate) => candidate.evidencePathId && candidate.evidenceEnvelope));
+      assert.ok(richCandidates.candidates.every((candidate) => candidate.evidencePathId && candidate.evidenceEnvelope));
+      assert.ok(candidates.candidates.every((candidate) => !("evidencePathId" in candidate) && !("evidenceEnvelope" in candidate)));
     } finally { closeStore(db); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

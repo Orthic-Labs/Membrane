@@ -103,6 +103,8 @@ test("impact service result matches CLI graph impact payload", async () => {
     assert.ok(serviceResult);
     assert.ok(cliResult);
     assert.ok(Array.isArray(serviceResult.edges ?? serviceResult.affected ?? []));
+    assert.equal(serviceResult.testRecommendations?.minimality, "not_proven");
+    assert.ok(Array.isArray(serviceResult.testRecommendations?.uncoveredImpact));
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -131,6 +133,8 @@ test("documentTruth service result lists claims with receipts", async () => {
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.generationId);
     assert.ok(Array.isArray(result.claims));
+    assert.ok(Array.isArray(result.grounding));
+    assert.ok(result.groundingCounts && typeof result.groundingCounts === "object");
     assert.ok(result.freshnessReceipt);
     assert.equal(result.truncated, false);
   } finally {

@@ -13,6 +13,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PrepEntry {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<super::recovery::RecoveryReference>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_met: Option<bool>,
+    pub token_basis: &'static str,
     pub orig: String,
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -269,24 +274,38 @@ pub fn prep_files_with_policy(
 ) -> Vec<PrepEntry> {
     let _ = std::fs::create_dir_all(out_dir);
     let mut out = Vec::new();
-    let eligible_tokens = files
-        .iter()
-        .filter_map(|path| {
-            let bytes = std::fs::read(path).ok()?;
-            if bytes.len() < min_bytes {
-                return None;
-            }
-            let src = String::from_utf8_lossy(&bytes).to_string();
-            (!is_structured_text(path, &src)).then(|| estimate_tokens(&src) as usize)
-        })
-        .sum::<usize>();
-
-    for orig_path in files {
+    // Read each source once before any destination is mutated. Shared bounds
+    // prevent a nominal small output budget from authorizing unbounded reads.
+    let mut total = 0usize;
+    let loaded = files.iter().enumerate().map(|(index, path)| {
+        if index >= 256 { return None; }
+        let bytes = super::recovery::read_file_bounded(path).ok()?;
+        total = total.saturating_add(bytes.len());
+        (total <= 64 * 1024 * 1024).then_some(bytes)
+    }).collect::<Vec<_>>();
+    let eligible_tokens = files.iter().zip(&loaded).filter_map(|(path, bytes)| {
+        let bytes = bytes.as_ref()?;
+        if bytes.len() < min_bytes { return None; }
+        let source = std::str::from_utf8(bytes).ok()?;
+        (!is_structured_text(path, source)).then(|| estimate_tokens(source) as usize)
+    }).sum::<usize>();
+    let originals = files.iter().filter_map(|p| p.canonicalize().ok()).collect::<Vec<_>>();
+    let mut references = std::collections::HashMap::new();
+    let mut counts = std::collections::HashMap::new();
+    for path in files { *counts.entry(base_name(path)).or_insert(0usize) += 1; }
+    let output_name = |path: &Path| {
+        let name = base_name(path);
+        if counts.get(&name).copied().unwrap_or(0) > 1 {
+            format!("{}-{}", &super::recovery::digest(path.to_string_lossy().as_bytes())[..16], name)
+        } else { name }
+    };
+    for (orig_path, loaded) in files.iter().zip(loaded) {
         let orig_str = orig_path.to_string_lossy().to_string();
 
         // Branch 1: missing
         if !orig_path.is_file() {
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "missing".into(),
                 prepared: None,
@@ -304,8 +323,9 @@ pub fn prep_files_with_policy(
         // bytes sent it down the "tiny content" branch and published a
         // zero-length document as if that were its content; `missing` is the
         // entry kind that already means "no content available here".
-        let Ok(bytes) = std::fs::read(orig_path) else {
+        let Some(bytes) = loaded else {
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "missing".into(),
                 prepared: None,
@@ -319,16 +339,33 @@ pub fn prep_files_with_policy(
             continue;
         };
         let before_bytes = bytes.len() as u64;
+        // One namespace shared with CLI restore and the resident resolver.
+        // A publication failure cannot publish a lossy prepared file.
+        let publication = super::recovery::RecoveryScope::local().and_then(|scope|
+            super::recovery::RecoveryStore::configured().publish(&scope, &bytes,
+                7*24*60*60*1000, super::recovery::now_ms()));
+        let reference = match publication {
+            Ok(reference) => reference,
+            Err(_) => {
+                out.push(PrepEntry { orig: orig_str, kind:"recovery-unavailable".into(),
+                    recovery:None, budget_met:Some(false), token_basis:"lexical_whitespace_v1",
+                    prepared:None, before_bytes:Some(before_bytes), after_bytes:None,
+                    before_tok:None, after_tok:None, budget_tok:None, drop_manifest:None });
+                continue;
+            }
+        };
+        references.insert(orig_str.clone(), reference);
 
         // Branch 2: tiny/missing content -> copy (tiny beats code ext)
-        if bytes.len() < min_bytes {
-            let name = base_name(orig_path);
+        if bytes.len() < min_bytes || std::str::from_utf8(&bytes).is_err() {
+            let name = output_name(orig_path);
             let prepared_path = out_dir.join(&name);
             // A prepared entry must point at a file that exists. Discarding
             // the write error published a path the consumer would then fail to
             // read, with the failure surfacing far from its cause.
-            if std::fs::write(&prepared_path, &bytes).is_err() {
+            if write_prepared(&prepared_path, &bytes, &originals).is_err() {
                 out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                     orig: orig_str,
                     kind: "missing".into(),
                     prepared: None,
@@ -342,6 +379,7 @@ pub fn prep_files_with_policy(
                 continue;
             }
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "copy".into(),
                 prepared: Some(prepared_path.to_string_lossy().to_string()),
@@ -361,13 +399,14 @@ pub fn prep_files_with_policy(
         // Branch 3: structured content -> exact copy. Token-dropping structured
         // data loses syntax and identifiers, even if its extension is misleading.
         if is_structured_text(orig_path, &src) {
-            let name = base_name(orig_path);
+            let name = output_name(orig_path);
             let prepared_path = out_dir.join(&name);
             // A prepared entry must point at a file that exists. Discarding
             // the write error published a path the consumer would then fail to
             // read, with the failure surfacing far from its cause.
-            if std::fs::write(&prepared_path, &bytes).is_err() {
+            if write_prepared(&prepared_path, &bytes, &originals).is_err() {
                 out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                     orig: orig_str,
                     kind: "missing".into(),
                     prepared: None,
@@ -381,6 +420,7 @@ pub fn prep_files_with_policy(
                 continue;
             }
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "copy-structured".into(),
                 prepared: Some(prepared_path.to_string_lossy().to_string()),
@@ -396,7 +436,7 @@ pub fn prep_files_with_policy(
 
         // Branch 4: code ext -> skel
         if is_code_ext(orig_path) {
-            let name = format!("{}.skel", base_name(orig_path));
+            let name = format!("{}.skel", output_name(orig_path));
             let prepared_path = out_dir.join(&name);
             let allotted = budget_tokens.map(|total| {
                 if eligible_tokens == 0 {
@@ -435,8 +475,9 @@ pub fn prep_files_with_policy(
             // A prepared entry must point at a file that exists. Discarding
             // the write error published a path the consumer would then fail to
             // read, with the failure surfacing far from its cause.
-            if std::fs::write(&prepared_path, &payload).is_err() {
+            if write_prepared(&prepared_path, payload.as_bytes(), &originals).is_err() {
                 out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                     orig: orig_str,
                     kind: "missing".into(),
                     prepared: None,
@@ -450,6 +491,7 @@ pub fn prep_files_with_policy(
                 continue;
             }
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind,
                 prepared: Some(prepared_path.to_string_lossy().to_string()),
@@ -467,7 +509,7 @@ pub fn prep_files_with_policy(
         // a navigation artifact. This retains document identity and stable
         // anchors where generic compression loses them.
         if is_markdown(orig_path) && estimate_tokens(&src) as usize >= outline_token_threshold() {
-            let name = format!("{}.outline.json", base_name(orig_path));
+            let name = format!("{}.outline.json", output_name(orig_path));
             let prepared_path = out_dir.join(name);
             let source_ref = format!(
                 "doc://repo/worktree/{}",
@@ -479,6 +521,7 @@ pub fn prep_files_with_policy(
             // fails there is no projection to point at.
             let Ok(payload) = serde_json::to_vec(&projection) else {
                 out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                     orig: orig_str,
                     kind: "missing".into(),
                     prepared: None,
@@ -491,8 +534,9 @@ pub fn prep_files_with_policy(
                 });
                 continue;
             };
-            if std::fs::write(&prepared_path, &payload).is_err() {
+            if write_prepared(&prepared_path, &payload, &originals).is_err() {
                 out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                     orig: orig_str,
                     kind: "missing".into(),
                     prepared: None,
@@ -506,6 +550,7 @@ pub fn prep_files_with_policy(
                 continue;
             }
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "outline".into(),
                 prepared: Some(prepared_path.to_string_lossy().to_string()),
@@ -522,8 +567,8 @@ pub fn prep_files_with_policy(
         // Branch 6: prose -> compress
         let ext = orig_path.extension().and_then(|s| s.to_str());
         let name = match ext {
-            Some(ext) if !ext.is_empty() => format!("{}.min.{ext}", base_name(orig_path)),
-            _ => format!("{}.min.txt", base_name(orig_path)),
+            Some(ext) if !ext.is_empty() => format!("{}.min.{ext}", output_name(orig_path)),
+            _ => format!("{}.min.txt", output_name(orig_path)),
         };
         let prepared_path = out_dir.join(&name);
         let before_tok = estimate_tokens(&src);
@@ -560,8 +605,9 @@ pub fn prep_files_with_policy(
         // A prepared entry must point at a file that exists. Discarding
         // the write error published a path the consumer would then fail to
         // read, with the failure surfacing far from its cause.
-        if std::fs::write(&prepared_path, &compressed).is_err() {
+        if write_prepared(&prepared_path, compressed.as_bytes(), &originals).is_err() {
             out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
                 orig: orig_str,
                 kind: "missing".into(),
                 prepared: None,
@@ -575,6 +621,7 @@ pub fn prep_files_with_policy(
             continue;
         }
         out.push(PrepEntry {
+                recovery: None, budget_met: None, token_basis: "lexical_whitespace_v1",
             orig: orig_str,
             kind: "compress".into(),
             prepared: Some(prepared_path.to_string_lossy().to_string()),
@@ -587,7 +634,34 @@ pub fn prep_files_with_policy(
         });
     }
 
+    let mut delivered = 0usize;
+    for entry in &mut out {
+        if let Some(path) = &entry.prepared {
+            entry.recovery = references.remove(&entry.orig);
+            if let Ok(bytes) = super::recovery::read_file_bounded(Path::new(path)) {
+                delivered = delivered.saturating_add(std::str::from_utf8(&bytes).map(compress::estimate_tokens).unwrap_or(bytes.len()));
+            }
+        }
+    }
+    // This compatibility manifest does not pretend lexical allocations are
+    // model tokens. The native packet owner performs final tokenizer sizing.
+    if let Some(budget) = budget_tokens {
+        let met = out.iter().all(|e| e.prepared.is_some()) && delivered <= budget;
+        for entry in &mut out { entry.budget_met = Some(met); }
+    }
     out
+}
+
+fn write_prepared(path: &Path, bytes: &[u8], originals: &[PathBuf]) -> std::io::Result<()> {
+    let denied = || std::io::Error::new(std::io::ErrorKind::PermissionDenied, "source mutation or unsafe output refused");
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) { return Err(denied()); }
+    if path.canonicalize().is_ok_and(|p| originals.contains(&p)) { return Err(denied()); }
+    let parent = path.parent().ok_or_else(denied)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    std::io::Write::write_all(&mut temporary, bytes)?;
+    temporary.as_file().sync_all()?;
+    temporary.persist(path).map_err(|e| e.error)?;
+    Ok(())
 }
 
 /// Same policy-aware entrypoint with budget named first for callers migrating
@@ -609,6 +683,28 @@ mod tests {
     #[cfg(feature = "llmlingua-onnx")]
     use std::collections::HashSet;
 
+    #[test]
+    fn prep_cannot_overwrite_source_and_equal_names_do_not_collide() {
+        let tmp = tempfile::tempdir().unwrap();
+        let original = tmp.path().join("tiny.txt");
+        std::fs::write(&original, "unchanged").unwrap();
+        let entry = prep_files(tmp.path(), std::slice::from_ref(&original), 0.5, 50);
+        assert!(entry[0].prepared.is_none());
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "unchanged");
+        let a = tmp.path().join("a"); let b = tmp.path().join("b");
+        std::fs::create_dir_all(&a).unwrap(); std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(a.join("same.txt"), "one").unwrap();
+        std::fs::write(b.join("same.txt"), "two").unwrap();
+        let entries = prep_files(&tmp.path().join("out"), &[a.join("same.txt"), b.join("same.txt")], 0.5, 50);
+        assert_ne!(entries[0].prepared, entries[1].prepared);
+        for entry in entries {
+            let scope = super::super::recovery::RecoveryScope::local().unwrap();
+            let original = super::super::recovery::RecoveryStore::configured().resolve(&scope,
+                &entry.recovery.unwrap().handle, &super::super::recovery::Selector::Whole, 100,
+                super::super::recovery::now_ms()).unwrap();
+            assert_eq!(original.bytes().unwrap(), std::fs::read(entry.orig).unwrap());
+        }
+    }
     #[test]
     fn prep_routes_and_manifest() {
         let tmp = tempfile::tempdir().unwrap();

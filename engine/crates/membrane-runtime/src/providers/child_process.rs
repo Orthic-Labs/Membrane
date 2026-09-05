@@ -198,6 +198,12 @@ pub fn spawn_sanitized(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    spawn_contained_command(command)
+}
+
+/// Use the same process-tree containment for already-authorized command owners.
+/// Environment and argv remain the caller's responsibility.
+pub fn spawn_contained_command(mut command: Command) -> std::io::Result<SanitizedProcess> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt as _;
@@ -208,9 +214,7 @@ pub fn spawn_sanitized(
                 extern "C" {
                     fn setsid() -> i32;
                 }
-                // Ignore error: if setsid fails we still exec; cleanup falls
-                // back to direct child kill.
-                let _ = setsid();
+                if setsid() < 0 { return Err(std::io::Error::last_os_error()); }
                 Ok(())
             });
         }
