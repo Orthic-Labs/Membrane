@@ -1,0 +1,1 @@
+{"message":"fix(ledger): satisfy row iterator lifetimes in graph and structural queries","patch":"scripts/ci/ledger-finish.patch","base_blobs":{"engine/crates/membrane-runtime/src/ledger/diagnostics.rs":"c304d870cc8a1dc92f14558c1169f76fff76ecca","engine/crates/membrane-runtime/src/ledger/query.rs":"0171c6fc0b41d1341b9b64a0033e5557c9952fea"},"files":[]}
