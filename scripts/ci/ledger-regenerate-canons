@@ -1,1 +1,2 @@
 Reconcile the merged Push and Ledger canons, then regenerate shared indexes.
+Retry with immutable historical receipt validation preserved.
