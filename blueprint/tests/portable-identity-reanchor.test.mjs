@@ -50,7 +50,10 @@ test("reanchoring follows exact entity then exact fingerprint then unique normal
 });
 
 test("reanchoring refuses ambiguity and staleness instead of choosing a fuzzy winner", () => {
-  const ambiguous = reanchorEvidence({ text: "same text" }, [{ id: "a", text: "same text" }, { id: "b", text: "same   text" }]);
+  // Both candidates normalize to the same text, but neither is an exact-byte
+  // fingerprint match for the prior anchor. The normalized-text tier must
+  // therefore stop ambiguous rather than choosing either candidate.
+  const ambiguous = reanchorEvidence({ text: "same  text" }, [{ id: "a", text: "same text" }, { id: "b", text: "same   text" }]);
   assert.equal(ambiguous.state, "ambiguous");
   assert.deepEqual(ambiguous.candidates, ["a", "b"]);
   const stale = reanchorEvidence({ text: "gone" }, [{ id: "x", text: "different" }]);
