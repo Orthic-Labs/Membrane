@@ -41,8 +41,15 @@ def main():
     subprocess.run(["git", "apply", "--whitespace=error-all", str(patch)], cwd=ROOT, check=True)
     changed = set(git("diff", "--name-only", "--no-renames").splitlines())
     untracked = set(git("ls-files", "--others", "--exclude-standard").splitlines())
-    if changed | untracked != set(touched):
-        raise SystemExit("reviewed patch changed unexpected paths")
+    # The workflow reconstructs the reviewed patch as an untracked transport
+    # artifact. It is input to this materializer, not a product edit.
+    untracked.discard(patch.relative_to(ROOT).as_posix())
+    observed = changed | untracked
+    if observed != set(touched):
+        raise SystemExit(
+            "reviewed patch changed unexpected paths: "
+            + f"extra={sorted(observed - set(touched))} missing={sorted(set(touched) - observed)}"
+        )
     BATCH.unlink()
     patch.unlink()
     git("config", "user.name", "github-actions[bot]")
