@@ -520,7 +520,7 @@ fn provider_output(provider: &NormalizedProviderOutput) -> ProviderOutputV1 {
         warnings: provider.warnings.clone(),
         omissions: provider.omissions.clone(),
         diagnostics: None,
-        extensions: BTreeMap::new(),
+        extensions: provider.extensions.clone(),
     }
 }
 

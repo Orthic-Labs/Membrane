@@ -180,6 +180,11 @@ pub struct PlannerInput {
     /// planner accepts receipt v1+v2 unconditionally.
     #[serde(default)]
     pub scope_grant_present: bool,
+    /// Resolver mechanisms the consuming host has negotiated and can call.
+    /// An empty list means Pull must choose an inline faithful alternative
+    /// when content exists rather than emitting an unusable handle.
+    #[serde(default)]
+    pub consumer_resolvers: Vec<String>,
 }
 
 fn default_accepted_versions() -> Vec<u32> {
@@ -624,12 +629,31 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         kept_after_class.push(cand);
     }
 
+    // 3b. Consumer-capability eligibility.  A resolver-only candidate is not
+    // evidence the current host can consume unless that resolver was negotiated
+    // for this request.  When inline text exists, rendered delivery is the
+    // faithful fallback.  Otherwise reject before ranking/budget admission and
+    // surface a typed omission rather than publishing an unusable handle.
+    let mut kept_after_delivery: Vec<&CandidateV1> = Vec::new();
+    for cand in kept_after_class {
+        let (_, drop_reason) = planner_delivery_intent(cand, &input.consumer_resolvers);
+        if drop_reason == DropReason::MissingResolver {
+            decisions.push((
+                cand.clone(),
+                "rejected".into(),
+                "consumer_resolver_unavailable".into(),
+            ));
+            continue;
+        }
+        kept_after_delivery.push(cand);
+    }
+
     // 4. Deduplicate by id (keep first occurrence), then canonical source hash
     // and normalized content. Ranking before content/source dedup makes every
     // winner deterministic rather than dependent on provider return order.
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut deduped: Vec<&CandidateV1> = Vec::new();
-    for cand in kept_after_class {
+    for cand in kept_after_delivery {
         if !seen.insert(cand.id.clone()) {
             decisions.push((cand.clone(), "rejected".into(), "duplicate_id".into()));
             continue;
@@ -845,7 +869,8 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             .and_modify(|v| *v += cand.estimated_tokens)
             .or_insert(cand.estimated_tokens);
         let provider = candidate_provider(cand, &input.candidate_set.provider);
-        let (delivery_class, drop_reason) = planner_delivery_intent(cand);
+        let (delivery_class, drop_reason) =
+            planner_delivery_intent(cand, &input.consumer_resolvers);
         provider_accounting
             .entry(provider.clone())
             .and_modify(|accounting| {
@@ -892,6 +917,15 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     let packet_char_budget_override = input.packet_char_budget_override.filter(|value| *value > 0);
     let configured_packet_char_budget =
         packet_char_budget_override.unwrap_or(DEFAULT_PACKET_CHAR_BUDGET);
+    let mut packet_omissions = input.candidate_set.omissions.clone();
+    packet_omissions.extend(decisions.iter().filter_map(|(candidate, decision, reason)| {
+        (decision == "rejected" && reason == "consumer_resolver_unavailable").then(|| OmissionV1 {
+            id: candidate.id.clone(),
+            layer: Some(candidate.layer),
+            reason: reason.clone(),
+        })
+    }));
+
     let packet = ContextPacketV1 {
         schema_version: 1,
         trace_id: trace_id.clone(),
@@ -915,7 +949,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         allocations,
         provider_accounting,
         blocks,
-        omissions: input.candidate_set.omissions.clone(),
+        omissions: packet_omissions,
     };
 
     // 8. Receipts. One per decision. Receipts are content-free: text is
@@ -927,7 +961,8 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         let before_chars = cand.estimated_tokens.saturating_mul(4).max(1);
         let admitted_chars = if admitted { before_chars } else { 0 };
         let (delivery_class, selected_tokens, drop_reason) = if admitted {
-            let (delivery_class, drop_reason) = planner_delivery_intent(&cand);
+            let (delivery_class, drop_reason) =
+                planner_delivery_intent(&cand, &input.consumer_resolvers);
             (delivery_class, cand.estimated_tokens, drop_reason)
         } else {
             (DeliveryClass::MetadataOnly, 0, DropReason::NotSelected)
@@ -1184,11 +1219,31 @@ fn candidate_provider(candidate: &CandidateV1, fallback: &str) -> String {
         .to_string()
 }
 
-fn planner_delivery_intent(candidate: &CandidateV1) -> (DeliveryClass, DropReason) {
-    if candidate.resolver.trim().is_empty() {
-        (DeliveryClass::MetadataOnly, DropReason::MissingResolver)
-    } else {
+fn planner_delivery_intent(
+    candidate: &CandidateV1,
+    consumer_resolvers: &[String],
+) -> (DeliveryClass, DropReason) {
+    let resolver = candidate.resolver.trim();
+    if resolver.is_empty() {
+        return if candidate.text.trim().is_empty() {
+            (DeliveryClass::MetadataOnly, DropReason::MissingResolver)
+        } else {
+            (DeliveryClass::Rendered, DropReason::None)
+        };
+    }
+    let callable = consumer_resolvers.iter().any(|capability| {
+        let capability = capability.trim();
+        !capability.is_empty()
+            && (resolver == capability
+                || resolver.starts_with(&format!("{capability}:"))
+                || resolver.starts_with(&format!("{capability} ")))
+    });
+    if callable {
         (DeliveryClass::ResolverBacked, DropReason::None)
+    } else if !candidate.text.trim().is_empty() {
+        (DeliveryClass::Rendered, DropReason::None)
+    } else {
+        (DeliveryClass::MetadataOnly, DropReason::MissingResolver)
     }
 }
 
@@ -1282,7 +1337,50 @@ mod tests {
             accepted_receipt_versions: vec![2],
             trace_id_override: None,
             scope_grant_present: false,
+            consumer_resolvers: Vec::new(),
         }
+    }
+
+    #[test]
+    fn resolver_only_candidate_requires_negotiated_consumer_resolver() {
+        let mut handle = candidate("handle-only", "skill", 20, 0.9, false);
+        handle.provider = Some("skills".into());
+        handle.resolver = "membrane_source_read:skill/alpha".into();
+        handle.text.clear();
+
+        let without = plan(&empty_planner_input(vec![handle.clone()])).unwrap();
+        assert!(without.packet.blocks.is_empty());
+        assert!(without.packet.omissions.iter().any(|omission| {
+            omission.id == "handle-only" && omission.reason == "consumer_resolver_unavailable"
+        }));
+        assert_eq!(
+            without
+                .receipts
+                .iter()
+                .find(|receipt| receipt.id == "handle-only")
+                .unwrap()
+                .reason,
+            "consumer_resolver_unavailable"
+        );
+
+        let mut input = empty_planner_input(vec![handle]);
+        input.consumer_resolvers = vec!["membrane_source_read".into()];
+        let with = plan(&input).unwrap();
+        assert_eq!(with.packet.blocks.len(), 1);
+        assert_eq!(with.packet.blocks[0].delivery_class, Some(DeliveryClass::ResolverBacked));
+        assert_eq!(with.packet.blocks[0].drop_reason, Some(DropReason::None));
+    }
+
+    #[test]
+    fn missing_consumer_resolver_falls_back_to_inline_text_when_available() {
+        let mut candidate = candidate("inline-fallback", "skill", 20, 0.9, false);
+        candidate.provider = Some("skills".into());
+        candidate.resolver = "membrane_source_read:skill/beta".into();
+        candidate.text = "faithful inline fallback".into();
+        let output = plan(&empty_planner_input(vec![candidate])).unwrap();
+        assert_eq!(output.packet.blocks.len(), 1);
+        assert_eq!(output.packet.blocks[0].delivery_class, Some(DeliveryClass::Rendered));
+        assert_eq!(output.packet.blocks[0].text, "faithful inline fallback");
     }
 
     #[test]

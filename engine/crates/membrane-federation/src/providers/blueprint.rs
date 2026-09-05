@@ -5,7 +5,8 @@
 
 use crate::blueprint_client::ContextualBlueprintSource;
 use membrane_protocol::{
-    FederationProviderStatusV1, ProviderId, ProviderOmissionV1, ProviderWarningV1, ReasonCode,
+    FederationProviderStatusV1, OverlayIdentityV1, ProviderId, ProviderOmissionV1,
+    ProviderWarningV1, ReasonCode, SourceResolutionReceiptV1, SourceResolutionStatusV1,
     WarningSeverity, PROVIDER_OUTPUT_SCHEMA_VERSION,
 };
 use membrane_provider_sdk::{
@@ -134,6 +135,8 @@ impl BlueprintProvider {
         if response.value.candidates.len() > self.candidate_cap {
             return Ok(oversized_output(self.candidate_cap));
         }
+        let generation = response.value.generation.clone();
+        let payload = response.value.payload.clone();
         let mut output = ProviderOutput {
             schema_version: PROVIDER_OUTPUT_SCHEMA_VERSION,
             provider: ProviderId::Blueprint,
@@ -142,7 +145,7 @@ impl BlueprintProvider {
             } else {
                 FederationProviderStatusV1::Partial
             },
-            generation: Some(response.value.generation.clone()),
+            generation: Some(generation.clone()),
             candidates: response.value.candidates,
             warnings: response.warnings.into_iter().map(warning).collect(),
             omissions: Vec::new(),
@@ -151,6 +154,50 @@ impl BlueprintProvider {
         };
         for candidate in &mut output.candidates {
             candidate.provider = Some(ProviderId::Blueprint.as_str().to_owned());
+        }
+        if let Some(paths) = payload.as_ref().and_then(atomic_path_provenance) {
+            output
+                .extensions
+                .insert("atomicEvidencePaths".to_owned(), paths);
+        }
+        if !context.freshness.stale {
+            let overlay_identity = context.freshness.overlay_digest.as_ref().map(|digest| {
+                OverlayIdentityV1 {
+                    session_id: context.session_id.clone(),
+                    worktree_path: context.repository_root.clone(),
+                    generation_id: generation.clone(),
+                    overlay_digest: digest.clone(),
+                }
+            });
+            let resolutions = output
+                .candidates
+                .iter()
+                .filter(|candidate| {
+                    matches!(candidate.source_kind.to_ascii_lowercase().as_str(), "graph" | "vector")
+                })
+                .map(|candidate| {
+                    SourceResolutionReceiptV1 {
+                        schema_version: 1,
+                        candidate_id: candidate.id.clone(),
+                        provider: ProviderId::Blueprint.as_str().to_owned(),
+                        status: SourceResolutionStatusV1::Resolved,
+                        expected_hash: candidate.source_hash.clone(),
+                        resolved_hash: Some(candidate.source_hash.clone()),
+                        expected_generation: generation.clone(),
+                        resolved_generation: Some(generation.clone()),
+                        expected_path: candidate.source_ref.clone(),
+                        resolved_path: Some(candidate.source_ref.clone()),
+                        resolver: candidate.resolver.clone(),
+                        overlay_identity: overlay_identity.clone(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            if !resolutions.is_empty() {
+                output.extensions.insert(
+                    "sourceResolutions".to_owned(),
+                    serde_json::to_value(resolutions).unwrap_or(serde_json::Value::Null),
+                );
+            }
         }
         if output.candidates.is_empty() && output.warnings.is_empty() {
             output.status = FederationProviderStatusV1::Partial;
@@ -165,6 +212,28 @@ impl BlueprintProvider {
         }
         Ok(output)
     }
+}
+
+fn atomic_path_provenance(payload: &serde_json::Value) -> Option<serde_json::Value> {
+    let candidates = payload
+        .pointer("/candidateSet/candidates")
+        .or_else(|| payload.get("candidates"))?
+        .as_array()?;
+    let paths = candidates
+        .iter()
+        .filter_map(|candidate| {
+            let id = candidate.get("id")?.as_str()?;
+            let evidence_path_id = candidate.get("evidencePathId")?.as_str()?;
+            let envelope = candidate.get("evidenceEnvelope")?.clone();
+            Some(serde_json::json!({
+                "candidateId": id,
+                "recallCircuitId": candidate.get("recallCircuitId").cloned().unwrap_or(serde_json::Value::Null),
+                "evidencePathId": evidence_path_id,
+                "evidenceEnvelope": envelope,
+            }))
+        })
+        .collect::<Vec<_>>();
+    (!paths.is_empty()).then(|| serde_json::Value::Array(paths))
 }
 
 impl Provider for BlueprintProvider {

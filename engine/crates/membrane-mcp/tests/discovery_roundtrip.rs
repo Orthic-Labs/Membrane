@@ -58,3 +58,29 @@ fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let default = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).unwrap();
     assert_eq!(default["result"]["tools"].as_array().unwrap().len(),1);
 }
+
+#[test]
+fn context_schema_advertises_workspace_targets_and_resolver_negotiation() {
+    let default = McpServer
+        .dispatch(&json!({"jsonrpc":"2.0","id":3,"method":"tools/list"}))
+        .unwrap();
+    let context = default["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "membrane_context")
+        .unwrap();
+    assert_eq!(
+        context["inputSchema"]["properties"]["scope"]["enum"],
+        json!(["repo", "workspace"])
+    );
+    assert_eq!(
+        context["inputSchema"]["properties"]["workspaceTargets"]["maxItems"],
+        32
+    );
+    assert_eq!(
+        context["inputSchema"]["properties"]["consumerCapabilities"]
+            ["properties"]["resolvers"]["maxItems"],
+        32
+    );
+}

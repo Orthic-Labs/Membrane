@@ -60,6 +60,48 @@ fn error(operation: &str, code: &str, message: impl AsRef<str>) -> Value {
     json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"error","code":code,"message":message.as_ref(),"retryable":false}})
 }
 
+fn workspace_budget_shares(max_tokens: usize, targets: usize) -> Vec<usize> {
+    if targets == 0 {
+        return Vec::new();
+    }
+    let base = max_tokens / targets;
+    let remainder = max_tokens % targets;
+    (0..targets)
+        .map(|index| base + usize::from(index < remainder))
+        .collect()
+}
+
+fn workspace_target_ids(arguments: &Value) -> Result<Vec<String>, Value> {
+    let Some(raw) = arguments.get("workspaceTargets") else {
+        return Ok(Vec::new());
+    };
+    let Some(values) = raw.as_array() else {
+        return Err(error(
+            "membrane_context",
+            "context_envelope_invalid",
+            "workspaceTargets must be an array of repository ids",
+        ));
+    };
+    let mut targets = Vec::with_capacity(values.len());
+    for value in values {
+        let Some(repository_id) = value
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            return Err(error(
+                "membrane_context",
+                "context_envelope_invalid",
+                "workspaceTargets must contain non-empty repository ids",
+            ));
+        };
+        targets.push(repository_id.to_owned());
+    }
+    targets.sort();
+    targets.dedup();
+    Ok(targets)
+}
+
 fn blueprint_failure(operation: &str, failure: BlueprintClientError) -> Value {
     let code = match &failure {
         BlueprintClientError::Unavailable(_) => "blueprint_unavailable",
@@ -576,11 +618,290 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 let Some(task) = task else {
                     return error(name, "context_envelope_invalid", "task is required");
                 };
-                let budget = arguments
-                    .get("budget")
+                let max_tokens = arguments
+                    .get("budgetTokens")
                     .and_then(Value::as_u64)
-                    .unwrap_or(5)
-                    .min(50) as usize;
+                    .map(|tokens| tokens.clamp(1, 1_000_000) as usize)
+                    .unwrap_or_else(|| {
+                        arguments
+                            .get("budget")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(5)
+                            .min(50) as usize
+                            * 1024
+                    });
+                let Some(session_id) = arguments
+                    .get("sessionId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                else { return error(name, "context_envelope_invalid", "sessionId is required and must not alias caller.scopeId"); };
+                let Some(task_id) = arguments
+                    .get("taskId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                else { return error(name, "context_envelope_invalid", "taskId is required and must be distinct from task prose"); };
+                let request_id = arguments
+                    .get("requestId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty());
+                let generation = arguments
+                    .get("generation")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty());
+                let scope_kind = arguments
+                    .get("scope")
+                    .and_then(Value::as_str)
+                    .unwrap_or("repo");
+                if scope_kind == "workspace" {
+                    let requested_targets = match workspace_target_ids(arguments) {
+                        Ok(targets) => targets,
+                        Err(result) => return result,
+                    };
+                    let targets = match authorization::authorized_workspace_targets(
+                        root,
+                        repository,
+                        scope,
+                        arguments.pointer("/caller/scopeDescriptor"),
+                        &requested_targets,
+                    ) {
+                        Ok(targets) => targets,
+                        Err(denial) => return error(name, denial.code(), denial.to_string()),
+                    };
+                    let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 =
+                        match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
+                            Ok(value) => value,
+                            Err(_) => {
+                                return error(
+                                    name,
+                                    "context_capacity_invalid",
+                                    "validated H8 is required",
+                                )
+                            }
+                        };
+                    let shares = workspace_budget_shares(max_tokens, targets.len());
+                    let mut repository_packets = Vec::new();
+                    let mut target_receipts = Vec::new();
+                    for (target, allocation) in targets.iter().zip(shares.iter().copied()) {
+                        if allocation == 0 {
+                            target_receipts.push(json!({
+                                "repositoryId": target.repository_id,
+                                "scopeId": target.scope_id,
+                                "status": "omitted",
+                                "reason": "workspace_budget_exhausted",
+                                "allocatedTokens": 0
+                            }));
+                            continue;
+                        }
+                        let mut body = json!({
+                            "task": task,
+                            "taskId": task_id,
+                            "repo": target.root,
+                            "maxTokens": allocation,
+                            "client": "membrane-native-workspace",
+                            "session": session_id,
+                            "sessionId": session_id,
+                            "refresh": arguments.get("refresh").and_then(Value::as_bool).unwrap_or(false),
+                            "remainingContextCeiling": arguments["remainingContextCeiling"].clone(),
+                        });
+                        if target.repository_id == repository {
+                            if let Some(scope_grant_id) = arguments
+                                .get("scopeGrantId")
+                                .and_then(Value::as_str)
+                                .filter(|value| !value.trim().is_empty())
+                            {
+                                body["scopeGrantId"] = Value::String(scope_grant_id.to_owned());
+                            }
+                        }
+                        if let Some(deadline_ms) = arguments.get("deadlineMs").and_then(Value::as_u64) {
+                            body["maxWaitMs"] = Value::from(deadline_ms);
+                        }
+                        if let Some(anchors) = arguments.get("anchors").cloned() {
+                            body["anchors"] = anchors;
+                        }
+                        if let Some(capabilities) = arguments.get("consumerCapabilities").cloned() {
+                            body["consumerCapabilities"] = capabilities;
+                        }
+                        if let Some(contract) = arguments.get("sufficiencyContract").cloned() {
+                            body["sufficiencyContract"] = contract;
+                        }
+                        if let Some(token) = arguments.get("pushResolverToken").and_then(Value::as_str) {
+                            body["pushResolverToken"] = Value::String(token.to_owned());
+                        }
+                        if let Some(generation) = generation {
+                            body["generation"] = Value::String(generation.to_owned());
+                        }
+                        let child_request_id = request_id
+                            .map(|request_id| format!("{request_id}:{}", target.repository_id))
+                            .unwrap_or_else(|| format!("workspace:{}:{}", task_id, target.repository_id));
+                        body["requestId"] = Value::String(child_request_id);
+
+                        let request = match serde_json::to_string(&body) {
+                            Ok(request) => request,
+                            Err(_) => {
+                                return error(
+                                    name,
+                                    "context_envelope_invalid",
+                                    "workspace target request is invalid",
+                                )
+                            }
+                        };
+                        let (status_code, payload) = crate::pull::federation::native_route_response(&request);
+                        let federated: Value = match serde_json::from_str(&payload) {
+                            Ok(value) => value,
+                            Err(_) => {
+                                target_receipts.push(json!({
+                                    "repositoryId": target.repository_id,
+                                    "scopeId": target.scope_id,
+                                    "status": "unavailable",
+                                    "reason": "invalid_target_response",
+                                    "allocatedTokens": allocation
+                                }));
+                                continue;
+                            }
+                        };
+                        if status_code != 200 {
+                            target_receipts.push(json!({
+                                "repositoryId": target.repository_id,
+                                "scopeId": target.scope_id,
+                                "status": "unavailable",
+                                "reason": federated.get("error").and_then(Value::as_str).unwrap_or("context_unavailable"),
+                                "allocatedTokens": allocation
+                            }));
+                            continue;
+                        }
+                        let target_status = federated
+                            .get("status")
+                            .and_then(Value::as_str)
+                            .unwrap_or("complete");
+                        if matches!(target_status, "insufficient_confidence" | "unchanged_context") {
+                            target_receipts.push(json!({
+                                "repositoryId": target.repository_id,
+                                "scopeId": target.scope_id,
+                                "status": target_status,
+                                "allocatedTokens": allocation,
+                                "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
+                                "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([]))
+                            }));
+                            continue;
+                        }
+                        let Some(packet) = federated.get("packet").cloned() else {
+                            target_receipts.push(json!({
+                                "repositoryId": target.repository_id,
+                                "scopeId": target.scope_id,
+                                "status": "unavailable",
+                                "reason": "target_packet_missing",
+                                "allocatedTokens": allocation
+                            }));
+                            continue;
+                        };
+                        let selected_tokens = federated
+                            .pointer("/packetReduction/selectionReceipt/selectedTokens")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(allocation as u64);
+                        repository_packets.push(json!({
+                            "repositoryId": target.repository_id,
+                            "scopeId": target.scope_id,
+                            "packet": packet
+                        }));
+                        target_receipts.push(json!({
+                            "repositoryId": target.repository_id,
+                            "scopeId": target.scope_id,
+                            "status": target_status,
+                            "allocatedTokens": allocation,
+                            "selectedTokens": selected_tokens,
+                            "omissions": federated.pointer("/packet/omissions").cloned().unwrap_or_else(|| json!([])),
+                            "sourceResolutionReceipts": federated.get("sourceResolutionReceipts").cloned().unwrap_or_else(|| json!([]))
+                        }));
+                    }
+
+                    if repository_packets.is_empty() {
+                        let result = success(name, json!({
+                            "repositoryId": repository,
+                            "scopeId": scope,
+                            "scope": "workspace",
+                            "status": "insufficient_confidence",
+                            "packet": Value::Null,
+                            "pullReceipt": {
+                                "workspace": {
+                                    "schemaVersion": 1,
+                                    "maxTokens": max_tokens,
+                                    "targets": target_receipts
+                                }
+                            },
+                            "degradationReason": "workspace_no_deliverable_evidence",
+                            "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
+                        }));
+                        return crate::push::egress::fit_native_response(result, &ceiling)
+                            .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
+                    }
+
+                    loop {
+                        let overall_status = if target_receipts.iter().any(|receipt| {
+                            receipt.get("status").and_then(Value::as_str) != Some("complete")
+                        }) {
+                            "partial"
+                        } else {
+                            "complete"
+                        };
+                        let result = success(name, json!({
+                            "repositoryId": repository,
+                            "scopeId": scope,
+                            "scope": "workspace",
+                            "status": overall_status,
+                            "packet": {
+                                "schemaVersion": 1,
+                                "scope": "workspace",
+                                "budget": {
+                                    "maxTokens": max_tokens,
+                                    "allocatedTokens": shares.iter().sum::<usize>()
+                                },
+                                "repositories": repository_packets.clone()
+                            },
+                            "pullReceipt": {
+                                "workspace": {
+                                    "schemaVersion": 1,
+                                    "maxTokens": max_tokens,
+                                    "targets": target_receipts.clone()
+                                }
+                            },
+                            "degradationReason": if overall_status == "complete" { "none" } else { "workspace_partial" },
+                            "sufficiencyEvaluated": arguments.get("sufficiencyContract").is_some()
+                        }));
+                        match crate::push::egress::fit_native_response(result, &ceiling) {
+                            Ok(fitted) => return fitted,
+                            Err(crate::push::recovery::RecoveryError::Limit)
+                                if repository_packets.len() > 1 =>
+                            {
+                                let removed = repository_packets.pop().expect("length checked");
+                                let removed_repository = removed
+                                    .get("repositoryId")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("unknown")
+                                    .to_owned();
+                                target_receipts.retain(|receipt| {
+                                    receipt.get("repositoryId").and_then(Value::as_str)
+                                        != Some(removed_repository.as_str())
+                                });
+                                target_receipts.push(json!({
+                                    "repositoryId": removed_repository,
+                                    "status": "omitted",
+                                    "reason": "workspace_delivery_capacity_exceeded",
+                                    "allocatedTokens": 0
+                                }));
+                            }
+                            Err(crate::push::recovery::RecoveryError::Limit) => {
+                                return error(
+                                    name,
+                                    "context_delivery_capacity_exceeded",
+                                    "workspace packet does not fit the observed host capacity",
+                                )
+                            }
+                            Err(failure) => {
+                                return error(name, "context_delivery_invalid", failure.to_string())
+                            }
+                        }
+                    }
+                }
                 // Frozen interface 2: the planner-authored sufficiency contract travels
                 // VERBATIM into the resident federate request — never parsed, never
                 // rewritten here. Absent means "not supplied", and the body stays absent so
@@ -588,12 +909,30 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 let sufficiency_contract = arguments.get("sufficiencyContract").cloned();
                 let mut body = json!({
                     "task": task,
+                    "taskId": task_id,
                     "repo": root,
-                    "maxTokens": budget.saturating_mul(1024),
+                    "maxTokens": max_tokens,
                     "client": "membrane-native",
-                    "session": scope,
+                    "session": session_id,
+                    "sessionId": session_id,
                     "scopeGrantId": arguments.get("scopeGrantId").and_then(Value::as_str),
+                    "refresh": arguments.get("refresh").and_then(Value::as_bool).unwrap_or(false),
                 });
+                if let Some(request_id) = request_id {
+                    body["requestId"] = Value::String(request_id.to_owned());
+                }
+                if let Some(generation) = generation {
+                    body["generation"] = Value::String(generation.to_owned());
+                }
+                if let Some(deadline_ms) = arguments.get("deadlineMs").and_then(Value::as_u64) {
+                    body["maxWaitMs"] = Value::from(deadline_ms);
+                }
+                if let Some(anchors) = arguments.get("anchors").cloned() {
+                    body["anchors"] = anchors;
+                }
+                if let Some(capabilities) = arguments.get("consumerCapabilities").cloned() {
+                    body["consumerCapabilities"] = capabilities;
+                }
                 if let Some(contract) = sufficiency_contract {
                     body["sufficiencyContract"] = contract;
                 }
@@ -601,11 +940,8 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     body["taskId"] = json!(task_id);
                 }
                 // The runtime refuses every context request without this
-                // (RequestTimeH8Error::Missing) and reads it from the request
-                // body, but the executor never forwarded it, so no client could
-                // satisfy the requirement no matter what it sent. Carried
-                // verbatim like the sufficiency contract: the host observed it,
-                // and Membrane never derives or defaults an observation.
+                // (RequestTimeH8Error::Missing). Carry the host observation
+                // verbatim; Membrane never derives or defaults capacity.
                 if let Some(ceiling) = arguments.get("remainingContextCeiling").cloned() {
                     body["remainingContextCeiling"] = ceiling;
                 }
@@ -646,11 +982,31 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         (None, Some(reason)) | (Some(reason), None) => format!("{code}: {reason}"),
                         (None, None) => code.to_owned(),
                     };
-                    return error(name, "context_unavailable", detail);
+                    let error_code = if code == "policy_changed" { "policy_changed" } else if code == "request_time_selection_refused" { "request_time_selection_refused" } else { "context_unavailable" };
+                    return error(name, error_code, detail);
                 }
                 let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 = match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
                     Ok(value) => value, Err(_) => return error(name,"context_capacity_invalid","validated H8 is required"),
                 };
+                if matches!(federated.get("status").and_then(Value::as_str), Some("insufficient_confidence" | "unchanged_context")) {
+                    let result = success(name, json!({
+                        "repositoryId": repository, "scopeId": scope,
+                        "status": federated.get("status").cloned().unwrap_or_else(|| json!("insufficient_confidence")),
+                        "packet": Value::Null,
+                        "pullReceipt": {
+                            "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
+                            "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
+                            "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
+                            "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
+                            "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
+                            "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
+                        },
+                        "degradationReason": federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
+                        "sufficiencyEvaluated": federated.get("insufficientConfidence").is_some(),
+                    }));
+                    return crate::push::egress::fit_native_response(result, &ceiling)
+                        .unwrap_or_else(|failure| error(name, "context_delivery_invalid", failure.to_string()));
+                }
                 let selection: crate::push::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
                     Ok(value) => value, Err(_) => return error(name,"context_selection_invalid","selection receipt is required"),
                 };
@@ -661,14 +1017,26 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     let mut receipt = selection.selection_receipt.clone();
                     receipt.selected_representation_id = representation.id.clone();
                     receipt.selected_tokens = representation.tokens;
-                    let candidates = representation.content["blocks"].as_array().cloned().unwrap_or_default();
+                    let pull_receipt = json!({
+                        "fusionReceipt": federated.get("fusionReceipt").cloned().unwrap_or(Value::Null),
+                        "correctiveRetrieval": federated.get("correctiveRetrieval").cloned().unwrap_or(Value::Null),
+                        "publicationFence": federated.get("publicationFence").cloned().unwrap_or(Value::Null),
+                        "insufficientConfidence": federated.get("insufficientConfidence").cloned().unwrap_or(Value::Null),
+                        "sourceResolutionReceipts": federated.get("sourceResolutionReceipts").cloned().unwrap_or_else(|| json!([])),
+                        "atomicEvidencePaths": federated.get("atomicEvidencePaths").cloned().unwrap_or_else(|| json!([])),
+                        "suppressionReceipts": federated.get("suppressionReceipts").cloned().unwrap_or_else(|| json!([])),
+                        "placementReceipt": federated.get("placementReceipt").cloned().unwrap_or(Value::Null),
+                        "packetReduction": receipt,
+                        "cachePrefixDiagnostic": federated.get("cachePrefixDiagnostic").cloned().unwrap_or(Value::Null),
+                        "federationMetrics": federated.get("federationMetrics").cloned().unwrap_or(Value::Null),
+                    });
+                    let sufficiency_evaluated = pull_receipt.pointer("/correctiveRetrieval/sufficiency").is_some_and(|value| !value.is_null());
                     let result = success(name, json!({
-                        "repositoryId":repository,"scopeId":scope,"status":status,
+                        "repositoryId":repository,"scopeId":scope,"status":federated.get("status").and_then(Value::as_str).unwrap_or(status),
                         "packet":representation.content,
-                        "candidates":candidates.iter().map(|b| json!({"id":b.get("id"),"resolver":b.get("resolver")})).collect::<Vec<_>>(),
-                        "receipts":federated.get("receipts"),"packetReduction":receipt,
+                        "receipts":federated.get("receipts"),"pullReceipt":pull_receipt,
                         "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
-                        "sufficiencyEvaluated":arguments.get("sufficiencyContract").is_some(),
+                        "sufficiencyEvaluated":sufficiency_evaluated,
                     }));
                     match crate::push::egress::fit_native_response(result,&ceiling) {
                         Ok(fitted) => return fitted,
@@ -1708,6 +2076,14 @@ pub fn install_native_mcp_transport() -> Result<(), String> {
 mod hub_transport_tests {
     use super::*;
     use std::net::TcpListener;
+
+    #[test]
+    fn workspace_budget_shares_are_deterministic_and_conserve_the_global_budget() {
+        assert_eq!(workspace_budget_shares(10, 3), vec![4, 3, 3]);
+        assert_eq!(workspace_budget_shares(2, 4), vec![1, 1, 0, 0]);
+        assert_eq!(workspace_budget_shares(7, 0), Vec::<usize>::new());
+        assert_eq!(workspace_budget_shares(4096, 7).iter().sum::<usize>(), 4096);
+    }
 
     #[test]
     fn hub_off_blueprint_is_membrane_unavailable_not_blueprint_unavailable() {

@@ -108,6 +108,8 @@ pub struct LastFallbackSnapshot {
 /// telemetry labels, not planner decisions or provider content.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FederationMetricStatus {
+    Success,
+    Partial,
     Unavailable,
     Timeout,
     Stale,
@@ -121,6 +123,8 @@ pub enum FederationMetricStatus {
 impl FederationMetricStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Success => "success",
+            Self::Partial => "partial",
             Self::Unavailable => "unavailable",
             Self::Timeout => "timeout",
             Self::Stale => "stale",

@@ -94,7 +94,7 @@ pub struct PacketReductionSelectionV1 {
 pub fn parse_request_time_h8(
     body: &Value,
     expected_session_id: &str,
-    expected_task: &str,
+    expected_task_id: &str,
 ) -> Result<RemainingContextCeilingV1, RequestTimeH8Error> {
     let raw = body
         .get("remainingContextCeiling")
@@ -136,10 +136,10 @@ pub fn parse_request_time_h8(
             "taskId value must not be empty".to_owned(),
         ));
     }
-    if observed_task != expected_task {
+    if observed_task != expected_task_id {
         return Err(RequestTimeH8Error::IdentityMismatch {
             field: "taskId",
-            expected: expected_task.to_owned(),
+            expected: expected_task_id.to_owned(),
             observed: observed_task.to_owned(),
         });
     }

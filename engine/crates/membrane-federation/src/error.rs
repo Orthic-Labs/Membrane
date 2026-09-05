@@ -5,7 +5,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum RegistryError {
-    #[error("provider registry must contain exactly nine providers")]
+    #[error("provider registry must contain exactly ten providers")]
     Incomplete,
     #[error("duplicate provider registration: {0}")]
     DuplicateProvider(ProviderId),
@@ -21,7 +21,7 @@ pub enum RegistryError {
 pub enum ConfigError {
     #[error("unsupported federation configuration schema version: {0}")]
     SchemaVersion(u32),
-    #[error("federation configuration must declare exactly nine providers")]
+    #[error("federation configuration must declare exactly ten providers")]
     Incomplete,
     #[error("duplicate provider configuration: {0}")]
     DuplicateProvider(ProviderId),

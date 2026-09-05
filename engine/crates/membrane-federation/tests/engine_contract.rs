@@ -144,7 +144,7 @@ fn fixed_order_is_default_and_rrf_requires_explicit_selection() {
 }
 
 #[test]
-fn disabled_configuration_preserves_all_nine_expected_lanes() {
+fn disabled_configuration_preserves_all_ten_expected_lanes() {
     let config = FederationConfig::new(
         ProviderId::ALL
             .into_iter()

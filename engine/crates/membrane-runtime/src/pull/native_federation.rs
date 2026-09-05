@@ -238,6 +238,12 @@ fn metric_status(response: &FederationResponseV1, cancelled: bool) -> Federation
     {
         return FederationMetricStatus::EmptyComplete;
     }
+    if response.warnings.is_empty() && response.omissions.is_empty() && !response.candidates.is_empty() {
+        return FederationMetricStatus::Success;
+    }
+    if !response.candidates.is_empty() {
+        return FederationMetricStatus::Partial;
+    }
     response
         .warnings
         .first()

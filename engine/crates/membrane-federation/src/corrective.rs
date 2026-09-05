@@ -792,6 +792,7 @@ mod tests {
                 .collect(),
             warnings: Vec::new(),
             omissions: Vec::new(),
+            extensions: BTreeMap::new(),
         }
     }
 

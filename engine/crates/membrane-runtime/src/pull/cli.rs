@@ -41,6 +41,7 @@ pub fn run(
         accepted_receipt_versions: versions,
         trace_id_override: None,
         scope_grant_present: false,
+        consumer_resolvers: Vec::new(),
     };
     match plan(&input) {
         Ok(out) => print_output(&out),
