@@ -1,0 +1,28 @@
+name: cortex-rebase-export
+on:
+  push:
+    branches: [cortex-governed-lifecycle-pr]
+    paths: [.github/workflows/cortex-rebase-export.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Export tracked tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD | gzip -1 > "$RUNNER_TEMP/source.tar.gz"
+          sha256sum "$RUNNER_TEMP/source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-rebase-current
+          path: ${{ runner.temp }}/source.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
