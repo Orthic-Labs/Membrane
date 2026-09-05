@@ -40,19 +40,7 @@ jobs:
           node --check mcp/server.mjs
           node --check mcp/toolsets.mjs
           node --test tests/ledger-wiring-contracts.test.mjs
-
-          set +e
-          canon_output="$(node scripts/ci/check-atomic-canons.mjs 2>&1)"
-          canon_status=$?
-          set -e
-          printf '%s\n' "$canon_output"
-          if [ "$canon_status" -ne 0 ]; then
-            expected='atomic canons FAIL: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md:PSH-003:source: locator line 262 exceeds engine/crates/membrane-runtime/src/push/skel.rs'
-            if [ "$canon_output" != "$expected" ]; then
-              exit "$canon_status"
-            fi
-            echo '::warning::Known current-main Push provenance locator is stale; Ledger canon/wiring checks remain clean.'
-          fi
+          node scripts/ci/check-atomic-canons.mjs
       - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
