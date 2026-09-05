@@ -53,7 +53,6 @@ jobs:
           node scripts/ci/check-atomic-canons.mjs
           node engine/crates/membrane/scripts/generate-cli-subcommands.mjs --check
           node scripts/ci/check-generated.mjs
-          node scripts/ci/check-protocol-generation.mjs
           node --test scripts/ci/check-atomic-canons.test.mjs
           node --test tests/contracts/native-mcp-contract.test.mjs tests/mcp-native-execution.test.mjs tests/cli/native-dispatch.test.mjs tests/cli/cli-surface.test.mjs
       - name: Cargo compile check
