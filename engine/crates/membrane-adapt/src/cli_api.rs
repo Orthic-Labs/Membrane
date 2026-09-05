@@ -12,6 +12,7 @@ use crate::context_cost::{
     analyze_persistent_context, ContextCostAnalysisRequestV1, ContextCostError,
     PersistentContextAnalysisV1,
 };
+use crate::detector_contract::InsightsDetectorContractV1;
 use crate::insights::detectors::repeated_ask_signature;
 use crate::insights::{
     recurrence::{form_issues, mine_issues},
@@ -50,6 +51,13 @@ fn default_min_recurrence() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MineResponse {
     pub api_version: String,
+    /// Frozen versioned detector contracts used for this run.
+    #[serde(default)]
+    pub detector_catalog: Vec<InsightsDetectorContractV1>,
+    /// Non-empty only when detector implementation drifted from the frozen
+    /// catalog. Mining fails closed to zero episodes/issues in that case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detector_contract_error: Option<String>,
     pub episodes: Vec<FailureEpisodeV1>,
     pub issues: Vec<InsightIssueV1>,
     /// Sealed review-only proposals generated on the same native path. They
@@ -163,13 +171,24 @@ pub struct DoctorFinding {
 // ---- pure implementations ---------------------------------------------------
 
 pub fn handle_mine(req: &MineRequest) -> MineResponse {
-    let episodes = crate::insights::detectors::run_all_detectors(&req.events);
-    let issues = form_issues(&episodes, req.min_recurrence);
+    let detector_catalog = crate::detector_contract::insights_detector_catalog();
+    let (episodes, detector_contract_error) =
+        match crate::detector_contract::run_versioned_detectors(&req.events) {
+            Ok(episodes) => (episodes, None),
+            Err(error) => (Vec::new(), Some(error.to_string())),
+        };
+    let issues = if detector_contract_error.is_none() {
+        form_issues(&episodes, req.min_recurrence)
+    } else {
+        Vec::new()
+    };
     let remediation_proposals = crate::remediation::seal_review_proposals(&issues);
     let projection =
         crate::lineage::project_mine(&req.events, &episodes, &issues, &remediation_proposals);
     MineResponse {
         api_version: CLI_API_VERSION.into(),
+        detector_catalog,
+        detector_contract_error,
         episodes,
         issues,
         remediation_proposals,
@@ -365,6 +384,8 @@ mod tests {
             serde_json::to_string(&r2).unwrap()
         );
         assert_eq!(r1.api_version, "adapt.cli.v1");
+        assert!(r1.detector_contract_error.is_none());
+        assert_eq!(r1.detector_catalog.len(), 32);
         assert!(r1.episodes.iter().any(|e| e.family == "repeated_ask"));
         assert!(!r1.remediation_proposals.is_empty());
         assert!(r1
