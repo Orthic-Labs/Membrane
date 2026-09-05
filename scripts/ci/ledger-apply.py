@@ -27,16 +27,21 @@ def main():
     touched = []
     for relative, expected in sorted(base.items()):
         path = ROOT / relative
-        if (not relative.startswith(ALLOWED) or ".." in Path(relative).parts or path.is_symlink()
-                or not path.resolve().is_relative_to(ROOT) or not path.is_file()):
+        if (not relative.startswith(ALLOWED) or ".." in Path(relative).parts
+                or path.is_symlink() or not path.resolve().is_relative_to(ROOT)):
             raise SystemExit("refused edit path: " + relative)
-        if git("hash-object", "--", relative) != expected:
-            raise SystemExit("source hash drift: " + relative)
+        if expected is None:
+            if path.exists():
+                raise SystemExit("new path already exists: " + relative)
+        else:
+            if not path.is_file() or git("hash-object", "--", relative) != expected:
+                raise SystemExit("source hash drift: " + relative)
         touched.append(relative)
     subprocess.run(["git", "apply", "--check", "--whitespace=error-all", str(patch)], cwd=ROOT, check=True)
     subprocess.run(["git", "apply", "--whitespace=error-all", str(patch)], cwd=ROOT, check=True)
-    changed = set(git("diff", "--name-only").splitlines())
-    if changed != set(touched):
+    changed = set(git("diff", "--name-only", "--no-renames").splitlines())
+    untracked = set(git("ls-files", "--others", "--exclude-standard").splitlines())
+    if changed | untracked != set(touched):
         raise SystemExit("reviewed patch changed unexpected paths")
     BATCH.unlink()
     patch.unlink()
