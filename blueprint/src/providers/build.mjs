@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers.mjs";
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
 import { collectSemanticEvidenceSync } from "./semantic-orchestrator.mjs";
+import { auditSourceDispositions } from "./source-disposition.mjs";
 import { extractJavaScriptModuleSpecifiers, resolveModuleSpecifier } from "./modules/javascript.mjs";
 import { extractPythonModuleSpecifiers, resolvePythonModule } from "./modules/python-resolver.mjs";
 import {
@@ -357,6 +358,7 @@ function addBridgeEvidence(generation, files) {
 export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, files, options = {}) {
   const root = resolve(repoRoot);
   const summaries = {
+    ingestion: auditSourceDispositions(root, files),
     modules: addModuleEvidence(generation, files, root),
     frameworks: addFrameworkEvidence(generation, files),
     ...addSchemaAndIacEvidence(generation, files),
