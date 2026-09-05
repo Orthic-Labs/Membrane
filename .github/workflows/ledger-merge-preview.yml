@@ -31,7 +31,8 @@ jobs:
           git status --porcelain=v1 > merge-status.txt
           git diff --name-only --diff-filter=U > merge-conflicts.txt
           git diff --cc > merge-conflict.diff || true
-          tar --exclude=.git --exclude=merge-preview.tar.gz -czf merge-preview.tar.gz .
+          tar --exclude=.git -czf "$RUNNER_TEMP/merge-preview.tar.gz" .
+          cp "$RUNNER_TEMP/merge-preview.tar.gz" merge-preview.tar.gz
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ledger-main-merge-preview
