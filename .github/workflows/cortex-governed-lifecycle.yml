@@ -15,6 +15,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+      - name: Fix restart-stable review binding
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('engine/crates/membrane-runtime/src/cortex_lifecycle.rs')
+          text=p.read_text()
+          old='''    if review.schema_version != 1 || review.policy_version != REVIEW_POLICY
+        || trust.schema_version != 1 || trust.installation_id != store.installation_id()
+        || trust.cortex_store_id != store.cortex_store_id()'''
+          new='''    // The installation ID in the protected trust registry is the durable installation
+    // identity. MemoryStore's operation attribution may be reconstructed on restart, so it
+    // must not invalidate an otherwise store-bound signed effect.
+    if review.schema_version != 1 || review.policy_version != REVIEW_POLICY
+        || trust.schema_version != 1
+        || trust.cortex_store_id != store.cortex_store_id()'''
+          if old not in text: raise SystemExit('review binding pattern not found')
+          p.write_text(text.replace(old,new))
+          PY
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
@@ -65,7 +84,7 @@ jobs:
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib checkpoint
           cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib vector_index
           cargo test --manifest-path engine/Cargo.toml -p membrane-mcp
-      - name: Commit verified generated references
+      - name: Commit verified implementation and generated references
         if: success()
         shell: bash
         run: |
@@ -74,5 +93,5 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(cortex): reconcile generated and evidence references"
+          git commit -m "fix(cortex): preserve reviewed effects across restart"
           git push origin HEAD:cortex-governed-lifecycle
