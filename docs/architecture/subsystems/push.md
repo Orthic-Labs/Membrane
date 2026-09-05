@@ -1,6 +1,6 @@
 # Push: verified preparation, recovery and measured delivery
 
-Implementation branch: `push-end-to-end`, based on `067892355900613a3fde9685e25186c2de7ccbb8`. Design authority: the user-approved 5 September 2026 Push implementation plan and revised atomic canon. The canon is `docs/canon/push.md`; implementation evidence and release qualification are separate. This document describes the code contract, not a claim that every host or all 29 release gates are qualified.
+Implementation branch: `push-end-to-end`, based on `067892355900613a3fde9685e25186c2de7ccbb8`. Design authority: the user-approved 5 September 2026 Push implementation plan and revised atomic canon. The canon is `docs/canon/push.md`; implementation evidence and release qualification are separate. This document describes the code contract, not a claim that every host or all 26 release gates are qualified.
 
 ## Ownership
 
@@ -72,5 +72,7 @@ Push telemetry is optional, content-free, explicitly unit-bearing and bounded. I
 ## Validation and release gate
 
 Focused checks cover scoped publication, read-back integrity, binary/CRLF restoration, expiry, invalidation, explicit renewal, exact selectors, source-span validation, AST headers, bounded command capture, source-safe batch preparation, materialized packet sizing and final MCP overhead. `tests/push_end_to_end.rs` exercises normal native discovery/dispatch, authenticated-scope owner checks, HTTP route dispatch, CLI restoration, reopening the store, tampering, expiry and registry revocation in a disposable binding.
+
+The final Push canon contains 26 committed atoms. PSH-025 adds consumer-qualified offload admission; PSH-026 adds declared-lease retention under bounded storage. These are distinct from existing recovery, capacity-selection and expiry semantics and therefore remain explicit canon capabilities rather than being folded into older atoms.
 
 That route-level test is not a claim of successful installation in Claude Code, Codex, CodeRight or a customer's machine. Full Windows/macOS installation qualification, learned/query-aware held-out quality, provider-usage joins and broad host interception must remain pending until measured. No release gate is closed merely because this branch compiles or a new unit test passes.
