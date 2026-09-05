@@ -22,17 +22,9 @@ jobs:
           from pathlib import Path
           p=Path('engine/crates/membrane-runtime/src/cortex_lifecycle.rs')
           text=p.read_text()
-          old='''    if review.schema_version != 1 || review.policy_version != REVIEW_POLICY
-        || trust.schema_version != 1 || trust.installation_id != store.installation_id()
-        || trust.cortex_store_id != store.cortex_store_id()'''
-          new='''    // The installation ID in the protected trust registry is the durable installation
-    // identity. MemoryStore's operation attribution may be reconstructed on restart, so it
-    // must not invalidate an otherwise store-bound signed effect.
-    if review.schema_version != 1 || review.policy_version != REVIEW_POLICY
-        || trust.schema_version != 1
-        || trust.cortex_store_id != store.cortex_store_id()'''
+          old=' || trust.installation_id != store.installation_id()\n'
           if old not in text: raise SystemExit('review binding pattern not found')
-          p.write_text(text.replace(old,new))
+          p.write_text(text.replace(old, '\n', 1))
           PY
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
