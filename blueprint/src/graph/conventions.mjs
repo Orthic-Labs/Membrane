@@ -23,12 +23,20 @@ function weakEvidence(kind, claim, support, total, examples, counterexamples) {
   };
 }
 
+function isTestPath(path) {
+  return /(^|\/)(?:tests?|__tests__)(\/|$)|(?:^|[._-])(?:test|spec)\.[^.]+$/i.test(path);
+}
+
 /** Descriptive convention mining only. Counterexamples are first-class. */
 export function detectProjectConventions(files = [], { minimumExamples = 3, minimumCoverage = 0.75 } = {}) {
   const paths = files.map((file) => normalizePath(file.path)).filter(Boolean);
   const evidence = [];
 
-  const sourcePaths = paths.filter((path) => /\.[A-Za-z0-9]+$/.test(path));
+  // Production filename conventions and test-placement conventions are distinct
+  // populations. Mixing *.test/spec paths into ordinary source naming makes the
+  // inferred production style depend on test framework suffixes rather than the
+  // repository's source convention.
+  const sourcePaths = paths.filter((path) => /\.[A-Za-z0-9]+$/.test(path) && !isTestPath(path));
   const styles = new Map();
   for (const path of sourcePaths) {
     const name = path.split("/").at(-1);
@@ -44,7 +52,7 @@ export function detectProjectConventions(files = [], { minimumExamples = 3, mini
     if (row.coverage >= minimumCoverage) evidence.push(row);
   }
 
-  const testPaths = paths.filter((path) => /(^|\/)(?:tests?|__tests__)(\/|$)|(?:^|[._-])(?:test|spec)\.[^.]+$/i.test(path));
+  const testPaths = paths.filter(isTestPath);
   if (testPaths.length >= minimumExamples) {
     const directoryTests = testPaths.filter((path) => /(^|\/)(?:tests?|__tests__)(\/|$)/i.test(path));
     const colocated = testPaths.filter((path) => !directoryTests.includes(path));
