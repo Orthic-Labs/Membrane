@@ -26,6 +26,7 @@ import { diagnosticsRequest } from "./lib/diagnostics-client.mjs";
 import { federatePayload } from "./client.mjs";
 import { pushRequest } from "./push-client.mjs";
 import { prepareToolEgress } from "./host/push-tool-egress.mjs";
+import { MAX_PUSH_REQUEST_BYTES } from "./push-limits.mjs";
 
 const PROTOCOL_URI = "membrane://protocol/v1";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -233,8 +234,8 @@ async function hasCatalogChildGrant(callerBinding, targetBinding) {
   catch { return false; }
   return hasExplicitChildGrant(catalog, callerBinding.repository_id, targetBinding.repository_id, grants);
 }
-async function authorize(args, action) {
-  if (!args || typeof args !== "object" || byteLength(args) > MAX_REQUEST_BYTES) throw new Error("request exceeds bounded 32768-byte limit");
+async function authorize(args, action, maxRequestBytes = MAX_REQUEST_BYTES) {
+  if (!args || typeof args !== "object" || byteLength(args) > maxRequestBytes) throw new Error(`request exceeds bounded ${maxRequestBytes}-byte limit`);
   if (typeof args.repository !== "string" || !args.repository.trim()) throw new Error("repository is required");
   const binding = await bindingFor(args.repository);
   const caller = args.caller;
@@ -953,7 +954,11 @@ async function callTool(name, args, trace = {}, lifecycle) {
     await lifecycle?.checkpoint("packet_ready", 90);
     return { ...packet, working_contexts: workingContexts };
   }
-  if (name === "membrane_push_prepare" || name === "membrane_push_resolve") {
+  if (name === "membrane_push_prepare") {
+    const binding = await authorize(args, "source_read", MAX_PUSH_REQUEST_BYTES);
+    return pushRequest(name, args, { env: await bindingEnv(binding), signal: lifecycle?.signal });
+  }
+  if (name === "membrane_push_resolve") {
     const binding = await authorize(args, "source_read");
     return pushRequest(name, args, { env: await bindingEnv(binding), signal: lifecycle?.signal });
   }
