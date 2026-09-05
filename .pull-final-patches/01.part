@@ -1,0 +1,195 @@
+--- a/engine/crates/membrane-federation/src/blueprint_client.rs
++++ b/engine/crates/membrane-federation/src/blueprint_client.rs
+@@ -751,8 +751,12 @@
+     //
+     // They are carried on `payload`, which is kept whole below, so removing
+     // them here loses nothing.
+-    const BLUEPRINT_PROVENANCE_KEYS: [&str; 3] =
+-        ["recallCircuitId", "evidencePathId", "evidenceEnvelope"];
++    const BLUEPRINT_PROVENANCE_KEYS: [&str; 4] = [
++        "recallCircuitId",
++        "evidencePathId",
++        "evidenceEnvelope",
++        "sourceResolution",
++    ];
+     let typed = candidates
+         .iter()
+         .cloned()
+--- a/engine/crates/membrane-federation/src/corrective.rs
++++ b/engine/crates/membrane-federation/src/corrective.rs
+@@ -183,8 +183,13 @@
+ #[serde(rename_all = "snake_case")]
+ pub enum RequirementCoverageStateV1 {
+     Satisfied,
++    Partial,
+     Missing,
++    Contradictory,
++    Stale,
++    Unsafe,
+     Unavailable,
++    NotEvaluated,
+ }
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+@@ -792,6 +797,7 @@
+                 .collect(),
+             warnings: Vec::new(),
+             omissions: Vec::new(),
++            extensions: BTreeMap::new(),
+         }
+     }
+ 
+--- a/engine/crates/membrane-federation/src/engine.rs
++++ b/engine/crates/membrane-federation/src/engine.rs
+@@ -224,11 +224,20 @@
+         // state at the packet-emission boundary (§17.2).
+         let publication_fence = validated_fence_for_request(request)?;
+         let query = source_query(&normalized);
+-
+-        // Owner bindings happen before any provider task is created.
++        // One absolute deadline covers owner binding, provider work, corrective
++        // retrieval, and response assembly. Preflight never gets a fresh budget.
++        let deadline = Deadline::from_budget(&SystemClock, normalized.deadline);
++        let request_cancellation = cancellation.clone();
++
++        // Owner bindings happen before any provider task is created, but they
++        // consume the same inherited deadline and cancellation token.
+         let release = self.bind_release(normalized.release_generation.as_deref())?;
+-        let freshness = self.bind_freshness(&query, release.clone()).await?;
+-        let scope_grant = self.bind_scope(&normalized, &query).await?;
++        let freshness = self
++            .bind_freshness(&query, release.clone(), deadline, request_cancellation.clone())
++            .await?;
++        let scope_grant = self
++            .bind_scope(&normalized, &query, deadline, request_cancellation.clone())
++            .await?;
+         // Every provider output is admitted only when its generation equals
+         // this one, and a provider answers with the content identity of what
+         // it indexed — not with the Membrane build's release sha256. Checking
+@@ -244,7 +253,6 @@
+             .as_deref()
+             .or(normalized.release_generation.as_deref());
+ 
+-        let deadline = Deadline::from_budget(&SystemClock, normalized.deadline);
+         let provider_context = ProviderContext::new(
+             normalized.request_id.clone(),
+             normalized.repository_root.clone(),
+@@ -462,6 +470,10 @@
+                     .unwrap_or(serde_json::Value::Null),
+             );
+         }
++        response.extensions.insert(
++            "freshnessSnapshot".to_owned(),
++            serde_json::to_value(&freshness.snapshot).unwrap_or(serde_json::Value::Null),
++        );
+         Ok(response)
+     }
+ 
+@@ -486,21 +498,33 @@
+         &self,
+         query: &SourceQuery,
+         release: ReleaseBinding,
++        deadline: Deadline,
++        cancellation: CancellationToken,
+     ) -> Result<FreshnessBinding, FederationEngineError> {
+         let Some(source) = self.sources.freshness.as_deref() else {
+-            return Err(FederationEngineError::Freshness(
+-                "source_missing".to_owned(),
+-            ));
++            return Err(FederationEngineError::Freshness("source_missing".to_owned()));
+         };
+-        FreshnessBinding::acquire(source, query, Some(release))
+-            .await
+-            .map_err(|error| FederationEngineError::Freshness(error.to_string()))
++        let remaining = deadline.remaining(&SystemClock);
++        if remaining.is_zero() {
++            return Err(FederationEngineError::Freshness("deadline_exhausted".to_owned()));
++        }
++        tokio::select! {
++            _ = cancellation.cancelled() => Err(FederationEngineError::Freshness("cancelled".to_owned())),
++            result = tokio::time::timeout(remaining, FreshnessBinding::acquire(source, query, Some(release))) => {
++                match result {
++                    Ok(value) => value.map_err(|error| FederationEngineError::Freshness(error.to_string())),
++                    Err(_) => Err(FederationEngineError::Freshness("deadline_exhausted".to_owned())),
++                }
++            }
++        }
+     }
+ 
+     async fn bind_scope(
+         &self,
+         request: &NormalizedFederationRequest,
+         query: &SourceQuery,
++        deadline: Deadline,
++        cancellation: CancellationToken,
+     ) -> Result<Option<membrane_provider_sdk::source::ScopeGrantView>, FederationEngineError> {
+         let Some(grant_id) = request.scope_grant_id.as_deref() else {
+             return Ok(None);
+@@ -508,10 +532,19 @@
+         let Some(source) = self.sources.scope_grant.as_deref() else {
+             return Err(FederationEngineError::Scope("source_missing".to_owned()));
+         };
+-        let response = source
+-            .grant(query)
+-            .await
+-            .map_err(|error| FederationEngineError::Scope(error.to_string()))?;
++        let remaining = deadline.remaining(&SystemClock);
++        if remaining.is_zero() {
++            return Err(FederationEngineError::Scope("deadline_exhausted".to_owned()));
++        }
++        let response = tokio::select! {
++            _ = cancellation.cancelled() => return Err(FederationEngineError::Scope("cancelled".to_owned())),
++            result = tokio::time::timeout(remaining, source.grant(query)) => {
++                match result {
++                    Ok(value) => value.map_err(|error| FederationEngineError::Scope(error.to_string()))?,
++                    Err(_) => return Err(FederationEngineError::Scope("deadline_exhausted".to_owned())),
++                }
++            }
++        };
+         if !response.complete {
+             return Err(FederationEngineError::Scope("source_incomplete".to_owned()));
+         }
+@@ -519,7 +552,7 @@
+         if grant.id != grant_id
+             || grant.repository_id != request.repository_id
+             || grant.repository_root != request.repository_root
+-            || grant.task_id != request.task
++            || grant.task_id != request.task_id
+             || grant.session_id != request.session_id
+             || request
+                 .manifest_digest
+--- a/engine/crates/membrane-federation/src/lib.rs
++++ b/engine/crates/membrane-federation/src/lib.rs
+@@ -31,6 +31,7 @@
+     pub mod cortex;
+     pub mod git;
+     pub mod live_files;
++    pub mod ledger;
+     pub mod rules;
+     pub mod skills;
+ }
+--- a/engine/crates/membrane-federation/src/merge.rs
++++ b/engine/crates/membrane-federation/src/merge.rs
+@@ -520,7 +520,7 @@
+         warnings: provider.warnings.clone(),
+         omissions: provider.omissions.clone(),
+         diagnostics: None,
+-        extensions: BTreeMap::new(),
++        extensions: provider.extensions.clone(),
+     }
+ }
+ 
+--- a/engine/crates/membrane-federation/src/normalize.rs
++++ b/engine/crates/membrane-federation/src/normalize.rs
+@@ -62,6 +62,8 @@
+     pub candidates: Vec<NormalizedCandidate>,
+     pub warnings: Vec<ProviderWarningV1>,
+     pub omissions: Vec<ProviderOmissionV1>,
++    /// Provider-owned compatible metadata retained through normalization.
++    pub extensions: BTreeMap<String, serde_json::Value>,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+@@ -168,6 +170,7 @@
+         candidates,
+         warning
