@@ -554,6 +554,21 @@ enum PushPrepPolicyArg {
 
 #[derive(Subcommand)]
 enum PushCmd {
+    /// Explicit local retention change; restore never renews a lease.
+    Lease {
+        anchor: String,
+        #[arg(long)] expected_expiry: Option<u64>,
+        #[arg(long, conflicts_with="invalidate")] renew_ms: Option<u64>,
+        #[arg(long)] invalidate: bool,
+        #[arg(long)] spill_dir: Option<PathBuf>,
+    },
+    /// Shared reversible preparation for an already-executed tool result.
+    Prepare {
+        /// Read a PushPrepareRequest JSON file, or stdin when omitted.
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
+
     Runc {
         #[arg(long, default_value_t = 20)]
         head: usize,
@@ -563,6 +578,9 @@ enum PushCmd {
         spill_dir: Option<String>,
         #[arg(long)]
         opportunity: Option<String>,
+        /// Explicit compatibility mode; expects exactly one shell command string.
+        #[arg(long)]
+        shell: bool,
         #[arg(last = true, required = true)]
         cmd: Vec<String>,
     },
@@ -618,7 +636,12 @@ enum PushCmd {
     Restore {
         anchor: String,
         #[arg(long)]
-        spill_dir: PathBuf,
+        spill_dir: Option<PathBuf>,
+        /// JSON typed selector; defaults to the whole bounded original.
+        #[arg(long)]
+        selector: Option<String>,
+        #[arg(long, default_value_t = 65536)]
+        max_bytes: usize,
     },
 }
 
@@ -3590,14 +3613,56 @@ fn select_push_representation(
     }))
 }
 
+fn publish_cli_push_original(original: &[u8], rendered: &str) -> Result<(), String> {
+    if original == rendered.as_bytes() { return Ok(()); }
+    let store = crate::push::recovery::RecoveryStore::configured();
+    let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+    let reference = store.publish(&scope, original, 7*24*60*60*1000, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
+    eprintln!("[push-recovery] {}", serde_json::to_string(&reference).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
 fn run_push(command: PushCmd) -> Result<(), String> {
     match command {
+        PushCmd::Lease { anchor, expected_expiry, renew_ms, invalidate, spill_dir } => {
+            let store = crate::push::recovery::RecoveryStore::at(spill_dir.unwrap_or_else(crate::push::recovery::default_directory));
+            let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+            if invalidate {
+                store.invalidate(&scope, &anchor).map_err(|e| e.to_string())?;
+                println!("{}", serde_json::json!({"anchor":anchor,"state":"invalidated"}));
+            } else {
+                let ttl = renew_ms.ok_or("--renew-ms or --invalidate is required")?;
+                let expected = expected_expiry.ok_or("--expected-expiry is required for renewal")?;
+                let reference = store.renew(&scope, &anchor, expected, ttl, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
+                println!("{}", serde_json::to_string(&reference).map_err(|e| e.to_string())?);
+            }
+            Ok(())
+        }
+        PushCmd::Prepare { input } => {
+            let mut bytes = Vec::new();
+            let mut reader: Box<dyn std::io::Read> = match input {
+                Some(path) => Box::new(std::fs::File::open(path).map_err(|e| e.to_string())?),
+                None => Box::new(std::io::stdin()),
+            };
+            reader.by_ref().take((crate::push::recovery::MAX_ARTIFACT_BYTES + 1) as u64).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+            if bytes.len() > crate::push::recovery::MAX_ARTIFACT_BYTES { return Err("push_input_limit".into()); }
+            let mut request: crate::push::delivery::PrepareRequest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            let store = crate::push::recovery::RecoveryStore::configured();
+            let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+            // The same installed executable exposes restore; no model-supplied
+            // resolver claim is accepted as proof on the local CLI seam.
+            let probe = crate::push::delivery::resolver_probe(&store, &scope).map_err(|e| e.to_string())?;
+            request.resolver_token = probe["resolverToken"].as_str().map(str::to_owned);
+            let result = crate::push::delivery::prepare(&store, &scope, request).map_err(|e| e.to_string())?;
+            println!("{}", serde_json::to_string(&result).map_err(|e| e.to_string())?);
+            Ok(())
+        }
         PushCmd::Skel {
             file,
             budget,
             opportunity,
         } => {
-            let src = std::fs::read_to_string(&file).map_err(|error| {
+            let src = crate::push::recovery::read_text_bounded(&file).map_err(|error| {
                 crate::push::telemetry::record(
                     "skel",
                     0,
@@ -3633,6 +3698,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 Some(&meta),
                 opportunity.as_deref(),
             );
+            publish_cli_push_original(src.as_bytes(), &out)?;
             print!("{out}");
             Ok(())
         }
@@ -3646,7 +3712,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             let mut input = String::new();
             match file {
                 Some(path) => {
-                    input = std::fs::read_to_string(path).map_err(|error| {
+                    input = crate::push::recovery::read_text_bounded(&path).map_err(|error| {
                         crate::push::telemetry::record(
                             "compress",
                             0,
@@ -3658,11 +3724,12 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     })?;
                 }
                 None => {
-                    std::io::stdin()
+                    std::io::stdin().take((crate::push::recovery::MAX_ARTIFACT_BYTES+1) as u64)
                         .read_to_string(&mut input)
                         .map_err(|error| error.to_string())?;
                 }
             }
+            if input.len() > crate::push::recovery::MAX_ARTIFACT_BYTES { return Err("push_input_limit".into()); }
             let (out, meta) = if let Some(budget) = budget {
                 let result =
                     crate::push::compress::compress_to_budget_with_options(&input, budget, no_onnx);
@@ -3690,6 +3757,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 Some(&meta),
                 opportunity.as_deref(),
             );
+            publish_cli_push_original(input.as_bytes(), &out)?;
             print!("{out}");
             Ok(())
         }
@@ -3737,16 +3805,22 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             tail,
             spill_dir,
             opportunity,
+            shell,
             cmd,
         } => {
-            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(|| {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| home())
-                    .join(".cache")
-                    .join("runc")
-            });
-            let command_line = cmd.join(" ");
-            let result = crate::push::runc::run_capped(&command_line, head, tail, &directory)
+            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(crate::push::recovery::default_directory);
+            let result = if shell {
+                if cmd.len() != 1 { return Err("--shell requires exactly one explicitly quoted command string".into()); }
+                crate::push::runc::run_capped(&cmd[0], head, tail, &directory)
+            } else {
+                let (program, arguments) = cmd.split_first().ok_or("command required")?;
+                let adapter = if program.eq_ignore_ascii_case("git") || program.eq_ignore_ascii_case("git.exe") {
+                    crate::push::runc::CommandAdapter::Git
+                } else { crate::push::runc::CommandAdapter::RepositoryTestRunner };
+                crate::push::runc::run_adapter_capped(adapter, &crate::push::recovery::workspace_root(),
+                    std::ffi::OsStr::new(program), &arguments.iter().map(std::ffi::OsString::from).collect::<Vec<_>>(),
+                    head, tail, &directory).map_err(|e| e.to_string())
+            }
                 .map_err(|error| {
                     crate::push::telemetry::record(
                         "runc",
@@ -3762,13 +3836,13 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 .as_deref()
                 .and_then(|path| std::fs::metadata(path).ok())
                 .map(|metadata| metadata.len() as usize)
-                .unwrap_or_else(|| result.capped.chars().count());
+                .unwrap_or_else(|| result.capped.len());
             let status = if result.exit_code == 0 { "ok" } else { "error" };
             let metadata = format!("status={status};exit_code={}", result.exit_code);
             crate::push::telemetry::record(
                 "runc",
                 before,
-                result.capped.chars().count(),
+                result.capped.len(),
                 Some(&metadata),
                 opportunity.as_deref(),
             );
@@ -3784,7 +3858,7 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     serde_json::to_string(marker).map_err(|error| error.to_string())?
                 );
             }
-            println!("[anchor] {}", result.anchor);
+            if !result.anchor.is_empty() { println!("[anchor] {}", result.anchor); }
             if let Some(path) = result.spill_path {
                 eprintln!("runc: exit={} full={}", result.exit_code, path.display());
             } else {
@@ -3792,24 +3866,15 @@ fn run_push(command: PushCmd) -> Result<(), String> {
             }
             std::process::exit(result.exit_code);
         }
-        PushCmd::Restore { anchor, spill_dir } => {
-            let digest = crate::ledger::identifier::AnchorRef::parse(&anchor)
-                .map_err(|error| format!("invalid anchor: {error}"))?
-                .digest();
-            let root = spill_dir
-                .canonicalize()
-                .map_err(|error| format!("anchor store unavailable: {error}"))?;
-            let file = root
-                .join(format!("{digest}.log"))
-                .canonicalize()
-                .map_err(|_| "anchor not found".to_string())?;
-            if !file.starts_with(&root) || !file.is_file() {
-                return Err("anchor not found".into());
-            }
-            print!(
-                "{}",
-                std::fs::read_to_string(file).map_err(|_| "anchor unreadable")?
-            );
+        PushCmd::Restore { anchor, spill_dir, selector, max_bytes } => {
+            let store = crate::push::recovery::RecoveryStore::at(spill_dir.unwrap_or_else(crate::push::recovery::default_directory));
+            let scope = crate::push::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+            let selector = match selector {
+                Some(raw) => serde_json::from_str(&raw).map_err(|e| format!("invalid selector: {e}"))?,
+                None => crate::push::recovery::Selector::Whole,
+            };
+            let resolved = store.resolve(&scope, &anchor, &selector, max_bytes, crate::push::recovery::now_ms()).map_err(|e| e.to_string())?;
+            std::io::stdout().write_all(&resolved.bytes().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             Ok(())
         }
     }
@@ -6029,6 +6094,7 @@ mod tests {
                 tail: 1,
                 spill_dir: None,
                 opportunity: None,
+                shell: false,
                 cmd: vec!["true".into()],
             },
         }));

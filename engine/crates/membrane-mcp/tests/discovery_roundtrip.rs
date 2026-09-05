@@ -10,7 +10,7 @@ fn discovery_matches_initialize_contract() {
         initialize_response()["protocolVersion"]
     );
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
-    assert_eq!(discovery["tools"].as_array().unwrap().len(), 17);
+    assert_eq!(discovery["tools"].as_array().unwrap().len(), 19);
 }
 
 #[test]
@@ -46,4 +46,15 @@ fn tool_calls_are_typed_and_never_use_legacy_fallback() {
         response["result"]["structuredContent"]["result"]["code"],
         "context_unavailable"
     );
+}
+
+#[test]
+fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
+    let response = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":["push"]}}})).unwrap();
+    let tools = response["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(),3);
+    assert!(tools.iter().any(|v| v["name"] == "membrane_push_resolve" && v["inputSchema"]["properties"]["selector"]["oneOf"].as_array().unwrap().len() == 4));
+    assert!(tools.iter().any(|v| v["name"] == "membrane_push_prepare"));
+    let default = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).unwrap();
+    assert_eq!(default["result"]["tools"].as_array().unwrap().len(),1);
 }

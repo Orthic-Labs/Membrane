@@ -24,6 +24,8 @@ import { executeCodeBatch } from "../schemas/registry/code/mbr402-batch.mjs";
 import { requestBlueprint } from "./blueprint-readiness.mjs";
 import { diagnosticsRequest } from "./lib/diagnostics-client.mjs";
 import { federatePayload } from "./client.mjs";
+import { pushRequest } from "./push-client.mjs";
+import { prepareToolEgress } from "./host/push-tool-egress.mjs";
 
 const PROTOCOL_URI = "membrane://protocol/v1";
 const MAX_REQUEST_BYTES = 32 * 1024;
@@ -77,6 +79,11 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_diagnostic_baseline", description: "Capture or update a named diagnostics baseline for a workspace session; subsequent snapshot deltas classify issues as new, persistent, resolved, moved, changed, or unknown_baseline against it.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId", "name"], additionalProperties: false, properties: { operation: { type: "string", enum: ["capture", "update"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, name: { type: "string", minLength: 1, maxLength: 128 } } } },
   { name: "membrane_diagnostic_provider", description: "List qualified providers (capabilities view), read resident supervisor health/status, or restart one supervised engine by workspace-engine key digest. list/status are read-only views; restart is a lifecycle action performed by the resident supervisor.", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["list", "status", "restart"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, projectRoot: { type: "string", minLength: 1, maxLength: 1024 }, keyDigest: { type: "string", minLength: 1, maxLength: 256, description: "WorkspaceEngineKey digest identifying the engine to restart." } }, oneOf: [{ properties: { operation: { const: "restart" } }, required: ["keyDigest", "repoId", "worktreeId"] }, { properties: { operation: { enum: ["list", "status"] } }, not: { required: ["keyDigest"] } }] } },
 ];
+TOOL_DEFINITIONS.push(...JSON.parse(await readFile(new URL("../schemas/registry/push-tools.v1.json", import.meta.url), "utf8")));
+const contextDefinition = TOOL_DEFINITIONS.find((tool) => tool.name === "membrane_context");
+contextDefinition.inputSchema.properties.remainingContextCeiling = { type: "object", description: "Host-observed RemainingContextCeilingV1; never inferred by the model." };
+contextDefinition.inputSchema.properties.pushResolverToken = { type: "string", minLength: 64, maxLength: 64 };
+contextDefinition.inputSchema.required.push("remainingContextCeiling");
 const TOOLS = TOOL_DEFINITIONS.map((tool) => ({
   ...tool,
   inputSchema: { ...tool.inputSchema, additionalProperties: false },
@@ -877,7 +884,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
           hasExplicitChildGrant: hasGrant,
         });
         if (!effectiveLevel) return deniedRow(entry);
-        const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: workspaceEnvelope.taskEnvelope, turnEnvelope: workspaceEnvelope.turnEnvelope, clientEnvelope: workspaceEnvelope.clientEnvelope, overlay: workspaceEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, ...trace };
+        const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: workspaceEnvelope.taskEnvelope, turnEnvelope: workspaceEnvelope.turnEnvelope, clientEnvelope: workspaceEnvelope.clientEnvelope, overlay: workspaceEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, remainingContextCeiling: args.remainingContextCeiling, pushResolverToken: args.pushResolverToken, ...trace };
         const packet = await federatePayload(request, { env: { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, signal: lane.signal });
         const reason = terminalReason(lane.signal);
         if (reason) return { row: { repoId: entry.repoId, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
@@ -915,7 +922,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
     // Single-repo path (default).
     await lifecycle?.checkpoint("provider_dispatch", 40);
     const singleEnvelope = requestEnvelopeFor(args);
-    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, ...trace };
+    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay, sufficiencyContract: args.sufficiencyContract, remainingContextCeiling: args.remainingContextCeiling, pushResolverToken: args.pushResolverToken, ...trace };
     const packet = await federatePayload(request, { env: { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root }, signal: lifecycle?.signal });
     if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
     if (args.session && args.taskId && packet.ok === true && packet.packet && typeof packet.packet === "object") {
@@ -944,6 +951,10 @@ async function callTool(name, args, trace = {}, lifecycle) {
     });
     await lifecycle?.checkpoint("packet_ready", 90);
     return { ...packet, working_contexts: workingContexts };
+  }
+  if (name === "membrane_push_prepare" || name === "membrane_push_resolve") {
+    const binding = await authorize(args, "source_read");
+    return pushRequest(name, args, { env: await bindingEnv(binding), signal: lifecycle?.signal });
   }
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
@@ -1172,7 +1183,18 @@ export function buildServer({ shutdownSignal } = {}) {
       try {
         const result = await withCancellationGrace(() => callTool(tool.name, args, trace, lifecycle), { signal: requestSignal });
         await lifecycle.complete();
-        return structuredResult(result, trace);
+        const rendered = structuredResult(result, trace);
+        const push = ctx.mcpReq._meta?.["membrane.push.v1"];
+        // Only our own declared output boundary and an explicit consumer proof.
+        // A plain MCP installation is not an external-tool interception claim.
+        if (push && !tool.name.startsWith("membrane_push_") && tool.name !== "membrane_source_read" && !tool.name.startsWith("membrane_diagnostic_") && args.caller && args.repository) {
+          const binding = await authorize(args, "source_read");
+          const prepared = await prepareToolEgress(rendered, { repository:args.repository, caller:args.caller },
+            { resolverToken:push.resolverToken, maxBytes:push.maxBytes, kind:push.kind || "text", env:await bindingEnv(binding), signal:requestSignal });
+          if (prepared.state === "refused") throw new Error("push_final_envelope_capacity_refused");
+            return prepared.result;
+        }
+        return rendered;
       } catch (error) {
         if (requestSignal.aborted) await lifecycle.cancelled();
         return typedErrorResult(error);

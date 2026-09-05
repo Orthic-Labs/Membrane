@@ -16,6 +16,8 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "membrane_push_prepare",
+    "membrane_push_resolve",
 ];
 const DIAGNOSTIC: &[&str] = &[
     "membrane_diagnostic_workspace",
@@ -62,6 +64,10 @@ fn remaining_context_ceiling() -> Value {
 }
 
 fn schema(name: &str) -> Value {
+    if name.starts_with("membrane_push_") {
+        let definitions: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
+        return definitions.as_array().unwrap().iter().find(|v| v["name"] == name).expect("Push tool registered")["inputSchema"].clone();
+    }
     let (required, properties) = match name {
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
@@ -69,7 +75,7 @@ fn schema(name: &str) -> Value {
             // Leaving it undeclared made the one entry tool impossible to call
             // correctly from its own schema.
             vec!["task", "repository", "caller", "remainingContextCeiling"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling()}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
         ),
         "membrane_source_read" => (
             vec![
@@ -129,7 +135,8 @@ fn schema(name: &str) -> Value {
 }
 fn annotations(name: &str) -> Value {
     match name {
-        "membrane_context"
+        "membrane_push_resolve"
+        | "membrane_context"
         | "membrane_source_read"
         | "membrane_blueprint"
         | "membrane_diagnostic_fence"
@@ -147,6 +154,10 @@ pub(crate) fn definitions() -> Value {
         CORE.iter()
             .chain(DIAGNOSTIC)
             .map(|name| {
+                if name.starts_with("membrane_push_") {
+                    let entries: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
+                    return entries.as_array().unwrap().iter().find(|v| v["name"] == *name).unwrap().clone();
+                }
                 json!({
                   "name":name,"description":format!("Native Membrane handler for {name}."),
                   "inputSchema":schema(name),"annotations":annotations(name)
@@ -161,7 +172,7 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let mut result = Vec::new();
     for value in list {
         let group = value.as_str()?;
-        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic")
+        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "push")
             || !seen.insert(group)
         {
             return None;
@@ -174,7 +185,8 @@ pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
     let mut names = vec!["membrane_context"];
     for group in requested(params).unwrap_or_default() {
         let additions: &[&str] = match group {
-            "memory" => &CORE[3..],
+            "memory" => &CORE[3..10],
+            "push" => &CORE[10..],
             "blueprint" => &CORE[1..3],
             "diagnostic" => DIAGNOSTIC,
             _ => &[],
@@ -224,6 +236,11 @@ pub fn install_executor(
 ) -> Result<(), Arc<dyn NativeMcpExecutor>> {
     EXECUTOR.set(executor)
 }
+/// Canonical result serializer shared with runtime final-wire measurement.
+pub fn tool_result(result: Value) -> Value {
+    let is_error = result.pointer("/result/kind").and_then(Value::as_str) != Some("success");
+    json!({"content":[{"type":"text","text":result.to_string()}],"structuredContent":result,"isError":is_error})
+}
 /// Typed fail-closed seam. No interpreter fallback is ever attempted.
 pub(crate) fn call(name: &str, arguments: &Value) -> Value {
     if !CORE.contains(&name) && !DIAGNOSTIC.contains(&name) {
@@ -231,8 +248,7 @@ pub(crate) fn call(name: &str, arguments: &Value) -> Value {
     }
     if let Some(executor) = EXECUTOR.get() {
         let result = executor.execute(name, arguments);
-        let is_error = result.pointer("/result/kind").and_then(Value::as_str) != Some("success");
-        return json!({"content":[{"type":"text","text":result.to_string()}],"structuredContent":result,"isError":is_error});
+        return tool_result(result);
     }
     let (code, message) = if !arguments.is_object() {
         (invalid_envelope_code(name), "arguments must be an object")

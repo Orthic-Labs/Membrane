@@ -113,7 +113,7 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
         "membrane_context" | "membrane_blueprint" => "context",
-        "membrane_source_read" => "source_read",
+        "membrane_source_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_checkpoint_save" => "checkpoint",
         "membrane_checkpoint_load" => "checkpoint_load",
         "membrane_working_context" => {
@@ -554,6 +554,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             }
         }
         match name {
+            "membrane_push_prepare" | "membrane_push_resolve" => crate::push::api::execute(name, arguments),
             "membrane_context" => {
                 let task = arguments
                     .get("task")
@@ -592,6 +593,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 if let Some(ceiling) = arguments.get("remainingContextCeiling").cloned() {
                     body["remainingContextCeiling"] = ceiling;
                 }
+                if let Some(token) = arguments.get("pushResolverToken").and_then(Value::as_str) {
+                    body["pushResolverToken"] = json!(token);
+                }
                 let request = match serde_json::to_string(&body)
                     .map_err(|_| error(name, "context_envelope_invalid", "request is invalid"))
                 {
@@ -628,32 +632,37 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     };
                     return error(name, "context_unavailable", detail);
                 }
-                let packet = federated.get("packet").cloned().unwrap_or(Value::Null);
-                let candidates = federated
-                    .pointer("/packet/blocks")
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                let receipts = federated.get("receipts").cloned().unwrap_or(Value::Null);
-                let degradation_reason = federated
-                    .get("degradationReason")
-                    .filter(|value| !value.is_null())
-                    .cloned()
-                    .unwrap_or_else(|| json!("none"));
-                success(
-                    name,
-                    json!({
-                        "repositoryId":repository,
-                        "scopeId":scope,
-                        "status":status,
-                        "packet":packet,
-                        "candidates":candidates,
-                        "receipts":receipts,
-                        "degradationReason":degradation_reason,
+                let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 = match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
+                    Ok(value) => value, Err(_) => return error(name,"context_capacity_invalid","validated H8 is required"),
+                };
+                let selection: crate::push::selection::PacketReductionSelectionV1 = match serde_json::from_value(federated["packetReduction"].clone()) {
+                    Ok(value) => value, Err(_) => return error(name,"context_selection_invalid","selection receipt is required"),
+                };
+                // Reuse the already validated ladder; no provider re-execution,
+                // guessed ceiling, or post-fit silent truncation is permitted.
+                for representation in &selection.plan.representations {
+                    if representation.tokens > ceiling.remaining_tokens.estimate.value.unwrap_or(0) { continue; }
+                    let mut receipt = selection.selection_receipt.clone();
+                    receipt.selected_representation_id = representation.id.clone();
+                    receipt.selected_tokens = representation.tokens;
+                    let candidates = representation.content["blocks"].as_array().cloned().unwrap_or_default();
+                    let result = success(name, json!({
+                        "repositoryId":repository,"scopeId":scope,"status":status,
+                        "packet":representation.content,
+                        "candidates":candidates.iter().map(|b| json!({"id":b.get("id"),"resolver":b.get("resolver")})).collect::<Vec<_>>(),
+                        "receipts":federated.get("receipts"),"packetReduction":receipt,
+                        "degradationReason":federated.get("degradationReason").filter(|v| !v.is_null()).cloned().unwrap_or_else(|| json!("none")),
                         "sufficiencyEvaluated":arguments.get("sufficiencyContract").is_some(),
-                    }),
-                )
+                    }));
+                    match crate::push::egress::fit_native_response(result,&ceiling) {
+                        Ok(fitted) => return fitted,
+                        Err(crate::push::recovery::RecoveryError::Limit) => continue,
+                        Err(failure) => return error(name,"context_delivery_invalid",failure.to_string()),
+                    }
+                }
+                error(name,"context_delivery_capacity_exceeded","no complete measured MCP representation fits the observed capacity")
             }
+
             "membrane_source_read" => {
                 let source_ref = arguments
                     .get("sourceRef")

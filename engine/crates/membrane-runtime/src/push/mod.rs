@@ -22,3 +22,13 @@ pub use prep::{
 /// reports so every surface exposes the same six-axis vocabulary.
 pub const AXIS: &str = "push";
 pub const OPERATION_NAMESPACE: &str = "membrane.push";
+
+pub mod recovery;
+pub mod fidelity;
+pub mod delivery;
+pub mod ast;
+pub mod api;
+
+pub mod packet_selection;
+
+pub mod egress;

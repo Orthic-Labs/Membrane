@@ -353,10 +353,12 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             )));
         }
         let push_policy = push_policy_for_request(&value, task);
-        let selection = crate::push::selection::select_packet_for_h8_with_policy(
-            &packet,
-            &ceiling,
-            &push_policy,
+        let recovery_store = crate::push::recovery::RecoveryStore::configured();
+        let recovery_scope = crate::push::recovery::RecoveryScope::new(&root, &session).ok();
+        let recovery = recovery_scope.as_ref().and_then(|scope| value.get("pushResolverToken").and_then(Value::as_str).map(|token|
+            crate::push::selection::RecoveryContext {store:&recovery_store, scope, resolver_token:token}));
+        let selection = crate::push::selection::select_packet_for_h8_with_recovery(
+            &packet, &ceiling, &push_policy, recovery.as_ref(),
         )
         .map_err(NativeRouteError::RequestTime)?;
         let selected_content = selection.selected_representation.content.clone();
@@ -529,7 +531,9 @@ fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushP
         .and_then(Value::as_str)
         .is_some_and(|policy| policy.eq_ignore_ascii_case("queryAware"));
     if opts_into_query_aware && !task.trim().is_empty() {
-        crate::push::prep::PushPolicy::query_aware(task.to_owned(), true, true)
+        // A mode request is not admission/freshness proof. Until the owner
+        // supplies a receipt-bound policy, this is a terminal exact refusal.
+        crate::push::prep::PushPolicy::query_aware(task.to_owned(), false, false)
     } else {
         crate::push::prep::PushPolicy::Control
     }

@@ -185,10 +185,12 @@ fn read_capture_lane(
     let _ = sender.send(CaptureMessage::Finished);
 }
 
-fn capture_ordered(
+fn capture_ordered_with_control(
     stdout: impl Read + Send + 'static,
     stderr: impl Read + Send + 'static,
     spill_dir: &Path,
+    mut check: impl FnMut() -> Result<(), String>,
+    mut abort: impl FnMut(),
 ) -> Result<
     (
         OrderedCapture,
@@ -229,16 +231,24 @@ fn capture_ordered(
     let mut hasher = Sha256::new();
     let mut failure = None;
     while finished < 2 {
-        match receiver.recv() {
+        if let Err(reason) = check() { failure = Some(reason); break; }
+        match receiver.recv_timeout(std::time::Duration::from_millis(25)) {
             Ok(CaptureMessage::Chunk {
                 sequence,
                 lane,
                 bytes,
             }) => {
                 pending.insert(sequence, (lane, bytes));
+                if pending.len() > CAPTURE_CHANNEL_DEPTH * 2 {
+                    failure = Some("push_capture_reorder_limit".to_string()); break;
+                }
                 while let Some((_lane, bytes)) = pending.remove(&next_sequence) {
-                    file.write_all(&bytes)
-                        .map_err(|error| format!("ordered capture write failed: {error}"))?;
+                    if byte_count.saturating_add(bytes.len()) > super::recovery::MAX_ARTIFACT_BYTES {
+                        failure = Some("push_capture_byte_limit".to_string()); break;
+                    }
+                    if let Err(error) = file.write_all(&bytes) {
+                        failure = Some(format!("ordered capture write failed: {error}")); break;
+                    }
                     hasher.update(&bytes);
                     byte_count = byte_count.saturating_add(bytes.len());
                     newline_count = newline_count
@@ -252,10 +262,20 @@ fn capture_ordered(
                 finished += 1;
             }
             Ok(CaptureMessage::Finished) => finished += 1,
-            Err(_) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if finished < 2 { failure = Some("push_capture_incomplete".into()); }
+                break;
+            }
         }
+        if failure.is_some() { break; }
     }
     if let Some(reason) = failure {
+        abort();
+        drop(receiver);
+        let _ = stdout_thread.join();
+        let _ = stderr_thread.join();
+        drop(file);
         let _ = std::fs::remove_file(&path);
         return Err(reason);
     }
@@ -276,6 +296,12 @@ fn capture_ordered(
         stdout_thread,
         stderr_thread,
     ))
+}
+
+#[cfg(test)]
+fn capture_ordered(stdout: impl Read + Send + 'static, stderr: impl Read + Send + 'static, spill_dir: &Path)
+    -> Result<(OrderedCapture, std::thread::JoinHandle<()>, std::thread::JoinHandle<()>), String> {
+    capture_ordered_with_control(stdout, stderr, spill_dir, || Ok(()), || {})
 }
 
 struct LineWindow {
@@ -444,11 +470,12 @@ fn line_preview(
     Ok(window.finish().render())
 }
 
-fn publish_spill(
+fn publish_spill_scoped(
     capture: &OrderedCapture,
     head: usize,
     tail: usize,
     spill_dir: &Path,
+    scope: &super::recovery::RecoveryScope,
 ) -> Result<
     (
         String,
@@ -458,10 +485,28 @@ fn publish_spill(
     ),
     String,
 > {
-    let (capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
+    let (mut capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
         line_preview(capture, head, tail)?;
+    if dropped_len == 0 {
+        // Binary-only publication is not truncation; never print a fictitious
+        // zero-line elision marker for a complete lossy UTF-8 preview.
+        let bytes = std::fs::read(&capture.path).map_err(|e| e.to_string())?;
+        capped = String::from_utf8_lossy(&bytes).into_owned();
+    }
+    if capture.byte_count > super::recovery::MAX_ARTIFACT_BYTES { return Err("push_capture_byte_limit".into()); }
+    let original = std::fs::read(&capture.path).map_err(|e| format!("capture read: {e}"))?;
+    let retained = super::recovery::RecoveryStore::at(spill_dir).publish(scope, &original,
+        anchor_ttl_millis().min(u64::MAX as u128) as u64, super::recovery::now_ms()).map_err(|e| e.to_string())?;
     let digest = capture.digest.clone();
+    if retained.source_digest != format!("sha256:{digest}") { return Err("push_capture_corrupt".into()); }
     let path = spill_dir.join(format!("{digest}.log"));
+    if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > super::recovery::MAX_ARTIFACT_BYTES as u64 {
+            return Err("push_legacy_export_invalid".into());
+        }
+        let existing = std::fs::read(&path).map_err(|e| e.to_string())?;
+        if existing != original { return Err("push_legacy_export_corrupt".into()); }
+    }
     OpenOptions::new()
         .write(true)
         .open(&capture.path)
@@ -484,7 +529,7 @@ fn publish_spill(
         crate::time::now_millis()
     ));
     let created_at_millis = crate::time::now_millis();
-    let expires_at_millis = created_at_millis.saturating_add(anchor_ttl_millis());
+    let expires_at_millis = retained.expires_at as u128;
     let recovery = crate::push::compress::RecoveryMarkerV1 {
         schema_version: crate::push::compress::RECOVERY_MARKER_SCHEMA_VERSION,
         source_digest: format!("sha256:{digest}"),
@@ -521,6 +566,13 @@ fn publish_spill(
         .map_err(|error| format!("anchor metadata publish failed: {error}"))?;
     sync_spill_directory(spill_dir)?;
     Ok((capped, path, digest, recovery))
+}
+
+#[cfg(test)]
+fn publish_spill(capture: &OrderedCapture, head: usize, tail: usize, spill_dir: &Path)
+    -> Result<(String, PathBuf, String, super::compress::RecoveryMarkerV1), String> {
+    let scope = super::recovery::RecoveryScope::local().map_err(|e| e.to_string())?;
+    publish_spill_scoped(capture, head, tail, spill_dir, &scope)
 }
 
 fn sync_spill_directory(spill_dir: &Path) -> Result<(), String> {
@@ -765,55 +817,61 @@ fn validate_adapter(
     }
 }
 
-fn run_command_capped(
-    mut command: Command,
-    head: usize,
-    tail: usize,
-    spill_dir: &Path,
-) -> Result<RuncResult, String> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("spawn failed: {error}"))?;
-    let stdout = child.stdout.take().ok_or("stdout capture unavailable")?;
-    let stderr = child.stderr.take().ok_or("stderr capture unavailable")?;
-    let line_limit = head.saturating_add(tail);
-    let (capture, stdout_thread, stderr_thread) = capture_ordered(stdout, stderr, spill_dir)?;
-    let status = child
-        .wait()
-        .map_err(|error| format!("wait failed: {error}"))?;
-    stdout_thread
-        .join()
-        .map_err(|_| "stdout capture panicked".to_owned())?;
-    stderr_thread
-        .join()
-        .map_err(|_| "stderr capture panicked".to_owned())?;
+fn run_command_capped(command: Command, head: usize, tail: usize, spill_dir: &Path) -> Result<RuncResult, String> {
+    run_command_capped_with_limits(command, head, tail, spill_dir, std::time::Duration::from_secs(120), &tokio_util::sync::CancellationToken::new())
+}
 
-    let total_lines = capture.newline_count.saturating_add(usize::from(
-        capture.byte_count > 0 && !capture.ends_with_newline,
-    ));
-    let result = if total_lines > line_limit || capture.byte_count > MAX_INLINE_CAPTURE_BYTES {
-        publish_spill(&capture, head, tail, spill_dir)
+/// Limits are enforced during pipe draining and after EOF, not only during wait.
+pub fn run_command_capped_with_limits(mut command: Command, head: usize, tail: usize, spill_dir: &Path,
+    timeout: std::time::Duration, cancellation: &tokio_util::sync::CancellationToken) -> Result<RuncResult, String> {
+    if head > 4096 || tail > 4096 || timeout.is_zero() || timeout > std::time::Duration::from_secs(120) {
+        return Err("push_capture_limit_invalid".into());
+    }
+    let started = std::time::Instant::now();
+    let check = || {
+        if cancellation.is_cancelled() { Err("push_cancelled".to_string()) }
+        else if started.elapsed() >= timeout { Err("push_capture_timeout".to_string()) }
+        else { Ok(()) }
+    };
+    check()?;
+    let root = command.get_current_dir().map(Path::to_path_buf).unwrap_or_else(super::recovery::workspace_root);
+    let session = std::env::var("MEMBRANE_PUSH_SESSION").unwrap_or_else(|_| "local".into());
+    let scope = super::recovery::RecoveryScope::new(&root, &session).map_err(|e| e.to_string())?;
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut process = crate::providers::child_process::spawn_contained_command(command)
+        .map_err(|error| format!("spawn failed: {error}"))?;
+    let stdout = process.child.stdout.take().ok_or("stdout capture unavailable")?;
+    let stderr = process.child.stderr.take().ok_or("stderr capture unavailable")?;
+    let capture_result = capture_ordered_with_control(stdout, stderr, spill_dir, check, || process.kill_tree());
+    let (capture, stdout_thread, stderr_thread) = match capture_result {
+        Ok(result) => result, Err(error) => { process.kill_tree(); return Err(error); }
+    };
+    let status = loop {
+        if let Err(error) = check() { process.kill_tree(); capture.cleanup(); return Err(error); }
+        match process.child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(error) => { process.kill_tree(); capture.cleanup(); return Err(format!("wait failed: {error}")); }
+        }
+    };
+    stdout_thread.join().map_err(|_| "stdout capture panicked")?;
+    stderr_thread.join().map_err(|_| "stderr capture panicked")?;
+    let total_lines = capture.newline_count.saturating_add(usize::from(capture.byte_count > 0 && !capture.ends_with_newline));
+    let original = std::fs::read(&capture.path).map_err(|e| format!("capture read failed: {e}"))?;
+    let result = if total_lines > head.saturating_add(tail) || capture.byte_count > MAX_INLINE_CAPTURE_BYTES || std::str::from_utf8(&original).is_err() {
+        publish_spill_scoped(&capture, head, tail, spill_dir, &scope)
             .map(|(capped, path, digest, marker)| (capped, Some(path), digest, Some(marker)))
     } else {
-        let combined = std::fs::read(&capture.path)
-            .map_err(|error| format!("ordered capture reopen failed: {error}"))?;
-        let full = String::from_utf8_lossy(&combined).into_owned();
-        let (capped, was_truncated) = truncate::head_tail(&full, head, tail);
-        debug_assert!(!was_truncated);
-        Ok((capped, None, capture.digest.clone(), None))
+        let full = std::str::from_utf8(&original).map_err(|_| "push_capture_encoding")?;
+        // Preserve exact inline bytes; head_tail's normalization is lossy even
+        // when there are no omitted lines.
+        Ok((full.to_owned(), None, capture.digest.clone(), None))
     };
     capture.cleanup();
     let (capped, spill_path, digest, recovery_marker) = result?;
-    let exit_code = status.code().unwrap_or(1);
-
-    Ok(RuncResult {
-        capped,
-        spill_path: spill_path.clone(),
-        anchor: format!("mr://anchor/{digest}"),
-        exit_code,
-        recovery_marker,
-    })
+    Ok(RuncResult { capped, spill_path,
+        anchor: if recovery_marker.is_some() { format!("mr://anchor/{digest}") } else { String::new() },
+        exit_code: status.code().unwrap_or(1), recovery_marker })
 }
 
 /// Run one explicit Git or repository-test command without shell expansion.
@@ -1145,18 +1203,15 @@ mod tests {
         assert_eq!(ordered.exit_code, 7);
         assert!(matches!(ordered.capped.as_str(), "outerr" | "errout"));
         assert!(ordered.spill_path.is_none());
-        assert_eq!(
-            ordered.anchor,
-            format!(
-                "mr://anchor/{}",
-                hex::encode(Sha256::digest(ordered.capped.as_bytes()))
-            )
-        );
+        assert!(ordered.anchor.is_empty(), "an inline identity is not a recovery handle");
 
         let invalid = run_capped("printf '\\377'", 100, 100, dir.path()).expect("invalid utf8");
         assert_eq!(invalid.capped, "\u{fffd}");
-        assert!(invalid.spill_path.is_none());
-        assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
+        assert!(invalid.spill_path.is_some(), "lossy UTF-8 preview requires the original");
+        let scope = super::super::recovery::RecoveryScope::local().unwrap();
+        let exact = super::super::recovery::RecoveryStore::at(dir.path()).resolve(&scope, &invalid.anchor,
+            &super::super::recovery::Selector::Whole, 16, super::super::recovery::now_ms()).unwrap();
+        assert_eq!(exact.bytes().unwrap(), [255]);
 
         let truncated = run_capped(
             "printf 'o1\\no2\\no3\\n'; printf 'e1\\ne2\\ne3\\n' >&2",
@@ -1198,6 +1253,31 @@ mod tests {
                 None => std::env::remove_var("MEMBRANE_PUSH_RUNC_SHELL"),
             }
         }
+    }
+
+    #[test]
+    fn captured_original_resolves_through_shared_store_without_rerun() {
+        let _guard = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let out = run_capped("printf 'first\\r\\nsecond\\r\\nthird\\r\\n'", 1, 1, dir.path()).unwrap();
+        let scope = super::super::recovery::RecoveryScope::local().unwrap();
+        let slice = super::super::recovery::RecoveryStore::at(dir.path()).resolve(&scope, &out.anchor,
+            &super::super::recovery::Selector::Lines {start:2,end:2}, 64, super::super::recovery::now_ms()).unwrap();
+        assert_eq!(slice.bytes().unwrap(), b"second\r\n");
+    }
+    #[test]
+    fn capture_deadline_and_pre_cancel_do_not_publish_partial_originals() {
+        let _guard = lock_env();
+        let dir = tempfile::tempdir().unwrap();
+        let mut command = Command::new("node");
+        command.args(["-e", "process.stdout.write('partial'); setInterval(()=>{},1000)"]);
+        let started = std::time::Instant::now();
+        let result = run_command_capped_with_limits(command, 1, 1, dir.path(), std::time::Duration::from_millis(100), &tokio_util::sync::CancellationToken::new());
+        assert!(result.unwrap_err().contains("timeout"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
+        let token = tokio_util::sync::CancellationToken::new(); token.cancel();
+        assert!(run_command_capped_with_limits(Command::new("nonexistent-program"), 1, 1, dir.path(), std::time::Duration::from_secs(1), &token).unwrap_err().contains("cancelled"));
     }
 
     #[test]
