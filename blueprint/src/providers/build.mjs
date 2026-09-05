@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers.mjs";
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
+import { collectSemanticEvidenceSync } from "./semantic-orchestrator.mjs";
 import { extractJavaScriptModuleSpecifiers, resolveModuleSpecifier } from "./modules/javascript.mjs";
 import { extractPythonModuleSpecifiers, resolvePythonModule } from "./modules/python-resolver.mjs";
 import {
@@ -307,7 +308,12 @@ function addSchemaAndIacEvidence(generation, files) {
 
 function addScipEvidence(generation, files, root, options, selectedPaths = null, allowExternalTargets = false) {
   if (options.scip === false || process.env.BLUEPRINT_SCIP === "0") return { provider: pythonScipProvider.id, state: "disabled", nodes: 0, edges: 0 };
-  const collected = pythonScipProvider.collect({ repoRoot: root, scipIndexPath: options.scipIndexPath });
+  const semantic = collectSemanticEvidenceSync(
+    { repoRoot: root, scipIndexPath: options.scipIndexPath },
+    { providers: [pythonScipProvider] },
+  );
+  const lane = semantic.results[0] ?? null;
+  const collected = lane?.output ?? { nodes: [], edges: [], reports: [], index: { state: "unavailable" } };
   const fileByPath = new Map(files.map((file) => [normalizePath(file.path), file]));
   const admittedNodeIds = new Set(generation.nodes.map((node) => node.id));
   let nodesAdded = 0;
@@ -331,7 +337,14 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     generation.edges.push(edge);
     edgesAdded += 1;
   }
-  return { provider: pythonScipProvider.id, state: collected.index?.state ?? "unavailable", nodes: nodesAdded, edges: edgesAdded, reports: collected.reports ?? [] };
+  return {
+    provider: pythonScipProvider.id,
+    state: collected.index?.state ?? "unavailable",
+    nodes: nodesAdded,
+    edges: edgesAdded,
+    reports: collected.reports ?? [],
+    disposition: lane?.disposition ?? null,
+  };
 }
 
 function addBridgeEvidence(generation, files) {
