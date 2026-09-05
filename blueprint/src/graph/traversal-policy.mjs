@@ -2,12 +2,12 @@ import { isRelationshipKind, RELATIONSHIP_KINDS } from "./relationship-kinds.mjs
 
 const POLICY_DEFINITIONS = Object.freeze({
   "dependency.forward": { direction: "out", kinds: ["IMPORTS", "CALLS", "CONFIGURES"], maxHops: 3 },
-  "impact.reverse": { direction: "in", kinds: ["IMPORTS", "CALLS", "TESTS", "CONFIGURES", "REFERENCES"], maxHops: 3 },
+  "impact.reverse": { direction: "in", kinds: ["IMPORTS", "CALLS", "TESTS", "CONFIGURES", "REFERENCES", "OVERRIDES"], maxHops: 3 },
   "callgraph.forward": { direction: "out", kinds: ["CALLS"], maxHops: 4 },
   "test.coverage": { direction: "both", kinds: ["TESTS", "REFERENCES", "IMPORTS"], maxHops: 3 },
   "config.consumers": { direction: "out", kinds: ["CONFIGURES", "REFERENCES"], maxHops: 3 },
-  "architecture.boundary": { direction: "both", kinds: ["IMPORTS", "CALLS", "CONTAINS", "DEFINES", "REFERENCES", "DOCS_LINK"], maxHops: 2 },
-  "explore.both": { direction: "both", kinds: ["IMPORTS", "CALLS", "TESTS", "CONFIGURES", "CONTAINS", "DEFINES", "REFERENCES", "DOCS_LINK"], maxHops: 2 },
+  "architecture.boundary": { direction: "both", kinds: ["IMPORTS", "CALLS", "OVERRIDES", "CONTAINS", "DEFINES", "REFERENCES", "DOCS_LINK"], maxHops: 2 },
+  "explore.both": { direction: "both", kinds: ["IMPORTS", "CALLS", "OVERRIDES", "TESTS", "CONFIGURES", "CONTAINS", "DEFINES", "REFERENCES", "DOCS_LINK"], maxHops: 2 },
 });
 
 // INV-021 consumer parity. Recall traversal is intentionally not the consumer
