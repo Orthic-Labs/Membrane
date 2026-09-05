@@ -34,8 +34,23 @@ jobs:
           git commit -m 'chore(ledger): resolve explicit dependency additions [skip ci]'
           git push origin HEAD:refs/heads/ledger-end-to-end
       - name: Decode reviewed Ledger patch
-        if: hashFiles('scripts/ci/ledger-finish.patch.gz.b64') != ''
-        run: base64 --decode scripts/ci/ledger-finish.patch.gz.b64 | gzip --decompress > scripts/ci/ledger-finish.patch
+        if: hashFiles('scripts/ci/ledger-final-chunks/00a') != '' && hashFiles('scripts/ci/ledger-edits.json') != ''
+        run: |
+          cat \
+            scripts/ci/ledger-final-chunks/00a \
+            scripts/ci/ledger-final-chunks/00b \
+            scripts/ci/ledger-final-chunks/01 \
+            scripts/ci/ledger-final-chunks/02 \
+            scripts/ci/ledger-final-chunks/03 \
+            scripts/ci/ledger-final-chunks/04 \
+            scripts/ci/ledger-final-chunks/05 \
+            scripts/ci/ledger-final-chunks/06 \
+            scripts/ci/ledger-final-chunks/07 \
+            scripts/ci/ledger-final-chunks/08 \
+          | tr -d '\r\n' \
+          | base64 --decode \
+          | gzip --decompress \
+          > scripts/ci/ledger-finish.patch
       - name: Materialize reviewed edits, without force-pushing
         if: hashFiles('scripts/ci/ledger-edits.json') != ''
         run: python3 scripts/ci/ledger-apply.py
@@ -63,11 +78,11 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Ledger source and schema checks
+      - name: Ledger source, MCP and canon checks
         run: |
-          if test -f tests/ledger-wiring-contracts.test.mjs; then
-            node --test tests/ledger-wiring-contracts.test.mjs
-          fi
+          node --check mcp/server.mjs
+          node --check mcp/toolsets.mjs
+          node --test tests/ledger-wiring-contracts.test.mjs
           node scripts/ci/check-atomic-canons.mjs
       - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
