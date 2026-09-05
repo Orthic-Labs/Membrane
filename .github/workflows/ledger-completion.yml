@@ -33,6 +33,9 @@ jobs:
           git rm scripts/ci/ledger-lock-refresh
           git commit -m 'chore(ledger): resolve explicit dependency additions [skip ci]'
           git push origin HEAD:refs/heads/ledger-end-to-end
+      - name: Decode reviewed Ledger patch
+        if: hashFiles('scripts/ci/ledger-finish.patch.gz.b64') != ''
+        run: base64 --decode scripts/ci/ledger-finish.patch.gz.b64 | gzip --decompress > scripts/ci/ledger-finish.patch
       - name: Materialize reviewed edits, without force-pushing
         if: hashFiles('scripts/ci/ledger-edits.json') != ''
         run: python3 scripts/ci/ledger-apply.py
