@@ -9,47 +9,16 @@ permissions:
   contents: read
 
 jobs:
-  preview:
-    if: github.ref == 'refs/heads/ledger-end-to-end'
+  integrate:
+    if: github.ref == 'refs/heads/ledger-end-to-end' && hashFiles('scripts/ci/ledger-merge-main.py') != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
-      - name: Attempt no-write merge of current main
-        run: |
-          set +e
-          git fetch origin main
-          git config user.name 'ledger-merge-preview'
-          git config user.email 'ledger-merge-preview@invalid.local'
-          git merge --no-commit --no-ff origin/main
-          result=$?
-          set -e
-          printf '%s\n' "$result" > merge-exit-code.txt
-          git status --porcelain=v1 > merge-status.txt
-          git diff --name-only --diff-filter=U > merge-conflicts.txt
-          git diff --cc > merge-conflict.diff || true
-          echo '=== MERGE STATUS ==='
-          cat merge-status.txt
-          echo '=== CONFLICT CONTEXTS ==='
-          while IFS= read -r file; do
-            test -n "$file" || continue
-            echo "--- $file ---"
-            awk 'BEGIN{before=35;after=55} {lines[NR]=$0} /^<<<<<<< /{start=NR-before;if(start<1)start=1; marks[++n]=start ":" NR+after} END{for(i=1;i<=n;i++){split(marks[i],a,":"); for(j=a[1];j<=a[2] && j<=NR;j++) print j ":" lines[j]; print "---"}}' "$file"
-          done < merge-conflicts.txt
-          tar --exclude=.git -czf "$RUNNER_TEMP/merge-preview.tar.gz" . || true
-          cp "$RUNNER_TEMP/merge-preview.tar.gz" merge-preview.tar.gz 2>/dev/null || true
-          exit 0
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ledger-main-merge-preview
-          path: |
-            merge-preview.tar.gz
-            merge-exit-code.txt
-            merge-status.txt
-            merge-conflicts.txt
-            merge-conflict.diff
-          if-no-files-found: ignore
-          retention-days: 1
+      - name: Merge current main using reviewed two-file resolution
+        run: python3 scripts/ci/ledger-merge-main.py
