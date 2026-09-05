@@ -26,4 +26,4 @@ jobs:
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
-# refreshed after governed lifecycle implementation
+# refreshed after focused CI failure triage
