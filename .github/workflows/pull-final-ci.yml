@@ -1,0 +1,42 @@
+name: pull-final-ci
+
+on:
+  push:
+    branches: [pull-end-to-end-final-20260905]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-final-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Archive tracked source
+        run: git archive --format=tar.gz --output="${RUNNER_TEMP}/membrane-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pull-final-source-${{ github.sha }}
+          path: ${{ runner.temp }}/membrane-source.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+  cargo-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+      - name: Rust compile check only
+        run: cargo check --manifest-path engine/Cargo.toml --workspace --locked
