@@ -1,0 +1,44 @@
+name: ledger-merge-preview
+
+on:
+  push:
+    branches: [ledger-end-to-end]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/ledger-end-to-end'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Attempt no-write merge of current main
+        run: |
+          set +e
+          git fetch origin main
+          git config user.name 'ledger-merge-preview'
+          git config user.email 'ledger-merge-preview@invalid.local'
+          git merge --no-commit --no-ff origin/main
+          result=$?
+          set -e
+          printf '%s\n' "$result" > merge-exit-code.txt
+          git status --porcelain=v1 > merge-status.txt
+          git diff --name-only --diff-filter=U > merge-conflicts.txt
+          git diff --cc > merge-conflict.diff || true
+          tar --exclude=.git --exclude=merge-preview.tar.gz -czf merge-preview.tar.gz .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ledger-main-merge-preview
+          path: |
+            merge-preview.tar.gz
+            merge-exit-code.txt
+            merge-status.txt
+            merge-conflicts.txt
+            merge-conflict.diff
+          retention-days: 1
