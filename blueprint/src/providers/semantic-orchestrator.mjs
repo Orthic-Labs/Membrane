@@ -46,6 +46,22 @@ function dispositionForProbe(probe) {
   return "unknown";
 }
 
+function unavailableSemanticOutput(provider, probe) {
+  return {
+    nodes: [],
+    edges: [],
+    reports: [{
+      kind: probe?.state ?? "unavailable",
+      code: probe?.code ?? null,
+      reason: probe?.reason ?? null,
+      degradesTo: probe?.degradesTo ?? null,
+      provider: provider.id,
+      precisionTier: probe?.precisionTier ?? null,
+    }],
+    index: probe ?? { state: "unavailable", provider: provider.id },
+  };
+}
+
 export function createSemanticProviderRegistry({ providers = FIRST_PARTY_SEMANTIC_PROVIDERS } = {}) {
   const registry = new ProviderRegistry();
   for (const provider of providers) {
@@ -88,7 +104,7 @@ export function collectSemanticEvidenceSync(context = {}, {
       results.push({
         provider,
         probe,
-        output: { nodes: [], edges: [], reports: [] },
+        output: unavailableSemanticOutput(provider, probe),
         disposition: typedDisposition(provider, probeDisposition, { code: probe?.code ?? null, reason: probe?.reason ?? null }),
       });
       continue;
@@ -131,7 +147,7 @@ export async function collectSemanticEvidence(context = {}, {
       const probe = await runProvider(provider, context, { signal, timeoutMs, allowProcess, operation: "probe" });
       const probeDisposition = dispositionForProbe(probe);
       if (["unsupported", "disabled"].includes(probeDisposition)) {
-        results.push({ provider, probe, output: { nodes: [], edges: [], reports: [] }, disposition: typedDisposition(provider, probeDisposition, { code: probe?.code ?? null, reason: probe?.reason ?? null }) });
+        results.push({ provider, probe, output: unavailableSemanticOutput(provider, probe), disposition: typedDisposition(provider, probeDisposition, { code: probe?.code ?? null, reason: probe?.reason ?? null }) });
         continue;
       }
       const output = validateSemanticOutput(provider, await runProvider(provider, context, { signal, timeoutMs, allowProcess, operation: "collect" }));
