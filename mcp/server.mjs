@@ -62,7 +62,8 @@ const CALLER_SCHEMA = {
 };
 const TOOL_DEFINITIONS = [
   { name: "membrane_context", description: "Use when you need a federated context packet for one exact caller binding. Do not use for raw memory CRUD, arbitrary filesystem reads, or bypassing repository-bound access.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: membrane.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: membrane.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: membrane.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: membrane.overlay-identity.v1 worktree/session overlay." }, sufficiencyContract: { type: "object", description: "Optional planner-authored SufficiencyContractV1 forwarded unchanged to /federate." } } } },
-  { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
+  { name: "membrane_source_read", description: "Resolve a hash/revision/span-bound Ledger source reference. Continuation resumes the same captured span and never grants authority.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" }, docId: { type: "string", maxLength: 8192 }, nodeId: { type: "string", maxLength: 8192 }, expectedRevision: { type: "string", maxLength: 8192 }, expectedSpanHash: { type: "string", maxLength: 8192 }, ledgerGeneration: { type: "integer", minimum: 0 }, ledgerTicket: { type: "string", maxLength: 8192 }, continuationCursor: { type: "string", maxLength: 8192 }, maxBytes: { type: "integer", minimum: 1, maximum: 12000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 30000 } } } },
+  { name: "membrane_ledger", description: "Navigate the resident Ledger document index. Search and diagnostics are source-scoped; final prompt admission remains Pull-owned.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["recall", "literal", "outline", "sync", "status", "activate", "erase", "backlinks", "related", "manifests", "drift"] }, query: { type: "string", minLength: 1, maxLength: 4096 }, k: { type: "integer", minimum: 1, maximum: 32 }, path: { type: "string" }, docId: { type: "string" }, nodeId: { type: "string" }, scopeGrantId: { type: "string" }, taskId: { type: "string", minLength: 1 }, expectedContentHash: { type: "string" }, continuationCursor: { type: "string" }, maxSections: { type: "integer", minimum: 1, maximum: 256 }, limit: { type: "integer", minimum: 1, maximum: 256 }, mode: { type: "string", enum: ["legacy_scan", "shadow", "ledger_fts"] }, fromManifest: { type: "string" }, toManifest: { type: "string" }, deadlineMs: { type: "integer", minimum: 1, maximum: 30000 }, taskGrantLevel: { type: "string" } } } },
   { name: "membrane_blueprint", description: "Bounded Blueprint architecture, symbol, reference, impact, or read-only snapshot view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, name: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 5000 }, items: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes", "snapshot_get", "snapshot_list", "changes_since"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
@@ -959,9 +960,41 @@ async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
     const install = await installationBindingFor(binding);
-    const command = durableCli(binding, install, ["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash]);
-    const out = await run(command.binary, command.args, "", await bindingEnv(binding));
+    const ledgerArgs = ["ledger", "read", "--repo", binding.root, "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash];
+    if (args.docId) ledgerArgs.push("--doc-id", args.docId);
+    if (args.nodeId) ledgerArgs.push("--node-id", args.nodeId);
+    if (args.expectedRevision) ledgerArgs.push("--expected-revision", args.expectedRevision);
+    if (args.expectedSpanHash) ledgerArgs.push("--expected-span-hash", args.expectedSpanHash);
+    if (Number.isInteger(args.ledgerGeneration)) ledgerArgs.push("--ledger-generation", String(args.ledgerGeneration));
+    if (args.ledgerTicket) ledgerArgs.push("--ledger-ticket", args.ledgerTicket);
+    if (args.continuationCursor) ledgerArgs.push("--continuation-cursor", args.continuationCursor);
+    if (Number.isInteger(args.maxBytes)) ledgerArgs.push("--max-bytes", String(args.maxBytes));
+    const command = durableCli(binding, install, ledgerArgs);
+    const out = await run(command.binary, command.args, "", await bindingEnv(binding), lifecycle?.signal);
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
+  }
+  if (name === "membrane_ledger") {
+    const mutating = args.operation === "activate" || args.operation === "erase";
+    const binding = await authorize(args, mutating ? "checkpoint" : "context");
+    const install = await installationBindingFor(binding);
+    const commandArgs = ["ledger"];
+    switch (args.operation) {
+      case "recall": commandArgs.push("recall", "--repo", binding.root, String(args.query ?? ""), "-k", String(args.k ?? 6)); break;
+      case "literal": commandArgs.push("literal", "--repo", binding.root, String(args.query ?? ""), "-k", String(args.k ?? 6)); break;
+      case "outline": commandArgs.push("outline", "--repo", binding.root, "--path", String(args.path ?? ""), "--json"); if (args.continuationCursor) commandArgs.push("--continuation-cursor", args.continuationCursor); break;
+      case "sync": commandArgs.push("sync", "--repo", binding.root); break;
+      case "status": commandArgs.push("status", "--repo", binding.root); break;
+      case "activate": commandArgs.push("activate", "--repo", binding.root, String(args.mode ?? "")); break;
+      case "erase": commandArgs.push("erase", "--repo", binding.root, "--doc-id", String(args.docId ?? ""), "--expected-hash", String(args.expectedContentHash ?? "")); break;
+      case "backlinks": commandArgs.push("backlinks", "--repo", binding.root, "--doc-id", String(args.docId ?? ""), "--limit", String(args.limit ?? 64)); if (args.nodeId) commandArgs.push("--node-id", args.nodeId); break;
+      case "related": commandArgs.push("related", "--repo", binding.root, "--doc-id", String(args.docId ?? ""), "--node-id", String(args.nodeId ?? ""), "--limit", String(args.limit ?? 32)); break;
+      case "manifests": commandArgs.push("manifests", "--repo", binding.root, "--doc-id", String(args.docId ?? "")); break;
+      case "drift": commandArgs.push("drift", "--repo", binding.root, "--doc-id", String(args.docId ?? ""), "--from-manifest", String(args.fromManifest ?? ""), "--to-manifest", String(args.toManifest ?? "")); break;
+      default: throw new Error("invalid_ledger_operation");
+    }
+    const command = durableCli(binding, install, commandArgs);
+    const out = await run(command.binary, command.args, "", await bindingEnv(binding), lifecycle?.signal);
+    return text(out.stdout.trim() || { error: "ledger_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_blueprint") {
     const binding = await authorize(args, "context");

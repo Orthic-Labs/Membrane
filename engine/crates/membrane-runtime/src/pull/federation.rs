@@ -238,6 +238,9 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             sufficiency_contract,
             &ceiling,
         );
+        if let Some(task_id) = value.get("taskId").and_then(Value::as_str) {
+            request.extensions.insert("taskId".to_owned(), Value::String(task_id.to_owned()));
+        }
         if let Some(temporal_query) = temporal_query.clone() {
             request.extensions.insert(
                 "cortexTemporalQuery".to_owned(),

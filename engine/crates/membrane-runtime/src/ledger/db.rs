@@ -9,6 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 const LEDGER_SCHEMA: &str = r#"
+CREATE TABLE IF NOT EXISTS ledger_erasure_fences (
+ repository_root TEXT NOT NULL,path_digest TEXT NOT NULL,erased_at_ms INTEGER NOT NULL,
+ PRIMARY KEY(repository_root,path_digest));
 CREATE TABLE IF NOT EXISTS ledger_doc_artifacts (
     doc_id TEXT NOT NULL,
     repository_root TEXT NOT NULL,

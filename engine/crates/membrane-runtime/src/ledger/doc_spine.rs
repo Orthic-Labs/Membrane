@@ -13,7 +13,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone, Debug)]
 pub struct GrantedDocumentIngestV1 {
@@ -356,6 +356,8 @@ pub struct DocSyncReport {
     pub skipped: usize,
     pub deleted: usize,
     pub invalidated: usize,
+    pub policy_digest: String,
+    pub complete: bool,
 }
 
 const DOC_PARSER_VERSION: &str = "comrak-0.54.0";
@@ -720,7 +722,9 @@ fn recall_legacy(db: &LedgerDb, query: &str, k: usize) -> Result<Vec<DocRecallHi
         ) else {
             continue;
         };
-        let outline = super::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+        let outline = super::outline::build_outline_page(
+            &source_ref, &markdown, DOC_PARSER_VERSION, usize::MAX, None,
+        ).map_err(|error| error.to_string())?;
         let Some(section) = outline
             .sections
             .iter()
@@ -854,145 +858,22 @@ pub struct DocRecallHitV1 {
     pub normalized_query: String,
 }
 
-#[derive(Debug)]
-struct IgnoreRule {
-    base: PathBuf,
-    pattern: String,
-}
-
-fn ignored(root: &Path, path: &Path, rules: &[IgnoreRule]) -> bool {
-    rules.iter().any(|rule| {
-        let Ok(relative) = path.strip_prefix(&rule.base) else {
-            return false;
-        };
-        let relative = relative.to_string_lossy().replace('\\', "/");
-        let pattern = rule.pattern.trim_matches('/');
-        if pattern.is_empty() {
-            return false;
-        }
-        if pattern.contains('/') {
-            relative == pattern || relative.starts_with(&format!("{pattern}/"))
-        } else {
-            relative.split('/').any(|part| part == pattern)
-                || path
-                    .strip_prefix(root)
-                    .ok()
-                    .and_then(|p| p.file_name())
-                    .is_some_and(|name| name == pattern)
-        }
-    })
-}
-
-fn load_gitignore(dir: &Path, rules: &mut Vec<IgnoreRule>) {
-    let Ok(contents) = std::fs::read_to_string(dir.join(".gitignore")) else {
-        return;
-    };
-    for line in contents.lines() {
-        let line = line.trim();
-        if !line.is_empty() && !line.starts_with('#') && !line.starts_with('!') {
-            rules.push(IgnoreRule {
-                base: dir.to_path_buf(),
-                pattern: line.to_string(),
-            });
-        }
-    }
-}
-
-fn has_health_component(path: &Path) -> bool {
-    path.components().any(|component| {
-        component
-            .as_os_str()
-            .to_str()
-            .is_some_and(|name| name.eq_ignore_ascii_case("health"))
-    })
-}
-
-fn hard_excluded(path: &Path) -> bool {
-    let components = path
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .map(|component| component.to_ascii_lowercase())
-        .collect::<Vec<_>>();
-    components.iter().any(|component| {
-        matches!(
-            component.as_str(),
-            ".git" | "node_modules" | ".cache" | "target" | ".venv" | "vendor" | "memory-mirror"
-        )
-    }) || components.last().is_some_and(|name| name == "memory.md")
-}
-
-fn walk(
-    root: &Path,
-    output: &mut Vec<PathBuf>,
-    excluded_health: &mut usize,
-) -> std::io::Result<()> {
-    let mut pending = vec![(root.to_path_buf(), 0usize)];
-    let mut ignore_rules = Vec::new();
-    while let Some((dir, depth)) = pending.pop() {
-        if depth > 64 {
-            continue;
-        }
-        load_gitignore(&dir, &mut ignore_rules);
-        for item in std::fs::read_dir(&dir)? {
-            let item = item?;
-            let path = item.path();
-            let relative = path.strip_prefix(root).unwrap_or(&path);
-            let kind = item.file_type()?;
-            if kind.is_symlink() {
-                continue;
-            }
-            if has_health_component(relative) {
-                *excluded_health += 1;
-                continue;
-            }
-            if hard_excluded(relative) {
-                continue;
-            }
-            if ignored(root, &path, &ignore_rules) {
-                continue;
-            }
-            if kind.is_dir() {
-                let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
-                if matches!(
-                    name,
-                    ".git"
-                        | "node_modules"
-                        | "target"
-                        | ".cache"
-                        | ".venv"
-                        | "vendor"
-                        | "memory-mirror"
-                ) {
-                    continue;
-                }
-                pending.push((path, depth + 1));
-            } else if path
-                .extension()
-                .and_then(|v| v.to_str())
-                .is_some_and(|v| v.eq_ignore_ascii_case("md"))
-            {
-                output.push(path);
-            }
-        }
-    }
-    Ok(())
-}
-
 #[inline(never)]
 pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
+    let budget = super::limits::WorkBudget::bounded(std::time::Duration::from_secs(30));
+    sync_bounded(db, root, &budget)
+}
+
+pub fn sync_bounded(db: &LedgerDb, root: &Path, budget: &super::limits::WorkBudget) -> Result<DocSyncReport, String> {
+    budget.check()?;
     let root = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
     let root_s = root.to_string_lossy().replace('\\', "/");
-    let revision = std::process::Command::new("git")
-        .args(["-C", &root_s, "rev-parse", "HEAD"])
-        .output()
+    let revision = membrane_federation::providers::git::RepositoryAdapter::open(&root)
+        .and_then(|repository| repository.head())
         .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .map(|s| s.trim().to_string())
+        .and_then(|head| head.revision)
         .unwrap_or_else(|| "worktree".into());
-    let mut files = Vec::new();
-    let mut excluded_health = 0;
-    walk(&root, &mut files, &mut excluded_health).map_err(|e| e.to_string())?;
+    let (files, excluded_health, mut policy) = super::policy::walk_markdown(&root, budget)?;
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let generation: i64 = tx
@@ -1002,61 +883,10 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())?;
-    // A sync publishes one database-wide generation. Previously verified rows from other roots
-    // advance in the same transaction; recall still hash-checks their live source before emit.
-    tx.execute(
-        "UPDATE ledger_doc_artifacts SET index_generation=?1 WHERE repository_root<>?2",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_doc_projections SET index_generation=?1
-         WHERE parent_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_nodes SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_index_publications SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_query_aliases SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_link_targets SET ledger_generation=?1
-         WHERE source_doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE ledger_document_conversions SET ledger_generation=?1
-         WHERE doc_id IN (
-             SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root<>?2
-         )",
-        rusqlite::params![generation, root_s],
-    )
-    .map_err(|error| error.to_string())?;
+    // A source-owner publication advances only the documents it actually
+    // reconciles. Unrelated roots and converted/imported collections retain
+    // their own last complete generation; a Markdown scan cannot invalidate
+    // their resolver tickets or manufacture a freshness transition.
     let projections_available: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='ledger_doc_projections')",
@@ -1074,17 +904,21 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     let mut projection_inputs = Vec::new();
     let mut supersessions = Vec::new();
     for file in files {
-        let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+        budget.check()?;
+        let relative = file.strip_prefix(&root).map_err(|_| "ledger_path_denied")?
+            .to_str().ok_or("ledger_path_unsupported")?.replace('\\', "/");
+        let erased: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM ledger_erasure_fences WHERE repository_root=?1 AND path_digest=?2)",
+            rusqlite::params![root_s,digest(relative.as_bytes())], |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        if erased { continue; }
+        let bytes = super::resolve::confined_bytes(&root, &relative).map_err(|e| e.to_string())?;
+        budget.charge_bytes(bytes.len())?;
         hashed += 1;
-        let relative = file
-            .strip_prefix(&root)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/");
         let hash = digest(&bytes);
         let existing = match tx.query_row(
             "SELECT doc_id, content_hash, parser_version, superseded_by, \
-                        EXISTS(SELECT 1 FROM ledger_doc_artifacts child \
+                        lifecycle_state, EXISTS(SELECT 1 FROM ledger_doc_artifacts child \
                                WHERE child.repository_root=ledger_doc_artifacts.repository_root \
                                  AND child.superseded_by=ledger_doc_artifacts.doc_id) \
                  FROM ledger_doc_artifacts \
@@ -1096,7 +930,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, bool>(4)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, bool>(5)?,
                 ))
             },
         ) {
@@ -1104,7 +939,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             Err(rusqlite::Error::QueryReturnedNoRows) => None,
             Err(error) => return Err(error.to_string()),
         };
-        if let Some((id, old_hash, parser_version, superseded_by, supersedes)) = &existing {
+        if let Some((id, old_hash, parser_version, superseded_by, lifecycle, supersedes)) = &existing {
             let has_projection = projections_available
                 && tx
                     .query_row(
@@ -1120,6 +955,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             if old_hash == &hash
                 && parser_version == DOC_PARSER_VERSION
                 && superseded_by.is_none()
+                && matches!(lifecycle.as_str(), "active" | "draft" | "retired")
                 && !supersedes
                 && has_projection
                 && has_current_index
@@ -1140,6 +976,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                 .map_err(|e| e.to_string())?;
                 advance_unchanged_generation_tx(&tx, id, &revision, generation)
                     .map_err(|e| e.to_string())?;
+                super::diagnostics::record_manifest_tx(&tx, id).map_err(|e|e.to_string())?;
                 registered += 1;
                 skipped += 1;
                 continue;
@@ -1148,7 +985,8 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
                 invalidated += 1;
             }
         }
-        let markdown = String::from_utf8_lossy(&bytes).into_owned();
+        let markdown = String::from_utf8(bytes)
+            .map_err(|_| "ledger_document_unsupported_encoding".to_owned())?;
         parsed += 1;
         let frontmatter = parse_frontmatter(&markdown)?;
         let (class, influence, sensitivity, generated) = classify(&relative);
@@ -1157,13 +995,10 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
             digest(root_s.as_bytes())[..16].to_string(),
             digest(relative.as_bytes())[..16].to_string()
         );
-        let id: String = tx
-            .query_row(
-                "SELECT doc_id FROM ledger_doc_artifacts WHERE repository_root=?1 AND content_hash=?2 AND lifecycle_state='active' AND path<>?3 ORDER BY updated_at_ms DESC LIMIT 1",
-                rusqlite::params![root_s, hash, relative],
-                |row| row.get(0),
-            )
-            .unwrap_or(default_id);
+        // A content hash identifies bytes, not a source. In particular, copying
+        // a document must not replace the original's nodes or authorization.
+        // A separate, qualified relocation operation owns move history.
+        let id = existing.as_ref().map(|row| row.0.clone()).unwrap_or(default_id);
         let lifecycle = frontmatter.status.as_deref().unwrap_or("active");
         let keywords_json =
             serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
@@ -1230,12 +1065,14 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
     for (new_id, _, target_path) in &supersessions {
         tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
     }
-    let tombstoned = tx.execute("UPDATE ledger_doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    let tombstoned = super::reconcile::markdown_absences(&tx, &root_s, generation, now, &mut policy, budget)?;
     super::link_projection::resolve_link_targets_tx(&tx, &root_s)
         .map_err(|error| error.to_string())?;
     for input in &projection_inputs {
         replace_doc_projections_tx(&tx, input).map_err(|e| e.to_string())?;
     }
+    budget.check()?;
+    policy.revalidate(budget)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(DocSyncReport {
         registered,
@@ -1248,5 +1085,7 @@ pub fn sync(db: &LedgerDb, root: &Path) -> Result<DocSyncReport, String> {
         skipped,
         deleted: tombstoned,
         invalidated,
+        policy_digest: policy.digest(),
+        complete: true,
     })
 }

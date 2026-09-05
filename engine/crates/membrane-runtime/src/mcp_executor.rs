@@ -26,13 +26,16 @@ use std::{
 const MAX_OPERATION_BYTES: usize = 64 * 1024;
 
 pub struct RuntimeMcpExecutor {
+    ledger: Option<Arc<crate::ledger::service::LedgerService>>,
     store: MemoryStore,
     diagnostics: Mutex<DiagnosticsService>,
 }
 
 impl RuntimeMcpExecutor {
     pub fn for_hub(store: MemoryStore) -> Result<Self, String> {
+        crate::ledger::service::install_daemon_owner();
         Ok(Self {
+            ledger: crate::ledger::service::active_owner().ok(),
             store,
             diagnostics: Mutex::new(
                 DiagnosticsService::production_service().map_err(|error| error.to_string())?,
@@ -45,6 +48,7 @@ impl RuntimeMcpExecutor {
         Self {
             store,
             diagnostics: Mutex::new(diagnostics),
+            ledger: Some(Arc::new(crate::ledger::service::LedgerService::in_memory())),
         }
     }
 }
@@ -114,6 +118,11 @@ fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
         "membrane_context" | "membrane_blueprint" => "context",
         "membrane_source_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
+        "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
+            Some("erase" | "activate") => "checkpoint",
+            Some("status") => "system_status",
+            _ => "context",
+        },
         "membrane_checkpoint_save" => "checkpoint",
         "membrane_checkpoint_load" => "checkpoint_load",
         "membrane_working_context" => {
@@ -413,6 +422,10 @@ impl HubTransportExecutor {
     }
 }
 
+pub(crate) fn active_hub_client() -> Result<Box<dyn NativeMcpExecutor>, String> {
+    Ok(Box::new(HubTransportExecutor::active()?))
+}
+
 impl NativeMcpExecutor for HubTransportExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
         self.post(name, arguments).unwrap_or_else(|failure| {
@@ -584,6 +597,9 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 if let Some(contract) = sufficiency_contract {
                     body["sufficiencyContract"] = contract;
                 }
+                if let Some(task_id) = arguments.get("taskId").and_then(Value::as_str) {
+                    body["taskId"] = json!(task_id);
+                }
                 // The runtime refuses every context request without this
                 // (RequestTimeH8Error::Missing) and reads it from the request
                 // body, but the executor never forwarded it, so no client could
@@ -662,67 +678,25 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 }
                 error(name,"context_delivery_capacity_exceeded","no complete measured MCP representation fits the observed capacity")
             }
-
-            "membrane_source_read" => {
-                let source_ref = arguments
-                    .get("sourceRef")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let anchor = arguments
-                    .get("anchorId")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let expected = arguments
-                    .get("expectedContentHash")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                if source_ref.is_empty() || anchor.is_empty() || expected.is_empty() {
-                    return error(
-                        name,
-                        "source_read_envelope_invalid",
-                        "sourceRef, anchorId, and expectedContentHash are required",
-                    );
-                }
-                let path = match source_path(root, source_ref) {
-                    Ok(path) => path,
-                    Err(code) => {
-                        return error(
-                            name,
-                            code,
-                            "source reference is unavailable or outside caller root",
-                        )
-                    }
+            "membrane_source_read" | "membrane_ledger" => {
+                let Some(owner) = self.ledger.as_ref() else {
+                    return error(name, "ledger_unavailable", "tray-owned Ledger service is unavailable");
                 };
-                let markdown = match std::fs::read_to_string(path) {
-                    Ok(value) => value,
-                    Err(_) => {
-                        return error(name, "source_read_unavailable", "source is unreadable")
-                    }
-                };
-                match crate::ledger::outline::read_section(
-                    source_ref, &markdown, anchor, expected, 12_000,
-                ) {
-                    Ok(read) => success(
-                        name,
-                        json!({"ok":true,"contentSha256":read.content_hash,"section":read,"sourceRef":source_ref}),
-                    ),
-                    Err(crate::ledger::outline::DocReadError::SourceChanged) => error(
-                        name,
-                        "source_read_hash_mismatch",
-                        "expectedContentHash did not match live document content",
-                    ),
-                    Err(crate::ledger::outline::DocReadError::Relocated) => error(
-                        name,
-                        "source_read_anchor_missing",
-                        "anchorId does not exist in live document",
-                    ),
-                    Err(crate::ledger::outline::DocReadError::Deny) => error(
-                        name,
-                        "source_read_scope_denied",
-                        "source reference is outside caller root",
-                    ),
-                    Err(crate::ledger::outline::DocReadError::SourceMissing) => {
-                        error(name, "source_read_unavailable", "source is unavailable")
+                let deadline = arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2000).clamp(1,30000);
+                let budget = crate::ledger::limits::WorkBudget::bounded(Duration::from_millis(deadline));
+                let result = if name == "membrane_source_read" { owner.read(arguments, &budget) }
+                    else { owner.operation(arguments, &budget) };
+                match result {
+                    Ok(value) => success(name, value),
+                    Err(reason) => {
+                        let code = if name == "membrane_source_read" {
+                            if reason.contains("stale") || reason == "source_changed" { "source_read_hash_mismatch" }
+                            else if reason.contains("denied") || reason.contains("ineligible") || reason.contains("erased") { "source_read_scope_denied" }
+                            else if reason.contains("relocated") { "source_read_anchor_missing" }
+                            else if reason.contains("required") || reason.contains("invalid") || reason.contains("mismatch") { "source_read_envelope_invalid" }
+                            else { "source_read_unavailable" }
+                        } else { "ledger_operation_failed" };
+                        error(name, code, reason)
                     }
                 }
             }

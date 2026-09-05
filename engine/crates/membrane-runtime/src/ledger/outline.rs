@@ -248,9 +248,6 @@ pub fn build_outline_page(
     max_sections: usize,
     continuation_cursor: Option<&str>,
 ) -> Result<DocOutlineV1, DocReadError> {
-    let content_hash = hash(markdown);
-    let line_starts = line_starts(markdown);
-    let mut pending = Vec::new();
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.front_matter_delimiter = Some("---".to_owned());
@@ -260,6 +257,16 @@ pub fn build_outline_page(
     options.extension.autolink = true;
     options.render.sourcepos = true;
     let root = parse_document(&arena, markdown, &options);
+    build_outline_from_ast(source_ref, markdown, root, max_sections, continuation_cursor)
+}
+
+pub(crate) fn build_outline_from_ast<'a>(
+    source_ref: &str, markdown: &str, root: &'a comrak::nodes::AstNode<'a>,
+    max_sections: usize, continuation_cursor: Option<&str>,
+) -> Result<DocOutlineV1, DocReadError> {
+    let content_hash = hash(markdown);
+    let line_starts = line_starts(markdown);
+    let mut pending = Vec::new();
     let mut ordinals = std::collections::BTreeMap::<String, usize>::new();
     let mut stack: Vec<(u8, String, String)> = Vec::new();
 

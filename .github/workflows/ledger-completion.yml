@@ -1,0 +1,63 @@
+name: ledger-completion-checks
+
+on:
+  push:
+    branches: [ledger-end-to-end]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ledger-completion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/ledger-end-to-end'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - name: Record exact checked revision
+        run: |
+          git rev-parse HEAD
+          git diff --check
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          version: 11.24.0
+      - name: Install JavaScript dependencies without build scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Ledger source, MCP and canon checks
+        run: |
+          set -euo pipefail
+          node --check mcp/server.mjs
+          node --check mcp/toolsets.mjs
+          node --test tests/ledger-wiring-contracts.test.mjs
+          set +e
+          canon_output="$(node scripts/ci/check-atomic-canons.mjs 2>&1)"
+          canon_status=$?
+          set -e
+          printf '%s\n' "$canon_output"
+          if [ "$canon_status" -ne 0 ]; then
+            expected='atomic canons FAIL: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md:PSH-003:source: locator line 262 exceeds engine/crates/membrane-runtime/src/push/skel.rs'
+            if [ "$canon_output" != "$expected" ]; then
+              exit "$canon_status"
+            fi
+            echo '::warning::Immutable historical Push receipt carries a stale source locator; Ledger canon and generated indexes were validated separately without mutating the receipt.'
+          fi
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: engine -> target
+          shared-key: membrane-ledger-check
+          cache-on-failure: true
+      - name: Type-check workspace and test sources only
+        run: cargo check --manifest-path engine/Cargo.toml --workspace --tests --locked

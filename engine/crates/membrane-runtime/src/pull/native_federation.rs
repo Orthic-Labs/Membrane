@@ -119,6 +119,8 @@ impl NativeFederation {
                 Arc::new(CortexProvider::new()),
                 vec![],
             ),
+            registration(ProviderId::Ledger, "native.ledger",
+                Arc::new(crate::ledger::provider::LedgerProvider::new(bindings.ledger.clone())), vec![]),
         ];
         let registry = ProviderRegistry::new(providers).map_err(|e| e.to_string())?;
         let engine = FederationEngine::with_release_source(

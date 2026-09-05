@@ -1,13 +1,13 @@
 //! Generation-bound structural nodes, safe Unicode query processing, and Ledger-local FTS.
 
-use super::{outline::build_outline, LedgerDb};
+use super::{outline::build_outline_from_ast, LedgerDb};
 use comrak::{nodes::NodeValue, parse_document, Arena, Options};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v3";
+pub const PROJECTION_SCHEMA_VERSION: &str = "ledger.projection.v5";
 pub const FTS_SCHEMA_VERSION: &str = "ledger.fts5.v1";
 pub const TOKENIZER_ID: &str = "fts5-unicode61+identifier-cjk-ngrams-v1";
 pub const QUERY_NORMALIZER_VERSION: &str = "nfkc-casefold-identifiers-v1";
@@ -172,12 +172,27 @@ pub(crate) fn replace_document_index_tx(
     )?;
     tx.execute("DELETE FROM ledger_nodes WHERE doc_id=?1", [input.doc_id])?;
 
-    let outline = build_outline(
+    let arena = Arena::new();
+    let mut options = Options::default();
+    options.extension.front_matter_delimiter = Some("---".to_owned());
+    options.extension.table = true;
+    options.extension.strikethrough = true;
+    options.extension.tasklist = true;
+    options.extension.autolink = true;
+    options.extension.footnotes = true;
+    options.render.sourcepos = true;
+    let root = parse_document(&arena, input.markdown, &options);
+    // One AST supplies all section, block, and link projections.
+    // Presentation pagination must never truncate the internal index.
+    let outline = build_outline_from_ast(
         &format!("doc://repo/worktree/{}", input.path),
         input.markdown,
-        input.parser_version,
-    );
+        root,
+        usize::MAX,
+        None,
+    ).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
     let mut anchor_to_node = BTreeMap::<String, String>::new();
+    let mut identity_collisions = BTreeMap::<String, usize>::new();
     for (ordinal, section) in outline.sections.iter().enumerate() {
         let parent_id = section
             .parent_anchor_id
@@ -189,12 +204,11 @@ pub(crate) fn replace_document_index_tx(
             "preamble" => "preamble",
             _ => "section",
         };
+        let collision = next_collision_ordinal(
+            &mut identity_collisions, parent_id.as_deref(), node_kind, &section.span_hash,
+        );
         let node_id = stable_node_id(
-            input.doc_id,
-            parent_id.as_deref(),
-            node_kind,
-            &section.span_hash,
-            ordinal,
+            input.doc_id, parent_id.as_deref(), node_kind, &section.span_hash, collision,
         );
         anchor_to_node.insert(section.anchor_id.clone(), node_id.clone());
         let body = &input.markdown[section.start_byte..section.end_byte];
@@ -259,18 +273,9 @@ pub(crate) fn replace_document_index_tx(
             input.generation,
         )?;
     }
-    let arena = Arena::new();
-    let mut options = Options::default();
-    options.extension.front_matter_delimiter = Some("---".to_owned());
-    options.extension.table = true;
-    options.extension.strikethrough = true;
-    options.extension.tasklist = true;
-    options.extension.autolink = true;
-    options.extension.footnotes = true;
-    options.render.sourcepos = true;
-    let root = parse_document(&arena, input.markdown, &options);
     let line_starts = source_line_starts(input.markdown);
     let mut block_ordinal = outline.sections.len();
+    let mut block_parents = BTreeMap::<usize, String>::new();
     for node in root.descendants() {
         let data = node.data();
         let Some(node_kind) = ast_node_kind(&data.value) else {
@@ -300,15 +305,16 @@ pub(crate) fn replace_document_index_tx(
         let Some(containing_section) = containing_section else {
             continue;
         };
-        let parent_id = anchor_to_node.get(&containing_section.anchor_id).cloned();
+        let parent_id = node.ancestors().skip(1)
+            .find_map(|ancestor| block_parents.get(&(ancestor as *const _ as usize)).cloned())
+            .or_else(|| anchor_to_node.get(&containing_section.anchor_id).cloned());
         let heading_path = containing_section.breadcrumb.join(" > ");
         let span_hash = hex::encode(Sha256::digest(body.as_bytes()));
+        let collision = next_collision_ordinal(
+            &mut identity_collisions, parent_id.as_deref(), node_kind, &span_hash,
+        );
         let node_id = stable_node_id(
-            input.doc_id,
-            parent_id.as_deref(),
-            node_kind,
-            &span_hash,
-            block_ordinal,
+            input.doc_id, parent_id.as_deref(), node_kind, &span_hash, collision,
         );
         let aliases = identifier_aliases(body).join(" ");
         tx.execute(
@@ -351,6 +357,7 @@ pub(crate) fn replace_document_index_tx(
                 aliases
             ],
         )?;
+        block_parents.insert(node as *const _ as usize, node_id.clone());
         block_ordinal += 1;
     }
     // Empty Markdown still receives a source-bound root node.
@@ -392,14 +399,16 @@ pub(crate) fn replace_document_index_tx(
             input.generation,
         ],
     )?;
-    super::link_projection::replace_link_projection_tx(
+    super::link_projection::replace_link_projection_from_ast_tx(
         tx,
         input.doc_id,
         input.path,
         input.markdown,
         input.source_revision,
         input.generation,
+        root,
     )?;
+    super::diagnostics::record_manifest_tx(tx, input.doc_id)?;
     Ok(())
 }
 
@@ -627,17 +636,38 @@ fn add_component_aliases(component: &str, output: &mut BTreeSet<String>) {
     }
 }
 
+fn next_collision_ordinal(
+    collisions: &mut BTreeMap<String, usize>,
+    parent_id: Option<&str>,
+    kind: &str,
+    span_hash: &str,
+) -> usize {
+    let key = format!("{}\0{kind}\0{span_hash}", parent_id.unwrap_or(""));
+    let ordinal = collisions.get(&key).copied().unwrap_or(0);
+    collisions.insert(key, ordinal + 1);
+    ordinal
+}
+
 fn stable_node_id(
     doc_id: &str,
     parent_id: Option<&str>,
     kind: &str,
     span_hash: &str,
-    ordinal: usize,
+    collision_ordinal: usize,
 ) -> String {
-    let evidence = format!(
-        "{doc_id}\0{}\0{kind}\0{span_hash}\0{ordinal}",
-        parent_id.unwrap_or("")
-    );
+    // Source order is not identity. An unrelated insertion before this node
+    // leaves the ID unchanged. Only truly indistinguishable same-parent,
+    // same-kind, same-span duplicates receive a local collision suffix;
+    // inserting another identical duplicate is deliberately an ambiguous
+    // relocation case rather than a false stable-identity claim.
+    let evidence = if collision_ordinal == 0 {
+        format!("{doc_id}\0{}\0{kind}\0{span_hash}", parent_id.unwrap_or(""))
+    } else {
+        format!(
+            "{doc_id}\0{}\0{kind}\0{span_hash}\0duplicate:{collision_ordinal}",
+            parent_id.unwrap_or("")
+        )
+    };
     format!(
         "ledger.node:{}",
         hex::encode(Sha256::digest(evidence.as_bytes()))

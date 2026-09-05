@@ -16,6 +16,7 @@ const CORE: &[&str] = &[
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "membrane_ledger",
     "membrane_push_prepare",
     "membrane_push_resolve",
 ];
@@ -68,14 +69,14 @@ fn schema(name: &str) -> Value {
         let definitions: Value = serde_json::from_str(include_str!("../../../../schemas/registry/push-tools.v1.json")).expect("Push schemas parse");
         return definitions.as_array().unwrap().iter().find(|v| v["name"] == name).expect("Push tool registered")["inputSchema"].clone();
     }
-    let (required, properties) = match name {
+    let (required, mut properties) = match name {
         "membrane_context" => (
             // The runtime refuses every request without remainingContextCeiling
             // (RequestTimeH8Error::Missing), so the tool must advertise it.
             // Leaving it undeclared made the one entry tool impossible to call
             // correctly from its own schema.
             vec!["task", "repository", "caller", "remainingContextCeiling"],
-            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
+            json!({"task":{"type":"string","minLength":1,"pattern":"\\S"},"repository":{"type":"string"},"caller":caller(),"budget":{"type":"integer","minimum":1},"scope":{"type":"string","enum":["repo","workspace"]},"taskId":{"type":"string","minLength":1},"deadlineMs":{"type":"integer","minimum":1},"sufficiencyContract":{"type":"object","description":"Optional planner-authored SufficiencyContractV1 (membrane-sufficiency-v1); transported verbatim to federate, never derived from task prose"},"remainingContextCeiling":remaining_context_ceiling(),"pushResolverToken":{"type":"string","minLength":64,"maxLength":64}}),
         ),
         "membrane_source_read" => (
             vec![
@@ -86,6 +87,22 @@ fn schema(name: &str) -> Value {
                 "expectedContentHash",
             ],
             json!({"repository":{"type":"string"},"caller":caller(),"sourceRef":{"type":"string"},"anchorId":{"type":"string"},"expectedContentHash":{"type":"string"}}),
+        ),
+        "membrane_ledger" => (
+            vec!["repository", "caller", "operation"],
+            json!({"repository":{"type":"string"},"caller":caller(),
+                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","backlinks","related","manifests","drift"]},
+                "query":{"type":"string","minLength":1,"maxLength":4096},
+                "k":{"type":"integer","minimum":1,"maximum":32},
+                "path":{"type":"string"},"docId":{"type":"string"},"nodeId":{"type":"string"},
+"scopeGrantId":{"type":"string"},"taskId":{"type":"string","minLength":1},
+                "expectedContentHash":{"type":"string"},"continuationCursor":{"type":"string"},
+                "maxSections":{"type":"integer","minimum":1,"maximum":256},
+                "limit":{"type":"integer","minimum":1,"maximum":256},
+                "mode":{"enum":["legacy_scan","shadow","ledger_fts"]},
+                "fromManifest":{"type":"string"},"toManifest":{"type":"string"},
+                "deadlineMs":{"type":"integer","minimum":1,"maximum":30000},
+                "taskGrantLevel":{"type":"string"}}),
         ),
         "membrane_blueprint" => (
             vec!["repository", "caller", "operation"],
@@ -131,6 +148,15 @@ fn schema(name: &str) -> Value {
             }),
         ),
     };
+    if name == "membrane_source_read" {
+        for field in ["docId","nodeId","expectedRevision","expectedSpanHash","continuationCursor","ledgerTicket"] {
+            properties[field] = json!({"type":"string","maxLength":8192});
+        }
+        properties["ledgerGeneration"] = json!({"type":"integer","minimum":0});
+        properties["maxBytes"] = json!({"type":"integer","minimum":1,"maximum":12000});
+        properties["deadlineMs"] = json!({"type":"integer","minimum":1,"maximum":30000});
+    }
+    if name == "membrane_context" { properties["scopeGrantId"] = json!({"type":"string"}); }
     json!({"type":"object","required":required,"properties":properties,"additionalProperties":false})
 }
 fn annotations(name: &str) -> Value {
@@ -159,7 +185,12 @@ pub(crate) fn definitions() -> Value {
                     return entries.as_array().unwrap().iter().find(|v| v["name"] == *name).unwrap().clone();
                 }
                 json!({
-                  "name":name,"description":format!("Native Membrane handler for {name}."),
+                  "name":name,"description":match *name {
+                    "membrane_context" => "Federate bounded, grant-aware context through the resident Membrane planner.",
+                    "membrane_source_read" => "Resolve a hash/revision/span-bound source reference. Ledger node reads may require the opaque ledgerTicket returned by Ledger retrieval; continuationCursor resumes the same captured span and never grants authority.",
+                    "membrane_ledger" => "Navigate the resident Ledger document index: scoped recall/literal search, paged outlines, related nodes, backlinks, named structural drift, status, sync, activation gates, or scoped erasure. Final prompt admission remains Pull-owned.",
+                    _ => "Native Membrane operation.",
+                  },
                   "inputSchema":schema(name),"annotations":annotations(name)
                 })
             })
@@ -172,7 +203,7 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     let mut result = Vec::new();
     for value in list {
         let group = value.as_str()?;
-        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "push")
+        if !matches!(group, "default" | "memory" | "blueprint" | "diagnostic" | "ledger" | "push")
             || !seen.insert(group)
         {
             return None;
@@ -182,11 +213,12 @@ fn requested(params: Option<&Value>) -> Option<Vec<&str>> {
     Some(result)
 }
 pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
-    let mut names = vec!["membrane_context"];
+    let mut names = vec!["membrane_context", "membrane_source_read", "membrane_ledger"];
     for group in requested(params).unwrap_or_default() {
         let additions: &[&str] = match group {
             "memory" => &CORE[3..10],
-            "push" => &CORE[10..],
+            "ledger" => &["membrane_source_read", "membrane_ledger"],
+            "push" => &CORE[11..],
             "blueprint" => &CORE[1..3],
             "diagnostic" => DIAGNOSTIC,
             _ => &[],
@@ -213,6 +245,7 @@ fn envelope(operation: &str, code: &str, message: &str) -> Value {
 fn invalid_envelope_code(name: &str) -> &'static str {
     match name {
         "membrane_source_read" => "source_read_envelope_invalid",
+        "membrane_ledger" => "ledger_envelope_invalid",
         "membrane_blueprint" => "blueprint_envelope_invalid",
         "membrane_checkpoint_save" => "checkpoint_envelope_invalid",
         "membrane_checkpoint_load" => "checkpoint_envelope_invalid",

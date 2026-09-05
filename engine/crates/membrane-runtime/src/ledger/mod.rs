@@ -3,6 +3,12 @@
 //! Ledger owns document indexes and source-bound section references. It does not own
 //! canonical repository truth (Blueprint) or durable learned memory (Cortex).
 
+pub(crate) mod cli;
+pub(crate) mod service;
+pub(crate) mod provider;
+pub(crate) mod qualification;
+pub(crate) mod diagnostics;
+pub(crate) mod erasure;
 pub mod db;
 pub mod doc_candidate_provider;
 pub mod doc_projection;
@@ -11,9 +17,14 @@ pub mod doc_spine;
 pub mod document_conversion;
 pub mod identifier;
 pub mod index;
+pub mod limits;
 pub mod link_projection;
 pub mod outline;
+pub mod policy;
+pub mod query;
 pub mod query_alias;
+pub(crate) mod reconcile;
+pub mod resolve;
 pub mod session_projection;
 
 pub use db::LedgerDb;
