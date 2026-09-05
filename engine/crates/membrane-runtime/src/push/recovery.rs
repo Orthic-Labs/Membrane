@@ -12,6 +12,7 @@ pub const DEFAULT_RESTORE_BYTES: usize = 64 * 1024;
 const MAX_STORE_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_SCOPE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARTIFACTS: u64 = 4096;
+const MAX_TOMBSTONES: u64 = 8192;
 const MAX_TTL_MS: u64 = 7 * 24 * 60 * 60 * 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -172,8 +173,6 @@ impl RecoveryStore {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
                 .map_err(|_| RecoveryError::Unavailable)?;
         }
-        // Physical pages are independently bounded. SQLite reuses free pages;
-        // storage pressure is a refusal, never implicit eviction of a live lease.
         let page_size: i64 = connection.query_row("PRAGMA page_size", [], |r| r.get(0)).map_err(db_error)?;
         if page_size <= 0 { return Err(RecoveryError::Corrupt); }
         connection.pragma_update(None, "max_page_count", 512_i64 * 1024 * 1024 / page_size).map_err(db_error)?;
@@ -182,88 +181,173 @@ impl RecoveryStore {
             CREATE TABLE IF NOT EXISTS push_store (id INTEGER PRIMARY KEY CHECK(id=1), identity TEXT NOT NULL);
             INSERT OR IGNORE INTO push_store VALUES(1, lower(hex(randomblob(32))));
             CREATE TABLE IF NOT EXISTS push_originals (
-              scope TEXT NOT NULL, digest TEXT NOT NULL, content BLOB NOT NULL,
-              size INTEGER NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
-              invalidated INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(scope,digest));
-            CREATE INDEX IF NOT EXISTS push_expiry ON push_originals(expires);")
+              scope TEXT NOT NULL, digest TEXT NOT NULL, handle_digest TEXT,
+              content BLOB NOT NULL, size INTEGER NOT NULL, created INTEGER NOT NULL,
+              expires INTEGER NOT NULL, invalidated INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY(scope,digest));
+            CREATE INDEX IF NOT EXISTS push_expiry ON push_originals(expires);
+            CREATE TABLE IF NOT EXISTS push_tombstones (
+              scope TEXT NOT NULL, handle_digest TEXT NOT NULL, state TEXT NOT NULL,
+              until INTEGER NOT NULL, PRIMARY KEY(scope,handle_digest));
+            CREATE INDEX IF NOT EXISTS push_tombstone_until ON push_tombstones(until);")
             .map_err(db_error)?;
+
+        // Migration from the first SQLite layout. Existing content-addressed
+        // handles remain valid until their original terminal state. New rows use
+        // independent opaque handle generations so reclaimed rows never resurrect.
+        let has_handle_digest = {
+            let mut stmt = connection.prepare("PRAGMA table_info(push_originals)").map_err(db_error)?;
+            let columns = stmt.query_map([], |row| row.get::<_, String>(1)).map_err(db_error)?;
+            let mut found = false;
+            for column in columns {
+                if column.map_err(db_error)? == "handle_digest" { found = true; break; }
+            }
+            found
+        };
+        if !has_handle_digest {
+            connection.execute("ALTER TABLE push_originals ADD COLUMN handle_digest TEXT", []).map_err(db_error)?;
+        }
+        connection.execute("UPDATE push_originals SET handle_digest=digest WHERE handle_digest IS NULL OR handle_digest=''", []).map_err(db_error)?;
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS push_handle ON push_originals(scope,handle_digest)", []).map_err(db_error)?;
         Ok(connection)
     }
     pub fn identity(&self) -> Result<String, RecoveryError> {
         self.connection()?.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)
     }
-    fn reference(connection: &Connection, hash: &str, size: usize, expires: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
+    fn reference(connection: &Connection, handle_hash: &str, source_hash: &str, size: usize, expires: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
         let store_id = connection.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)?;
-        Ok(RecoveryReference { schema_version: 1, handle: format!("mr://anchor/{hash}"),
-            source_digest: format!("sha256:{hash}"), size_bytes: size, store_id,
+        Ok(RecoveryReference { schema_version: 1, handle: format!("mr://anchor/{handle_hash}"),
+            source_digest: format!("sha256:{source_hash}"), size_bytes: size, store_id,
             expires_at: expires, observed_at: now,
             lease_state: if expires.saturating_sub(now) <= 60_000 { "near_expiry" } else { "active" }.into() })
+    }
+    fn prune_tombstones(connection: &Connection, now: u64) -> Result<(), RecoveryError> {
+        let now_i64 = i64::try_from(now).map_err(|_| RecoveryError::Limit)?;
+        connection.execute("DELETE FROM push_tombstones WHERE until<=?1", [now_i64]).map_err(db_error)?;
+        let count: i64 = connection.query_row("SELECT COUNT(*) FROM push_tombstones", [], |r| r.get(0)).map_err(db_error)?;
+        let excess = count.saturating_sub(MAX_TOMBSTONES as i64);
+        if excess > 0 {
+            connection.execute(
+                "DELETE FROM push_tombstones WHERE rowid IN (SELECT rowid FROM push_tombstones ORDER BY until ASC, rowid ASC LIMIT ?1)",
+                [excess],
+            ).map_err(db_error)?;
+        }
+        Ok(())
+    }
+    fn compact(connection: &Connection, now: u64) -> Result<(), RecoveryError> {
+        let now_i64 = i64::try_from(now).map_err(|_| RecoveryError::Limit)?;
+        let tombstone_until = now.saturating_add(MAX_TTL_MS).min(i64::MAX as u64) as i64;
+        connection.execute(
+            "INSERT OR REPLACE INTO push_tombstones(scope,handle_digest,state,until)
+             SELECT scope,handle_digest,'invalidated',?1 FROM push_originals
+             WHERE invalidated<>0 AND handle_digest IS NOT NULL",
+            [tombstone_until],
+        ).map_err(db_error)?;
+        connection.execute(
+            "INSERT OR IGNORE INTO push_tombstones(scope,handle_digest,state,until)
+             SELECT scope,handle_digest,'expired',?2 FROM push_originals
+             WHERE expires<=?1 AND handle_digest IS NOT NULL",
+            params![now_i64, tombstone_until],
+        ).map_err(db_error)?;
+        connection.execute("DELETE FROM push_originals WHERE invalidated<>0 OR expires<=?1", [now_i64]).map_err(db_error)?;
+        Self::prune_tombstones(connection, now)
+    }
+    fn terminal_error(connection: &Connection, scope: &str, handle_hash: &str) -> Result<Option<RecoveryError>, RecoveryError> {
+        let state: Option<String> = connection.query_row(
+            "SELECT state FROM push_tombstones WHERE scope=?1 AND handle_digest=?2",
+            params![scope, handle_hash], |r| r.get(0),
+        ).optional().map_err(db_error)?;
+        Ok(match state.as_deref() {
+            Some("expired") => Some(RecoveryError::Expired),
+            Some("invalidated") => Some(RecoveryError::Invalidated),
+            Some(_) => Some(RecoveryError::Corrupt),
+            None => None,
+        })
+    }
+    fn mint_handle(connection: &Connection, scope: &str) -> Result<String, RecoveryError> {
+        for _ in 0..8 {
+            let mut nonce = [0u8; 32];
+            getrandom::fill(&mut nonce).map_err(|_| RecoveryError::Unavailable)?;
+            let candidate = hex::encode(nonce);
+            let active: i64 = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM push_originals WHERE scope=?1 AND handle_digest=?2)",
+                params![scope, candidate], |r| r.get(0),
+            ).map_err(db_error)?;
+            let terminal: i64 = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM push_tombstones WHERE scope=?1 AND handle_digest=?2)",
+                params![scope, candidate], |r| r.get(0),
+            ).map_err(db_error)?;
+            if active == 0 && terminal == 0 { return Ok(candidate); }
+        }
+        Err(RecoveryError::Unavailable)
     }
     pub fn publish(&self, scope: &RecoveryScope, bytes: &[u8], ttl_ms: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
         if bytes.len() > MAX_ARTIFACT_BYTES || ttl_ms == 0 || ttl_ms > MAX_TTL_MS || now > i64::MAX as u64 - ttl_ms {
             return Err(RecoveryError::Limit);
         }
-        let hash = digest(bytes);
+        let source_hash = digest(bytes);
         let mut connection = self.connection()?;
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
-        // No access extends expiry; explicit invalidation releases payload quota.
-        // Expired/invalidation tombstones prevent an old handle silently becoming
-        // valid again. Explicit retention maintenance is separate from publication.
-        let old_size: Option<(usize, usize, u64)> = tx.query_row(
-            "SELECT size,length(content),expires FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((sql_size(r,0)?,sql_size(r,1)?,sql_u64(r,2)?))).optional().map_err(db_error)?;
-        if let Some((size, actual, expires)) = old_size {
-            if now >= expires { return Err(RecoveryError::Expired); }
-            if size != actual || size > MAX_ARTIFACT_BYTES { return Err(RecoveryError::Corrupt); }
-        }
-        let existing: Option<(Vec<u8>, usize, u64, bool)> = tx.query_row(
-            "SELECT content,size,expires,invalidated FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((r.get(0)?, sql_size(r,1)?, sql_u64(r,2)?, r.get(3)?))).optional().map_err(db_error)?;
-        let expires = if let Some((retained, size, expires, invalidated)) = existing {
-            if invalidated { return Err(RecoveryError::Invalidated); }
-            if retained.len() != size || retained != bytes || digest(&retained) != hash { return Err(RecoveryError::Corrupt); }
-            expires
+        Self::compact(&tx, now)?;
+        let existing: Option<(String, Vec<u8>, usize, u64)> = tx.query_row(
+            "SELECT handle_digest,content,size,expires FROM push_originals WHERE scope=?1 AND digest=?2 AND invalidated=0",
+            params![scope.id, source_hash], |r| Ok((r.get(0)?, r.get(1)?, sql_size(r,2)?, sql_u64(r,3)?)),
+        ).optional().map_err(db_error)?;
+        let (handle_hash, expires) = if let Some((handle_hash, retained, size, expires)) = existing {
+            if retained.len() != size || retained != bytes || digest(&retained) != source_hash { return Err(RecoveryError::Corrupt); }
+            (handle_hash, expires)
         } else {
             let (total, scoped, count): (u64, u64, u64) = tx.query_row(
                 "SELECT COALESCE(SUM(size),0), COALESCE(SUM(CASE WHEN scope=?1 THEN size ELSE 0 END),0), COUNT(*) FROM push_originals",
-                [&scope.id], |r| Ok((sql_u64(r,0)?, sql_u64(r,1)?, sql_u64(r,2)?))).map_err(db_error)?;
+                [&scope.id], |r| Ok((sql_u64(r,0)?, sql_u64(r,1)?, sql_u64(r,2)?)),
+            ).map_err(db_error)?;
             if total + bytes.len() as u64 > MAX_STORE_BYTES || scoped + bytes.len() as u64 > MAX_SCOPE_BYTES || count >= MAX_ARTIFACTS {
                 return Err(RecoveryError::Limit);
             }
             let expires = now + ttl_ms;
-            tx.execute("INSERT INTO push_originals(scope,digest,content,size,created,expires) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![scope.id, hash, bytes, bytes.len() as i64, now as i64, expires as i64]).map_err(db_error)?;
-            expires
+            let handle_hash = Self::mint_handle(&tx, &scope.id)?;
+            tx.execute(
+                "INSERT INTO push_originals(scope,digest,handle_digest,content,size,created,expires) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                params![scope.id, source_hash, handle_hash, bytes, bytes.len() as i64, now as i64, expires as i64],
+            ).map_err(db_error)?;
+            (handle_hash, expires)
         };
-        // Read back inside the transaction before exposing a handle.
-        let retained: Vec<u8> = tx.query_row("SELECT content FROM push_originals WHERE scope=?1 AND digest=?2", params![scope.id, hash], |r| r.get(0)).map_err(db_error)?;
-        if retained != bytes || digest(&retained) != hash { return Err(RecoveryError::Corrupt); }
-        let reference = Self::reference(&tx, &hash, bytes.len(), expires, now)?;
+        let retained: Vec<u8> = tx.query_row(
+            "SELECT content FROM push_originals WHERE scope=?1 AND handle_digest=?2",
+            params![scope.id, handle_hash], |r| r.get(0),
+        ).map_err(db_error)?;
+        if retained != bytes || digest(&retained) != source_hash { return Err(RecoveryError::Corrupt); }
+        let reference = Self::reference(&tx, &handle_hash, &source_hash, bytes.len(), expires, now)?;
         tx.commit().map_err(db_error)?;
         Ok(reference)
     }
     pub fn resolve(&self, scope: &RecoveryScope, handle: &str, selector: &Selector, max_bytes: usize, now: u64) -> Result<ResolvedArtifact, RecoveryError> {
-        let hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
+        let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
         if max_bytes == 0 || max_bytes > MAX_RESTORE_BYTES { return Err(RecoveryError::Limit); }
-        let mut connection = self.connection()?;
-        let tx = connection.transaction().map_err(db_error)?;
-        let metadata: Option<(usize, usize, u64, bool)> = tx.query_row(
-            "SELECT size,length(content),expires,invalidated FROM push_originals WHERE scope=?1 AND digest=?2",
-            params![scope.id, hash], |r| Ok((sql_size(r,0)?, sql_size(r,1)?, sql_u64(r,2)?, r.get(3)?))).optional().map_err(db_error)?;
-        let (size, stored_size, expires, invalidated) = metadata.ok_or(RecoveryError::NotFound)?;
+        let connection = self.connection()?;
+        let metadata: Option<(String, usize, usize, u64, bool)> = connection.query_row(
+            "SELECT digest,size,length(content),expires,invalidated FROM push_originals WHERE scope=?1 AND handle_digest=?2",
+            params![scope.id, handle_hash], |r| Ok((r.get(0)?, sql_size(r,1)?, sql_size(r,2)?, sql_u64(r,3)?, r.get(4)?)),
+        ).optional().map_err(db_error)?;
+        let Some((source_hash, size, stored_size, expires, invalidated)) = metadata else {
+            return Err(Self::terminal_error(&connection, &scope.id, &handle_hash)?.unwrap_or(RecoveryError::NotFound));
+        };
         if invalidated { return Err(RecoveryError::Invalidated); }
         if now >= expires { return Err(RecoveryError::Expired); }
         if size != stored_size || size > MAX_ARTIFACT_BYTES { return Err(RecoveryError::Corrupt); }
-        let bytes: Vec<u8> = tx.query_row("SELECT content FROM push_originals WHERE scope=?1 AND digest=?2", params![scope.id, hash], |r| r.get(0)).map_err(db_error)?;
-        if digest(&bytes) != hash { return Err(RecoveryError::Corrupt); }
+        let bytes: Vec<u8> = connection.query_row(
+            "SELECT content FROM push_originals WHERE scope=?1 AND handle_digest=?2",
+            params![scope.id, handle_hash], |r| r.get(0),
+        ).map_err(db_error)?;
+        if digest(&bytes) != source_hash { return Err(RecoveryError::Corrupt); }
         let (start, end) = select_bytes(&bytes, selector)?;
         if end - start > max_bytes { return Err(RecoveryError::Limit); }
         let selected = &bytes[start..end];
         let (content_encoding, content) = match std::str::from_utf8(selected) {
             Ok(text) => ("utf-8", text.to_owned()), Err(_) => ("hex", hex::encode(selected)),
         };
-        super::telemetry::record("restore", size, selected.len(), Some("status=verified"), Some(&hash));
-        Ok(ResolvedArtifact { reference: Self::reference(&tx, &hash, size, expires, now)?,
+        super::telemetry::record("restore", size, selected.len(), Some("status=verified"), Some(&source_hash));
+        Ok(ResolvedArtifact { reference: Self::reference(&connection, &handle_hash, &source_hash, size, expires, now)?,
             start_byte: start, end_byte: end, selected_digest: format!("sha256:{}", digest(selected)),
             content_encoding, content, disposition: "exact", fidelity: "exact_bytes" })
     }
@@ -273,18 +357,38 @@ impl RecoveryStore {
         if ttl_ms == 0 || ttl_ms > MAX_TTL_MS || now > i64::MAX as u64 - ttl_ms { return Err(RecoveryError::Limit); }
         let resolved = self.resolve(scope, handle, &Selector::Bytes {start:0,end:0}, 1, now)?;
         if resolved.reference.expires_at != expected_expiry { return Err(RecoveryError::Denied); }
-        let hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
+        let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
+        let source_hash = resolved.reference.source_digest.strip_prefix("sha256:").ok_or(RecoveryError::Corrupt)?;
         let expires = (now + ttl_ms).max(expected_expiry);
         let connection = self.connection()?;
-        let changed = connection.execute("UPDATE push_originals SET expires=?1 WHERE scope=?2 AND digest=?3 AND expires=?4 AND invalidated=0",
-            params![expires as i64, scope.id, hash, expected_expiry as i64]).map_err(db_error)?;
+        let changed = connection.execute(
+            "UPDATE push_originals SET expires=?1 WHERE scope=?2 AND handle_digest=?3 AND expires=?4 AND invalidated=0",
+            params![expires as i64, scope.id, handle_hash, expected_expiry as i64],
+        ).map_err(db_error)?;
         if changed != 1 { return Err(RecoveryError::Denied); }
-        Self::reference(&connection, &hash, resolved.reference.size_bytes, expires, now)
+        Self::reference(&connection, &handle_hash, source_hash, resolved.reference.size_bytes, expires, now)
     }
     pub fn invalidate(&self, scope: &RecoveryScope, handle: &str) -> Result<(), RecoveryError> {
-        let hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
-        let changed = self.connection()?.execute("UPDATE push_originals SET invalidated=1,content=x'',size=0 WHERE scope=?1 AND digest=?2", params![scope.id, hash]).map_err(db_error)?;
-        if changed == 0 { Err(RecoveryError::NotFound) } else { Ok(()) }
+        let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
+        let mut connection = self.connection()?;
+        let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
+        let exists: Option<i64> = tx.query_row(
+            "SELECT 1 FROM push_originals WHERE scope=?1 AND handle_digest=?2",
+            params![scope.id, handle_hash], |r| r.get(0),
+        ).optional().map_err(db_error)?;
+        if exists.is_none() {
+            return Err(Self::terminal_error(&tx, &scope.id, &handle_hash)?.unwrap_or(RecoveryError::NotFound));
+        }
+        let now = now_ms();
+        let until = now.saturating_add(MAX_TTL_MS).min(i64::MAX as u64) as i64;
+        tx.execute(
+            "INSERT OR REPLACE INTO push_tombstones(scope,handle_digest,state,until) VALUES(?1,?2,'invalidated',?3)",
+            params![scope.id, handle_hash, until],
+        ).map_err(db_error)?;
+        tx.execute("DELETE FROM push_originals WHERE scope=?1 AND handle_digest=?2", params![scope.id, handle_hash]).map_err(db_error)?;
+        Self::prune_tombstones(&tx, now)?;
+        tx.commit().map_err(db_error)?;
+        Ok(())
     }
 }
 
@@ -477,6 +581,32 @@ mod tests {
         store.connection().unwrap().execute("UPDATE push_originals SET size=-1", []).unwrap();
         assert!(matches!(store.resolve(&s, &reference.handle, &Selector::Whole, 100, 600), Err(RecoveryError::Corrupt)));
     }
+    #[test]
+    fn expired_content_can_be_republished_without_resurrecting_old_handle() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = RecoveryStore::at(temp.path());
+        let s = scope(&temp, "a");
+        let old = store.publish(&s, b"same bytes", 10, 100).unwrap();
+        let new = store.publish(&s, b"same bytes", 10, 111).unwrap();
+        assert_ne!(old.handle, new.handle);
+        assert!(matches!(store.resolve(&s, &old.handle, &Selector::Whole, 32, 111), Err(RecoveryError::Expired)));
+        assert_eq!(store.resolve(&s, &new.handle, &Selector::Whole, 32, 111).unwrap().bytes().unwrap(), b"same bytes");
+    }
+
+    #[test]
+    fn invalidated_content_can_be_republished_without_resurrecting_old_handle() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = RecoveryStore::at(temp.path());
+        let s = scope(&temp, "a");
+        let now = now_ms();
+        let old = store.publish(&s, b"same bytes", 1000, now).unwrap();
+        store.invalidate(&s, &old.handle).unwrap();
+        let new = store.publish(&s, b"same bytes", 1000, now + 1).unwrap();
+        assert_ne!(old.handle, new.handle);
+        assert!(matches!(store.resolve(&s, &old.handle, &Selector::Whole, 32, now + 1), Err(RecoveryError::Invalidated)));
+        assert_eq!(store.resolve(&s, &new.handle, &Selector::Whole, 32, now + 1).unwrap().bytes().unwrap(), b"same bytes");
+    }
+
     #[test]
     fn exact_json_selectors_preserve_spelling_and_reject_ambiguity() {
         let text = br#"{ "items": [{"id":"a","n":1.00},{"id":"b","n":2e3}] }"#;

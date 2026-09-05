@@ -51,30 +51,45 @@ pub struct PreparedDelivery {
     pub receipt: DeliveryReceipt,
 }
 struct ConsumerProof { scope: String, store_id: String, expires: u64 }
+const MAX_CONSUMER_PROOFS: usize = 512;
+const CONSUMER_PROOF_TTL_MS: u64 = 300_000;
+const CONSUMER_PROOF_REUSE_FLOOR_MS: u64 = 30_000;
 static CONSUMERS: OnceLock<Mutex<HashMap<String, ConsumerProof>>> = OnceLock::new();
 fn consumers() -> &'static Mutex<HashMap<String, ConsumerProof>> { CONSUMERS.get_or_init(|| Mutex::new(HashMap::new())) }
+fn probe_payload(token: String, store_id: String, expires: u64) -> Value {
+    json!({"schemaVersion":1,"resolver":"membrane_push_resolve","resolverToken":token,
+        "storeId":store_id,"expiresAt":expires,"selectors":["whole","bytes","lines","json"],
+        "maxRestoreBytes":recovery::MAX_RESTORE_BYTES,"disposition":"exact","telemetry":super::telemetry::status()})
+}
 
 /// Called through the authorized resolver operation, not self-declared by a
 /// prepare request. Restart invalidates proofs, but never stored originals.
 pub fn resolver_probe(store: &RecoveryStore, scope: &RecoveryScope) -> Result<Value, RecoveryError> {
     let now = recovery::now_ms();
     let store_id = store.identity()?;
+    let mut proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
+    proofs.retain(|_, proof| proof.expires > now);
+    if let Some((token, proof)) = proofs.iter().find(|(_, proof)|
+        proof.scope == scope.binding() && proof.store_id == store_id && proof.expires.saturating_sub(now) > CONSUMER_PROOF_REUSE_FLOOR_MS)
+    {
+        return Ok(probe_payload(token.clone(), store_id, proof.expires));
+    }
+    proofs.retain(|_, proof| !(proof.scope == scope.binding() && proof.store_id == store_id));
+    if proofs.len() >= MAX_CONSUMER_PROOFS { return Err(RecoveryError::Limit); }
     let mut nonce = [0u8; 32];
     getrandom::fill(&mut nonce).map_err(|_| RecoveryError::Unavailable)?;
     let token = hex::encode(nonce);
-    let mut proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
-    proofs.retain(|_, proof| proof.expires > now);
-    if proofs.len() >= 512 { return Err(RecoveryError::Limit); }
-    proofs.insert(token.clone(), ConsumerProof { scope: scope.binding().into(), store_id: store_id.clone(), expires: now + 300_000 });
-    Ok(json!({"schemaVersion":1,"resolver":"membrane_push_resolve","resolverToken":token,
-        "storeId":store_id,"expiresAt":now+300_000,"selectors":["whole","bytes","lines","json"],
-        "maxRestoreBytes":recovery::MAX_RESTORE_BYTES,"disposition":"exact","telemetry":super::telemetry::status()}))
+    let expires = now + CONSUMER_PROOF_TTL_MS;
+    proofs.insert(token.clone(), ConsumerProof { scope: scope.binding().into(), store_id: store_id.clone(), expires });
+    Ok(probe_payload(token, store_id, expires))
 }
 pub(crate) fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: Option<&str>) -> Result<bool, RecoveryError> {
     let Some(token) = token.filter(|t| t.len() == 64) else { return Ok(false); };
     let id = store.identity()?;
-    let proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
-    Ok(proofs.get(token).is_some_and(|p| p.scope == scope.binding() && p.store_id == id && p.expires > recovery::now_ms()))
+    let now = recovery::now_ms();
+    let mut proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
+    proofs.retain(|_, proof| proof.expires > now);
+    Ok(proofs.get(token).is_some_and(|p| p.scope == scope.binding() && p.store_id == id))
 }
 fn exact_delivery(text: &str) -> PreparedDelivery {
     let hash = format!("sha256:{}", recovery::digest(text.as_bytes()));
@@ -201,6 +216,17 @@ mod tests {
         reentry.exact = true;
         assert_eq!(prepare(&store, &scope, reentry).unwrap().text, text);
     }
+    #[test]
+    fn repeated_probe_reuses_live_binding_instead_of_exhausting_registry() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = RecoveryStore::at(temp.path());
+        let scope = RecoveryScope::new(temp.path(), "probe-reuse").unwrap();
+        let first = resolver_probe(&store, &scope).unwrap()["resolverToken"].as_str().unwrap().to_string();
+        for _ in 0..600 {
+            assert_eq!(resolver_probe(&store, &scope).unwrap()["resolverToken"].as_str(), Some(first.as_str()));
+        }
+    }
+
     #[test]
     fn consumer_proof_is_scope_bound_and_exact_never_gets_reduced() {
         let temp = tempfile::tempdir().unwrap();
