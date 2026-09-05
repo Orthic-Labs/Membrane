@@ -226,9 +226,10 @@ pub(crate) fn related(
             "SELECT node_id,node_kind,span_hash FROM ledger_nodes WHERE doc_id=?1 AND parent_id=?2
              AND source_revision=?3 AND ledger_generation=?4 ORDER BY ordinal LIMIT ?5")
             .map_err(|e|e.to_string())?;
-        statement.query_map(params![doc,node,source.revision,source.generation,(limit+1) as i64],|r|
+        let rows = statement.query_map(params![doc,node,source.revision,source.generation,(limit+1) as i64],|r|
             Ok(json!({"nodeId":r.get::<_,String>(0)?,"nodeKind":r.get::<_,String>(1)?,"spanHash":r.get::<_,String>(2)?})))
-            .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?
+            .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+        rows
     };
     let truncated=children.len()>limit;
     let children=children.into_iter().take(limit).collect::<Vec<_>>();

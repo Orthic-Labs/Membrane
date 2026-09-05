@@ -253,8 +253,9 @@ fn graph_candidates(
                    AND EXISTS(SELECT 1 FROM ledger_query_scope allowed WHERE allowed.doc_id=target.doc_id)
                  ORDER BY link.target_doc_id,link.source_start_byte LIMIT 25"
             ).map_err(|e|e.to_string())?;
-            statement.query_map([source_doc], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?)))
-                .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?
+            let rows = statement.query_map([source_doc], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?)))
+                .map_err(|e|e.to_string())?.collect::<Result<Vec<_>,_>>().map_err(|e|e.to_string())?;
+            rows
         };
         if edges.len() > MAX_GRAPH_EDGES.saturating_sub(considered) { capped = true; }
         for (target_doc,target_span) in edges {
