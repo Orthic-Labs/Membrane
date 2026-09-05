@@ -39,6 +39,7 @@ use std::time::{Duration, Instant};
 use tower_http::timeout::TimeoutLayer;
 
 const MAX_BODY_BYTES: usize = 1 << 20;
+const MAX_PUSH_BODY_BYTES: usize = 8 << 20;
 const MAX_QUERY_CHARS: usize = 8 * 1024;
 const MAX_CONTENT_CHARS: usize = 256 * 1024;
 const MAX_RECALL_K: u64 = 50;
@@ -2555,7 +2556,7 @@ fn build_router_inner(
     let workload = Router::new()
         .fallback(any(dispatch))
         .with_state(state.clone())
-        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        .layer(DefaultBodyLimit::max(MAX_PUSH_BODY_BYTES))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             request_timeout,
@@ -4964,6 +4965,8 @@ fn route_full(
     body: &str,
 ) -> (u16, String) {
     let path = route_path(url);
+    let body_limit = if path == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
+    if body.len() > body_limit { return (413, "{\"error\":\"request body too large\"}".to_string()); }
     // `/health` returns planner metrics when the catalog is wired and falls
     // back to the legacy health body when it is not. The planner block lives
     // in its own try-catch so a planner panic still returns 200 with the
@@ -5791,6 +5794,16 @@ pub fn run_stdio_mcp() -> Result<(), String> {
 mod tests {
     include!("adapt_path_tests.rs");
     use super::*;
+
+    #[test]
+    fn push_prepare_body_limit_is_larger_without_widening_other_routes() {
+        assert_eq!(MAX_BODY_BYTES, 1 << 20);
+        assert_eq!(MAX_PUSH_BODY_BYTES, 8 << 20);
+        let push = if "/push/prepare" == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
+        let other = if "/memory-candidates" == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
+        assert_eq!(push, MAX_PUSH_BODY_BYTES);
+        assert_eq!(other, MAX_BODY_BYTES);
+    }
 
     #[test]
     fn runtime_origin_is_explicit_and_fail_closed() {

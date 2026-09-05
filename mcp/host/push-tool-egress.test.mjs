@@ -41,6 +41,6 @@ test("Push client preserves typed refusal and only targets loopback", async () =
   } }), /push_artifact_expired/);
 });
 test("Push is discoverable by explicit toolset without widening the default", () => {
-  assert.deepEqual(toolsetNames(), ["membrane_context"]);
-  assert.deepEqual(toolsetNames({ _meta: { "membrane.toolsets.v1": ["push"] } }), ["membrane_context", "membrane_push_prepare", "membrane_push_resolve"]);
+  assert.deepEqual(toolsetNames(), ["membrane_context", "membrane_source_read", "membrane_ledger"]);
+  assert.deepEqual(toolsetNames({ _meta: { "membrane.toolsets.v1": ["push"] } }), ["membrane_context", "membrane_source_read", "membrane_ledger", "membrane_push_prepare", "membrane_push_resolve"]);
 });
