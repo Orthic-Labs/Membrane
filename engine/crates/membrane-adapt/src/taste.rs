@@ -121,7 +121,7 @@ fn health_re() -> &'static Regex {
 }
 
 /// Explicitly bounded instructions belong to the current operation, not to
-/// durable Taste.  Keep this deliberately narrow: an unqualified preference
+/// durable Taste. Keep this deliberately narrow: an unqualified preference
 /// remains eligible, while clear task/turn/response markers fail closed out
 /// of the durable extraction lane.
 fn task_local_re() -> &'static Regex {
@@ -361,9 +361,11 @@ pub fn extract_candidates_with_source(
                 } else {
                     membrane_transcript::evidence::ActKind::ExplicitPreference
                 },
-                // Selected transcript review supplies authority after
-                // mandatory adjudication.
-                evidence_class: membrane_transcript::evidence::EvidenceClass::UserBehavioral,
+                // The native transcript parser has already established this
+                // signal as an external-user authoritative act. Review remains
+                // mandatory before admission, but review must not downgrade
+                // the evidence class to behavioral evidence.
+                evidence_class: membrane_transcript::evidence::EvidenceClass::UserAuthoritative,
                 avoided_alternative,
                 integrity_sha256: String::new(),
             }
@@ -401,7 +403,7 @@ mod tests {
         assert!(candidates[0].needs_review);
         assert_eq!(
             candidates[0].evidence_class,
-            membrane_transcript::evidence::EvidenceClass::UserBehavioral
+            membrane_transcript::evidence::EvidenceClass::UserAuthoritative
         );
     }
 
@@ -431,6 +433,10 @@ mod tests {
         ];
         let candidates = extract_candidates(&events, "repo-x");
         assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().all(|candidate| {
+            candidate.evidence_class
+                == membrane_transcript::evidence::EvidenceClass::UserAuthoritative
+        }));
     }
 
     #[test]
@@ -446,6 +452,10 @@ mod tests {
         assert_eq!(
             candidates[0].rule,
             "Always preserve unrelated user changes."
+        );
+        assert_eq!(
+            candidates[0].evidence_class,
+            membrane_transcript::evidence::EvidenceClass::UserAuthoritative
         );
     }
 
@@ -471,6 +481,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(pending.records.len(), 1);
+        assert_eq!(
+            candidates[0].evidence_class,
+            membrane_transcript::evidence::EvidenceClass::UserAuthoritative
+        );
     }
 
     #[test]
