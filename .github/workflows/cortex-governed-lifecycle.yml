@@ -38,7 +38,7 @@ jobs:
             git apply "$RUNNER_TEMP/cortex-followup.patch"
             rm -rf .cortex-followup
           fi
-          node scripts/cli/generate-cli-contract.mjs --write
+          node scripts/ci/check-generated-cli.mjs --write
       - name: Install JS dependencies without scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Static contract checks
@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           node scripts/ci/check-atomic-canons.mjs --write
           node scripts/ci/check-atomic-canons.mjs
-          node scripts/cli/generate-cli-contract.mjs --check
+          node scripts/ci/check-generated-cli.mjs
           node scripts/ci/check-protocol-generation.mjs
           node --test scripts/ci/check-atomic-canons.test.mjs
           node --test tests/contracts/native-mcp-contract.test.mjs tests/mcp-native-execution.test.mjs tests/cli/native-dispatch.test.mjs tests/cli/cli-surface.test.mjs
