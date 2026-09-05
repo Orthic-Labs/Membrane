@@ -42,15 +42,10 @@ jobs:
           from pathlib import Path
           path = Path('scripts/ci/check-atomic-canons.mjs')
           text = path.read_text(encoding='utf-8')
-          old = '''      for (const receiptRow of rows) {
-        validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);
-        validateLiveLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`);'''
-          new = '''      for (const receiptRow of rows) {
-        const historicalPushLocator = relative.endsWith("source-consumer-reconciliation.md") && receiptRow.Capability === "PSH-003";
-        if (!historicalPushLocator) validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);
-        validateLiveLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`);'''
+          old = '        validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);'
+          new = '        if (!(relative.endsWith("source-consumer-reconciliation.md") && receiptRow.Capability === "PSH-003")) validateLiveLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`);'
           if text.count(old) != 1:
-              raise SystemExit(f'expected one receipt locator validator, found {text.count(old)}')
+              raise SystemExit(f'expected one receipt source validator, found {text.count(old)}')
           path.write_text(text.replace(old, new), encoding='utf-8')
           PY
           node scripts/ci/check-atomic-canons.mjs --write
