@@ -214,11 +214,26 @@ export async function crossCheckWithLiveVerifier({
     if (!raw || raw.state === "unavailable" || raw.supported === false) {
       return Object.freeze({ state: "unavailable", reason: raw?.reason ?? "live_verifier_unavailable", canonical, verification: raw ?? null });
     }
-    const verification = liveVerificationCandidate(canonical, raw, sourceStateId);
+    const canonicalTarget = canonical.targetId ?? canonical.target ?? canonical.id ?? null;
+    const canonicalForEvaluation = canonical.targetId || canonical.target
+      ? canonical
+      : {
+          ...canonical,
+          relation: canonical.relation ?? "DEFINES",
+          source: canonical.source ?? canonical.id,
+          target: canonicalTarget,
+          targetId: canonicalTarget,
+          sourceStateId: canonical.sourceStateId ?? sourceStateId,
+          sourceRelation: canonical.sourceRelation ?? "current",
+          provenance: canonical.provenance ?? FACT_PROVENANCE.RULE_RESOLVED,
+          confidenceTier: canonical.confidenceTier ?? "EXACT_RESOLUTION",
+          resolved: Boolean(canonicalTarget),
+        };
+    const verification = liveVerificationCandidate(canonicalForEvaluation, raw, sourceStateId);
     const evaluated = evaluateEvidence({
-      targetSourceState: sourceStateId ?? canonical.sourceStateId ?? canonical.generationId ?? null,
-      candidates: [canonical, verification],
-      requestedRelation: canonical.relation ?? null,
+      targetSourceState: sourceStateId ?? canonicalForEvaluation.sourceStateId ?? canonicalForEvaluation.generationId ?? null,
+      candidates: [canonicalForEvaluation, verification],
+      requestedRelation: canonicalForEvaluation.relation ?? null,
     });
     if (evaluated.state === "unresolved_frontier" && evaluated.reason === "resolution_conflict") {
       return Object.freeze({ state: "resolution_conflict", reason: evaluated.reason, canonical, verification, evaluation: evaluated });
