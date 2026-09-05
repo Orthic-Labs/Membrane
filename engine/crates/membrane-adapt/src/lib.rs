@@ -28,6 +28,7 @@ pub mod canonical;
 pub mod cli_api;
 pub mod context_cost;
 pub mod delivery;
+pub mod detector_contract;
 pub mod duplicate_groups;
 pub mod evidence;
 pub mod gates;
