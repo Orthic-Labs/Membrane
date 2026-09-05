@@ -1,0 +1,41 @@
+name: adapt-completion
+on:
+  push:
+    branches: [work/adapt-membrane-completion-20260905]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: adapt-completion-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  qualify:
+    if: github.ref == 'refs/heads/work/adapt-membrane-completion-20260905'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: work/adapt-membrane-completion-20260905
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: engine -> target
+          shared-key: adapt-completion
+          cache-on-failure: true
+      - name: Compile Adapt and resident runtime
+        run: cargo check --manifest-path engine/Cargo.toml -p membrane-adapt -p membrane-runtime --locked
+      - name: Adapt library tests
+        run: cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --lib --locked
+      - name: Focused runtime Adapt tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked adapt -- --test-threads=1
+      - name: Canon integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f scripts/check-canon.py; then python3 scripts/check-canon.py; fi
+          if test -f scripts/check-canon.mjs; then node scripts/check-canon.mjs; fi
