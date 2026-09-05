@@ -1,0 +1,70 @@
+name: adapt-ci-diagnose
+on:
+  push:
+    branches: [work/adapt-membrane-completion-20260905]
+permissions:
+  contents: read
+concurrency:
+  group: adapt-ci-diagnose-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  diagnose:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22.13'
+          cache: pnpm
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: engine -> target
+          cache-on-failure: true
+      - name: Install root dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Hub dependencies
+        run: pnpm --dir apps/membrane-hub install --frozen-lockfile
+      - name: Workspace cargo check all targets
+        run: cargo check --manifest-path engine/Cargo.toml --workspace --all-targets --locked
+      - name: Workspace cargo tests
+        run: cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast
+      - name: Root JS tests
+        run: pnpm test
+      - name: Hub tests
+        run: RIGHT_RELEASE_OFFLINE=1 pnpm --dir apps/membrane-hub test
+      - name: Release tests
+        run: node --test scripts/release/*.test.mjs
+      - name: Random tests
+        run: pnpm test:random
+      - name: Release identity
+        run: node scripts/ci/check-release-identity.mjs
+      - name: Generated truth
+        run: node scripts/ci/check-generated.mjs
+      - name: Network boundary
+        run: node scripts/ci/check-network-boundary.mjs
+      - name: Lifecycle conformance
+        run: node scripts/ci/check-lifecycle-conformance.mjs
+      - name: Adapt ontology tests
+        run: node --test scripts/ci/check-adapt-ontology.test.mjs
+      - name: Adapt ontology
+        run: node scripts/ci/check-adapt-ontology.mjs
+      - name: Runtime language manifest tests
+        run: node --test scripts/ci/check-runtime-language-manifest.test.mjs
+      - name: Runtime language manifest
+        run: node scripts/ci/check-runtime-language-manifest.mjs
+      - name: Invocation graph tests
+        run: node --test scripts/ci/check-invocation-graph.test.mjs
+      - name: Invocation graph
+        run: node scripts/ci/check-invocation-graph.mjs
+      - name: Native contract fixture tests
+        run: node --test scripts/ci/check-native-contract-fixtures.test.mjs
+      - name: Native contract fixtures
+        run: node scripts/ci/check-native-contract-fixtures.mjs
