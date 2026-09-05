@@ -34,6 +34,7 @@ import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "./precision-tiers.mjs";
 import { STATIC_PROVIDER, TREESITTER_PROVIDER } from "./provider-identity.mjs";
 import { compareRepoPaths } from "./path-order.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
+import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
 import {
   openStore,
   openStoreReadOnly,
@@ -551,7 +552,7 @@ export function queryGraph(generation, options = {}) {
   const nodes = generation.nodes
     .map((node) => ({ node, score: scoreNode(node, terms) }))
     .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score || left.node.id.localeCompare(right.node.id))
+    .sort((left, right) => right.score - left.score || semanticAuthorityRankForFact(left.node) - semanticAuthorityRankForFact(right.node) || left.node.id.localeCompare(right.node.id))
     .slice(0, limit);
   return nodes.map(({ node }, index) => ({
     id: node.id,
@@ -1419,7 +1420,7 @@ function buildGenerationFromSources(root, source, options = {}) {
     // on unchanged rebuilds is preserved.
     generatedAt: `gen:${generationId.replace(/^xxh128:/, "").slice(0, 16)}`,
     generationId,
-    complete: true,
+    complete: !source.fileLimitReached && !source.traversalTruncated,
     // The fileLimit the build was run with (0 = unlimited). graphStatus and
     // downstream consumers use this to scope their re-scan so a huge real
     // workspace (D:\Claude has 1M+ directories) does not OOM the doctor.

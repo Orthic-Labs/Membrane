@@ -204,7 +204,20 @@ export function createBlueprintApplicationService({
     }
     throwIfAborted(signal);
     const db = openStoreReadOnly(dbPath);
+    let closed = false;
+    let snapshotOpen = false;
+    const closeSnapshot = () => {
+      if (closed) return;
+      closed = true;
+      try { if (snapshotOpen) db.exec("ROLLBACK;"); }
+      finally { closeStore(db); }
+    };
     try {
+      // Pin the first envelope read and every subsequent fact query to one
+      // committed WAL snapshot. Concurrent writers may publish a new graph;
+      // this session must never mix its rows with the old generation receipt.
+      db.exec("BEGIN;");
+      snapshotOpen = true;
       const meta = readIndexedMeta(db);
       if (!meta?.manifest?.generationId) fail("graph_missing", "No sealed generation is available.");
       if (meta.schemaVersion !== 1 || (!meta.provider || (typeof meta.provider !== "string" && typeof meta.provider.id !== "string")) || !meta.manifest.manifestDigest) {
@@ -242,20 +255,16 @@ export function createBlueprintApplicationService({
       if (freshnessReceipt.barrierResult !== "caught_up" && !input.allowStale) {
         fail("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt: freshnessReceipt });
       }
-      let closed = false;
       return Object.freeze({
         root,
         db,
         meta,
         receipt: freshnessReceipt,
-        close() {
-          if (closed) return;
-          closed = true;
-          closeStore(db);
-        },
+        get closed() { return closed; },
+        close: closeSnapshot,
       });
     } catch (error) {
-      closeStore(db);
+      closeSnapshot();
       throw error;
     }
   }
@@ -263,6 +272,7 @@ export function createBlueprintApplicationService({
   async function withCurrentDb(input, callback, { signal, session = null } = {}) {
     const current = session ?? await openFreshnessSession(input, { signal });
     try {
+      if (current.closed) fail("session_closed", "Blueprint freshness session is already closed.");
       throwIfAborted(signal);
       const result = await callback(current);
       throwIfAborted(signal);

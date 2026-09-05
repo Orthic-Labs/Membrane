@@ -187,11 +187,14 @@ export function canonicalCandidateSet(candidateSet) {
       recoverable: candidate.recoverable,
       resolver: candidate.resolver,
       text: candidate.text,
-      ...(candidate.recallCircuitId === undefined ? {} : { recallCircuitId: candidate.recallCircuitId }),
-      ...(candidate.evidencePathId === undefined ? {} : { evidencePathId: candidate.evidencePathId }),
-      ...(candidate.evidenceEnvelope === undefined ? {} : { evidenceEnvelope: candidate.evidenceEnvelope }),
+      // V1 is deliberately strict. Rich path provenance belongs to the
+      // containing RecallCircuit response, not undeclared CandidateV1 keys.
     })),
-    omissions: candidateSet.omissions ?? [],
+    omissions: (candidateSet.omissions ?? []).map((omission, index) => ({
+      id: omission.id ?? `${candidateSet.traceId}:omission:${index}`,
+      ...(omission.layer === undefined ? {} : { layer: omission.layer }),
+      reason: omission.reason,
+    })),
   };
 }
 
