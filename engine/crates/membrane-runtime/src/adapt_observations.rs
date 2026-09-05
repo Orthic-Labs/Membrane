@@ -1,13 +1,14 @@
 //! Bounded host observation adapter and deterministic verification detector.
 //! Reuses host H4/H6/H9/H10 types and Cortex's existing append-only event store.
 //! Input receipts attest host submissions; they are not user-preference authority.
-use crate::{adapt_service, MemoryStore};
+use crate::{adapt_efficiency, adapt_service, MemoryStore};
 use membrane_protocol::host_observation::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 const DETECTOR: &str = "required_verification_completion.v1";
+const DETECTOR_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -156,12 +157,17 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
                 &task_id,
                 expected_cursor,
                 &required,
-                &observations
+                &observations,
+                DETECTOR,
+                DETECTOR_VERSION,
+                adapt_efficiency::DETECTOR_FAMILY_ID,
+                adapt_efficiency::DETECTOR_FAMILY_VERSION,
+                HOST_OBSERVATION_SCHEMA_VERSION
             ]));
             if let Some(ref prior) = previous {
                 if prior.payload["window_id"] == window_id {
                     if prior.payload["input_digest"] != input_digest {
-                        return Err("window identity reused with changed input".into());
+                        return Err("window identity reused with changed input or detector version".into());
                     }
                     let reference = adapt_service::journal(
                         store,
@@ -218,13 +224,16 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
                     ExecutionObservationKindV1::CompletionClaimEmitted => {
                         for call in &required {
                             match results.get(call).copied().flatten() {
-                                Some(exit) if exit!=0 => episodes.push(json!({
+                                Some(exit) if exit != 0 => episodes.push(json!({
                                     "episode_id":format!("adapt:episode:{}",hash(&json!([DETECTOR,&scope,&session_id,&task_id,call,&evidence[call],&o.observation_id]))),
-                                    "detector":DETECTOR,"call_id":call,"failed_result_id":evidence[call],"completion_id":o.observation_id,
+                                    "detector":DETECTOR,"detector_version":DETECTOR_VERSION,"call_id":call,"failed_result_id":evidence[call],"completion_id":o.observation_id,
+                                    "execution_observation_ids":[evidence[call].clone(),o.observation_id.clone()],
                                     "honesty_limit":"Required verification failed before a completion claim; no user preference, root cause or prevented failure is inferred."
                                 })),
-                                None => {missing.insert(format!("verification_result:{call}"));},
-                                _=>{}
+                                None => {
+                                    missing.insert(format!("verification_result:{call}"));
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -234,13 +243,33 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
             if required.is_empty() {
                 missing.insert("required_verification_contract".into());
             }
-            let payload = json!({"contract":"adapt.detector-coverage.v1","detector":DETECTOR,
+
+            let flat_observations: Vec<_> = observations
+                .iter()
+                .map(|row| row.observation.clone())
+                .collect();
+            let detector_coverages =
+                adapt_efficiency::analyze_efficiency(&flat_observations, &input_digest);
+            let detector_catalog = adapt_efficiency::detector_catalog();
+            let payload = json!({
+                "contract":"adapt.detector-coverage.v2",
+                "detector":DETECTOR,
+                "detector_version":DETECTOR_VERSION,
+                "detector_family":{
+                    "id":adapt_efficiency::DETECTOR_FAMILY_ID,
+                    "version":adapt_efficiency::DETECTOR_FAMILY_VERSION,
+                    "input_schema_version":HOST_OBSERVATION_SCHEMA_VERSION,
+                    "catalog":detector_catalog,
+                },
                 "scope":scope,"window_id":window_id,"session_id":session_id,"task_id":task_id,
                 "input_digest":input_digest,"first_input_sequence":observations[0].sequence,
                 "last_input_sequence":observations.last().expect("nonempty").sequence,
                 "required_call_ids":required,"processed_event_ids":all_ids,"verification_results":results,"verification_evidence":evidence,
                 "state":if missing.is_empty(){"ran"}else{"unavailable"},"missing_fields":missing,
-                "episodes":episodes,"outcome_join":null});
+                "episodes":episodes,
+                "detector_coverages":detector_coverages,
+                "outcome_join":null
+            });
             // State and coverage commit together; competing windows race on the
             // same stream sequence and one fails rather than losing a cursor.
             let state = cortex_store::SessionEvent {
@@ -254,7 +283,9 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
                         &session_id,
                         &task_id,
                         &window_id,
-                        DETECTOR
+                        DETECTOR,
+                        DETECTOR_VERSION,
+                        adapt_efficiency::DETECTOR_FAMILY_VERSION
                     ]))
                 ),
                 event_type: "adapt.detector_state".into(),
@@ -383,9 +414,18 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
             {
                 return Err("outcome/coverage join is incomplete or mismatched".into());
             }
-            let out = json!({"contract":"adapt.coverage-outcome-join.v1","coverage_receipt":coverage_receipt_id,
-                "coverage_digest":coverage.content_hash,"evaluation":evaluation,"dataset_sha256":dataset_sha256,"case_sha256":case_sha256,
-                "effectiveness":null,"honesty_limit":"Evaluator joined to a detector window; intervention benefit requires a separately joined exact host-loaded exposure."});
+            let out = json!({
+                "contract":"adapt.coverage-outcome-join.v1",
+                "coverage_receipt":coverage_receipt_id,
+                "coverage_digest":coverage.content_hash,
+                "detector_family":coverage.payload["detector_family"],
+                "evaluation":evaluation,
+                "dataset_sha256":dataset_sha256,
+                "case_sha256":case_sha256,
+                "effectiveness":null,
+                "missing_fields":["h4_to_h6_exact_execution_episode_binding","exact_loaded_exposure_binding"],
+                "honesty_limit":"Evaluator is joined to the exact detector window and task/session. H4/H6 do not yet expose a verifiable execution-episode receipt bridge, and intervention benefit additionally requires a separately joined exact host-loaded exposure."
+            });
             adapt_service::journal(
                 store,
                 &scope,
