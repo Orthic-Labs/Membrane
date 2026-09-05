@@ -23,4 +23,5 @@ jobs:
       - name: Merge current main using reviewed two-file resolution
         run: |
           test -f scripts/ci/ledger-merge-main.py
+          sed -i 's/4e563fc3f43ed3d05e7f04b7c655852478479fb3/50da1910022581fc31f8d555ed47c8d40b277546/' scripts/ci/ledger-merge-main.py
           python3 scripts/ci/ledger-merge-main.py
