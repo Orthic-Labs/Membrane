@@ -22,8 +22,27 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
         with:
           version: 11.24.0
-      - name: Prepare generated references
-        run: node engine/crates/membrane/scripts/generate-cli-subcommands.mjs --write
+      - name: Prepare generated and evidence references
+        shell: bash
+        run: |
+          set -euo pipefail
+          node engine/crates/membrane/scripts/generate-cli-subcommands.mjs --write
+          python3 - <<'PY'
+          from pathlib import Path
+          replacements = {
+            'engine/crates/membrane-runtime/src/mcp_executor.rs:1463-1493':'engine/crates/membrane-runtime/src/mcp_executor.rs:1179-1232',
+            'engine/crates/membrane-runtime/src/mcp_executor.rs:1495-1515':'engine/crates/membrane-runtime/src/mcp_executor.rs:1233-1254',
+            'engine/crates/membrane-runtime/src/mcp_executor.rs:1534-1577':'engine/crates/membrane-runtime/src/mcp_executor.rs:1271-1360',
+          }
+          for name in ['docs/canon/membrane.md','docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md']:
+              p=Path(name); text=p.read_text()
+              for old,new in replacements.items(): text=text.replace(old,new)
+              p.write_text(text)
+          PY
+          old_hash=efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08
+          receipt=docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md
+          new_hash=$(git hash-object "$receipt")
+          grep -rl "@$old_hash" docs/canon --include='*.md' | xargs -r sed -i "s/@$old_hash/@$new_hash/g"
       - name: Install JS dependencies without scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Static contract checks
@@ -57,5 +76,5 @@ jobs:
           if git diff --cached --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(cortex): refresh generated references"
+          git commit -m "chore(cortex): reconcile generated and evidence references"
           git push origin HEAD:cortex-governed-lifecycle
