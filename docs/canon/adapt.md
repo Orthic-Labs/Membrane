@@ -4,11 +4,17 @@ Normalized from pre-standardization worktree canon inventory based on `c6cfbca96
 
 Only committed capability rows count. Implementation, verification, qualification, delivery & evidence remain independent; closure is derived.
 
+**Revision:** 2026-09-05 final consolidation; reconciled onto current main; runtime qualification remains independent.
+**Baseline:** `75c257ad711d19ffce69258d132a45dbffa9b4ac`; original atomic source blob `3c318e9b5220d8b80b1a409f1c1915b88ff99622`.
+**Semantic authority:** `docs/architecture/subsystems/adapt.md`.
+
+The 71 baseline capability rows and all 71 implementation rows are preserved verbatim. This edition adds ADP-074–077 with no completion claims and strengthens existing qualification acceptance where the final audit requires real consumer behavior. Historical focused passes qualify their recorded mechanism only; all release qualification remains PENDING. The scope COMMITTED denotes the proposed product commitment on adoption, not a deployed implementation. ADP-037/039 remain preservation-only aliases; ADP-072/073 are retained.
+
 ## Group register
 
 | ID | Parent | Owner | Scope | Derived rollup |
 |---|---|---|---|---|
-| ADP-G01 | — | Adapt | COMMITTED | 64 committed capabilities; 7 exploratory capability; closure derived from child rows |
+| ADP-G01 | — | Adapt | COMMITTED | 68 committed capabilities; 7 exploratory capability; closure derived from child rows |
 
 ## Capability ledger
 
@@ -85,6 +91,10 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | ADP-071 | ADP-G01 | Adapt | EXPLORATORY | Detect semantic compilation low yield. | MISSING | PENDING | PENDING | LOCAL | HOLD | PENDING | NOT_COMMITTED | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md@f42268958a5aa2aa1bba49b20b27986ed02d5820; Atom: ADP-071; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
 | ADP-072 | ADP-G01 | Adapt | COMMITTED | When evidence is insufficient for safe proposal formation, ask one evidence-bound clarification question, persist nonmutating clarification state, bind one human answer, & resume same lineage only while target evidence remains current. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md@f42268958a5aa2aa1bba49b20b27986ed02d5820; Atom: ADP-072; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
 | ADP-073 | ADP-G01 | Adapt | COMMITTED | Maintain at most one apply-eligible pending proposal per semantic target & target version; concurrent proposals merge, supersede, or surface typed conflict without duplicate mutation. | MISSING | PENDING | PENDING | LOCAL | IMPLEMENT | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-08-31-competitive-comparison/adapt.md@f42268958a5aa2aa1bba49b20b27986ed02d5820; Atom: ADP-073; Compared: 30b3c211ae874f369bed3fe92eb94b2fc5acbb16 |
+| ADP-074 | ADP-G01 | Adapt | COMMITTED | Expose negotiated, scope-bound, read-only agent inspection of Adapt preferences, applicability decisions, Insights, and proposal state without approval or exposure side effects. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-09-05-adapt-final/comparison.md@14eb3a127259404d7a654f4a06804acdf8dabbb2; Atom: ADP-074; Compared: 75c257ad711d19ffce69258d132a45dbffa9b4ac |
+| ADP-075 | ADP-G01 | Adapt | COMMITTED | Report daemon-backed Adapt pipeline readiness and progress from actual producer/consumer bindings, distinguishing empty workload, unavailable evidence, blocked work, and missing outcome joins. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-09-05-adapt-final/comparison.md@14eb3a127259404d7a654f4a06804acdf8dabbb2; Atom: ADP-075; Compared: 75c257ad711d19ffce69258d132a45dbffa9b4ac |
+| ADP-076 | ADP-G01 | Adapt | COMMITTED | Issue a bounded, version-bound behavioral candidate-comparison decision from host-run baseline/variant outcomes, allowing no improvement without granting review, admission, or activation authority. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-09-05-adapt-final/comparison.md@14eb3a127259404d7a654f4a06804acdf8dabbb2; Atom: ADP-076; Compared: 75c257ad711d19ffce69258d132a45dbffa9b4ac |
+| ADP-077 | ADP-G01 | Adapt | COMMITTED | Determine evidence-bound eligibility for each learned-guard rollout-stage transition without granting the host's separate blocking or scope-expansion authority. | PARTIAL | PENDING | PENDING | LOCAL | REPAIR_WIRE | PENDING | CURRENT_INCOMPLETE | Receipt: docs/provenance/foundation/2026-09-05-adapt-final/comparison.md@14eb3a127259404d7a654f4a06804acdf8dabbb2; Atom: ADP-077; Compared: 75c257ad711d19ffce69258d132a45dbffa9b4ac |
 
 ## Implementation register
 
@@ -163,6 +173,10 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-I071 | ADP-071 | No production implementation | Hold semantic_compilation_low_yield detector. | ORIGINAL | MISSING | NONE |
 | ADP-I072 | ADP-072 | No production clarification request, persistent nonmutating state, answer binding, or same-lineage resume path. | `docs/provenance/foundation/2026-08-31-master-atom-intake/adapt-review.md`; donor mechanisms require behavioral reimplementation. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Adapt review & host interaction path |
 | ADP-I073 | ADP-073 | Proposal stores do not enforce semantic-target plus target-version exclusion across concurrent writers. | `docs/provenance/foundation/2026-08-31-master-atom-intake/adapt-review.md`; donor mechanisms require behavioral reimplementation. | BEHAVIORAL_REIMPLEMENT | MISSING | Future Adapt proposal registry |
+| ADP-I074 | ADP-074 | engine/crates/membrane-mcp/src/tools.rs; engine/crates/membrane-runtime/src/mcp_executor.rs; engine/crates/membrane-runtime/src/adapt_service.rs | Native MCP Adapt inspection; full schema/privacy/platform qualification remains open. | BEHAVIORAL_REIMPLEMENT | PARTIAL | Resident Adapt service and native MCP/CLI; see implementation-status.md |
+| ADP-I075 | ADP-075 | engine/crates/membrane-runtime/src/adapt_service.rs | Resident status and persisted last-receipt projection; live producer connectivity and complete backlog health remain unavailable. | BEHAVIORAL_REIMPLEMENT | PARTIAL | Resident Adapt service and native MCP/CLI; see implementation-status.md |
+| ADP-I076 | ADP-076 | engine/crates/membrane-adapt/src/comparison.rs; engine/crates/membrane-runtime/src/cli.rs | Case-level comparison and resident decision receipts; trusted external evaluator resolution, experiment execution and full promotion qualification remain open. | BEHAVIORAL_REIMPLEMENT | PARTIAL | Resident Adapt service and native MCP/CLI; see implementation-status.md |
+| ADP-I077 | ADP-077 | engine/crates/membrane-adapt/src/guard_rollout.rs; engine/crates/membrane-runtime/src/cli.rs | Staged eligibility and resident receipts; host permission, real rollout and effect qualification remain open. | BEHAVIORAL_REIMPLEMENT | PARTIAL | Resident Adapt service and native MCP/CLI; see implementation-status.md |
 
 ## Qualification ledger
 
@@ -171,43 +185,43 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-Q001 | ADP-001 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q002 | ADP-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q003 | ADP-003 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q004 | ADP-004 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q004 | ADP-004 | Qualify account-free independent local review and optional signed verification through the real daemon/control surface; ordinary agent proposals cannot self-approve; state operator-equivalent shell limits; reject stale source/pool/target and test signed expiry/rotation/revocation policy at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q005 | ADP-005 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q006 | ADP-006 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q007 | ADP-007 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q008 | ADP-008 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q009 | ADP-009 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q010 | ADP-010 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q011 | ADP-011 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q012 | ADP-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q013 | ADP-013 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q014 | ADP-014 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q015 | ADP-015 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q016 | ADP-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q017 | ADP-017 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q018 | ADP-018 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q019 | ADP-019 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q020 | ADP-020 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q021 | ADP-021 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q022 | ADP-022 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q023 | ADP-023 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q024 | ADP-024 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q025 | ADP-025 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q026 | ADP-026 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q027 | ADP-027 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q028 | ADP-028 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q029 | ADP-029 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q030 | ADP-030 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q031 | ADP-031 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q032 | ADP-032 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q033 | ADP-033 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q034 | ADP-034 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q035 | ADP-035 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q036 | ADP-036 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q038 | ADP-038 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q040 | ADP-040 | Qualify coverage-to-episode/evaluator join receipt at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q042 | ADP-042 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q041 | ADP-041 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q011 | ADP-011 | Qualify source-bound rejected alternative/replacement/reason and honest none_recorded handling; a valid rejected option is not fabricated failure evidence; preserve through review and delivery at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q012 | ADP-012 | Qualify receipted lifecycle with policy/version changes, future-delivery invalidation, pending-plan/sync propagation and no historical re-mining resurrection; document in-flight limitations at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q013 | ADP-013 | Qualify bounded root standing core through CLI, HTTP, native MCP and a named host; core membership never outranks stronger scoped policy, and generic-memory candidate noise cannot starve the core at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q014 | ADP-014 | Qualify shared applicability-first selection with equivalent host/model/task context across CLI, HTTP, native MCP and named host; filter before ranking/truncation; unknown narrowing fails closed at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q015 | ADP-015 | Qualify distinct applicability/selection, emitted representation, host-loaded acknowledgement and evaluated preference outcome; exact record/version/run/digest joins, retry deduplication and unknown missing exposure at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q016 | ADP-016 | Qualify actual user inspect/edit/narrow/retire/delete/export/import controls, independent approval, evidence limits, deletion propagation and no accidental exported-policy persistence at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q017 | ADP-017 | Qualify versioned detector catalog, per-family positives/hard negatives and actual observation consumers; synthetic conformance is not real held-out production precision at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q018 | ADP-018 | Qualify exact episode evidence/applicability/detector identity under replay, partial and out-of-order input; retries cannot multiply episodes at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q019 | ADP-019 | Qualify deterministic independent-session recurrence, one-off preservation and receipted issue transitions; zero hits, missing coverage or packet eviction cannot alone retire a successful mitigation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q020 | ADP-020 | Qualify proposal-only discovery, inspectable cluster membership and separate development/frozen-test promotion with hard negatives and rollback; no private reasoning collection at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q021 | ADP-021 | Qualify observed-versus-inferred outcome reporting; guard firing/blocking is not proven prevented failure, and absent observations cannot establish success at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q022 | ADP-022 | Qualify independent proposal kind/effect/target with explicit compatibility and lineage; comparison result and rollout eligibility never substitute for review/admission/host activation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q023 | ADP-023 | Qualify current target-digest preventability, competing causes, already-correct/wrong-owner/redundant-change refusal and independent support; no self-authored causal proof at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q024 | ADP-024 | Qualify applicable/not-applicable/insufficient-evidence classification on host outcomes, keeping insufficient observations out of outcome denominators and causal claims at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q025 | ADP-025 | Qualify comparable-exposure recurrence by exact mitigation/version, baseline, loaded representation and evaluator; support negative results, regression/reopen and exposure-aware revalidation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q026 | ADP-026 | Qualify seals over every newly added meaning/applicability/review/target/version field; mutations fail verification and mutable lifecycle remains receipted at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q027 | ADP-027 | Qualify stable semantic IDs and atomic idempotent daemon-owned apply under retries/concurrent proposals; no direct-store fallback or duplicate durable mutation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q028 | ADP-028 | Qualify exact duplicates, reviewed semantic grouping and preserved conflicts on installed source-bound proposals; experimental alternatives cannot silently merge distinct authority/scope at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q029 | ADP-029 | Qualify one verified Cortex admission boundary behind the active daemon, installation/store identity and fresh pool; tray-off and state-dependent dry-run paths never open/migrate canonical storage at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q030 | ADP-030 | Qualify actual host observation producers and persisted incremental consumers with true client/model identity, cursor commit, restart/replay/gap handling and typed unavailability at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q031 | ADP-031 | Qualify exact evaluator/dataset/case/experiment/trace/version outcome ingestion from host-run trials, including unavailable evaluators and failures; CodeRight retains generic execution/storage at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q032 | ADP-032 | Qualify measured/inferred/unattributed context-cost reconciliation on selected host observations; reporting never becomes a competing packet allocator or a durable-retirement rule at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q033 | ADP-033 | Qualify reviewed issue-to-case redaction, source lineage and immutable case adoption into host-run baseline/candidate experiments, with hard negatives and no frozen-test leakage at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q034 | ADP-034 | Qualify distinct live Taste and Insights review actions, evidence limits, scoped versions, dismiss/split/merge and mitigation links; read-only agent inspection cannot invoke control actions at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q035 | ADP-035 | Qualify configured semantic provider, source selection, budgets, cancellation, restart and durable proposal sink; no-op, unavailable and failed handoff remain distinct, with no direct canonical writes at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q036 | ADP-036 | Qualify production joins over activation, exact asset-content and final loaded-representation digests, evaluator and outcome; prohibit cross-version co-aggregation and mark unversioned/missing exposure unknown at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q038 | ADP-038 | Qualify persisted per-assignment/window detector coverage including no-findings, actual input digest/version and ran/skipped/unavailable/failed states; missing evidence is not clean behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q040 | ADP-040 | Qualify coverage-to-exact-episode/evaluator/outcome joins with source/run/version identity, missing data and replay semantics, independently from coverage emission at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q042 | ADP-042 | Qualify read-only lineage using persisted real episode/proposal/case/experiment/activation/outcome links and typed absent-host gaps; a display projection is not mutation authority at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q041 | ADP-041 | Qualify persisted multiwriter convergence under competing daemon requests, crashes/retries and retained conflicts; pure permutation tests alone are insufficient at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q043 | ADP-043 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q044 | ADP-044 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q045 | ADP-045 | Qualify exact detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -237,8 +251,12 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-Q069 | ADP-069 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q070 | ADP-070 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | ADP-Q071 | ADP-071 | Qualify semantic detector behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q072 | ADP-072 | Qualify one bound question, unsupported-host behavior, restart/resume, answer authority, lineage, cancellation, stale-target refusal, & no candidate before answer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| ADP-Q073 | ADP-073 | Qualify same-target conflict, merge/supersede, distinct-target concurrency, crash/retry idempotency, lock release, & separation from Cortex/target apply at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q072 | ADP-072 | Qualify one bound human clarification, nonmutating persistent state, unsupported host, restart/resume, cancellation and stale-target refusal; no fabricated answer or proposal before required evidence at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q073 | ADP-073 | Qualify one apply-eligible proposal per semantic target/version while multiple non-eligible experimental variants may coexist; concurrent winner selection, merge/supersede, restart/retry and lock release at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q074 | ADP-074 | Qualify real MCP negotiation and daemon-backed scoped preference/Insight/proposal explanation, unknown capability and unauthorized scope refusals; no approval, lifecycle mutation, raw-archive dump or exposure increment at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q075 | ADP-075 | Qualify live daemon status by lane/consumer/release with disconnected host, stopped learner, missing sink, stalled cursor and absent outcome acknowledgements; distinguish actual empty workload and snapshot doctor at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q076 | ADP-076 | Qualify immutable baseline/variant comparison decisions with bounded trials, case/evaluator/model versions, development/frozen-test isolation, successes/hard negatives, safe controls and no-improvement; no automatic authority or activation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| ADP-Q077 | ADP-077 | Qualify proposal/shadow/advisory/scoped-block transition eligibility with target/version, detector/intervention evidence, false-block negatives and rollback; separate explicit host authorization and refuse automatic scope widening at RELEASED boundary | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -255,3 +273,10 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | ADP-D009 | REFERENCE | ADP-065, ADP-066, ADP-067, ADP-068, ADP-069, ADP-070, ADP-071 | Preserved ADP-039 legacy alias maps to atomic semantic compiler detector ownership. | Sage split decision | RECORDED |
 | ADP-D010 | REFERENCE | ADP-022, ADP-036 | Stable asset name does not prove exact loaded content; proposal kind/effect/target independence requires compatibility validation rather than one-way derivation. | Architecture corrections V2 reconciliation, 2026-08-31 | RECORDED |
 | ADP-D011 | REFERENCE | ADP-072, ADP-073, ADP-004, ADP-007, ADP-016, ADP-027, ADP-041 | Commit clarification persistence & target-version proposal exclusion as distinct missing behaviors; merge archive AFA-009/AFA-028 clarification semantics into ADP-072. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
+| ADP-D012 | REFERENCE | ADP-074, ADP-075, ADP-076, ADP-077 | Add four observable contracts only; all existing capability/implementation status and proof pins remain baseline evidence, not new verification. | User-requested final canon consolidation, 2026-09-05; docs/provenance/foundation/2026-09-05-adapt-final/introductions.md | RECORDED |
+| ADP-D013 | REFERENCE | ADP-013, ADP-014, ADP-015, ADP-029 | Canonical Adapt access is daemon-owned; equivalent delivery contexts share one selector. Core membership never overrides stronger scoped authority. | docs/architecture/subsystems/adapt.md §§3.10, 5.8, 9.1 | RECORDED |
+| ADP-D014 | REFERENCE | ADP-015, ADP-021, ADP-025, ADP-031, ADP-036, ADP-038, ADP-040 | Selection, emission, actual loading and evaluated outcome remain distinct; replay cannot multiply exposure and guard firing is not prevented-failure proof. | docs/architecture/subsystems/adapt.md §§3.11, 5.8.2, 6.10 | RECORDED |
+| ADP-D015 | REFERENCE | ADP-004, ADP-016, ADP-074 | Agent inspection cannot approve proposals; account-free local review states its actual control boundary and operator-equivalent shell limit; signed-key operations are a separate optional lane. | docs/architecture/subsystems/adapt.md §§4.3.2–4.3.3, 12.5 | RECORDED |
+| ADP-D016 | REFERENCE | ADP-006, ADP-011, ADP-023, ADP-031, ADP-072, ADP-073, ADP-076 | Experimental variants are not all apply-eligible; retain baseline on no improvement, do not make A/B mandatory for explicit Taste, and do not fabricate failure from a rejected valid alternative. | docs/architecture/subsystems/adapt.md §§5.6.1, 7.6, 11.5 | RECORDED |
+| ADP-D017 | REFERENCE | ADP-012, ADP-016, ADP-019, ADP-024, ADP-025, ADP-077 | Zero findings without exposure/coverage and packet eviction cannot justify retirement; stage eligibility never grants host blocking or automatic scope-expansion authority. | docs/architecture/subsystems/adapt.md §§5.7.1, 6.10–6.11, 13.1 | RECORDED |
+| ADP-D018 | REFERENCE | ADP-074, ADP-075, ADP-076, ADP-077 | Adoption requires comparison receipt staging, additive preservation introductions and generated canon/pending-index rebuild; document checks are not installed/runtime qualification. | docs/architecture/subsystems/adapt.md §18.6 | RECORDED |

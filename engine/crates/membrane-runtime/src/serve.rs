@@ -1128,11 +1128,7 @@ fn windows_create_owner_only_token_file(path: &std::path::Path) -> std::io::Resu
         ) -> Handle;
     }
 
-    let wide: Vec<u16> = path
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     let handle = windows_owner_only_security(|attributes, _dacl| {
         let handle = unsafe {
             CreateFileW(
@@ -1200,11 +1196,7 @@ fn windows_harden_existing_token_file(path: &std::path::Path) -> std::io::Result
         ) -> u32;
     }
 
-    let wide: Vec<u16> = path
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     windows_owner_only_security(|_attributes, dacl| {
         let handle = unsafe {
             CreateFileW(
@@ -1321,18 +1313,15 @@ pub(crate) fn windows_owner_only_security<T>(
     if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            format!("open current-user token: {}", std::io::Error::last_os_error()),
+            format!(
+                "open current-user token: {}",
+                std::io::Error::last_os_error()
+            ),
         ));
     }
     let mut token_length = 0u32;
     unsafe {
-        GetTokenInformation(
-            token,
-            TOKEN_USER,
-            null_mut(),
-            0,
-            &mut token_length,
-        );
+        GetTokenInformation(token, TOKEN_USER, null_mut(), 0, &mut token_length);
     }
     if token_length == 0 {
         unsafe { CloseHandle(token) };
@@ -1358,7 +1347,10 @@ pub(crate) fn windows_owner_only_security<T>(
     if !token_ok {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
-            format!("query current-user SID: {}", std::io::Error::last_os_error()),
+            format!(
+                "query current-user SID: {}",
+                std::io::Error::last_os_error()
+            ),
         ));
     }
     let token_user = token_buffer.as_ptr() as *const *mut std::ffi::c_void;
@@ -1371,8 +1363,8 @@ pub(crate) fn windows_owner_only_security<T>(
         ));
     }
 
-    let acl_length = size_of::<u32>() * 2
-        + (size_of::<u32>() * 3 + sid_length as usize - size_of::<u32>());
+    let acl_length =
+        size_of::<u32>() * 2 + (size_of::<u32>() * 3 + sid_length as usize - size_of::<u32>());
     let mut acl_storage = vec![0u32; acl_length.div_ceil(size_of::<u32>())];
     let mut descriptor = MaybeUninit::<SecurityDescriptor>::uninit();
     let descriptor_ptr = descriptor.as_mut_ptr() as *mut std::ffi::c_void;
@@ -1408,7 +1400,9 @@ pub(crate) fn windows_owner_only_security<T>(
         "attach owner-only DACL",
     )?;
     check(
-        unsafe { SetSecurityDescriptorControl(descriptor_ptr, SE_DACL_PROTECTED, SE_DACL_PROTECTED) },
+        unsafe {
+            SetSecurityDescriptorControl(descriptor_ptr, SE_DACL_PROTECTED, SE_DACL_PROTECTED)
+        },
         "disable DACL inheritance",
     )?;
 
@@ -1747,6 +1741,16 @@ enum HttpWorkClass {
 type HttpRouteSpec = (&'static str, &'static str, HttpWorkClass);
 
 const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
+    (
+        "POST",
+        crate::adapt_service::OPERATOR_PATH,
+        HttpWorkClass::General,
+    ),
+    (
+        "POST",
+        crate::adapt_service::OBSERVATION_PATH,
+        HttpWorkClass::General,
+    ),
     ("GET", "/", HttpWorkClass::General),
     ("GET", "/index.html", HttpWorkClass::General),
     ("GET", "/metrics", HttpWorkClass::General),
@@ -1967,6 +1971,28 @@ async fn dispatch(
     if !is_public_path(path) {
         if let Err(detail) = native_identity_fence_valid(&headers, &state.store) {
             return reject(StatusCode::CONFLICT, detail);
+        }
+    }
+    if matches!(
+        path,
+        crate::adapt_service::OPERATOR_PATH | crate::adapt_service::OBSERVATION_PATH
+    ) {
+        let complete = [
+            "x-membrane-installation-id",
+            "x-membrane-cortex-store-id",
+            "x-membrane-release-generation",
+        ]
+        .iter()
+        .all(|key| headers.get(*key).is_some());
+        let session_matches = headers
+            .get("x-membrane-session")
+            .and_then(|v| v.to_str().ok())
+            == Some(state.store.service_instance_id());
+        if !complete || !session_matches {
+            return reject(
+                StatusCode::CONFLICT,
+                "exact Adapt daemon identity fence required",
+            );
         }
     }
     if method == Method::POST && !is_json_content_type(&headers) {
@@ -2898,8 +2924,8 @@ fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool
 /// Production federation route is native and same-process. Its request-time
 /// H8 ceiling is validated before fan-out and its Push selection is attached
 /// to the same response.
-fn federate_route_response(body: &str) -> (u16, String) {
-    crate::pull::federation::native_route_response(body)
+fn federate_route_response(store: &MemoryStore, body: &str) -> (u16, String) {
+    crate::pull::federation::native_route_response_with_store(body, Some(store))
 }
 
 fn now_unix_ms() -> u64 {
@@ -3045,6 +3071,12 @@ fn route_with_context_ingest_lease(
         }
         return (413, "{\"error\":\"request body too large\"}".to_string());
     }
+    if method == "POST" && path == crate::adapt_service::OPERATOR_PATH {
+        return crate::adapt_service::operator_response(store, body);
+    }
+    if method == "POST" && path == crate::adapt_service::OBSERVATION_PATH {
+        return crate::adapt_observations::response(store, body);
+    }
     if method == "GET" && (path == "/" || path == "/index.html") {
         return (200, DASHBOARD_HTML.to_string());
     }
@@ -3110,7 +3142,7 @@ fn route_with_context_ingest_lease(
         return crate::push::api::http_response("membrane_push_prepare", body);
     }
     if method == "POST" && path == "/federate" {
-        return federate_route_response(body);
+        return federate_route_response(store, body);
     }
     if method == "GET" && path == "/hub/capabilities" {
         let live = crate::hub_inputs::live_inputs_from_local_service();
@@ -3872,7 +3904,10 @@ fn route_with_context_ingest_lease(
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(256);
         if response_version == 2 && (limit == 0 || limit > 1_000) {
-            return (400, serde_json::json!({"error":"limit must be between 1 and 1000"}).to_string());
+            return (
+                400,
+                serde_json::json!({"error":"limit must be between 1 and 1000"}).to_string(),
+            );
         }
         let (listed, completeness) = match if response_version == 2 {
             store
@@ -4254,16 +4289,6 @@ fn route_with_context_ingest_lease(
                     .to_string(),
             ),
         };
-        let inventory = match store.taste_delivery_inventory() {
-            Ok(inventory) => inventory,
-            Err(error) => {
-                return (
-                    500,
-                    serde_json::json!({"error": "Taste delivery unavailable", "detail": error})
-                        .to_string(),
-                )
-            }
-        };
         let mut allowed_taste_scopes = if chain.is_empty() {
             vec!["global".to_string()]
         } else {
@@ -4277,8 +4302,8 @@ fn route_with_context_ingest_lease(
             crate::time::now_millis(),
             TASTE_REQUEST_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         );
-        let delivery_plan = membrane_adapt::delivery::select_delivery_candidates(
-            &inventory.candidates,
+        let (inventory, delivery_plan) = match crate::adapt_service::select(
+            store,
             &membrane_adapt::delivery::PreferenceDeliveryContextV1 {
                 allowed_scopes: allowed_taste_scopes,
                 dimensions: taste_dimensions,
@@ -4302,7 +4327,15 @@ fn route_with_context_ingest_lease(
                 client: client.into(),
                 model,
             },
-        );
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                return (
+                    503,
+                    json!({"error":"adapt_delivery_unavailable","detail":error}).to_string(),
+                )
+            }
+        };
         let mut full_chars = 0usize;
         let mut injected_chars = 0usize;
         let mut remaining_preview_chars = total_preview_chars;
@@ -5756,6 +5789,7 @@ pub fn run_stdio_mcp() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    include!("adapt_path_tests.rs");
     use super::*;
 
     #[test]
@@ -6305,6 +6339,15 @@ mod tests {
             let path_end = path.find('"').expect("handler path terminator");
             implemented.insert((method, &path[..path_end]));
         }
+        // Adapt uses constants in the production conditions. Verify those
+        // actual conditions before adding them to the parsed route inventory.
+        assert!(
+            dispatch.contains("method == \"POST\" && path == crate::adapt_service::OPERATOR_PATH")
+        );
+        assert!(dispatch
+            .contains("method == \"POST\" && path == crate::adapt_service::OBSERVATION_PATH"));
+        implemented.insert(("POST", crate::adapt_service::OPERATOR_PATH));
+        implemented.insert(("POST", crate::adapt_service::OBSERVATION_PATH));
         // Root/index share one condition; snapshot, livez, and scratchpad are handled before dispatch.
         implemented.insert(("GET", "/index.html"));
         implemented.insert(("GET", "/snapshot"));
@@ -8367,7 +8410,9 @@ mod tests {
                     .collect()
             })
             .unwrap();
-        assert_eq!(persisted.len(), 7);
+        // Other-repository records are excluded before receipt formation;
+        // the six visible candidates still have exact decision receipts.
+        assert_eq!(persisted.len(), 6);
         assert_eq!(
             persisted
                 .iter()
@@ -8381,9 +8426,12 @@ mod tests {
         assert!(persisted.iter().any(|(_, phase, reason, digest)| {
             phase == "candidate.filtered" && reason == "non_directive_influence" && digest.is_none()
         }));
-        assert!(persisted.iter().any(|(_, phase, reason, digest)| {
-            phase == "candidate.filtered" && reason == "scope_nonmatch" && digest.is_none()
-        }));
+        assert!(
+            !persisted
+                .iter()
+                .any(|(_, _, reason, _)| reason == "scope_nonmatch"),
+            "cross-repository candidate identity must not enter this receipt set"
+        );
         assert!(persisted.iter().any(|(_, phase, reason, digest)| {
             phase == "candidate.filtered" && reason == "selection_budget" && digest.is_none()
         }));

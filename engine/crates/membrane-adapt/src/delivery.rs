@@ -29,7 +29,7 @@ pub struct PreferenceDeliveryReceiptV1 {
     pub timestamp: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreferenceDeliveryCandidateV1 {
     pub record_id: String,
     pub rule: String,
@@ -44,7 +44,7 @@ pub struct PreferenceDeliveryCandidateV1 {
     pub semantic_verified: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreferenceDeliveryContextV1 {
     pub allowed_scopes: Vec<String>,
     pub dimensions: ScopeDimensions,
@@ -61,14 +61,14 @@ pub struct PreferenceDeliveryContextV1 {
     pub model: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeliveredPreferenceV1 {
     pub record_id: String,
     pub rule: String,
     pub receipt: PreferenceDeliveryReceiptV1,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreferenceDeliveryPlanV1 {
     pub delivered: Vec<DeliveredPreferenceV1>,
     pub receipts: Vec<PreferenceDeliveryReceiptV1>,

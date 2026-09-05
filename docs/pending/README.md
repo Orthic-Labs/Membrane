@@ -357,6 +357,10 @@ Exploratory rows are discovered candidates, not committed product behavior.
 | [ADP-064](../canon/adapt.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 | [ADP-072](../canon/adapt.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 | [ADP-073](../canon/adapt.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-074](../canon/adapt.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-075](../canon/adapt.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-076](../canon/adapt.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [ADP-077](../canon/adapt.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 
 ## Preserved supporting specifications
 

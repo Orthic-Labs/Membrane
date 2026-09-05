@@ -1,21 +1,37 @@
 # Adapt Canonical Product and Architecture Specification
 
-**Status:** Canonical product and architecture source of truth  
-**Date:** 2026-08-25  
-**Repository:** `Orthic-Labs/Membrane`  
-**Supersedes:** prior Adapt canonical/product drafts and implementation plans where they conflict with this document  
+**Status:** Revised canonical product and architecture specification — reconciled onto current main; not release-qualified
+**Date:** 2026-09-05
+**Revision:** Adapt final consolidation, 2026-09-05
+**Target file:** `docs/architecture/subsystems/adapt.md`
+**Repository baseline checked:** `75c257ad711d19ffce69258d132a45dbffa9b4ac`
+**Original source blob:** `f621dcf1b60b61ba9cd9aac38f250c7795b04288`
+**Repository:** `Orthic-Labs/Membrane`
+**Supersedes on adoption:** the prior edition of this file and prior Adapt product drafts where they conflict with the explicit amendments below; shared-owner runtime and protocol doctrine is unchanged
 **Companion Membrane doctrine:** `docs/architecture/membrane.md`
-**Companion runtime plan:** `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`  
+**Companion runtime plan:** `migration/native-rust/MEMBRANE-NATIVE-RUST-MIGRATION-AND-CODERIGHT-INTEGRATION.md`
 **Companion Ledger plan:** `docs/architecture/subsystems/ledger.md`
 **Companion CodeRight integration plan:** `docs/architecture/integrations/coderight.md`
-**Implementation status:** descriptive status MUST be re-derived from the current `main` immediately before execution; normative semantics in this document are not commit-bound  
-**Research basis:** current Membrane/Adapt code; Command Code Taste; CHIRON/HORKOS; Braintrust Topics/Loop; Langfuse evaluation/annotation workflows; Arize Phoenix datasets/evaluators/experiments; agent-failure research  
-**Runtime architecture:** governed by the Membrane native-Rust migration specification; Adapt is not exempt from Membrane's native-only runtime rule  
+**Implementation status:** descriptive status MUST be re-derived from the current `main` immediately before execution; normative semantics in this document are not commit-bound
+**Research basis:** current Membrane/Adapt code; Command Code Taste; CHIRON/HORKOS; Braintrust Topics/Loop; Langfuse evaluation/annotation workflows; Arize Phoenix datasets/evaluators/experiments; agent-failure research
+**Runtime architecture:** governed by the Membrane native-Rust migration specification; Adapt is not exempt from Membrane's native-only runtime rule
 **Audience:** Adapt, Cortex, Ledger, transcript/event infrastructure, Membrane runtime, Hub, CodeRight integration, evaluation, documentation, and release-engineering implementers
 
 This document defines **what Adapt is**, **what it owns**, **what it must never become**, the contracts for **Taste** and **Insights**, the authority and persistence boundary with Cortex, the evidence relationship with CodeRight and other hosts, and the quality gates required before behavioral learning is allowed to influence future execution.
 
 Research and competitor material is evidence, not authority. Implementation-status sections are descriptive snapshots and MUST be refreshed from current code before work begins. If code, README copy, generated docs, historical plans, or research conflict with the normative sections, correct the conflicting projection or raise an explicit architecture amendment.
+
+## Revision boundary and adoption
+
+This is a complete replacement edition, not an independent competing canon. Chapters 0–20 retain the existing organization. This edition folds the final audit's accepted requirements into their owning sections. Its normative additions are proposed repository changes until this edition is adopted; writing this document does not establish that the runtime implements them.
+
+The atomic companion remains `docs/canon/adapt.md`. It preserves all 71 existing capability rows and introduces four separately testable contracts: ADP-074 agent inspection, ADP-075 live learning-pipeline status, ADP-076 bounded candidate-comparison decisions, and ADP-077 staged guard eligibility. The revised inventory is 75 capabilities: 68 committed in the proposed ledger and 7 exploratory. ADP-037 and ADP-039 remain legacy aliases, not reclaimed identifiers. Every new capability starts MISSING with verification and qualification PENDING and delivery LOCAL.
+
+Most improvements refine existing acceptance: shared delivery semantics (ADP-013–015), review trust (ADP-004/016/029), replay and coverage (ADP-018/019/030/038/040), exact loaded-version outcomes (ADP-015/025/031/036), deletion propagation (ADP-012/016), and optional signer operations (ADP-004). No new memory product, database, event bus, experimental execution engine, or final packet-budget authority is created.
+
+Substantive amendments are in §§3.10–3.11, 4.3.2–4.3.3, 5.6.1, 5.7.1, 5.8.1–5.8.3, 6.10–6.11, 7.6, 9.1, 10.8, 11.5, 12.5–12.6, 13.1, 14's delivery sequence, and 18.6. Legacy present-tense implementation and comparator claims are qualified below; no new runtime verification is claimed.
+
+The final improvement plan is the execution companion. It records source findings and donor provenance; this document owns the adopted semantics. Cross-owner schema additions must be coordinated with their existing owners before activation.
 
 ## Runtime lifecycle binding (normative)
 
@@ -115,6 +131,14 @@ Adapt is product-complete only when all of the following are true:
 - canonical docs and CI prevent future agents from relabeling Adapt as memory.
 
 ---
+
+## 0.3 Capability-specific release claims
+
+A usable explicit reviewed-Taste release does not require automatic implicit preference learning, every efficiency detector, emergent clustering, a candidate optimizer, or production blocking guards. It does require correct authority, reversible lifecycle, daemon ownership, and delivery through the actual advertised consumer.
+
+Insights claims name the qualified detector families and evidence sources. Measured-improvement claims additionally require exact host exposure and sufficiently observed, comparable evaluated outcomes. A successful status response or an implemented library function is not permission to claim every Adapt surface is operational.
+
+The full product-completion rule in §0.2 remains intact; partial milestones MUST be named narrowly rather than presented as full product completion.
 
 # 1. Canonical ontology and category boundaries
 
@@ -493,6 +517,26 @@ CodeRight / external host execution
 
 Ledger participates by providing document navigation and source-bound document evidence. It is not the generic telemetry store and its generated session documents are not a substitute for CodeRight's structured event stream.
 
+## 3.10 Transport-neutral behavioral context and ownership
+
+Every production Taste delivery entrypoint MUST delegate to the same resident semantic selection owner. CLI, HTTP, native MCP, and CodeRight adapters may frame responses differently; equivalent validated caller context, policy, lifecycle generation, and requested bounds must produce equivalent eligibility, precedence, and omission decisions. Inspection is not delivery and MUST NOT increment exposure.
+
+The delivery request preserves actual host/client and model identity separately from transport identity. It carries repository and scope identity, relevant task/applicability dimensions, installation/store/release binding, and explicit unavailable values. A transport label such as `membrane-native` MUST NOT substitute for an unobserved application or model. Missing narrowing information is nonmatching or unavailable, never guessed or discarded to broaden applicability.
+
+Cortex supplies admitted records and current lifecycle. Adapt determines behavioral eligibility. Pull determines final context admission and allocation; Push owns representation reduction under those limits. A generic memory projection MUST NOT erase a Taste record's semantic kind, scope qualifiers, or receipt links, and MUST NOT convert diagnostic Insights into user-authoritative instructions.
+
+Reuse existing host-observation and receipt envelopes. Domain contract names in this chapter describe semantic responsibilities, not permission to add another public protocol version or parallel transport. Both sides of a cross-repository change require an owner, schema digest, compatibility policy, and fixtures (§3.6).
+
+## 3.11 Incremental observation consumption
+
+Adapt consumes source-owner observations through the existing ingress and durable query infrastructure. Each consumer MUST declare event identity, source/installation identity, ordering and gap semantics, watermark/cursor rules, detector/configuration version, and its processing commit boundary.
+
+Use retry-safe durable processing: an accepted observation replay must not create a second episode or increment recurrence/exposure twice. Cursor advancement must be coupled to durable outcome/proposal/coverage recording or to an idempotent replay procedure that cannot lose accepted work. An out-of-order result, missing span, truncated window, or failed parse must produce an explicit coverage limitation rather than empty-success.
+
+Every admitted assignment/window receives a detector coverage receipt, including windows with no finding: actual input digest, detector identity/version, ran/skipped/unavailable/failed disposition, missing evidence, and honesty limit. Coverage execution and the later exact episode/evaluator/outcome join remain independently testable ADP-038 and ADP-040 responsibilities.
+
+Reprocessing under a new detector version is a distinct interpretation of the same observations; it must not multiply the historical workload denominator. Keep high-volume raw traces with the host, behavioral interpretation with Adapt, and canonical admitted artifacts with Cortex. Private reasoning is excluded from every lane.
+
 # 4. Evidence and provenance model
 
 ## 4.1 Evidence classes
@@ -614,6 +658,20 @@ This is a local caller-selected human review boundary; it requires no login or
 authentication. A signed `adapt.semantic-adjudication.v1` remains an optional
 enterprise/import lane, not a prerequisite for local review.
 
+### 4.3.2 Local approval provenance and agent isolation
+
+The local workflow remains account-free. Exact manifest, installation, source and pool bindings prove what a decision refers to; the `independent` field and a non-empty receipt identifier do not prove human presence by themselves.
+
+The ordinary agent interface may prepare proposals and submit bounded evidence-linked feedback, but MUST NOT mint the capability that represents independent user review. A trusted control interaction must bind the actual reviewed payload and scope to the admission action; stale pool, source, target, and lifecycle versions are refused at the authoritative daemon boundary. Signed adjudication remains a separate supported lane, not a replacement for simple local review.
+
+The local trust assumption MUST be explicit. An unrestricted process running with the same operating-system authority as the user may be able to invoke operator commands or read operator state; do not claim that JSON fields or a secret readable by that process establish isolation. Implement a real protected control boundary where the product promises one, or disclose the operator-equivalent shell limitation. Tests must distinguish ordinary agent capabilities from unrestricted local administrator behavior.
+
+### 4.3.3 Optional signed-adjudicator operations
+
+Extend the existing installation-bound Ed25519 trust store rather than creating another verifier. The signed lane must document enrollment, key custody, issuer scope, validity periods, routine rotation, revocation, compromise response, and audit retention. New semantic scope/expiry fields require a versioned signed payload, not unsigned metadata beside an old signature.
+
+Recheck trust and permitted scope at admission. Routine key rotation and compromise are different events: stopping a key from approving new records does not itself decide the historical truth or future admissibility of every record it signed. A declared revocation policy must govern replay, re-adjudication, quarantine and retained evidence. This optional operational workflow is not a prerequisite for the account-free explicit-Taste milestone.
+
 ## 4.4 No-authority-laundering invariant
 
 The following chain is forbidden:
@@ -729,6 +787,10 @@ reason: repeated user correction after local-fix requests
 
 This supports better conditioning than a vague imperative alone and enables future effectiveness evaluation.
 
+### 5.6.1 Rejected alternative is not a failure assertion
+
+Preserve the exact rejected option, replacement, reason, and evidence link when available. A choice among valid alternatives need not have a causal failure mechanism. Missing counterfactual evidence is `none_recorded` or unknown, not an invitation to invent what would have failed. Any preventability assessment is a separate diagnostic hypothesis governed by §6.9.
+
 ## 5.7 Lifecycle
 
 Canonical lifecycle states:
@@ -753,6 +815,14 @@ A preference should be re-evaluated when:
 
 Do not implement opaque time decay as a substitute for semantic re-evaluation. Time can trigger review; it should not silently rewrite authority.
 
+### 5.7.1 Stop-influence, deletion and reprocessing
+
+Retirement, supersession and deletion must propagate to future selection, delivery caches, pending plans, synced replicas and governed derived artifacts. Cortex remains the lifecycle owner. Re-mining historical evidence MUST NOT silently resurrect a deleted or explicitly retired preference; any later re-admission requires the applicable explicit review and retained tombstone/provenance rules.
+
+Distinguish stopping behavioral influence, deleting host transcript evidence, and deleting a derived regression case. Each operation explains what remains, under which owner and retention policy, and which evidence is now unavailable. A retained digest is not a substitute for inspectable source material when the relevant review requires that material.
+
+Before emitting a packet, validate the current record/policy generation. Before executing an effect, the host validates the authorized activation's version and revocation state. A race policy must state how already-loaded context is handled; the system cannot retract tokens from a model call that has already consumed them. Qualification proves no new stale influence after the declared fence and reports any irretractable in-flight exposure honestly.
+
 ## 5.8 Delivery
 
 Taste delivery uses two layers:
@@ -773,6 +843,26 @@ Delivery MUST filter:
 Every delivered preference should have a delivery receipt linking the selected record and applicability decision.
 
 ---
+
+### 5.8.1 Applicability precedes search and truncation
+
+The bounded core and scoped selector MUST consider the eligible Taste inventory independently of a finite general-memory top-K window. Overfetching generic memory and filtering afterward is not an implementation of applicability-first preference selection. Apply lifecycle, authority, policy conflicts, machine/host/model and structured scope before semantic ranking or output truncation.
+
+Core membership grants no extra authority. A broad standing preference does not override a stronger applicable scoped preference. Equivalent transport contexts reuse the same selector and current Cortex inventory. Record budget and nonmatch omissions explicitly.
+
+### 5.8.2 Selection, emission, loading and outcome receipts
+
+Keep four distinct facts: a record was eligible/selected; a final representation was emitted; the host acknowledged that exact representation as loaded for a particular execution; a qualified evaluator later assessed behavior. Success at one stage MUST NOT fabricate the next.
+
+A join binds installation and source identity, request/session/task/run identity, record and semantic payload version, policy/lifecycle generation, final loaded-representation digest, and producer-issued receipt references. Preserve evaluator identity/version, applicability and evidence coverage on outcomes. Hashing a received response cannot manufacture a missing host-issued acknowledgement.
+
+A listing, returned candidate, guard firing, or model assertion of compliance is not proven behavioral benefit. Missing loading acknowledgement makes intervention exposure unknown; missing evaluation does not become zero failures. Deduplicate transport retries and repeated acknowledgements using the declared execution/exposure identity.
+
+### 5.8.3 Representation integrity
+
+Taste text, applicability qualifiers, exceptions, and authority-related labels are a semantic unit. Push MUST preserve the unit or omit/refuse the representation under the existing insufficiency policy; it may not retain a directive after removing its limiting conditions. Final-packet acceptance tests inspect the actual reduced representation and joined receipts, not only the selector's intermediate output.
+
+Diagnostic Insight text remains diagnostic after reduction. Unadmitted candidates belong on a review surface as data, not in active behavioral context. Pull retains final allocation authority (§13.1).
 
 # 6. Insights canonical contract
 
@@ -988,6 +1078,24 @@ existing proposal, review, precision, and admission gate still applies.
 
 ---
 
+## 6.10 Learned-guard rollout eligibility (ADP-077)
+
+A detector qualification is not permission to block an action. Adapt produces an evidence-bound eligibility decision for one proposed rollout transition; the execution host retains authorization, activation, enforcement and rollback. This decision is distinct from the issue itself, its remediation proposal, and a runtime guard firing.
+
+The normal sequence is reviewed proposal → qualified shadow evaluation without blocking → advisory warning → explicitly authorized scoped blocking. Widening scope is another reviewed transition, not an automatic consequence of accumulating firings.
+
+Each transition binds the issue/mitigation version, proposed stage, exact host target and configuration digest, applicability, detector and evaluator qualifications, sufficient coverage, intervention attribution, acceptable false-block behavior and rollback/disable requirements. Missing prerequisite evidence returns blocked or insufficient-evidence eligibility, never a self-issued permission grant. Qualification must include adverse outcomes, not only examples the guard successfully catches.
+
+The host may execute already-required deterministic safety or verification controls under its own authority; they are not dependent on a speculative learned guard. Missing learned-detector evidence neither proves safety nor licenses a fabricated block. Record observed warning/block/firing separately from a qualified prevention claim. No `blocked_failure` boolean may masquerade as an observed counterfactual.
+
+## 6.11 Exposure-aware applicability review
+
+Scheduled review may consider model, tool, client, repository, detector and mitigation-version changes, sufficient observation coverage, and comparable exposure. Its result is a proposal or interpretation mapped to the existing lifecycle, not an independent decay-state machine.
+
+Distinguish no applicable workload, insufficient coverage, observed recurrence, successful mitigation, and supported obsolescence. Zero post-mitigation failures can be evidence that the mitigation works. Zero findings without coverage or exposure establish nothing. Neither condition alone justifies retiring the lesson or disabling its mitigation.
+
+A demonstrated tool fix, supported version-specific obsolescence, user action, supersession, or safe controlled evaluation may justify a reviewed transition. Required controls are never disabled merely to obtain a comparison. Packet/cache eviction is not durable retirement; rare severe incidents must not be erased merely because frequent minor ones fill a delivery allowance.
+
 # 7. Shared admission, integrity, and Cortex contracts
 
 ## 7.1 One durable admission boundary
@@ -996,7 +1104,7 @@ All durable Adapt outputs must cross one typed Cortex admission contract.
 
 Taste and Insights may have different authority/influence classes, but neither may create a parallel durable truth store.
 
-The current `insight_persistence.py` path proves reference-only persistence is possible. The canonical target is to make the seam explicit and consistent rather than maintaining ambiguous parallel persistence behavior.
+Historical `insight_persistence.py` material is differential/reference evidence only, not proof of native runtime admission. Native Taste and Insight records use the existing verified Cortex interfaces; all production adapters must preserve that single typed boundary and daemon ownership.
 
 ## 7.2 Influence classes
 
@@ -1010,7 +1118,7 @@ At minimum:
 
 ## 7.3 Semantic sealing
 
-The current implementation binds candidate payload hashes and held-out semantic-validation receipts but does not fully seal every apply-semantic field.
+The audited native mechanism includes immutable semantic/applicability sealing (ADP-026). Its historical focused claim is not whole-product qualification. Every new meaning-bearing field must join the same sealing contract; the older blanket claim that native sealing was wholly incomplete is superseded.
 
 The target should separate immutable semantics from mutable lifecycle state.
 
@@ -1063,6 +1171,12 @@ Semantic grouping may use models as proposers, but model-decided group membershi
 Conflicts must preserve history. Do not delete the losing record merely because a later one wins precedence.
 
 ---
+
+## 7.6 Clarification and candidate concurrency
+
+Retain ADP-072: when necessary evidence is insufficient for safe proposal formation, persist one nonmutating evidence-bound clarification, bind the human answer, and resume the same lineage only while target evidence remains current. Unsupported host interaction, cancellation, restart and stale targets are explicit states. An agent-authored answer is not a human answer by assertion.
+
+Retain ADP-073: at most one pending proposal may be apply-eligible for a semantic target and target version. Several immutable experimental variants may coexist as non-apply-eligible candidates under ADP-076. Selecting a trial winner does not admit or activate it; only subsequent review and target-version exclusion can make it apply-eligible. Concurrent selection/admission must merge, supersede, or surface a typed conflict without duplicate mutation.
 
 # 8. Taste and Insights interaction rules
 
@@ -1117,6 +1231,14 @@ The native Adapt and transcript owners exist and are the target authority. Legac
 The historical Python `D--Claude` root-scope literal is therefore tracked as a **legacy-oracle/parity/deletion concern**, not automatically as a native production defect. Native root/global selection must be judged from the current Rust delivery/core implementation.
 
 Runtime completion is never inferred from coexistence. Installed execution and process-tree qualification decide the native-only result.
+
+## 9.1 Command classification and daemon binding
+
+Canonical-state reads, review-context construction, approval capability consumption, admission, lifecycle actions, delivery, and live status are stateless clients of the active tray-owned daemon. They must bind the expected installation, store and release generation. Tray-off access returns typed unavailability without opening or migrating the installed canonical database, spawning a hidden service, or taking a direct-write fallback.
+
+Pure analysis over explicitly supplied files—such as transcript normalization, a frozen benchmark, or snapshot validation—is a possible bounded offline transformation, not an implied exception. The Membrane runtime owner must explicitly classify and approve any such command exception. Until then the canonical client policy applies. Approved offline operations must not inspect installed canonical state or claim live context/health. A dry run that needs current canonical state remains daemon-bound.
+
+The operation inventory MUST label each command's class and effect. Do not inherit Blueprint's special one-shot exception by analogy. This chapter specializes the existing cross-cutting lifecycle rule; it does not authorize another resident topology.
 
 # 10. Current implementation truth — refresh-required snapshot
 
@@ -1220,6 +1342,16 @@ If the implementation-status section says a native feature is absent when curren
 
 Implementation agents MUST fix status drift before using §10 as work-dispatch authority.
 
+## 10.8 Audited consumer divergence and evidence scope — 2026-09-05
+
+The final audit is source-bound to `75c257ad711d19ffce69258d132a45dbffa9b4ac`, which was still `main` at the final documentation check. It found three different paths: native Adapt CLI opens Cortex directly; daemon `/recall` calls the Taste-specific inventory/selector and persists receipts; native MCP context calls federation, whose inspected memory mapping does not carry that dedicated Taste contract. CLI Taste recall filters a capped generic recall set after ranking. These are source findings, not demonstrations of every possible client failure.
+
+The native MCP registry lacks a first-class Adapt inspection group in the audited snapshot. Host adapters, observable-event storage/query routes and background scheduling do exist; their existence does not establish detector coverage or a complete host-loaded outcome join. Snapshot report/doctor inputs and the inspected missing-evidence unit test do not qualify a live loop.
+
+Sections 10.1–10.4 describe existing mechanisms, not completed consumer integration. The atom ledger retains prior implementation and focused-verification evidence; its qualification rows specify the stronger release boundary. Do not erase working mechanisms, infer absence from a stub alone, or promote a requirement to delivered because this edition names it.
+
+No Cargo execution, packaged Windows/macOS test, live CodeRight round trip, donor benchmark, or guard deployment was performed for this final documentation edition. The final plan carries the detailed findings and evidence locations. Revalidate changed source before implementation or adoption onto a later revision.
+
 # 11. Evaluation and quality gates
 
 ## 11.1 Taste evaluation
@@ -1314,6 +1446,18 @@ Where feasible, evaluate:
 
 ---
 
+## 11.5 Bounded candidate-comparison decisions (ADP-076)
+
+Adapt may consume CodeRight-run comparisons to issue an immutable comparison decision for a bounded set of proposed wordings or remediations. CodeRight owns generic dataset storage, trial execution and evaluators. Adapt owns the behavioral interpretation and the decision's evidence/authority constraints. Reuse existing proposals, sealed payloads and lineage rather than a second candidate database.
+
+The decision binds the exact target/version, unchanged baseline, candidate payload digests, approved change envelope, model/host/configuration, case and dataset revisions, evaluator/code/prompt digests, task strata, source outcome receipts and predeclared resource limits. Bound candidate count, proposal iterations, rollout/evaluator calls, spend, elapsed time and concurrency. No-improvement, insufficient-evidence, cancellation and budget-exhaustion results are legitimate terminal decisions; retain the baseline rather than opening an unbounded redesign loop.
+
+Develop and select on authoring/development data. Evaluate a selected candidate on a separate frozen test, without repeated test-set-driven search. Include successful tasks, nonapplicable tasks and hard negatives, not only retrospective failures. Report task correctness, preference adherence, false blocking, latency and cost separately; no scalar reward compensates for an authority or safety violation.
+
+Candidate generation, comparison, user review, Cortex admission and host activation remain distinct gates. Performance MUST NOT create preference authority, widen reviewed scope, alter approved meaning, or self-authorize mutation. The explicit selected-transcript Taste workflow does not acquire a mandatory A/B or held-out-corpus admission gate. Comparisons of alternate wordings remain within approved semantics; meaning changes require fresh evidence-bound review.
+
+A per-task search frontier is not a deployed routing policy. Distinct variants may remain under consideration without violating ADP-073 because they are not all apply-eligible. For combined intervention studies, separate wording-only, guard-only, baseline and combined configurations when safe; do not attribute every gain to both components. Online experiments must not silently withhold current instructions or required controls.
+
 # 12. Product UX contracts
 
 ## 12.1 User-facing separation
@@ -1376,6 +1520,22 @@ Receipts must not imply certainty that the evidence does not support.
 
 ---
 
+## 12.5 Optional agent-facing inspection (ADP-074)
+
+Provide a small negotiated read-only Adapt surface for applicable preferences, selection explanations, Insight and proposal inspection, and links to bounded evidence. Do not load a large tool catalogue into every prompt. Keep the default context entrypoint small; optional capabilities or resources reveal only the read operations supported by the active daemon and caller scope.
+
+The inspector explains selected, nonmatching, conflicting, inactive, budget-omitted and unavailable outcomes using current record/version and receipt links. It does not treat inspection as exposure, return full transcript archives by default, approve a proposal, activate a guard, or mutate lifecycle. Ordinary agent proposal/feedback operations remain bounded and distinct from independent user control.
+
+This is separate from ADP-016/034's user-facing management/review queues and ADP-042's lineage model: it is the supported agent transport and discoverable read contract over those owners.
+
+## 12.6 Live Adapt pipeline status (ADP-075)
+
+Expose a daemon-backed status projection for each semantic lane: explicit Taste, optional automatic Taste, Insights detection, review, admission, delivery, and effectiveness. Report last observed processing progress/cursor, detector coverage, backlog, source/provider/sink binding and availability, outstanding delivery/host-loading joins, and outcome freshness where the owner supplies them.
+
+Status must separate supported, configured, enabled, reachable and qualified. Qualify a claim by platform, executable/release generation, client/schema version, configuration and exact acceptance receipt. A missing producer or consumer is not an empty workload. Empty input, a valid no-op, insufficient data, a stalled worker, an unavailable provider and a failed sink must remain distinguishable.
+
+Status does not run learning implicitly, admit artifacts, collect raw sensitive content, or mint absent evidence. Snapshot `doctor --input` remains snapshot validation; it must never be presented as live installation health. Shared Hub capability machinery owns transport and envelope; Adapt supplies this semantic progress/readiness projection.
+
 # 13. Always-on context and token-efficiency contract
 
 Insights should attribute recurring always-on context cost where evidence permits.
@@ -1393,7 +1553,7 @@ The canonical method is:
 
 Initial findings:
 
-- `apparently_unused_always_on_context`
+- `unused_always_on_context`
 - `oversized_instruction_file`
 - `mcp_tool_definitions_dominate`
 - `always_on_prefix_dominates`
@@ -1403,9 +1563,27 @@ This feature belongs to Insights. It does not make Adapt a memory system merely 
 
 ---
 
+## 13.1 Behavioral delivery allowances
+
+Pull owns the final packet budget. Adapt supplies bounded eligible core/scoped preference and diagnostic candidates to that owner; it does not introduce an independent `H_A` allocator or guarantee that behavioral text can never compete with required evidence. Apply authority, lifecycle, applicability and precedence before allocation. Required content that cannot fit follows the existing insufficiency/refusal contract.
+
+Item caps, token budgets, execution limits for active guards, review queue bounds, temporary caches and durable retention are distinct policies. Packet omission must not retire an Insight, clear an authority restriction or delete a rare severe episode. Unadmitted candidates are review data only. Reduction preserves instruction-plus-qualifier units (§5.8.3), and recorded provider-billed usage remains distinct from inferred allocation (§13).
+
 # 14. Ranked implementation plan
 
-The native migration sequence is not repeated here. This is the **remaining Adapt product roadmap**.
+The native migration sequence is not repeated here. This is the **remaining Adapt product roadmap**. The delivery sequence below governs execution priority; the P0/P1/P2 catalogue that follows retains the existing commitments and must not be mistaken for an instruction to build every listed mechanism before a narrow explicit-Taste release.
+
+## Delivery sequence for this revision
+
+1. Freeze the source/consumer baseline and add failing parity, lifecycle and scope fixtures using the actual advertised interfaces.
+2. Establish one daemon-owned Adapt service; reuse verified Cortex admission and classify any offline transforms explicitly.
+3. Unify Taste eligibility/delivery and final-representation receipts across CLI, HTTP and native MCP; propagate actual host context and preserve Pull/Push ownership.
+4. Deliver agent inspection (ADP-074), honest live status (ADP-075), and independent human review over existing management/lifecycle owners.
+5. Connect one mechanically grounded Insight family to persisted host observations, incremental coverage and exact episode identities.
+6. Close reviewed issue → privacy-safe regression case → host baseline/candidate trials → behavioral comparison decision (ADP-076) → separately authorized rollout eligibility (ADP-077) → versioned outcomes. Include negative-result paths.
+7. Qualify supported installed platforms/clients, native-only packaging, selected detector families and revalidation; expand only within demonstrated evidence. Optional signed-key operations and advanced discovery remain separately scoped.
+
+Each package updates the relevant existing atom's qualification row and receipts. ADP-072 clarification and ADP-073 target-version exclusion are dependencies where review or candidate handling uses them. No step grants an experimental winner automatic preference authority or guard execution permission.
 
 ## P0 — truth, evidence, and CodeRight seam
 
@@ -1703,7 +1881,7 @@ Do not silently rewrite historical evidence in a way that changes what was origi
 
 # 16. Research-derived lessons (non-normative)
 
-Research is evidence for improvement, not product authority. External products change; reverify their current behavior before relying on specific shipping claims.
+Research is evidence for improvement, not product authority. The inherited comparator descriptions in §§16.1–16.3 are historical source notes, not newly verified shipping or benchmark claims in this edition. The final plan contains the selective donor rechecks and corrections. External products change; reverify exact revisions and licensing before incorporating code or repeating quantitative claims.
 
 ## 16.1 Taste comparators
 
@@ -1730,7 +1908,7 @@ Verified public repository lessons:
 - contradictions surfaced rather than silently resolved;
 - reproducible local benchmark suite.
 
-The public README currently reports a 35/35 benchmark suite. This is vendor/self-reported evidence, but the benchmarks are shipped and rerunnable.
+The historical source note records a self-reported 35/35 benchmark suite; that result was not rerun for this edition. This is vendor/self-reported evidence, but the benchmarks are shipped and rerunnable.
 
 Adapt's lesson is not "copy CHIRON's ontology." It is: when a fact can be captured deterministically, do not insert a model into the authority path merely for convenience.
 
@@ -1796,7 +1974,7 @@ Verified public repository lessons:
 - offline-rerunnable audit receipts;
 - false positives turned into regression scenarios.
 
-The public README currently reports 59/59 in its full deterministic benchmark suite.
+The historical source note records a self-reported 59/59 deterministic benchmark suite; that result was not rerun for this edition.
 
 Adapt should treat exact completion/receipt mismatches as structured evidence. CodeRight may enforce an approved exact guard live; Adapt should learn whether and where the failure recurs.
 
@@ -1822,6 +2000,14 @@ MAST, coding-agent failure studies, model/client-specific failure research, and 
 Claude Code auto memory, Codex/Cline/Cursor memory/rules systems and similar products may provide editing/distribution UX patterns.
 
 They are not direct Adapt competitors and must not define Adapt's semantic category.
+
+## 16.4 Additional proposal and evaluation donors
+
+The final selective review adds LangMem's strategy boundary, GEPA's adapter-separated candidate evaluation, ExpeL's contrast of successful and failed observable executions, and DSPy's evaluator-driven candidate discipline. These are pattern donors, not production dependencies or new authority sources.
+
+Do not inherit the supplied deep-dive's incorrect ExpeL interpretations: `human_critiques` names prompt templates, not authenticated human acts; the inspected rule-count setting is not a strict deterministic cap; its retrieval multiplier is for trajectory examples, not proof of governed Insight delivery. DSPy BetterTogether combines prompt and weight optimization, not a Taste/guard authority model. Weight training remains outside Adapt.
+
+The useful result is bounded proposal comparison with negative results and unchanged-baseline retention (§11.5), not autonomous rewriting. Do not collect private thoughts, assume successful traces establish causation, or promote a research search frontier directly into host routing. Gensyn CodeAssist is retained only as a historical signal-design reference; the final review records its deprecation. Detailed source links and review depth are in the final implementation companion.
 
 # 17. Source register
 
@@ -1856,9 +2042,9 @@ Insights/eval loop:
 
 - Braintrust Topics — https://www.braintrust.dev/docs/observe/topics
 - Braintrust eval improvement loop — https://www.braintrust.dev/foundations/understanding-the-eval-improvement-loop
-- Langfuse evaluation overview — https://langfuse.com/docs/reference/evaluation/overview
-- Langfuse annotation queues — https://langfuse.com/docs/reference/evaluation/evaluation-methods/annotation-queues
-- Langfuse datasets/experiments — https://langfuse.com/docs/reference/evaluation/experiments/datasets
+- Langfuse evaluation overview — https://langfuse.com/docs/evaluation/overview
+- Langfuse annotation queues — https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues
+- Langfuse datasets/experiments — https://langfuse.com/docs/evaluation/experiments/datasets
 - Phoenix datasets/evaluators/experiments — https://arize.com/docs/phoenix/datasets-and-experiments/
 - HORKOS — https://github.com/eragonlonelyboy-lab/horkos
 
@@ -1936,6 +2122,16 @@ Depending on scope, evidence includes:
 - native installed-artifact evidence;
 - deletion/exclusion proof for retired interpreter paths.
 
+## 18.6 Atomic tracking, qualification and adoption
+
+The atomic ledger is machine-validated; it is not a prose replacement for this file. Preserve old IDs and evidence, including the legacy alias exclusions and ADP-072/073. New IDs in this edition are ADP-074–077. Add exactly one implementation row and one qualification row for each; new implementation/verification/qualification remains MISSING/PENDING/PENDING until actual evidence changes it.
+
+Tightening existing qualification boundaries does not turn old focused tests into proof of newly required consumers. Existing delivered mechanism status may remain, but release qualification stays PENDING until the stronger boundary is exercised. Source locators in inherited receipts remain historical locators; current source/consumer evidence must be refreshed when code changes.
+
+Adoption includes the new comparison receipt, the four entries appended to the preservation map's New capability register, and regeneration of `docs/canon/README.md` and `docs/pending/README.md` with `node scripts/ci/check-atomic-canons.mjs --write`. Stage new comparison evidence before the checker validates tracked/staged receipt paths. Then run the checker without `--write` and the appropriate runtime/installed tests. A local document-integrity check is not that repository-wide qualification.
+
+Cross-owner contracts to coordinate are runtime lifecycle/capability binding; host observation and loading acknowledgement; Cortex lifecycle/invalidation; Pull selection allocation/feedback; Push representation integrity; and CodeRight execution/evaluation/activation. Reuse their existing atoms rather than inventing duplicate Adapt ownership.
+
 # 19. Final canonical decisions
 
 The following are the final product shape unless a future architecture amendment explicitly changes them:
@@ -1971,6 +2167,15 @@ The following are the final product shape unless a future architecture amendment
 29. **A capability is not landed until the production path exercises it and acceptance evidence qualifies it.**
 30. **Success means fewer repeated corrections and fewer recurring failures without weakening correctness, security, authority, or task performance.**
 31. **A remediation proposal targeting a mutable instruction surface is actionable only after an explicit intervention attribution supports counterfactual preventability on the current surface digest, refuses already-correct/redundant/wrong-owner mutations, and accounts for alternative causes (§6.9).**
+32. **Every supported production Taste delivery transport uses the same applicability/precedence owner; generic memory top-K is not the Taste selector.**
+33. **Selection, emitted representation, actual host loading and evaluated benefit are distinct facts joined by exact versions and receipts.**
+34. **Explicit reviewed Taste does not require candidate optimization or an A/B admission gate.**
+35. **Bounded candidate comparison can end without improvement; it neither mints authority nor bypasses one apply-eligible proposal per target/version.**
+36. **Learned-guard eligibility is separate from host authorization; detection or firing alone does not prove prevention.**
+37. **Zero findings, packet eviction and age alone do not justify invalidating a preference or retiring a successful mitigation.**
+38. **Agent inspection is read-only; live pipeline status reports missing connections rather than empty-success.**
+39. **Local review is account-free but must state its actual trust boundary; unrestricted operator-equivalent shell authority is not defeated by an independence flag.**
+40. **New capability commitments, implemented mechanisms, focused checks, installed qualification and release delivery are tracked independently.**
 
 # 20. Canonical short copy
 

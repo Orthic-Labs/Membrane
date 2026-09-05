@@ -17,9 +17,7 @@
 use super::federation_sources::RuntimeReleaseSource;
 use super::{federation_sources, native_federation};
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
-use membrane_protocol::{
-    PublicationFenceChangeV1, PublicationFenceStatusV1, PublicationFenceV1,
-};
+use membrane_protocol::{PublicationFenceChangeV1, PublicationFenceStatusV1, PublicationFenceV1};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -90,18 +88,18 @@ pub fn run_federate(
                     .build()
                     .map_err(|error| format!("create native federation runtime: {error}"))?
                     .block_on(async {
-                    let bindings = federation_sources::NativeSourceBindings::for_repository(
-                        &root,
-                        scope_grant_id.as_deref(),
-                    )?;
-                    let native = native_federation::NativeFederation::new(bindings)?;
-                    let response = native
-                        .federate(&request, tokio_util::sync::CancellationToken::new())
-                        .await?;
-                    let freshness = native
-                        .freshness_snapshot()
-                        .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
-                    Ok::<_, String>((response, native.metrics_snapshot(), freshness))
+                        let bindings = federation_sources::NativeSourceBindings::for_repository(
+                            &root,
+                            scope_grant_id.as_deref(),
+                        )?;
+                        let native = native_federation::NativeFederation::new(bindings)?;
+                        let response = native
+                            .federate(&request, tokio_util::sync::CancellationToken::new())
+                            .await?;
+                        let freshness = native
+                            .freshness_snapshot()
+                            .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
+                        Ok::<_, String>((response, native.metrics_snapshot(), freshness))
                     })
             })
             .join()
@@ -145,6 +143,13 @@ pub fn run_federate(
 /// Resident `/federate` entrypoint. Production routes call this native path;
 /// legacy worker framing remains isolated for shadow qualification only.
 pub fn native_route_response(body: &str) -> (u16, String) {
+    native_route_response_with_store(body, None)
+}
+
+pub fn native_route_response_with_store(
+    body: &str,
+    resident: Option<&crate::MemoryStore>,
+) -> (u16, String) {
     let value: Value = match serde_json::from_str(body) {
         Ok(value) => value,
         Err(_) => return (400, "{\"error\":\"invalid JSON body\"}".to_owned()),
@@ -213,19 +218,20 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         .map(str::to_owned);
     let sufficiency_contract = planner_authored_sufficiency_contract(&value);
     let temporal_query = match value.get("cortexTemporalQuery") {
-        Some(query) => match serde_json::from_value::<cortex_store::TemporalFactQuery>(query.clone())
-        {
-            Ok(query) => Some(query),
-            Err(error) => {
-                return (
-                    400,
-                    serde_json::json!({
-                        "error": format!("invalid cortexTemporalQuery: {error}")
-                    })
-                    .to_string(),
-                )
+        Some(query) => {
+            match serde_json::from_value::<cortex_store::TemporalFactQuery>(query.clone()) {
+                Ok(query) => Some(query),
+                Err(error) => {
+                    return (
+                        400,
+                        serde_json::json!({
+                            "error": format!("invalid cortexTemporalQuery: {error}")
+                        })
+                        .to_string(),
+                    )
+                }
             }
-        },
+        }
         None => None,
     };
     let ceiling = match crate::push::selection::parse_request_time_h8(&value, &session, &task_id) {
@@ -285,10 +291,17 @@ pub fn native_route_response(body: &str) -> (u16, String) {
             );
         }
         let admitted_grant = admitted_publication_grant(&request)?;
-        let bindings = federation_sources::NativeSourceBindings::for_repository(
-            &root,
-            scope_grant_id.as_deref(),
-        )?;
+        let bindings = match resident {
+            Some(store) => federation_sources::NativeSourceBindings::with_store(
+                &root,
+                scope_grant_id.as_deref(),
+                store.clone(),
+            ),
+            None => federation_sources::NativeSourceBindings::for_repository(
+                &root,
+                scope_grant_id.as_deref(),
+            ),
+        }?;
         let native = native_federation::NativeFederation::new(bindings)?;
         // This routine is synchronous and is called from two places: a stdio
         // process with no reactor, and the resident Hub's async worker. Building
@@ -314,7 +327,10 @@ pub fn native_route_response(body: &str) -> (u16, String) {
         let freshness = native
             .freshness_snapshot()
             .ok_or_else(|| "native freshness verdict unavailable".to_owned())?;
-        let ccs = native_response_to_ccs(&response, &request, &freshness);
+        let mut ccs = native_response_to_ccs(&response, &request, &freshness);
+        let adapt_selection = resident
+            .map(|store| crate::adapt_service::prepare_packet(store, &root, &value, &mut ccs))
+            .transpose()?;
         let native_receipts = collect_native_receipts(&response);
         let mut payload = envelope_from_ccs(
             &serde_json::to_string(&ccs).map_err(|error| error.to_string())?,
@@ -1321,12 +1337,17 @@ fn memory_candidates_payload_for_descriptor_inner(
         })
         .collect();
     omissions.extend(completeness.causes.iter().filter_map(|cause| {
-        (!matches!(cause.as_str(), "ceiling_truncated" | "temporal_ceiling_truncated"))
-            .then(|| serde_json::json!({
+        (!matches!(
+            cause.as_str(),
+            "ceiling_truncated" | "temporal_ceiling_truncated"
+        ))
+        .then(|| {
+            serde_json::json!({
                 "id": format!("memory:temporal-omission:{cause}"),
                 "layer": 7,
                 "reason": cause,
-            }))
+            })
+        })
     }));
     stage_elapsed.rank_ms += rank_started.elapsed().as_secs_f64() * 1000.0;
 
@@ -1858,7 +1879,9 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .any(|candidate| candidate["id"].as_str().is_some_and(|id| id.starts_with("memory:role:"))));
+            .any(|candidate| candidate["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("memory:role:"))));
         assert!(payload["omissions"]
             .as_array()
             .unwrap()

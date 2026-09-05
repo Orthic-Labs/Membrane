@@ -45,3 +45,5 @@ pub use transcript::{
     TranscriptChunk, TranscriptChunkRecord, TranscriptSearchHit, TranscriptStore,
     TranscriptStoreError, TRANSCRIPT_STORE_SCHEMA_VERSION,
 };
+
+pub mod reference_events;

@@ -158,7 +158,7 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 /// e.g. `working_context load` is a read, `save`/`close` are writes).
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
-        "membrane_context" | "membrane_blueprint" => "context",
+        "membrane_context" | "membrane_blueprint" | "membrane_adapt_inspect" => "context",
         "membrane_source_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
             Some("erase" | "activate") => "checkpoint",
@@ -191,12 +191,18 @@ fn native_action_for(name: &str, arguments: &Value) -> &'static str {
         "membrane_feedback" => "feedback",
         "membrane_knowledge_propose" => "proposal",
         "membrane_diagnostic_workspace"
-            if arguments.get("operation").and_then(Value::as_str) == Some("status") => "context",
+            if arguments.get("operation").and_then(Value::as_str) == Some("status") =>
+        {
+            "context"
+        }
         "membrane_diagnostic_snapshot"
             if matches!(
                 arguments.get("operation").and_then(Value::as_str),
                 Some("get" | "explain" | "delta")
-            ) => "context",
+            ) =>
+        {
+            "context"
+        }
         _ => "checkpoint",
     }
 }
@@ -298,8 +304,7 @@ struct UnavailableHubTransportExecutor {
 /// an empty read, a truncated body, and a wrong listener indistinguishable.
 fn preview(bytes: &[u8]) -> String {
     const LIMIT: usize = 200;
-    let text = String::from_utf8_lossy(&bytes[..bytes.len().min(LIMIT)])
-        .replace(['\r', '\n'], " ");
+    let text = String::from_utf8_lossy(&bytes[..bytes.len().min(LIMIT)]).replace(['\r', '\n'], " ");
     if bytes.len() > LIMIT {
         format!("{text}... ({} bytes total)", bytes.len())
     } else if text.trim().is_empty() {
@@ -413,8 +418,10 @@ impl HubTransportExecutor {
         serde_json::from_slice(&response[split + 4..]).map_err(|error| error.to_string())
     }
 
-    fn post(&self, name: &str, arguments: &Value) -> Result<Value, String> {
-        let payload = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}).to_string();
+    fn post_json(&self, path: &str, payload: &str) -> Result<Value, String> {
+        if payload.len() > crate::adapt_service::MAX_INPUT_BYTES {
+            return Err("daemon request exceeds limit".into());
+        }
         let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.port);
         let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_secs(2))
             .map_err(|_| "membrane_unavailable { hub_inactive }".to_owned())?;
@@ -426,7 +433,7 @@ impl HubTransportExecutor {
             .map_err(|e| e.to_string())?;
         let host = format!("127.0.0.1:{}", self.port);
         let request = format!(
-            "POST /mcp HTTP/1.0\r\nHost: {host}\r\nOrigin: http://{host}\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nx-membrane-installation-id: {}\r\nx-membrane-cortex-store-id: {}\r\nx-membrane-release-generation: {}\r\nx-membrane-session: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            "POST {path} HTTP/1.0\r\nHost: {host}\r\nOrigin: http://{host}\r\nContent-Type: application/json\r\nAuthorization: Bearer {}\r\nx-membrane-installation-id: {}\r\nx-membrane-cortex-store-id: {}\r\nx-membrane-release-generation: {}\r\nx-membrane-session: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             self.token, self.installation_id, self.cortex_store_id, self.release_generation,
             self.session_id, payload.len(), payload,
         );
@@ -435,7 +442,7 @@ impl HubTransportExecutor {
             .map_err(|e| e.to_string())?;
         let mut response = Vec::new();
         stream
-            .take((MAX_OPERATION_BYTES * 2) as u64)
+            .take((crate::adapt_service::MAX_INPUT_BYTES + 16385) as u64)
             .read_to_end(&mut response)
             .map_err(|e| e.to_string())?;
         let split = response
@@ -452,15 +459,20 @@ impl HubTransportExecutor {
         let status = head.lines().next().unwrap_or("");
         if !status.contains(" 200 ") {
             return Err(format!(
-                "membrane_unavailable {{ hub_inactive }}: hub answered {status} for {name}: {}",
+                "membrane_unavailable {{ hub_inactive }}: hub answered {status} for {path}: {}",
                 preview(&response[split + 4..])
             ));
         }
         let body: Value =
             serde_json::from_slice(&response[split + 4..]).map_err(|e| e.to_string())?;
-        body.pointer("/result/structuredContent")
+        Ok(body)
+    }
+    fn post(&self, name: &str, arguments: &Value) -> Result<Value, String> {
+        let payload = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":arguments}}).to_string();
+        self.post_json("/mcp", &payload)?
+            .pointer("/result/structuredContent")
             .cloned()
-            .ok_or_else(|| "Hub MCP response omitted structuredContent".to_owned())
+            .ok_or_else(|| "Hub MCP response omitted structuredContent".into())
     }
 }
 
@@ -574,33 +586,38 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
         if gated_diagnostic {
             let task_grant = arguments.get("taskGrantLevel").and_then(Value::as_str);
             let action = native_action_for(name, arguments);
-            let authorization = if let Some((caller_root, caller_repository, caller_scope)) = diagnostic_caller {
-                let project_root = arguments
-                    .get("projectRoot")
-                    .and_then(Value::as_str)
-                    .unwrap_or(caller_root);
-                authorization::authorize_diagnostic(
-                    &AuthorizationRequest {
-                        caller_root,
-                        caller_repository_id: caller_repository,
-                        caller_scope_id: caller_scope,
-                        caller_scope_descriptor: arguments.pointer("/caller/scopeDescriptor"),
-                        target_repository: repository,
-                        task_grant_level: task_grant,
+            let authorization =
+                if let Some((caller_root, caller_repository, caller_scope)) = diagnostic_caller {
+                    let project_root = arguments
+                        .get("projectRoot")
+                        .and_then(Value::as_str)
+                        .unwrap_or(caller_root);
+                    authorization::authorize_diagnostic(
+                        &AuthorizationRequest {
+                            caller_root,
+                            caller_repository_id: caller_repository,
+                            caller_scope_id: caller_scope,
+                            caller_scope_descriptor: arguments.pointer("/caller/scopeDescriptor"),
+                            target_repository: repository,
+                            task_grant_level: task_grant,
+                            action,
+                        },
+                        project_root,
+                    )
+                } else {
+                    authorization::authorize_diagnostic_identity(
+                        repository,
+                        arguments.get("projectRoot").and_then(Value::as_str),
+                        task_grant,
                         action,
-                    },
-                    project_root,
-                )
-            } else {
-                authorization::authorize_diagnostic_identity(
-                    repository,
-                    arguments.get("projectRoot").and_then(Value::as_str),
-                    task_grant,
-                    action,
-                )
-            };
+                    )
+                };
             if let Err(denial) = authorization {
-                return error(name, "authorization_denied", format!("{}: {}", denial.code(), denial));
+                return error(
+                    name,
+                    "authorization_denied",
+                    format!("{}: {}", denial.code(), denial),
+                );
             }
         } else if !diagnostic {
             if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope)
@@ -609,7 +626,47 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             }
         }
         match name {
-            "membrane_push_prepare" | "membrane_push_resolve" => crate::push::api::execute(name, arguments),
+            "membrane_adapt_inspect" => {
+                if let Err(result) = bounded(arguments, name, "adapt_input_limit") {
+                    return result;
+                }
+                let host: crate::adapt_service::AdaptHostContextV1 = match serde_json::from_value(
+                    arguments
+                        .get("hostContext")
+                        .cloned()
+                        .unwrap_or_else(|| json!({})),
+                ) {
+                    Ok(host) => host,
+                    Err(e) => return error(name, "adapt_context_invalid", e.to_string()),
+                };
+                let dimensions = match host.dimensions() {
+                    Ok(d) => d,
+                    Err(e) => return error(name, "adapt_context_invalid", e),
+                };
+                let requested_limit = arguments.get("limit").and_then(Value::as_u64).unwrap_or(16);
+                if requested_limit > 32 {
+                    return error(name, "adapt_input_limit", "limit must be at most 32");
+                }
+                // Derive storage scope from the authorized repository root, not
+                // from the session id or a caller-selected sibling scope.
+                let storage_scope = crate::scope::path_to_scope(root);
+                let result = match arguments.get("operation").and_then(Value::as_str) {
+                    Some("preferences" | "explain") => crate::adapt_service::inspect_preferences(
+                        &self.store, &storage_scope, dimensions, host.machine, host.model, requested_limit as usize),
+                    Some("insights") => crate::adapt_service::inspect_issues(&self.store,&storage_scope,requested_limit as usize),
+                    Some("status") => crate::adapt_service::status(&self.store,&storage_scope,Some(scope)),
+                    Some("proposals") => self.store.db().reference_events(&storage_scope,"adapt.comparison",requested_limit.max(1) as usize)
+                        .map(|page| json!({"comparisons":page,"pending_proposals":null,"reason":"pending_proposal_registry_unavailable"})),
+                    _ => Err("unsupported read-only Adapt operation".into()),
+                };
+                match result {
+                    Ok(data) => success(name, data),
+                    Err(e) => error(name, "adapt_inspection_unavailable", e),
+                }
+            }
+            "membrane_push_prepare" | "membrane_push_resolve" => {
+                crate::push::api::execute(name, arguments)
+            }
             "membrane_context" => {
                 let task = arguments
                     .get("task")
@@ -907,7 +964,20 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 // rewritten here. Absent means "not supplied", and the body stays absent so
                 // federation evaluates sufficiency as not_evaluated.
                 let sufficiency_contract = arguments.get("sufficiencyContract").cloned();
+                let host: crate::adapt_service::AdaptHostContextV1 = match serde_json::from_value(
+                    arguments
+                        .get("hostContext")
+                        .cloned()
+                        .unwrap_or_else(|| json!({})),
+                ) {
+                    Ok(host) => host,
+                    Err(e) => return error(name, "adapt_context_invalid", e.to_string()),
+                };
+                if let Err(e) = host.dimensions() {
+                    return error(name, "adapt_context_invalid", e);
+                }
                 let mut body = json!({
+                    "hostContext": host,
                     "task": task,
                     "taskId": task_id,
                     "repo": root,
@@ -955,7 +1025,10 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     Err(result) => return result,
                 };
                 let (status, payload) =
-                    match crate::pull::federation::native_route_response(&request) {
+                    match crate::pull::federation::native_route_response_with_store(
+                        &request,
+                        Some(&self.store),
+                    ) {
                         (200, payload) => ("ok", payload),
                         (status, payload) => ("unavailable", payload),
                     };
@@ -1013,7 +1086,10 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 // Reuse the already validated ladder; no provider re-execution,
                 // guessed ceiling, or post-fit silent truncation is permitted.
                 for representation in &selection.plan.representations {
-                    if representation.tokens > ceiling.remaining_tokens.estimate.value.unwrap_or(0) { continue; }
+                    if representation.tokens > ceiling.remaining_tokens.estimate.value.unwrap_or(0)
+                    {
+                        continue;
+                    }
                     let mut receipt = selection.selection_receipt.clone();
                     receipt.selected_representation_id = representation.id.clone();
                     receipt.selected_tokens = representation.tokens;
@@ -1041,10 +1117,16 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     match crate::push::egress::fit_native_response(result,&ceiling) {
                         Ok(fitted) => return fitted,
                         Err(crate::push::recovery::RecoveryError::Limit) => continue,
-                        Err(failure) => return error(name,"context_delivery_invalid",failure.to_string()),
+                        Err(failure) => {
+                            return error(name, "context_delivery_invalid", failure.to_string())
+                        }
                     }
                 }
-                error(name,"context_delivery_capacity_exceeded","no complete measured MCP representation fits the observed capacity")
+                error(
+                    name,
+                    "context_delivery_capacity_exceeded",
+                    "no complete measured MCP representation fits the observed capacity",
+                )
             }
             "membrane_source_read" | "membrane_ledger" => {
                 let Some(owner) = self.ledger.as_ref() else {
@@ -2124,4 +2206,11 @@ mod hub_transport_tests {
             .and_then(Value::as_str)
             .is_some_and(|message| message.contains("hub_inactive")));
     }
+}
+
+/// Canonical CLI operations reuse the exact installed Hub identity fence.
+/// Failure never opens a local database or auto-starts a resident process.
+pub(crate) fn adapt_daemon_request(request: &Value) -> Result<Value, String> {
+    let bound = HubTransportExecutor::active()?;
+    bound.post_json(crate::adapt_service::OPERATOR_PATH, &request.to_string())
 }

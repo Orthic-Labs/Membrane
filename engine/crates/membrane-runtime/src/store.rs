@@ -98,8 +98,9 @@ fn evict_effectiveness_history(history: &mut Vec<MemoryUsageRecord>, cap: usize)
     let mut to_drop = history.len() - cap;
     let mut kept = Vec::with_capacity(history.len());
     for record in history.drain(..) {
-        let is_veto =
-            record.verified && record.injected && matches!(record.outcome, Some(Outcome::Contradicted));
+        let is_veto = record.verified
+            && record.injected
+            && matches!(record.outcome, Some(Outcome::Contradicted));
         if to_drop > 0 && !is_veto {
             to_drop -= 1;
             continue;
@@ -739,6 +740,7 @@ const MAX_TASTE_DELIVERY_CANDIDATES: usize = 128;
 pub struct TasteDeliveryInventoryV1 {
     pub candidates: Vec<membrane_adapt::delivery::PreferenceDeliveryCandidateV1>,
     pub memory_ids: HashSet<String>,
+    pub record_versions: BTreeMap<String, String>,
     bindings: BTreeMap<String, (String, String)>,
 }
 
@@ -1665,8 +1667,8 @@ impl MemoryStore {
                 completeness: CortexCompletenessV1::lower_bound("cancelled", 0, 0, 0),
             };
         }
-        let temporal_slots = usize::from(temporal.is_some())
-            * (limit / 5).clamp(1, 8).min(limit.saturating_sub(1));
+        let temporal_slots =
+            usize::from(temporal.is_some()) * (limit / 5).clamp(1, 8).min(limit.saturating_sub(1));
         let mut items = Vec::with_capacity(limit);
         let mut causes = Vec::new();
         let mut considered = 0usize;
@@ -1705,14 +1707,13 @@ impl MemoryStore {
         // Return unused temporal capacity to ordinary memory recall so opting
         // into the auxiliary arm never weakens local-first fallback coverage.
         let memory_slots = limit.saturating_sub(items.len());
-        let (memory_hits, _, memory_completeness) = self
-            .recall_scored_detailed_timed_cancellable(
-                query,
-                memory_slots,
-                scopes,
-                graph_enabled,
-                cancellation,
-            );
+        let (memory_hits, _, memory_completeness) = self.recall_scored_detailed_timed_cancellable(
+            query,
+            memory_slots,
+            scopes,
+            graph_enabled,
+            cancellation,
+        );
         considered += memory_completeness.considered_count;
         dropped += memory_completeness.dropped_count;
         causes.extend(memory_completeness.causes);
@@ -4265,7 +4266,14 @@ impl MemoryStore {
                     .sum()
             };
             if score > 0 {
-                ranked.push((score, SkillIndexEntry { name, description, body_hash }));
+                ranked.push((
+                    score,
+                    SkillIndexEntry {
+                        name,
+                        description,
+                        body_hash,
+                    },
+                ));
             }
         }
         ranked.sort_by(|left, right| {
@@ -4978,10 +4986,10 @@ impl MemoryStore {
             None,
             None,
         )
-            .0
-            .into_iter()
-            .map(|hit| (hit.entry, hit.score))
-            .collect()
+        .0
+        .into_iter()
+        .map(|hit| (hit.entry, hit.score))
+        .collect()
     }
 
     /// Stable recall output plus a content-free decomposition used by phase-0 telemetry.
@@ -5067,11 +5075,7 @@ impl MemoryStore {
         *self.last_recall_status.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
         if limit == 0 {
-            return (
-                Vec::new(),
-                elapsed,
-                CortexCompletenessV1::exact(0, 0, 0),
-            );
+            return (Vec::new(), elapsed, CortexCompletenessV1::exact(0, 0, 0));
         }
         if cancellation.is_some_and(CancellationToken::is_cancelled) {
             return (
@@ -6185,9 +6189,9 @@ impl MemoryStore {
                   LIMIT ?1",
             )
             .map_err(|error| self.persist_error(format!("Taste query prepare failed: {error}")))?;
-        let rows = statement
+        let mut rows = statement
             .query_map(
-                rusqlite::params![MAX_TASTE_DELIVERY_CANDIDATES as i64],
+                rusqlite::params![(MAX_TASTE_DELIVERY_CANDIDATES + 1) as i64],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -6202,13 +6206,27 @@ impl MemoryStore {
             .map_err(|error| self.persist_error(format!("Taste query failed: {error}")))?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|error| self.persist_error(format!("Taste row read failed: {error}")))?;
+        if rows.len() > MAX_TASTE_DELIVERY_CANDIDATES {
+            if rows
+                .last()
+                .is_some_and(|r| r.3 == "active" && r.4 == "behavioral_directive")
+            {
+                return Err(
+                    "taste_inventory_limit_exceeded: scoped inventory paging required".into(),
+                );
+            }
+            rows.truncate(MAX_TASTE_DELIVERY_CANDIDATES);
+        }
         // Eligibility is looked up only for this already-bounded (`MAX_TASTE_DELIVERY_CANDIDATES`,
         // 128) row set via `id IN (...)`, not the whole corpus — see `recall_eligible_ids_among`.
         let candidate_ids = rows.iter().map(|row| row.0.clone()).collect::<Vec<_>>();
-        let eligible_ids = recall_eligible_ids_among(&conn, now, false, &candidate_ids)
-            .map_err(|error| self.persist_error(format!("Taste lifecycle query failed: {error}")))?;
+        let eligible_ids =
+            recall_eligible_ids_among(&conn, now, false, &candidate_ids).map_err(|error| {
+                self.persist_error(format!("Taste lifecycle query failed: {error}"))
+            })?;
         let mut candidates = Vec::with_capacity(rows.len());
         let mut bindings = BTreeMap::new();
+        let mut record_versions = BTreeMap::new();
         for (memory_id, content, scope_id, lifecycle, influence, authority) in rows {
             let parsed = serde_json::from_str::<membrane_adapt::manifest::ManifestRecord>(&content);
             let fallback_id = memory_id
@@ -6226,6 +6244,7 @@ impl MemoryStore {
                 semantic_verified,
             ) = match parsed {
                 Ok(record) => {
+                    record_versions.insert(record.id.clone(), record.payload_sha256.clone());
                     let class = RecordClass::parse(&record.record_type);
                     let dimensions = membrane_adapt::scope::ScopeDimensions::normalize(
                         &record.scope_dimensions.0,
@@ -6321,6 +6340,7 @@ impl MemoryStore {
             candidates,
             memory_ids,
             bindings,
+            record_versions,
         })
     }
 
@@ -6597,6 +6617,10 @@ impl MemoryStore {
     }
 
     /// Stable identity advertised by the resident Hub handshake.
+    pub fn service_instance_id(&self) -> &str {
+        &self.operation_attribution.service_instance_id
+    }
+
     pub fn installation_id(&self) -> &str {
         &self.operation_attribution.installation_id
     }
@@ -8927,9 +8951,9 @@ impl MemoryStore {
         let conn = self.db.lock();
         let sql = "SELECT id, tier, length(content), access_count, inject_count FROM memories \
                    WHERE (?1 IS NULL OR scope_id = ?1) ORDER BY id LIMIT ?2";
-        let mut statement = conn
-            .prepare(sql)
-            .map_err(|error| self.persist_error(format!("bounded memory list prepare failed: {error}")))?;
+        let mut statement = conn.prepare(sql).map_err(|error| {
+            self.persist_error(format!("bounded memory list prepare failed: {error}"))
+        })?;
         let probe = i64::try_from(limit.saturating_add(1))
             .map_err(|_| "memory list limit exceeds SQLite integer range".to_owned())?;
         let rows = statement
@@ -8942,10 +8966,14 @@ impl MemoryStore {
                     row.get(4)?,
                 ))
             })
-            .map_err(|error| self.persist_error(format!("bounded memory list query failed: {error}")))?;
+            .map_err(|error| {
+                self.persist_error(format!("bounded memory list query failed: {error}"))
+            })?;
         let mut items = rows
             .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(|error| self.persist_error(format!("bounded memory list decode failed: {error}")))?;
+            .map_err(|error| {
+                self.persist_error(format!("bounded memory list decode failed: {error}"))
+            })?;
         let truncated = items.len() > limit;
         if truncated {
             items.truncate(limit);
@@ -9813,12 +9841,19 @@ mod tests {
             assert!(command.status().unwrap().success());
         };
         run_git(&["init"]);
-        run_git(&["add", "tools/skills/deploy/SKILL.md", "tools/skills/deploy-stage/SKILL.md"]);
+        run_git(&[
+            "add",
+            "tools/skills/deploy/SKILL.md",
+            "tools/skills/deploy-stage/SKILL.md",
+        ]);
         assert_eq!(store.ingest_skills(workspace.path()), (2, 0, 0));
 
         let search = store.search_skills("deploy safely", 1).unwrap();
         assert_eq!(search.items.len(), 1);
-        assert_eq!(search.completeness.state, CortexCompletenessState::LowerBound);
+        assert_eq!(
+            search.completeness.state,
+            CortexCompletenessState::LowerBound
+        );
         assert_eq!(
             search.completeness.causes,
             vec!["ceiling_truncated".to_owned()]
@@ -9836,7 +9871,10 @@ mod tests {
         let unresolved = store
             .skill_read_bounded("deploy", 32, &BTreeMap::new())
             .unwrap();
-        assert_eq!(unresolved.completeness.state, CortexCompletenessState::LowerBound);
+        assert_eq!(
+            unresolved.completeness.state,
+            CortexCompletenessState::LowerBound
+        );
         assert!(unresolved
             .completeness
             .causes
@@ -11543,16 +11581,12 @@ mod tests {
             .unwrap();
 
         let candidate_ids = vec![expired.clone()];
-        assert!(
-            !store
-                .recall_eligible_ids_among_at(&candidate_ids, 2000, false)
-                .contains(&expired)
-        );
-        assert!(
-            store
-                .recall_eligible_ids_among_at(&candidate_ids, 2000, true)
-                .contains(&expired)
-        );
+        assert!(!store
+            .recall_eligible_ids_among_at(&candidate_ids, 2000, false)
+            .contains(&expired));
+        assert!(store
+            .recall_eligible_ids_among_at(&candidate_ids, 2000, true)
+            .contains(&expired));
         // Must agree with the full-corpus scan in both branches.
         assert_eq!(
             store
@@ -11572,7 +11606,12 @@ mod tests {
     fn recall_eligible_ids_among_chunks_large_candidate_slates() {
         let store = MemoryStore::new();
         let first = store
-            .try_put("chunk-first", "chunking marker one", "global", MemoryTier::Semantic)
+            .try_put(
+                "chunk-first",
+                "chunking marker one",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
         let boundary = store
             .try_put(
@@ -11583,14 +11622,18 @@ mod tests {
             )
             .unwrap();
         let last = store
-            .try_put("chunk-last", "chunking marker three", "global", MemoryTier::Semantic)
+            .try_put(
+                "chunk-last",
+                "chunking marker three",
+                "global",
+                MemoryTier::Semantic,
+            )
             .unwrap();
 
         // Build a candidate slate spanning 3 chunks of `RECALL_ELIGIBILITY_ID_CHUNK`, with real
         // (eligible) ids planted at the very start, exactly on a chunk boundary, and at the end,
         // interleaved with ids that do not exist in the table at all.
-        let mut candidate_ids =
-            Vec::with_capacity(RECALL_ELIGIBILITY_ID_CHUNK * 2 + 3);
+        let mut candidate_ids = Vec::with_capacity(RECALL_ELIGIBILITY_ID_CHUNK * 2 + 3);
         candidate_ids.push(first.clone());
         for i in 0..(RECALL_ELIGIBILITY_ID_CHUNK - 1) {
             candidate_ids.push(format!("filler-before-{i}"));

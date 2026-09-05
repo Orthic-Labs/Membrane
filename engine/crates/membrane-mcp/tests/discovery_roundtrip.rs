@@ -10,7 +10,7 @@ fn discovery_matches_initialize_contract() {
         initialize_response()["protocolVersion"]
     );
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
-    assert_eq!(discovery["tools"].as_array().unwrap().len(), 19);
+    assert_eq!(discovery["tools"].as_array().unwrap().len(), 21);
 }
 
 #[test]
@@ -49,14 +49,46 @@ fn tool_calls_are_typed_and_never_use_legacy_fallback() {
 }
 
 #[test]
+fn adapt_is_optional_and_read_only() {
+    let request = |groups| {
+        McpServer.dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":groups}}})).unwrap()
+    };
+    let default = request(json!([]));
+    assert!(!default["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["name"] == "membrane_adapt_inspect"));
+    let opted = request(json!(["adapt"]));
+    let tool = opted["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "membrane_adapt_inspect")
+        .unwrap();
+    assert_eq!(tool["annotations"]["readOnlyHint"], true);
+    assert!(!tool["inputSchema"]["properties"]["operation"]["enum"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("approve")));
+}
+
+#[test]
 fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let response = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":["push"]}}})).unwrap();
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(),3);
-    assert!(tools.iter().any(|v| v["name"] == "membrane_push_resolve" && v["inputSchema"]["properties"]["selector"]["oneOf"].as_array().unwrap().len() == 4));
+    assert_eq!(tools.len(), 5);
+    assert!(tools.iter().any(|v| v["name"] == "membrane_push_resolve"
+        && v["inputSchema"]["properties"]["selector"]["oneOf"]
+            .as_array()
+            .unwrap()
+            .len()
+            == 4));
     assert!(tools.iter().any(|v| v["name"] == "membrane_push_prepare"));
-    let default = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"})).unwrap();
-    assert_eq!(default["result"]["tools"].as_array().unwrap().len(),1);
+    let default = McpServer
+        .dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
+        .unwrap();
+    assert_eq!(default["result"]["tools"].as_array().unwrap().len(), 3);
 }
 
 #[test]
@@ -79,8 +111,8 @@ fn context_schema_advertises_workspace_targets_and_resolver_negotiation() {
         32
     );
     assert_eq!(
-        context["inputSchema"]["properties"]["consumerCapabilities"]
-            ["properties"]["resolvers"]["maxItems"],
+        context["inputSchema"]["properties"]["consumerCapabilities"]["properties"]["resolvers"]
+            ["maxItems"],
         32
     );
 }

@@ -34,6 +34,7 @@ pub enum ScopeError {
     EmptyDimensionValue { key: String },
     DimensionTooLong { key: String, len: usize },
     EmptyKey,
+    DuplicateDimension { key: String },
 }
 
 impl std::fmt::Display for ScopeError {
@@ -48,6 +49,9 @@ impl std::fmt::Display for ScopeError {
                     f,
                     "scope dimension {key} exceeds {MAX_DIMENSION_CHARS} chars ({len})"
                 )
+            }
+            ScopeError::DuplicateDimension { key } => {
+                write!(f, "duplicate normalized scope dimension: {key}")
             }
             ScopeError::EmptyKey => write!(f, "empty scope dimension key"),
         }
@@ -85,7 +89,9 @@ impl ScopeDimensions {
                     key: key_norm,
                 });
             }
-            out.insert(key_norm, value_norm);
+            if out.insert(key_norm.clone(), value_norm).is_some() {
+                return Err(ScopeError::DuplicateDimension { key: key_norm });
+            }
         }
         Ok(ScopeDimensions(out))
     }
@@ -130,7 +136,8 @@ impl ScopeDimensions {
             if key == "path_prefix" {
                 let w = norm(wanted);
                 let a = norm(actual);
-                if !a.starts_with(&w) {
+                let w = w.trim_end_matches('/');
+                if a != w && !a.starts_with(&format!("{w}/")) {
                     return false;
                 }
             } else if !actual.eq_ignore_ascii_case(wanted) {
