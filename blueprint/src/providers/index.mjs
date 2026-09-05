@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const PROVIDER_PROTOCOL_VERSION = 1;
-export const PROVIDER_KINDS = Object.freeze(["compiler", "structural", "framework", "schema", "bridge", "ranking", "provenance"]);
+export const PROVIDER_KINDS = Object.freeze(["compiler", "structural", "framework", "schema", "bridge", "repository-evidence", "ranking", "provenance"]);
 export const PROVIDER_FILESYSTEM_PERMISSIONS = Object.freeze(["none", "repo-read"]);
 export const PROVIDER_NETWORK_PERMISSIONS = Object.freeze(["none"]);
 export const PROVIDER_PROCESS_PERMISSIONS = Object.freeze(["none", "opt-in"]);
