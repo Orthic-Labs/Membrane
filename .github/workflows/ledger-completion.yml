@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: ledger-completion-${{ github.ref }}
   cancel-in-progress: false
@@ -34,6 +34,28 @@ jobs:
           version: 11.24.0
       - name: Install JavaScript dependencies without build scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Reconcile shared canon indexes
+        if: hashFiles('scripts/ci/ledger-regenerate-canons') != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md')
+          text = path.read_text(encoding='utf-8')
+          old = '`engine/crates/membrane-runtime/src/push/skel.rs:133-262`'
+          new = '`engine/crates/membrane-runtime/src/push/skel.rs:21-39`'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one stale PSH-003 locator, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          node scripts/ci/check-atomic-canons.mjs --write
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm scripts/ci/ledger-regenerate-canons
+          git add docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md docs/canon/README.md docs/pending/README.md
+          git diff --cached --check
+          git commit -m 'docs(ledger): reconcile shared canon indexes [skip ci]'
+          git push origin HEAD:refs/heads/ledger-end-to-end
       - name: Ledger source, MCP and canon checks
         run: |
           set -euo pipefail
