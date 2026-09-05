@@ -1,0 +1,27 @@
+name: cortex-apply-implementation
+on:
+  push:
+    branches: [cortex-governed-lifecycle]
+    paths: [.github/workflows/cortex-apply-implementation.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Apply Cortex implementation patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .cortex-patch.0 .cortex-patch.1 | base64 -d | gzip -d > /tmp/cortex.patch
+          git apply --check /tmp/cortex.patch
+          git apply /tmp/cortex.patch
+          rm .cortex-patch.0 .cortex-patch.1 .test-upload .github/workflows/cortex-source-snapshot.yml .github/workflows/cortex-apply-implementation.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'feat(cortex): harden governed durable memory lifecycle'
+          git push origin HEAD:cortex-governed-lifecycle
