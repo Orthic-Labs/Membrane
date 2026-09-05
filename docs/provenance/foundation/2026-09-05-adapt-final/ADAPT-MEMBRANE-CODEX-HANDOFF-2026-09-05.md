@@ -2,10 +2,10 @@
 
 Date: 2026-09-05
 Repository: `Orthic-Labs/Membrane`
-Branch: `work/adapt-membrane-completion-20260905`
-PR: `#18`
-Current `main` reconciled into branch: `4a51a89383d259109d213579c9befbd77b08298f`
-Reconciliation merge: `bcb2851044594e3c0ce8236290b0a7d9e60ec61a`
+Merged source branch: `work/adapt-membrane-completion-20260905` (deleted after merge)
+PR: `#18` — merged
+Merge revision on `main`: `6be4981dd8964fd5d3372a5de6b9b41bea496902`
+Pre-merge reconciliation: `bcb2851044594e3c0ce8236290b0a7d9e60ec61a`
 Original Adapt completion base: `f612cdee804922cf59cd5b288624674492252c0a` (PR #17 merge)
 
 ## Scope and instruction
@@ -28,20 +28,9 @@ The source-level completion receipt for this branch is:
 
 ## Current repository state
 
-The branch was intentionally created from the PR #17 merge, developed in isolation while other subsystem work landed, then explicitly reconciled with the actual current `main` through PR #19.
+PR #18 is merged on `main` at `6be4981dd8964fd5d3372a5de6b9b41bea496902`. The source branch was deleted after merge. The post-merge finalization reconciles `docs/canon/adapt.md` to that merged source, regenerates derived canon truth, and removes the superseded Adapt working branches.
 
-PR #19 merged current `main` into the Adapt branch. The incoming delta was the Push hardening merge and did not conflict with Adapt source changes. The reconciled branch head before this documentation commit is `bcb2851044594e3c0ce8236290b0a7d9e60ec61a`.
-
-PR #18 is mergeable against current `main`.
-
-A focused branch-only qualification run had already passed before the final main reconciliation:
-
-- `cargo check --manifest-path engine/Cargo.toml -p membrane-adapt -p membrane-runtime --locked`
-- `cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --lib --locked`
-- `cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked adapt -- --test-threads=1`
-- repository canon-integrity checks
-
-The normal repository PR CI must be treated as the authoritative final gate for the reconciled branch. Do not reuse a pre-reconciliation test result as proof of the final merge revision.
+The Membrane-owned source mechanisms in this handoff are therefore landed. Remaining items described below are cross-owner/host-observability or empirical/release qualification boundaries; do not recreate the completion branch to address them.
 
 ## What PR #17 already established
 
@@ -200,20 +189,15 @@ Do not convert real-host qualification into implementation status.
 
 After PR #18 is merged, refresh descriptive implementation/register rows against the actual merge SHA and run the repository's canon generator/integrity checks. Evidence must reference the final merged revision, not the pre-merge branch receipt.
 
-## Review checklist before merging PR #18
+## Post-merge continuation checklist
 
-1. Confirm PR #18 is based on the then-current `main` and remains mergeable.
-2. Confirm no CodeRight files or contracts were opportunistically added.
-3. Confirm Push/Ledger/Pull ownership from current `main` was preserved by the reconciliation merge.
-4. Run normal repository CI on the reconciled head.
-5. Inspect any CI failure as a real regression before editing; do not waive it because focused Adapt tests passed earlier.
-6. Confirm `adapt_efficiency` reports absent prerequisites as `unavailable` rather than no-finding.
-7. Confirm detector catalog drift fails closed.
-8. Confirm effectiveness never co-aggregates asset-content versions and never infers host exposure.
-9. Confirm clarification still cannot self-authenticate a human answer.
-10. Confirm no temporary subsystem-specific Actions workflow remains in the product tree.
-11. Merge PR #18 normally only after CI is green.
-12. Reconcile `docs/canon/adapt.md` descriptive state to the merged revision and regenerate derived canon truth if the repository process requires post-merge SHA binding.
+1. Treat `6be4981dd8964fd5d3372a5de6b9b41bea496902` and later `main` as the Adapt source baseline; do not recreate PR #18 or its source branch.
+2. Preserve Cortex durable-admission ownership and Pull final packet ownership.
+3. Keep host-unobservable efficiency facts typed unavailable until the owning host contract supplies them.
+4. Keep ADP-041 partial until persisted production multiwriter convergence is proven through the Cortex-owned writer path.
+5. Keep ADP-072 partial until the real operator/adjudicator transport independently authenticates the human receipt.
+6. Keep exact outcome/effectiveness claims partial until the execution-episode and loaded-representation joins exist.
+7. Keep release/installed-platform and held-out detector qualification independent from source implementation state.
 
 ## Post-merge completion criterion for the Membrane side
 
@@ -261,6 +245,4 @@ Current-main Push hardening files are present through the explicit reconciliatio
 
 ## Final instruction to Codex
 
-Treat PR #18 as a source-completion and truth-reconciliation task, not an invitation to redesign Adapt.
-
-If CI is green and no concrete current-main seam exposes additional Membrane-owned closure, merge the PR and reconcile the atomic canon to the merged source. Leave CodeRight and real-host qualification for the later integration pass.
+PR #18 is already merged. Do not reopen or redesign the Membrane Adapt completion slice. Continue only the explicitly residual cross-owner/host/qualification work from current `main`, preserving typed unavailability and existing subsystem ownership boundaries.
