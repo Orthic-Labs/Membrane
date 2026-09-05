@@ -10,6 +10,7 @@ pub mod recurrence;
 pub mod sealed_issue;
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Internal domain-contract schema tags. Adapt-internal V1 schemas, not
 /// public protocol shapes.
@@ -155,6 +156,11 @@ pub struct FailureEpisodeV1 {
     pub sessions: Vec<String>,
     pub hosts: Vec<String>,
     pub agents: Vec<String>,
+    /// Deterministic dimensions known at episode emission time. Dimensions are
+    /// omitted rather than guessed; later recurrence may add broader issue
+    /// applicability only from independently observed facts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub applicability: BTreeMap<String, String>,
     /// Deterministic signature within the family used for recurrence
     /// grouping (e.g., normalized subject of the repeated ask).
     pub signature: String,
@@ -180,7 +186,7 @@ impl FailureEpisodeV1 {
         user_expectation: &str,
         evidence_events: &[&TranscriptEventV1],
     ) -> Self {
-        // Ineligible transcript rows are not observable evidence.  Keep them
+        // Ineligible transcript rows are not observable evidence. Keep them
         // out of identity, metadata, timestamps, and excerpts alike so a
         // detector cannot leak or derive an episode from redacted/private
         // material even if it accidentally passes such a row.
@@ -203,6 +209,13 @@ impl FailureEpisodeV1 {
         let mut hosts: Vec<String> = evidence_events.iter().map(|e| e.host.clone()).collect();
         hosts.sort();
         hosts.dedup();
+        let mut applicability = BTreeMap::new();
+        if hosts.len() == 1 && !hosts[0].trim().is_empty() {
+            // Transcript `host` is the exact client/harness identity known to
+            // this detector input. Multiple hosts are intentionally not
+            // collapsed into a broader claim.
+            applicability.insert("client".into(), hosts[0].clone());
+        }
         let evidence = evidence_events
             .iter()
             .filter(|e| e.evidence_eligible)
@@ -236,6 +249,7 @@ impl FailureEpisodeV1 {
             sessions,
             hosts,
             agents: vec![],
+            applicability,
             signature: signature.to_string(),
             user_expectation: user_expectation.to_string(),
             observed_failure: observed_failure.to_string(),
@@ -245,6 +259,22 @@ impl FailureEpisodeV1 {
             user_disposition: UserDisposition::Logged,
             honesty_limit: HONESTY_LIMIT.to_string(),
         }
+    }
+
+    /// Add exact applicability known by a deterministic caller. Blank
+    /// dimensions are refused so missing evidence remains missing.
+    pub fn with_applicability(
+        mut self,
+        applicability: BTreeMap<String, String>,
+    ) -> Result<Self, String> {
+        if applicability
+            .iter()
+            .any(|(key, value)| key.trim().is_empty() || value.trim().is_empty())
+        {
+            return Err("failure episode applicability contains blank dimension".into());
+        }
+        self.applicability.extend(applicability);
+        Ok(self)
     }
 
     /// Nearest preceding user message text for context/expectation.
@@ -361,6 +391,37 @@ mod tests {
         let e2 = ev("b", "s1", EventKind::AssistantMessage, "claim");
         let ep3 = FailureEpisodeV1::new("f", Severity::Low, 0.5, "sig", "obs", "", &[&e2]);
         assert_ne!(ep1.episode_id, ep3.episode_id);
+    }
+
+    #[test]
+    fn episode_applicability_is_exact_and_non_overgeneralized() {
+        let e1 = ev("a", "s1", EventKind::AssistantMessage, "claim");
+        let single =
+            FailureEpisodeV1::new("f", Severity::Low, 0.5, "sig", "obs", "", &[&e1]);
+        assert_eq!(single.applicability.get("client").map(String::as_str), Some("pi"));
+
+        let mut e2 = ev("b", "s2", EventKind::AssistantMessage, "claim");
+        e2.host = "codex".into();
+        let mixed = FailureEpisodeV1::new(
+            "f",
+            Severity::Low,
+            0.5,
+            "sig",
+            "obs",
+            "",
+            &[&e1, &e2],
+        );
+        assert!(mixed.applicability.is_empty());
+    }
+
+    #[test]
+    fn blank_applicability_is_refused() {
+        let e1 = ev("a", "s1", EventKind::AssistantMessage, "claim");
+        let episode =
+            FailureEpisodeV1::new("f", Severity::Low, 0.5, "sig", "obs", "", &[&e1]);
+        assert!(episode
+            .with_applicability(BTreeMap::from([("repo".into(), "".into())]))
+            .is_err());
     }
 
     #[test]
