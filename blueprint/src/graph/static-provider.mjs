@@ -35,6 +35,7 @@ import { STATIC_PROVIDER, TREESITTER_PROVIDER } from "./provider-identity.mjs";
 import { compareRepoPaths } from "./path-order.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
 import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+import { buildEntryPointRegistry } from "./entry-points.mjs";
 import {
   openStore,
   openStoreReadOnly,
@@ -1024,7 +1025,7 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       source: codeNode.id,
       target: `doc:${doc.path}`,
       confidence: 0.9,
-      confidenceClass: "INFERRED",
+      confidenceClass: "HEURISTIC_BRIDGE",
       reason: "claim references supersedes/replaced",
       evidence: baseEvidence,
     };
@@ -1034,8 +1035,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "contradicts",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=${status || "claim"} mentions stale/drift/missing/contradict; code node exists`,
       evidence: baseEvidence,
     };
@@ -1045,8 +1046,8 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
       kind: "supports",
       source: `doc:${doc.path}`,
       target: codeNode.id,
-      confidence: 0.85,
-      confidenceClass: "EXTRACTED",
+      confidence: null,
+      confidenceClass: "DETERMINISTIC_EXTRACTION",
       reason: `claim status=implemented; code node exists`,
       evidence: baseEvidence,
     };
@@ -1118,10 +1119,8 @@ function compareCanonicalText(left, right) {
 export function graphFlowInventory(generation, options = {}) {
   const complete = Boolean(options.complete);
   const maxFlows = Number(options.maxFlows ?? (complete ? 5000 : 200));
-  const outgoing = new Set(generation.edges.map((edge) => edge.source));
-  const incoming = new Set(generation.edges.map((edge) => edge.target));
-  const entryPoints = generation.nodes
-    .filter((node) => node.kind === "symbol" && outgoing.has(node.id) && !incoming.has(node.id))
+  const entryPoints = buildEntryPointRegistry(generation, { includeStructuralCandidates: true })
+    .map((entry) => entry.node)
     .sort((left, right) => compareCanonicalText(left.id, right.id));
   // NOTE: the spec's third flow status, "unsupported", is intentionally NOT emitted
   // here. It is only honest once we can DETECT a flow crossing into untraceable

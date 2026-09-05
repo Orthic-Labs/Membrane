@@ -19,7 +19,7 @@ import { canonicalProviderId } from "./provider-identity.mjs";
 import { symbolAuthorityOrder, symbolConfidenceTieOrder } from "./symbol-authority-order.mjs";
 import { assertPublicationCandidate } from "./publication-policy.mjs";
 import { confidenceOrLegacyDefault, publicFactConfidence } from "./provenance.mjs";
-import { migrateNullableFactConfidence } from "./confidence-migration.mjs";
+import { migrateNullableFactConfidence, migrateNullableDocTruthConfidence } from "./confidence-migration.mjs";
 
 const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
 const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
@@ -942,9 +942,10 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_named_snapshot_generation ON named_snapshot(generation_id);
     `);
   },
-  // Migration 19 — confidence is nullable for categorical facts. The existing
-  // migration runner supplies the backup and atomic commit/rollback boundary.
+  // Migration 19 — confidence is nullable for categorical graph facts.
   migrateNullableFactConfidence,
+  // Migration 20 — deterministic doc↔code joins use the same nullable contract.
+  migrateNullableDocTruthConfidence,
 ];
 
 /** Current schema version = number of migrations. Derived, so it cannot desync. */
@@ -1313,7 +1314,7 @@ function insertDocTruthRows(db, docTruth, generationId) {
       join.kind ?? "supports",
       join.source ?? "",
       join.target ?? "",
-      join.confidence ?? 1,
+      join.confidence === undefined ? 1 : join.confidence,
       join.confidenceClass ?? null,
       join.reason ?? null,
       docPath,
@@ -2085,7 +2086,7 @@ function loadDocTruth(db, generationId, provider = null) {
     kind: row.kind,
     source: row.source,
     target: row.target,
-    confidence: row.confidence ?? 1,
+    confidence: row.confidence,
     confidenceClass: row.confidence_class ?? undefined,
     reason: row.reason ?? undefined,
     evidence: {

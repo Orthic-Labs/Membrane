@@ -66,6 +66,8 @@ test("findings methods are registered on the resident protocol surface", () => {
   assert.deepEqual([...FINDINGS_SERVICE_METHODS].sort(), [
     "findings.baseline.capture",
     "findings.baseline.list",
+    "findings.evidence_pack",
+    "findings.explain",
     "findings.get",
     "findings.sarif",
   ]);

@@ -378,6 +378,7 @@ test("doc-code truth joins are typed and evidence-backed without polluting graph
   assert.ok(truth.joins.some((join) => join.kind === "supports" && join.target === "file:src/store.ts"));
   assert.ok(truth.joins.some((join) => join.kind === "contradicts" && join.evidence.docRef.line === 4));
   assert.ok(truth.joins.every((join) => join.confidenceClass && join.evidence.codeNode.contentHash === "abc123"));
+  assert.ok(truth.joins.filter((join) => ["supports", "contradicts"].includes(join.kind)).every((join) => join.confidence === null));
   assert.ok(!truth.joins.some((join) => join.evidence.codeRef.path === "src/missing.ts"));
   assert.deepEqual(truth.supersedes, [{
     kind: "supersedes",

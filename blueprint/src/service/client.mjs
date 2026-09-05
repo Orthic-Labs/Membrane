@@ -116,6 +116,14 @@ export class DaemonClient {
     return this.request({ method: "findings.sarif", input, deadlineMs: MAX_DEADLINE_MS, ...options });
   }
 
+  findingsExplain(input = {}, options = {}) {
+    return this.request({ method: "findings.explain", input, deadlineMs: MAX_DEADLINE_MS, ...options });
+  }
+
+  findingsEvidencePack(input = {}, options = {}) {
+    return this.request({ method: "findings.evidence_pack", input, deadlineMs: MAX_DEADLINE_MS, ...options });
+  }
+
   findingsBaselineCapture(input = {}, options = {}) {
     return this.request({ method: "findings.baseline.capture", input, deadlineMs: MAX_DEADLINE_MS, ...options });
   }
