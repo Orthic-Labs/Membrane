@@ -3,8 +3,10 @@
 Branch: `work/adapt-membrane-completion-20260905`
 
 Original branch base: `f612cdee804922cf59cd5b288624674492252c0a` (PR #17 merge).
+Current `main` reconciled into branch: `4a51a89383d259109d213579c9befbd77b08298f`.
+Reconciliation merge: `bcb2851044594e3c0ce8236290b0a7d9e60ec61a`.
 
-This receipt records source-level completion work only. It does not claim CodeRight deployment, packaged-client qualification, or RELEASED qualification. The branch is intentionally isolated while other subsystem branches are merged into `main`; no merge/rebase onto moving `main` is part of this receipt.
+This receipt records source-level completion work only. It does not claim CodeRight deployment, packaged-client qualification, or RELEASED qualification. The branch was developed in isolation while other subsystem work landed, then explicitly reconciled with the actual current `main` through PR #19 before PR #18 was prepared for review.
 
 ## Implemented or repaired on this branch
 
@@ -55,9 +57,15 @@ Passed gates:
 - `cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib --no-default-features --locked adapt -- --test-threads=1`
 - repository canon-integrity scripts when present
 
-The repository's normal PR CI is independently running on draft PR #18. Its result is separate evidence and must not be predeclared here.
+Those checks establish focused source behavior before the final `main` reconciliation. They are supporting evidence only. The repository's normal PR CI on the final reconciled PR #18 head is the authoritative merge gate.
 
-The temporary branch workflow exists only to qualify the isolated source branch and is removed after this receipt so the final product tree does not retain a subsystem-specific CI path.
+The temporary branch workflow was removed after qualification so the product tree does not retain a subsystem-specific CI path.
+
+## Current-main reconciliation
+
+PR #19 merged current `main` into this branch. The incoming delta was the Push hardening merge. No Adapt-owned source conflict occurred; current Push/Ledger/Pull ownership was preserved rather than manually reimplemented in Adapt.
+
+The final PR must be judged against the post-reconciliation branch head and normal repository CI. If `main` advances again before merge, repeat this reconciliation rule against the new head instead of relying on this receipt.
 
 ## Deliberately unresolved
 
@@ -75,4 +83,4 @@ Missing host facts remain typed `unavailable`; no source-level pass is promoted 
 
 ## Merge/reconciliation rule
 
-Do not merge this branch while `main` is moving for the other subsystem integrations. Once those merges are complete, reconcile this branch onto the then-current `main`, resolve only concrete conflicts, rerun repository CI/canon integrity, and update descriptive canon implementation rows from the resulting source. Do not reuse this receipt as proof of the later merged revision.
+PR #18 may merge only from a branch that contains the then-current `main`, is mergeable, and passes normal repository CI. After merge, descriptive canon implementation rows must be re-derived against the actual merge revision; stale pre-merge implementation text is not evidence. Do not reuse this receipt as proof of a later revision if `main` changes again before merge.
