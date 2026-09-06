@@ -216,6 +216,16 @@ export function recallCircuitToCandidateSet(circuit, options = {}) {
       sourceHash: `xxh128:${evidence.contentHash ?? "0".repeat(32)}`,
       trustClass: "workspace_tracked",
       instructionPolicy: "data_only",
+      // BPT-026: `providerScore` and `scoreComponents` are PRESENTATIONAL
+      // only. Ordering is already final by the time this loop runs — it was
+      // decided upstream by `comparePaths`' non-compensatory lexicographic
+      // chain (state, semanticAuthorityRank, edge tier, seedExactness,
+      // evidenceCoverage, hopCount, id), which never sums or weighs those
+      // fields against each other. These emitted numbers exist only so a V1
+      // consumer has a human-readable score to display; they must never be
+      // summed, weighted, or otherwise fed back into re-ranking — doing so
+      // can silently recover a compensatory ordering the comparator
+      // deliberately forbids (see tests/recall-candidate-contract.test.mjs).
       providerScore: 1 / (candidates.length + 1),
       scoreComponents: {
         semanticAuthority: 1 / ((path.semanticAuthorityRank ?? 0) + 1),

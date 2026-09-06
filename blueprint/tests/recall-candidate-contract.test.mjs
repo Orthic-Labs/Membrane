@@ -39,3 +39,48 @@ test("V1 strips only internal fields while rich Recall output retains path evide
   assert.equal(canonical.candidates[0].instructionPolicy, "data_only");
   assert.equal(JSON.stringify(rich), before);
 });
+
+// BPT-026: comparePaths (recall-circuit.mjs) is a non-compensatory
+// lexicographic chain — semanticAuthorityRank precedes evidence tier, which
+// precedes coverage, with no summing or weighting. The emitted
+// `providerScore` / `scoreComponents` on CandidateV1 are presentational
+// only; nothing may recover a compensatory ranking by summing them. This
+// test constructs two paths where the non-compensatory comparator and a
+// naive sum of `scoreComponents` DISAGREE on order, and proves the emitted
+// candidate order follows the comparator, not the sum.
+test("emitted candidate order follows the non-compensatory comparator, not a sum of scoreComponents", () => {
+  const strongerAuthorityWeakerEverythingElse = {
+    id: "path:a", state: "complete", seedId: "symbol:a", seedExactness: 1,
+    // Best (lowest) semanticAuthorityRank, but worst edge tier and weak coverage.
+    semanticAuthorityRank: 0, minimumEdgeTier: "UNRESOLVED", evidenceCoverage: 0.1,
+    hopCount: 1, evidenceEnvelope: { id: "envelope:a" },
+    nodes: [{ id: "symbol:a", name: "a", path: "a.ts", evidence: [{ path: "a.ts", startLine: 1, endLine: 1, contentHash: "a".repeat(32) }] }],
+    edges: [], evidence: [],
+  };
+  const weakerAuthorityStrongerEverythingElse = {
+    id: "path:b", state: "complete", seedId: "symbol:b", seedExactness: 1,
+    // Worse semanticAuthorityRank, but best edge tier and full coverage.
+    semanticAuthorityRank: 1, minimumEdgeTier: "EXACT_RESOLUTION", evidenceCoverage: 1,
+    hopCount: 1, evidenceEnvelope: { id: "envelope:b" },
+    nodes: [{ id: "symbol:b", name: "b", path: "b.ts", evidence: [{ path: "b.ts", startLine: 1, endLine: 1, contentHash: "b".repeat(32) }] }],
+    edges: [], evidence: [],
+  };
+  // comparePaths ranks by semanticAuthorityRank BEFORE tier/coverage, so the
+  // non-compensatory order is [a, b] even though b's edge tier and coverage
+  // are both strictly better.
+  const raw = circuit([strongerAuthorityWeakerEverythingElse, weakerAuthorityStrongerEverythingElse]);
+  const result = recallCircuitToCandidateSet(raw);
+  assert.deepEqual(result.candidates.map((c) => c.id), ["symbol:a", "symbol:b"],
+    "emitted order must be the comparator's order (authority-first), not a coverage/tier-led order");
+
+  const sums = result.candidates.map((c) => Object.values(c.scoreComponents).reduce((total, value) => total + value, 0));
+  const [sumA, sumB] = sums;
+  assert.ok(sumB > sumA,
+    "fixture must actually make summed scoreComponents disagree with the comparator, or this test proves nothing");
+  const sumOrder = [...result.candidates]
+    .map((candidate, index) => ({ candidate, sum: sums[index] }))
+    .sort((left, right) => right.sum - left.sum)
+    .map((entry) => entry.candidate.id);
+  assert.notDeepEqual(sumOrder, result.candidates.map((c) => c.id),
+    "summing scoreComponents must NOT reproduce the emitted (comparator) order — proving scoreComponents cannot reintroduce compensatory ranking");
+});
