@@ -702,7 +702,7 @@ fn native_proposer_cannot_approve_by_adding_undeclared_reviewer_json() {
     let executor = RuntimeMcpExecutor::for_hub(store.clone()).unwrap();
     let response = execute(
         &executor,
-        "membrane_knowledge_review",
+        "membrane_knowledge_propose",
         &j!({
             "repository":sandbox.installation.caller_repository_id,
             "caller":sandbox.caller_envelope(),

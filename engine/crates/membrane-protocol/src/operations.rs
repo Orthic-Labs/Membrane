@@ -474,8 +474,6 @@ pub fn operations() -> Vec<OperationIndexEntry> {
                 "memory_ineligible",
                 "memory_recipe_invalid",
                 "memory_recipe_unsupported",
-                "memory_recipe_invalid",
-                "memory_recipe_unsupported",
                 "checkpoint_scope_denied",
                 "temporal_admission_requires_policy",
             ],

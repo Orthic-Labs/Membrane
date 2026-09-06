@@ -44,7 +44,7 @@ fn tool_calls_are_typed_and_never_use_legacy_fallback() {
     );
     assert_eq!(
         response["result"]["structuredContent"]["result"]["code"],
-        "context_unavailable"
+        "context_envelope_invalid"
     );
 }
 

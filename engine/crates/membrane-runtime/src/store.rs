@@ -8127,7 +8127,11 @@ impl MemoryStore {
             }
         }
         if !self.writes_enabled {
-            return Err("memory writes disabled: embedder unavailable".into());
+            return Err(self.persist_error(
+                self.embedder_issue
+                    .clone()
+                    .unwrap_or_else(|| "memory writes disabled: embedder unavailable".into()),
+            ));
         }
         let scope = crate::scope::normalize_scope(scope);
         let id = format!("{scope}/{name}");
