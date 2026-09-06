@@ -333,7 +333,7 @@ Content-free lifecycle events allow operators to diagnose update, conversion, qu
 
 # 14. Session document projection
 
-Session Markdown is a derived human-readable projection of underlying typed events/tasks/artifacts/decisions. It is not the document subsystem itself, durable learned memory or a replacement for structured source data.
+Session Markdown is a derived human-readable projection of underlying typed events/tasks/artifacts/decisions. It is not the document subsystem itself, durable knowledge or a replacement for structured source data.
 
 A projection carries source session identity, source cursor/digest, derivation version, content hash, omissions and invalidation parent. It remains non-recallable until a real consumer, authority contract, privacy/retention, lifecycle and replay value qualify. Keep session records distinct from document registrations. Adapt consumes authoritative structured observations instead of derived Markdown when both are available.
 
