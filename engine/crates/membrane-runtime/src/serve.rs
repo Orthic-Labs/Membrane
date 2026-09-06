@@ -40,6 +40,10 @@ use tower_http::timeout::TimeoutLayer;
 
 const MAX_BODY_BYTES: usize = 1 << 20;
 const MAX_PUSH_BODY_BYTES: usize = 8 << 20;
+
+fn body_limit_for_path(path: &str) -> usize {
+    if path == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES }
+}
 const MAX_QUERY_CHARS: usize = 8 * 1024;
 const MAX_CONTENT_CHARS: usize = 256 * 1024;
 const MAX_RECALL_K: u64 = 50;
@@ -409,56 +413,6 @@ fn anchor_retrieve_response(body: &str) -> (u16, String) {
             "truncated": truncated,
         })
         .to_string(),
-    )
-}
-
-fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u16, String) {
-    let value = match json_body(body) {
-        Ok(value) => value,
-        Err(response) => return response,
-    };
-    let Some(anchor) = value.get("anchor").and_then(Value::as_str) else {
-        return (400, json!({"error":"anchor required"}).to_string());
-    };
-    let digest = match crate::ledger::identifier::AnchorRef::parse(anchor) {
-        Ok(reference) => reference.digest(),
-        Err(_) => return (400, json!({"error":"invalid anchor"}).to_string()),
-    };
-    let root = match anchor_directory.canonicalize() {
-        Ok(root) => root,
-        Err(_) => return (503, json!({"error":"anchor store unavailable"}).to_string()),
-    };
-    let file = match root.join(format!("{digest}.log")).canonicalize() {
-        Ok(file) if file.starts_with(&root) && file.is_file() => file,
-        _ => return (404, json!({"error":"anchor not found"}).to_string()),
-    };
-    let metadata = file.with_extension("json");
-    if let Ok(raw) = std::fs::read_to_string(&metadata) {
-        if let Ok(value) = serde_json::from_str::<Value>(&raw) {
-            if value
-                .get("expiresAtMillis")
-                .and_then(Value::as_u64)
-                .is_some_and(|expires| expires < crate::time::now_millis() as u64)
-            {
-                return (410, json!({"error":"anchor expired"}).to_string());
-            }
-        }
-    }
-    let content = match std::fs::read_to_string(&file) {
-        Ok(content) => content,
-        Err(_) => return (400, json!({"error":"anchor unreadable"}).to_string()),
-    };
-    let marker = std::fs::read_to_string(&metadata).ok()
-        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-        .and_then(|value| value.get("recovery").cloned())
-        .and_then(|value| serde_json::from_value::<crate::push::compress::RecoveryMarkerV1>(value).ok());
-    if sha256_bytes(content.as_bytes()) != digest || !marker.as_ref().is_some_and(|marker| crate::push::compress::verify_recovery_marker(marker, content.as_bytes(), crate::push::recovery::now_ms())) {
-        return (409, json!({"error":"anchor integrity or metadata invalid"}).to_string());
-    }
-    (
-        200,
-        json!({"anchor":anchor,"sha256":sha256_bytes(content.as_bytes()),"content":content})
-            .to_string(),
     )
 }
 
@@ -2076,6 +2030,16 @@ async fn dispatch(
             return reject(StatusCode::BAD_REQUEST, "request body must be UTF-8");
         }
     };
+    let body_limit = body_limit_for_path(path);
+    if body.len() > body_limit {
+        if record_http_rejection(&state.store, path, "failed", "request_too_large").is_err() {
+            return reject(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "external lifecycle accounting unavailable",
+            );
+        }
+        return reject(StatusCode::PAYLOAD_TOO_LARGE, "request body too large");
+    }
     if validate_model_json && serde_json::from_str::<Value>(&body).is_err() {
         if record_http_rejection(&state.store, path, "failed", "malformed_json").is_err() {
             return reject(
@@ -4965,7 +4929,7 @@ fn route_full(
     body: &str,
 ) -> (u16, String) {
     let path = route_path(url);
-    let body_limit = if path == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
+    let body_limit = body_limit_for_path(path);
     if body.len() > body_limit { return (413, "{\"error\":\"request body too large\"}".to_string()); }
     // `/health` returns planner metrics when the catalog is wired and falls
     // back to the legacy health body when it is not. The planner block lives
@@ -5801,8 +5765,8 @@ mod tests {
     fn push_prepare_body_limit_is_larger_without_widening_other_routes() {
         assert_eq!(MAX_BODY_BYTES, 1 << 20);
         assert_eq!(MAX_PUSH_BODY_BYTES, 8 << 20);
-        let push = if "/push/prepare" == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
-        let other = if "/memory-candidates" == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES };
+        let push = body_limit_for_path("/push/prepare");
+        let other = body_limit_for_path("/memory-candidates");
         assert_eq!(push, MAX_PUSH_BODY_BYTES);
         assert_eq!(other, MAX_BODY_BYTES);
     }
@@ -6363,6 +6327,8 @@ mod tests {
             .contains("method == \"POST\" && path == crate::adapt_service::OBSERVATION_PATH"));
         implemented.insert(("POST", crate::adapt_service::OPERATOR_PATH));
         implemented.insert(("POST", crate::adapt_service::OBSERVATION_PATH));
+        assert!(dispatch.contains("method == \"POST\" && path == \"/push/prepare\""));
+        implemented.insert(("POST", "/push/prepare"));
         // Root/index share one condition; snapshot, livez, and scratchpad are handled before dispatch.
         implemented.insert(("GET", "/index.html"));
         implemented.insert(("GET", "/snapshot"));
@@ -7219,45 +7185,38 @@ mod tests {
 
     #[test]
     fn expand_anchor_recovers_exact_content_and_rejects_missing() {
-        let root = tempfile::tempdir().unwrap();
-        let content = "exact anchor content\n";
-        let digest = sha256_bytes(content.as_bytes());
-        std::fs::write(root.path().join(format!("{digest}.log")), content).unwrap();
-        let (status, body) = expand_anchor_response(
-            &json!({"anchor": format!("mr://anchor/{digest}")}).to_string(),
-            root.path(),
-        );
-        assert_eq!(status, 200);
-        let value: Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(value["content"], content);
-        assert_eq!(value["sha256"], digest);
-        let (status, _) = expand_anchor_response(
-            &json!({"anchor": format!("mr://anchor/{}", "0".repeat(64))}).to_string(),
-            root.path(),
-        );
-        assert_eq!(status, 404);
-        std::fs::write(
-            root.path().join(format!("{digest}.json")),
-            json!({"expiresAtMillis": 1}).to_string(),
-        )
-        .unwrap();
-        let (status, _) = expand_anchor_response(
-            &json!({"anchor": format!("mr://anchor/{digest}")}).to_string(),
-            root.path(),
-        );
-        assert_eq!(status, 410);
+        use crate::push::recovery::{now_ms, RecoveryError, RecoveryScope, RecoveryStore, Selector};
 
-        let unavailable = root.path().join("missing-anchor-store");
-        let (status, _) = expand_anchor_response(
-            &json!({"anchor": format!("MR://anchor/{}", "0".repeat(64))}).to_string(),
-            &unavailable,
+        let root = tempfile::tempdir().unwrap();
+        let store = RecoveryStore::at(root.path());
+        let scope = RecoveryScope::local().unwrap();
+        let content = b"exact anchor content\n";
+        let retained = store.publish(&scope, content, 60_000, now_ms()).unwrap();
+
+        let exact = store
+            .resolve(&scope, &retained.handle, &Selector::Whole, 4096, now_ms())
+            .unwrap();
+        assert_eq!(exact.bytes().unwrap(), content);
+
+        let noncanonical = retained.handle.replacen("mr://", "MR://", 1);
+        assert_eq!(
+            store
+                .resolve(&scope, &noncanonical, &Selector::Whole, 4096, now_ms())
+                .unwrap_err(),
+            RecoveryError::InvalidAnchor
         );
-        assert_eq!(status, 400);
-        let (status, _) = expand_anchor_response(
-            &json!({"anchor": format!("mr://anchor/{}", "0".repeat(64))}).to_string(),
-            &unavailable,
+        assert_eq!(
+            store
+                .resolve(
+                    &scope,
+                    &format!("mr://anchor/{}", "0".repeat(64)),
+                    &Selector::Whole,
+                    4096,
+                    now_ms()
+                )
+                .unwrap_err(),
+            RecoveryError::NotFound
         );
-        assert_eq!(status, 503);
     }
 
     #[tokio::test]

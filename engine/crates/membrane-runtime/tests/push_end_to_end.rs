@@ -88,10 +88,10 @@ fn native_http_cli_restore_share_scope_integrity_lifetime_and_store() {
     assert_eq!(data(&raw)["content"], "00ff800a");
     // Tamper and expiry are tested at the live consumer, not only a helper.
     let db = rusqlite::Connection::open(store_dir.join("push-artifacts.sqlite")).unwrap();
-    db.execute("UPDATE push_originals SET content=x'0000',size=2 WHERE digest=?1", [&handle[12..]]).unwrap();
+    db.execute("UPDATE push_originals SET content=x'0000',size=2 WHERE handle_digest=?1", [&handle[12..]]).unwrap();
     let tampered = call(&server, "membrane_push_resolve", request.clone());
     assert_eq!(tampered.pointer("/result/structuredContent/result/code"), Some(&json!("push_artifact_corrupt")));
-    db.execute("UPDATE push_originals SET expires=1 WHERE digest=?1", [&handle[12..]]).unwrap();
+    db.execute("UPDATE push_originals SET expires=1 WHERE handle_digest=?1", [&handle[12..]]).unwrap();
     let (status, _) = membrane_runtime::serve::route_for_tests(&memory, "POST", "/push/resolve", &request.to_string());
     assert_eq!(status, 410);
     assert!(membrane_runtime::cli::run_cli_from(&["membrane", "push", "restore", handle]).unwrap_err().contains("expired"));

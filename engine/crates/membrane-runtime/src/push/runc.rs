@@ -539,12 +539,12 @@ fn publish_spill_scoped(
         kept_tail_bytes: tail_bytes,
         protected_spans: Vec::new(),
         dropped_bytes_digest: format!("sha256:{dropped_digest}"),
-        recovery_handle: format!("mr://anchor/{digest}"),
+        recovery_handle: retained.handle.clone(),
         expires_at_millis: expires_at_millis as u64,
     };
     let record = serde_json::json!({
         "schemaVersion": 1,
-        "anchor": format!("mr://anchor/{digest}"),
+        "anchor": retained.handle,
         "sha256": digest,
         "createdAtMillis": created_at_millis,
         "expiresAtMillis": expires_at_millis,
@@ -1242,10 +1242,13 @@ mod tests {
         assert_eq!(&capped_lines[..2], &spill_lines[..2]);
         assert!(capped_lines[2].contains("lines elided"));
         assert_eq!(&capped_lines[3..], &spill_lines[4..]);
-        assert!(spill
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .is_some_and(|digest| truncated.anchor.ends_with(digest)));
+        assert!(truncated.anchor.starts_with("mr://anchor/"));
+        let scope = super::super::recovery::RecoveryScope::local().unwrap();
+        let exact = super::super::recovery::RecoveryStore::at(dir.path()).resolve(
+            &scope, &truncated.anchor, &super::super::recovery::Selector::Whole,
+            super::super::recovery::MAX_RESTORE_BYTES, super::super::recovery::now_ms(),
+        ).unwrap();
+        assert_eq!(exact.bytes().unwrap(), std::fs::read(&spill).unwrap());
 
         unsafe {
             match prior {

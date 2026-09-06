@@ -505,13 +505,6 @@ pub(crate) fn recall_fts(
         .collect::<Vec<_>>()
         .join(" OR ");
     let conn = db.lock();
-    let pinned_generation: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(index_generation), 0) FROM ledger_doc_artifacts",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
     let mut statement = conn
         .prepare(
             "SELECT artifact.doc_id, fts.node_id, artifact.repository_root, artifact.path,
@@ -523,20 +516,15 @@ pub(crate) fn recall_fts(
              WHERE ledger_node_fts MATCH ?1
                AND artifact.lifecycle_state='active'
                AND artifact.sensitivity='normal'
-               AND artifact.index_generation=?2
                AND node.ledger_generation=artifact.index_generation
                AND node.source_revision=artifact.revision
              ORDER BY score DESC, artifact.doc_id, node.ordinal
-             LIMIT ?3",
+             LIMIT ?2",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
-            rusqlite::params![
-                match_query,
-                pinned_generation,
-                (k.saturating_mul(8)).max(k) as i64
-            ],
+            rusqlite::params![match_query, (k.saturating_mul(8)).max(k) as i64],
             |row| {
                 Ok(FtsHitRow {
                     doc_id: row.get(0)?,

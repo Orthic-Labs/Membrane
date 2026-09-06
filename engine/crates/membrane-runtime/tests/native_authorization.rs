@@ -747,3 +747,41 @@ fn frozen_interface_duplicate_disposition_is_typed_not_a_second_record() {
         }
     }
 }
+
+#[test]
+fn unverified_wire_feedback_with_verdict_ref_stays_advisory_and_cannot_gate_usefulness() {
+    let sandbox = ExecutorSandbox::new();
+    let store = sandbox.store();
+    let memory = store.remember(
+        "Trusted usefulness must not be changed by a caller-supplied verdict reference.",
+        vec!["feedback".into(), "trust".into()],
+    );
+    let executor = RuntimeMcpExecutor::for_hub(store.clone()).expect("executor constructs");
+
+    let response = execute(
+        &executor,
+        "membrane_feedback",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "receiptId": memory.id,
+            "outcome": "contradicted",
+            "verdictRef": "caller-claims-this-is-a-verdict"
+        }),
+    );
+    assert_eq!(
+        response.pointer("/result/data/status"),
+        Some(&j!("accepted_advisory")),
+        "{response}"
+    );
+    assert_eq!(response.pointer("/result/data/source"), Some(&j!("advisory")));
+    assert_eq!(response.pointer("/result/data/verified"), Some(&j!(false)));
+
+    let rows = store.feedback_rows_for(&[memory.id.clone()]);
+    assert_eq!(rows.len(), 1, "wire feedback is retained as evidence");
+    assert!(!rows[0].verified, "caller verdictRef must not verify feedback");
+    assert!(
+        store.gate_history_for(&[&memory]).is_empty(),
+        "unqualified advisory feedback must not enter the trusted usefulness gate"
+    );
+}
