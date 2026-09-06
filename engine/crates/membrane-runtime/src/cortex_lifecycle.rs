@@ -6,8 +6,9 @@
 //! Trust is loaded from an installation-owned file, never a request path.
 
 use crate::{digest::digest_str, MemoryStore};
-use cortex_store::{
-    validate_fact_proposal, TemporalFact, TemporalInstantV1, TemporalValidityV1,
+use cortex_store::TemporalFact;
+use cortex_store::temporal::{
+    validate_fact_proposal, TemporalInstantV1, TemporalValidityReceiptV1, TemporalValidityV1,
 };
 use ring::signature::{UnparsedPublicKey, ED25519};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
@@ -466,7 +467,7 @@ fn temporal_admission_receipt(store: &MemoryStore, payload: &Value) -> Result<Op
 fn temporal_receipt_json(
     store: &MemoryStore,
     payload: &Value,
-    receipt: &cortex_store::TemporalValidityReceiptV1,
+    receipt: &TemporalValidityReceiptV1,
 ) -> Result<Value> {
     let utility = MemoryStore::admission_utility_eligibility(payload);
     Ok(json!({
