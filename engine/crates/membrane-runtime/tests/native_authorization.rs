@@ -676,7 +676,7 @@ fn review_of_an_unknown_proposal_id_is_typed_and_creates_nothing() {
     let executor = RuntimeMcpExecutor::for_hub(store.clone()).expect("executor constructs");
     let response = execute(
         &executor,
-        "membrane_knowledge_propose",
+        "membrane_knowledge_review",
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
