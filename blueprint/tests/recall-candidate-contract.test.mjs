@@ -85,6 +85,44 @@ test("each ordering tier decides in its declared position, and only when the tie
       `${tier} must decide when every tier above it is equal`,
     );
   }
+  // Tier PRECEDENCE, not just presence. Varying one tier at a time pins each
+  // tier's existence and direction but leaves adjacent tiers free to be
+  // swapped — and swapping them is exactly how a lower-priority signal starts
+  // compensating for a higher-priority one, which is the failure BPT-026
+  // forbids. Each case below makes TWO tiers disagree, so only the declared
+  // precedence produces the asserted winner.
+  const precedence = [
+    ["state over semanticAuthorityRank", { state: "partial", semanticAuthorityRank: 0 }, { state: "complete", semanticAuthorityRank: 5 }],
+    ["semanticAuthorityRank over minimumEdgeTier", { semanticAuthorityRank: 5, minimumEdgeTier: "EXACT_RESOLUTION" }, { semanticAuthorityRank: 0, minimumEdgeTier: "UNRESOLVED" }],
+    ["minimumEdgeTier over seedExactness", { minimumEdgeTier: "UNRESOLVED", seedExactness: 0 }, { minimumEdgeTier: "EXACT_RESOLUTION", seedExactness: 9 }],
+    ["seedExactness over evidenceCoverage", { seedExactness: 9, evidenceCoverage: 1 }, { seedExactness: 0, evidenceCoverage: 0 }],
+    ["evidenceCoverage over hopCount", { evidenceCoverage: 0, hopCount: 1 }, { evidenceCoverage: 1, hopCount: 9 }],
+  ];
+  for (const [label, loserFields, winnerFields] of precedence) {
+    // The winner again takes the lexically later id, so a collapsed chain
+    // falls through to the tie-break and produces the opposite order.
+    const winner = path("zzz", winnerFields);
+    const loser = path("aaa", loserFields);
+    assert.deepEqual(
+      [loser, winner].sort(comparePaths).map((entry) => entry.id),
+      ["zzz", "aaa"],
+      `${label}: the higher tier must decide even when the lower one disagrees`,
+    );
+  }
+
+  // `tierRank`'s mapping is part of the ordering, not an implementation
+  // detail: every edge tier must rank strictly better than the next.
+  const byTier = ["EXACT_RESOLUTION", "SAME_FILE_LEXICAL", "CROSS_FILE_HEURISTIC", "UNRESOLVED"];
+  for (let i = 0; i + 1 < byTier.length; i += 1) {
+    const better = path("zzz", { minimumEdgeTier: byTier[i] });
+    const worse = path("aaa", { minimumEdgeTier: byTier[i + 1] });
+    assert.deepEqual(
+      [worse, better].sort(comparePaths).map((entry) => entry.id),
+      ["zzz", "aaa"],
+      `${byTier[i]} must rank strictly better than ${byTier[i + 1]}`,
+    );
+  }
+
   // The lexical tie-break is last and total: with every tier equal, ordering
   // is by id, so the result is deterministic rather than input-order dependent.
   assert.deepEqual(

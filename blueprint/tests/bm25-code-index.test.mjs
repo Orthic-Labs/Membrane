@@ -33,12 +33,11 @@ test("a query that over-specifies a stored identifier still finds it", () => {
   assert.deepEqual(hits("placeOrderCommand"), ["placeOrder"]);
 });
 
-test("a document missing the query's rarest subtoken is never a hit, however many generic halves it shares", () => {
-  // `stableValue` shares only the generic `value` half of `oldValue`; `old` is
-  // the subtoken carrying the discriminating information. A fixed coverage
-  // fraction gets this right only at exactly two subtokens, so these cases add
-  // a shared prefix, a path segment and an extension — each of which defeats a
-  // majority rule while leaving `old` just as decisive.
+test("a document that does not name the query is never a hit, however many subtokens it shares", () => {
+  // `stableValue` shares only the generic `value` half of `oldValue`, and
+  // neither identifier names the other. These cases add a shared prefix, a
+  // path segment and an extension — each defeated an earlier coverage-fraction
+  // rule, and none of them makes either identifier contain the other.
   for (const query of ["oldValue", "getOldValue", "src/oldValue", "oldValue.js"]) {
     const found = hits(query);
     assert.ok(found.includes("oldValue"), `${query} must still find oldValue`);
@@ -56,8 +55,30 @@ test("an over-specified query still finds the shorter identifier at two subtoken
   assert.ok(hits("oldValues").includes("oldValue"));
 });
 
-test("a query whose every subtoken is unknown to the corpus returns nothing", () => {
+test("a query naming a symbol that does not exist returns nothing, not its generic half", () => {
+  // The half-unknown query is the common real case: a renamed or misremembered
+  // symbol. A rule that drops the unknown half and answers on the generic one
+  // reports whatever happens to share it.
   assert.deepEqual(hits("ZzzQqqWidget"), []);
+  for (const query of ["frobnicatedValue", "brandNewValue", "obsoleteValue"]) {
+    assert.deepEqual(hits(query), [], `${query} names nothing in the corpus`);
+  }
+});
+
+test("admission does not depend on what else is indexed", () => {
+  // The decisive property. An earlier rule keyed on document frequency, so
+  // indexing two unrelated `old*` symbols re-admitted `stableValue` and a
+  // third inverted the ordering entirely. Admission must read only the query
+  // and the document being judged.
+  const of = (names, query) => index(names).search(query, { limit: 20 }).map((row) => row.document.name);
+  const baseline = of(CORPUS, "oldValue");
+  assert.ok(baseline.includes("oldValue") && !baseline.includes("stableValue"));
+  for (const extra of [["oldHandler", "oldParser"], ["oldHandler", "oldParser", "oldCache"], ["valueOne", "valueTwo", "valueThree"]]) {
+    const grown = of([...CORPUS, ...extra], "oldValue");
+    assert.ok(grown.includes("oldValue"), `oldValue must still match after indexing ${extra.join(", ")}`);
+    assert.ok(!grown.includes("stableValue"), `stableValue must stay excluded after indexing ${extra.join(", ")}`);
+    assert.ok(!grown.includes("getStableValue"), `getStableValue must stay excluded after indexing ${extra.join(", ")}`);
+  }
 });
 
 test("a shared path segment alone does not qualify a document", () => {

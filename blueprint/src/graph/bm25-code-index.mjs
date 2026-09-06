@@ -66,44 +66,42 @@ export class Bm25CodeIndex {
   search(query, { limit = 20 } = {}) {
     const terms = [...new Set(tokenize(query))];
     if (!terms.length || !this.documents.size) return [];
-    // Admission rule: a document must match the RAREST corpus-known subtoken
-    // of at least one whole query word.
+    // Admission rule: a query word and a candidate identifier must NAME each
+    // other — one's normalized text must contain the other's.
     //
-    // A code identifier is atomic, but only loosely. `oldValue` tokenizes to
-    // ["old", "value"] so either half can find it. Admitting a document that
-    // matches only the generic half reports a different symbol that happens to
-    // share a subtoken; requiring ALL subtokens instead destroys the dominant
-    // code-search shape, where the caller over-specifies (`UserRepository` for
-    // `UserRepo`). A fixed coverage fraction is not the answer either — it is a
-    // tuning, and it breaks as soon as the two identifiers share one more
-    // subtoken (`getOldValue` vs `getStableValue`) or the query carries a path
-    // or extension segment.
+    // BM25 is a ranking function, not a candidate-selection rule. Scoring every
+    // document that shares any subtoken makes `oldValue` report `stableValue`,
+    // which shares only the generic `value` half. Two earlier attempts gated on
+    // subtoken statistics — a coverage fraction, then document-frequency rarity
+    // — and both were tunings: the first survived only at exactly two
+    // subtokens, and the second made admission depend on the rest of the
+    // corpus, so indexing two unrelated `old*` symbols re-admitted
+    // `stableValue`. A rule whose behaviour changes when unrelated documents
+    // are added is not a rule.
     //
-    // Rarity is the property that actually distinguishes these cases. Within a
-    // query word, the subtoken with the lowest document frequency is the one
-    // carrying the discriminating information: `old` in `oldValue`, `account`
-    // in `UserAccountRepository`. A document that misses it is not an answer to
-    // this query however many generic halves it shares.
-    //
-    // Subtokens the corpus has never seen are dropped before choosing: they
-    // discriminate nothing here, which is exactly why an over-specified query
-    // (`repository`, `services`, the plural `values`) still finds the shorter
-    // stored identifier. A word left with no known subtokens cannot qualify
-    // anything.
-    const wordGroups = String(query ?? "")
+    // Containment is structural and corpus-independent: it reads only the
+    // query and the one document being judged, so the same pair always decides
+    // the same way however large the index grows. It is symmetric because both
+    // directions are real code-search shapes — `value` should find
+    // `stableValue` (query inside identifier), and an over-specified
+    // `UserAccountRepository` should still find `UserAccountRepo` (identifier
+    // inside query). `oldValue` and `stableValue` contain neither, so the
+    // generic-half match is refused. Ranking among admitted documents remains
+    // BM25's job, unchanged.
+    const flat = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const queryWords = String(query ?? "")
       .split(/\s+/)
-      .map((word) => {
-        const known = [...new Set(tokenize(word))].filter((token) => (this.df.get(token) ?? 0) > 0);
-        if (!known.length) return null;
-        const rarest = Math.min(...known.map((token) => this.df.get(token)));
-        return known.filter((token) => this.df.get(token) === rarest);
-      })
-      .filter(Boolean);
-    const covers = (document) => wordGroups.some((group) => group.some((token) => document.tf.has(token)));
+      .map(flat)
+      .filter((word) => word.length >= 2);
+    const names = (document) => [document.name, document.qualifiedName, document.path, document.signature];
+    const covers = (document) => queryWords.some((word) => names(document).some((value) => {
+      const candidate = flat(value);
+      return candidate.length >= 2 && (candidate.includes(word) || word.includes(candidate));
+    }));
     const n = this.documents.size;
     const rows = [];
     for (const document of this.documents.values()) {
-      if (wordGroups.length && !covers(document)) continue;
+      if (queryWords.length && !covers(document)) continue;
       let score = 0;
       const contributions = [];
       for (const term of terms) {
