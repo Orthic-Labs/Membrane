@@ -33,6 +33,15 @@ import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
 import { buildLivenessProjection } from "../../graph/liveness.mjs";
 import { recommendTestsForImpact } from "../../graph/test-recommendation.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
+import { buildBm25CodeIndex } from "../../graph/bm25-code-index.mjs";
+import { searchAstStructure } from "../../graph/ast-structural-search.mjs";
+import { buildProcessProjection } from "../../graph/process-projection.mjs";
+import { buildContractRegistry } from "../../graph/contract-registry.mjs";
+import { projectSymbolSignatures } from "../../graph/signature-projection.mjs";
+import { buildColdStartOrientation } from "../../graph/orientation.mjs";
+import { buildProjectionDependencyDag, ProjectionCache } from "../../graph/dependency-dag.mjs";
+import { reanchorEvidence } from "../../graph/reanchor.mjs";
+import { crossCheckWithLiveVerifier } from "../../providers/semantic-orchestrator.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { serviceStatus } from "../../service/status.mjs";
@@ -162,6 +171,8 @@ export function createBlueprintApplicationService({
   allowEmbeddedRoot = false,
   freshnessOwnership = "one_shot",
   buildSingleflight = createBuildSingleflight(),
+  liveVerifier = null,
+  projectionCache = new ProjectionCache(),
 } = {}) {
   if (!["one_shot", "resident"].includes(freshnessOwnership)) {
     throw new TypeError("freshnessOwnership must be one_shot or resident");
@@ -171,6 +182,23 @@ export function createBlueprintApplicationService({
     if (!allowEmbeddedRoot) return new RootRegistry().resolve(input);
     return resolve(input.repoRoot ?? process.cwd());
   };
+
+  function projectionDag(meta, generation) {
+    return buildProjectionDependencyDag({
+      sourceHash: meta?.manifest?.repo?.sourceHash ?? null,
+      providerDigest: meta?.manifest?.manifestDigest ?? null,
+      configDigest: generation?.augmentation?.configDigest ?? null,
+      schemaVersion: meta?.schemaVersion ?? generation?.schemaVersion ?? null,
+      generationId: meta?.manifest?.generationId ?? generation?.manifest?.generationId ?? null,
+    });
+  }
+
+  function cachedProjection(name, db, meta, builder) {
+    const generation = loadGeneration(db);
+    const dag = projectionDag(meta, generation);
+    const cached = projectionCache.getOrBuild(name, dag, () => builder(generation));
+    return { generation, dag, ...cached };
+  }
 
   async function openFreshnessSession(input = {}, { signal } = {}) {
     throwIfAborted(signal);
@@ -334,16 +362,40 @@ export function createBlueprintApplicationService({
     async search(input = {}, options = {}) {
       return withCurrentDb(input, ({ db, meta, receipt }) => {
         const query = String(input.query ?? "").trim();
-        const generation = indexedQueryGeneration(db, query, { limit: Number(input.limit ?? 20), anchors: input.anchors ?? [] });
-        const filtered = suppressRows(queryGraph(generation, { query, limit: Number(input.limit ?? 20) }), receipt, "search");
+        const limit = Math.max(1, Math.min(200, Number(input.limit ?? 20) || 20));
+        const indexed = indexedQueryGeneration(db, query, { limit, anchors: input.anchors ?? [] });
+        const exact = suppressRows(queryGraph(indexed, { query, limit }), receipt, "search");
+        const bm25Projection = cachedProjection("bm25", db, meta, (full) => buildBm25CodeIndex(full));
+        const bm25Rows = suppressRows(
+          bm25Projection.value.search(query, { limit }).map((row) => ({ ...row.document.node, lexicalScore: row.score, lexicalExactName: row.exactName })),
+          receipt,
+          "search_bm25",
+        );
+        const seen = new Set();
+        const results = [];
+        for (const row of [...exact.rows, ...bm25Rows.rows]) {
+          if (!row?.id || seen.has(row.id)) continue;
+          seen.add(row.id);
+          results.push(row);
+          if (results.length >= limit) break;
+        }
+        const structural = input.astPattern
+          ? searchAstStructure(bm25Projection.generation, input.astPattern, { limit })
+          : null;
+        const structuralRows = structural ? suppressRows(structural.nodes, receipt, "search_structural") : { rows: [], omissions: [] };
         return {
           schemaVersion: 1,
           kind: "search",
           generationId: meta.manifest.generationId,
           provider: meta.provider,
           query,
-          results: filtered.rows,
-          omissions: filtered.omissions,
+          results,
+          retrieval: {
+            exactCount: exact.rows.length,
+            bm25: { cache: bm25Projection.cache, fingerprint: bm25Projection.fingerprint, candidateCount: bm25Rows.rows.length },
+            structural: structural ? { ...structural, nodes: structuralRows.rows } : null,
+          },
+          omissions: [...exact.omissions, ...bm25Rows.omissions, ...structuralRows.omissions],
           truncated: false,
           continuationCursor: null,
           freshnessReceipt: receipt,
@@ -352,15 +404,29 @@ export function createBlueprintApplicationService({
     },
 
     async resolve(input = {}, options = {}) {
-      return withCurrentDb(input, ({ db, meta, receipt }) => {
-        const result = indexedResolve(db, String(input.nodeId ?? ""), {
+      return withCurrentDb(input, async ({ db, meta, receipt }) => {
+        let result = indexedResolve(db, String(input.nodeId ?? ""), {
           sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
         });
+        let reanchor = null;
+        if (!result && input.previousEvidence) {
+          const current = loadGeneration(db);
+          reanchor = reanchorEvidence(input.previousEvidence, current.nodes ?? []);
+          if (reanchor.state === "ambiguous") fail("anchor_ambiguous", "Previous evidence re-anchors to more than one current fact.", { reanchor });
+          if (reanchor.state === "reanchored") {
+            result = indexedResolve(db, reanchor.targetId, {
+              sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
+            });
+          }
+        }
         if (!result) fail("node_not_found", `Graph node not found: ${input.nodeId}`);
         if (staleRow(result.node, staleSourcePolicy(receipt))) {
           fail("stale_source_suppressed", `Graph node is stale relative to current source: ${input.nodeId}`, { freshnessReceipt: receipt });
         }
-        return { ...result, generationId: meta.manifest.generationId, freshnessReceipt: receipt };
+        const verification = input.verifySemantic === true
+          ? await crossCheckWithLiveVerifier({ canonical: result.node, verifier: liveVerifier, request: input, sourceStateId: meta.manifest.generationId, signal: options.signal })
+          : null;
+        return { ...result, reanchor, verification, generationId: meta.manifest.generationId, freshnessReceipt: receipt };
       }, options);
     },
 
@@ -537,6 +603,33 @@ export function createBlueprintApplicationService({
             maxHops: input.maxHops,
           }), freshnessReceipt: receipt };
         }
+        if (view === "processes") {
+          const cached = cachedProjection("processes", db, meta, (generation) => buildProcessProjection(generation, {
+            maxProcesses: input.maxProcesses,
+            maxDepth: input.maxDepth,
+            maxSteps: input.maxSteps,
+          }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "contracts") {
+          const cached = cachedProjection("contracts", db, meta, (generation) => buildContractRegistry(generation, { repoId: input.repoId ?? null }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "signatures") {
+          const cached = cachedProjection("signatures", db, meta, (generation) => projectSymbolSignatures(generation, { limit: input.limit, pathPrefix: input.pathPrefix, kinds: input.kinds }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "orientation") {
+          const cached = cachedProjection("orientation", db, meta, (generation) => {
+            const files = (generation.nodes ?? []).filter((node) => node.kind === "file").map((node) => ({ path: node.path }));
+            return buildColdStartOrientation(generation, files, {
+              signatureLimit: input.signatureLimit,
+              entryPointLimit: input.entryPointLimit,
+              contractLimit: input.contractLimit,
+            });
+          });
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
         if (view === "projection") {
           const generation = loadGeneration(db);
           const projection = buildDisposableArchitectureProjection({
@@ -560,7 +653,7 @@ export function createBlueprintApplicationService({
             limit: input.limit,
           }), freshnessReceipt: receipt };
         }
-        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, projection, or changes.");
+        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, processes, contracts, signatures, orientation, projection, or changes.");
         return suppressTraversalPayload({ ...boundedArchitecture(db, {
           budget: Number(input.budget ?? 2000),
           cursor: input.cursor,
@@ -570,10 +663,12 @@ export function createBlueprintApplicationService({
     },
 
     async federate(input = {}, options = {}) {
-      const repositories = input.repositories ?? [];
+      const group = input.group ?? null;
+      const repositories = group?.repositories ?? input.repositories ?? [];
       const operation = String(input.operation ?? "recall");
       const allowedRepoIds = input.allowedRepoIds ?? repositories.map((repository) => repository.repoId);
       return routeFederatedQuery({
+        group,
         repositories,
         allowedRepoIds,
         operation,
@@ -585,6 +680,7 @@ export function createBlueprintApplicationService({
             allowEmbeddedRoot,
             freshnessOwnership,
             buildSingleflight,
+            liveVerifier,
           });
           const result = await child[method]({
             ...queryInput,

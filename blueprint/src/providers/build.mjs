@@ -2,6 +2,12 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers.mjs";
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
+import { collectSemanticEvidenceSync } from "./semantic-orchestrator.mjs";
+import { auditSourceDispositions } from "./source-disposition.mjs";
+import { augmentStructuralIntelligence, STRUCTURAL_INTELLIGENCE_PROVIDER } from "../graph/structural-intelligence.mjs";
+import { augmentFrameworkIntelligence, FRAMEWORK_INTELLIGENCE_PROVIDER } from "../graph/framework-intelligence.mjs";
+import { attachPortableIdentities } from "../graph/portable-identity.mjs";
+import { detectProjectConventions } from "../graph/conventions.mjs";
 import { extractJavaScriptModuleSpecifiers, resolveModuleSpecifier } from "./modules/javascript.mjs";
 import { extractPythonModuleSpecifiers, resolvePythonModule } from "./modules/python-resolver.mjs";
 import {
@@ -307,7 +313,12 @@ function addSchemaAndIacEvidence(generation, files) {
 
 function addScipEvidence(generation, files, root, options, selectedPaths = null, allowExternalTargets = false) {
   if (options.scip === false || process.env.BLUEPRINT_SCIP === "0") return { provider: pythonScipProvider.id, state: "disabled", nodes: 0, edges: 0 };
-  const collected = pythonScipProvider.collect({ repoRoot: root, scipIndexPath: options.scipIndexPath });
+  const semantic = collectSemanticEvidenceSync(
+    { repoRoot: root, scipIndexPath: options.scipIndexPath },
+    { providers: [pythonScipProvider] },
+  );
+  const lane = semantic.results[0] ?? null;
+  const collected = lane?.output ?? { nodes: [], edges: [], reports: [], index: { state: "unavailable" } };
   const fileByPath = new Map(files.map((file) => [normalizePath(file.path), file]));
   const admittedNodeIds = new Set(generation.nodes.map((node) => node.id));
   let nodesAdded = 0;
@@ -331,7 +342,14 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     generation.edges.push(edge);
     edgesAdded += 1;
   }
-  return { provider: pythonScipProvider.id, state: collected.index?.state ?? "unavailable", nodes: nodesAdded, edges: edgesAdded, reports: collected.reports ?? [] };
+  return {
+    provider: pythonScipProvider.id,
+    state: collected.index?.state ?? "unavailable",
+    nodes: nodesAdded,
+    edges: edgesAdded,
+    reports: collected.reports ?? [],
+    disposition: lane?.disposition ?? null,
+  };
 }
 
 function addBridgeEvidence(generation, files) {
@@ -344,12 +362,17 @@ function addBridgeEvidence(generation, files) {
 export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, files, options = {}) {
   const root = resolve(repoRoot);
   const summaries = {
+    ingestion: auditSourceDispositions(root, files),
     modules: addModuleEvidence(generation, files, root),
     frameworks: addFrameworkEvidence(generation, files),
     ...addSchemaAndIacEvidence(generation, files),
     scip: addScipEvidence(generation, files, root, options),
     bridges: addBridgeEvidence(generation, files),
   };
+  summaries.structuralIntelligence = augmentStructuralIntelligence(generation, files);
+  summaries.frameworkIntelligence = augmentFrameworkIntelligence(generation, files);
+  summaries.portableIdentity = attachPortableIdentities(generation);
+  summaries.conventions = detectProjectConventions(files);
   const layers = [
     { id: MODULE_PROVIDER.id, version: MODULE_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_OR_TYPED_UNRESOLVED" },
     { id: FRAMEWORK_PROVIDER.id, version: FRAMEWORK_PROVIDER.version, role: "supplemental", precisionTier: "EVIDENCE_BOUND_HEURISTIC" },
@@ -357,6 +380,8 @@ export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, f
     { id: TERRAFORM_PROVIDER.id, version: TERRAFORM_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_SYNTAX" },
     { id: pythonScipProvider.id, version: pythonScipProvider.version, role: "supplemental", precisionTier: "COMPILER", state: summaries.scip.state },
     { id: bridgeSeamProvider.id, version: bridgeSeamProvider.version, role: "supplemental", precisionTier: "EXACT_SYNTAX" },
+    { id: STRUCTURAL_INTELLIGENCE_PROVIDER.id, version: STRUCTURAL_INTELLIGENCE_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_OR_TYPED_UNRESOLVED" },
+    { id: FRAMEWORK_INTELLIGENCE_PROVIDER.id, version: FRAMEWORK_INTELLIGENCE_PROVIDER.version, role: "supplemental", precisionTier: "EVIDENCE_BOUND" },
   ];
   return { schemaVersion: 1, summaries, layers };
 }
@@ -369,5 +394,8 @@ export function augmentFileFactsWithFirstPartyProviders(generation, repoRoot, fi
   addSchemaAndIacEvidence(generation, selected);
   addScipEvidence(generation, files, root, options, new Set([normalizePath(file.path)]), true);
   addBridgeEvidence(generation, selected);
+  augmentStructuralIntelligence(generation, selected);
+  augmentFrameworkIntelligence(generation, selected);
+  attachPortableIdentities(generation);
   return generation;
 }
