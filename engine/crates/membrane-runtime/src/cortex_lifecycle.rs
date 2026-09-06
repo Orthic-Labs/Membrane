@@ -547,11 +547,25 @@ fn apply_suppression(store: &MemoryStore, effect: &ReviewedEffectV1) -> Result<V
         if previous != hash { return Err(fail("cortex_review_replay_conflict", "nonce already binds another effect")); }
         return serde_json::from_str(&receipt).map_err(storage);
     }
-    let content: Option<String> = tx.query_row("SELECT content FROM memories WHERE id=?1 AND scope_id=?2",
-        params![effect.target_id,effect.scope_id], |r| r.get(0)).optional().map_err(storage)?;
-    let content = content.ok_or_else(|| fail("memory_unavailable", "record unavailable in caller scope"))?;
+    let record: Option<(String,String,String,Option<String>,Option<i64>,Option<i64>,Option<i64>)> = tx.query_row(
+        "SELECT content,authority,lifecycle_state,superseded_by,effective_from_ms,effective_until_ms,expires_at_ms
+         FROM memories WHERE id=?1 AND scope_id=?2",
+        params![effect.target_id,effect.scope_id],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?)))
+        .optional().map_err(storage)?;
+    let Some((content,authority,lifecycle,superseded,from,until,expiry)) = record else {
+        return Err(fail("memory_unavailable", "record unavailable in caller scope"));
+    };
     if digest_str(&content) != effect.expected_content_hash {
         return Err(fail("memory_version_conflict", "record content changed"));
+    }
+    if effect.operation == "resume" {
+        let now = crate::time::now_millis() as i64;
+        if authority == "A0" || lifecycle != "active" || superseded.is_some()
+            || from.is_some_and(|t| now < t) || until.is_some_and(|t| now >= t)
+            || expiry.is_some_and(|t| now >= t) {
+            return Err(fail("memory_ineligible", "record is not currently eligible for suppression reversal"));
+        }
     }
     let previous_revision: Option<String> = tx.query_row(
         "SELECT decision_hash FROM cortex_recall_suppression_v1 WHERE memory_id=?1", [&effect.target_id], |r| r.get(0))
@@ -895,6 +909,40 @@ mod tests {
             "projection":"preview"
         })).unwrap();
         assert!(resumed_recipe["items"].as_array().unwrap().iter().any(|item| item["id"] == id));
+    }
+
+    #[test]
+    fn cortex_suppression_resume_rechecks_current_lifecycle_and_erase_state() {
+        let s=Sandbox::new();
+        let text="A suppression reversal cannot reactivate superseded evidence.";
+        let id=s.admitted(text); let hash=digest_str(text);
+        let successor=s.admitted("The replacement record owns the current lifecycle state.");
+        let suppress=s.effect("suppress",&id,&hash,"suppress-lifecycle");
+        let receipt=review(&s.store,"repo","scope",&json!(suppress)).unwrap();
+        let mut resume=s.effect("resume",&id,&hash,"resume-superseded");
+        resume.expected_control_revision=receipt["decisionHash"].as_str().map(str::to_owned); s.sign(&mut resume);
+        let event=crate::store::MemoryLifecycleEventV1::superseded(
+            "fixture-supersede",
+            &id,
+            &successor,
+            "scope",
+            crate::time::now_millis() as i64,
+            "fixture-reviewer",
+            "A4",
+            "fixture",
+            "fixture-origin",
+        );
+        s.store.apply_lifecycle_event(&event).unwrap();
+        assert_eq!(review(&s.store,"repo","scope",&json!(resume)).unwrap_err().code,"memory_ineligible");
+
+        let erased_text="Hard erase remains distinct from suppression reversal.";
+        let erased_id=s.admitted(erased_text); let erased_hash=digest_str(erased_text);
+        let erased_suppress=s.effect("suppress",&erased_id,&erased_hash,"suppress-erased");
+        let erased_receipt=review(&s.store,"repo","scope",&json!(erased_suppress)).unwrap();
+        let mut erased_resume=s.effect("resume",&erased_id,&erased_hash,"resume-erased");
+        erased_resume.expected_control_revision=erased_receipt["decisionHash"].as_str().map(str::to_owned); s.sign(&mut erased_resume);
+        s.store.hard_erase(&erased_id).unwrap();
+        assert_eq!(review(&s.store,"repo","scope",&json!(erased_resume)).unwrap_err().code,"memory_unavailable");
     }
 
     #[test]
