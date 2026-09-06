@@ -15,7 +15,7 @@ use std::time::{Instant, SystemTime};
 
 use cortex_core::{
     consolidate_dream_memories, cosine, ContextTokenAccounting, DreamAgentPolicy, DreamStatus,
-    EffectivenessGate, Embedder, HashEmbedder, MemoryEntry, MemoryRegistry,
+    EffectivenessGate, Embedder, HashEmbedder, LexicalHit, MemoryEntry, MemoryRegistry,
     MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier, MemoryUsageRecord, Outcome,
     RetrievalTier, RoutingPolicy,
 };
@@ -2294,6 +2294,12 @@ pub struct MemoryStore {
     effectiveness_history: Arc<Mutex<Vec<MemoryUsageRecord>>>,
     pending_injections: Arc<Mutex<Vec<String>>>,
     last_recall_status: Arc<Mutex<Option<String>>>,
+    /// Which lexical lane the most recent recall actually used: `"fts5"` when
+    /// `cortex_fts5` bm25 relevance fed the RRF fusion, or `"degraded:<reason>"`
+    /// when a missing/corrupt projection forced the registry-derived fallback
+    /// (see `fts5_lexical_hits`). CTX-011: this exists so degradation is
+    /// observable rather than silent.
+    last_recall_lexical_mode: Arc<Mutex<Option<String>>>,
     last_route: Arc<Mutex<Option<(cortex_core::QueryFeatures, RetrievalTier)>>>,
     dream_status: Arc<Mutex<DreamStatus>>,
     embedder_issue: Option<String>,
@@ -2437,6 +2443,7 @@ impl MemoryStore {
             effectiveness_history: Arc::new(Mutex::new(Vec::new())),
             pending_injections: Arc::new(Mutex::new(Vec::new())),
             last_recall_status: Arc::new(Mutex::new(None)),
+            last_recall_lexical_mode: Arc::new(Mutex::new(None)),
             last_route: Arc::new(Mutex::new(None)),
             dream_status: Arc::new(Mutex::new(DreamStatus {
                 agent_id: "dream-memory".into(),
@@ -2657,7 +2664,56 @@ impl MemoryStore {
                 self.persist_error(format!("link persist failed for {}: {e}", entry.id))
             })?;
         }
+        // CTX-011: this is the common write sink for `remember`, `try_put`/admission
+        // inserts and updates, and Dream's governed consolidation — keep `cortex_fts5`
+        // in step here rather than relying solely on `reindex`/restore to (re)build it,
+        // or recall's FTS5-backed lexical channel would return nothing for rows written
+        // through this path. Reads the row back rather than trusting the caller's
+        // in-flight values, so the projection reflects exactly what `memories` now
+        // holds (lifecycle columns this call did not set keep their DB defaults).
+        self.sync_fts5_projection_on(conn, &entry.id)?;
         Ok(())
+    }
+
+    /// Upsert one row of the `cortex_fts5` lexical projection from the canonical
+    /// `memories` row `id` now holds, inside `conn`'s transaction. A missing `id` is
+    /// not an error (nothing to project yet); a projection write failure is, mirroring
+    /// `hard_erase`'s treatment of the same table — a silently-stale FTS5 row would
+    /// make recall's lexical channel diverge from canonical truth.
+    fn sync_fts5_projection_on(&self, conn: &rusqlite::Connection, id: &str) -> Result<(), String> {
+        let row: Option<(String, String, String, String, String, String)> = conn
+            .query_row(
+                "SELECT record_type, scope_id, lifecycle_state, authority, content, keywords
+                   FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("fts5 sync lookup failed for {id}: {e}")))?;
+        let Some((record_type, scope_id, lifecycle, authority, content, keywords)) = row else {
+            return Ok(());
+        };
+        cortex_store::Fts5Projection::new(conn)
+            .upsert(&cortex_store::Fts5Document {
+                record_id: id.to_string(),
+                record_type,
+                session_id: None,
+                scope_id,
+                lifecycle,
+                authority,
+                content,
+                keywords,
+            })
+            .map_err(|e| self.persist_error(format!("fts5 sync failed for {id}: {e}")))
     }
 
     /// Rebuild the entire `links` table from every memory's content. Idempotent; covers rows
@@ -3327,6 +3383,12 @@ impl MemoryStore {
             .map_err(|e| {
                 self.persist_error(format!("quarantine tombstone cleanup failed for {id}: {e}"))
             })?;
+        // This raw restore writes `memories` directly (unlike the admission_conflict
+        // origin above, which re-enters `try_admit_with_record_metadata_observed` and
+        // so already goes through `persist_entry_with_record_lifecycle_on`'s FTS5
+        // sync) — a restored-but-unindexed row would be recallable semantically but
+        // invisible to the FTS5-backed lexical channel, so sync it here too.
+        self.sync_fts5_projection_on(&tx, id)?;
         let context = MemoryEventContext::new("quarantine_restore");
         let scope_id = tx
             .query_row(
@@ -4901,6 +4963,15 @@ impl MemoryStore {
         self.last_recall_status.lock().unwrap().clone()
     }
 
+    /// CTX-011 observability: which lexical lane the most recent
+    /// `recall_scored*` call actually used. `Some("fts5")` means the
+    /// `cortex_fts5` bm25 projection fed the RRF fusion; `Some("degraded:...")`
+    /// means a missing or corrupt projection forced the registry-derived
+    /// fallback lane (the reason follows the colon). `None` before any recall.
+    pub fn last_recall_lexical_mode(&self) -> Option<String> {
+        self.last_recall_lexical_mode.lock().unwrap().clone()
+    }
+
     /// Content-free lifecycle admission set for deterministic replay and audit.
     pub fn recall_eligible_ids_at(&self, as_of_ms: i64, include_expired: bool) -> HashSet<String> {
         let conn = self.db.lock();
@@ -4945,6 +5016,75 @@ impl MemoryStore {
             },
         )
         .map_err(|error| format!("lifecycle lookup failed for {id}: {error}"))
+    }
+
+    /// Checks whether `cortex_fts5` exists and is a genuine FTS5 virtual table, without
+    /// creating or otherwise mutating it (unlike `Fts5Projection::ensure_schema`, which
+    /// would auto-vivify a missing table — recall must be able to tell "never built" apart
+    /// from "built and healthy" instead of silently getting an empty freshly-created one).
+    /// `Ok(false)` is the ordinary missing-projection case (fresh DB, or a store predating
+    /// CTX-011); `Err` means the table exists under that name but is not an FTS5 table —
+    /// a genuine corruption, not an absence.
+    fn fts5_table_present(&self, conn: &rusqlite::Connection) -> Result<bool, String> {
+        let sql: Option<String> = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?1",
+                rusqlite::params![cortex_store::FTS5_TABLE],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("cortex_fts5 probe failed: {e}"))?;
+        match sql {
+            None => Ok(false),
+            Some(sql) if sql.to_ascii_lowercase().contains("using fts5") => Ok(true),
+            Some(_) => Err("cortex_fts5 exists but is not an FTS5 virtual table".into()),
+        }
+    }
+
+    /// CTX-011: the lexical channel recall fuses via RRF now reads bm25 relevance
+    /// from the `cortex_fts5` projection instead of a registry-derived keyword score,
+    /// when the projection is present and healthy. Returns `None` to signal "use the
+    /// existing registry-derived lexical lane" — a missing table degrades quietly
+    /// (recall must keep working without it), while a corrupt table records a
+    /// persistence error before degrading the same way, since a table that exists but
+    /// fails its schema check is a real fault, not an absence. Every path here updates
+    /// `last_recall_lexical_mode` so the caller can distinguish an FTS5-backed recall
+    /// from a degraded one rather than the degradation being silent.
+    fn fts5_lexical_hits(&self, query: &str, limit: usize) -> Option<Vec<LexicalHit>> {
+        let conn = self.db.lock();
+        match self.fts5_table_present(&conn) {
+            Ok(false) => {
+                *self.last_recall_lexical_mode.lock().unwrap() =
+                    Some("degraded:missing_table".to_string());
+                None
+            }
+            Err(error) => {
+                self.persist_error(format!("cortex_fts5 degraded: {error}"));
+                *self.last_recall_lexical_mode.lock().unwrap() =
+                    Some(format!("degraded:corrupt:{error}"));
+                None
+            }
+            Ok(true) => {
+                match cortex_store::Fts5Projection::new(&conn)
+                    .search(query, None, None, None, limit, 0)
+                {
+                    Ok(hits) => {
+                        *self.last_recall_lexical_mode.lock().unwrap() = Some("fts5".to_string());
+                        Some(
+                            hits.into_iter()
+                                .map(|hit| LexicalHit::new(hit.record_id, hit.score))
+                                .collect(),
+                        )
+                    }
+                    Err(error) => {
+                        self.persist_error(format!("cortex_fts5 search failed: {error}"));
+                        *self.last_recall_lexical_mode.lock().unwrap() =
+                            Some(format!("degraded:search_error:{error}"));
+                        None
+                    }
+                }
+            }
+        }
     }
 
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
@@ -5090,6 +5230,7 @@ impl MemoryStore {
         CortexCompletenessV1,
     ) {
         *self.last_recall_status.lock().unwrap() = None;
+        *self.last_recall_lexical_mode.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
         if limit == 0 {
             return (Vec::new(), elapsed, CortexCompletenessV1::exact(0, 0, 0));
@@ -5140,8 +5281,24 @@ impl MemoryStore {
         let lock_ms = lock_started.elapsed().as_secs_f64() * 1000.0;
         let recall_started = Instant::now();
         let vector_dispatch_v2 = vector_dispatch_v2_enabled();
+        // CTX-011: prefer the `cortex_fts5` bm25 lexical channel over the
+        // registry-derived keyword score. `fts5_lexical` is `None` when the
+        // projection is missing or corrupt, in which case both branches below
+        // fall back to exactly the pre-CTX-011 retrieval calls (including the
+        // `vector_dispatch_v2` indexed fast path) — degradation changes the
+        // lexical source, never the fused-ranking architecture the 2026-07-05
+        // gate measured above.
+        let fts5_lexical = self.fts5_lexical_hits(query, candidate_limit.saturating_mul(4).max(64));
         let mut direct_candidates: Vec<(MemoryEntry, f32)> = if scopes.is_empty() {
-            let retrieved = if vector_dispatch_v2 {
+            let retrieved = if let Some(lexical_hits) = fts5_lexical.as_ref() {
+                MemoryRetriever::retrieve_hybrid_with_lexical_hits(
+                    &registry,
+                    lexical_hits,
+                    Some(&qvec),
+                    candidate_limit,
+                    None,
+                )
+            } else if vector_dispatch_v2 {
                 MemoryRetriever::retrieve_hybrid_indexed(
                     &registry,
                     query,
@@ -5172,7 +5329,15 @@ impl MemoryStore {
                     break;
                 }
                 let scope_filter = [scope.as_str()];
-                let retrieved = if vector_dispatch_v2 {
+                let retrieved = if let Some(lexical_hits) = fts5_lexical.as_ref() {
+                    MemoryRetriever::retrieve_hybrid_with_lexical_hits(
+                        &registry,
+                        lexical_hits,
+                        Some(&qvec),
+                        per_scope_limit,
+                        Some(&scope_filter),
+                    )
+                } else if vector_dispatch_v2 {
                     MemoryRetriever::retrieve_hybrid_indexed(
                         &registry,
                         query,
@@ -8605,15 +8770,36 @@ impl MemoryStore {
     /// content. Called after restore and reindex so every projection reflects
     /// the same canonical corpus.
     ///
-    /// Runtime lexical recall does NOT read `cortex_fts5` — recall ranks from
-    /// the in-memory registry and canonical content, so this wiring changes no
-    /// recall behavior. Suppressed rows are excluded, mirroring `reindex`'s
-    /// recall-eligibility skip; suppression itself survives in
+    /// CTX-011: runtime lexical recall DOES read `cortex_fts5` — see
+    /// `fts5_lexical_hits`, which feeds its bm25 relevance into the RRF fusion
+    /// `recall_scored_detailed_timed_at` performs, falling back to the
+    /// registry-derived lexical score only when the projection is missing or
+    /// corrupt. This rebuild keeps that projection in step with canonical
+    /// content after restore/reindex; the write path (`try_put`/admission via
+    /// `persist_entry_with_record_lifecycle_on`) keeps it in step incrementally
+    /// on every insert/update, so this bulk rebuild is a repair/recovery path,
+    /// not the only way rows get in. Suppressed rows are excluded, mirroring
+    /// `reindex`'s recall-eligibility skip; suppression itself survives in
     /// `cortex_recall_suppression_v1` (CTX-041) and is untouched here.
-    /// Best-effort: a projection failure never fails the canonical mutation it
-    /// follows and never records a persist error.
+    ///
+    /// Legacy best-effort wrapper: swallows the outcome. New call sites should
+    /// use `try_rebuild_fts5_from_canonical`, which reports whether the rebuild
+    /// actually completed; kept only for source-compatibility with callers
+    /// outside this file that this pass could not touch.
+    #[allow(dead_code)]
     fn rebuild_fts5_from_canonical(&self) {
-        let documents: Option<Vec<cortex_store::Fts5Document>> = {
+        let _ = self.try_rebuild_fts5_from_canonical();
+    }
+
+    /// Same rebuild as `rebuild_fts5_from_canonical`, but reports the
+    /// outcome instead of swallowing it: `Ok(count)` is the number of
+    /// documents written into the projection, `Err` names the source-query
+    /// or projection-write failure so a caller can decide whether an
+    /// incomplete rebuild is acceptable for its own contract (and, on
+    /// failure, this records a persist error so `last_persist_error`
+    /// reflects the incomplete projection rather than staying clean).
+    fn try_rebuild_fts5_from_canonical(&self) -> Result<usize, String> {
+        let documents: Vec<cortex_store::Fts5Document> = {
             let conn = self.db.lock();
             conn.prepare(
                 "SELECT id, record_type, scope_id, lifecycle_state, authority, content, keywords
@@ -8638,13 +8824,16 @@ impl MemoryStore {
                     })
                     .and_then(|rows| rows.collect())
             })
-            .ok()
+            .map_err(|e| {
+                self.persist_error(format!("fts5 rebuild source query failed: {e}"))
+            })?
         };
-        let Some(documents) = documents else {
-            return;
-        };
+        let count = documents.len();
         let conn = self.db.lock();
-        let _ = cortex_store::Fts5Projection::new(&conn).rebuild(documents);
+        cortex_store::Fts5Projection::new(&conn)
+            .rebuild(documents)
+            .map_err(|e| self.persist_error(format!("fts5 rebuild failed: {e}")))?;
+        Ok(count)
     }
 
     /// §16.4 governed hard erase. Distinct from the reversible quarantine: the
@@ -8732,12 +8921,16 @@ impl MemoryStore {
             .map_err(|e| {
                 self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
             })?;
-        // Lexical projection: runtime lexical recall does not read `cortex_fts5`
-        // (it ranks from the registry/canonical content), but "every projection"
-        // still requires the erased document gone here. A missing projection
-        // table means there is nothing to delete; a corrupt projection degrades
-        // instead of blocking canonical erasure (the next rebuild from
-        // canonical content repairs it).
+        // Lexical projection: CTX-011 made runtime lexical recall a genuine
+        // reader of `cortex_fts5` (`fts5_lexical_hits`), so "every projection"
+        // is not just a §16.4 formality here — a surviving row really could
+        // resurface through recall. A missing projection table means there is
+        // nothing to delete, which is not a failure; a projection that exists
+        // but fails to delete IS a failure — a stale `cortex_fts5` row
+        // surviving under an id §16.4 claims to have erased would let that
+        // content resurface through anything that reads the projection. That
+        // failure aborts this transaction rather than letting a partial erase
+        // commit and report success.
         let fts_exists: bool = tx
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cortex_fts5')",
@@ -8746,10 +8939,13 @@ impl MemoryStore {
             )
             .map_err(|e| self.persist_error(format!("hard erase fts probe failed for {id}: {e}")))?;
         if fts_exists {
-            let _ = tx.execute(
+            tx.execute(
                 "DELETE FROM cortex_fts5 WHERE record_id = ?1",
                 rusqlite::params![id],
-            );
+            )
+            .map_err(|e| {
+                self.persist_error(format!("hard erase fts projection failed for {id}: {e}"))
+            })?;
         }
         let context = MemoryEventContext::new("hard_erase");
         log_memory_event(
@@ -8813,12 +9009,13 @@ impl MemoryStore {
                         source_ids, 'memory' AS artifact_family, 'manual' AS producer,
                         'memory' AS record_type, authority, influence_class, lifecycle_state,
                         effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms,
-                        superseded_by, priority_class, confidence, confidence_basis
+                        superseded_by, priority_class, confidence, confidence_basis,
+                        quarantined_at, reason
                    FROM memory_quarantine ORDER BY id",
             )
             .map_err(|e| format!("backup quarantine read failed: {e}"))?;
         let rows = statement
-            .query_map([], backup_row_from_row)
+            .query_map([], backup_quarantine_row_from_row)
             .map_err(|e| format!("backup quarantine read failed: {e}"))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("backup quarantine read failed: {e}"))?;
@@ -8924,8 +9121,10 @@ impl MemoryStore {
         self.flush_event_outbox()?;
         self.reload_registry_from_db()?;
         // Canonical rows are back; rebuild the lexical projection from them so
-        // "every projection" holds without changing recall behavior.
-        self.rebuild_fts5_from_canonical();
+        // "every projection" holds without changing recall behavior. A failed
+        // rebuild here leaves a persist error recorded rather than silently
+        // reporting a clean restore.
+        self.try_rebuild_fts5_from_canonical()?;
         self.clear_last_persist_error();
         Ok(backup.memories.len() + backup.quarantined.len())
     }
@@ -9518,8 +9717,10 @@ impl MemoryStore {
         drop(reg);
         // Embeddings are fresh; rebuild the lexical projection from the same
         // canonical content so "every projection" holds without changing
-        // recall behavior. Suppressed rows stay excluded (see the helper).
-        self.rebuild_fts5_from_canonical();
+        // recall behavior. Suppressed rows stay excluded (see the helper). A
+        // failed rebuild leaves a persist error recorded rather than
+        // reporting reindex as fully clean.
+        self.try_rebuild_fts5_from_canonical()?;
         self.clear_last_persist_error();
         Ok((n, skipped))
     }
@@ -10009,6 +10210,17 @@ pub struct CortexBackupRowV1 {
     pub priority_class: String,
     pub confidence: Option<f64>,
     pub confidence_basis: Option<String>,
+    /// `memory_quarantine.quarantined_at` — `TEXT NOT NULL` with no default in
+    /// the real DDL (see cortex-store `memdb.rs`). `None` here for `memories`
+    /// rows, which have no such column; a quarantine row must carry `Some`,
+    /// or restore refuses it (see `restore_backup_row`).
+    #[serde(default)]
+    pub quarantined_at: Option<String>,
+    /// `memory_quarantine.reason` — `TEXT NOT NULL` with no default. Governed
+    /// metadata: `restore_quarantined()` branches on the `admission_conflict:`
+    /// prefix, so this must round-trip byte-exact through backup/restore.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -10071,11 +10283,53 @@ fn backup_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackup
         priority_class: row.get(26)?,
         confidence: row.get(27)?,
         confidence_basis: row.get(28)?,
+        // `memories` has no `quarantined_at`/`reason` columns.
+        quarantined_at: None,
+        reason: None,
     })
 }
 
-/// Canonical backup digest: the payload fields joined with explicit separators
-/// and hashed — restore refuses any envelope that does not reproduce it.
+/// Same column layout as `backup_row_from_row` plus the two quarantine-only
+/// governance columns, read from the trailing two positions the quarantine
+/// SELECT appends.
+fn backup_quarantine_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackupRowV1> {
+    let mut backup_row = backup_row_from_row(row)?;
+    backup_row.quarantined_at = row.get(29)?;
+    backup_row.reason = row.get(30)?;
+    Ok(backup_row)
+}
+
+/// Length-prefix and feed one field's raw bytes: an 8-byte little-endian
+/// length followed by the bytes themselves. Unlike a NUL- or otherwise
+/// separator-delimited join, this cannot let a value's own bytes be
+/// misread as a field boundary — two adjacent fields whose *content*
+/// happens to contain the separator (e.g. `content` holding an embedded
+/// NUL) can never collide with a different field split.
+fn hash_len_prefixed(hasher: &mut sha2::Sha256, bytes: &[u8]) {
+    use sha2::Digest;
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
+/// Feed an `Option<T>` field: a presence tag (`0` = None, `1` = Some)
+/// followed by the length-prefixed bytes when present. The tag keeps
+/// `None` distinguishable from `Some("")`/`Some(0)` — both would otherwise
+/// hash identically to an elided field.
+fn hash_opt_len_prefixed(hasher: &mut sha2::Sha256, bytes: Option<&[u8]>) {
+    use sha2::Digest;
+    match bytes {
+        Some(bytes) => {
+            hasher.update([1u8]);
+            hash_len_prefixed(hasher, bytes);
+        }
+        None => hasher.update([0u8]),
+    }
+}
+
+/// Canonical backup digest: every field length-prefixed (and, for optional
+/// fields, presence-tagged) before hashing, so no field's own bytes can be
+/// misread as a delimiter belonging to an adjacent field — restore refuses
+/// any envelope that does not reproduce it.
 fn cortex_backup_digest(
     memories: &[CortexBackupRowV1],
     quarantined: &[CortexBackupRowV1],
@@ -10084,51 +10338,48 @@ fn cortex_backup_digest(
 ) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(b"membrane.cortex-backup.v1\0");
+    // v2: length-prefixed, presence-tagged field encoding (see
+    // `hash_len_prefixed`/`hash_opt_len_prefixed`). v1 hashed NUL-joined
+    // strings, which let field boundaries be forged by content containing
+    // the separator — bumping the version tag makes the incompatibility
+    // explicit rather than silently changing what a v1 digest string means.
+    hasher.update(b"membrane.cortex-backup-digest.v2");
     for section in [memories, quarantined] {
         for row in section {
             for field in [
-                &row.id,
-                &row.tier,
-                &row.content,
-                &row.keywords,
-                &row.created_at,
-                &row.updated_at,
-                &row.scope_id,
-                &row.source_ids,
-                &row.artifact_family,
-                &row.producer,
-                &row.record_type,
-                &row.authority,
-                &row.influence_class,
-                &row.lifecycle_state,
-                &row.priority_class,
+                row.id.as_str(),
+                row.tier.as_str(),
+                row.content.as_str(),
+                row.keywords.as_str(),
+                row.created_at.as_str(),
+                row.updated_at.as_str(),
+                row.scope_id.as_str(),
+                row.source_ids.as_str(),
+                row.artifact_family.as_str(),
+                row.producer.as_str(),
+                row.record_type.as_str(),
+                row.authority.as_str(),
+                row.influence_class.as_str(),
+                row.lifecycle_state.as_str(),
+                row.priority_class.as_str(),
             ] {
-                hasher.update(field.as_bytes());
-                hasher.update([0u8]);
+                hash_len_prefixed(&mut hasher, field.as_bytes());
             }
-            hasher.update(row.score.to_string().as_bytes());
-            hasher.update([0u8]);
-            hasher.update(row.access_count.to_string().as_bytes());
-            hasher.update([0u8]);
-            hasher.update(row.inject_count.to_string().as_bytes());
-            hasher.update([0u8]);
-            for bytes in [&row.embedding, &row.embedding_q] {
-                if let Some(bytes) = bytes {
-                    hasher.update(bytes);
-                }
-                hasher.update([0u8]);
+            hash_len_prefixed(&mut hasher, row.score.to_bits().to_le_bytes().as_slice());
+            hash_len_prefixed(&mut hasher, row.access_count.to_le_bytes().as_slice());
+            hash_len_prefixed(&mut hasher, row.inject_count.to_le_bytes().as_slice());
+            for bytes in [row.embedding.as_deref(), row.embedding_q.as_deref()] {
+                hash_opt_len_prefixed(&mut hasher, bytes);
             }
             for field in [
-                &row.content_hash,
-                &row.embed_model,
-                &row.superseded_by,
-                &row.confidence_basis,
+                row.content_hash.as_deref(),
+                row.embed_model.as_deref(),
+                row.superseded_by.as_deref(),
+                row.confidence_basis.as_deref(),
+                row.quarantined_at.as_deref(),
+                row.reason.as_deref(),
             ] {
-                if let Some(field) = field {
-                    hasher.update(field.as_bytes());
-                }
-                hasher.update([0u8]);
+                hash_opt_len_prefixed(&mut hasher, field.map(|s| s.as_bytes()));
             }
             for field in [
                 row.effective_from_ms,
@@ -10136,34 +10387,36 @@ fn cortex_backup_digest(
                 row.expires_at_ms,
                 row.review_after_ms,
             ] {
-                if let Some(field) = field {
-                    hasher.update(field.to_string().as_bytes());
-                }
-                hasher.update([0u8]);
+                hash_opt_len_prefixed(&mut hasher, field.map(|v| v.to_le_bytes()).as_ref().map(|b| b.as_slice()));
             }
-            if let Some(confidence) = row.confidence {
-                hasher.update(confidence.to_string().as_bytes());
-            }
-            hasher.update([0u8, 0u8]);
+            hash_opt_len_prefixed(
+                &mut hasher,
+                row.confidence.map(|v| v.to_bits().to_le_bytes()).as_ref().map(|b| b.as_slice()),
+            );
         }
-        hasher.update([0u8, 1u8]);
+        // Section terminator: an empty length-prefixed marker field so an
+        // empty trailing section cannot be confused with one fewer row.
+        hash_len_prefixed(&mut hasher, b"\x01section-end");
     }
     for link in links {
-        hasher.update(link.src_id.as_bytes());
-        hasher.update([0u8]);
-        hasher.update(link.dst_slug.as_bytes());
-        hasher.update([0u8, 0u8]);
+        hash_len_prefixed(&mut hasher, link.src_id.as_bytes());
+        hash_len_prefixed(&mut hasher, link.dst_slug.as_bytes());
     }
+    hash_len_prefixed(&mut hasher, b"\x01links-end");
     // Empty legacy-v1 envelopes retain their historical digest. Suppression-
     // aware envelopes append a domain-separated canonical control section.
     if !suppression.is_empty() {
-        hasher.update(b"suppression\0");
+        hash_len_prefixed(&mut hasher, b"suppression");
         for row in suppression {
-            for field in [&row.memory_id, &row.scope_id, &row.content_hash, &row.decision_hash] {
-                hasher.update(field.as_bytes());
-                hasher.update([0u8]);
+            for field in [
+                row.memory_id.as_str(),
+                row.scope_id.as_str(),
+                row.content_hash.as_str(),
+                row.decision_hash.as_str(),
+            ] {
+                hash_len_prefixed(&mut hasher, field.as_bytes());
             }
-            hasher.update([u8::from(row.suppressed), 0u8]);
+            hash_len_prefixed(&mut hasher, &[u8::from(row.suppressed)]);
         }
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
@@ -10181,19 +10434,39 @@ fn restore_backup_row(
     // and named-parameter set must both differ by target table, not just
     // the literal SQL text.
     if quarantined {
+        // `memory_quarantine.quarantined_at`/`reason` are `TEXT NOT NULL` with
+        // no default (see cortex-store `memdb.rs`) — an envelope that lost
+        // this metadata (e.g. a pre-fix backup) cannot restore a governed
+        // quarantine row, and substituting a placeholder would corrupt the
+        // `admission_conflict:`-prefix branch `restore_quarantined()` relies
+        // on. Fail loudly instead.
+        let quarantined_at = row.quarantined_at.as_ref().ok_or_else(|| {
+            format!(
+                "backup restore of {} failed: quarantine row missing quarantined_at",
+                row.id
+            )
+        })?;
+        let reason = row.reason.as_ref().ok_or_else(|| {
+            format!(
+                "backup restore of {} failed: quarantine row missing reason",
+                row.id
+            )
+        })?;
         tx.execute(
             "INSERT INTO memory_quarantine
              (id, tier, content, keywords, score, created_at, updated_at, access_count,
               embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
               source_ids, authority, influence_class,
               lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
-              review_after_ms, superseded_by, priority_class, confidence, confidence_basis)
+              review_after_ms, superseded_by, priority_class, confidence, confidence_basis,
+              quarantined_at, reason)
              VALUES
               (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
                :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
                :source_ids, :authority, :influence_class,
                :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
-               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis)",
+               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis,
+               :quarantined_at, :reason)",
             rusqlite::named_params! {
                 ":id": row.id,
                 ":tier": row.tier,
@@ -10221,6 +10494,8 @@ fn restore_backup_row(
                 ":priority_class": row.priority_class,
                 ":confidence": row.confidence,
                 ":confidence_basis": row.confidence_basis,
+                ":quarantined_at": quarantined_at,
+                ":reason": reason,
             },
         )
         .map_err(|error| format!("backup restore of {} failed: {error}", row.id))?;
@@ -11594,6 +11869,294 @@ mod tests {
         );
     }
 
+    /// CTX backup-fix: an admission-conflict quarantine row's `quarantined_at`
+    /// and `reason` must survive a backup/restore round trip byte-exact, and
+    /// `restore_quarantined()` must still take the governed
+    /// `admission_conflict:`-prefix branch afterward (proven by the
+    /// `admission_conflict_quarantined` event it alone logs), not the raw
+    /// copy-in path used for every other quarantine origin.
+    #[test]
+    fn backup_restore_round_trip_preserves_quarantine_governance_metadata() {
+        let store = MemoryStore::new();
+        let existing = store
+            .try_put(
+                "conflict-existing",
+                "The quarterly retro notes alpha bravo charlie delta echo foxtrot golf hotel item.",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let dup_result = store.try_put(
+            "conflict-duplicate",
+            "The quarterly retro notes alpha bravo charlie delta echo foxtrot golf hotel items.",
+            "global",
+            MemoryTier::Semantic,
+        );
+        assert!(
+            dup_result.is_err(),
+            "near-duplicate content must be quarantined as an admission conflict, not admitted"
+        );
+        let dup_id = "global/conflict-duplicate".to_string();
+
+        let (reason_before, quarantined_at_before): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT reason, quarantined_at FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(
+            reason_before.starts_with("admission_conflict:"),
+            "test setup must produce an admission_conflict reason, got {reason_before:?}"
+        );
+
+        let before = store.backup_cortex().unwrap();
+        let quarantined_backup_row = before
+            .quarantined
+            .iter()
+            .find(|row| row.id == dup_id)
+            .expect("quarantined duplicate must appear in the backup envelope");
+        assert_eq!(
+            quarantined_backup_row.reason.as_deref(),
+            Some(reason_before.as_str())
+        );
+        assert_eq!(
+            quarantined_backup_row.quarantined_at.as_deref(),
+            Some(quarantined_at_before.as_str())
+        );
+
+        store.restore_cortex(&before).unwrap();
+
+        let (reason_after, quarantined_at_after): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT reason, quarantined_at FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            reason_after, reason_before,
+            "restored reason must be byte-exact"
+        );
+        assert_eq!(
+            quarantined_at_after, quarantined_at_before,
+            "restored quarantined_at must be byte-exact"
+        );
+
+        let governed_events_before: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log
+                  WHERE event_kind = 'admission_conflict_quarantined' AND memory_id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(
+            store.restore_quarantined(&dup_id).unwrap(),
+            "restore_quarantined must find the restored quarantine row"
+        );
+
+        let governed_events_after: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log
+                  WHERE event_kind = 'admission_conflict_quarantined' AND memory_id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            governed_events_after,
+            governed_events_before + 1,
+            "restore_quarantined must re-run full admission (re-detecting the still-present \
+             conflict) rather than blindly copying the quarantined row into active truth"
+        );
+        let active_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            active_count, 0,
+            "a still-conflicting candidate must not become active truth via restore"
+        );
+        assert_eq!(existing.as_str(), "global/conflict-existing");
+    }
+
+    /// A quarantine row that lost its `quarantined_at`/`reason` metadata (the
+    /// pre-fix envelope shape) cannot satisfy `memory_quarantine`'s
+    /// `NOT NULL` columns — restore must refuse it rather than substitute a
+    /// placeholder that would corrupt the `admission_conflict:` governance
+    /// check.
+    #[test]
+    fn restoring_quarantine_row_missing_governance_metadata_is_rejected() {
+        let store = MemoryStore::new();
+        let broken_row = CortexBackupRowV1 {
+            id: "global/broken-quarantine".into(),
+            tier: "\"Semantic\"".into(),
+            content: "incomplete quarantine payload".into(),
+            keywords: "[]".into(),
+            score: 0.5,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            access_count: 0,
+            embedding: None,
+            embedding_q: None,
+            scope_id: "global".into(),
+            inject_count: 0,
+            content_hash: None,
+            embed_model: None,
+            source_ids: "[]".into(),
+            artifact_family: "memory".into(),
+            producer: "manual".into(),
+            record_type: "memory".into(),
+            authority: "A0".into(),
+            influence_class: "unknown".into(),
+            lifecycle_state: "active".into(),
+            effective_from_ms: None,
+            effective_until_ms: None,
+            expires_at_ms: None,
+            review_after_ms: None,
+            superseded_by: None,
+            priority_class: "normal".into(),
+            confidence: None,
+            confidence_basis: None,
+            quarantined_at: None,
+            reason: Some("admission_conflict:existing=global/x;similarity=0.900".into()),
+        };
+        let memories = Vec::new();
+        let quarantined = vec![broken_row];
+        let links = Vec::new();
+        let suppression = Vec::new();
+        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links, &suppression);
+        let backup = CortexBackupV1 {
+            schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
+            created_at: crate::time::now_iso(),
+            embed_model: "test-embed-model".into(),
+            memories,
+            quarantined,
+            links,
+            suppression,
+            payload_sha256,
+        };
+        let error = store
+            .restore_cortex(&backup)
+            .expect_err("an envelope missing quarantine governance metadata must not restore");
+        assert!(
+            error.contains("quarantined_at"),
+            "error must name the missing field, got: {error}"
+        );
+    }
+
+    /// The digest must not let one field's content forge a different field's
+    /// boundary: `content="alpha\0beta", keywords="[]"` and
+    /// `content="alpha", keywords="beta\0[]"` must hash differently even
+    /// though the old NUL-joined encoding would concatenate to the same
+    /// bytes.
+    #[test]
+    fn backup_digest_disambiguates_nul_placement_across_adjacent_fields() {
+        fn row(content: &str, keywords: &str) -> CortexBackupRowV1 {
+            CortexBackupRowV1 {
+                id: "global/digest-row".into(),
+                tier: "\"Semantic\"".into(),
+                content: content.into(),
+                keywords: keywords.into(),
+                score: 0.5,
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                access_count: 0,
+                embedding: None,
+                embedding_q: None,
+                scope_id: "global".into(),
+                inject_count: 0,
+                content_hash: None,
+                embed_model: None,
+                source_ids: "[]".into(),
+                artifact_family: "memory".into(),
+                producer: "manual".into(),
+                record_type: "memory".into(),
+                authority: "A0".into(),
+                influence_class: "unknown".into(),
+                lifecycle_state: "active".into(),
+                effective_from_ms: None,
+                effective_until_ms: None,
+                expires_at_ms: None,
+                review_after_ms: None,
+                superseded_by: None,
+                priority_class: "normal".into(),
+                confidence: None,
+                confidence_basis: None,
+                quarantined_at: None,
+                reason: None,
+            }
+        }
+        let rows_a = vec![row("alpha\0beta", "[]")];
+        let rows_b = vec![row("alpha", "beta\0[]")];
+        let empty_links = Vec::new();
+        let empty_suppression = Vec::new();
+        let digest_a = cortex_backup_digest(&rows_a, &[], &empty_links, &empty_suppression);
+        let digest_b = cortex_backup_digest(&rows_b, &[], &empty_links, &empty_suppression);
+        assert_ne!(
+            digest_a, digest_b,
+            "NUL-adjacent field content must not let one field forge another's boundary"
+        );
+    }
+
+    /// §16.4 hard erase must surface a `cortex_fts5` projection-delete
+    /// failure as an `Err`, not commit a partial erase and report `Ok(true)`.
+    #[test]
+    fn hard_erase_fails_when_fts_projection_delete_cannot_succeed() {
+        let store = MemoryStore::new();
+        let target = store
+            .try_put(
+                "erase-fts-fault",
+                "payload that must not silently survive a failed fts delete",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store.reindex().unwrap();
+        store
+            .db
+            .lock()
+            .execute_batch(
+                "CREATE TRIGGER fail_fts_delete BEFORE DELETE ON cortex_fts5
+                 BEGIN SELECT RAISE(ABORT, 'fts delete failed'); END;",
+            )
+            .unwrap();
+
+        let result = store.hard_erase(&target);
+        assert!(
+            result.is_err(),
+            "a failed fts5 projection delete must not report Ok(true)"
+        );
+        let still_present: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            still_present, 1,
+            "a failed erase must roll back — the canonical row must survive"
+        );
+    }
+
     #[test]
     fn query_embedding_does_not_hold_the_registry_lock() {
         struct BlockingQueryEmbedder {
@@ -12064,6 +12627,217 @@ mod tests {
         assert!(!hits.is_empty());
         assert_eq!(hits[0].0.id, exact.id, "cosine order must lead");
         assert!(hits[0].1 >= hits.last().unwrap().1, "descending cosine");
+    }
+
+    /// Regression pin for CTX-011: the 2026-07-05 fused-candidates + cosine-order
+    /// architecture asserted by `recall_scored_sorts_by_cosine_over_fused_candidates`
+    /// must hold unchanged now that the lexical *source* feeding that fusion is
+    /// `cortex_fts5` instead of the registry-derived keyword score. Same scenario,
+    /// re-asserted after the write path populates the projection, so a future change
+    /// to the lexical source cannot silently re-flip the measured ranking behavior.
+    #[test]
+    fn recall_scored_regression_cosine_order_still_leads_with_fts5_lexical_channel() {
+        let store = MemoryStore::new();
+        let exact = store.remember("alpha beta procedure", vec!["alpha".into()]);
+        let _lexical_heavy = store.remember(
+            "totally different content about deploy pipelines and rollback drills",
+            vec!["alpha".into(), "beta".into(), "procedure".into()],
+        );
+        let hits = store.recall_scored("alpha beta procedure", 2, &[]);
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].0.id, exact.id, "cosine order must still lead");
+        assert_eq!(
+            store.last_recall_lexical_mode().as_deref(),
+            Some("fts5"),
+            "the write path must have populated cortex_fts5 for this recall to use it"
+        );
+    }
+
+    /// CTX-011's actual defect: runtime lexical recall never read `cortex_fts5` at
+    /// all, so a test of ordinary filtering proved nothing about the FTS5 contract.
+    /// This exercises the real seam (`MemoryStore::fts5_lexical_hits`, the function
+    /// `recall_scored_detailed_timed_at` now calls) and proves it is driven by the
+    /// `cortex_fts5` projection, not by canonical `memories`/registry content: the
+    /// write path populates the projection when the record is admitted, and
+    /// mutating *only* that projection row — leaving `memories` untouched — changes
+    /// what the lexical channel returns. A test that passed identically whether or
+    /// not this mutation happened would not have caught the original bug.
+    #[test]
+    fn fts5_lexical_hits_is_driven_by_the_projection_not_canonical_content() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put(
+                "fts-target",
+                "canonical body mentions zzqxfindme somewhere in the text",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+
+        let hits = store
+            .fts5_lexical_hits("zzqxfindme", 10)
+            .expect("write path must have populated a healthy cortex_fts5 projection");
+        assert!(
+            hits.iter().any(|hit| hit.record_id == id),
+            "fts5 must surface the freshly admitted record"
+        );
+        assert_eq!(store.last_recall_lexical_mode().as_deref(), Some("fts5"));
+
+        // Mutate ONLY the projection row for `id` — canonical `memories` content is
+        // never touched — so the indexed text no longer contains the query term.
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE cortex_fts5 SET content = 'no relevant terms here', keywords = '' \
+                 WHERE record_id = ?1",
+                rusqlite::params![id.clone()],
+            )
+            .unwrap();
+        let canonical_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            canonical_content.contains("zzqxfindme"),
+            "canonical memories row must be untouched by the projection mutation"
+        );
+
+        let hits_after = store
+            .fts5_lexical_hits("zzqxfindme", 10)
+            .expect("table is still present and healthy after the mutation");
+        assert!(
+            !hits_after.iter().any(|hit| hit.record_id == id),
+            "lexical ranking must follow cortex_fts5, not canonical memories content"
+        );
+    }
+
+    /// The bm25 column weights `Fts5Projection::search` requests (1.0 content,
+    /// 2.0 keywords) must actually change ranking: a query term indexed in the
+    /// keywords column outranks the same term appearing only once in a long body.
+    #[test]
+    fn fts5_bm25_ranks_keyword_column_above_body_only_match() {
+        let store = MemoryStore::new();
+        {
+            let conn = store.db.lock();
+            let projection = cortex_store::Fts5Projection::new(&conn);
+            projection.ensure_schema().unwrap();
+            projection
+                .upsert(&cortex_store::Fts5Document {
+                    record_id: "kw-hit".into(),
+                    record_type: "memory".into(),
+                    session_id: None,
+                    scope_id: "global".into(),
+                    lifecycle: "active".into(),
+                    authority: "A2".into(),
+                    content: "an unrelated long passage discussing other topics entirely, \
+                              padded with extra words so it is not the shortest document"
+                        .into(),
+                    keywords: "raretermzz".into(),
+                })
+                .unwrap();
+            projection
+                .upsert(&cortex_store::Fts5Document {
+                    record_id: "body-hit".into(),
+                    record_type: "memory".into(),
+                    session_id: None,
+                    scope_id: "global".into(),
+                    lifecycle: "active".into(),
+                    authority: "A2".into(),
+                    content: "a passage that happens to mention raretermzz exactly once".into(),
+                    keywords: "".into(),
+                })
+                .unwrap();
+        }
+        let hits = store
+            .fts5_lexical_hits("raretermzz", 10)
+            .expect("projection was just created and populated");
+        assert_eq!(
+            hits.first().map(|hit| hit.record_id.as_str()),
+            Some("kw-hit"),
+            "the 2.0-weighted keywords column must outrank the 1.0-weighted content column"
+        );
+    }
+
+    /// Fail-soft boundary: a missing `cortex_fts5` projection (a store predating
+    /// CTX-011 that has not been written to since, or one where the table was
+    /// otherwise lost) must not break recall — it degrades to the pre-CTX-011
+    /// registry-derived lexical lane. Distinct from `fts5_lexical_hits`'s own unit
+    /// coverage, this proves the degradation is *observable* on the public detailed
+    /// path via `last_recall_lexical_mode`, not silent.
+    #[test]
+    fn recall_degrades_observably_when_cortex_fts5_table_is_absent() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put(
+                "degrade-target",
+                "alpha beta gamma marker content",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let populated: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id.clone()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(populated, 1, "write path must populate cortex_fts5");
+
+        // Simulate a store whose projection is unavailable (predates CTX-011, or was
+        // lost) without touching canonical `memories` or the in-memory registry.
+        store.db.lock().execute_batch("DROP TABLE cortex_fts5").unwrap();
+
+        let hits = store.recall_scored("alpha beta gamma marker", 5, &[]);
+        assert!(
+            hits.iter().any(|(entry, _)| entry.id == id),
+            "recall must still return results when cortex_fts5 is missing"
+        );
+        assert_eq!(
+            store.last_recall_lexical_mode().as_deref(),
+            Some("degraded:missing_table"),
+            "the degradation must be observable, not silent"
+        );
+        assert!(
+            store.health().last_persist_error.is_none(),
+            "a merely missing projection is not a persistence failure"
+        );
+    }
+
+    /// A `cortex_fts5` that exists under that name but is not a real FTS5 virtual
+    /// table is corruption, not absence: recall must still degrade (never panic or
+    /// fail the caller's request) but it must record a persistence error instead of
+    /// silently treating the corrupt table as though nothing were there.
+    #[test]
+    fn recall_records_persist_error_when_cortex_fts5_is_corrupt_not_missing() {
+        let store = MemoryStore::new();
+        store
+            .db
+            .lock()
+            .execute_batch("CREATE TABLE cortex_fts5 (record_id TEXT)")
+            .unwrap();
+
+        let hits = store.fts5_lexical_hits("anything", 10);
+        assert!(hits.is_none(), "a corrupt table must still degrade gracefully");
+        let mode = store
+            .last_recall_lexical_mode()
+            .expect("degradation reason must be recorded");
+        assert!(
+            mode.starts_with("degraded:corrupt:"),
+            "corrupt must be distinguishable from missing, got: {mode}"
+        );
+        assert!(
+            store.health().last_persist_error.is_some(),
+            "a corrupt (not merely missing) projection must be a recorded persistence error"
+        );
     }
 
     #[test]

@@ -7190,6 +7190,83 @@ mod tests {
             crate::ledger::outline::DocReadError::SourceMissing
         );
     }
+
+    fn assert_reached_parser(result: Result<(), String>) {
+        // The allowlist gate is the only thing under test here: whatever the handler itself
+        // does with a missing id/file/db-less scan, it must not be rejected at the gate.
+        if let Err(error) = result {
+            assert!(
+                !error.contains("unsupported command"),
+                "expected the allowlist to admit this command, got: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn cortex_durable_cli_admits_erase_backup_restore_review_due_and_drain_background_proposals() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = test_db(&directory);
+        let backup_file = directory
+            .path()
+            .join("backup.json")
+            .to_string_lossy()
+            .into_owned();
+
+        // erase: reaches the parser/handler rather than being rejected by the allowlist.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane", "--db", &db, "erase", "missing-id",
+        ]));
+
+        // backup: also exercised with `--db=` to confirm both forms stay parseable.
+        let db_eq = format!("--db={db}");
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            &db_eq,
+            "backup",
+            &backup_file,
+        ]));
+
+        // restore: fed a nonexistent input file; must fail past the allowlist, not at it.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "restore",
+            "does-not-exist.json",
+        ]));
+
+        // review-due: read-only lifecycle scan.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "review-due",
+        ]));
+
+        // drain-background-proposals: requires positional repository + path args.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "drain-background-proposals",
+            "some/repo",
+            "does-not-exist-proposals.json",
+        ]));
+    }
+
+    #[test]
+    fn cortex_durable_cli_still_rejects_a_non_cortex_command() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = test_db(&directory);
+
+        // "ledger" is a real Membrane subcommand but not on the Cortex durable axis; the
+        // allowlist guard must still reject it before the parser ever sees it.
+        let error = super::run_cortex_durable_cli_from(&[
+            "membrane", "--db", &db, "ledger", "activate", "ledger_fts",
+        ])
+        .unwrap_err();
+        assert!(error.contains("unsupported command"));
+    }
 }
 
 pub fn run_cli() {
@@ -7227,10 +7304,13 @@ pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
 /// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Ledger,
 /// Blueprint, Adapt, & orchestration stay addressable through Membrane.
 pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
+    "backup",
     "checkpoint",
     "close-unknown",
     "curate",
     "delete",
+    "drain-background-proposals",
+    "erase",
     "explain",
     "export",
     "export-md",
@@ -7252,6 +7332,8 @@ pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
     "recall",
     "replay",
     "reindex",
+    "restore",
+    "review-due",
     "ingest-skills",
     "skill-read",
     "vault-export",
