@@ -6,6 +6,10 @@
 
 use crate::{ClientError, CompatibilityRequirement, ServiceIdentity};
 use membrane_protocol::ResidentEndpointV1;
+use std::path::{Path, PathBuf};
+
+pub const INSTALLED_LOOPBACK_HOST: &str = "127.0.0.1";
+pub const INSTALLED_LOOPBACK_PORT: u16 = 47_851;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnownCandidate {
@@ -164,6 +168,61 @@ pub fn classify_known_candidate(
             message: error.to_string(),
         },
     }
+}
+
+pub fn default_stable_install_root() -> Result<PathBuf, ClientError> {
+    #[cfg(windows)]
+    let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let base = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Library/Application Support"));
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let base = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(PathBuf::from).map(|home| home.join(".local/share")));
+    base.map(|root| root.join("Orthic Labs").join("Membrane").join("current"))
+        .ok_or_else(|| ClientError::Unavailable { message: "user data root is unavailable".into() })
+}
+
+fn candidate_for_root(root: &Path) -> KnownCandidate {
+    KnownCandidate {
+        stable_install_root: root.to_string_lossy().to_string(),
+        endpoint: ResidentEndpointV1 {
+            host: INSTALLED_LOOPBACK_HOST.into(),
+            port: INSTALLED_LOOPBACK_PORT,
+        },
+        expected_installation_id: None,
+        expected_startup_generation: None,
+    }
+}
+
+pub fn locate_installed_candidate() -> Result<KnownCandidate, ClientError> {
+    let stable = default_stable_install_root()?;
+    let candidate = candidate_for_root(&stable);
+    let pointer = std::fs::read_link(&stable).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ClientError::NotFound { message: format!("stable Membrane current is absent at {}", stable.display()) }
+        } else {
+            ClientError::CorruptOrRotation { message: format!("stable Membrane current is unreadable at {}: {error}", stable.display()) }
+        }
+    })?;
+    let product_root = stable.parent().ok_or_else(|| ClientError::CorruptOrRotation {
+        message: "stable Membrane current has no product root".into(),
+    })?;
+    let target = if pointer.is_absolute() { pointer } else { product_root.join(pointer) };
+    let resolved = std::fs::canonicalize(&target).map_err(|error| ClientError::CorruptOrRotation {
+        message: format!("stable Membrane current target is unavailable: {error}"),
+    })?;
+    let versions = std::fs::canonicalize(product_root.join("versions")).map_err(|error| ClientError::CorruptOrRotation {
+        message: format!("Membrane versions root is unavailable: {error}"),
+    })?;
+    if resolved.parent() != Some(versions.as_path()) || !resolved.is_dir() {
+        return Err(ClientError::CorruptOrRotation {
+            message: "stable Membrane current does not resolve to one installed version".into(),
+        });
+    }
+    Ok(candidate)
 }
 
 #[cfg(test)]
