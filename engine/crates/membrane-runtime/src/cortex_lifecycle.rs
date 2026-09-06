@@ -632,6 +632,10 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, scope: &str, payload: 
             "temporal cardinality policy is missing or inconsistent",
         ));
     }
+    // CTX-009's fourth dimension. `TemporalValidityV1` carries only valid and
+    // recorded time, so the observation instant has to be handed to the store
+    // separately or it is lost at admission.
+    let observed_at = fact.observed_at.clone();
     let record = TemporalValidityV1 {
         record_id: fact.fact_id,
         subject: fact.subject,
@@ -656,7 +660,7 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, scope: &str, payload: 
     };
     store
         .temporal_facts()
-        .record_validity(record, cardinality == Some("single"))
+        .record_validity_observed(record, cardinality == Some("single"), Some(&observed_at))
         .map_err(storage)?;
     temporal_admission_receipt(store, scope, payload)?.ok_or_else(|| {
         storage("temporal admission committed without readable canonical receipt")
