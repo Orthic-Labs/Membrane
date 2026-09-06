@@ -13,6 +13,9 @@ pub struct ServiceIdentity {
     pub installation_id: String,
     pub cortex_store_id: String,
     pub release_generation: String,
+    pub startup_generation: u64,
+    pub runtime_origin: String,
+    pub stable_install_root: Option<String>,
     pub protocol_version: u32,
     pub schema_version: u32,
     pub native_only: bool,
@@ -27,6 +30,7 @@ pub struct CompatibilityRequirement {
     pub release_generation: Option<String>,
     pub installation_id: Option<String>,
     pub cortex_store_id: Option<String>,
+    pub required_runtime_origin: Option<String>,
     pub require_native_only: bool,
     pub required_subsystems: Vec<String>,
     pub required_capabilities: Vec<String>,
@@ -40,6 +44,7 @@ impl Default for CompatibilityRequirement {
             release_generation: None,
             installation_id: None,
             cortex_store_id: None,
+            required_runtime_origin: Some("installed".into()),
             require_native_only: true,
             required_subsystems: ["pull", "push", "cortex", "blueprint", "ledger", "adapt"]
                 .into_iter()
@@ -81,6 +86,17 @@ pub fn verify(
     let installation_id = required_string(object, "installationId", "Hub installation identity")?;
     let cortex_store_id = required_string(object, "cortexStoreId", "Cortex store identity")?;
     let release_generation = required_string(object, "releaseGeneration", "release generation")?;
+    let startup_generation = object
+        .get("startupGeneration")
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0)
+        .ok_or_else(|| incompatible("startupGeneration must be a non-zero unsigned integer"))?;
+    let runtime_origin = required_string(object, "runtimeOrigin", "runtime origin")?;
+    let stable_install_root = object
+        .get("stableInstallRoot")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned);
     let protocol_version = required_u32(object, "protocolVersion")?;
     let schema_version = required_u32(object, "schemaVersion")?;
     let native_only = object
@@ -113,6 +129,14 @@ pub fn verify(
             return Err(incompatible("Cortex store identity does not match"));
         }
     }
+    if let Some(expected) = requirement.required_runtime_origin.as_deref() {
+        if runtime_origin != expected {
+            return Err(incompatible("runtime origin does not match"));
+        }
+    }
+    if runtime_origin == "installed" && stable_install_root.is_none() {
+        return Err(incompatible("installed runtime omitted stableInstallRoot"));
+    }
     if requirement.require_native_only && !native_only {
         return Err(incompatible("Hub is not native-only"));
     }
@@ -139,6 +163,9 @@ pub fn verify(
         installation_id,
         cortex_store_id,
         release_generation,
+        startup_generation,
+        runtime_origin,
+        stable_install_root,
         protocol_version,
         schema_version,
         native_only,

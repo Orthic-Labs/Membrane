@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-06T16:05:40.739Z",
+ "generatedAt": "2026-09-06T16:56:01.521Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1302,
+  "files": 1303,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1047,6 +1047,7 @@
    "seal_blocker_note": null,
    "notes": "CodeRight owns its installed native binding; this generic client remains release-excluded conformance source.",
    "files": [
+    "engine/crates/membrane-client/src/binding.rs",
     "engine/crates/membrane-client/src/error.rs",
     "engine/crates/membrane-client/src/handshake.rs",
     "engine/crates/membrane-client/src/lib.rs",
@@ -1055,7 +1056,7 @@
     "engine/crates/membrane-client/tests/compat.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "830ad546b69062f60359669bb3e59336259cd3ee996fb182a9b4827faf8f0e34"
+   "content_digest": "0476fb8e07dc9216437372b037615df1a395fcabbf27f573820f5fcff9b95c30"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1656,7 +1657,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "2b85b29e16ae0ce0786b9b21f81a8556cb99859eed030309afd0e1b578ac0210"
+   "content_digest": "0e55d5e7d57119164bfd6e3d008dc0bd1654dd6e965e902a1eb209a53c02d596"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
