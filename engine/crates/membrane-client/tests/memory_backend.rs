@@ -338,3 +338,29 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
     assert_eq!(uses[1].1.get("id").and_then(Value::as_str), Some("second"));
     assert!(uses.iter().all(|(_, request)| request.get("ids").is_none()));
 }
+
+#[test]
+fn federation_protocol_outcomes_preserve_typed_code() {
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let client = MemoryBackendClient::new(Box::new(move |operation: &str, _request: &Map<String, Value>| {
+        Ok(if operation == "/federate" {
+            json!({"kind":"error","code":"h8_unavailable","message":"capacity unavailable"})
+        } else {
+            health.clone()
+        })
+    }) as Box<membrane_client::MemoryTransport>)
+    .bind(&CompatibilityRequirement::default())
+    .unwrap();
+    let error = client
+        .with_call_options(CallOptions::after(Duration::from_secs(1)))
+        .federate_json(Map::new())
+        .unwrap_err();
+    assert!(matches!(error, ClientError::Protocol { ref code, .. } if code == "h8_unavailable"));
+}

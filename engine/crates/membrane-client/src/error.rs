@@ -124,6 +124,21 @@ impl ClientError {
             }
             "provider_failed" | "commit_failed" => Self::Store { message },
             "incompatible" | "protocol_version_unsupported" => Self::Incompatible { message },
+            // Context-federation failures are protocol outcomes, not service
+            // availability failures. Preserve their public codes so hosts can
+            // fail closed without guessing a budget or reduction plan.
+            "h8_unavailable"
+            | "context_capacity_unavailable"
+            | "capacity_unavailable"
+            | "estimator_basis_mismatch"
+            | "basis_mismatch"
+            | "no_floor"
+            | "no_viable_floor"
+            | "no_representation_fits"
+            | "capacity_changed"
+            | "changed_capacity"
+            | "selection_unavailable"
+            | "plan_unavailable" => Self::protocol(code, message),
             _ => Self::Unavailable { message },
         }
     }
