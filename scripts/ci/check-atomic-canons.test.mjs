@@ -57,6 +57,8 @@ test("semantic duplicate detector is conservative but catches aliases", () => {
 
 test("focused proof requires a live assertion instead of placeholder prose", () => {
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib", "`serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing`"), true);
+  assert.equal(atomicCanonTestHooks.focusedProofLooksExact("cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast", "`serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing`", "GitHub Actions managed CI run 123; 0 fail"), true);
+  assert.equal(atomicCanonTestHooks.focusedProofLooksExact("cargo test --manifest-path engine/Cargo.toml --workspace --locked --no-fail-fast", "`serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing`"), false);
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --lib", "TBD"), false);
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("node --test tests/example.test.mjs", "`TBD`"), false);
   assert.equal(atomicCanonTestHooks.focusedProofLooksExact("node --test tests/example.test.mjs", "focused suites passed"), false);
@@ -69,15 +71,14 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
   assert.equal(canon.capabilities.length, 42);
   assert.equal(canon.capabilities.filter((row) => row.Scope === "COMMITTED").length, 39);
   assert.deepEqual(canon.capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID), ["CTX-033", "CTX-039", "CTX-042"]);
-  for (const id of ["CTX-040", "CTX-041"]) {
-    assert.equal(byId.get(id).Implementation, "PARTIAL");
-    assert.equal(byId.get(id).Verification, "PENDING");
+  for (const id of ["CTX-035", "CTX-040", "CTX-041"]) {
+    assert.equal(byId.get(id).Implementation, "DELIVERED");
+    assert.equal(byId.get(id).Verification, "FOCUSED_PASS");
     assert.equal(byId.get(id).Qualification, "PENDING");
     assert.equal(byId.get(id).Delivery, "PUSHED");
   }
   assert.equal(byId.get("CTX-042").Implementation, "MISSING");
   assert.equal(byId.get("CTX-042").Scope, "EXPLORATORY");
   assert.equal(byId.get("CTX-039").Scope, "EXPLORATORY");
-  assert.equal(byId.get("CTX-035").Implementation, "PARTIAL");
   assert.equal(byId.get("CTX-021").Implementation, "PARTIAL");
 });
