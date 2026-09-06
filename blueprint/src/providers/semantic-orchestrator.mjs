@@ -6,6 +6,36 @@ import { pythonScipProvider } from "./compilers/python-scip.mjs";
 
 export const FIRST_PARTY_SEMANTIC_PROVIDERS = Object.freeze([pythonScipProvider]);
 
+/**
+ * Licences a provider may declare to be admitted into the registry. First
+ * party providers ship under the repository's own licence; anything else has
+ * to be added here deliberately.
+ */
+export const ALLOWED_PROVIDER_LICENSES = Object.freeze(["SEE LICENSE IN LICENSE"]);
+
+/**
+ * Manifest for a compiled-in first-party provider.
+ *
+ * BPT-010 requires provider registration to validate identity, checksum and
+ * licence. Registration used to pass no manifest at all, so
+ * `validateProviderManifest` — checksum and licence included — never ran on a
+ * production path; it was exercised only by tests handing it a manifest by
+ * hand. A compiled-in provider has no separately fetched artifact, so what its
+ * integrity attests is the provider contract itself: `descriptorDigest` is a
+ * sha256 over identity, kind, protocol range, capabilities and permissions, so
+ * a silently altered capability or permission surface fails the identity and
+ * integrity check at registration rather than at first use.
+ */
+export function firstPartyProviderManifest(provider) {
+  return Object.freeze({
+    id: provider.id,
+    version: provider.version,
+    license: ALLOWED_PROVIDER_LICENSES[0],
+    integrity: provider.descriptorDigest,
+    entry: `providers/compilers/${provider.id}.mjs`,
+  });
+}
+
 function typedDisposition(provider, disposition, detail = {}) {
   return Object.freeze({
     provider: provider.id,
@@ -62,15 +92,22 @@ function unavailableSemanticOutput(provider, probe) {
   };
 }
 
-export function createSemanticProviderRegistry({ providers = FIRST_PARTY_SEMANTIC_PROVIDERS } = {}) {
-  const registry = new ProviderRegistry();
+export function createSemanticProviderRegistry({
+  providers = FIRST_PARTY_SEMANTIC_PROVIDERS,
+  allowedLicenses = ALLOWED_PROVIDER_LICENSES,
+  manifestFor = firstPartyProviderManifest,
+} = {}) {
+  const registry = new ProviderRegistry({ allowedLicenses });
   for (const provider of providers) {
     if (provider.kind !== "compiler") {
       const error = new Error(`semantic provider ${provider.id} must be kind=compiler`);
       error.code = "semantic_provider_kind_invalid";
       throw error;
     }
-    registry.register(provider);
+    // Registering WITH the manifest is what puts identity, checksum and licence
+    // validation on the production path; registering without one silently
+    // skips all three.
+    registry.register(provider, { manifest: manifestFor(provider) });
   }
   return registry;
 }

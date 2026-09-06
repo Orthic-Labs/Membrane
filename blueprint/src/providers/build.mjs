@@ -4,6 +4,7 @@ import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
 import { collectSemanticEvidenceSync } from "./semantic-orchestrator.mjs";
 import { auditSourceDispositions } from "./source-disposition.mjs";
+import { admitRepositoryPlugins } from "./plugin-loader.mjs";
 import { augmentStructuralIntelligence, STRUCTURAL_INTELLIGENCE_PROVIDER } from "../graph/structural-intelligence.mjs";
 import { augmentFrameworkIntelligence, FRAMEWORK_INTELLIGENCE_PROVIDER } from "../graph/framework-intelligence.mjs";
 import { attachPortableIdentities } from "../graph/portable-identity.mjs";
@@ -363,6 +364,14 @@ export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, f
   const root = resolve(repoRoot);
   const summaries = {
     ingestion: auditSourceDispositions(root, files),
+    // BPT-057: every plugin manifest the repository ships is admitted or
+    // refused here, before the generation is sealed and before any plugin
+    // code could run. Refusals travel in the manifest, so a poisoned plugin
+    // is visible rather than silently absent.
+    plugins: admitRepositoryPlugins(root, {
+      allowedLicenses: options.allowedPluginLicenses ?? null,
+      trustedPublishers: options.trustedPluginPublishers ?? null,
+    }),
     modules: addModuleEvidence(generation, files, root),
     frameworks: addFrameworkEvidence(generation, files),
     ...addSchemaAndIacEvidence(generation, files),
