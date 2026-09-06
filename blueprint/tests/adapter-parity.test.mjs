@@ -373,18 +373,12 @@ test("error taxonomy parity: root_not_enrolled", { timeout: 60000 }, async () =>
 });
 
 // generation_mismatch: forced by pinning a bogus `generation` on search
-// against an already-built repo. Reachable through the daemon, the embedded
-// bounded one-shot, the SDK one-shot fallback, and MCP -- all of which accept
-// a `generation` field on the search request.
-//
-// The CLI facade's `search` command (scripts/cli/commands.mjs) does NOT
-// forward any generation-pinning input to the service at all (it only ever
-// builds `{ repoRoot, query, limit }`), so there is no CLI invocation that
-// expresses this same request. That is a genuine adapter capability gap, not
-// an oversight in this test: the CLI is exercised for `root_not_enrolled`
-// above (a request shape it CAN express) and is deliberately left out here,
-// named rather than silently absent.
-test("error taxonomy parity: generation_mismatch (daemon, bounded one-shot, SDK one-shot, MCP; CLI cannot express this request)", { timeout: 60000 }, async () => {
+// against an already-built repo. Reachable through all five adapters. The CLI
+// was previously excluded here because its facade forwarded only
+// `{ repoRoot, query, limit }`; scripts/cli/commands.mjs now forwards
+// `generation` and `allowStale`, so the exclusion no longer holds and the CLI
+// is exercised. This is the case that proves taxonomy parity across all five.
+test("error taxonomy parity: generation_mismatch across all five adapters", { timeout: 60000 }, async () => {
   const repo = buildFixtureRepo("blueprint-parity-genmismatch-");
   const registry = new RootRegistry([{ root: repo, repoId: "parity-repo" }]);
   const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
@@ -423,11 +417,36 @@ test("error taxonomy parity: generation_mismatch (daemon, bounded one-shot, SDK 
     assert.equal(mcpResponse.isError, true);
     const mcpErrorPayload = mcpPayload(mcpResponse).error;
 
+    // CLI, through the real entrypoint, now that the facade forwards
+    // `--generation`.
+    const cliResult = runCli(repo, ["search", "placeOrder", "--generation", "not-a-real-generation", "--json"]);
+    const cliErrorPayload = JSON.parse(cliResult.stderr.trim() || cliResult.stdout.trim()).error;
+
+    // Guard the SERVER half of the taxonomy fix on the code that has NO
+    // hand-embedded remediation: root_not_enrolled survives a server
+    // regression because root-registry.mjs stuffs remediation into `details`,
+    // so the wire assertion there proves less than it appears to. This one has
+    // nothing to fall back on.
+    const rawDaemon = new DaemonClient({ endpoint });
+    const rawResponse = await rawDaemon.request({
+      method: "search",
+      input: { repoId: "parity-repo", query: "placeOrder", generation: "not-a-real-generation" },
+    });
+    await rawDaemon.close?.();
+    assert.equal(rawResponse.ok, false);
+    assert.equal(rawResponse.error.retryable, embeddedError.retryable, "the daemon must put `retryable` on the wire for generation_mismatch");
+    assert.deepEqual(
+      rawResponse.error.remediation,
+      embeddedError.remediation,
+      "the daemon must put the same remediation on the wire that an in-process caller computes, for a code with no hand-embedded fallback in `details`",
+    );
+
     const taxonomy = (label, code, retryable, summary, nextOperation) => ({ label, code, retryable, summary, nextOperation });
     const results = [
       taxonomy("daemon (Hub IPC)", daemonError.code, daemonError.retryable, daemonError.remediation?.summary, daemonError.remediation?.nextOperation),
       taxonomy("boundedOneShot (embedded)", embeddedError.code, embeddedError.retryable, embeddedError.remediation?.summary, embeddedError.remediation?.nextOperation),
       taxonomy("sdk (one-shot fallback)", sdkOneShotError.code, sdkOneShotError.retryable, sdkOneShotError.remediation?.summary, sdkOneShotError.remediation?.nextOperation),
+      taxonomy("cli", cliErrorPayload.code, cliErrorPayload.retryable, cliErrorPayload.remediation?.summary, cliErrorPayload.remediation?.nextOperation),
       taxonomy("mcp", mcpErrorPayload.code, mcpErrorPayload.retryable, mcpErrorPayload.remediation?.summary, mcpErrorPayload.remediation?.nextOperation),
     ];
 

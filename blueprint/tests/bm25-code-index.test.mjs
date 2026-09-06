@@ -20,7 +20,7 @@ function index(names) {
   })));
 }
 
-const CORPUS = ["UserAccountRepo", "OrderService", "getUserByIdentifier", "placeOrder", "oldValue", "stableValue"];
+const CORPUS = ["UserAccountRepo", "UserRepo", "OrderService", "getUserByIdentifier", "placeOrder", "oldValue", "stableValue", "getOldValue", "getStableValue"];
 const hits = (query) => index(CORPUS).search(query, { limit: 10 }).map((row) => row.document.name);
 
 test("a query that over-specifies a stored identifier still finds it", () => {
@@ -33,17 +33,47 @@ test("a query that over-specifies a stored identifier still finds it", () => {
   assert.deepEqual(hits("placeOrderCommand"), ["placeOrder"]);
 });
 
-test("a single shared subtoken is not a hit for a two-subtoken identifier", () => {
-  // `stableValue` shares only the generic `value` half of `oldValue`. Half is
-  // not a majority, so it is not evidence for this query — admitting it made
-  // the lane report a symbol the caller never asked about.
-  assert.deepEqual(hits("oldValue"), ["oldValue"]);
-  assert.deepEqual(hits("stableValue"), ["stableValue"]);
+test("a document missing the query's rarest subtoken is never a hit, however many generic halves it shares", () => {
+  // `stableValue` shares only the generic `value` half of `oldValue`; `old` is
+  // the subtoken carrying the discriminating information. A fixed coverage
+  // fraction gets this right only at exactly two subtokens, so these cases add
+  // a shared prefix, a path segment and an extension — each of which defeats a
+  // majority rule while leaving `old` just as decisive.
+  for (const query of ["oldValue", "getOldValue", "src/oldValue", "oldValue.js"]) {
+    const found = hits(query);
+    assert.ok(found.includes("oldValue"), `${query} must still find oldValue`);
+    assert.ok(!found.includes("stableValue"), `${query} must not report stableValue`);
+    assert.ok(!found.includes("getStableValue"), `${query} must not report getStableValue`);
+  }
+});
+
+test("an over-specified query still finds the shorter identifier at two subtokens", () => {
+  // The class of query a majority rule silently killed: the unmatched half is
+  // a token the corpus has never seen, so it discriminates nothing and must
+  // not veto the match.
+  assert.ok(hits("UserRepository").includes("UserRepo"));
+  assert.ok(hits("OrderServices").includes("OrderService"));
+  assert.ok(hits("oldValues").includes("oldValue"));
+});
+
+test("a query whose every subtoken is unknown to the corpus returns nothing", () => {
+  assert.deepEqual(hits("ZzzQqqWidget"), []);
+});
+
+test("a shared path segment alone does not qualify a document", () => {
+  // `path` is an indexed field, so every document in the corpus shares `src`.
+  // A word that also carries a rarer subtoken must be decided by the rare one.
+  assert.ok(!hits("src/oldValue").includes("placeOrder"));
+  // A query that is ONLY a directory name legitimately reaches everything
+  // under it — that is a directory query, not a symbol query.
+  assert.equal(hits("src").length, CORPUS.length);
 });
 
 test("prose and single-subtoken queries keep plain OR behaviour", () => {
   assert.deepEqual(hits("order").sort(), ["OrderService", "placeOrder"]);
-  assert.deepEqual(hits("user account repo").sort(), ["UserAccountRepo", "getUserByIdentifier"]);
+  // Each word is a single subtoken, so each is its own rarest token and the
+  // union is returned — plain OR, unchanged.
+  assert.deepEqual(hits("user account repo").sort(), ["UserAccountRepo", "UserRepo", "getUserByIdentifier"]);
 });
 
 test("exact name matches outrank partial ones", () => {

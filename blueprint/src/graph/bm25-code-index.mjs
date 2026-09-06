@@ -66,30 +66,40 @@ export class Bm25CodeIndex {
   search(query, { limit = 20 } = {}) {
     const terms = [...new Set(tokenize(query))];
     if (!terms.length || !this.documents.size) return [];
-    // A code identifier is atomic, but only loosely. `oldValue` tokenizes to
-    // ["old", "value"] so either half can find it, and a document matching only
-    // the generic `value` half is a different symbol that happens to share a
-    // subtoken — admitting it makes this lane report evidence the query never
-    // asked for. Requiring ALL subtokens fixes that but destroys the dominant
-    // code-search shape: a query that is a SUPERSET of the stored identifier
-    // (`UserAccountRepository` for `UserAccountRepo`, `getUserById` for
-    // `getUserByIdentifier`, `OrderServiceImpl` for `OrderService`) would then
-    // return nothing at all rather than a ranked near-match.
+    // Admission rule: a document must match the RAREST corpus-known subtoken
+    // of at least one whole query word.
     //
-    // So the gate is majority coverage: a document qualifies when it covers
-    // MORE THAN HALF the subtokens of at least one whole query word. A single
-    // shared subtoken out of two (the `oldValue`/`stableValue` case) is exactly
-    // half and does not qualify; two of three, three of four and any
-    // single-subtoken word do. Prose queries, whose words are one subtoken
-    // each, keep their existing OR behavior.
+    // A code identifier is atomic, but only loosely. `oldValue` tokenizes to
+    // ["old", "value"] so either half can find it. Admitting a document that
+    // matches only the generic half reports a different symbol that happens to
+    // share a subtoken; requiring ALL subtokens instead destroys the dominant
+    // code-search shape, where the caller over-specifies (`UserRepository` for
+    // `UserRepo`). A fixed coverage fraction is not the answer either — it is a
+    // tuning, and it breaks as soon as the two identifiers share one more
+    // subtoken (`getOldValue` vs `getStableValue`) or the query carries a path
+    // or extension segment.
+    //
+    // Rarity is the property that actually distinguishes these cases. Within a
+    // query word, the subtoken with the lowest document frequency is the one
+    // carrying the discriminating information: `old` in `oldValue`, `account`
+    // in `UserAccountRepository`. A document that misses it is not an answer to
+    // this query however many generic halves it shares.
+    //
+    // Subtokens the corpus has never seen are dropped before choosing: they
+    // discriminate nothing here, which is exactly why an over-specified query
+    // (`repository`, `services`, the plural `values`) still finds the shorter
+    // stored identifier. A word left with no known subtokens cannot qualify
+    // anything.
     const wordGroups = String(query ?? "")
       .split(/\s+/)
-      .map((word) => [...new Set(tokenize(word))])
-      .filter((group) => group.length > 0);
-    const covers = (document) => wordGroups.some((group) => {
-      const matched = group.filter((token) => document.tf.has(token)).length;
-      return matched * 2 > group.length;
-    });
+      .map((word) => {
+        const known = [...new Set(tokenize(word))].filter((token) => (this.df.get(token) ?? 0) > 0);
+        if (!known.length) return null;
+        const rarest = Math.min(...known.map((token) => this.df.get(token)));
+        return known.filter((token) => this.df.get(token) === rarest);
+      })
+      .filter(Boolean);
+    const covers = (document) => wordGroups.some((group) => group.some((token) => document.tf.has(token)));
     const n = this.documents.size;
     const rows = [];
     for (const document of this.documents.values()) {

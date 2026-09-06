@@ -50,6 +50,50 @@ test("V1 strips only internal fields while rich Recall output retains path evide
 // test constructs two paths where the non-compensatory comparator and a
 // naive sum of `scoreComponents` DISAGREE on order, and proves the emitted
 // candidate order follows the comparator, not the sum.
+// Every tier of the ordering, pinned individually. Asserting only the
+// authority tier left five of the seven free to be reversed or deleted without
+// any test noticing, which is most of the "non-compensatory by
+// admissibility/evidence/seed/coverage/truth/analysis/hops/tie-break" claim
+// going unproven.
+test("each ordering tier decides in its declared position, and only when the tiers above it are equal", () => {
+  const path = (id, overrides) => ({
+    id, state: "complete", seedId: `symbol:${id}`, seedExactness: 0,
+    semanticAuthorityRank: 0, minimumEdgeTier: "EXACT_RESOLUTION", evidenceCoverage: 1,
+    hopCount: 1, evidenceEnvelope: { id: `envelope:${id}` },
+    nodes: [], edges: [], evidence: [], ...overrides,
+  });
+  // Each case makes exactly one tier differ; everything above it is equal, so
+  // the winner is decided by that tier alone.
+  const cases = [
+    ["state", { state: "partial" }],
+    ["semanticAuthorityRank", { semanticAuthorityRank: 5 }],
+    ["minimumEdgeTier", { minimumEdgeTier: "UNRESOLVED" }],
+    ["seedExactness", { seedExactness: 9 }],
+    ["evidenceCoverage", { evidenceCoverage: 0 }],
+    ["hopCount", { hopCount: 9 }],
+  ];
+  for (const [tier, worse] of cases) {
+    // The better path is given the LEXICALLY LATER id on purpose. If the tier
+    // under test stops deciding, the chain falls through to the id tie-break
+    // and produces the opposite order — so deleting the tier fails this
+    // assertion instead of silently agreeing with it.
+    const better = path("zzz");
+    const loser = path("aaa", worse);
+    assert.deepEqual(
+      [loser, better].sort(comparePaths).map((entry) => entry.id),
+      ["zzz", "aaa"],
+      `${tier} must decide when every tier above it is equal`,
+    );
+  }
+  // The lexical tie-break is last and total: with every tier equal, ordering
+  // is by id, so the result is deterministic rather than input-order dependent.
+  assert.deepEqual(
+    [path("zzz"), path("aaa")].sort(comparePaths).map((entry) => entry.id),
+    ["aaa", "zzz"],
+    "a full tie falls through to the deterministic id tie-break",
+  );
+});
+
 test("emitted candidate order follows the non-compensatory comparator, not a sum of scoreComponents", () => {
   const strongerAuthorityWeakerEverythingElse = {
     id: "path:a", state: "complete", seedId: "symbol:a", seedExactness: 1,
