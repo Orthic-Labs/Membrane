@@ -187,7 +187,12 @@ export function createBlueprintApplicationService({
     return buildProjectionDependencyDag({
       sourceHash: meta?.manifest?.repo?.sourceHash ?? null,
       providerDigest: meta?.manifest?.manifestDigest ?? null,
-      configDigest: generation?.augmentation?.configDigest ?? null,
+      // The build writes this under `augmentation.providers` alongside the
+      // other first-party summaries; the older top-level read is kept as a
+      // fallback for generations sealed before it existed.
+      configDigest: generation?.augmentation?.providers?.configDigest
+        ?? generation?.augmentation?.configDigest
+        ?? null,
       schemaVersion: meta?.schemaVersion ?? generation?.schemaVersion ?? null,
       generationId: meta?.manifest?.generationId ?? generation?.manifest?.generationId ?? null,
     });

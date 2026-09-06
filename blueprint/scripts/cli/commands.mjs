@@ -83,7 +83,17 @@ async function authorizeResidentLaunch() {
 
 async function runFacadeCommand(command, args, { root, outDir }) {
   const service = serviceFor({ out: outDir });
-  const common = { repoRoot: root };
+  // BPT-042 requires the same application semantics on every adapter. The
+  // facade previously built only `{ repoRoot }`, so no CLI invocation could
+  // express a generation-pinned or stale-tolerant request that the daemon, the
+  // bounded one-shot, the SDK and MCP all accept — the CLI could not even reach
+  // `generation_mismatch`. Both fields are optional and omitted when absent, so
+  // requests that do not use them are byte-identical to before.
+  const common = {
+    repoRoot: root,
+    ...(args.generation ? { generation: String(args.generation) } : {}),
+    ...(args["allow-stale"] || args.allowStale ? { allowStale: true } : {}),
+  };
   switch (command) {
     case "status": {
       const payload = await service.status(common);

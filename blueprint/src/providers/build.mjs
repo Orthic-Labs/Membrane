@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers.mjs";
@@ -360,6 +361,42 @@ function addBridgeEvidence(generation, files) {
   return collected.summary;
 }
 
+/**
+ * Repository configuration the build actually consumes. Module resolution reads
+ * tsconfig/jsconfig (paths, baseUrl, conditions) and package manifests
+ * (exports, imports, workspaces) live off disk on every build, so a change to
+ * any of them changes the graph without any source file changing.
+ */
+const BUILD_CONFIG_FILES = Object.freeze([
+  "tsconfig.json",
+  "jsconfig.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+]);
+
+function isBuildConfigFile(path) {
+  const normalized = String(path ?? "").replaceAll("\\", "/");
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return BUILD_CONFIG_FILES.includes(base);
+}
+
+/**
+ * BPT-020's dependency DAG has a `config` parent, but nothing ever set it:
+ * `generation.augmentation.configDigest` was read by the application service
+ * and written by no one, so a real configuration change could not invalidate a
+ * cached projection through the declared parent. This computes it from the
+ * config files the build consumes, ordered by path so the digest is
+ * deterministic, and content-addressed so an edit changes it.
+ */
+function buildConfigDigest(files) {
+  const rows = (files ?? [])
+    .filter((file) => isBuildConfigFile(file?.path))
+    .map((file) => `${String(file.path).replaceAll("\\", "/")}\u0000${file.contentHash ?? ""}`)
+    .sort();
+  if (!rows.length) return null;
+  return `sha256:${createHash("sha256").update(rows.join("\u0001")).digest("hex")}`;
+}
+
 export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, files, options = {}) {
   const root = resolve(repoRoot);
   const summaries = {
@@ -382,6 +419,7 @@ export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, f
   summaries.frameworkIntelligence = augmentFrameworkIntelligence(generation, files);
   summaries.portableIdentity = attachPortableIdentities(generation);
   summaries.conventions = detectProjectConventions(files);
+  summaries.configDigest = buildConfigDigest(files);
   const layers = [
     { id: MODULE_PROVIDER.id, version: MODULE_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_OR_TYPED_UNRESOLVED" },
     { id: FRAMEWORK_PROVIDER.id, version: FRAMEWORK_PROVIDER.version, role: "supplemental", precisionTier: "EVIDENCE_BOUND_HEURISTIC" },
