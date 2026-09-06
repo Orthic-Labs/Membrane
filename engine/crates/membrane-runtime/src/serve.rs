@@ -1718,6 +1718,8 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/freshness", HttpWorkClass::General),
     ("POST", "/anchor/retrieve", HttpWorkClass::General),
     ("POST", "/expand", HttpWorkClass::General),
+    ("POST", "/push/resolve", HttpWorkClass::General),
+    ("POST", "/push/prepare", HttpWorkClass::General),
     ("POST", "/skills-snapshot", HttpWorkClass::General),
     ("POST", "/v1/telemetry/events:batch", HttpWorkClass::General),
     (
@@ -6327,6 +6329,11 @@ mod tests {
             .contains("method == \"POST\" && path == crate::adapt_service::OBSERVATION_PATH"));
         implemented.insert(("POST", crate::adapt_service::OPERATOR_PATH));
         implemented.insert(("POST", crate::adapt_service::OBSERVATION_PATH));
+        assert!(dispatch.contains(
+            "method == \"POST\" && matches!(path, \"/expand\" | \"/push/resolve\")"
+        ));
+        implemented.insert(("POST", "/expand"));
+        implemented.insert(("POST", "/push/resolve"));
         assert!(dispatch.contains("method == \"POST\" && path == \"/push/prepare\""));
         implemented.insert(("POST", "/push/prepare"));
         // Root/index share one condition; snapshot, livez, and scratchpad are handled before dispatch.
