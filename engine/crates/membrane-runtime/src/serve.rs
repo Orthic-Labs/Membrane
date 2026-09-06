@@ -5076,8 +5076,15 @@ fn health_response_with_workers(
     payload["dailyAnalysis"] = analysis_watchdog_snapshot(&configured_analysis_directory());
     payload["serviceGeneration"] = json!(crate::release_identity::service_generation());
     payload["releaseGeneration"] = json!(crate::release_identity::release_generation());
-    payload["runtimeReceipt"] =
-        crate::runtime_receipt::current_snapshot().map_or(Value::Null, |receipt| json!(receipt));
+    let runtime_receipt = crate::runtime_receipt::current_snapshot();
+    payload["startupGeneration"] = runtime_receipt
+        .as_ref()
+        .map_or(Value::Null, |receipt| json!(receipt.startup_generation));
+    payload["stableInstallRoot"] = runtime_receipt
+        .as_ref()
+        .and_then(|receipt| receipt.stable_install_root.as_ref())
+        .map_or(Value::Null, |root| json!(root));
+    payload["runtimeReceipt"] = runtime_receipt.map_or(Value::Null, |receipt| json!(receipt));
     let status = if store_healthy && catalog_healthy {
         StatusCode::OK.as_u16()
     } else {
