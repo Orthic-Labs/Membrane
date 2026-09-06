@@ -2,9 +2,10 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { diffLedgerAgainstTree } from "../src/graph/merkle-ledger.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
+import { reconcileRenameAliases } from "../src/graph/reanchor.mjs";
 import { scanSourceMetadataPublic, scanSourcesPublic } from "../src/graph/static-provider.mjs";
 import { stableRead } from "../src/graph/stable-read.mjs";
-import { assertSafeMutableStorePath, closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { assertSafeMutableStorePath, closeStore, loadGeneration, openStore } from "../src/graph/store-sqlite.mjs";
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
@@ -72,6 +73,47 @@ function coalesceRenameEvents(events) {
     (event.eventKind === "delete" && event.path === rename.path)
     || (event.eventKind === "create" && event.path === rename.renameTo)
   )));
+}
+
+// BPT-013: entity/claim-level identity carried by a detected file-level
+// rename/move. A generation node has no `text`/`fingerprint` field of its
+// own, so it is mapped onto the abstract "fact" shape `reconcileRenameAliases`
+// (blueprint/src/graph/reanchor.mjs) expects: `portableId` when the node
+// already carries one (BPT-013's stable identity, path-independent); the
+// evidence content hash as an exact-byte `fingerprint`, but only for a `file`
+// node — a symbol's evidence hash is its *containing file's* digest (the
+// lexical/tree-sitter providers do not hash individual spans), so every
+// symbol in one file shares it and treating it as that symbol's own
+// fingerprint would make ordinary multi-symbol files collide at that tier
+// instead of correctly separating by entity; and the qualified name as the
+// last, still-exact, normalized-text tier for everything else. None of this
+// is fuzzy: ambiguous or unmatched entities come back typed
+// `ambiguous`/`stale` from reanchorEvidence and are reported unresolved
+// rather than guessed.
+export function renameFact(node) {
+  return {
+    id: node.id,
+    path: node.path,
+    portableId: node.portableId ?? null,
+    fingerprint: node.kind === "file" ? (node.evidence?.[0]?.contentHash ?? null) : null,
+    text: node.qualifiedName ?? node.name ?? null,
+  };
+}
+
+// The real production seam for BPT-013 entity-level rename/move
+// reconciliation: every rename `coalesceRenameEvents` recognises drives
+// `reconcileRenameAliases` over the generation snapshot from immediately
+// before the journal drain (the entities as they stood at the old path) and
+// immediately after it (the entities the drain produced at the new path).
+// `reconcileRenameAliases` itself only ever emits an alias for an unambiguous
+// exact match; everything else is returned typed and unresolved.
+export function finishEntityRenames(renameEvents, before, after) {
+  return renameEvents.map((event) => reconcileRenameAliases({
+    oldPath: event.path,
+    newPath: event.renameTo,
+    before: (before?.nodes ?? []).map(renameFact),
+    after: (after?.nodes ?? []).map(renameFact),
+  }));
 }
 
 export function evaluateConvergenceOracle(db, sourceFiles, { traversalTruncated = false, truncationReasons = [], eventGapOverride } = {}) {
@@ -168,8 +210,19 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     }
     const unique = new Map();
     for (const event of pending) unique.set(`${event.path}:${event.renameTo ?? ""}`, event);
+    const renameEvents = [...unique.values()].filter((event) => event.eventKind === "rename" && event.renameTo);
+    // Captured before the journal drains below: the last-committed generation
+    // still reflects entities at `oldPath`. See finishEntityRenames/renameFact.
+    const beforeGeneration = renameEvents.length ? loadGeneration(db) : null;
     if (unique.size) appendWatchEvents(db, [...unique.values()]);
     const applied = await drainJournal(db, root, { force: true, maxDependentFiles: options.maxDependentFiles, signal });
+    const renameReconciliation = renameEvents.length
+      ? finishEntityRenames(renameEvents, beforeGeneration, loadGeneration(db))
+      : [];
+    if (renameReconciliation.length) {
+      db.prepare("INSERT INTO watch_state(key,value) VALUES ('rename_reconciliation',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        .run(JSON.stringify(renameReconciliation));
+    }
     if ((hadSnapshot && unique.size > 0) || (!hadSnapshot && repairingGap)) {
       // A real (non-glob) ignore list makes @parcel/watcher's writeSnapshot
       // walk skip every ignored directory instead of the whole tree, so it
@@ -223,7 +276,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       db.exec("ROLLBACK;");
       throw error;
     }
-    return { ok: convergence.converged, changed: diff.changed, added: diff.added, removed: diff.removed, queued: unique.size, applied, eventGap: convergence.converged ? 0 : 1, convergence };
+    return { ok: convergence.converged, changed: diff.changed, added: diff.added, removed: diff.removed, queued: unique.size, applied, eventGap: convergence.converged ? 0 : 1, convergence, renameReconciliation };
   } finally {
     if (close) closeStore(db);
     lease?.release();
