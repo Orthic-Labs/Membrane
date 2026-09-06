@@ -632,6 +632,10 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, scope: &str, payload: 
             "temporal cardinality policy is missing or inconsistent",
         ));
     }
+    // CTX-009's fourth dimension. `TemporalValidityV1` carries only valid and
+    // recorded time, so the observation instant has to be handed to the store
+    // separately or it is lost at admission.
+    let observed_at = fact.observed_at.clone();
     let record = TemporalValidityV1 {
         record_id: fact.fact_id,
         subject: fact.subject,
@@ -656,7 +660,7 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, scope: &str, payload: 
     };
     store
         .temporal_facts()
-        .record_validity(record, cardinality == Some("single"))
+        .record_validity_observed(record, cardinality == Some("single"), Some(&observed_at))
         .map_err(storage)?;
     temporal_admission_receipt(store, scope, payload)?.ok_or_else(|| {
         storage("temporal admission committed without readable canonical receipt")
@@ -725,12 +729,13 @@ pub fn resolve_memory(store: &MemoryStore, scope: &str, id: &str, expected: &str
     let mut db = store.db().lock();
     ensure_memory_schema(&db).map_err(storage)?;
     let tx = db.transaction_with_behavior(TransactionBehavior::Deferred).map_err(storage)?;
-    let row: Option<(String,String,String,String,Option<i64>,Option<i64>,Option<i64>,Option<String>,String,String)> = tx.query_row(
+    #[allow(clippy::type_complexity)]
+    let row: Option<(String,String,String,String,Option<i64>,Option<i64>,Option<i64>,Option<String>,String,String,String,String)> = tx.query_row(
         "SELECT content,authority,lifecycle_state,source_ids,effective_from_ms,effective_until_ms,expires_at_ms,
-          superseded_by,record_type,producer FROM memories WHERE id=?1 AND scope_id=?2", params![id,scope],
-        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?)))
+          superseded_by,record_type,producer,sensitivity,derivation FROM memories WHERE id=?1 AND scope_id=?2", params![id,scope],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?,r.get(10)?,r.get(11)?)))
         .optional().map_err(storage)?;
-    let Some((content,authority,lifecycle,sources,from,until,expiry,superseded,kind,producer)) = row else {
+    let Some((content,authority,lifecycle,sources,from,until,expiry,superseded,kind,producer,sensitivity,derivation_column)) = row else {
         return Err(fail("memory_unavailable", "record unavailable in caller scope"));
     };
     let suppressed: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM cortex_recall_suppression_v1 WHERE memory_id=?1 AND suppressed=1)", [id], |r| r.get(0)).map_err(storage)?;
@@ -760,7 +765,22 @@ pub fn resolve_memory(store: &MemoryStore, scope: &str, id: &str, expected: &str
         // authority, origin, lifecycle and derivation stay distinct fields.
         "provenanceAvailability":if sources.trim() != "[]" && !sources.trim().is_empty() {"explicit"} else {"unavailable_legacy"},
         "originProducer":producer,
-        "derivation":superseded.as_deref().map(|parent| json!({"supersededBy":parent})).unwrap_or(Value::Null),
+        // CTX-004: sensitivity is a durable column bound at write time; a row
+        // a writer never classified reports the explicit "unavailable_legacy"
+        // marker rather than a guessed classification.
+        "sensitivity":sensitivity,
+        // Derivation prefers an explicit durable `derivation` value when a
+        // writer recorded one; failing that, known supersession lineage
+        // (superseded_by is never inferred, so this is still explicit, not
+        // guessed); failing that, the row's derivation is bound to the
+        // explicit "unavailable_legacy" marker, never Null/guessed.
+        "derivation":if derivation_column != cortex_store::memdb::UNAVAILABLE_LEGACY {
+            serde_json::from_str::<Value>(&derivation_column).unwrap_or(Value::String(derivation_column))
+        } else if let Some(parent) = superseded.as_deref() {
+            json!({"supersededBy":parent})
+        } else {
+            Value::String(cortex_store::memdb::UNAVAILABLE_LEGACY.to_string())
+        },
         "observedResolution":true,"verifiedHelped":false}))
 }
 
@@ -1551,7 +1571,11 @@ mod tests {
         assert_eq!(legacy["authority"], "A2");
         assert_eq!(legacy["originProducer"], "manual");
         assert_eq!(legacy["lifecycle"], "active");
-        assert_eq!(legacy["derivation"], Value::Null);
+        // CTX-004: no writer classified sensitivity or recorded a derivation
+        // for this row; both bind to the explicit unavailable_legacy marker,
+        // never a guessed value or a silent Null.
+        assert_eq!(legacy["sensitivity"], "unavailable_legacy");
+        assert_eq!(legacy["derivation"], "unavailable_legacy");
         // Governed review admission binds the proposal as an explicit source
         // with independently verified authority; all four bindings stay distinct.
         let text="Reviewed admission carries explicit proposal provenance.";
@@ -1561,8 +1585,39 @@ mod tests {
         assert_eq!(page["authority"], "A4");
         assert_eq!(page["originProducer"], "manual");
         assert_eq!(page["lifecycle"], "active");
-        assert_eq!(page["derivation"], Value::Null);
+        assert_eq!(page["sensitivity"], "unavailable_legacy");
+        assert_eq!(page["derivation"], "unavailable_legacy");
         assert_eq!(page["content"], text);
+    }
+
+    #[test]
+    fn ctx004_resolver_reports_explicit_sensitivity_and_derivation_when_bound() {
+        let s=Sandbox::new();
+        let text="Classified content with an explicitly recorded lineage.";
+        let id=s.admitted(text);
+        // Bind explicit sensitivity/derivation directly, the way a future
+        // classifying writer would: never guessed, always a durable column.
+        s.store.db().lock().execute(
+            "UPDATE memories SET sensitivity=?1, derivation=?2 WHERE id=?3",
+            rusqlite::params!["restricted", "{\"derivedFrom\":\"seed-doc-7\"}", id],
+        ).unwrap();
+        let page = resolve_memory(&s.store,"scope",&id,&digest_str(text),0,12000).unwrap();
+        assert_eq!(page["sensitivity"], "restricted");
+        assert_eq!(page["derivation"], json!({"derivedFrom":"seed-doc-7"}));
+    }
+
+    #[test]
+    fn ctx004_migration_26_backfills_sensitivity_and_derivation_explicitly() {
+        let s=Sandbox::new();
+        let version: i64 = s.store.db().lock()
+            .query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, cortex_store::memdb::LATEST_SCHEMA_VERSION);
+        let id=s.store.put("legacy-backfill", "Row present before classification existed.", "scope", cortex_core::MemoryTier::Semantic);
+        let (sensitivity, derivation): (String, String) = s.store.db().lock().query_row(
+            "SELECT sensitivity, derivation FROM memories WHERE id=?1", [&id],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+        assert_eq!(derivation, cortex_store::memdb::UNAVAILABLE_LEGACY);
     }
 
     fn temporal_fact_json(fact_id: &str, scope_id: &str, observed_at: &str) -> Value {

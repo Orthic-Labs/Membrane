@@ -462,6 +462,26 @@ impl TemporalFactStore {
         record: TemporalValidityV1,
         single_valued: bool,
     ) -> Result<TemporalValidityReceiptV1, String> {
+        self.record_validity_observed(record, single_valued, None)
+    }
+
+    /// Admit a validity record while durably preserving the instant the fact
+    /// was *observed*.
+    ///
+    /// CTX-009 keeps observed, valid, recorded and expiry distinct.
+    /// `TemporalValidityV1` is the validity view and carries only valid and
+    /// recorded time, so a caller that knows the observation instant — the
+    /// governed temporal admission path, which holds the proposer's
+    /// `TemporalFact` — must pass it here or the fourth dimension is lost at
+    /// the moment of admission. `None` means the writer genuinely has no
+    /// observation instant; the column is then left empty rather than being
+    /// backfilled from recorded time, which would silently conflate the two.
+    pub fn record_validity_observed(
+        &self,
+        record: TemporalValidityV1,
+        single_valued: bool,
+        observed_at: Option<&str>,
+    ) -> Result<TemporalValidityReceiptV1, String> {
         record.validate()?;
         let mut conn = self.db.lock();
         ensure_temporal_schema(&conn)?;
@@ -569,7 +589,7 @@ impl TemporalFactStore {
                 record.scope_id,
                 record.authority,
                 if record.revoked { "revoked" } else { "supported" },
-                recorded_at_value.as_deref().unwrap_or(""),
+                observed_at.map(str::trim).filter(|value| !value.is_empty()).unwrap_or(""),
                 valid_at_value.as_deref().unwrap_or(""),
                 record.invalid_at,
                 record.expires_at,
