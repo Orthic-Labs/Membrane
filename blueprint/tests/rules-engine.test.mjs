@@ -10,6 +10,7 @@ import { parseRules } from "../src/lib/rules/parser.mjs";
 import { evaluateRules, pathMatches } from "../src/lib/rules/evaluate.mjs";
 import { isExceptionValid, suppressedByException } from "../src/lib/rules/exceptions.mjs";
 import { changedSlice } from "../src/lib/rules/baseline.mjs";
+import { FACT_PROVENANCE, isInferentialProvenance } from "../src/graph/provenance.mjs";
 
 const EXAMPLE = join(import.meta.dirname, "..", "examples", "blueprint.rules.yml");
 
@@ -46,6 +47,55 @@ test("evaluation finds violations with evidence paths and fingerprints", () => {
   assert.equal(findings[0].severity, "error");
   assert.ok(findings[0].fingerprint);
   assert.ok(findings[0].evidencePath.length === 2);
+});
+
+// BPT-011: a rule match is a declaration bound to evidence, never authority
+// to assert an observed code fact. This mirrors the declared/observed split
+// in src/graph/doc-truth-projection.mjs and reuses the shared provenance
+// contract from src/graph/provenance.mjs.
+test("rule findings are non-authoritative declarations bound to evidence, never observed graph facts", () => {
+  const parsed = parseRules(readFileSync(EXAMPLE, "utf8"));
+  const findings = evaluateRules({
+    rules: parsed.rules,
+    edges: [
+      { source: "src/ui/button.tsx", target: "src/db/conn.ts", kind: "IMPORTS", sourcePath: "src/ui/button.tsx", targetPath: "src/db/conn.ts" },
+    ],
+    providerVersions: {},
+    generationId: "g1",
+  });
+  assert.equal(findings.length, 1);
+  const [finding] = findings;
+
+  // Explicit non-authority tag: a finding cannot silently be mistaken for a
+  // graph write or an observed code fact.
+  assert.equal(finding.authority, "declaration");
+
+  // Provenance is the categorical RULE_RESOLVED class, shared with the rest
+  // of Blueprint's fact system — not a bespoke, ungoverned vocabulary.
+  assert.equal(finding.provenance, FACT_PROVENANCE.RULE_RESOLVED);
+  assert.equal(isInferentialProvenance(finding.provenance), false);
+
+  // Categorical/deterministic facts carry confidence = null, never a
+  // fabricated numeric probability, per the house provenance contract.
+  assert.equal(finding.confidence, null);
+
+  // The declaration is bound to the triggering evidence, not free-floating.
+  assert.deepEqual(finding.declared, {
+    ruleId: "ui-must-not-import-db",
+    ruleVersion: "1.0.0",
+    edgeKind: "IMPORTS",
+    state: "violation",
+  });
+  assert.equal(finding.evidence.length, 2);
+  assert.ok(finding.evidence.every((e) => e.kind === "code"));
+  assert.equal(finding.evidence[0].path, "src/ui/button.tsx");
+  assert.equal(finding.evidence[1].path, "src/db/conn.ts");
+
+  // Detection itself is unchanged: same rule, same violated edge, same
+  // fingerprint/evidencePath shape as before this envelope was added.
+  assert.equal(finding.ruleId, "ui-must-not-import-db");
+  assert.equal(finding.severity, "error");
+  assert.deepEqual(finding.evidencePath, ["src/ui/button.tsx", "src/db/conn.ts"]);
 });
 
 test("fingerprints ignore line numbers (stable across rebuilds)", () => {

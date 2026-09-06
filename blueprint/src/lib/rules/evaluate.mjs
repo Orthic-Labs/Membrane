@@ -1,8 +1,16 @@
 // D41: rule evaluation — deterministic, local. Every result includes the
 // shortest evidence path, matched selector, rule version, suppression state,
 // and remediation text supplied by the rule.
+//
+// BPT-011: a rule match is a DECLARATION bound to the graph evidence that
+// triggered it, never an observed code fact and never authority on its own.
+// Findings carry FACT_PROVENANCE.RULE_RESOLVED (categorical, confidence
+// forced null by src/graph/provenance.mjs) plus an explicit
+// `authority: "declaration"` tag and cited evidence, mirroring the
+// declared/observed split in src/graph/doc-truth-projection.mjs.
 
 import { createHash } from "node:crypto";
+import { withFactProvenance, FACT_PROVENANCE } from "../../graph/provenance.mjs";
 
 export function pathMatches(pattern, path) {
   if (!pattern) return true;
@@ -29,7 +37,11 @@ export function evaluateRules({ rules, edges = [], nodes = [], providerVersions 
         .update(`${rule.id}:${ruleVersion}:${edge.source}:${edge.kind}:${edge.target}:${providerVersions[edge.kind] ?? ""}`)
         .digest("hex")
         .slice(0, 16);
-      findings.push({
+      const evidence = [
+        { kind: "code", path: edge.source, edgeKind: edge.kind, role: "from" },
+        { kind: "code", path: edge.target, edgeKind: edge.kind, role: "to" },
+      ];
+      findings.push(withFactProvenance({
         ruleId: rule.id,
         ruleVersion,
         ruleName: rule.id,
@@ -45,7 +57,13 @@ export function evaluateRules({ rules, edges = [], nodes = [], providerVersions 
         message: `rule ${rule.id} violated by ${edge.source} -> ${edge.target} (${edge.kind})`,
         helpUri: null,
         remediation: rule.rationale ?? "",
-      });
+        // A rule match is a declaration bound to the evidence that triggered
+        // it — never an observed code fact, never authority on its own.
+        // Downstream consumers must not treat this as a graph write.
+        authority: "declaration",
+        declared: { ruleId: rule.id, ruleVersion, edgeKind: edge.kind, state: "violation" },
+        evidence,
+      }, FACT_PROVENANCE.RULE_RESOLVED, null));
     }
   }
   return findings;
