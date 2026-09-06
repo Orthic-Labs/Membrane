@@ -55,6 +55,56 @@ fn bind_health(health: Value) -> Result<MemoryBackendClient, ClientError> {
     .bind(&CompatibilityRequirement::default())
 }
 
+
+#[test]
+fn bind_verified_reuses_authoritative_health_without_second_handshake() {
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = Arc::clone(&calls);
+    let client = MemoryBackendClient::new(Box::new(move |operation: &str, _request: &Map<String, Value>| {
+        seen.lock().unwrap().push(operation.to_string());
+        Ok(json!({"ok":true}))
+    }) as Box<membrane_client::MemoryTransport>)
+    .bind_verified(&health, &CompatibilityRequirement::default())
+    .unwrap();
+    assert_eq!(client.identity().unwrap().startup_generation, 7);
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn request_scoped_federation_uses_public_bound_transport() {
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = Arc::clone(&calls);
+    let transport = Box::new(move |operation: &str, request: &Map<String, Value>| {
+        seen.lock().unwrap().push(operation.to_string());
+        Ok(if operation == "/federate" { Value::Object(request.clone()) } else { json!({"ok":true}) })
+    }) as Box<membrane_client::MemoryTransport>;
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let client = MemoryBackendClient::new(transport)
+        .bind_verified(&health, &CompatibilityRequirement::default())
+        .unwrap();
+    let response = client
+        .with_call_options(CallOptions::after(Duration::from_secs(1)))
+        .federate_json(Map::from_iter([(String::from("remainingContextCeiling"), Value::from(42))]))
+        .unwrap();
+    assert_eq!(response["remainingContextCeiling"], 42);
+    assert_eq!(*calls.lock().unwrap(), vec![String::from("/federate")]);
+}
+
 #[test]
 fn embedded_or_wrong_store_binding_fails_closed() {
     let requirement = CompatibilityRequirement {
