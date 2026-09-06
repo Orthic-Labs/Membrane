@@ -364,6 +364,16 @@ mod tests {
         }
     }
 
+    fn test_product_root(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "membrane-client-binding-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
     #[test]
     fn only_proven_not_found_allows_packaged_provisioning() {
         assert_eq!(
@@ -402,8 +412,7 @@ mod tests {
 
     #[test]
     fn installed_identity_populates_candidate_fence() {
-        let temp = tempfile::tempdir().unwrap();
-        let product_root = temp.path();
+        let product_root = test_product_root("identity-populates-fence");
         let identity_path = product_root.join(INSTALLATION_IDENTITY_RELATIVE_PATH);
         std::fs::create_dir_all(identity_path.parent().unwrap()).unwrap();
         std::fs::write(
@@ -416,7 +425,7 @@ mod tests {
         )
         .unwrap();
 
-        let (installation_id, startup_generation) = read_installed_identity(product_root).unwrap();
+        let (installation_id, startup_generation) = read_installed_identity(&product_root).unwrap();
         let candidate = candidate_for_root(
             &product_root.join("current"),
             installation_id,
@@ -427,23 +436,25 @@ mod tests {
             Some("00000000-0000-4000-8000-000000000111")
         );
         assert_eq!(candidate.expected_startup_generation, Some(9));
+        std::fs::remove_dir_all(product_root).unwrap();
     }
 
     #[test]
     fn installed_identity_missing_or_malformed_is_corrupt_known_install() {
-        let temp = tempfile::tempdir().unwrap();
+        let product_root = test_product_root("identity-corrupt-known");
         assert!(matches!(
-            read_installed_identity(temp.path()),
+            read_installed_identity(&product_root),
             Err(ClientError::CorruptOrRotation { .. })
         ));
 
-        let identity_path = temp.path().join(INSTALLATION_IDENTITY_RELATIVE_PATH);
+        let identity_path = product_root.join(INSTALLATION_IDENTITY_RELATIVE_PATH);
         std::fs::create_dir_all(identity_path.parent().unwrap()).unwrap();
         std::fs::write(&identity_path, br#"{"schema_version":1}"#).unwrap();
         assert!(matches!(
-            read_installed_identity(temp.path()),
+            read_installed_identity(&product_root),
             Err(ClientError::CorruptOrRotation { .. })
         ));
+        std::fs::remove_dir_all(product_root).unwrap();
     }
 
     #[test]
