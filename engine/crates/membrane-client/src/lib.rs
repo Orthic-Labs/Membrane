@@ -19,6 +19,7 @@ pub use memory_backend::{
     CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport,
 };
 pub use records::{FullRecord, MemoryEntry, MemoryListRow, MemoryTier};
+pub use membrane_protocol::ResidentEndpointV1;
 
 pub const ENVELOPE_VERSION: u64 = 1;
 pub const ERROR_VERSION: u64 = 1;
