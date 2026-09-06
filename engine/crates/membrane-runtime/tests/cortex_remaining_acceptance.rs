@@ -575,7 +575,7 @@ fn ctx012_hybrid_recall_identical_eligibility_across_vector_dispatch_settings() 
     // Baseline: default dispatch (unset → v2 active).
     env.set(None);
     let baseline = dispatch_fixture_ids();
-    assert_eq!(baseline.len(), 2, "both crane fixtures recall: {baseline:?}");
+    assert_eq!(baseline.len(), 3, "all three fixtures recall: {baseline:?}");
     // Legacy fallback values honored by the dispatch function, plus a
     // whitespace-padded variant proving the trim.
     for setting in ["0", "false", "off", "legacy", " false "] {
@@ -813,7 +813,7 @@ fn ctx020_pending_proposal_readback_never_auto_admits() {
     assert_eq!(receipt["reviewState"], json!("pending"));
     assert_eq!(receipt["durable"], json!(true));
     assert_eq!(
-        receipt["readbackDigest"], receipt["emissionHash"],
+        receipt["lifecycleReceipt"]["readbackDigest"], receipt["emissionHash"],
         "readback digest binds the stored bytes: {receipt}"
     );
     let proposal_id = receipt["proposalId"].as_str().expect("proposalId").to_owned();
