@@ -114,14 +114,29 @@ impl<'conn> Fts5Projection<'conn> {
     /// Insert or replace one projection row.  The record itself is never
     /// touched, so a projection failure cannot erase semantic memory.
     pub fn upsert(&self, row: &Fts5Document) -> Result<(), Fts5Error> {
-        self.ensure_schema()?;
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
+        Self::upsert_on(&tx, row)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Same replace-then-insert as `upsert`, but WITHOUT opening a transaction of
+    /// its own. Callers that already hold one (the canonical `memories` write sink
+    /// keeps the projection in step inside the same transaction, so a committed row
+    /// and its lexical projection can never diverge) must use this: SQLite has no
+    /// nested transactions, so `upsert` there fails with "cannot start a transaction
+    /// within a transaction". Atomicity is the caller's open transaction.
+    pub fn upsert_within(&self, row: &Fts5Document) -> Result<(), Fts5Error> {
+        Self::upsert_on(self.conn, row)
+    }
+
+    fn upsert_on(conn: &Connection, row: &Fts5Document) -> Result<(), Fts5Error> {
+        Fts5Projection::new(conn).ensure_schema()?;
+        conn.execute(
             "DELETE FROM cortex_fts5 WHERE record_id=?1",
             params![row.record_id],
         )?;
-        insert_document(&tx, row)?;
-        tx.commit()?;
+        insert_document(conn, row)?;
         Ok(())
     }
 

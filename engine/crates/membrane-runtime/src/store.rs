@@ -2703,7 +2703,7 @@ impl MemoryStore {
             return Ok(());
         };
         cortex_store::Fts5Projection::new(conn)
-            .upsert(&cortex_store::Fts5Document {
+            .upsert_within(&cortex_store::Fts5Document {
                 record_id: id.to_string(),
                 record_type,
                 session_id: None,
