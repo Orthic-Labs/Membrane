@@ -1273,7 +1273,7 @@ mod tests {
     fn ctx004_resolver_reports_explicit_provenance_availability_without_guessing() {
         let s=Sandbox::new();
         // Legacy direct write carries no recorded sources: absence is explicit.
-        let legacy_id=s.store.put("legacy-row", "A legacy row without recorded sources.", "scope", crate::store::MemoryTier::Semantic);
+        let legacy_id=s.store.put("legacy-row", "A legacy row without recorded sources.", "scope", cortex_core::MemoryTier::Semantic);
         assert!(!legacy_id.is_empty());
         let legacy=resolve_memory(&s.store,"scope",&legacy_id,&digest_str("A legacy row without recorded sources."),0,12000).unwrap();
         assert_eq!(legacy["provenanceAvailability"], "unavailable_legacy");

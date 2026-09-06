@@ -932,6 +932,13 @@ enum Cmd {
         #[arg(long, default_value_t = 1_000)]
         limit: usize,
     },
+    /// List active rows whose review clock has expired (read-only; never mutates authority).
+    ReviewDue {
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     /// Emit the embedding-neighbor graph; --anonymous removes memory IDs and scopes.
     Graph {
         #[arg(long)]
@@ -4926,6 +4933,22 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             for (id, tier, chars, access, inject) in rows {
                 println!("{access:>4} {inject:>4} {chars:>7} {tier:<9} {id}");
             }
+            eprintln!(
+                "{}",
+                serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
+            );
+        }
+        Cmd::ReviewDue { scope, limit } => {
+            let store = open(&db)?;
+            let page = store.lifecycle_reviews_due(
+                scope.as_deref(),
+                crate::time::now_millis() as i64,
+                limit,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string(&page.items).map_err(|error| error.to_string())?
+            );
             eprintln!(
                 "{}",
                 serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?

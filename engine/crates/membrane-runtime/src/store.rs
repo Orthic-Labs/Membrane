@@ -459,6 +459,21 @@ pub enum MemoryLifecycleKind {
     Superseded,
 }
 
+/// One row whose review clock has expired. Read-only evidence for the CTX-010
+/// time trigger: surfacing review-due never mutates authority, lifecycle
+/// state, or recall eligibility.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleReviewDueV1 {
+    pub memory_id: String,
+    pub scope_id: String,
+    pub authority: String,
+    pub lifecycle_state: String,
+    pub review_after_ms: Option<i64>,
+    pub expires_at_ms: Option<i64>,
+    pub reason: String,
+}
+
 /// Trusted execution identity for lifecycle mutations.  This is deliberately
 /// constructed outside request JSON (manifest/startup lease/loopback), so a
 /// caller cannot self-assert actor or authority in a mutation body.
@@ -9268,6 +9283,81 @@ impl MemoryStore {
         })
     }
 
+    /// CTX-010 time trigger as a read-only scan: active rows whose
+    /// `review_after_ms` or `expires_at_ms` has passed at `now_ms`. Bounded
+    /// with exact/lower-bound completeness. Surfacing review-due performs no
+    /// canonical mutation: authority, lifecycle state and recall eligibility
+    /// are untouched by this call.
+    pub fn lifecycle_reviews_due(
+        &self,
+        scope: Option<&str>,
+        now_ms: i64,
+        limit: usize,
+    ) -> Result<CortexResultPage<LifecycleReviewDueV1>, String> {
+        if limit == 0 {
+            return Err("review-due limit must be greater than zero".to_owned());
+        }
+        let conn = self.db.lock();
+        let mut statement = conn.prepare(
+            "SELECT id, scope_id, authority, lifecycle_state, review_after_ms, expires_at_ms FROM memories \
+             WHERE (?1 IS NULL OR scope_id = ?1) AND lifecycle_state = 'active' \
+             AND (review_after_ms IS NOT NULL AND review_after_ms <= ?2 \
+               OR expires_at_ms IS NOT NULL AND expires_at_ms <= ?2) \
+             ORDER BY review_after_ms, expires_at_ms, id COLLATE BINARY LIMIT ?3",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due scan prepare failed: {error}"))
+        })?;
+        let probe = i64::try_from(limit.saturating_add(1))
+            .map_err(|_| "review-due limit exceeds SQLite integer range".to_owned())?;
+        let rows = statement
+            .query_map(rusqlite::params![scope, now_ms, probe], |row| {
+                let review_after: Option<i64> = row.get(4)?;
+                let expires_at: Option<i64> = row.get(5)?;
+                let reason = if expires_at.is_some_and(|t| t <= now_ms) {
+                    "expired"
+                } else {
+                    "review_after_elapsed"
+                };
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: review_after,
+                    expires_at_ms: expires_at,
+                    reason: reason.into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due scan query failed: {error}"))
+            })?;
+        let mut items = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due scan decode failed: {error}"))
+            })?;
+        let truncated = items.len() > limit;
+        if truncated {
+            items.truncate(limit);
+        }
+        self.clear_last_persist_error();
+        let completeness = if truncated {
+            CortexCompletenessV1::lower_bound(
+                "ceiling_truncated",
+                items.len().saturating_add(1),
+                items.len(),
+                1,
+            )
+        } else {
+            CortexCompletenessV1::exact(items.len(), items.len(), 0)
+        };
+        Ok(CortexResultPage {
+            schema_version: 1,
+            items,
+            completeness,
+        })
+    }
+
     /// Compatibility wrapper for internal diagnostics. External HTTP/CLI paths use
     /// [`try_list`](Self::try_list) so provider failures cannot become false empty results.
     pub fn list(&self, scope: Option<&str>) -> Vec<(String, String, i64, i64, i64)> {
@@ -13567,6 +13657,71 @@ mod tests {
             "the colliding row must survive untouched"
         );
         let _ = a;
+    }
+
+    #[test]
+    fn ctx010_review_due_surfaces_expired_clocks_without_rewriting_authority() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let lifecycle = |review_after_ms: Option<i64>| MemoryLifecycleInputV1 {
+            review_after_ms,
+            ..Default::default()
+        };
+        let due = m
+            .try_put_attributed_lifecycle_observed(
+                "due-row",
+                "A row whose review clock has elapsed.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle(Some(now - 1)),
+            )
+            .unwrap();
+        let fresh = m
+            .try_put_attributed_lifecycle_observed(
+                "fresh-row",
+                "A row whose review clock has not elapsed.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle(Some(now + 60_000)),
+            )
+            .unwrap();
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        assert_eq!(page.completeness.state, CortexCompletenessState::Exact);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].memory_id, due);
+        assert_eq!(page.items[0].reason, "review_after_elapsed");
+        assert_eq!(page.items[0].authority, "A2");
+        assert_eq!(page.items[0].lifecycle_state, "active");
+        // Surfacing review-due rewrites nothing: the row keeps its authority
+        // and stays recall-eligible through the normal production seam.
+        let stored: String = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority FROM memories WHERE id=?1",
+                rusqlite::params![&due],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, "A2");
+        assert!(m
+            .recall_scored("review clock", 10, &["scope".into()])
+            .iter()
+            .any(|(entry, _)| entry.id == due));
+        assert!(m
+            .recall_scored("review clock", 10, &["scope".into()])
+            .iter()
+            .any(|(entry, _)| entry.id == fresh));
+        // Zero limit fails closed instead of returning a false empty page.
+        assert!(m.lifecycle_reviews_due(Some("scope"), now, 0).is_err());
     }
 
     #[test]
