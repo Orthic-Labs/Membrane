@@ -3638,6 +3638,77 @@ impl MemoryStore {
         self.record_feedback_observed(rec, &MemoryEventContext::default())
     }
 
+    /// MEM-024: resolve a `CitedVerdict` row's `verdict_ref` against the durable verdict ledger.
+    ///
+    /// A `verdict_ref` resolves only when ALL of the following hold:
+    ///   - it names the `event_id` of a `context_event_log` row with `phase='verdict.recorded'`
+    ///     and `status='success'` (the durable verdict/receipt store — verdicts are events, not
+    ///     a separate table; see `cortex_store::context_telemetry`);
+    ///   - that verdict event is on the SAME trace as this feedback row (`trace_id` equal to the
+    ///     canonicalized `trace_id` join key), so a verdict from one trace cannot be cited to
+    ///     rank a candidate observed on another; and
+    ///   - that verdict event's `artifact_id` or `artifact_sha256` identifies THIS candidate
+    ///     (matches one of its known artifact-id forms, or its `content_sha256`) — i.e. the
+    ///     verdict "explicitly names this candidate id + sha", per the module doc.
+    ///
+    /// Separately, even a resolvable reference is refused if it has already been consumed by a
+    /// *different* candidate's verified feedback row: one receipt verifies one candidate. Without
+    /// this, a single legitimate verdict event could be cited by many unrelated feedback rows to
+    /// manufacture ranking signal for candidates it never actually verified — the "receipt
+    /// identity is reused without resolution" half of MEM-024.
+    fn resolve_cited_verdict(
+        &self,
+        rec: &FeedbackRecord,
+        canonical_trace: &str,
+        legacy_artifact_id: &str,
+        memory_artifact_id: &str,
+        provider_artifact_id: &str,
+    ) -> Result<bool, String> {
+        let verdict_ref = match rec.verdict_ref.as_deref().map(str::trim) {
+            Some(r) if !r.is_empty() => r,
+            _ => return Ok(false),
+        };
+        let resolves = self
+            .db
+            .lock_events()
+            .query_row(
+                "SELECT 1 FROM context_event_log
+                   WHERE event_id = ?1 AND phase = 'verdict.recorded' AND status = 'success'
+                     AND trace_id = ?2
+                     AND (artifact_id IN (?3, ?4, ?5) OR artifact_sha256 = ?6)
+                  LIMIT 1",
+                rusqlite::params![
+                    verdict_ref,
+                    canonical_trace,
+                    legacy_artifact_id,
+                    memory_artifact_id,
+                    provider_artifact_id,
+                    rec.content_sha256,
+                ],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("verdict resolution lookup failed: {e}")))?
+            .is_some();
+        if !resolves {
+            return Ok(false);
+        }
+        let already_consumed_elsewhere = self
+            .db
+            .lock()
+            .query_row(
+                "SELECT 1 FROM context_feedback
+                   WHERE verdict_ref = ?1 AND verified = 1 AND candidate_id != ?2
+                  LIMIT 1",
+                rusqlite::params![verdict_ref, rec.candidate_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("verdict reuse lookup failed: {e}")))?
+            .is_some();
+        Ok(!already_consumed_elsewhere)
+    }
+
     fn record_feedback_observed(
         &self,
         rec: &FeedbackRecord,
@@ -3649,6 +3720,25 @@ impl MemoryStore {
         let full_digest = content_hash(&rec.candidate_id);
         let memory_artifact_id = format!("memory.{full_digest}");
         let provider_artifact_id = format!("artifact.{full_digest}");
+        // MEM-024 fail-closed gate: a `CitedVerdict` row must not be persisted (and so must
+        // never reach ranking) unless its `verdict_ref` actually resolves to a durable verdict
+        // naming THIS candidate, and that verdict has not already been consumed by a different
+        // candidate. `validate()` only checked that `verdict_ref` is non-empty; this is the real
+        // resolution the module doc promises.
+        if rec.source == FeedbackSource::CitedVerdict
+            && !self.resolve_cited_verdict(
+                rec,
+                &canonical_trace,
+                &legacy_artifact_id,
+                &memory_artifact_id,
+                &provider_artifact_id,
+            )?
+        {
+            return Err(format!(
+                "feedback: cited-verdict row for candidate {:?} has an unresolvable verdict_ref {:?}; refusing to persist (MEM-024 fail-closed)",
+                rec.candidate_id, rec.verdict_ref
+            ));
+        }
         let feedback_target = self
             .db
             .lock_events()
@@ -15519,5 +15609,177 @@ mod tests {
             ..request
         };
         assert!(store.execute_lifecycle_operation(&wrong, &actor).is_err());
+    }
+
+    /// MEM-024 regression tests: a `CitedVerdict` feedback row must resolve against a real
+    /// verdict event in the durable ledger (`context_event_log`, phase `verdict.recorded`)
+    /// naming this candidate, and one verdict must not be replayable across candidates.
+    mod mem_024_cited_verdict_resolution {
+        use super::*;
+
+        /// Insert a bare-minimum `context_event_log` row standing in for a durable verdict.
+        fn insert_verdict_event(
+            m: &MemoryStore,
+            event_id: &str,
+            trace_id: &str,
+            artifact_id: Option<&str>,
+            artifact_sha256: Option<&str>,
+        ) {
+            m.db
+                .lock_events()
+                .execute(
+                    "INSERT INTO context_event_log
+                        (event_id, schema_version, ts, ingested_at, installation_id,
+                         service_instance_id, workspace_id, client, producer, session_id,
+                         trace_id, span_id, artifact_family, provider, phase, operation,
+                         status, artifact_id, artifact_sha256, traffic_class, canonical_sha256)
+                     VALUES (?1, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'inst',
+                             'svc', 'ws', 'test', 'test', 'sess', ?2, 'span-1', 'memory',
+                             'cortex', 'verdict.recorded', 'record', 'success', ?3, ?4, 'test',
+                             'sha')",
+                    rusqlite::params![event_id, trace_id, artifact_id, artifact_sha256],
+                )
+                .unwrap();
+        }
+
+        fn cited(
+            trace_id: &str,
+            candidate_id: &str,
+            content_sha256: &str,
+            verdict_ref: &str,
+        ) -> FeedbackRecord {
+            FeedbackRecord {
+                trace_id: trace_id.into(),
+                candidate_id: candidate_id.into(),
+                content_sha256: content_sha256.into(),
+                outcome: Outcome::Used,
+                source: FeedbackSource::CitedVerdict,
+                verdict_ref: Some(verdict_ref.into()),
+                scope_id: "global".into(),
+            }
+        }
+
+        #[test]
+        fn unresolvable_verdict_ref_is_rejected_and_never_ranks() {
+            let m = MemoryStore::new();
+            // Passes structural validate() (non-empty verdict_ref) but names no real event.
+            let rec = cited("trace-a", "mem-a", "sha-a", "does-not-exist");
+            let err = m
+                .record_feedback(&rec)
+                .expect_err("an unresolvable verdict_ref must be refused at persistence");
+            assert!(err.contains("MEM-024"), "error should name the gate: {err}");
+            let stored: Option<i64> = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-a'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(
+                stored.is_none(),
+                "a rejected cited-verdict row must not be persisted at all"
+            );
+        }
+
+        #[test]
+        fn resolvable_verdict_ref_ranks() {
+            let m = MemoryStore::new();
+            let canonical_trace = opaque_correlation_token("trace-b", "trace");
+            insert_verdict_event(
+                &m,
+                "verdict-1",
+                &canonical_trace,
+                None,
+                Some("sha-b"),
+            );
+            let rec = cited("trace-b", "mem-b", "sha-b", "verdict-1");
+            m.record_feedback(&rec)
+                .expect("a verdict naming this candidate's sha on the same trace must resolve");
+            let verified: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-b'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified, 1, "a resolved cited-verdict row must rank");
+        }
+
+        #[test]
+        fn advisory_never_ranks_even_with_a_verdict_ref_shaped_string() {
+            let m = MemoryStore::new();
+            let rec = FeedbackRecord {
+                trace_id: "trace-c".into(),
+                candidate_id: "mem-c".into(),
+                content_sha256: "sha-c".into(),
+                outcome: Outcome::Used,
+                source: FeedbackSource::Advisory,
+                verdict_ref: Some("looks-like-a-ref-but-is-advisory".into()),
+                scope_id: "global".into(),
+            };
+            m.record_feedback(&rec).unwrap();
+            let verified: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-c'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified, 0, "advisory feedback must never rank");
+        }
+
+        #[test]
+        fn a_verdict_cannot_be_replayed_across_different_candidates() {
+            let m = MemoryStore::new();
+            let canonical_trace = opaque_correlation_token("trace-d", "trace");
+            // One real verdict event naming a content hash that (e.g. via duplicate content)
+            // happens to match two different candidate ids.
+            insert_verdict_event(
+                &m,
+                "verdict-shared",
+                &canonical_trace,
+                None,
+                Some("dup-sha"),
+            );
+            let first = cited("trace-d", "mem-d1", "dup-sha", "verdict-shared");
+            m.record_feedback(&first)
+                .expect("the first candidate to cite a resolvable verdict must rank");
+            let verified1: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified1, 1);
+
+            // A second, distinct candidate replaying the SAME receipt identity must not also
+            // rank off it -- one receipt verifies one candidate (MEM-024).
+            let second = cited("trace-d", "mem-d2", "dup-sha", "verdict-shared");
+            let err = m
+                .record_feedback(&second)
+                .expect_err("a verdict already consumed by another candidate must not be reused");
+            assert!(err.contains("MEM-024"), "error should name the gate: {err}");
+            let stored2: Option<i64> = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d2'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(stored2.is_none(), "the replayed row must not be persisted");
+        }
     }
 }
