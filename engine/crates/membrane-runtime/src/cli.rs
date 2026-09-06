@@ -939,6 +939,13 @@ enum Cmd {
         #[arg(long, default_value_t = 100)]
         limit: usize,
     },
+    /// Drain installation-local background-review proposals into the governed proposal queue (proposal-first; never admits).
+    DrainBackgroundProposals {
+        repository: String,
+        path: PathBuf,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     /// Emit the embedding-neighbor graph; --anonymous removes memory IDs and scopes.
     Graph {
         #[arg(long)]
@@ -950,6 +957,12 @@ enum Cmd {
     },
     /// Re-embed EVERY row from DB content (embedder swaps / hash-vector repair). No files needed.
     Reindex,
+    /// Permanently erase one memory by id (governed hard erase; terminal, not suppression).
+    Erase { id: String },
+    /// Write a digest-sealed Cortex backup envelope to FILE.
+    Backup { output: PathBuf },
+    /// Restore a Cortex backup envelope from FILE (transactional; refuses tampered envelopes).
+    Restore { input: PathBuf },
     /// Export the whole store as a canonical-scoped markdown tree (audit + sync medium).
     /// The DB stays authoritative; these files are generated FROM it.
     ExportMd { dir: String },
@@ -1475,7 +1488,7 @@ fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
     }))
 }
 
-fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> {
+pub fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> {
     let db = MemDb::open(db_path).map_err(|error| error.to_string())?;
     let conn = db.lock();
     conn.query_row(
@@ -4106,17 +4119,21 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     );
                 }
                 CheckpointCmd::Promote { id, as_of_ms } => {
+                    // CTX-019: promotion is proposal-first and governed. The
+                    // checkpoint's own recorded repository/scope binding is the
+                    // caller; the summary enters the durable proposal queue and
+                    // never becomes canonical truth directly.
                     let checkpoint = store
                         .load_checkpoint(&id, as_of_ms.unwrap_or_else(now_ms))
                         .map_err(|error| error.to_string())?;
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "status": "needs_review",
-                            "proposal": {"kind": "KnowledgeEmission", "checkpoint_id": checkpoint.checkpoint_id,
-                                "scope_id": checkpoint.scope_id, "content": checkpoint.summary, "source_refs": checkpoint.source_refs}
-                        })
-                    );
+                    let receipt = crate::cortex_lifecycle::promote_checkpoint(
+                        &store,
+                        &checkpoint.repository_id,
+                        &checkpoint.scope_id,
+                        &id,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    println!("{receipt}");
                 }
             }
         }
@@ -4954,6 +4971,17 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
             );
         }
+        Cmd::DrainBackgroundProposals { repository, path, limit } => {
+            let store = open(&db)?;
+            let receipt = crate::cortex_lifecycle::drain_background_proposals(
+                &store,
+                &repository,
+                &path,
+                limit,
+            )
+            .map_err(|error| error.to_string())?;
+            println!("{receipt}");
+        }
         Cmd::Graph {
             anonymous,
             neighbors,
@@ -4976,6 +5004,26 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             println!(
                 "{{\"reindexed\":{n},\"skipped\":{skipped},\"link_edges\":{edges},\"resolvable_links\":{resolvable},\"skills_ingested\":{skills_in},\"skills_skipped\":{skills_skip},\"skills_pruned\":{skills_pruned}}}"
             );
+        }
+        Cmd::Erase { id } => {
+            let store = open(&db)?;
+            let erased = store.hard_erase(&id)?;
+            println!("{}", serde_json::json!({"erased": erased, "id": id}));
+        }
+        Cmd::Backup { output } => {
+            let store = open(&db)?;
+            let backup = store.backup_cortex()?;
+            let bytes = serde_json::to_vec_pretty(&backup).map_err(|error| error.to_string())?;
+            std::fs::write(&output, bytes).map_err(|error| error.to_string())?;
+            println!("{}", serde_json::json!({"backed_up": backup.memories.len() + backup.quarantined.len(), "output": output}));
+        }
+        Cmd::Restore { input } => {
+            let store = open(&db)?;
+            let raw = std::fs::read_to_string(&input).map_err(|error| error.to_string())?;
+            let backup: crate::store::CortexBackupV1 =
+                serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+            let restored = store.restore_cortex(&backup)?;
+            println!("{}", serde_json::json!({"restored": restored, "input": input}));
         }
         Cmd::ExportMd { dir } => {
             let store = open(&db)?;

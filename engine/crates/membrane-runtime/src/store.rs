@@ -8601,10 +8601,57 @@ impl MemoryStore {
         Ok(best.map(|(_, hit)| hit))
     }
 
+    /// Rebuild the `cortex_fts5` lexical projection from canonical `memories`
+    /// content. Called after restore and reindex so every projection reflects
+    /// the same canonical corpus.
+    ///
+    /// Runtime lexical recall does NOT read `cortex_fts5` — recall ranks from
+    /// the in-memory registry and canonical content, so this wiring changes no
+    /// recall behavior. Suppressed rows are excluded, mirroring `reindex`'s
+    /// recall-eligibility skip; suppression itself survives in
+    /// `cortex_recall_suppression_v1` (CTX-041) and is untouched here.
+    /// Best-effort: a projection failure never fails the canonical mutation it
+    /// follows and never records a persist error.
+    fn rebuild_fts5_from_canonical(&self) {
+        let documents: Option<Vec<cortex_store::Fts5Document>> = {
+            let conn = self.db.lock();
+            conn.prepare(
+                "SELECT id, record_type, scope_id, lifecycle_state, authority, content, keywords
+                   FROM memories
+                  WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s
+                                     WHERE s.memory_id = memories.id AND s.suppressed = 1)
+                  ORDER BY id",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok(cortex_store::Fts5Document {
+                            record_id: row.get(0)?,
+                            record_type: row.get(1)?,
+                            session_id: None,
+                            scope_id: row.get(2)?,
+                            lifecycle: row.get(3)?,
+                            authority: row.get(4)?,
+                            content: row.get(5)?,
+                            keywords: row.get(6)?,
+                        })
+                    })
+                    .and_then(|rows| rows.collect())
+            })
+            .ok()
+        };
+        let Some(documents) = documents else {
+            return;
+        };
+        let conn = self.db.lock();
+        let _ = cortex_store::Fts5Projection::new(&conn).rebuild(documents);
+    }
+
     /// §16.4 governed hard erase. Distinct from the reversible quarantine: the
     /// payload is provably cleared from every Cortex-owned projection path — the
-    /// durable `memories` row, the `links` projection, any quarantined copy, and
-    /// the deletion tombstone — in one transaction, with a content-free
+    /// durable `memories` row, the outbound and now-dangling inbound `links`
+    /// edges, any quarantined copy, the deletion tombstone, and the `cortex_fts5`
+    /// lexical document — in one transaction, with a content-free
     /// lifecycle event recording that the erase happened.
     pub fn hard_erase(&self, id: &str) -> Result<bool, String> {
         if id.trim().is_empty() {
@@ -8667,10 +8714,43 @@ impl MemoryStore {
         })?;
         tx.execute("DELETE FROM links WHERE src_id = ?1", rusqlite::params![id])
             .map_err(|e| self.persist_error(format!("hard erase links failed for {id}: {e}")))?;
+        // Inbound edges reference the target by slug, not by raw id: `dst_slug`
+        // stores the `[[wikilink]]` target text, which resolves to this id when
+        // it equals the full id or the leaf segment after the last '/' (the same
+        // resolution `backfill_links`, `linked_neighbors`, and the doctor
+        // dangling-link check use). Edges that still resolve to a surviving
+        // memory are kept; only edges left dangling by this erase are removed.
+        let leaf_slug = id.rsplit('/').next().unwrap_or(id);
+        tx.execute(
+            "DELETE FROM links WHERE (dst_slug = ?1 OR dst_slug = ?2)
+              AND NOT EXISTS (SELECT 1 FROM memories m
+                              WHERE m.id = links.dst_slug OR m.id LIKE '%/' || links.dst_slug)",
+            rusqlite::params![id, leaf_slug],
+        )
+        .map_err(|e| self.persist_error(format!("hard erase inbound links failed for {id}: {e}")))?;
         tx.execute("DELETE FROM deletions WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| {
                 self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
             })?;
+        // Lexical projection: runtime lexical recall does not read `cortex_fts5`
+        // (it ranks from the registry/canonical content), but "every projection"
+        // still requires the erased document gone here. A missing projection
+        // table means there is nothing to delete; a corrupt projection degrades
+        // instead of blocking canonical erasure (the next rebuild from
+        // canonical content repairs it).
+        let fts_exists: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cortex_fts5')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| self.persist_error(format!("hard erase fts probe failed for {id}: {e}")))?;
+        if fts_exists {
+            let _ = tx.execute(
+                "DELETE FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id],
+            );
+        }
         let context = MemoryEventContext::new("hard_erase");
         log_memory_event(
             &self.operation_attribution,
@@ -8843,6 +8923,9 @@ impl MemoryStore {
         drop(conn);
         self.flush_event_outbox()?;
         self.reload_registry_from_db()?;
+        // Canonical rows are back; rebuild the lexical projection from them so
+        // "every projection" holds without changing recall behavior.
+        self.rebuild_fts5_from_canonical();
         self.clear_last_persist_error();
         Ok(backup.memories.len() + backup.quarantined.len())
     }
@@ -9432,6 +9515,11 @@ impl MemoryStore {
             }
             n += 1;
         }
+        drop(reg);
+        // Embeddings are fresh; rebuild the lexical projection from the same
+        // canonical content so "every projection" holds without changing
+        // recall behavior. Suppressed rows stay excluded (see the helper).
+        self.rebuild_fts5_from_canonical();
         self.clear_last_persist_error();
         Ok((n, skipped))
     }
@@ -11146,6 +11234,364 @@ mod tests {
             .unwrap();
         let err = store.reindex().expect_err("bad row must surface");
         assert!(err.contains("reindex row load"), "err: {err}");
+    }
+
+    fn erase_test_fts_count(store: &MemoryStore, id: &str) -> i64 {
+        store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    fn erase_test_payload_count(store: &MemoryStore, needle: &str) -> i64 {
+        let like = format!("%{needle}%");
+        let memories: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE content LIKE ?1",
+                rusqlite::params![like],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let quarantined: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_quarantine WHERE content LIKE ?1",
+                rusqlite::params![like],
+                |row| row.get(0),
+            )
+            .unwrap();
+        memories + quarantined
+    }
+
+    /// CTX-025: hard erase clears inbound link edges (both leaf-slug and
+    /// full-id `dst_slug` references) and the FTS projection document, keeps
+    /// the content-free event plus registry eviction, and preserves edges that
+    /// still resolve to a surviving memory.
+    #[test]
+    fn hard_erase_removes_inbound_links_and_fts_projection() {
+        let store = MemoryStore::new();
+        let target = store
+            .try_put(
+                "erase-target",
+                "terminal payload ERASEME-7f3a2c-needle alpha bravo charlie",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        assert_eq!(target, "global/erase-target");
+        store
+            .try_put(
+                "survivor-target",
+                "survivor payload SURVIVOR-1a9e-needle delta echo foxtrot",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer",
+                "points at [[erase-target]] and also [[survivor-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer-two",
+                "also points at [[erase-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer-full",
+                "points at [[global/erase-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        // Populate the lexical projection through the canonical path.
+        store.reindex().unwrap();
+        assert_eq!(
+            erase_test_fts_count(&store, &target),
+            1,
+            "fts must index the target before erase"
+        );
+        let inbound_leaf: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE dst_slug = 'erase-target'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(inbound_leaf, 2, "both leaf referrers must link the target");
+
+        assert!(store.hard_erase(&target).unwrap());
+
+        assert_eq!(erase_test_payload_count(&store, "ERASEME-7f3a2c-needle"), 0);
+        assert_eq!(
+            erase_test_fts_count(&store, &target),
+            0,
+            "erased doc must leave the fts projection"
+        );
+        let remaining: Vec<(String, String)> = store
+            .db
+            .lock()
+            .prepare("SELECT src_id, dst_slug FROM links ORDER BY src_id, dst_slug")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            !remaining
+                .iter()
+                .any(|(_, dst)| dst == "erase-target" || dst == &target),
+            "no inbound edge may reference the erased slug: {remaining:?}"
+        );
+        assert!(
+            remaining
+                .iter()
+                .any(|(_, dst)| dst == "survivor-target"),
+            "edges resolving to the survivor must stay: {remaining:?}"
+        );
+        let event_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log WHERE event_kind = 'hard_erase' AND memory_id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_count, 1, "content-free hard_erase event must persist");
+        let event_meta: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT meta FROM memory_event_log WHERE event_kind = 'hard_erase' AND memory_id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_meta, "{}", "hard_erase event must stay content-free");
+        assert!(
+            store
+                .registry
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&target)
+                .is_none(),
+            "registry entry must be evicted"
+        );
+        assert!(!store.hard_erase(&target).unwrap(), "second erase finds nothing");
+    }
+
+    /// CTX-025/026/036 plus CTX-041: an erase → reindex → restore cycle keeps
+    /// the erased payload absent from every payload table and the FTS
+    /// projection, suppressed rows stay skipped by reindex, and a post-erase
+    /// backup round-trips suppression without resurrecting the payload.
+    #[test]
+    fn erase_reindex_restore_cycle_keeps_erased_payload_absent() {
+        let store = MemoryStore::new();
+        let victim = store
+            .try_put(
+                "cycle-victim",
+                "terminal payload CYCLE-VICTIM-needle-9d1 rhubarb sconce falcon",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let keeper = store
+            .try_put(
+                "cycle-keeper",
+                "keeper payload CYCLE-KEEPER-needle-3b7 points at [[cycle-victim]] harbor lantern",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let suppressed_id = store
+            .try_put(
+                "cycle-suppressed",
+                "suppressed payload CYCLE-SUPPRESSED-needle-5e2 meadow anvil comet",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let suppressed_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![suppressed_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO cortex_recall_suppression_v1(memory_id,scope_id,content_hash,suppressed,decision_hash) VALUES(?1,'global',?2,1,'cycle-test-decision')",
+                rusqlite::params![suppressed_id, content_hash(&suppressed_content)],
+            )
+            .unwrap();
+
+        assert!(store.hard_erase(&victim).unwrap());
+        // Force a re-embed decision on both rows: the keeper must be repaired
+        // while the suppressed row stays untouched (reindex skip preserved).
+        store.tamper_embed_model_for_tests(&keeper, "stale-model");
+        store.tamper_embed_model_for_tests(&suppressed_id, "stale-model");
+        store.reindex().unwrap();
+        let model_of = |id: &str| -> Option<String> {
+            store
+                .db
+                .lock()
+                .query_row(
+                    "SELECT embed_model FROM memories WHERE id = ?1",
+                    rusqlite::params![id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap()
+                .flatten()
+        };
+        assert_eq!(model_of(&keeper), Some(store.embedder.model_id().to_owned()));
+        assert_eq!(
+            model_of(&suppressed_id),
+            Some("stale-model".to_owned()),
+            "suppressed rows stay skipped by reindex"
+        );
+
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"), 0);
+        assert_eq!(erase_test_fts_count(&store, &victim), 0);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"),
+            1,
+            "suppression is recall exclusion, not deletion"
+        );
+        let inbound: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE dst_slug = 'cycle-victim' OR dst_slug = ?1",
+                rusqlite::params![victim],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(inbound, 0, "erase must clear inbound edges to the victim slug");
+
+        let backup = store.backup_cortex().unwrap();
+        assert!(!backup.memories.iter().any(|row| row.id == victim));
+        assert!(
+            backup
+                .suppression
+                .iter()
+                .any(|row| row.memory_id == suppressed_id && row.suppressed),
+            "backup must carry the suppression row"
+        );
+        let restored = store.restore_cortex(&backup).unwrap();
+        assert_eq!(restored, backup.memories.len() + backup.quarantined.len());
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"),
+            0,
+            "restoring a post-erase backup must not resurrect the payload"
+        );
+        assert_eq!(erase_test_fts_count(&store, &victim), 0);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"), 1);
+        let suppression_after: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_recall_suppression_v1 WHERE memory_id = ?1 AND suppressed = 1",
+                rusqlite::params![suppressed_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(suppression_after, 1, "suppression must survive the cycle");
+    }
+
+    /// CTX-026/036 plus CTX-041: a backup/restore round-trip preserves the
+    /// suppression table and drops nothing else (digest-stable envelope,
+    /// intact links, intact payloads).
+    #[test]
+    fn backup_restore_round_trip_preserves_suppression_and_drops_nothing() {
+        let store = MemoryStore::new();
+        let first = store
+            .try_put(
+                "roundtrip-first",
+                "roundtrip payload ROUNDTRIP-FIRST-needle-aa1 basalt crater dune",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let second = store
+            .try_put(
+                "roundtrip-second",
+                "roundtrip payload ROUNDTRIP-SECOND-needle-bb2 links [[roundtrip-first]] estuary fjord",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let second_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![second],
+                |row| row.get(0),
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO cortex_recall_suppression_v1(memory_id,scope_id,content_hash,suppressed,decision_hash) VALUES(?1,'global',?2,1,'roundtrip-test-decision')",
+                rusqlite::params![second, content_hash(&second_content)],
+            )
+            .unwrap();
+
+        let before = store.backup_cortex().unwrap();
+        let restored = store.restore_cortex(&before).unwrap();
+        assert_eq!(restored, before.memories.len() + before.quarantined.len());
+        let after = store.backup_cortex().unwrap();
+        assert_eq!(
+            before.payload_sha256, after.payload_sha256,
+            "round-trip must be digest-stable"
+        );
+        assert_eq!(before.suppression, after.suppression);
+        assert_eq!(after.memories.len(), 2, "round-trip must drop no rows");
+        assert!(
+            after
+                .links
+                .iter()
+                .any(|link| link.src_id == second && link.dst_slug == "roundtrip-first"),
+            "round-trip must preserve links"
+        );
+        assert!(
+            after
+                .memories
+                .iter()
+                .any(|row| row.id == first && row.content.contains("ROUNDTRIP-FIRST-needle-aa1"))
+        );
+        assert!(
+            after
+                .memories
+                .iter()
+                .any(|row| row.id == second && row.content.contains("ROUNDTRIP-SECOND-needle-bb2"))
+        );
     }
 
     #[test]

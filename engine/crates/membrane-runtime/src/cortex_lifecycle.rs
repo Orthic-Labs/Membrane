@@ -463,6 +463,9 @@ fn queue_review(store: &MemoryStore, effect: &ReviewedEffectV1) -> Result<()> {
 
 /// Bounded reconciliation, called by the tray-owned maintenance loop and on
 /// startup. It never promotes unsigned legacy approvals or fabricates trust.
+/// A crash-recoverable `admission_pending` job is a row in
+/// `cortex_proposal_admission_v1` with `state='pending'`; convergence runs the
+/// approved payload through normal Cortex admission idempotently.
 pub fn recover_pending(store: &MemoryStore, limit: usize) -> Result<Value> {
     let ids = {
         let db = store.db().lock_events();
@@ -866,6 +869,137 @@ pub fn promote_checkpoint(store: &MemoryStore, repository: &str, scope: &str, id
         "producer":"checkpoint","epistemicClass":"reported",
         "scopeId":scope,"checkpointId":checkpoint.checkpoint_id,"sessionId":checkpoint.session_id,
         "sourceRefs":checkpoint.source_refs,"worktreeRevision":checkpoint.worktree_rev}))
+}
+
+/// CTX-023/CTX-024 Cortex-specific proposal sink: drain installation-local
+/// background-review JSONL records into the governed proposal queue.
+///
+/// Each record is validated and submitted through [`propose`], so the ordered
+/// pre-gate, pending-only queueing, and signed-review requirements apply
+/// unchanged. The drain preserves the provider-attested record scope as the
+/// caller binding; forging that scope requires write access to the
+/// installation-local file, which already implies operator trust. Draining is
+/// at-least-once and safe to retry: proposal identities are deterministic, so
+/// a re-drain is a typed idempotent no-op, never a second record.
+pub fn drain_background_proposals(
+    store: &MemoryStore,
+    repository: &str,
+    path: &std::path::Path,
+    limit: usize,
+) -> Result<Value> {
+    use cortex_core::review::{
+        validate_semantic_curation_proposals, MemoryCandidateV1, SemanticCurationProposalV1,
+    };
+    if limit == 0 {
+        return Err(fail("memory_envelope_invalid", "drain limit must be greater than zero"));
+    }
+    let body = std::fs::read_to_string(path)
+        .map_err(|_| fail("cortex_storage_unavailable", "background proposal file is unavailable"))?;
+    let mut considered = 0usize;
+    let mut proposed = 0usize;
+    let mut proposal_ids = Vec::new();
+    let mut failures = Vec::new();
+    for (index, line) in body.lines().enumerate() {
+        if considered >= limit {
+            break;
+        }
+        let line_no = index + 1;
+        if line.trim().is_empty() {
+            continue;
+        }
+        considered += 1;
+        let record: Value = match serde_json::from_str(line) {
+            Ok(value) => value,
+            Err(_) => {
+                failures.push(json!({"line":line_no,"code":"proposal_emission_text_required"}));
+                continue;
+            }
+        };
+        let outcome = (|| {
+            let kind = record.get("kind").and_then(Value::as_str).unwrap_or("");
+            let proposal = record.get("proposal").cloned().unwrap_or(Value::Null);
+            match kind {
+                "semantic_curation" => {
+                    let curation: SemanticCurationProposalV1 = serde_json::from_value(proposal)
+                        .map_err(|_| fail("proposal_emission_text_required", "malformed curation record"))?;
+                    validate_semantic_curation_proposals(std::slice::from_ref(&curation))
+                        .map_err(|_| fail("proposal_emission_text_required", "invalid curation record"))?;
+                    let evidence: Vec<String> = curation
+                        .evidence
+                        .iter()
+                        .flat_map(|item| {
+                            item.memory_ids
+                                .iter()
+                                .chain(item.source_event_ids.iter())
+                                .cloned()
+                        })
+                        .take(64)
+                        .collect();
+                    let text = format!(
+                        "Stage 1 {:?} review for memories [{}] per evidence [{}] (curation {})",
+                        curation.kind,
+                        curation.target_memory_ids.join(","),
+                        evidence.join(","),
+                        curation.proposal_id,
+                    );
+                    propose(
+                        store,
+                        repository,
+                        &curation.scope_id,
+                        &json!({
+                            "text": text,
+                            "kind": "semantic_curation",
+                            "producer": "dream",
+                            "epistemicClass": "inferred",
+                            "curationId": curation.proposal_id,
+                            "curationKind": format!("{:?}", curation.kind),
+                            "targetMemoryIds": curation.target_memory_ids,
+                            "jobId": record.get("jobId"),
+                        }),
+                    )
+                }
+                "memory_candidate" => {
+                    let candidate: MemoryCandidateV1 = serde_json::from_value(proposal)
+                        .map_err(|_| fail("proposal_emission_text_required", "malformed candidate record"))?;
+                    if candidate.content.trim().is_empty() || candidate.scope_id.trim().is_empty() {
+                        return Err(fail("proposal_emission_text_required", "candidate carries no content or scope"));
+                    }
+                    propose(
+                        store,
+                        repository,
+                        &candidate.scope_id,
+                        &json!({
+                            "text": candidate.content,
+                            "kind": "episodic",
+                            "producer": "episodic",
+                            "epistemicClass": "reported",
+                            "candidateId": candidate.candidate_id,
+                            "sessionId": candidate.session_id,
+                            "fromSeq": candidate.from_seq,
+                            "toSeq": candidate.to_seq,
+                            "sourceEventIds": candidate.source_event_ids,
+                            "sourceContentHashes": candidate.source_content_hashes,
+                            "jobId": record.get("jobId"),
+                        }),
+                    )
+                }
+                _ => Err(fail("proposal_emission_text_required", "unknown background proposal kind")),
+            }
+        })();
+        match outcome {
+            Ok(receipt) => {
+                proposed += 1;
+                if let Some(id) = receipt.get("proposalId").and_then(Value::as_str) {
+                    proposal_ids.push(id.to_owned());
+                }
+            }
+            Err(error) => failures.push(json!({"line":line_no,"code":error.code})),
+        }
+    }
+    Ok(json!({"schemaVersion":1,"operation":"drain_background_proposals",
+        "considered":considered,"proposed":proposed,"failed":failures.len(),
+        "proposalIds":proposal_ids,"failures":failures,
+        "complete":body.lines().count() <= limit}))
 }
 
 #[cfg(test)]
@@ -1295,6 +1429,39 @@ mod tests {
     }
 
     #[test]
+    fn ctx023_ctx024_drain_submits_background_proposals_governed_and_idempotent() {
+        let s=Sandbox::new();
+        let dir=tempfile::tempdir().unwrap();
+        let path=dir.path().join("proposals.jsonl");
+        let curation=json!({"schemaVersion":1,"jobId":"job-1","kind":"semantic_curation",
+            "proposal":{"schemaVersion":1,"proposalId":"curation-1","scopeId":"scope",
+            "kind":"contradiction","targetMemoryIds":["scope/a"],
+            "evidence":[{"memoryIds":["scope/a"],"sourceEventIds":["e1"],"sourceContentHashes":[]}]}});
+        let candidate=json!({"schemaVersion":1,"jobId":"job-1","kind":"memory_candidate",
+            "proposal":{"schemaVersion":1,"candidateId":"cand-1","sessionId":"s1",
+            "fromSeq":1,"toSeq":2,"scopeId":"scope","content":"An episodic observation from the event window.",
+            "sourceEventIds":["e1"],"sourceContentHashes":[]}});
+        std::fs::write(&path, format!("{}\n{}\nnot json\n", curation, candidate)).unwrap();
+        let first=drain_background_proposals(&s.store,"repo",&path,100).unwrap();
+        assert_eq!(first["considered"], 3);
+        assert_eq!(first["proposed"], 2);
+        assert_eq!(first["failed"], 1);
+        assert_eq!(first["proposalIds"].as_array().unwrap().len(), 2);
+        // Proposal-first: two pending proposals, zero durable rows.
+        for id in first["proposalIds"].as_array().unwrap() {
+            let id=id.as_str().unwrap();
+            assert_eq!(proposal_status(&s.store,"repo","scope",id).unwrap()["reviewState"], "pending");
+        }
+        assert!(s.store.entries(100).is_empty());
+        // Re-drain is an idempotent no-op, never a second record.
+        let second=drain_background_proposals(&s.store,"repo",&path,100).unwrap();
+        assert_eq!(second["proposalIds"], first["proposalIds"]);
+        assert_eq!(second["failed"], 1);
+        // Zero limit fails closed instead of silently draining nothing.
+        assert!(drain_background_proposals(&s.store,"repo",&path,0).is_err());
+    }
+
+    #[test]
     fn ctx001_canonical_open_reports_wal_and_converges_across_reopen() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cortex.db");
@@ -1318,7 +1485,7 @@ mod tests {
 
 /// Supervised by serve::run, never a standalone service. The owner supplies the
 /// same resident store handle used by MCP. A stop wakes the idle wait; work is
-/// bounded to four journals per tick and eight attempts per journal.
+/// bounded to four journals per tick and seven attempts per journal.
 pub(crate) struct AdmissionRecoveryWorker {
     stop: std::sync::mpsc::Sender<()>,
     thread: Option<std::thread::JoinHandle<()>>,
