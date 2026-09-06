@@ -90,43 +90,37 @@ fn worktree_document_identifier_compatibility_corpus() {
 
 #[test]
 fn anchor_identifier_compatibility_corpus() {
+    use membrane_runtime::push::recovery::{now_ms, RecoveryScope, RecoveryStore};
+
     let root = tempfile::tempdir().unwrap();
     let spill = root.path().join("spill");
     std::fs::create_dir(&spill).unwrap();
     let content = "exact anchor content\n";
-    let digest = hex::encode(sha2::Sha256::digest(content.as_bytes()));
-    std::fs::write(spill.join(format!("{digest}.log")), content).unwrap();
+    let store = RecoveryStore::at(&spill);
+    let scope = RecoveryScope::local().unwrap();
+    let retained = store
+        .publish(&scope, content.as_bytes(), 60_000, now_ms())
+        .unwrap();
 
-    let output = run_restore(&spill, &format!("mr://anchor/{digest}"));
+    let output = run_restore(&spill, &retained.handle);
     assert!(output.status.success());
     assert_eq!(String::from_utf8(output.stdout).unwrap(), content);
 
-    for (anchor, error) in [
-        (
-            format!("MR://anchor/{digest}"),
-            "invalid anchor: anchor reference must start with mr://anchor/",
-        ),
-        (
-            format!("mr://other/{digest}"),
-            "invalid anchor: anchor reference names another namespace",
-        ),
-        (
-            "mr://anchor/abc".into(),
-            "invalid anchor: anchor digest must be 64 lowercase hexadecimal characters",
-        ),
-        (
-            format!("mr://anchor/{}", "g".repeat(64)),
-            "invalid anchor: anchor digest must be 64 lowercase hexadecimal characters",
-        ),
+    let digest = hex::encode(sha2::Sha256::digest(content.as_bytes()));
+    for anchor in [
+        format!("MR://anchor/{digest}"),
+        format!("mr://other/{digest}"),
+        "mr://anchor/abc".into(),
+        format!("mr://anchor/{}", "g".repeat(64)),
     ] {
         let output = run_restore(&spill, &anchor);
         assert!(!output.status.success());
-        assert_eq!(terminal_error(output), error);
+        assert_eq!(terminal_error(output), "push_invalid_anchor");
     }
 
     let missing = run_restore(&spill, &format!("mr://anchor/{}", "0".repeat(64)));
     assert!(!missing.status.success());
-    assert_eq!(terminal_error(missing), "anchor not found");
+    assert_eq!(terminal_error(missing), "push_artifact_not_found");
 }
 
 #[test]
@@ -178,9 +172,10 @@ fn cli_anchor_rejection_precedes_anchor_store_access() {
         &format!("MR://anchor/{}", "0".repeat(64)),
     );
     assert!(!invalid.status.success());
-    assert_eq!(
-        terminal_error(invalid),
-        "invalid anchor: anchor reference must start with mr://anchor/"
+    assert_eq!(terminal_error(invalid), "push_invalid_anchor");
+    assert!(
+        !unavailable_spill.exists(),
+        "invalid anchor syntax must be rejected before opening the recovery store"
     );
 
     let valid = run_restore(
@@ -188,7 +183,8 @@ fn cli_anchor_rejection_precedes_anchor_store_access() {
         &format!("mr://anchor/{}", "0".repeat(64)),
     );
     assert!(!valid.status.success());
-    assert!(terminal_error(valid).starts_with("anchor store unavailable:"));
+    assert_eq!(terminal_error(valid), "push_artifact_not_found");
+    assert!(unavailable_spill.exists());
 }
 
 #[test]

@@ -1,16 +1,22 @@
 {
   "schemaVersion": 1,
-  "toolCount": 17,
+  "toolCount": 23,
   "toolsets": {
-    "default": ["membrane_context"],
-    "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"],
+    "default": ["membrane_context", "membrane_knowledge_propose", "membrane_memory", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_source_read", "membrane_ledger"],
+    "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback", "membrane_memory"],
     "blueprint": ["membrane_source_read", "membrane_blueprint"],
-    "diagnostic": ["membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence", "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider"]
+    "ledger": ["membrane_source_read", "membrane_ledger"],
+    "adapt": ["membrane_adapt_inspect"],
+    "push": ["membrane_push_prepare", "membrane_push_resolve"],
+    "diagnostic": ["membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence", "membrane_diagnostic_capabilities", "membrane_diagnostic_baseline", "membrane_diagnostic_provider"],
+    "operator": ["membrane_knowledge_review"]
   },
   "invariants": [
     "advertised_tools_have_native_executor_entries",
     "unknown_tool_is_rejected",
     "native_unavailable_is_typed_and_never_falls_back_to_node",
-    "toolset_negotiation_defaults_to_membrane_context"
+    "toolset_negotiation_defaults_to_safe_memory_workflow",
+    "proposer_cannot_self_authorize_review",
+    "native_memory_envelopes_are_strictly_validated"
   ]
 }

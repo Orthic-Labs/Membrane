@@ -35,7 +35,9 @@ test("generated CI remains right-git managed & reaches repository gate", () => {
 test("no product-side GitHub Pages bootstrap competes with the Worker route", () => {
   // unsigned-installer.yml builds an installable package with no certificate
   // and no publication path; it is the development loop, not a release lane.
-  assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["ci.yml", "release-candidate.yml", "unsigned-installer.yml"]);
+  // Blueprint/Ledger completion workflows are current subsystem CI and do not
+  // create a Pages bootstrap or publication authority.
+  assert.deepEqual(readdirSync(join(root, ".github", "workflows")).sort(), ["blueprint-completion.yml", "ci.yml", "ledger-completion.yml", "release-candidate.yml", "unsigned-installer.yml"]);
   const unsigned = read(".github/workflows/unsigned-installer.yml");
   // The runner checks the file out with CRLF, so anchor on either ending
   // rather than assuming the working tree's.

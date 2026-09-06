@@ -6,11 +6,11 @@ import {
   evaluateReadmeAgainstTruth,
 } from "../scripts/tools/productization/generate-product-truth.mjs";
 
-test("MBR-013: product truth is derived from live source (17 tools, 7 adapters)", async () => {
+test("MBR-013: product truth is derived from live source (23 tools, 7 adapters)", async () => {
   const truth = await computeProductTruth();
   assert.equal(truth.schema, "membrane.product-truth.v1");
-  assert.equal(truth.toolCount, 17);
-  assert.equal(truth.tools.length, 17);
+  assert.equal(truth.toolCount, 23);
+  assert.equal(truth.tools.length, 23);
   assert.ok(truth.tools.includes("membrane_working_context"));
   assert.ok(truth.tools.includes("membrane_feedback"));
   // Live Diagnostics operational surface (design §12).
@@ -36,11 +36,11 @@ test("MBR-013: the book-gate product-truth check passes on the current tree", as
   assert.deepEqual(result.failures, []);
 });
 
-test("MBR-013: the check fails when README says six tools while source exposes seventeen", async () => {
+test("MBR-013: the check fails when README says six tools while source exposes twenty-three", async () => {
   const truth = await computeProductTruth();
   const staleReadme = "- **MCP server** — six tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_feedback`).";
   const failures = evaluateReadmeAgainstTruth(staleReadme, truth, { docPresent: true });
-  assert.ok(failures.some((f) => /claims 6 tools but source exposes 17/.test(f)), failures.join("; "));
+  assert.ok(failures.some((f) => /claims 6 tools but source exposes 23/.test(f)), failures.join("; "));
   assert.ok(failures.some((f) => /tool list drift/.test(f)), failures.join("; "));
 });
 

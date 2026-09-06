@@ -9,7 +9,6 @@ const atomDir = path.join(root, "docs", "canon");
 const pendingPath = path.join(root, "docs", "pending", "README.md");
 const atomReadmePath = path.join(atomDir, "README.md");
 const preservationPath = path.join(root, "docs", "provenance", "migrations", "2026-08-30-atomic-canons", "preservation-map.md");
-const reconciliationPath = path.join(root, "docs", "provenance", "migrations", "2026-08-30-atomic-canons", "source-consumer-reconciliation.md");
 const frozenRevision = "d84322c3df182ff1d6ef7ca96fe94aea22273894";
 const legacyAtomRevision = "c6cfbca96e5be1d0f8de8cb9614d6158f57cc948";
 
@@ -245,8 +244,11 @@ function testSourceFiles(directory) {
     return entry.isFile() && /\.(?:mjs|rs)$/.test(entry.name) ? [absolute] : [];
   });
 }
-function focusedProofLooksExact(command, evidence) {
-  if (!/^(?:`)?(?:rightkit cargo test|node --test)\b/.test(command) || /\b(?:TBD|TODO|placeholder|unknown)\b/i.test(evidence)) return false;
+function focusedProofLooksExact(command, evidence, runIdentity = "") {
+  const managedRust = /^(?:`)?rightkit cargo test\b/.test(command);
+  const githubRust = /^(?:`)?cargo test\b/.test(command) && /\b(?:GitHub Actions|managed CI)\b/i.test(runIdentity);
+  const node = /^(?:`)?node --test\b/.test(command);
+  if (!(managedRust || githubRust || node) || /\b(?:TBD|TODO|placeholder|unknown)\b/i.test(evidence)) return false;
   const candidates = [...evidence.matchAll(/`([^`]+)`/g)]
     .map((match) => match[1].split("::").at(-1).trim())
     .filter((candidate) => candidate.length >= 8 && !/^(?:TBD|TODO|placeholder|unknown)$/i.test(candidate));
@@ -282,6 +284,7 @@ function validateRevisionLocators(value, label, revision) {
 }
 function validateReceiptReferences(parsed) {
   const receipts = new Map();
+  const proofReceiptByCapability = new Map();
   for (const canon of parsed) for (const row of canon.capabilities) {
     const proof = proofEvidence(row.Evidence);
     if (!proof) continue;
@@ -306,16 +309,21 @@ function validateReceiptReferences(parsed) {
         if (byCapability.has(receiptRow.Capability)) throw new Error(`${relative}: duplicate receipt row ${receiptRow.Capability}`);
         byCapability.set(receiptRow.Capability, receiptRow);
       }
-      receipts.set(relative, byCapability);
+      receipts.set(relative, { byCapability, markdown });
     }
-    const receiptRow = receipts.get(relative).get(row.ID);
+    proofReceiptByCapability.set(row.ID, relative);
+    const receiptRow = receipts.get(relative).byCapability.get(row.ID);
     if (!receiptRow) throw new Error(`${canon.file}:${row.ID}: evidence receipt lacks acceptance row`);
     validateRevisionLocators(receiptRow["Exact source"], `${relative}:${receiptRow.Capability}:source`, proof.revision);
     validateRevisionLocators(receiptRow["Exact consumer"], `${relative}:${receiptRow.Capability}:consumer`, proof.revision);
     if (receiptRow.State !== row.Implementation) throw new Error(`${canon.file}:${row.ID}: receipt implementation state differs`);
     if (row.Implementation === "DELIVERED" && receiptRow.Residual !== "COMPLETE") throw new Error(`${canon.file}:${row.ID}: delivered receipt residual must be COMPLETE`);
   }
-  const focused = records(readFileSync(reconciliationPath, "utf8"), "## Focused verification", headers.focusedVerification);
+  const focused = [...receipts.entries()].flatMap(([relative, receipt]) => {
+    if (!receipt.markdown.includes("## Focused verification")) return [];
+    return records(receipt.markdown, "## Focused verification", headers.focusedVerification)
+      .map((row) => ({ ...row, receipt: relative }));
+  });
   const focusedById = new Map();
   const capabilityById = new Map(parsed.flatMap((canon) => canon.capabilities).map((row) => [row.ID, row]));
   for (const row of focused) {
@@ -325,10 +333,11 @@ function validateReceiptReferences(parsed) {
     const capability = capabilityById.get(id);
     if (!capability) throw new Error(`focused verification receipt targets unknown capability ${id}`);
     if (capability.Verification !== "FOCUSED_PASS") continue;
+    if (proofReceiptByCapability.get(id) !== row.receipt) continue;
     if (focusedById.has(id)) throw new Error(`focused verification receipt duplicates ${id}`);
     const proofText = `${row["Focused command"]} ${row["Direct test evidence"]} ${row["Run identity/time"]}`;
     if (!row["Focused command"] || !row["Direct test evidence"] || !row["Run identity/time"] || !/FOCUSED_PASS/.test(row.Result) || !/0 fail/i.test(`${row.Result} ${row["Run identity/time"]}`)) throw new Error(`focused verification receipt lacks exact successful proof for ${id}`);
-    if (/exact [A-Z]{3}-\d{3} (?:focused|behavior) assertion|focused suites|recorded focused run|exact focused receipts/i.test(proofText) || !focusedProofLooksExact(row["Focused command"], row["Direct test evidence"])) throw new Error(`focused verification receipt uses placeholder or nonexistent proof for ${id}`);
+    if (/exact [A-Z]{3}-\d{3} (?:focused|behavior) assertion|focused suites|recorded focused run|exact focused receipts/i.test(proofText) || !focusedProofLooksExact(row["Focused command"], row["Direct test evidence"], row["Run identity/time"])) throw new Error(`focused verification receipt uses placeholder or nonexistent proof for ${id}`);
     focusedById.set(id, row);
   }
   for (const canon of parsed) for (const row of canon.capabilities) if (row.Verification === "FOCUSED_PASS" && !focusedById.has(row.ID)) throw new Error(`${canon.file}:${row.ID}: FOCUSED_PASS lacks focused verification receipt`);
@@ -392,7 +401,7 @@ function validateSemanticOwnership(parsed) {
   if (byId.get("MEM-024")?.Implementation !== "PARTIAL") throw new Error("MEM-024 must remain PARTIAL until receipt/verdict resolution is correct");
   if (byId.has("BPT-045")) throw new Error("BPT-045 must remain preservation-only legacy alias");
   const exploratory = capabilities.filter((row) => row.Scope === "EXPLORATORY").map((row) => row.ID).sort();
-  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "CTX-039", "LDG-023", "PUL-034"];
+  const expectedExploratory = ["ADP-065", "ADP-066", "ADP-067", "ADP-068", "ADP-069", "ADP-070", "ADP-071", "BPT-048", "CTX-033", "CTX-039", "CTX-042", "LDG-023", "PUL-034"];
   if (JSON.stringify(exploratory) !== JSON.stringify(expectedExploratory)) throw new Error(`exploratory disposition differs: ${exploratory.join(", ")}`);
   for (let left = 0; left < capabilities.length; left += 1) for (let right = left + 1; right < capabilities.length; right += 1) {
     if (similarity(capabilities[left]["Observable behavior"], capabilities[right]["Observable behavior"]) >= 0.9) throw new Error(`semantic duplicate candidates: ${capabilities[left].ID} & ${capabilities[right].ID}`);

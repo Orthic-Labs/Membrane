@@ -141,7 +141,7 @@ fn sync_refreshes_hash_and_worktree_revision_after_content_changes() {
 }
 
 #[test]
-fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
+fn sync_treats_unqualified_rename_as_new_identity_and_tombstones_old_path() {
     let temp = tempfile::tempdir().unwrap();
     let old = temp.path().join("decision-old.md");
     let new = temp.path().join("decision-new.md");
@@ -172,9 +172,9 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
         )
         .unwrap();
 
-    assert_eq!(
+    assert_ne!(
         active_id, first_id,
-        "rename must retain a stable document alias"
+        "an unqualified rename must not transfer source identity or authorization"
     );
     assert_eq!(old_state, "tombstoned");
 }

@@ -11,13 +11,13 @@ Each named subsystem owns one atomic canon. Competitive comparison & lifecycle q
 | [Membrane](membrane.md) | RELEASED | 66 | 0 | 12 | 54 | 0 |
 | [Pull](pull.md) | RELEASED | 40 | 1 | 0 | 40 | 0 |
 | [Push](push.md) | RELEASED | 29 | 0 | 3 | 26 | 0 |
-| [Cortex](cortex.md) | RELEASED | 37 | 2 | 10 | 27 | 0 |
+| [Cortex](cortex.md) | RELEASED | 39 | 3 | 10 | 29 | 0 |
 | [Blueprint](blueprint.md) | RELEASED | 68 | 1 | 20 | 48 | 0 |
 | [Ledger](ledger.md) | RELEASED | 30 | 1 | 3 | 27 | 0 |
 | [Adapt](adapt.md) | RELEASED | 68 | 7 | 10 | 58 | 0 |
-| **Total** | — | **338** | **12** | **58** | **280** | **0** |
+| **Total** | — | **340** | **13** | **58** | **282** | **0** |
 
-Total capability rows: **350**
+Total capability rows: **353**
 
 ## Counting & closure
 
@@ -29,7 +29,7 @@ Competitive closure requires receipt-bound `CURRENT_BEST`; `DONOR_BETTER`, `CURR
 
 Legacy atoms: **249**
 Introduced atomic splits: **30**
-New capabilities after normalization: **75**
+New capabilities after normalization: **78**
 Legacy/specification rows: **479**
 Preserved union: **728/728**
 Unclassified: **0**

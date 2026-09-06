@@ -5077,28 +5077,23 @@ mod tests {
     }
 
     #[test]
-    fn ledger_activation_cli_requires_receipt_for_fts_only() {
-        assert!(
-            super::Cli::try_parse_from(["membrane", "ledger", "activate", "ledger_fts"]).is_err()
-        );
-        let parsed = super::Cli::try_parse_from([
-            "membrane",
-            "ledger",
-            "activate",
-            "ledger_fts",
-            "--receipt",
-            "qualification.json",
-        ])
-        .unwrap();
-        assert!(matches!(
-            parsed.cmd,
-            super::Cmd::Ledger {
-                command: super::LedgerCmd::Activate { .. }
-            }
-        ));
-        assert!(
-            super::Cli::try_parse_from(["membrane", "ledger", "activate", "legacy_scan"]).is_ok()
-        );
+    fn ledger_activation_cli_is_owner_scoped_and_rejects_retired_receipt_flag() {
+        assert!(super::Cli::try_parse_from([
+            "membrane", "ledger", "activate", "ledger_fts"
+        ]).is_err());
+        for mode in ["legacy_scan", "shadow", "ledger_fts"] {
+            let parsed = super::Cli::try_parse_from([
+                "membrane", "ledger", "activate", "--repo", "C:/repo", mode
+            ]).expect("owner-scoped ledger activation parses");
+            assert!(matches!(
+                parsed.cmd,
+                super::Cmd::Ledger { command: super::LedgerCmd::Activate { .. } }
+            ));
+        }
+        assert!(super::Cli::try_parse_from([
+            "membrane", "ledger", "activate", "--repo", "C:/repo", "ledger_fts",
+            "--receipt", "qualification.json"
+        ]).is_err());
     }
 
     #[test]

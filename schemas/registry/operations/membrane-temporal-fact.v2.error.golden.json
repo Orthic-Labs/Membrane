@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 2,
+  "operation": "membrane_temporal_fact",
+  "errorVersion": 2,
+  "result": {
+    "kind": "error",
+    "code": "temporal_fact_payload_too_large",
+    "message": "Fixture typed failure",
+    "retryable": false
+  }
+}

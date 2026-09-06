@@ -4,11 +4,16 @@
     "default": [
       "membrane_context",
       "membrane_source_read",
-      "membrane_ledger"
+      "membrane_ledger",
+      "membrane_knowledge_propose",
+      "membrane_memory",
+      "membrane_checkpoint_save",
+      "membrane_checkpoint_load"
     ],
     "memory": [
       "membrane_context",
       "membrane_knowledge_propose",
+      "membrane_memory",
       "membrane_checkpoint_save",
       "membrane_checkpoint_load",
       "membrane_working_context",
@@ -36,6 +41,12 @@
     "push": [
       "membrane_push_prepare",
       "membrane_push_resolve"
+    ],
+    "adapt": [
+      "membrane_adapt_inspect"
+    ],
+    "operator": [
+      "membrane_knowledge_review"
     ]
   }
 }

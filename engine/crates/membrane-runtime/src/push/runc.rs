@@ -539,12 +539,12 @@ fn publish_spill_scoped(
         kept_tail_bytes: tail_bytes,
         protected_spans: Vec::new(),
         dropped_bytes_digest: format!("sha256:{dropped_digest}"),
-        recovery_handle: format!("mr://anchor/{digest}"),
+        recovery_handle: retained.handle.clone(),
         expires_at_millis: expires_at_millis as u64,
     };
     let record = serde_json::json!({
         "schemaVersion": 1,
-        "anchor": format!("mr://anchor/{digest}"),
+        "anchor": retained.handle,
         "sha256": digest,
         "createdAtMillis": created_at_millis,
         "expiresAtMillis": expires_at_millis,
@@ -868,10 +868,18 @@ pub fn run_command_capped_with_limits(mut command: Command, head: usize, tail: u
         Ok((full.to_owned(), None, capture.digest.clone(), None))
     };
     capture.cleanup();
-    let (capped, spill_path, digest, recovery_marker) = result?;
-    Ok(RuncResult { capped, spill_path,
-        anchor: if recovery_marker.is_some() { format!("mr://anchor/{digest}") } else { String::new() },
-        exit_code: status.code().unwrap_or(1), recovery_marker })
+    let (capped, spill_path, _digest, recovery_marker) = result?;
+    let anchor = recovery_marker
+        .as_ref()
+        .map(|marker| marker.recovery_handle.clone())
+        .unwrap_or_default();
+    Ok(RuncResult {
+        capped,
+        spill_path,
+        anchor,
+        exit_code: status.code().unwrap_or(1),
+        recovery_marker,
+    })
 }
 
 /// Run one explicit Git or repository-test command without shell expansion.
@@ -1053,15 +1061,20 @@ mod tests {
         let spilled = std::fs::read_to_string(&spill_path).unwrap();
         assert_eq!(spilled.lines().count(), 100);
         assert!(r.anchor.starts_with("mr://anchor/"));
-        assert!(spill_path
+        let source_digest = spill_path
             .file_stem()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| r.anchor.ends_with(name)));
+            .expect("spill source digest");
+        assert!(
+            !r.anchor.ends_with(source_digest),
+            "recovery authority must stay distinct from the content digest"
+        );
         let metadata: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(spill_path.with_extension("json")).unwrap(),
         )
         .unwrap();
         assert_eq!(metadata["anchor"], r.anchor);
+        assert_eq!(metadata["sha256"].as_str(), Some(source_digest));
         assert!(metadata["expiresAtMillis"].as_u64() > metadata["createdAtMillis"].as_u64());
 
         let r2 = run_capped("exit 7", 3, 3, dir.path()).expect("run_capped ok");
@@ -1242,10 +1255,13 @@ mod tests {
         assert_eq!(&capped_lines[..2], &spill_lines[..2]);
         assert!(capped_lines[2].contains("lines elided"));
         assert_eq!(&capped_lines[3..], &spill_lines[4..]);
-        assert!(spill
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .is_some_and(|digest| truncated.anchor.ends_with(digest)));
+        assert!(truncated.anchor.starts_with("mr://anchor/"));
+        let scope = super::super::recovery::RecoveryScope::local().unwrap();
+        let exact = super::super::recovery::RecoveryStore::at(dir.path()).resolve(
+            &scope, &truncated.anchor, &super::super::recovery::Selector::Whole,
+            super::super::recovery::MAX_RESTORE_BYTES, super::super::recovery::now_ms(),
+        ).unwrap();
+        assert_eq!(exact.bytes().unwrap(), std::fs::read(&spill).unwrap());
 
         unsafe {
             match prior {

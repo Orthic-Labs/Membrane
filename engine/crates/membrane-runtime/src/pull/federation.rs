@@ -663,8 +663,8 @@ fn request_time_refusal(
 fn negotiated_consumer_resolvers(body: &Value) -> Vec<String> {
     // Intersection, not caller assertion: only resolver surfaces owned by this
     // runtime can be negotiated into Pull representation eligibility.  Today
-    // membrane_source_read is the sole generic evidence-handle reader.
-    const SUPPORTED: &[&str] = &["membrane_source_read"];
+    // Source & canonical-memory readers are runtime-owned resolver surfaces.
+    const SUPPORTED: &[&str] = &["membrane_source_read", "membrane_memory_read"];
     let mut resolvers = body
         .pointer("/consumerCapabilities/resolvers")
         .and_then(Value::as_array)
@@ -1300,7 +1300,11 @@ fn memory_candidates_payload_for_descriptor_inner(
                     "protected": false,
                     "exact": false,
                     "recoverable": true,
-                    "resolver": format!("cortex get {}", e.id),
+                    "resolver": format!(
+                        "membrane_memory_read:membrane_memory:get:{}:sha256:{}",
+                        e.id,
+                        sha256_hex(&e.content)
+                    ),
                     "text": preview,
                 })
             }
@@ -1531,10 +1535,13 @@ mod tests {
     fn consumer_resolver_negotiation_intersects_runtime_owned_surfaces() {
         let body = serde_json::json!({
             "consumerCapabilities": {
-                "resolvers": ["unknown_resolver", "membrane_source_read", "membrane_source_read"]
+                "resolvers": ["unknown_resolver", "membrane_memory_read", "membrane_source_read", "membrane_source_read"]
             }
         });
-        assert_eq!(negotiated_consumer_resolvers(&body), vec!["membrane_source_read"]);
+        assert_eq!(
+            negotiated_consumer_resolvers(&body),
+            vec!["membrane_memory_read", "membrane_source_read"]
+        );
     }
 
     #[test]
@@ -1720,7 +1727,14 @@ mod tests {
         );
         // text is CONTENT, not an id/slug (the bug this fixes).
         assert!(!text.starts_with("memory:role:") && !text.starts_with("mem-"));
-        assert!(top["resolver"].as_str().unwrap().starts_with("cortex get "));
+        assert!(top["resolver"]
+            .as_str()
+            .unwrap()
+            .starts_with("membrane_memory_read:membrane_memory:get:"));
+        assert!(top["resolver"]
+            .as_str()
+            .unwrap()
+            .ends_with(&format!(":sha256:{}", top["sourceHash"].as_str().unwrap())));
     }
 
     #[test]

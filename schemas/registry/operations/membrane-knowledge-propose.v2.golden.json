@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 2,
+  "operation": "membrane_knowledge_propose",
+  "errorVersion": 2,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "needs_review",
+      "durable": true,
+      "proposalId": "proposal-fixture",
+      "durableId": "proposal-fixture",
+      "reviewState": "pending",
+      "emissionHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "admissionState": "not_requested",
+      "admission": null,
+      "lastError": null,
+      "lifecycleReceipt": {
+        "schema": "membrane.lifecycle-receipt.v1",
+        "operation": "knowledge_propose",
+        "status": "pending",
+        "durableId": "proposal-fixture",
+        "eventId": "event-fixture",
+        "readbackDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "recordedAt": "2026-09-05T00:00:00Z"
+      },
+      "provenance": {
+        "repositoryId": "repo",
+        "scopeId": "scope",
+        "authority": "proposal_only"
+      }
+    }
+  }
+}

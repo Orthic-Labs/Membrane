@@ -72,7 +72,7 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_working_context", description: "Save, load, or close bounded session/task working context; durability must be explicit.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "close"] }, context: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, contextId: { type: "string" }, asOf: { type: "string" }, cursor: { type: "string", maxLength: 512 }, limit: { type: "integer", minimum: 1, maximum: 100 } } } },
   { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
-  { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review. Self-reported outcomes are advisory (non-ranking) unless verdictRef names a resolvable cited verdict.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
+  { name: "membrane_feedback", description: "Record bounded caller feedback as advisory & unverified. Caller verdictRef is retained as an advisory reference only.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
   { name: "membrane_diagnostic_workspace", description: "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance. open binds one canonical absolute projectRoot (design §3 WorkspaceEngineKey); same repo/worktree + different root is a typed conflict, uncanonicalizable root is rejected.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["open", "close", "status", "reconcile"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, projectRoot: { type: "string", minLength: 1, maxLength: 1024, description: "Canonical absolute worktree/project root to bind at open (design §3). Same repo/worktree + different canonical root is a typed conflict; uncanonicalizable root is rejected." }, manifestDigest: { type: "string", minLength: 1, maxLength: 256 }, hashes: { type: "array", minItems: 0, maxItems: 4096, items: { type: "object", required: ["path", "hash"], additionalProperties: false, properties: { path: { type: "string", minLength: 1 }, hash: { type: "string", minLength: 1 } } } } }, oneOf: [{ properties: { operation: { enum: ["open"] } }, required: ["repoId", "worktreeId", "projectRoot"] , not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["close"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["status"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { const: "reconcile" } }, required: ["repoId", "worktreeId", "manifestDigest", "hashes"] }] } },
   { name: "membrane_diagnostic_mutation", description: "Transactionally begin or seal one coherent mutation batch, or register exact observed resulting bytes (registerObserved with observed_hook origin) for hosts without edit transactions. Seal/register invalidate stale clearance. Never blocks or rolls back writes: the fence gates semantic acceptance, not disk persistence.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId"], additionalProperties: false, properties: { operation: { type: "string", enum: ["begin", "seal", "registerObserved"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, epoch: { type: "object", description: "WorkspaceEpochV1 envelope (workspace-epoch.v1) bound to this repoId/worktreeId; origin transactional for seal, observed_hook for registerObserved." } }, oneOf: [{ properties: { operation: { const: "begin" } }, not: { required: ["epoch"] } }, { properties: { operation: { enum: ["seal", "registerObserved"] } }, required: ["epoch"] }] } },
   { name: "membrane_diagnostic_snapshot", description: "Await a mutation-bound evidence snapshot plus planner gate decision (the operational fence path), or read get/explain/delta views of the last awaited snapshot cached per repoId:worktreeId in this server process. Events and presentation never clear the fence; only snapshot-await (and resident-side fence evaluation) produces operational decisions. get/explain/delta are cached views, never re-evaluation.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["await", "get", "explain", "delta"] }, caller: CALLER_SCHEMA, taskGrantLevel: { type: "string" }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, policyProfileName: { type: "string", minLength: 1, maxLength: 128 }, requiredCapabilities: { type: "array", minItems: 0, maxItems: 8, items: { type: "string", enum: CAPABILITY_VOCABULARY } }, maxCost: { type: "string", enum: COST_CLASSES, description: "Hard acquisition ceiling; defaults to interactive." }, deadlineMs: { type: "integer", minimum: 1, maximum: 60000, description: "Absolute wait budget for await; defaults to 10000." } }, oneOf: [{ properties: { operation: { const: "await" } }, required: ["repoId", "worktreeId", "policyProfileName"] }, { properties: { operation: { enum: ["get", "explain", "delta"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["policyProfileName"] }, { required: ["requiredCapabilities"] }, { required: ["maxCost"] }, { required: ["deadlineMs"] }] } }] } },
@@ -147,12 +147,10 @@ function feedbackReadback(dbPath, eventId, candidateId, outcome, { source, verdi
     const canonicalTrace = `trace-${createHash("sha256").update(eventId).digest("hex").slice(0, 32)}`;
     const row = db.prepare("SELECT trace_id, candidate_id, content_sha256, outcome, verified, verdict_ref FROM context_feedback WHERE trace_id = ? AND candidate_id = ?").get(canonicalTrace, candidateId);
     const expectedDigest = digest(candidateId).slice("sha256:".length);
-    // Verification basis, not just trace/candidate/sha/outcome equality: an advisory (agent
-    // self-report) row must persist verified=0, and a cited_verdict row must persist verified=1
-    // with the exact verdict_ref it was submitted with -- so a false self-claim of verification
-    // can never slip past the readback.
+    // MCP caller feedback remains advisory. Exact verdictRef is retained for
+    // readback but never changes verified=0.
     const expectedVerified = source === undefined ? undefined : (source === "advisory" ? 0 : 1);
-    const expectedVerdictRef = source === "cited_verdict" ? verdictRef : null;
+    const expectedVerdictRef = verdictRef ?? null;
     if (
       !row || row.trace_id !== canonicalTrace || row.candidate_id !== candidateId ||
       row.content_sha256 !== expectedDigest || row.outcome !== outcome ||
@@ -411,12 +409,9 @@ async function durableProposal(binding, emission) {
     provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
   };
 }
-// membrane_feedback outcomes are entirely model/agent self-reported: this tool never observed
-// the downstream action itself, so it must never emit "observed_action" (that source is
-// reserved for Membrane's own store-internal observations). A caller-supplied verdictRef names
-// a resolvable cited verdict; absent that, the report is advisory -- persisted for
-// observability but never eligible to affect ranking (matches the store's fail-safe default).
-function feedbackSourceFor(args) { return args.verdictRef ? "cited_verdict" : "advisory"; }
+// membrane_feedback outcomes are caller self-reports. verdictRef remains an
+// advisory reference; host-qualified verdict ingestion is a separate path.
+function feedbackSourceFor(_args) { return "advisory"; }
 async function durableFeedback(binding, args) {
   const source = feedbackSourceFor(args);
   try {
@@ -428,7 +423,7 @@ async function durableFeedback(binding, args) {
       "feedback", "--trace", eventId, "--candidate", args.receiptId,
       "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
       "--source", source, "--scope", binding.scope_id,
-      ...(source === "cited_verdict" ? ["--verdict-ref", args.verdictRef] : []),
+      ...(args.verdictRef ? ["--verdict-ref", args.verdictRef] : []),
     ]);
     const out = await run(command.binary, command.args, "", env);
     if (out.code !== 0) throw new Error(out.stderr.trim() || out.stdout.trim());
@@ -440,14 +435,14 @@ async function durableFeedback(binding, args) {
     }
     const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome, { source, verdictRef: args.verdictRef });
     return {
-      status: "persisted",
+      status: "accepted_advisory",
       durable: true,
       feedbackId,
       receiptId: args.receiptId,
       outcome: args.outcome,
       source,
       verified: expectedVerified,
-      lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, readback),
+      lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, eventId, readback),
       provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
       feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
       feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),

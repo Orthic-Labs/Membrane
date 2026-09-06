@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_memory",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "schemaVersion": 1,
+      "id": "scope/memory",
+      "cortexStoreId": "store",
+      "contentHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "content": "bounded reference",
+      "offset": 0,
+      "nextOffset": null,
+      "totalChars": 17,
+      "complete": true,
+      "pageComplete": true,
+      "authority": "A4",
+      "lifecycle": "active",
+      "scopeId": "scope",
+      "recordType": "reference",
+      "sourceRefs": [],
+      "provenanceAvailability": "legacy_partial",
+      "observedResolution": true,
+      "verifiedHelped": false
+    }
+  }
+}

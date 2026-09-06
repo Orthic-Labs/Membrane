@@ -118,22 +118,26 @@ const rows = await rpc([
   { jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "membrane://protocol/v1" } },
 ]);
 assert.match(rows[0].result.instructions, /federated context/i);
+const defaultTools = ["membrane_context", "membrane_source_read", "membrane_ledger", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load"];
 const tools = rows[1].result.tools.map((tool) => tool.name).sort();
-assert.deepEqual(tools, ["membrane_context"]);
+assert.deepEqual(tools, [...defaultTools].sort());
 assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|filesystem|plan_context)(?:$|_)/.test(name)), []);
 assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", name: "Membrane protocol v1", mimeType: "text/markdown" }]);
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
 const blueprintToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint"] } } }]);
-assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_blueprint", "membrane_context", "membrane_source_read"]);
+assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), [...defaultTools, "membrane_blueprint"].sort());
 const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint", "blueprint"] } } }]);
-assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), ["membrane_context"]);
+assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), defaultTools);
+const readOnlyDefaultTools = new Set(["membrane_context", "membrane_source_read"]);
 for (const tool of rows[1].result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
   assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name} rejects unknown inputs`);
-  assert.deepEqual(tool.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, `${tool.name} declares its read-only effects`);
-  assert.match(tool.description, /use when/i);
-  assert.match(tool.description, /do not use/i);
+  assert.deepEqual(tool.annotations, { readOnlyHint: readOnlyDefaultTools.has(tool.name), destructiveHint: false, idempotentHint: readOnlyDefaultTools.has(tool.name) }, `${tool.name} declares its actual effects`);
+  if (tool.name === "membrane_context") {
+    assert.match(tool.description, /use when/i);
+    assert.match(tool.description, /do not use/i);
+  }
   assert.equal(tool.inputSchema.properties.traceparent, undefined, `${tool.name} does not advertise traceparent as an argument`);
   assert.equal(tool.inputSchema.properties.tracestate, undefined, `${tool.name} does not advertise tracestate as an argument`);
   assert.equal(tool.inputSchema.properties.baggage, undefined, `${tool.name} does not advertise baggage as an argument`);
@@ -173,7 +177,7 @@ try {
   const caller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" };
   await live.request({ jsonrpc: "2.0", id: 300, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305", version: "1" } } });
   await live.request({ jsonrpc: "2.0", id: 301, method: "logging/setLevel", params: { level: "debug" } });
-  const context = await live.request({ jsonrpc: "2.0", id: 302, method: "tools/call", params: { name: "membrane_context", arguments: { task: "lifecycle", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-progress" } } });
+  const context = await live.request({ jsonrpc: "2.0", id: 302, method: "tools/call", params: { name: "membrane_context", arguments: { task: "lifecycle", repository: enrolledRoot, caller, remainingContextCeiling: {} }, _meta: { progressToken: "mbr305-progress" } } });
   assert.equal(context.result.isError, false, toolError(context));
   const progress = live.rows.filter((row) => row.method === "notifications/progress").map((row) => row.params.progress);
   assert.deepEqual(progress, [0, 10, 40, 100]);
@@ -201,7 +205,7 @@ try {
   cancelled = await openRpc({ ...advisoryEnv, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
   await cancelled.request({ jsonrpc: "2.0", id: 308, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305-cancel", version: "1" } } });
   const cancellationStarted = Date.now();
-  cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 309, method: "tools/call", params: { name: "membrane_context", arguments: { task: "wait for cancellation", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-cancel-progress" } } })}\n`);
+  cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 309, method: "tools/call", params: { name: "membrane_context", arguments: { task: "wait for cancellation", repository: enrolledRoot, caller, remainingContextCeiling: {} }, _meta: { progressToken: "mbr305-cancel-progress" } } })}\n`);
   await new Promise((resolve) => setTimeout(resolve, 50));
   cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 309, reason: "cancelled" } })}\n`);
   await waitFor(
@@ -234,7 +238,7 @@ assert.match(toolError(legacySession[1]), /durable feedback write failed/i);
 
 const denied = await rpc([{
   jsonrpc: "2.0", id: 4, method: "tools/call",
-  params: { name: "membrane_context", arguments: { task: "inspect", repository: foreignRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" } } },
+  params: { name: "membrane_context", arguments: { task: "inspect", repository: foreignRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, remainingContextCeiling: {} } },
 }], { MEMBRANE_PROJECT_REGISTRY: registry });
 assert.equal(denied[0].id, 4);
 assert.equal(denied[0].result.isError, true);
@@ -243,7 +247,7 @@ assert.match(toolError(denied[0]), /not enrolled/i);
 await writeFile(registry, "{corrupt", "utf8");
 const corruptDenied = await rpc([{
   jsonrpc: "2.0", id: 5, method: "tools/call",
-  params: { name: "membrane_context", arguments: { task: "inspect", repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" } } },
+  params: { name: "membrane_context", arguments: { task: "inspect", repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, remainingContextCeiling: {} } },
 }], { MEMBRANE_PROJECT_REGISTRY: registry });
 assert.equal(corruptDenied[0].result.isError, true);
 assert.match(toolError(corruptDenied[0]), /registry unavailable/i);
@@ -471,7 +475,7 @@ const modern = await rpc([
 ], advisoryEnv);
 const modernById = new Map(modern.map((row) => [row.id, row]));
 assert.deepEqual(modernById.get(10).result.supportedVersions, ["2026-07-28"]);
-assert.deepEqual(modernById.get(11).result.tools.map((tool) => tool.name), ["membrane_context"]);
+assert.deepEqual(modernById.get(11).result.tools.map((tool) => tool.name), defaultTools);
 for (const tool of modernById.get(11).result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
 }
@@ -525,10 +529,10 @@ try {
   const { port } = federate.address();
   const invalidCalls = await rpc([
     { jsonrpc: "2.0", id: 22, method: "server/discover", params: { _meta: modernMeta } },
-    { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "membrane_context", arguments: { repository: enrolledRoot, caller: virtualCaller }, _meta: modernMeta } },
-    { jsonrpc: "2.0", id: 24, method: "tools/call", params: { name: "membrane_context", arguments: { task: "", repository: enrolledRoot, caller: virtualCaller }, _meta: modernMeta } },
-    { jsonrpc: "2.0", id: 25, method: "tools/call", params: { name: "membrane_context", arguments: { task: "bad budget type", repository: enrolledRoot, caller: virtualCaller, budget: "64" }, _meta: modernMeta } },
-    { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "membrane_context", arguments: { task: "negative budget", repository: enrolledRoot, caller: virtualCaller, budget: -1 }, _meta: modernMeta } },
+    { jsonrpc: "2.0", id: 23, method: "tools/call", params: { name: "membrane_context", arguments: { repository: enrolledRoot, caller: virtualCaller, remainingContextCeiling: {} }, _meta: modernMeta } },
+    { jsonrpc: "2.0", id: 24, method: "tools/call", params: { name: "membrane_context", arguments: { task: "", repository: enrolledRoot, caller: virtualCaller, remainingContextCeiling: {} }, _meta: modernMeta } },
+    { jsonrpc: "2.0", id: 25, method: "tools/call", params: { name: "membrane_context", arguments: { task: "bad budget type", repository: enrolledRoot, caller: virtualCaller, budget: "64", remainingContextCeiling: {} }, _meta: modernMeta } },
+    { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "membrane_context", arguments: { task: "negative budget", repository: enrolledRoot, caller: virtualCaller, budget: -1, remainingContextCeiling: {} }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: "yesterday" }, _meta: modernMeta } },
   ], { MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
@@ -545,7 +549,7 @@ try {
       params: {
         name: "membrane_context",
         arguments: {
-          task: "trace context", repository: enrolledRoot, caller: virtualCaller,
+          task: "trace context", repository: enrolledRoot, caller: virtualCaller, remainingContextCeiling: {},
           sufficiencyContract: {
             schemaVersion: 1,
             policy: "membrane-sufficiency-v1",
@@ -610,7 +614,7 @@ const workspaceContext = await rpc([{
   jsonrpc: "2.0", id: 70, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repoId, wsChildEntry?.repoId].filter(Boolean) },
+    arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repoId, wsChildEntry?.repoId].filter(Boolean), remainingContextCeiling: {} },
   },
 }], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, MEMBRANE_PORT: String(deadCortexPort), MEMBRANE_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
 const workspaceRow = workspaceContext[0];
@@ -700,7 +704,7 @@ const mbr3Scope = await rpc([{
   jsonrpc: "2.0", id: 90, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "inspect ungranted", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repoId, mbr3G.repoId] },
+    arguments: { task: "inspect ungranted", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repoId, mbr3G.repoId], remainingContextCeiling: {} },
   },
 }], mbr3Env);
 assert.equal(mbr3Scope[0].result.isError, false, toolError(mbr3Scope[0]));
@@ -737,7 +741,7 @@ const mbr4Abstained = await rpc([{
   jsonrpc: "2.0", id: 91, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "entirely unrelated sentence without any repo alias", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace" },
+    arguments: { task: "entirely unrelated sentence without any repo alias", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", remainingContextCeiling: {} },
   },
 }], mbr3Env);
 assert.equal(mbr4Abstained[0].result.isError, false, toolError(mbr4Abstained[0]));
@@ -760,7 +764,7 @@ const mbr7Call = await rpc([{
     name: "membrane_context",
     arguments: {
       task: "do the thing", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace",
-      explicitRepositoryIds: [mbr3Ws.repoId],
+      explicitRepositoryIds: [mbr3Ws.repoId], remainingContextCeiling: {},
       taskEnvelope: mbr7TaskEnvelope, turnEnvelope: mbr7TurnEnvelope, clientEnvelope: mbr7ClientEnvelope,
     },
   },

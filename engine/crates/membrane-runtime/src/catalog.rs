@@ -1066,7 +1066,7 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM identities", [], |row| row.get(0))
             .unwrap();
         assert_eq!(identity_count, 1);
-        assert_eq!(catalog.startup_report().schema_version, 2);
+        assert_eq!(catalog.startup_report().schema_version, CATALOG_SCHEMA_VERSION);
         assert!(!catalog.startup_report().catalog_installation_id.is_empty());
     }
 

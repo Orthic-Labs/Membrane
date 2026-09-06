@@ -2194,7 +2194,7 @@ mod tests {
     }
 
     #[test]
-    fn planner_records_selected_delivery_without_claiming_rendering() {
+    fn planner_records_inline_fallback_without_claiming_rendering() {
         let resolved = candidate("resolved", "repo_code", 100, 0.9, false);
         let mut metadata = candidate("metadata", "repo_code", 40, 0.8, false);
         metadata.resolver.clear();
@@ -2209,29 +2209,29 @@ mod tests {
         let out = plan(&input).unwrap();
         let blocks = serde_json::to_value(&out.packet.blocks).unwrap();
         assert_eq!(blocks[0]["deliveryStage"], "planned");
-        assert_eq!(blocks[0]["deliveryClass"], "resolver_backed");
+        assert_eq!(blocks[0]["deliveryClass"], "rendered");
         assert_eq!(blocks[0]["selectedTokens"], 100);
         assert_eq!(blocks[0]["renderedTokens"], 0);
         assert_eq!(blocks[0]["deliveredChars"], 0);
         assert_eq!(blocks[0]["dropReason"], "none");
-        assert_eq!(blocks[1]["deliveryClass"], "metadata_only");
+        assert_eq!(blocks[1]["deliveryClass"], "rendered");
         assert_eq!(blocks[1]["deliveryStage"], "planned");
         assert_eq!(blocks[1]["selectedTokens"], 40);
         assert_eq!(blocks[1]["renderedTokens"], 0);
         assert_eq!(blocks[1]["deliveredChars"], 0);
-        assert_eq!(blocks[1]["dropReason"], "missing_resolver");
+        assert_eq!(blocks[1]["dropReason"], "none");
 
         let receipts = serde_json::to_value(&out.receipts).unwrap();
         assert_eq!(receipts[0]["deliveryStage"], "planned");
-        assert_eq!(receipts[0]["deliveryClass"], "resolver_backed");
+        assert_eq!(receipts[0]["deliveryClass"], "rendered");
         assert_eq!(receipts[0]["selectedTokens"], 100);
         assert_eq!(receipts[0]["dropReason"], "none");
-        assert_eq!(receipts[1]["deliveryClass"], "metadata_only");
+        assert_eq!(receipts[1]["deliveryClass"], "rendered");
         assert_eq!(receipts[1]["deliveryStage"], "planned");
         assert_eq!(receipts[1]["selectedTokens"], 40);
         assert_eq!(receipts[1]["renderedTokens"], 0);
         assert_eq!(receipts[1]["deliveredChars"], 0);
-        assert_eq!(receipts[1]["dropReason"], "missing_resolver");
+        assert_eq!(receipts[1]["dropReason"], "none");
 
         let packet = serde_json::to_value(&out.packet).unwrap();
         assert_eq!(
@@ -2247,7 +2247,7 @@ mod tests {
         assert_eq!(packet["providerAccounting"]["cortex"]["deliveredChars"], 0);
         assert_eq!(
             packet["providerAccounting"]["cortex"]["dropReason"],
-            "missing_resolver"
+            "none"
         );
     }
 
@@ -2297,7 +2297,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_accounting_combines_mixed_outcomes_deterministically() {
+    fn provider_accounting_combines_inline_fallback_deterministically() {
         let resolved = candidate("resolved", "repo_code", 100, 0.9, false);
         let mut metadata = candidate("metadata", "repo_code", 40, 0.8, false);
         metadata.resolver = "   ".into();
@@ -2306,7 +2306,7 @@ mod tests {
         let out = plan(&input).unwrap();
         let accounting = &out.packet.provider_accounting["blueprint"];
         assert_eq!(accounting.selected_tokens, 140);
-        assert_eq!(accounting.drop_reason, DropReason::Multiple);
+        assert_eq!(accounting.drop_reason, DropReason::None);
 
         let reversed = empty_planner_input(vec![
             {
@@ -2319,7 +2319,7 @@ mod tests {
         let reversed_out = plan(&reversed).unwrap();
         assert_eq!(
             reversed_out.packet.provider_accounting["blueprint"].drop_reason,
-            DropReason::Multiple
+            DropReason::None
         );
     }
 
