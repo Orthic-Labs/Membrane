@@ -39,7 +39,7 @@ use membrane_runtime::cortex_lifecycle::{
 use membrane_runtime::cli::explain_memory;
 use membrane_runtime::digest::digest_str;
 use membrane_runtime::store::CortexCompletenessState;
-use membrane_runtime::{MemDb, MemoryStore, TemporalFact};
+use membrane_runtime::{MemDb, MemoryStore, TemporalFact, TemporalFactQuery};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -401,10 +401,26 @@ fn ctx009_temporal_round_trip_keeps_observed_valid_recorded_expiry_distinct() {
         Some(&json!({"status": "known", "value": "2026-01-15T00:00:00Z"})),
         "valid time is the fact's own interval start: {record_value}"
     );
-    assert_eq!(
-        record_value.pointer("/recordedAt"),
-        Some(&json!({"status": "known", "value": "2026-03-01T00:00:00Z"})),
-        "recorded time is observation, not validity: {record_value}"
+    // Recorded time is when Cortex durably admitted the fact, NOT the caller's
+    // observation instant and NOT the validity interval start. The three are
+    // supplied here as three different instants precisely so a conflation is
+    // observable.
+    let recorded_at = record_value
+        .pointer("/recordedAt/value")
+        .and_then(|value| value.as_str())
+        .unwrap_or_else(|| panic!("recorded time must be known: {record_value}"))
+        .to_owned();
+    assert_ne!(
+        recorded_at, "2026-03-01T00:00:00Z",
+        "recorded time is admission time, not the caller's observation: {record_value}"
+    );
+    assert_ne!(
+        recorded_at, "2026-01-15T00:00:00Z",
+        "recorded time is admission time, not validity start: {record_value}"
+    );
+    assert!(
+        recorded_at.as_str() > "2026-03-01T00:00:00Z",
+        "admission happens after the observation it records: {record_value}"
     );
     assert_eq!(
         record_value.pointer("/expiresAt"),
@@ -415,8 +431,28 @@ fn ctx009_temporal_round_trip_keeps_observed_valid_recorded_expiry_distinct() {
     assert_ne!(
         record_value.pointer("/validAt"),
         record_value.pointer("/recordedAt"),
-        "observed and valid must never coalesce"
+        "valid and recorded must never coalesce"
     );
+    // The fourth dimension — the caller's observation instant — survives
+    // durably and is what the fact-shaped compatibility read returns, rather
+    // than the admission clock leaking through as `observedAt`.
+    let facts = sandbox
+        .store
+        .temporal_facts()
+        .query(TemporalFactQuery {
+            scope_chain: vec!["scope".to_owned()],
+            subject: "oncall-roster".to_owned(),
+            predicate: "primary".to_owned(),
+            as_of: "2026-06-01T00:00:00Z".to_owned(),
+        })
+        .expect("fact-shaped read resolves");
+    assert_eq!(facts.len(), 1);
+    assert_eq!(
+        facts[0].observed_at, "2026-03-01T00:00:00Z",
+        "observed time stays the caller's observation, distinct from recorded time"
+    );
+    assert_eq!(facts[0].valid_from, "2026-01-15T00:00:00Z");
+    assert_eq!(facts[0].expires_at.as_deref(), Some("2027-06-01T00:00:00Z"));
     // TemporalInstantV1 vocabulary is the canonical one on both sides.
     assert_eq!(
         outcome.records[0].valid_at,
