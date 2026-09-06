@@ -10,8 +10,9 @@ pub mod handshake;
 pub mod memory_backend;
 pub mod records;
 pub use binding::{
-    bind_candidate, classify_known_candidate, ensure_action, CanonicalBinding, DiscoveryKind,
-    DiscoveryOutcome, EnsureAction, KnownCandidate,
+    bind_candidate, classify_known_candidate, default_stable_install_root, ensure_action,
+    locate_installed_candidate, CanonicalBinding, DiscoveryKind, DiscoveryOutcome, EnsureAction,
+    KnownCandidate, INSTALLED_LOOPBACK_HOST, INSTALLED_LOOPBACK_PORT,
 };
 pub use error::ClientError;
 pub use handshake::{CompatibilityRequirement, ServiceIdentity};
