@@ -66,9 +66,25 @@ export class Bm25CodeIndex {
   search(query, { limit = 20 } = {}) {
     const terms = [...new Set(tokenize(query))];
     if (!terms.length || !this.documents.size) return [];
+    // A code identifier is atomic. `oldValue` tokenizes to ["old", "value"]
+    // so that a document declaring `oldValue` is reachable by either half,
+    // but a document that matches only the generic `value` half is not a hit
+    // for `oldValue` — it is a different symbol that happens to share a
+    // subtoken. Admitting it makes this discovery lane report evidence the
+    // query never asked for, and (because such a document is usually in a
+    // *different*, unchanged file) it survives the freshness boundary that
+    // correctly suppressed the symbol actually asked about. So a document
+    // qualifies only when it covers every subtoken of at least one whole
+    // query word. Single-subtoken words are unaffected, so prose queries keep
+    // today's OR behavior.
+    const wordGroups = String(query ?? "")
+      .split(/\s+/)
+      .map((word) => [...new Set(tokenize(word))])
+      .filter((group) => group.length > 0);
     const n = this.documents.size;
     const rows = [];
     for (const document of this.documents.values()) {
+      if (wordGroups.length && !wordGroups.some((group) => group.every((token) => document.tf.has(token)))) continue;
       let score = 0;
       const contributions = [];
       for (const term of terms) {

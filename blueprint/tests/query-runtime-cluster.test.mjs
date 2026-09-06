@@ -52,6 +52,50 @@ test("response boundary suppresses only changed source evidence", async () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("every retrieval lane honours the changed-source suppression boundary", async () => {
+  // Exact, BM25 lexical discovery and AST-structural enrichment all answer
+  // from the sealed generation, so each must drop evidence whose source has
+  // changed underneath it. A lane that answers from a projection built off
+  // the same generation is not exempt.
+  const root = repo(
+    {
+      "src/value.js": "export function oldValueHandler() { return 1; }\n",
+      "src/stable.js": "export function stableValueHandler() { return 1; }\n",
+    },
+    { git: true },
+  );
+  try {
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true, freshnessOwnership: "resident" });
+    const pattern = { kind: "symbol", name: "Handler" };
+    const fresh = await service.search({ repoRoot: root, query: "oldValueHandler", astPattern: pattern });
+    assert.ok(fresh.results.some((row) => row.name === "oldValueHandler"), "the symbol answers before its source changes");
+    assert.ok(
+      fresh.retrieval.structural.nodes.some((node) => node.name === "oldValueHandler"),
+      "the structural lane sees it too",
+    );
+
+    writeFileSync(join(root, "src/value.js"), "export function replacementHandler() { return 2; }\n");
+    const stale = await service.search({ repoRoot: root, query: "oldValueHandler", astPattern: pattern, allowStale: true });
+    assert.deepEqual(stale.freshnessReceipt.staleSources.paths, ["src/value.js"]);
+
+    const changedPath = (row) => String(row?.path ?? "") === "src/value.js";
+    assert.ok(!stale.results.some(changedPath), "no lane may return evidence from the changed source");
+    assert.ok(
+      !stale.retrieval.structural.nodes.some(changedPath),
+      "the AST-structural lane suppresses changed-source nodes too",
+    );
+    // The unchanged sibling is still reachable on both the lexical and the
+    // structural lane: suppression is scoped to the changed path, not to the
+    // whole generation.
+    const stillFresh = await service.search({ repoRoot: root, query: "stableValueHandler", astPattern: pattern, allowStale: true });
+    assert.ok(stillFresh.results.some((row) => row.name === "stableValueHandler"));
+    assert.ok(stillFresh.retrieval.structural.nodes.some((node) => node.name === "stableValueHandler"));
+    assert.ok(!stillFresh.retrieval.structural.nodes.some(changedPath));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("convergence oracle compares live source leaves with sealed incremental state", () => {
   const root = repo({ "src/a.js": "export const a = 1;\n" });
   try {
