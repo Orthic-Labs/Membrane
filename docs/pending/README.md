@@ -211,11 +211,11 @@ Exploratory rows are discovered candidates, not committed product behavior.
 | [CTX-030](../canon/cortex.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 | [CTX-031](../canon/cortex.md) | CURRENT_INCOMPLETE | RECONCILE_EVIDENCE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: CTX-031; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08; Freshness: 2026-08-30 |
 | [CTX-034](../canon/cortex.md) | DONOR_BETTER | VERIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: CTX-034; Revision: 8c892cf02fa62d1c1211f06755b5478acfa5a0d1; Receipt: docs/provenance/foundation/2026-08-31-donor-better-implementation.md@1620ca701c8cfd99d01644ed52ad4709b293b91f; Freshness: 2026-08-31 |
-| [CTX-035](../canon/cortex.md) | CURRENT_INCOMPLETE | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-035](../canon/cortex.md) | CURRENT_INCOMPLETE | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=PENDING |
 | [CTX-036](../canon/cortex.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: CTX-036; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08; Freshness: 2026-08-30 |
 | [CTX-038](../canon/cortex.md) | DONOR_BETTER | VERIFY | implementation=DELIVERED; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: CTX-038; Revision: 8c892cf02fa62d1c1211f06755b5478acfa5a0d1; Receipt: docs/provenance/foundation/2026-08-31-donor-better-implementation.md@1620ca701c8cfd99d01644ed52ad4709b293b91f; Freshness: 2026-08-31 |
-| [CTX-040](../canon/cortex.md) | UNRESOLVED | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [CTX-041](../canon/cortex.md) | UNRESOLVED | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [CTX-040](../canon/cortex.md) | UNRESOLVED | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=PENDING |
+| [CTX-041](../canon/cortex.md) | UNRESOLVED | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=PENDING |
 
 ### Blueprint
 

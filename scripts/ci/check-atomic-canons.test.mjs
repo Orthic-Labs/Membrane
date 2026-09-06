@@ -73,7 +73,7 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
     assert.equal(byId.get(id).Implementation, "PARTIAL");
     assert.equal(byId.get(id).Verification, "PENDING");
     assert.equal(byId.get(id).Qualification, "PENDING");
-    assert.equal(byId.get(id).Delivery, "LOCAL");
+    assert.equal(byId.get(id).Delivery, "PUSHED");
   }
   assert.equal(byId.get("CTX-042").Implementation, "MISSING");
   assert.equal(byId.get("CTX-042").Scope, "EXPLORATORY");
