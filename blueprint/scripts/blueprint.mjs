@@ -97,6 +97,7 @@ import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../src
 import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
 import { acquireStoreLease, withStoreLease, withStoreLeaseSync } from "../src/graph/store-lease.mjs";
 import { DaemonClient } from "../src/service/client.mjs";
+import { BlueprintError } from "../src/lib/application/errors.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -224,6 +225,8 @@ usage:
   ${command} grant check --task <id> --path <path>
   ${command} delta <path...> [--out .agent]
   ${command} findings [--out .agent] [--path PREFIX] [--limit N] [--json] [--sarif] [--baseline FILE] [--write-baseline FILE]
+  ${command} findings explain --fingerprint <fp> [--out .agent] [--allow-stale]
+  ${command} findings evidence-pack --fingerprints <fp,fp,...> [--out .agent] [--allow-stale]
 `);
 }
 
@@ -3562,6 +3565,70 @@ async function runFindingsThroughDaemon(root, outDir, args) {
   }
 }
 
+// BPT-051/BPT-052 — governed adapters over the resident findings.explain and
+// findings.evidence_pack methods. Both atoms REQUIRE the resident daemon:
+// there is no direct-detection fallback (explanation/evidence-pack framing
+// only exists over an already-sealed generation), so an unreachable daemon
+// is reported as a typed failure rather than silently degraded.
+function findingsCommandError(code, message, details) {
+  console.error(JSON.stringify({ schemaVersion: 1, error: { code, message, ...(details !== undefined ? { details } : {}) } }, null, 2));
+  return 1;
+}
+
+async function runFindingsExplainCommand(root, outDir, args) {
+  const fingerprint = String(args.fingerprint ?? args._[0] ?? "").trim();
+  if (!fingerprint) return findingsCommandError("finding_id_invalid", "findings explain requires --fingerprint <fp>");
+  const client = new DaemonClient();
+  try {
+    const response = await client.findingsExplain({
+      repoRoot: root,
+      outDir,
+      fingerprint,
+      allowStale: Boolean(args["allow-stale"]),
+    });
+    if (!response.ok) return findingsCommandError(response.error?.code ?? "findings_unavailable", response.error?.message ?? "findings.explain failed", response.error?.details);
+    console.log(JSON.stringify(response.result, null, 2));
+    return 0;
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
+      return findingsCommandError("findings_daemon_unavailable", "resident daemon did not serve findings.explain");
+    }
+    throw error;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+async function runFindingsEvidencePackCommand(root, outDir, args) {
+  const fingerprints = [
+    ...(args.fingerprint !== undefined ? [args.fingerprint] : []),
+    ...String(args.fingerprints ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+    ...args._,
+  ].map((value) => String(value).trim()).filter(Boolean);
+  if (!fingerprints.length) {
+    return findingsCommandError("finding_selection_empty", "findings evidence-pack requires an explicit --fingerprint <fp> or --fingerprints <fp,fp,...> selection");
+  }
+  const client = new DaemonClient();
+  try {
+    const response = await client.findingsEvidencePack({
+      repoRoot: root,
+      outDir,
+      fingerprints,
+      allowStale: Boolean(args["allow-stale"]),
+    });
+    if (!response.ok) return findingsCommandError(response.error?.code ?? "findings_unavailable", response.error?.message ?? "findings.evidence_pack failed", response.error?.details);
+    console.log(JSON.stringify(response.result, null, 2));
+    return 0;
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
+      return findingsCommandError("findings_daemon_unavailable", "resident daemon did not serve findings.evidence_pack");
+    }
+    throw error;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 function summarizeOmissions(omissions) {
   const byReason = new Map();
   for (const entry of omissions) byReason.set(entry.reason, (byReason.get(entry.reason) ?? 0) + 1);
@@ -3804,6 +3871,12 @@ async function main() {
     return await runGraphCommand(root, outDir, "candidates", args);
   }
   if (command === "findings") {
+    const subcommand = args._[0];
+    if (subcommand === "explain" || subcommand === "evidence-pack") {
+      const findingsSubArgs = parseArgs(rest.slice(1));
+      if (subcommand === "explain") return await runFindingsExplainCommand(root, outDir, findingsSubArgs);
+      return await runFindingsEvidencePackCommand(root, outDir, findingsSubArgs);
+    }
     return await runFindingsCommand(root, outDir, args);
   }
   if (command === "hygiene") {
@@ -3936,7 +4009,25 @@ if (isDirectInvocation()) {
     process.exitCode = await main();
   } catch (error) {
     if (typeof error?.code === "string") {
-      console.error(JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message, ...error.details } }));
+      // BPT-044: one typed error/retry taxonomy across every adapter. The CLI
+      // printed only {code, message, ...details}, so a caller driving Blueprint
+      // through the CLI saw `retryable: undefined` where in-process and MCP
+      // callers saw the real value. Rebuilding through BlueprintError re-derives
+      // retryable/remediation from the code when the thrown error did not carry
+      // them, so the CLI reports the same envelope as every other adapter.
+      const typed = error instanceof BlueprintError
+        ? error
+        : new BlueprintError(error.code, error.message, error.details ?? {});
+      console.error(JSON.stringify({
+        schemaVersion: 1,
+        error: {
+          code: error.code,
+          message: error.message,
+          ...error.details,
+          retryable: error.retryable ?? typed.retryable,
+          remediation: error.remediation ?? typed.remediation,
+        },
+      }));
     } else {
       console.error(`blueprint: ${error.message}`);
     }

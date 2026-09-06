@@ -5,6 +5,7 @@ import { DaemonClient } from "../service/client.mjs";
 import { validateContractResult } from "../lib/contracts/validate.mjs";
 import { createBlueprintApplicationService } from "../lib/application/service.mjs";
 import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { BlueprintError } from "../lib/application/errors.mjs";
 import { readWatchConfig } from "../../watchman/supervisor.mjs";
 
 const TRANSPORT_CODES = new Set(["connect_timeout", "socket_closed", "ECONNREFUSED", "ENOENT", "EPIPE", "ERROR_FILE_NOT_FOUND", "ERROR_PIPE_BUSY"]);
@@ -30,11 +31,19 @@ export class BlueprintClient {
       return this.#validated(await this.oneShot[method](input));
     }
     if (!response.ok) {
-      const error = new Error(response.error?.message ?? "blueprint request failed");
-      error.code = response.error?.code ?? "internal_error";
-      // Retain typed application details from Hub IPC. Consumers use these to
-      // surface the exact normalized root plus enrollment remediation.
-      if (response.error?.details !== undefined) error.details = response.error.details;
+      // Rebuild the canonical typed error rather than a bare Error: constructing
+      // a BlueprintError re-derives `retryable` and `remediation` from the code,
+      // so a caller reached over Hub IPC sees exactly the taxonomy an in-process
+      // caller sees (BPT-044). Values the server did send win over the derived
+      // ones, so a future server carrying richer metadata is not flattened here.
+      const code = response.error?.code ?? "internal_error";
+      const error = new BlueprintError(
+        code,
+        response.error?.message ?? "blueprint request failed",
+        response.error?.details ?? {},
+      );
+      if (response.error?.retryable !== undefined) error.retryable = response.error.retryable;
+      if (response.error?.remediation !== undefined) error.remediation = response.error.remediation;
       throw error;
     }
     return this.#validated(response.result);
