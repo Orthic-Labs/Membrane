@@ -670,10 +670,32 @@ pub fn recall_recipe(store: &MemoryStore, scope: &str, args: &Value) -> Result<V
         ));
     }
     let scopes = vec![scope.to_owned()];
-    let items = store
-        .recall_scored(query, max_items, &scopes)
+    // A named recipe resolves to a frozen configuration of existing lanes. Keep
+    // relationship expansion off here: CTX-040 may select lexical/vector recall,
+    // but it cannot implicitly enable the CTX-039 evidence-path capability.
+    let cancellation = tokio_util::sync::CancellationToken::new();
+    let (hits, _, _) = store.recall_scored_detailed_timed_cancellable(
+        query,
+        max_items,
+        &scopes,
+        false,
+        &cancellation,
+    );
+    let actual_recipe = json!({
+        "name":"cortex.hybrid",
+        "version":1,
+        "lanes":["lexical","vector"],
+        "graphTraversal":false,
+        "maxItems":max_items,
+        "maxPreviewChars":max_preview,
+        "projection":projection
+    });
+    let recipe_digest = digest_str(&serde_json::to_string(&actual_recipe).map_err(storage)?);
+    let items = hits
         .into_iter()
-        .map(|(entry, score)| {
+        .map(|hit| {
+            let entry = hit.entry;
+            let score = hit.score;
             let content_hash = digest_str(&entry.content);
             let resolver = format!(
                 "membrane_memory_read:membrane_memory:get:{}:{}",
@@ -700,8 +722,14 @@ pub fn recall_recipe(store: &MemoryStore, scope: &str, args: &Value) -> Result<V
         "receipt":{
             "schemaVersion":1,
             "policyVersion":"cortex.recall-recipe.v1",
+            "recipeDigest":recipe_digest,
             "requested":{"name":requested_name,"version":requested_version},
-            "actual":{"name":"cortex.hybrid","version":1},
+            "actual":{
+                "name":"cortex.hybrid",
+                "version":1,
+                "lanes":["lexical","vector"],
+                "graphTraversal":false
+            },
             "fallback":{
                 "used":!supported,
                 "reason":if supported {Value::Null} else {json!("unsupported_requested_recipe")}
@@ -845,12 +873,28 @@ mod tests {
         let reopened=MemoryStore::try_open(crate::MemDb::open(&s._dir.path().join("cortex.db")).unwrap()).unwrap();
         assert_eq!(resolve_memory(&reopened,"scope",&id,&hash,0,12000).unwrap_err().code,"memory_ineligible");
         assert!(reopened.recall_scored("canonical recovery",10,&["scope".into()]).is_empty());
+        reopened.reindex().unwrap();
+        assert!(reopened.recall_scored("canonical recovery",10,&["scope".into()]).is_empty());
+        let suppressed_recipe = recall_recipe(&reopened,"scope",&json!({
+            "query":"canonical recovery",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":10,"maxPreviewChars":120},
+            "projection":"preview"
+        })).unwrap();
+        assert!(suppressed_recipe["items"].as_array().unwrap().is_empty());
         let mut resume=s.effect("resume",&id,&hash,"resume-1");
         assert_eq!(review(&reopened,"repo","scope",&json!(resume)).unwrap_err().code,"cortex_control_version_conflict");
         resume.expected_control_revision=receipt["decisionHash"].as_str().map(str::to_owned);s.sign(&mut resume);
         review(&reopened,"repo","scope",&json!(resume)).unwrap();
         assert_eq!(resolve_memory(&reopened,"scope",&id,&hash,0,12000).unwrap()["content"],text);
         assert!(!reopened.recall_scored("canonical recovery",10,&["scope".into()]).is_empty());
+        let resumed_recipe = recall_recipe(&reopened,"scope",&json!({
+            "query":"canonical recovery",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":10,"maxPreviewChars":120},
+            "projection":"preview"
+        })).unwrap();
+        assert!(resumed_recipe["items"].as_array().unwrap().iter().any(|item| item["id"] == id));
     }
 
     #[test]
@@ -872,6 +916,136 @@ mod tests {
         resume.expected_control_revision=receipt["decisionHash"].as_str().map(str::to_owned); s.sign(&mut resume);
         review(&s.store,"repo","scope",&json!(resume)).unwrap();
         assert_eq!(resolve_memory(&s.store,"scope",&id,&hash,0,12000).unwrap()["content"],text);
+    }
+
+    #[test]
+    fn cortex_admission_utility_precedes_mutation_and_preserves_independent_gates() {
+        let s = Sandbox::new();
+
+        let ephemeral = propose(&s.store, "repo", "scope", &json!({
+            "text":"Transient scratch detail should not become durable memory.",
+            "utilityClass":"ephemeral"
+        })).unwrap();
+        let ephemeral_id = ephemeral["proposalId"].as_str().unwrap();
+        let ephemeral_hash = ephemeral["emissionHash"].as_str().unwrap();
+        let rejected = review(
+            &s.store,
+            "repo",
+            "scope",
+            &json!(s.effect("approve", ephemeral_id, ephemeral_hash, "utility-ephemeral")),
+        ).unwrap();
+        assert_eq!(rejected["admission"]["outcome"], "utility_ineligible");
+        assert_eq!(rejected["admission"]["canonicalMutation"], false);
+        assert_eq!(rejected["admission"]["utilityEligibility"]["eligible"], false);
+        assert!(s.store.entries(100).is_empty());
+
+        let explicit = propose(&s.store, "repo", "scope", &json!({
+            "text":"Explicit user retention survives the utility filter.",
+            "utilityClass":"ephemeral",
+            "explicitUser":true
+        })).unwrap();
+        let explicit_id = explicit["proposalId"].as_str().unwrap();
+        let explicit_hash = explicit["emissionHash"].as_str().unwrap();
+        let explicit_receipt = review(
+            &s.store,
+            "repo",
+            "scope",
+            &json!(s.effect("approve", explicit_id, explicit_hash, "utility-explicit")),
+        ).unwrap();
+        assert_eq!(explicit_receipt["admission"]["outcome"], "approved");
+        assert_eq!(explicit_receipt["admission"]["utilityEligibility"]["protected"], true);
+        assert_eq!(explicit_receipt["admission"]["utilityEligibility"]["lowUsageDecisive"], false);
+
+        let consequence = propose(&s.store, "repo", "scope", &json!({
+            "text":"High consequence evidence survives the utility filter.",
+            "retention":"transient",
+            "highConsequence":true
+        })).unwrap();
+        let consequence_id = consequence["proposalId"].as_str().unwrap();
+        let consequence_hash = consequence["emissionHash"].as_str().unwrap();
+        let consequence_receipt = review(
+            &s.store,
+            "repo",
+            "scope",
+            &json!(s.effect("approve", consequence_id, consequence_hash, "utility-consequence")),
+        ).unwrap();
+        assert_eq!(consequence_receipt["admission"]["outcome"], "approved");
+        assert_eq!(consequence_receipt["admission"]["utilityEligibility"]["protected"], true);
+
+        let duplicate = propose(&s.store, "repo", "scope", &json!({
+            "text":"Explicit user retention survives the utility filter.",
+            "kind":"semantic"
+        })).unwrap();
+        let duplicate_id = duplicate["proposalId"].as_str().unwrap();
+        let duplicate_hash = duplicate["emissionHash"].as_str().unwrap();
+        let duplicate_receipt = review(
+            &s.store,
+            "repo",
+            "scope",
+            &json!(s.effect("approve", duplicate_id, duplicate_hash, "utility-duplicate")),
+        ).unwrap();
+        assert_eq!(duplicate_receipt["admission"]["outcome"], "duplicate");
+        assert_eq!(duplicate_receipt["admission"]["utilityEligibility"]["eligible"], true);
+    }
+
+    #[test]
+    fn cortex_recall_recipe_is_versioned_bounded_deterministic_and_receipt_complete() {
+        let s = Sandbox::new();
+        s.admitted("Bounded recipe recall keeps lexical and vector retrieval explicit.");
+        s.admitted("A second bounded recipe record makes deterministic ranking observable.");
+        let args = json!({
+            "query":"bounded recipe recall",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":2,"maxPreviewChars":12},
+            "projection":"preview"
+        });
+        let first = recall_recipe(&s.store, "scope", &args).unwrap();
+        let second = recall_recipe(&s.store, "scope", &args).unwrap();
+        assert_eq!(first, second);
+        assert!(first["receipt"]["recipeDigest"].as_str().unwrap().starts_with("sha256:"));
+        assert_eq!(first["receipt"]["actual"]["lanes"], json!(["lexical","vector"]));
+        assert_eq!(first["receipt"]["actual"]["graphTraversal"], false);
+        assert_eq!(first["receipt"]["fallback"]["used"], false);
+        assert_eq!(first["receipt"]["bounds"]["actual"]["maxItems"], 2);
+        assert_eq!(first["receipt"]["bounds"]["actual"]["maxPreviewChars"], 12);
+        assert!(first["items"].as_array().unwrap().len() <= 2);
+        assert!(first["items"].as_array().unwrap().iter().all(|item|
+            item["preview"].as_str().unwrap().chars().count() <= 12));
+
+        let changed = recall_recipe(&s.store, "scope", &json!({
+            "query":"bounded recipe recall",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":3,"maxPreviewChars":12},
+            "projection":"preview"
+        })).unwrap();
+        assert_ne!(first["receipt"]["recipeDigest"], changed["receipt"]["recipeDigest"]);
+
+        let metadata = recall_recipe(&s.store, "scope", &json!({
+            "query":"bounded recipe recall",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":2,"maxPreviewChars":12},
+            "projection":"metadata"
+        })).unwrap();
+        assert_ne!(first["receipt"]["recipeDigest"], metadata["receipt"]["recipeDigest"]);
+        assert!(metadata["items"].as_array().unwrap().iter().all(|item| item.get("preview").is_none()));
+
+        let unsupported = recall_recipe(&s.store, "scope", &json!({
+            "query":"bounded recipe recall",
+            "recipe":{"name":"unknown.recipe","version":9}
+        })).unwrap_err();
+        assert_eq!(unsupported.code, "memory_recipe_unsupported");
+        let fallback = recall_recipe(&s.store, "scope", &json!({
+            "query":"bounded recipe recall",
+            "recipe":{"name":"unknown.recipe","version":9,"allowFallback":true},
+            "bounds":{"maxItems":99,"maxPreviewChars":9999},
+            "projection":"preview"
+        })).unwrap();
+        assert_eq!(fallback["receipt"]["actual"]["name"], "cortex.hybrid");
+        assert_eq!(fallback["receipt"]["actual"]["version"], 1);
+        assert_eq!(fallback["receipt"]["fallback"]["used"], true);
+        assert_eq!(fallback["receipt"]["fallback"]["reason"], "unsupported_requested_recipe");
+        assert_eq!(fallback["receipt"]["bounds"]["actual"]["maxItems"], 32);
+        assert_eq!(fallback["receipt"]["bounds"]["actual"]["maxPreviewChars"], 2000);
     }
 
     #[test]
