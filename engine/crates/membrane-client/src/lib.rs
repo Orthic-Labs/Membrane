@@ -4,16 +4,23 @@
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 
+pub mod binding;
 pub mod error;
 pub mod handshake;
 pub mod memory_backend;
 pub mod records;
+pub use binding::{
+    bind_candidate, classify_known_candidate, default_stable_install_root, ensure_action,
+    locate_installed_candidate, CanonicalBinding, DiscoveryKind, DiscoveryOutcome, EnsureAction,
+    KnownCandidate, INSTALLED_LOOPBACK_HOST, INSTALLED_LOOPBACK_PORT,
+};
 pub use error::ClientError;
 pub use handshake::{CompatibilityRequirement, ServiceIdentity};
 pub use memory_backend::{
     CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport,
 };
 pub use records::{FullRecord, MemoryEntry, MemoryListRow, MemoryTier};
+pub use membrane_protocol::ResidentEndpointV1;
 
 pub const ENVELOPE_VERSION: u64 = 1;
 pub const ERROR_VERSION: u64 = 1;

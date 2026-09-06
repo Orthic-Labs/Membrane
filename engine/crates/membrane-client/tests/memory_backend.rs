@@ -12,7 +12,7 @@ fn client() -> MemoryBackendClient {
     MemoryBackendClient::new(Box::new(|operation: &str, _request: &Map<String, Value>| {
         Ok(match operation {
             "/health" => {
-                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"]} )
+                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"]} )
             }
             "/metrics" | "/activity" => json!({}),
             "/list" => json!([{"id":"id","tier":"Working","chars":4,"access":2,"inject":3}]),
@@ -53,6 +53,56 @@ fn bind_health(health: Value) -> Result<MemoryBackendClient, ClientError> {
         }) as Box<membrane_client::MemoryTransport>,
     )
     .bind(&CompatibilityRequirement::default())
+}
+
+
+#[test]
+fn bind_verified_reuses_authoritative_health_without_second_handshake() {
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = Arc::clone(&calls);
+    let client = MemoryBackendClient::new(Box::new(move |operation: &str, _request: &Map<String, Value>| {
+        seen.lock().unwrap().push(operation.to_string());
+        Ok(json!({"ok":true}))
+    }) as Box<membrane_client::MemoryTransport>)
+    .bind_verified(&health, &CompatibilityRequirement::default())
+    .unwrap();
+    assert_eq!(client.identity().unwrap().startup_generation, 7);
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn request_scoped_federation_uses_public_bound_transport() {
+    let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = Arc::clone(&calls);
+    let transport = Box::new(move |operation: &str, request: &Map<String, Value>| {
+        seen.lock().unwrap().push(operation.to_string());
+        Ok(if operation == "/federate" { Value::Object(request.clone()) } else { json!({"ok":true}) })
+    }) as Box<membrane_client::MemoryTransport>;
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let client = MemoryBackendClient::new(transport)
+        .bind_verified(&health, &CompatibilityRequirement::default())
+        .unwrap();
+    let response = client
+        .with_call_options(CallOptions::after(Duration::from_secs(1)))
+        .federate_json(Map::from_iter([(String::from("remainingContextCeiling"), Value::from(42))]))
+        .unwrap();
+    assert_eq!(response["remainingContextCeiling"], 42);
+    assert_eq!(*calls.lock().unwrap(), vec![String::from("/federate")]);
 }
 
 #[test]
@@ -137,6 +187,9 @@ fn non_native_handshake_is_rejected() {
         "installationId": "install-1",
         "cortexStoreId": "store-1",
         "releaseGeneration": "r1",
+        "startupGeneration": 7,
+        "runtimeOrigin": "installed",
+        "stableInstallRoot": r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion": 1,
         "schemaVersion": 1,
         "nativeOnly": false,
@@ -156,6 +209,9 @@ fn malformed_handshake_arrays_are_rejected() {
         "installationId": "install-1",
         "cortexStoreId": "store-1",
         "releaseGeneration": "r1",
+        "startupGeneration": 7,
+        "runtimeOrigin": "installed",
+        "stableInstallRoot": r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion": 1,
         "schemaVersion": 1,
         "nativeOnly": true,
@@ -231,6 +287,9 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
                     "installationId":"install-1",
                     "cortexStoreId":"store-1",
                     "releaseGeneration":"r1",
+                    "startupGeneration":7,
+                    "runtimeOrigin":"installed",
+                    "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
                     "protocolVersion":1,
                     "schemaVersion":1,
                     "nativeOnly":true,
@@ -278,4 +337,30 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
     assert_eq!(uses[0].1.get("id").and_then(Value::as_str), Some("first"));
     assert_eq!(uses[1].1.get("id").and_then(Value::as_str), Some("second"));
     assert!(uses.iter().all(|(_, request)| request.get("ids").is_none()));
+}
+
+#[test]
+fn federation_protocol_outcomes_preserve_typed_code() {
+    let health = json!({
+        "serviceId":"membrane-hub", "installationId":"install-1", "cortexStoreId":"store-1",
+        "releaseGeneration":"r1", "startupGeneration":7, "runtimeOrigin":"installed",
+        "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
+        "protocolVersion":1, "schemaVersion":1, "nativeOnly":true,
+        "subsystems":["pull","push","cortex","blueprint","ledger","adapt"],
+        "capabilities":["memory","diagnostics"]
+    });
+    let client = MemoryBackendClient::new(Box::new(move |operation: &str, _request: &Map<String, Value>| {
+        Ok(if operation == "/federate" {
+            json!({"kind":"error","code":"h8_unavailable","message":"capacity unavailable"})
+        } else {
+            health.clone()
+        })
+    }) as Box<membrane_client::MemoryTransport>)
+    .bind(&CompatibilityRequirement::default())
+    .unwrap();
+    let error = client
+        .with_call_options(CallOptions::after(Duration::from_secs(1)))
+        .federate_json(Map::new())
+        .unwrap_err();
+    assert!(matches!(error, ClientError::Protocol { ref code, .. } if code == "h8_unavailable"));
 }
