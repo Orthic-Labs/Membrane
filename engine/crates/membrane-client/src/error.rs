@@ -26,6 +26,12 @@ pub enum ClientError {
     Incompatible {
         message: String,
     },
+    Denied {
+        message: String,
+    },
+    CorruptOrRotation {
+        message: String,
+    },
     Protocol {
         code: String,
         message: String,
@@ -55,6 +61,8 @@ impl ClientError {
             Self::Timeout { .. } => "deadline_exceeded",
             Self::Cancelled => "cancelled",
             Self::Incompatible { .. } => "incompatible",
+            Self::Denied { .. } => "denied",
+            Self::CorruptOrRotation { .. } => "corrupt_or_rotation",
             Self::Protocol { .. } => "protocol_error",
             Self::InvalidRequest { .. } => "invalid_request",
             Self::NotFound { .. } => "not_found",
@@ -108,6 +116,12 @@ impl ClientError {
             "cancelled" => Self::Cancelled,
             "not_found" | "target_not_found" => Self::NotFound { message },
             "invalid_request" | "missing_id" => Self::InvalidRequest { message },
+            "denied" | "forbidden" | "unauthorized" | "context_scope_denied" => {
+                Self::Denied { message }
+            }
+            "corrupt" | "corrupt_state" | "rotation_required" | "rotation_in_progress" => {
+                Self::CorruptOrRotation { message }
+            }
             "provider_failed" | "commit_failed" => Self::Store { message },
             "incompatible" | "protocol_version_unsupported" => Self::Incompatible { message },
             _ => Self::Unavailable { message },
@@ -140,6 +154,10 @@ impl fmt::Display for ClientError {
             Self::Unavailable { message } => write!(f, "resident service unavailable: {message}"),
             Self::Timeout { message } => write!(f, "resident memory deadline exceeded: {message}"),
             Self::Incompatible { message } => write!(f, "resident service incompatible: {message}"),
+            Self::Denied { message } => write!(f, "resident service denied binding: {message}"),
+            Self::CorruptOrRotation { message } => {
+                write!(f, "resident installation corrupt or rotating: {message}")
+            }
             Self::InvalidRequest { message } => {
                 write!(f, "invalid resident memory request: {message}")
             }

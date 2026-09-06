@@ -12,7 +12,7 @@ fn client() -> MemoryBackendClient {
     MemoryBackendClient::new(Box::new(|operation: &str, _request: &Map<String, Value>| {
         Ok(match operation {
             "/health" => {
-                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"]} )
+                json!({"serviceId":"membrane-hub","installationId":"install-1","cortexStoreId":"store-1","releaseGeneration":"r1","startupGeneration":7,"runtimeOrigin":"installed","stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current","protocolVersion":1,"schemaVersion":1,"nativeOnly":true,"subsystems":["pull","push","cortex","blueprint","ledger","adapt"],"capabilities":["memory","diagnostics"]} )
             }
             "/metrics" | "/activity" => json!({}),
             "/list" => json!([{"id":"id","tier":"Working","chars":4,"access":2,"inject":3}]),
@@ -137,6 +137,9 @@ fn non_native_handshake_is_rejected() {
         "installationId": "install-1",
         "cortexStoreId": "store-1",
         "releaseGeneration": "r1",
+        "startupGeneration": 7,
+        "runtimeOrigin": "installed",
+        "stableInstallRoot": r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion": 1,
         "schemaVersion": 1,
         "nativeOnly": false,
@@ -156,6 +159,9 @@ fn malformed_handshake_arrays_are_rejected() {
         "installationId": "install-1",
         "cortexStoreId": "store-1",
         "releaseGeneration": "r1",
+        "startupGeneration": 7,
+        "runtimeOrigin": "installed",
+        "stableInstallRoot": r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
         "protocolVersion": 1,
         "schemaVersion": 1,
         "nativeOnly": true,
@@ -231,6 +237,9 @@ fn hub_recall_and_injection_requests_use_route_native_shapes() {
                     "installationId":"install-1",
                     "cortexStoreId":"store-1",
                     "releaseGeneration":"r1",
+                    "startupGeneration":7,
+                    "runtimeOrigin":"installed",
+                    "stableInstallRoot":r"C:\Users\test\AppData\Local\Orthic Labs\Membrane\current",
                     "protocolVersion":1,
                     "schemaVersion":1,
                     "nativeOnly":true,
