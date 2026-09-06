@@ -167,8 +167,17 @@ impl<'conn> Fts5Projection<'conn> {
         let mut stmt = self
             .conn
             .prepare(
+                // bm25() takes ONE weight per column, in declaration order.
+                // `cortex_fts5` has eight columns, six of them UNINDEXED
+                // (record_id, record_type, session_id, scope_id, lifecycle,
+                // authority) and thus contributing no terms; they still consume
+                // weight slots. Passing only two weights bound them to
+                // record_id/record_type and left `content` and `keywords` both
+                // at the default 1.0, so the intended keyword-over-body
+                // weighting never applied. The full vector zeroes the UNINDEXED
+                // columns and keeps the content:keywords ratio at 1.0:2.0.
                 "SELECT record_id, record_type, session_id, scope_id, lifecycle, authority,
-                    -bm25(cortex_fts5, 1.0, 2.0) AS relevance
+                    -bm25(cortex_fts5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0) AS relevance
              FROM cortex_fts5
              WHERE cortex_fts5 MATCH ?1
                AND (?2 IS NULL OR scope_id = ?2)

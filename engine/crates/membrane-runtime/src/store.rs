@@ -12128,13 +12128,18 @@ mod tests {
             )
             .unwrap();
         store.reindex().unwrap();
+        // SQLite refuses `CREATE TRIGGER ... ON` a virtual table, so the fault
+        // is injected by dropping the FTS5 content shadow table instead. That
+        // leaves `cortex_fts5` listed in `sqlite_master` — so `hard_erase`'s
+        // existence probe still says the projection is present and the delete
+        // is genuinely attempted — while the delete itself fails with
+        // "no such table: main.cortex_fts5_content". This is exactly the
+        // corrupt-but-present projection the erase contract must refuse to
+        // paper over.
         store
             .db
             .lock()
-            .execute_batch(
-                "CREATE TRIGGER fail_fts_delete BEFORE DELETE ON cortex_fts5
-                 BEGIN SELECT RAISE(ABORT, 'fts delete failed'); END;",
-            )
+            .execute_batch("DROP TABLE cortex_fts5_content;")
             .unwrap();
 
         let result = store.hard_erase(&target);
