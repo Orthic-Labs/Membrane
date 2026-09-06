@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-04T10:59:16.034Z",
+ "generatedAt": "2026-09-06T11:36:07.839Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1218,
+  "files": 1302,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -287,7 +287,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "10c916b5e91ae44482d11b13b0df48681796475a3146567b1b8ddc47f177096d"
+   "content_digest": "2b613bcd65b3073b5f669f681e85cbbadc52f74224520b4149524fb8fc50df43"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -311,8 +311,13 @@
     "blueprint/src/graph/atomic-store-adoption.mjs",
     "blueprint/src/graph/barrier.mjs",
     "blueprint/src/graph/bootstrap.mjs",
+    "blueprint/src/graph/confidence-migration.mjs",
     "blueprint/src/graph/confidence-tiers.mjs",
+    "blueprint/src/graph/conformance-verifier.mjs",
     "blueprint/src/graph/delta-store.mjs",
+    "blueprint/src/graph/doc-truth-projection.mjs",
+    "blueprint/src/graph/entry-points.mjs",
+    "blueprint/src/graph/evidence-authority.mjs",
     "blueprint/src/graph/freshness-receipt.mjs",
     "blueprint/src/graph/generation-identity.mjs",
     "blueprint/src/graph/generic-ast-walker.mjs",
@@ -358,6 +363,7 @@
     "blueprint/src/graph/language-tables/vue.mjs",
     "blueprint/src/graph/language-tables/yaml.mjs",
     "blueprint/src/graph/language-tables/zig.mjs",
+    "blueprint/src/graph/liveness.mjs",
     "blueprint/src/graph/merkle-ledger.mjs",
     "blueprint/src/graph/module-surface.mjs",
     "blueprint/src/graph/neighborhood.mjs",
@@ -365,7 +371,9 @@
     "blueprint/src/graph/path-order.mjs",
     "blueprint/src/graph/portable-manifest.mjs",
     "blueprint/src/graph/precision-tiers.mjs",
+    "blueprint/src/graph/provenance.mjs",
     "blueprint/src/graph/provider-identity.mjs",
+    "blueprint/src/graph/publication-policy.mjs",
     "blueprint/src/graph/recall-circuit.mjs",
     "blueprint/src/graph/relationship-kinds.mjs",
     "blueprint/src/graph/resolution/index.mjs",
@@ -377,6 +385,9 @@
     "blueprint/src/graph/static-provider.mjs",
     "blueprint/src/graph/store-lease.mjs",
     "blueprint/src/graph/store-sqlite.mjs",
+    "blueprint/src/graph/symbol-authority-order.mjs",
+    "blueprint/src/graph/test-recommendation.mjs",
+    "blueprint/src/graph/traversal-cursor.mjs",
     "blueprint/src/graph/traversal-policy.mjs",
     "blueprint/src/graph/traverse-store.mjs",
     "blueprint/src/graph/treesitter-provider.mjs",
@@ -413,6 +424,7 @@
     "blueprint/src/lib/operations/support-bundle.mjs",
     "blueprint/src/lib/orientation-evidence.mjs",
     "blueprint/src/lib/path-confinement.mjs",
+    "blueprint/src/lib/phase2-completion.mjs",
     "blueprint/src/lib/receipt-store.mjs",
     "blueprint/src/lib/redaction.mjs",
     "blueprint/src/lib/rules/baseline.mjs",
@@ -437,6 +449,7 @@
     "blueprint/src/providers/bridges/seams.mjs",
     "blueprint/src/providers/build.mjs",
     "blueprint/src/providers/compilers/python-scip.mjs",
+    "blueprint/src/providers/compilers/scip-normalize.mjs",
     "blueprint/src/providers/frameworks/http/index.mjs",
     "blueprint/src/providers/frameworks/index.mjs",
     "blueprint/src/providers/iac/terraform.mjs",
@@ -455,6 +468,7 @@
     "blueprint/src/service/install.mjs",
     "blueprint/src/service/paths.mjs",
     "blueprint/src/service/protocol.mjs",
+    "blueprint/src/service/readiness.mjs",
     "blueprint/src/service/server.mjs",
     "blueprint/src/service/status.mjs",
     "blueprint/src/service/uninstall.mjs",
@@ -468,7 +482,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "c8d564831d2f01c3da55800fa0b0be09a38dbbee33c5b6299dcd5fadb6479bda"
+   "content_digest": "e49a5e3bab25e21febd4bd7041c4377f00abae1154fde7c88923022686b637cf"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -491,7 +505,7 @@
     "blueprint/watchman/repo-actor.mjs",
     "blueprint/watchman/supervisor.mjs"
    ],
-   "content_digest": "cd22945e88d91d53d0946f792fa83800b5476457c15055b8dd4214f89412f632"
+   "content_digest": "b9aa923365d92da0cdf9a7c174358b42f0d034c7e2b06d0458ee8854121c4ca9"
   },
   {
    "id": "blueprint-development-blueprint/action",
@@ -636,6 +650,7 @@
     "blueprint/tests/admission-core.test.mjs",
     "blueprint/tests/application-service-queries.test.mjs",
     "blueprint/tests/application-service.test.mjs",
+    "blueprint/tests/application-snapshot.test.mjs",
     "blueprint/tests/atomic-store-adoption.test.mjs",
     "blueprint/tests/audit-projection.test.mjs",
     "blueprint/tests/baseline-named.test.mjs",
@@ -645,11 +660,13 @@
     "blueprint/tests/blueprint-hooks.test.mjs",
     "blueprint/tests/brief-graph-retrieval.test.mjs",
     "blueprint/tests/build-recovery-equivalence.test.mjs",
+    "blueprint/tests/candidate-authority-selection.test.mjs",
     "blueprint/tests/canonical-core-benchmark.test.mjs",
     "blueprint/tests/clean-host-smoke.test.mjs",
     "blueprint/tests/cli-contract.test.mjs",
     "blueprint/tests/cli-entrypoints.test.mjs",
     "blueprint/tests/compiler-adapters.test.mjs",
+    "blueprint/tests/confidence-migration.test.mjs",
     "blueprint/tests/confidence-precision-tiers.test.mjs",
     "blueprint/tests/contracts-v1.test.mjs",
     "blueprint/tests/cross-platform-paths.test.mjs",
@@ -658,13 +675,17 @@
     "blueprint/tests/delta-store.test.mjs",
     "blueprint/tests/dependency-repair.test.mjs",
     "blueprint/tests/derived-fact-owner.test.mjs",
+    "blueprint/tests/doc-truth-projection.test.mjs",
     "blueprint/tests/doctor-repair.test.mjs",
+    "blueprint/tests/evidence-authority-boundary.test.mjs",
+    "blueprint/tests/evidence-authority.test.mjs",
     "blueprint/tests/evidence-pack.test.mjs",
     "blueprint/tests/explorer-layout.test.mjs",
     "blueprint/tests/explorer.test.mjs",
     "blueprint/tests/export.test.mjs",
     "blueprint/tests/federation-contract.test.mjs",
     "blueprint/tests/findings-detect.test.mjs",
+    "blueprint/tests/findings-explain-pack.test.mjs",
     "blueprint/tests/findings-service.test.mjs",
     "blueprint/tests/fixtures/compiler-adapters/python/main.py",
     "blueprint/tests/fixtures/compiler-adapters/python/pkg/__init__.py",
@@ -700,6 +721,7 @@
     "blueprint/tests/installer.test.mjs",
     "blueprint/tests/ipc-concurrency.test.mjs",
     "blueprint/tests/ipc-protocol.test.mjs",
+    "blueprint/tests/javascript-module-resolution.test.mjs",
     "blueprint/tests/language-batch-a.test.mjs",
     "blueprint/tests/language-batch-b.test.mjs",
     "blueprint/tests/language-batch-b2.test.mjs",
@@ -708,6 +730,7 @@
     "blueprint/tests/language-batch-c.test.mjs",
     "blueprint/tests/large-repo-build.test.mjs",
     "blueprint/tests/live-build-graph.test.mjs",
+    "blueprint/tests/liveness.test.mjs",
     "blueprint/tests/mcp-resources.test.mjs",
     "blueprint/tests/mcp-root-confinement.test.mjs",
     "blueprint/tests/mcp-server.test.mjs",
@@ -721,6 +744,7 @@
     "blueprint/tests/p0-publish-identity.test.mjs",
     "blueprint/tests/package-metadata.test.mjs",
     "blueprint/tests/packaging.test.mjs",
+    "blueprint/tests/parse-cache-fingerprint.test.mjs",
     "blueprint/tests/peer-discovery.test.mjs",
     "blueprint/tests/performance-budget.test.mjs",
     "blueprint/tests/performance-envelopes.test.mjs",
@@ -729,15 +753,22 @@
     "blueprint/tests/production-provider-cluster.test.mjs",
     "blueprint/tests/production-store-lease.test.mjs",
     "blueprint/tests/prompt-read-only.test.mjs",
+    "blueprint/tests/provenance-roundtrip.test.mjs",
+    "blueprint/tests/provenance-semantics.test.mjs",
+    "blueprint/tests/publication-boundary.test.mjs",
+    "blueprint/tests/publication-policy.test.mjs",
     "blueprint/tests/python-rust-graph.test.mjs",
     "blueprint/tests/python-test-runtime.mjs",
     "blueprint/tests/qualification-contract-binding.test.mjs",
     "blueprint/tests/qualification.test.mjs",
     "blueprint/tests/query-runtime-cluster.test.mjs",
+    "blueprint/tests/readiness-status.test.mjs",
+    "blueprint/tests/recall-candidate-contract.test.mjs",
     "blueprint/tests/recall-circuit.test.mjs",
     "blueprint/tests/recall-contract.test.mjs",
     "blueprint/tests/receipt-store.test.mjs",
     "blueprint/tests/reconcile.test.mjs",
+    "blueprint/tests/relationship-parity.test.mjs",
     "blueprint/tests/relationship-vocabulary.test.mjs",
     "blueprint/tests/release-candidate.test.mjs",
     "blueprint/tests/release-macos.test.mjs",
@@ -756,12 +787,14 @@
     "blueprint/tests/sarif.test.mjs",
     "blueprint/tests/schema-native-graph.test.mjs",
     "blueprint/tests/scip-answer-keys.test.mjs",
+    "blueprint/tests/scip-normalizer.test.mjs",
     "blueprint/tests/scope-grant.test.mjs",
     "blueprint/tests/sdk.test.mjs",
     "blueprint/tests/security/hostile-indexing.test.mjs",
     "blueprint/tests/security/network-boundary.test.mjs",
     "blueprint/tests/security/poisoned-manifests.test.mjs",
     "blueprint/tests/security/secret-egress.test.mjs",
+    "blueprint/tests/semantic-conformance.test.mjs",
     "blueprint/tests/semantic-incremental.test.mjs",
     "blueprint/tests/service-install.test.mjs",
     "blueprint/tests/service-lifecycle.test.mjs",
@@ -779,13 +812,17 @@
     "blueprint/tests/superseded-docs.test.mjs",
     "blueprint/tests/support-bundle-redaction.test.mjs",
     "blueprint/tests/surface-obligations.test.mjs",
+    "blueprint/tests/test-recommendation.test.mjs",
+    "blueprint/tests/test-runner-policy.test.mjs",
     "blueprint/tests/test_repository_subgraph_slice_contract.py",
     "blueprint/tests/token-budget.test.mjs",
+    "blueprint/tests/traversal-cursor.test.mjs",
     "blueprint/tests/treesitter-provider.test.mjs",
     "blueprint/tests/ui-security.test.mjs",
     "blueprint/tests/update-contract.test.mjs",
     "blueprint/tests/update-rollback.test.mjs",
     "blueprint/tests/watch-supervisor.test.mjs",
+    "blueprint/tests/watchman-phase2-completion.test.mjs",
     "blueprint/tests/watchman.test.mjs",
     "blueprint/tests/windows-entrypoint.test.mjs",
     "blueprint/tests/workspace/context-contract.test.mjs",
@@ -793,7 +830,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "7477d5b8c06e09d3c0c92bfee73b6c589106b782a6578094e3da49c89ff0bfa8"
+   "content_digest": "83009b01a9e1b7e62e2161aa2e3321d84c49a4b2ea15d8e2539aeea8c0dd0343"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1081,7 +1118,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "9ff59a28ad1bc9db86117803a284f7b7c5440fd4f67c1bb2909d576164cc662a"
+   "content_digest": "eb7731908b60ca88eea32168d589a98faf78c3a30d4ab31bc35e05e08c71ee1b"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1129,6 +1166,7 @@
     "engine/crates/cortex-store/src/lib.rs",
     "engine/crates/cortex-store/src/maintenance_exec.rs",
     "engine/crates/cortex-store/src/memdb.rs",
+    "engine/crates/cortex-store/src/reference_events.rs",
     "engine/crates/cortex-store/src/scope.rs",
     "engine/crates/cortex-store/src/team_sync.rs",
     "engine/crates/cortex-store/src/temporal.rs",
@@ -1136,7 +1174,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "27b03c52f0042186dd108ab9b2a70b2e73ffbc92220ea81cc4508f6241f042fc"
+   "content_digest": "59c499779c84a78c0c253686077e12810fd77ce9864a86406b98c336f5c8acfc"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -1175,7 +1213,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "908ea741429d92872ef6456bea9d0e8296dc88793714992a118c76a4793f5b0b"
+   "content_digest": "4e6b32a52507ae5d7ff757257563574dbc0663402a692ecc80efa14de498108e"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1199,12 +1237,16 @@
     "engine/crates/membrane-adapt/src/authority.rs",
     "engine/crates/membrane-adapt/src/benchmark.rs",
     "engine/crates/membrane-adapt/src/canonical.rs",
+    "engine/crates/membrane-adapt/src/clarification.rs",
     "engine/crates/membrane-adapt/src/cli_api.rs",
+    "engine/crates/membrane-adapt/src/comparison.rs",
     "engine/crates/membrane-adapt/src/context_cost.rs",
     "engine/crates/membrane-adapt/src/delivery.rs",
+    "engine/crates/membrane-adapt/src/detector_contract.rs",
     "engine/crates/membrane-adapt/src/duplicate_groups.rs",
     "engine/crates/membrane-adapt/src/evidence.rs",
     "engine/crates/membrane-adapt/src/gates.rs",
+    "engine/crates/membrane-adapt/src/guard_rollout.rs",
     "engine/crates/membrane-adapt/src/insights/detectors.rs",
     "engine/crates/membrane-adapt/src/insights/guards.rs",
     "engine/crates/membrane-adapt/src/insights/mod.rs",
@@ -1226,21 +1268,24 @@
     "engine/crates/membrane-adapt/src/seal.rs",
     "engine/crates/membrane-adapt/src/taste.rs",
     "engine/crates/membrane-adapt/tests/canonical_and_ids.rs",
+    "engine/crates/membrane-adapt/tests/clarification_state.rs",
     "engine/crates/membrane-adapt/tests/cli_surface_and_convergence.rs",
     "engine/crates/membrane-adapt/tests/closed_loop_qualification.rs",
     "engine/crates/membrane-adapt/tests/gates_and_boundaries.rs",
+    "engine/crates/membrane-adapt/tests/governed_decisions.rs",
     "engine/crates/membrane-adapt/tests/insights_detector_benchmark.rs",
     "engine/crates/membrane-adapt/tests/insights_pipeline.rs",
     "engine/crates/membrane-adapt/tests/portable_insights_benchmark.rs",
     "engine/crates/membrane-adapt/tests/procedural_effectiveness.rs",
     "engine/crates/membrane-adapt/tests/proposal_state_machine.rs",
+    "engine/crates/membrane-adapt/tests/proposal_target_exclusion.rs",
     "engine/crates/membrane-adapt/tests/real_heldout_corpus.rs",
     "engine/crates/membrane-adapt/tests/remediation_current_contract.rs",
     "engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs",
     "engine/crates/membrane-adapt/tests/taste_contracts.rs",
     "engine/crates/membrane-adapt/tests/taste_quality_benchmark.rs"
    ],
-   "content_digest": "ddcd1c2990c7711724276ebb52a019c0962af291147f24a32b54c8341542dafb"
+   "content_digest": "2d9270f8c365f8a9dd1060b0f51decf704d76731aa6dd4245a801ccde58dd43d"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-core",
@@ -1330,7 +1375,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "64285ae6af1cbffeb20826f672ab03de3ab0cb2c1380d4fc822bec32e93cd8c5"
+   "content_digest": "4c703e3a81b8b1fbccc33a7b3d35562676030d4afec7e41cebce27d6f6b41f71"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1359,7 +1404,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "2eeae87a68f440bc0bf8e3762515d0b5983aa1fb393bfe2d9b1fd43f5625405e"
+   "content_digest": "fdf0e712fedbe90457c646ab0df272731e2d343051c56df7430dccfa80283ba9"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1411,7 +1456,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "55f2fc6edc3fc241d76b1e2b370c3028fed604141ba90d6f037fa113b34f5efe"
+   "content_digest": "b8a8ed8ddb4b0c1203d2bef4aae9d28aa1913ec6d485c30b92618e3181218c0f"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1462,6 +1507,11 @@
     "engine/crates/membrane-runtime/build.rs",
     "engine/crates/membrane-runtime/examples/hub_runtime_test_host.rs",
     "engine/crates/membrane-runtime/src/adapt.rs",
+    "engine/crates/membrane-runtime/src/adapt_effectiveness.rs",
+    "engine/crates/membrane-runtime/src/adapt_efficiency.rs",
+    "engine/crates/membrane-runtime/src/adapt_observations.rs",
+    "engine/crates/membrane-runtime/src/adapt_path_tests.rs",
+    "engine/crates/membrane-runtime/src/adapt_service.rs",
     "engine/crates/membrane-runtime/src/admission_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_producer.rs",
     "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
@@ -1473,6 +1523,7 @@
     "engine/crates/membrane-runtime/src/checkpoint.rs",
     "engine/crates/membrane-runtime/src/cli.rs",
     "engine/crates/membrane-runtime/src/code_batch.rs",
+    "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
     "engine/crates/membrane-runtime/src/cortex_relevance_spotcheck.rs",
     "engine/crates/membrane-runtime/src/delivery_trace_view.rs",
     "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
@@ -1486,18 +1537,29 @@
     "engine/crates/membrane-runtime/src/hub_inputs.rs",
     "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
     "engine/crates/membrane-runtime/src/installation_manifest.rs",
+    "engine/crates/membrane-runtime/src/ledger/cli.rs",
     "engine/crates/membrane-runtime/src/ledger/db.rs",
+    "engine/crates/membrane-runtime/src/ledger/diagnostics.rs",
     "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
     "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
     "engine/crates/membrane-runtime/src/ledger/doc_shadow.rs",
     "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
     "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+    "engine/crates/membrane-runtime/src/ledger/erasure.rs",
     "engine/crates/membrane-runtime/src/ledger/identifier.rs",
     "engine/crates/membrane-runtime/src/ledger/index.rs",
+    "engine/crates/membrane-runtime/src/ledger/limits.rs",
     "engine/crates/membrane-runtime/src/ledger/link_projection.rs",
     "engine/crates/membrane-runtime/src/ledger/mod.rs",
     "engine/crates/membrane-runtime/src/ledger/outline.rs",
+    "engine/crates/membrane-runtime/src/ledger/policy.rs",
+    "engine/crates/membrane-runtime/src/ledger/provider.rs",
+    "engine/crates/membrane-runtime/src/ledger/qualification.rs",
+    "engine/crates/membrane-runtime/src/ledger/query.rs",
     "engine/crates/membrane-runtime/src/ledger/query_alias.rs",
+    "engine/crates/membrane-runtime/src/ledger/reconcile.rs",
+    "engine/crates/membrane-runtime/src/ledger/resolve.rs",
+    "engine/crates/membrane-runtime/src/ledger/service.rs",
     "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
     "engine/crates/membrane-runtime/src/lib.rs",
     "engine/crates/membrane-runtime/src/live_diagnostics.rs",
@@ -1520,16 +1582,25 @@
     "engine/crates/membrane-runtime/src/providers/typescript_provider.rs",
     "engine/crates/membrane-runtime/src/pull/admission.rs",
     "engine/crates/membrane-runtime/src/pull/cli.rs",
+    "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
     "engine/crates/membrane-runtime/src/pull/federation.rs",
     "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
     "engine/crates/membrane-runtime/src/pull/metrics.rs",
     "engine/crates/membrane-runtime/src/pull/mod.rs",
     "engine/crates/membrane-runtime/src/pull/native_federation.rs",
+    "engine/crates/membrane-runtime/src/pull/placement.rs",
     "engine/crates/membrane-runtime/src/pull/publication.rs",
+    "engine/crates/membrane-runtime/src/push/api.rs",
+    "engine/crates/membrane-runtime/src/push/ast.rs",
     "engine/crates/membrane-runtime/src/push/compress.rs",
     "engine/crates/membrane-runtime/src/push/compression_provider.rs",
+    "engine/crates/membrane-runtime/src/push/delivery.rs",
+    "engine/crates/membrane-runtime/src/push/egress.rs",
+    "engine/crates/membrane-runtime/src/push/fidelity.rs",
     "engine/crates/membrane-runtime/src/push/mod.rs",
+    "engine/crates/membrane-runtime/src/push/packet_selection.rs",
     "engine/crates/membrane-runtime/src/push/prep.rs",
+    "engine/crates/membrane-runtime/src/push/recovery.rs",
     "engine/crates/membrane-runtime/src/push/runc.rs",
     "engine/crates/membrane-runtime/src/push/selection.rs",
     "engine/crates/membrane-runtime/src/push/skel.rs",
@@ -1548,6 +1619,7 @@
     "engine/crates/membrane-runtime/src/team_policy.rs",
     "engine/crates/membrane-runtime/src/working_context.rs",
     "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs",
+    "engine/crates/membrane-runtime/tests/adapt_resident.rs",
     "engine/crates/membrane-runtime/tests/authorization_conformance.rs",
     "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
     "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
@@ -1558,8 +1630,10 @@
     "engine/crates/membrane-runtime/tests/installation_manifest.rs",
     "engine/crates/membrane-runtime/tests/ledger_donor_mechanisms.rs",
     "engine/crates/membrane-runtime/tests/ledger_eval_v1_harness.rs",
+    "engine/crates/membrane-runtime/tests/ledger_exact_resolution.rs",
     "engine/crates/membrane-runtime/tests/ledger_h2_local_replay_gate.rs",
     "engine/crates/membrane-runtime/tests/ledger_indexing.rs",
+    "engine/crates/membrane-runtime/tests/ledger_integrity.rs",
     "engine/crates/membrane-runtime/tests/ledger_outline.rs",
     "engine/crates/membrane-runtime/tests/ledger_projection.rs",
     "engine/crates/membrane-runtime/tests/ledger_recall_index_contract.rs",
@@ -1574,13 +1648,15 @@
     "engine/crates/membrane-runtime/tests/pull_freshness.rs",
     "engine/crates/membrane-runtime/tests/pull_memory_provider.rs",
     "engine/crates/membrane-runtime/tests/pull_planner_conformance_scope.rs",
+    "engine/crates/membrane-runtime/tests/push_end_to_end.rs",
+    "engine/crates/membrane-runtime/tests/push_hardening.rs",
     "engine/crates/membrane-runtime/tests/push_qualification.rs",
     "engine/crates/membrane-runtime/tests/receipt.rs",
     "engine/crates/membrane-runtime/tests/request_time_h8.rs",
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "2843d678b85e06dc5dddee3aeeeebbfed9580edc711f2445f1d5c68505e921b1"
+   "content_digest": "61a46bc5e87a28a7fe18fa8d8c1600c4d26a612e663814bedd4ece9f3c591eb8"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1849,9 +1925,10 @@
     "mcp/host/evidence-interceptor.mjs",
     "mcp/host/index.mjs",
     "mcp/host/observable-event.cjs",
-    "mcp/host/observable-ingress.cjs"
+    "mcp/host/observable-ingress.cjs",
+    "mcp/host/push-tool-egress.mjs"
    ],
-   "content_digest": "0817a7dd85c17a1db023d149a81e0da5a1a49205d5a2bea105d178ba93368557"
+   "content_digest": "ff6d7fb40fcbcd5c63c03d3ec7bb0d2d533b03de272d304a84f0a3bae733c378"
   },
   {
    "id": "mcp-host-fixtures-mcp-host-fixtures",
@@ -1932,6 +2009,8 @@
     "mcp/project-registry.mjs",
     "mcp/prompts.mjs",
     "mcp/proposal-store.mjs",
+    "mcp/push-client.mjs",
+    "mcp/push-limits.mjs",
     "mcp/repository-catalog.mjs",
     "mcp/resources.mjs",
     "mcp/retrieval-contracts.mjs",
@@ -1942,7 +2021,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "9ed22410763fefd7b7ccf43857a8735e734075232db51158cfe3be876c4fdab5"
+   "content_digest": "12786843117aae12ab014b0e523d4f198c0d77905d462cde8b523d4a1380b218"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -1982,7 +2061,7 @@
    "files": [
     "mcp/server.mjs"
    ],
-   "content_digest": "38b9127ada5e6e1673252bff63c2a1d75932237d44074ca8e29779608723efbd"
+   "content_digest": "f69c090eed2a150466ec2acf95ce67345d2f7cd07545a9b96a2918c02fdd0c12"
   },
   {
    "id": "mcp-tests-mcp-tests",
@@ -2027,6 +2106,7 @@
     "mcp/host/host-observable-event.test.mjs",
     "mcp/host/host-observable-ingress-default-path.test.mjs",
     "mcp/host/host-observable-ingress.test.mjs",
+    "mcp/host/push-tool-egress.test.mjs",
     "mcp/install.test.mjs",
     "mcp/installation-binding.test.mjs",
     "mcp/lib/verification-command.test.mjs",
@@ -2034,6 +2114,7 @@
     "mcp/product-truth.test.mjs",
     "mcp/project-registry.test.mjs",
     "mcp/proposal-store.test.mjs",
+    "mcp/push-limits.test.mjs",
     "mcp/repository-catalog.test.mjs",
     "mcp/retrieval-contracts.test.mjs",
     "mcp/rollout.test.mjs",
@@ -2043,7 +2124,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "9cd76b3f3ef93bb4230e139b80e4e78ea8110fec316736a5f89a255db5aacf10"
+   "content_digest": "1d239f2c0961e8823208ee2c87699ed83ede0e61c06f1a42a32ed690c2c4dd26"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -2163,6 +2244,8 @@
     "scripts/run-m0-baseline-current.test.mjs",
     "scripts/run-platform-scenarios.mjs",
     "scripts/tools/blueprint-refresh.sh",
+    "scripts/tools/cortex/sign-reviewed-effect.mjs",
+    "scripts/tools/cortex/sign-reviewed-effect.test.mjs",
     "scripts/tools/productization/check-docs.mjs",
     "scripts/tools/productization/check-docs.test.mjs",
     "scripts/tools/productization/generate-client-matrix.mjs",
@@ -2171,7 +2254,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "88d83525c524dbc380280517615452f056aff41296f16d5ec2b853326a6c8e6e"
+   "content_digest": "6519cff33a1ffc125ce1d510d2dda8c3d70f9c725e094c25eddd5c5f1217f1f8"
   },
   {
    "id": "tests-root-tests-root",
@@ -2227,6 +2310,7 @@
     "tests/install/install-tx.test.mjs",
     "tests/install/uninstall-js.test.mjs",
     "tests/install/uninstall-rust.test.mjs",
+    "tests/ledger-wiring-contracts.test.mjs",
     "tests/maintenance/maintenance-exec-contract.test.mjs",
     "tests/mcp-prompts/prompts.contract.test.mjs",
     "tests/mcp-prompts/prompts.parity.test.mjs",
@@ -2253,7 +2337,7 @@
     "tests/team/team-policy.test.mjs",
     "tests/toolsets/toolsets.test.mjs"
    ],
-   "content_digest": "6b56d7abae17ac27dfef59e91e8619500858bf9bd8ad989a165243a154e251e1"
+   "content_digest": "8ed8df0a847e7e3479887757b5e59f32284ef72200571e477e8a3dcb6957495d"
   },
   {
    "id": "tray-build-script-apps/membrane-tray-windows/build.rs",
