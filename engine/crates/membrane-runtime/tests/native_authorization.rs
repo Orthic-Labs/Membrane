@@ -515,7 +515,7 @@ fn approved_proposal_reaches_cortex_admission_via_the_executor_review_path() {
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "emission": {"text": "Approved emission about deterministic ledger reindexing."}
+            "emission": {"text": "Approved emission about deterministic ledger reindexing.", "producer": "manual", "epistemicClass": "reported"}
         }),
     );
     assert_eq!(
@@ -593,7 +593,7 @@ fn rejected_and_pending_proposals_never_become_durable_truth() {
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "emission": {"text": "A rejected emission for quarantine"}
+            "emission": {"text": "A rejected emission for quarantine", "producer": "manual", "epistemicClass": "reported"}
         }),
     );
     let proposal_id = propose
@@ -635,7 +635,7 @@ fn an_already_decided_proposal_cannot_be_re_decided() {
         &j!({
             "repository": sandbox.installation.caller_repository_id,
             "caller": sandbox.caller_envelope(),
-            "emission": {"text": "Decided-once emission"}
+            "emission": {"text": "Decided-once emission", "producer": "manual", "epistemicClass": "reported"}
         }),
     );
     let proposal_id = propose
@@ -706,7 +706,7 @@ fn native_proposer_cannot_approve_by_adding_undeclared_reviewer_json() {
         &j!({
             "repository":sandbox.installation.caller_repository_id,
             "caller":sandbox.caller_envelope(),
-            "emission":{"text":"Proposed only"},
+            "emission":{"text":"Proposed only","producer":"manual","epistemicClass":"reported"},
             "review":{"decision":"approve","reviewer":"human"}
         }),
     );
