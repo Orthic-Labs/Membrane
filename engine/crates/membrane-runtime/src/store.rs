@@ -15,9 +15,9 @@ use std::time::{Instant, SystemTime};
 
 use cortex_core::{
     consolidate_dream_memories, cosine, ContextTokenAccounting, DreamAgentPolicy, DreamStatus,
-    EffectivenessGate, Embedder, HashEmbedder, LexicalHit, MemoryEntry, MemoryRegistry,
-    MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier, MemoryUsageRecord, Outcome,
-    RetrievalTier, RoutingPolicy,
+    EffectivenessGate, Embedder, HashEmbedder, LexicalHit, MemoryEdge, MemoryEntry, MemoryGraph,
+    MemoryNode, MemoryRegistry, MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier,
+    MemoryUsageRecord, Outcome, RetrievalTier, RoutingPolicy,
 };
 
 use crate::context_telemetry::{
@@ -1903,6 +1903,20 @@ fn valid_privacy_key(key: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
+/// CTX-017: a bare `cortex_core::MemoryNode` id-placeholder for the in-process resolution
+/// graphs built here (`linked_neighbors`, `relationship_graph`) — these graphs exist only to
+/// answer "does this id resolve" and "is this relation canonical", never to carry content or
+/// temporal validity, so every field but `id` is empty.
+fn diagnostic_node(id: &str) -> MemoryNode {
+    MemoryNode {
+        id: id.to_string(),
+        content: String::new(),
+        created_at: String::new(),
+        valid_from: String::new(),
+        valid_to: None,
+    }
+}
+
 fn content_hash(content: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
@@ -2759,6 +2773,15 @@ impl MemoryStore {
     /// One-hop linked neighbours of the seed memories, resolved to real in-scope entries and
     /// returned at a fixed discounted score (below any direct semantic hit). Dangling links (target
     /// not written, or out of scope) resolve to nothing — no phantom candidate.
+    ///
+    /// CTX-017 convergence: resolution is routed through `cortex_core::MemoryGraph` rather than
+    /// an ad hoc registry probe, so "resolved" here means exactly what it means everywhere else
+    /// this vocabulary is enforced. `[[wikilink]]` edges are added via the tolerant
+    /// `add_edge`/`neighbors` path with relation `"wikilink"` — outside `CANONICAL_RELATIONS` —
+    /// never `add_canonical_edge`/`canonical_neighbors`, so this structural-navigation lane can
+    /// never be mistaken for evidence traversal. A dangling or out-of-scope target gets no node
+    /// and so never appears here; the underlying row stays visible for diagnostics in the
+    /// `links` table (see `backfill_links`) regardless.
     pub fn linked_neighbors(
         &self,
         seed_ids: &[String],
@@ -2769,7 +2792,7 @@ impl MemoryStore {
         if seed_ids.is_empty() || limit == 0 {
             return Vec::new();
         }
-        let slugs: Vec<String> = {
+        let slugs: Vec<(String, String)> = {
             let conn = self.db.lock();
             let mut stmt = match conn.prepare("SELECT dst_slug FROM links WHERE src_id = ?1") {
                 Ok(s) => s,
@@ -2779,7 +2802,7 @@ impl MemoryStore {
             for sid in seed_ids {
                 if let Ok(rows) = stmt.query_map(rusqlite::params![sid], |r| r.get::<_, String>(0))
                 {
-                    out.extend(rows.flatten());
+                    out.extend(rows.flatten().map(|slug| (sid.clone(), slug)));
                 }
             }
             out
@@ -2789,15 +2812,26 @@ impl MemoryStore {
         }
         let reg = self.registry.read().unwrap_or_else(|e| e.into_inner());
         let seed_set: std::collections::HashSet<&String> = seed_ids.iter().collect();
+        let mut graph = MemoryGraph::new();
+        for sid in seed_ids {
+            graph.add_node(diagnostic_node(sid));
+        }
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
-        for slug in slugs {
+        for (seed_id, slug) in &slugs {
             for scope in scopes {
                 let cand_id = format!("{scope}/{slug}");
                 if seed_set.contains(&cand_id) || !seen.insert(cand_id.clone()) {
                     continue;
                 }
                 if let Some(entry) = reg.get(&cand_id) {
+                    graph.add_node(diagnostic_node(&cand_id));
+                    graph.add_edge(MemoryEdge {
+                        from: seed_id.clone(),
+                        to: cand_id.clone(),
+                        relation: "wikilink".to_string(),
+                        created_at: String::new(),
+                    });
                     out.push((entry.clone(), NEIGHBOR_SCORE));
                     break;
                 }
@@ -2806,6 +2840,9 @@ impl MemoryStore {
                 break;
             }
         }
+        // "wikilink" is never in `CANONICAL_RELATIONS`: this recall lane's resolved hits stay
+        // structural-diagnostic, never evidence, no matter how many nodes resolve.
+        debug_assert!(seed_ids.iter().all(|sid| graph.canonical_neighbors(sid).is_empty()));
         out
     }
 
@@ -4747,6 +4784,49 @@ impl MemoryStore {
             .collect()
     }
 
+    /// CTX-017 convergence: canonical `supersedes` evidence edges among `ids`, validated through
+    /// `cortex_core::MemoryGraph::add_canonical_edge`. A `memories.superseded_by` pointer is
+    /// resolved, provenance-bound lifecycle fact (see `apply_lifecycle_input_on`), so it is
+    /// exactly the kind of edge `CANONICAL_RELATIONS` exists to admit. A row whose successor
+    /// falls outside `ids` — pruned by `relationship_graph`'s node ceiling, or simply not
+    /// persisted — is rejected as a dangling endpoint here and dropped: diagnostic only (visible
+    /// via `lifecycle_json_for`/vault export), never emitted into the traversable graph.
+    fn canonical_supersedes_edges(&self, ids: &HashSet<String>) -> Vec<(String, String)> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let rows: Vec<(String, String)> = {
+            let conn = self.db.lock();
+            let mut statement = match conn
+                .prepare("SELECT id, superseded_by FROM memories WHERE superseded_by IS NOT NULL")
+            {
+                Ok(statement) => statement,
+                Err(_) => return Vec::new(),
+            };
+            statement
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .map(|it| it.flatten().collect())
+                .unwrap_or_default()
+        };
+        let mut graph = MemoryGraph::new();
+        for id in ids {
+            graph.add_node(diagnostic_node(id));
+        }
+        rows.into_iter()
+            .filter(|(old, new)| ids.contains(old) && ids.contains(new))
+            .filter(|(old, new)| {
+                graph
+                    .add_canonical_edge(MemoryEdge {
+                        from: old.clone(),
+                        to: new.clone(),
+                        relation: "supersedes".to_string(),
+                        created_at: String::new(),
+                    })
+                    .is_ok()
+            })
+            .collect()
+    }
+
     /// Deterministic embedding-neighbor graph for the local and anonymous dashboards.
     pub fn relationship_graph(&self, neighbors: usize, min_cosine: f32) -> RelationshipGraph {
         const MAX_GRAPH_NODES: usize = 512;
@@ -4851,6 +4931,8 @@ impl MemoryStore {
                 .causes
                 .push("neighbor_ceiling_applied".to_owned());
         }
+        let ids_in_graph: HashSet<String> = entries.iter().map(|entry| entry.id.clone()).collect();
+        let supersedes_edges = self.canonical_supersedes_edges(&ids_in_graph);
         RelationshipGraph {
             schema_version: 2,
             nodes,
@@ -4862,6 +4944,16 @@ impl MemoryStore {
                     kind: "semantic".to_string(),
                     score,
                 })
+                .chain(
+                    supersedes_edges
+                        .into_iter()
+                        .map(|(source, target)| RelationshipGraphEdge {
+                            source,
+                            target,
+                            kind: "supersedes".to_string(),
+                            score: 1.0,
+                        }),
+                )
                 .collect(),
             completeness,
         }
@@ -9570,6 +9662,30 @@ impl MemoryStore {
     /// with exact/lower-bound completeness. Surfacing review-due performs no
     /// canonical mutation: authority, lifecycle state and recall eligibility
     /// are untouched by this call.
+    ///
+    /// Also runs two Cortex-owned lifecycle triggers over the same read-only
+    /// path, each enqueue-only (this call never writes `memories`,
+    /// `lifecycle_state`, or content):
+    /// - `version_changed`: an active row's content was revised in place (an
+    ///   `update` event in `memory_event_log`) since it was first admitted,
+    ///   outside the governed supersession path — whatever review clock was
+    ///   set at admission no longer speaks to the content that is actually
+    ///   live.
+    /// - `outcome_contradicted`: an observed, verified `contradicted` outcome
+    ///   was recorded in `context_feedback` against this still-active row —
+    ///   real recall usage says the row disagreed with what happened, but
+    ///   nothing has revisited it.
+    ///
+    /// Ledger/Blueprint-owned triggers (document supersession, repository
+    /// re-anchoring) are not implemented here: no Cortex-side seam currently
+    /// exists in this store for either — there is no ingestion path where
+    /// Ledger or Blueprint hand Cortex a "this document changed" or "this
+    /// evidence surface moved" signal to enqueue a review from, wired or
+    /// otherwise. That absence is itself the gap; it does not become
+    /// external merely because another Membrane subsystem would originate
+    /// the signal, since the missing piece — a Cortex-side intake for that
+    /// signal — lives in this repository and is not implemented anywhere in
+    /// it today.
     pub fn lifecycle_reviews_due(
         &self,
         scope: Option<&str>,
@@ -9580,6 +9696,8 @@ impl MemoryStore {
             return Err("review-due limit must be greater than zero".to_owned());
         }
         let conn = self.db.lock();
+        let probe = i64::try_from(limit.saturating_add(1))
+            .map_err(|_| "review-due limit exceeds SQLite integer range".to_owned())?;
         let mut statement = conn.prepare(
             "SELECT id, scope_id, authority, lifecycle_state, review_after_ms, expires_at_ms FROM memories \
              WHERE (?1 IS NULL OR scope_id = ?1) AND lifecycle_state = 'active' \
@@ -9589,8 +9707,6 @@ impl MemoryStore {
         ).map_err(|error| {
             self.persist_error(format!("review-due scan prepare failed: {error}"))
         })?;
-        let probe = i64::try_from(limit.saturating_add(1))
-            .map_err(|_| "review-due limit exceeds SQLite integer range".to_owned())?;
         let rows = statement
             .query_map(rusqlite::params![scope, now_ms, probe], |row| {
                 let review_after: Option<i64> = row.get(4)?;
@@ -9618,6 +9734,95 @@ impl MemoryStore {
             .map_err(|error| {
                 self.persist_error(format!("review-due scan decode failed: {error}"))
             })?;
+        drop(statement);
+        let mut seen: HashSet<String> = items.iter().map(|item| item.memory_id.clone()).collect();
+
+        // CTX-010 version-change trigger: enqueue-only, read-only — never rewrites
+        // `memories`. Excludes ids the time trigger already surfaced.
+        let mut version_statement = conn.prepare(
+            "SELECT m.id, m.scope_id, m.authority, m.lifecycle_state, m.review_after_ms, m.expires_at_ms \
+             FROM memories m \
+             WHERE (?1 IS NULL OR m.scope_id = ?1) AND m.lifecycle_state = 'active' \
+             AND EXISTS ( \
+               SELECT 1 FROM memory_event_log e \
+               WHERE e.memory_id = m.id AND e.event_kind = 'update' \
+             ) \
+             ORDER BY m.id COLLATE BINARY LIMIT ?2",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due version-change scan prepare failed: {error}"))
+        })?;
+        let version_rows = version_statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: row.get(4)?,
+                    expires_at_ms: row.get(5)?,
+                    reason: "version_changed".into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due version-change scan query failed: {error}"))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due version-change scan decode failed: {error}"))
+            })?;
+        drop(version_statement);
+        for row in version_rows {
+            if seen.insert(row.memory_id.clone()) {
+                items.push(row);
+            }
+        }
+
+        // CTX-010 outcome-change trigger: enqueue-only, read-only — never rewrites
+        // `memories`. Excludes ids an earlier trigger already surfaced.
+        let mut outcome_statement = conn.prepare(
+            "SELECT m.id, m.scope_id, m.authority, m.lifecycle_state, m.review_after_ms, m.expires_at_ms \
+             FROM memories m \
+             WHERE (?1 IS NULL OR m.scope_id = ?1) AND m.lifecycle_state = 'active' \
+             AND EXISTS ( \
+               SELECT 1 FROM context_feedback f \
+               WHERE f.candidate_id = m.id AND f.outcome = 'contradicted' AND f.verified = 1 \
+             ) \
+             ORDER BY m.id COLLATE BINARY LIMIT ?2",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due outcome-change scan prepare failed: {error}"))
+        })?;
+        let outcome_rows = outcome_statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: row.get(4)?,
+                    expires_at_ms: row.get(5)?,
+                    reason: "outcome_contradicted".into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due outcome-change scan query failed: {error}"))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due outcome-change scan decode failed: {error}"))
+            })?;
+        drop(outcome_statement);
+        for row in outcome_rows {
+            if seen.insert(row.memory_id.clone()) {
+                items.push(row);
+            }
+        }
+
+        items.sort_by(|a, b| {
+            a.review_after_ms
+                .cmp(&b.review_after_ms)
+                .then(a.expires_at_ms.cmp(&b.expires_at_ms))
+                .then(a.memory_id.cmp(&b.memory_id))
+        });
         let truncated = items.len() > limit;
         if truncated {
             items.truncate(limit);
@@ -13493,8 +13698,105 @@ mod tests {
             MemoryTier::Semantic,
         );
         assert!(store
-            .linked_neighbors(&[d_id], &["global".to_string()], 5)
+            .linked_neighbors(&[d_id.clone()], &["global".to_string()], 5)
             .is_empty());
+        // (b) Non-traversable does not mean invisible: the dangling raw wikilink row stays in
+        // `links` for diagnostics (doctor / backfill_links), even though it never surfaces here.
+        let dangling_row_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE src_id = ?1 AND dst_slug = 'nonexistent_target_abc'",
+                rusqlite::params![&d_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            dangling_row_count, 1,
+            "the dangling wikilink must remain diagnostic, not deleted"
+        );
+        let (_edges_written, resolvable) = store.backfill_links();
+        assert!(
+            resolvable < 2,
+            "the dangling target must not count as resolvable evidence: {resolvable}"
+        );
+    }
+
+    #[test]
+    fn ctx017_resolved_supersedes_edge_traverses_relationship_graph() {
+        // (a) A resolved canonical edge traverses: `supersedes` is provenance-bound
+        // (memories.superseded_by) and both endpoints resolve, so relationship_graph's
+        // canonical-relation lane surfaces it.
+        let store = MemoryStore::new();
+        let old_id = store.put(
+            "policy-v1",
+            "old policy content, superseded",
+            "global",
+            MemoryTier::Semantic,
+        );
+        let new_id = store.put(
+            "policy-v2",
+            "new policy content, current",
+            "global",
+            MemoryTier::Semantic,
+        );
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state='superseded', superseded_by=?1 WHERE id=?2",
+                rusqlite::params![&new_id, &old_id],
+            )
+            .unwrap();
+
+        let graph = store.relationship_graph(5, 2.0);
+        let supersedes = graph
+            .edges
+            .iter()
+            .find(|edge| edge.kind == "supersedes")
+            .expect("a resolved supersedes edge must traverse into the relationship graph");
+        assert_eq!(supersedes.source, old_id);
+        assert_eq!(supersedes.target, new_id);
+    }
+
+    #[test]
+    fn ctx017_dangling_supersedes_target_does_not_traverse() {
+        // (b) A dangling/unresolved relation edge does NOT traverse: a `superseded_by` pointer
+        // to an id that never resolves (never persisted) is rejected by
+        // `MemoryGraph::add_canonical_edge` as a dangling endpoint and dropped from the
+        // traversable graph, though the row remains visible via direct inspection (diagnostic).
+        let store = MemoryStore::new();
+        let old_id = store.put(
+            "policy-v1-orphan",
+            "old policy content, points at a successor that was never written",
+            "global",
+            MemoryTier::Semantic,
+        );
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state='superseded', superseded_by='global/policy-v2-missing' WHERE id=?1",
+                rusqlite::params![&old_id],
+            )
+            .unwrap();
+
+        let graph = store.relationship_graph(5, 2.0);
+        assert!(
+            graph.edges.iter().all(|edge| edge.kind != "supersedes"),
+            "a dangling supersedes target must never be traversable evidence"
+        );
+        // Still diagnostically visible: the raw column value is unchanged and inspectable.
+        let stored: Option<String> = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT superseded_by FROM memories WHERE id=?1",
+                rusqlite::params![&old_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored.as_deref(), Some("global/policy-v2-missing"));
     }
 
     #[test]
@@ -14947,6 +15249,131 @@ mod tests {
             .any(|(entry, _)| entry.id == fresh));
         // Zero limit fails closed instead of returning a false empty page.
         assert!(m.lifecycle_reviews_due(Some("scope"), now, 0).is_err());
+    }
+
+    #[test]
+    fn ctx010_version_change_trigger_enqueues_review_without_rewriting_authority() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let lifecycle = MemoryLifecycleInputV1 {
+            review_after_ms: Some(now + 60_000),
+            ..Default::default()
+        };
+        // Admitted with a review clock far in the future...
+        let id = m
+            .try_put_attributed_lifecycle_observed(
+                "version-changed-row",
+                "Initial content, admitted with a distant review clock.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle,
+            )
+            .unwrap();
+        // ...then edited in place (same id) without going through a governed
+        // supersession — an `update` event, no lifecycle-state change.
+        m.put(
+            "version-changed-row",
+            "Revised content, written after the review clock was set.",
+            "scope",
+            MemoryTier::Semantic,
+        );
+        let kind: String = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT event_kind FROM memory_event_log WHERE memory_id=?1 ORDER BY event_id DESC LIMIT 1",
+                rusqlite::params![&id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kind, "update", "test setup must produce an update event");
+
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        let hit = page
+            .items
+            .iter()
+            .find(|item| item.memory_id == id)
+            .expect("edited row must be enqueued for review despite its unexpired clock");
+        assert_eq!(hit.reason, "version_changed");
+
+        // Enqueuing performs no mutation: authority and lifecycle state are untouched,
+        // and the row stays recall-eligible.
+        let (authority, state): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(authority, "A2");
+        assert_eq!(state, "active");
+    }
+
+    #[test]
+    fn ctx010_outcome_change_trigger_enqueues_review_on_verified_contradiction() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let id = m
+            .try_put_attributed_lifecycle_observed(
+                "contradicted-row",
+                "A claim that later gets contradicted by an observed outcome.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &MemoryLifecycleInputV1::default(),
+            )
+            .unwrap();
+        let content_sha256 = {
+            let content: String = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT content FROM memories WHERE id=?1",
+                    rusqlite::params![&id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            content_hash(&content)
+        };
+        m.record_feedback(&FeedbackRecord {
+            trace_id: "trace-ctx010-outcome".into(),
+            candidate_id: id.clone(),
+            content_sha256,
+            outcome: cortex_core::Outcome::Contradicted,
+            source: crate::feedback::FeedbackSource::ObservedAction,
+            verdict_ref: None,
+            scope_id: "scope".into(),
+        })
+        .unwrap();
+
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        let hit = page
+            .items
+            .iter()
+            .find(|item| item.memory_id == id)
+            .expect("a verified contradicted outcome must enqueue the still-active row for review");
+        assert_eq!(hit.reason, "outcome_contradicted");
+
+        let (authority, state): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(authority, "A2");
+        assert_eq!(state, "active");
     }
 
     #[test]

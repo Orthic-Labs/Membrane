@@ -932,7 +932,10 @@ enum Cmd {
         #[arg(long, default_value_t = 1_000)]
         limit: usize,
     },
-    /// List active rows whose review clock has expired (read-only; never mutates authority).
+    /// List active rows due for review (read-only; never mutates authority). Surfaces all
+    /// CTX-010 triggers: an elapsed time clock (`expired`/`review_after_elapsed`), an in-place
+    /// content edit outside governed supersession (`version_changed`), and a verified
+    /// `contradicted` recall outcome against a still-active row (`outcome_contradicted`).
     ReviewDue {
         #[arg(long)]
         scope: Option<String>,
