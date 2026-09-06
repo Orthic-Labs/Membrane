@@ -66,25 +66,34 @@ export class Bm25CodeIndex {
   search(query, { limit = 20 } = {}) {
     const terms = [...new Set(tokenize(query))];
     if (!terms.length || !this.documents.size) return [];
-    // A code identifier is atomic. `oldValue` tokenizes to ["old", "value"]
-    // so that a document declaring `oldValue` is reachable by either half,
-    // but a document that matches only the generic `value` half is not a hit
-    // for `oldValue` — it is a different symbol that happens to share a
-    // subtoken. Admitting it makes this discovery lane report evidence the
-    // query never asked for, and (because such a document is usually in a
-    // *different*, unchanged file) it survives the freshness boundary that
-    // correctly suppressed the symbol actually asked about. So a document
-    // qualifies only when it covers every subtoken of at least one whole
-    // query word. Single-subtoken words are unaffected, so prose queries keep
-    // today's OR behavior.
+    // A code identifier is atomic, but only loosely. `oldValue` tokenizes to
+    // ["old", "value"] so either half can find it, and a document matching only
+    // the generic `value` half is a different symbol that happens to share a
+    // subtoken — admitting it makes this lane report evidence the query never
+    // asked for. Requiring ALL subtokens fixes that but destroys the dominant
+    // code-search shape: a query that is a SUPERSET of the stored identifier
+    // (`UserAccountRepository` for `UserAccountRepo`, `getUserById` for
+    // `getUserByIdentifier`, `OrderServiceImpl` for `OrderService`) would then
+    // return nothing at all rather than a ranked near-match.
+    //
+    // So the gate is majority coverage: a document qualifies when it covers
+    // MORE THAN HALF the subtokens of at least one whole query word. A single
+    // shared subtoken out of two (the `oldValue`/`stableValue` case) is exactly
+    // half and does not qualify; two of three, three of four and any
+    // single-subtoken word do. Prose queries, whose words are one subtoken
+    // each, keep their existing OR behavior.
     const wordGroups = String(query ?? "")
       .split(/\s+/)
       .map((word) => [...new Set(tokenize(word))])
       .filter((group) => group.length > 0);
+    const covers = (document) => wordGroups.some((group) => {
+      const matched = group.filter((token) => document.tf.has(token)).length;
+      return matched * 2 > group.length;
+    });
     const n = this.documents.size;
     const rows = [];
     for (const document of this.documents.values()) {
-      if (wordGroups.length && !wordGroups.some((group) => group.every((token) => document.tf.has(token)))) continue;
+      if (wordGroups.length && !covers(document)) continue;
       let score = 0;
       const contributions = [];
       for (const term of terms) {

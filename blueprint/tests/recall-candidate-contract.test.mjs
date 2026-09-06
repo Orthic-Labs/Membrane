@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { canonicalCandidateSet, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
+import { canonicalCandidateSet, comparePaths, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
+
+const sortedByCircuitComparator = (paths) => [...paths].sort(comparePaths);
 import { validateJsonSchema } from "./python-test-runtime.mjs";
 
 const schema = JSON.parse(readFileSync(new URL("../schemas/context-candidate-set.v1.schema.json", import.meta.url), "utf8"));
@@ -68,10 +70,29 @@ test("emitted candidate order follows the non-compensatory comparator, not a sum
   // comparePaths ranks by semanticAuthorityRank BEFORE tier/coverage, so the
   // non-compensatory order is [a, b] even though b's edge tier and coverage
   // are both strictly better.
-  const raw = circuit([strongerAuthorityWeakerEverythingElse, weakerAuthorityStrongerEverythingElse]);
+  // `recallCircuitToCandidateSet` does NOT sort — it preserves the order
+  // `executeRecallCircuit` already established with `comparePaths`. Handing it
+  // the paths already in comparator order and asserting that order comes back
+  // would pass with the comparator deleted, so the two properties are proven
+  // separately and the conversion is fed the WRONG order on purpose.
+  const reversed = circuit([weakerAuthorityStrongerEverythingElse, strongerAuthorityWeakerEverythingElse]);
+  assert.deepEqual(
+    recallCircuitToCandidateSet(reversed).candidates.map((c) => c.id),
+    ["symbol:b", "symbol:a"],
+    "conversion must preserve the order it is given; ranking authority lives upstream in comparePaths",
+  );
+
+  // The ordering property itself, proven where it is actually decided.
+  const ordered = sortedByCircuitComparator([
+    weakerAuthorityStrongerEverythingElse,
+    strongerAuthorityWeakerEverythingElse,
+  ]);
+  assert.deepEqual(ordered.map((path) => path.id), ["path:a", "path:b"],
+    "semanticAuthorityRank must decide before edge tier and coverage, whatever order the paths arrive in");
+
+  const raw = circuit(ordered);
   const result = recallCircuitToCandidateSet(raw);
-  assert.deepEqual(result.candidates.map((c) => c.id), ["symbol:a", "symbol:b"],
-    "emitted order must be the comparator's order (authority-first), not a coverage/tier-led order");
+  assert.deepEqual(result.candidates.map((c) => c.id), ["symbol:a", "symbol:b"]);
 
   const sums = result.candidates.map((c) => Object.values(c.scoreComponents).reduce((total, value) => total + value, 0));
   const [sumA, sumB] = sums;

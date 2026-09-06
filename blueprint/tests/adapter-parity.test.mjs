@@ -24,7 +24,7 @@
 // record of the gap -- it is not weakened to pass.
 
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -36,6 +36,7 @@ import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 import { createDaemonServer } from "../src/service/server.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
 import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
 import { BlueprintClient, EmbeddedBlueprintClient } from "../src/sdk/index.mjs";
 
@@ -248,6 +249,24 @@ test("error taxonomy parity: root_not_enrolled", { timeout: 60000 }, async () =>
     );
     await daemonClient.close();
 
+    // Guard the SERVER half of the BPT-044 fix independently. `BlueprintClient`
+    // reconstructs a BlueprintError from the code, which re-derives
+    // retryable/remediation locally — so every assertion below would still pass
+    // with src/service/server.mjs's transportError reverted to forwarding only
+    // {code, message, details}. Read the raw wire payload so the daemon is
+    // actually held to sending them.
+    const rawDaemon = new DaemonClient({ endpoint });
+    const rawResponse = await rawDaemon.request({ method: "status", input: { repoRoot: unenrolledRoot } });
+    await rawDaemon.close?.();
+    assert.equal(rawResponse.ok, false);
+    assert.equal(rawResponse.error.retryable, false, "the daemon must put `retryable` on the wire, not rely on the client re-deriving it");
+    assert.equal(
+      rawResponse.error.remediation?.nextOperation,
+      `blueprint init --root ${JSON.stringify(realpathSync.native(unenrolledRoot))}`,
+      "the daemon must put the concrete remediation on the wire",
+    );
+
+
     // 2. Bounded one-shot (embedded, in-process, no daemon).
     const embedded = new EmbeddedBlueprintClient({ rootRegistry: registry, allowEmbeddedRoot: false });
     const embeddedError = await embedded.status({ repoRoot: unenrolledRoot }).then(
@@ -283,10 +302,24 @@ test("error taxonomy parity: root_not_enrolled", { timeout: 60000 }, async () =>
       taxonomy("boundedOneShot (embedded)", embeddedError.code, embeddedError.retryable, embeddedError.remediation?.summary, embeddedError.remediation?.nextOperation),
       taxonomy("cli", cliErrorPayload.code, cliErrorPayload.retryable, cliErrorPayload.remediation?.summary, cliErrorPayload.remediation?.nextOperation),
       taxonomy("sdk (one-shot fallback)", sdkOneShotError.code, sdkOneShotError.retryable, sdkOneShotError.remediation?.summary, sdkOneShotError.remediation?.nextOperation),
-      taxonomy("mcp", mcpErrorPayload.code, mcpErrorPayload.retryable, mcpErrorPayload.remediation?.summary, mcpErrorPayload.remediation?.nextOperation),
     ];
 
-    // All five must at minimum agree on the CODE -- this part does hold today.
+    // MCP is deliberately NOT in `results`. Its tool inputs carry no repoRoot
+    // (D07 root confinement: COMMON_FIELDS in scripts/blueprint-mcp.mjs), so
+    // the only way to provoke root_not_enrolled through MCP is an unresolvable
+    // repoId — a structurally DIFFERENT request, which `rootNotEnrolled`
+    // (src/lib/application/root-registry.mjs:11-18) answers with the
+    // unparameterized remediation because it has no root to normalize. Feeding
+    // the daemon or the CLI a bare unresolvable repoId yields the same
+    // unparameterized string, so this is a property of the REQUEST, not of MCP.
+    // Including MCP here behind a relaxed assertion would claim coverage this
+    // case does not have. MCP's taxonomy parity is proven by the
+    // generation_mismatch case below — a request it CAN express identically —
+    // and by the success-parity test above.
+    assert.equal(mcpErrorPayload.code, "root_not_enrolled", "MCP surfaces the same code for its own request shape");
+    assert.equal(mcpErrorPayload.retryable, false, "and the same retryable flag");
+
+    // Every adapter that CAN express this request must agree on the CODE.
     for (const result of results) {
       assert.equal(result.code, "root_not_enrolled", `${result.label} did not surface code root_not_enrolled (got ${result.code})`);
     }
@@ -322,34 +355,9 @@ test("error taxonomy parity: root_not_enrolled", { timeout: 60000 }, async () =>
         `retryable/remediation fields when relaying a response received over the Hub IPC socket`,
       );
     }
-    // The remediated OPERATION must be identical on every adapter — that is
-    // what the taxonomy pins. Its ARGUMENT cannot be: MCP forbids a
-    // caller-supplied repoRoot by design (D07 root confinement; see
-    // COMMON_FIELDS in scripts/blueprint-mcp.mjs, "repoRoot is deliberately
-    // absent"), so `rootNotEnrolled` has no root to normalize and emits the
-    // unparameterized form of the same command. That is a deliberate
-    // architectural property of the MCP surface, not a taxonomy break, so it
-    // is asserted explicitly rather than papered over with a loosened
-    // comparison for every adapter.
-    const operationVerb = (value) => String(value ?? "").split(" --")[0];
+    // Exact remediation parity, argument included. No carve-outs: every
+    // adapter in `results` received the same request shape.
     for (const result of results) {
-      assert.equal(
-        operationVerb(result.nextOperation),
-        operationVerb(groundTruth.nextOperation),
-        `remediated operation diverges on adapter "${result.label}": expected ${JSON.stringify(operationVerb(groundTruth.nextOperation))}, got ${JSON.stringify(result.nextOperation)}`,
-      );
-    }
-    for (const result of results) {
-      if (result.label.startsWith("mcp")) {
-        // Pinned deliberately: if MCP ever gains a repoRoot input, this
-        // assertion fails and the carve-out above must be revisited.
-        assert.equal(
-          result.nextOperation,
-          "blueprint init --root <repository-root>",
-          "MCP cannot receive a repoRoot (D07), so its remediation stays unparameterized",
-        );
-        continue;
-      }
       assert.equal(
         result.nextOperation,
         groundTruth.nextOperation,
@@ -420,7 +428,7 @@ test("error taxonomy parity: generation_mismatch (daemon, bounded one-shot, SDK 
       taxonomy("daemon (Hub IPC)", daemonError.code, daemonError.retryable, daemonError.remediation?.summary, daemonError.remediation?.nextOperation),
       taxonomy("boundedOneShot (embedded)", embeddedError.code, embeddedError.retryable, embeddedError.remediation?.summary, embeddedError.remediation?.nextOperation),
       taxonomy("sdk (one-shot fallback)", sdkOneShotError.code, sdkOneShotError.retryable, sdkOneShotError.remediation?.summary, sdkOneShotError.remediation?.nextOperation),
-      taxonomy("mcp", mcpErrorPayload.code, mcpErrorPayload.retryable, mcpErrorPayload.summary ?? mcpErrorPayload.remediation?.summary, mcpErrorPayload.remediation?.nextOperation),
+      taxonomy("mcp", mcpErrorPayload.code, mcpErrorPayload.retryable, mcpErrorPayload.remediation?.summary, mcpErrorPayload.remediation?.nextOperation),
     ];
 
     for (const result of results) {

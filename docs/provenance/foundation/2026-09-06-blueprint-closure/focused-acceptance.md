@@ -10,6 +10,32 @@ in `blueprint/`) reported **1116 pass, 0 fail** on the material revision, and
 Node tests are the sanctioned local evidence path for this subsystem; no build,
 packaging or release step was run, and no Rust test was executed locally.
 
+BPT-010 and BPT-012 were promoted in an earlier draft and are WITHDRAWN after
+adversarial review. Both promotions rested on `semantic-orchestrator.mjs` being
+a production path, and it is not the one the build uses.
+
+For BPT-012, `runProvider` — which carries the whole read-only, network-free,
+process-bounded, cancellable, typed-crash contract — is called only from
+`collectSemanticEvidence` (`blueprint/src/providers/semantic-orchestrator.mjs:184,190`),
+and that function has no non-test caller. The build calls
+`collectSemanticEvidenceSync` (`blueprint/src/providers/build.mjs:318`), which
+never invokes `runProvider` and applies none of those bounds. The contract is
+unreachable in production.
+
+For BPT-010, the manifest handed to `registry.register` is synthesized from the
+provider being validated (`semantic-orchestrator.mjs:29-37`), so the identity
+and licence checks compare a value to itself and cannot fail; no
+`artifactBytes` is supplied, so the checksum branch
+(`blueprint/src/providers/index.mjs:105`) never executes; and the registry
+returned by `createSemanticProviderRegistry` is discarded at both call sites
+(`semantic-orchestrator.mjs:124,180`). Wiring a manifest through registration
+was necessary but not sufficient — validating a provider against a manifest
+derived from itself proves nothing.
+
+Both stay PARTIAL. Closing them means making the build use the bounded async
+provider lane and supplying manifests that are independent of the provider
+object, which is real work this wave did not do.
+
 Three atoms in the previously PARTIAL/MISSING set are NOT promoted here.
 BPT-041 is unreachable in production and stays PARTIAL; BPT-048 is EXPLORATORY
 and out of scope for committed-canon closure. Each is recorded below rather
@@ -18,9 +44,7 @@ than folded into a count.
 | Capability | State | Exact source | Exact consumer | Residual |
 |---|---|---|---|---|
 | BPT-003 | DELIVERED | `blueprint/src/providers/source-disposition.mjs:55` (`auditSourceDispositions`) | `blueprint/src/providers/build.mjs` -> `blueprint/src/graph/static-provider.mjs:1383,1457` (disposition sealed into the generation manifest) | COMPLETE |
-| BPT-010 | DELIVERED | `blueprint/src/providers/index.mjs:82-113` (`validateProviderManifest`), `147-161` (`ProviderRegistry.register`) | `blueprint/src/providers/semantic-orchestrator.mjs` (`createSemanticProviderRegistry` registers with a manifest and a licence allowlist) -> `build.mjs` `collectSemanticEvidenceSync` | COMPLETE |
 | BPT-011 | DELIVERED | `blueprint/src/graph/doc-truth-projection.mjs:41-91`; `blueprint/src/lib/rules/evaluate.mjs` (rule findings carry categorical `RULE_RESOLVED` provenance, `authority: "declaration"`, a `declared` block and evidence citations) | `blueprint/src/lib/application/service.mjs` `documentTruth`; findings service | COMPLETE |
-| BPT-012 | DELIVERED | `blueprint/src/providers/index.mjs:169+` (`runProvider`: network-free, filesystem-enum, process opt-in, timeout, cancellation, typed crash) | `blueprint/src/providers/semantic-orchestrator.mjs:147,153` | COMPLETE |
 | BPT-013 | DELIVERED | `blueprint/src/graph/portable-identity.mjs`; `blueprint/src/graph/reanchor.mjs` (`reconcileRenameAliases`) | `blueprint/src/providers/build.mjs:374,399`; `blueprint/watchman/reconcile.mjs` (`finishEntityRenames`, persisted to `watch_state`) | COMPLETE |
 | BPT-014 | DELIVERED | `blueprint/src/graph/provenance.mjs:27-70` (`confidenceForProvenance`, `withFactProvenance`, `publicFactConfidence`); nullable confidence migration 19/20 in `store-sqlite.mjs` | `blueprint/src/graph/scip-provider.mjs`; `blueprint/src/providers/compilers/python-scip.mjs`; `blueprint/src/graph/evidence-authority.mjs:146` | COMPLETE |
 | BPT-017 | DELIVERED | `blueprint/src/graph/reanchor.mjs:31-64` (`reanchorEvidence`: exact entity, fingerprint, unique normalized text, else stale/ambiguous) | `blueprint/src/lib/application/service.mjs:414` (`resolve`, fails closed on ambiguous) | COMPLETE |
@@ -39,6 +63,21 @@ than folded into a count.
 | BPT-052 | DELIVERED | `blueprint/src/lib/findings/service.mjs:554-586` (`findingsEvidencePack`), `blueprint/src/lib/evidence-pack.mjs` | `blueprint/scripts/blueprint.mjs` `findings evidence-pack` subcommand -> `DaemonClient.findingsEvidencePack` (governed daemon path) | COMPLETE |
 | BPT-057 | DELIVERED | `blueprint/src/providers/plugin-loader.mjs` (`admitPluginManifest`, `admitRepositoryPlugins`, `discoverPluginManifests`) | `blueprint/src/providers/build.mjs` `augmentGenerationWithFirstPartyProviders` (admission runs on every build; refusals travel in the sealed generation) | COMPLETE |
 
+## Atoms re-read rather than repaired
+
+BPT-014, BPT-033, BPT-034, BPT-038 and BPT-039 are promoted with NO code or
+test change in this wave. Their prior PARTIAL status was legacy boilerplate;
+the capability, its production consumer and its tests already existed and are
+cited above and below unchanged. They are listed separately here so the
+receipt does not imply this wave produced their evidence.
+
+BPT-020 is delivered in shape with a recorded residual: the config digest is
+computed over a fixed allowlist (`tsconfig.json`, `jsconfig.json`,
+`package.json`, `pnpm-workspace.yaml`) in
+`blueprint/src/providers/build.mjs`. Provider, rule and other repository
+configuration the build consumes will not move the digest and so will not
+invalidate a projection that declares `config`.
+
 ## Focused verification
 
 Command for every row: `node --test <file>` in `blueprint/`, all part of the
@@ -47,8 +86,6 @@ green no-build corpus above.
 | Capability targets | Focused command | Direct test evidence | Result | Run identity/time |
 |---|---|---|---|---|
 | BPT-003 | `node --test tests/source-disposition.test.mjs` | `tracked source audit assigns every tracked path one terminal outcome` and `production graph augmentation carries the ingestion disposition receipt` prove every git-tracked path receives exactly one terminal disposition and that the receipt reaches the sealed manifest. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
-| BPT-010 | `node --test tests/provider-registry-runtime.test.mjs tests/semantic-orchestrator.test.mjs` | `provider manifest checksum, licence and entry are fail-closed` and `runtime types process authorization, crash, timeout and cancellation` prove identity/checksum/licence validation and the read-only, network-free, bounded, cancellable execution contract; registration now supplies a manifest so those checks run on the production path. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
-| BPT-012 | `node --test tests/provider-registry-runtime.test.mjs tests/semantic-orchestrator.test.mjs` | `provider manifest checksum, licence and entry are fail-closed` and `runtime types process authorization, crash, timeout and cancellation` prove identity/checksum/licence validation and the read-only, network-free, bounded, cancellable execution contract; registration now supplies a manifest so those checks run on the production path. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
 | BPT-011 | `node --test tests/rules-engine.test.mjs tests/doc-truth-projection.test.mjs` | `rule findings are non-authoritative declarations bound to evidence, never observed graph facts` proves a rule match carries `authority: "declaration"`, categorical provenance and `confidence: null`; `preserves declaration and observed evidence with deterministic null confidence` proves the document half. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
 | BPT-013 | `node --test tests/reconcile.test.mjs tests/portable-identity-reanchor.test.mjs` | `reconcile carries entity identity across a detected file rename (BPT-013)` proves a detected rename drives entity-level alias reconciliation with zero unresolved and persists it; `reconcile leaves an ambiguous rename unresolved instead of guessing a winner` proves the conservative boundary. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
 | BPT-017 | `node --test tests/reconcile.test.mjs tests/portable-identity-reanchor.test.mjs` | `reconcile carries entity identity across a detected file rename (BPT-013)` proves a detected rename drives entity-level alias reconciliation with zero unresolved and persists it; `reconcile leaves an ambiguous rename unresolved instead of guessing a winner` proves the conservative boundary. | FOCUSED_PASS — 0 failures. | Local Node corpus; revision `026387f15a401697728752a0006d3406b8987d22`; 1116 pass / 0 fail; 2026-09-06. |
@@ -72,5 +109,7 @@ green no-build corpus above.
 
 | Capability | Scope | Why it is not promoted | Owner |
 |---|---|---|---|
+| BPT-010 | COMMITTED | Manifest validation on the production path is tautological (manifest synthesized from the provider), integrity is never checked (no `artifactBytes`), and the registry is discarded. | Blueprint; in-repo. |
+| BPT-012 | COMMITTED | `runProvider`'s isolation contract has no production caller; the build uses the synchronous lane, which applies none of it. | Blueprint; in-repo. |
 | BPT-041 | COMMITTED | `blueprint/src/lib/admission.mjs` builds allow/continue/block/noop decisions, but nothing in `blueprint/src` calls `decision()` or `DECISION_ACTIONS`: the served `recall` envelope only ever emits `action: "allow"`, so `continue`, `block` and `noop` are unreachable in production and the "host enforces" half has no host-side enforcement test. Wiring it requires deciding when each verdict applies, which is a canon-level design decision rather than a wiring fix. | Blueprint; in-repo, not started. |
 | BPT-048 | EXPLORATORY | Not committed canon, so out of scope for committed closure. The disposable architecture projection emits one combined digest rather than separate semantic/evidence/projection digests, has no route/reach/impact split and no last-known-good fallback. | Blueprint; exploratory. |

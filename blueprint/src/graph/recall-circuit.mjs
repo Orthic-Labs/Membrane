@@ -67,7 +67,13 @@ function makePath(seed, nodeIds, edgeIds, nodeMap, edgeMap, complete, generation
   };
 }
 
-function comparePaths(left, right) {
+/**
+ * The non-compensatory Recall ordering (BPT-026). Exported so the contract can
+ * be asserted where it is actually decided: the candidate-set conversion below
+ * deliberately does not sort, so asserting order there proves nothing about
+ * this comparator.
+ */
+export function comparePaths(left, right) {
   // The application freshness barrier has already established one served
   // generation for this circuit. Within that source-coherent generation,
   // semantic authority precedes resolution specificity. Scalar confidence is
