@@ -4,10 +4,15 @@
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
 
+pub mod binding;
 pub mod error;
 pub mod handshake;
 pub mod memory_backend;
 pub mod records;
+pub use binding::{
+    bind_candidate, classify_known_candidate, ensure_action, CanonicalBinding, DiscoveryKind,
+    DiscoveryOutcome, EnsureAction, KnownCandidate,
+};
 pub use error::ClientError;
 pub use handshake::{CompatibilityRequirement, ServiceIdentity};
 pub use memory_backend::{
