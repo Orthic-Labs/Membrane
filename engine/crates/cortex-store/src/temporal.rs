@@ -593,6 +593,51 @@ impl TemporalFactStore {
         })
     }
 
+    /// Reconstruct canonical receipt after response loss. Transition rows are
+    /// durable predecessors pointing at this record, so replay remains exact.
+    pub fn validity_receipt(
+        &self,
+        record_id: &str,
+    ) -> Result<Option<TemporalValidityReceiptV1>, String> {
+        let conn = self.db.lock();
+        ensure_temporal_schema(&conn)?;
+        let Some(payload_sha256) = conn
+            .query_row(
+                "SELECT payload_sha256 FROM membrane_temporal_fact WHERE fact_id=?1",
+                [record_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let mut statement = conn
+            .prepare(
+                "SELECT fact_id,invalid_at,transition_sha256 FROM membrane_temporal_fact
+                 WHERE superseded_by=?1 ORDER BY fact_id",
+            )
+            .map_err(|error| error.to_string())?;
+        let transitions = statement
+            .query_map([record_id], |row| {
+                Ok(TemporalTransitionV1 {
+                    from_record_id: row.get(0)?,
+                    to_record_id: record_id.to_owned(),
+                    invalid_at: row.get(1)?,
+                    transition_sha256: row.get(2)?,
+                })
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| error.to_string())?;
+        Ok(Some(TemporalValidityReceiptV1 {
+            schema_version: TEMPORAL_VALIDITY_SCHEMA_VERSION,
+            record_id: record_id.to_owned(),
+            payload_sha256,
+            transitions,
+        }))
+    }
+
     /// Alias named for the Cortex admission boundary.
     pub fn admit(
         &self,
@@ -1139,6 +1184,11 @@ fn validate_fact(f: &TemporalFact) -> Result<(), String> {
         return Err("temporal_fact_authority_invalid".into());
     }
     Ok(())
+}
+
+/// Validate caller temporal payload without mutating canonical state.
+pub fn validate_fact_proposal(fact: &TemporalFact) -> Result<(), String> {
+    validate_fact(fact)
 }
 
 #[cfg(test)]

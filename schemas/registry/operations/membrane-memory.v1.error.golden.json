@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_memory",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "caller_required",
+    "message": "Fixture typed failure",
+    "retryable": false
+  }
+}

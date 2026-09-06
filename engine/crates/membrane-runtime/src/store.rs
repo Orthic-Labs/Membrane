@@ -405,7 +405,7 @@ pub(crate) struct AdmissionNearDuplicateHit {
 /// duplicate, metadata union, or conflict is a classified disposition, never
 /// a caller-parsed error string. `Err` stays reserved for invalid requests,
 /// storage failures, or unavailable infrastructure.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) enum AdmissionDispositionV1 {
     /// No near-duplicate found; a new durable record was created.
     Inserted { id: String },
@@ -2059,7 +2059,7 @@ fn recall_eligible_ids_on(
         " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
     };
     let query = format!(
-        "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+        "SELECT id FROM memories WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s WHERE s.memory_id=memories.id AND s.suppressed=1) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
     );
     connection
         .prepare(&query)?
@@ -2110,7 +2110,7 @@ fn recall_eligible_ids_among(
             .collect::<Vec<_>>()
             .join(",");
         let query = format!(
-            "SELECT id FROM memories WHERE id IN ({placeholders}) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+            "SELECT id FROM memories WHERE id IN ({placeholders}) AND NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s WHERE s.memory_id=memories.id AND s.suppressed=1) AND authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
         );
         let mut statement = connection.prepare(&query)?;
         let mut params: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk.len() + 1);
@@ -2318,6 +2318,8 @@ impl MemoryStore {
         db: MemDb,
         attribution: OperationAttribution,
     ) -> Result<Self, String> {
+        crate::cortex_lifecycle::ensure_memory_schema(&db.lock())
+            .map_err(|error| format!("Cortex lifecycle schema: {error}"))?;
         let mut registry = if vector_dispatch_v2_enabled() {
             MemoryRegistry::new_indexed()
         } else {
@@ -8088,8 +8090,44 @@ impl MemoryStore {
         context: &MemoryEventContext,
         lifecycle: &MemoryLifecycleInputV1,
     ) -> Result<AdmissionDispositionV1, String> {
+        self.try_admit_idempotent_observed(
+            name,
+            content,
+            scope,
+            tier,
+            updated_at,
+            source_ids,
+            supplied_metadata,
+            context,
+            lifecycle,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_admit_idempotent_observed(
+        &self,
+        name: &str,
+        content: &str,
+        scope: &str,
+        tier: MemoryTier,
+        updated_at: &str,
+        source_ids: &[String],
+        supplied_metadata: Option<MemoryRecordMetadata>,
+        context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
+        admission_receipt: Option<(&str, &str)>,
+    ) -> Result<AdmissionDispositionV1, String> {
         if updated_at.trim().is_empty() {
             return Err("updated_at is required".into());
+        }
+        if let Some((key, hash)) = admission_receipt {
+            if let Some(disposition) = self.reviewed_admission_disposition(key, hash)? {
+                return Ok(disposition);
+            }
+        }
+        if !self.writes_enabled {
+            return Err("memory writes disabled: embedder unavailable".into());
         }
         let scope = crate::scope::normalize_scope(scope);
         let id = format!("{scope}/{name}");
@@ -8107,6 +8145,36 @@ impl MemoryStore {
         let tx = conn
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|e| self.persist_error(format!("memory transaction failed: {e}")))?;
+        if let Some((key, expected_hash)) = admission_receipt {
+            let previous: Option<(String, String)> = tx
+                .query_row(
+                    "SELECT payload_hash,disposition_json FROM cortex_admission_receipts_v1 WHERE request_id=?1",
+                    [key],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|error| self.persist_error(error.to_string()))?;
+            if let Some((hash, disposition)) = previous {
+                if hash != expected_hash {
+                    return Err("proposal admission identity conflict".into());
+                }
+                return serde_json::from_str(&disposition)
+                    .map_err(|error| self.persist_error(error.to_string()));
+            }
+        }
+        let persist_admission_receipt =
+            |disposition: &AdmissionDispositionV1| -> Result<(), String> {
+                if let Some((key, hash)) = admission_receipt {
+                    let encoded =
+                        serde_json::to_string(disposition).map_err(|error| error.to_string())?;
+                    tx.execute(
+                        "INSERT INTO cortex_admission_receipts_v1 VALUES(?1,?2,?3)",
+                        rusqlite::params![key, hash, encoded],
+                    )
+                    .map_err(|error| self.persist_error(error.to_string()))?;
+                }
+                Ok(())
+            };
         let existing = {
             tx.query_row(
                 "SELECT access_count, created_at, artifact_family, producer, record_type
@@ -8213,6 +8281,11 @@ impl MemoryStore {
                         .map_err(|e| {
                             self.persist_error(format!("memory admission event failed: {e}"))
                         })?;
+                        persist_admission_receipt(
+                            &AdmissionDispositionV1::UpdateMetadataOnly {
+                                existing_id: hit.existing_id.clone(),
+                            },
+                        )?;
                         tx.commit().map_err(|e| {
                             self.persist_error(format!("memory commit failed: {e}"))
                         })?;
@@ -8245,6 +8318,9 @@ impl MemoryStore {
                     )
                     .map_err(|e| {
                         self.persist_error(format!("memory admission event failed: {e}"))
+                    })?;
+                    persist_admission_receipt(&AdmissionDispositionV1::NoOp {
+                        existing_id: hit.existing_id.clone(),
                     })?;
                     tx.commit()
                         .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
@@ -8318,6 +8394,11 @@ impl MemoryStore {
                     })),
                 )
                 .map_err(|e| self.persist_error(format!("memory admission event failed: {e}")))?;
+                persist_admission_receipt(&AdmissionDispositionV1::ConflictQuarantined {
+                    candidate_id: id.clone(),
+                    conflicts_with: hit.existing_id.clone(),
+                    similarity: hit.similarity,
+                })?;
                 tx.commit()
                     .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
                 drop(conn);
@@ -8356,6 +8437,7 @@ impl MemoryStore {
             Some(&metadata),
         )
         .map_err(|e| self.persist_error(format!("memory {event_kind} event failed: {e}")))?;
+        persist_admission_receipt(&AdmissionDispositionV1::Inserted { id: id.clone() })?;
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
         drop(conn);
@@ -8658,7 +8740,23 @@ impl MemoryStore {
             .map_err(|e| format!("backup links read failed: {e}"))?;
         links.extend(rows);
         drop(statement);
-        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links);
+        let mut suppression = Vec::new();
+        let mut statement = conn
+            .prepare("SELECT memory_id, scope_id, content_hash, suppressed, decision_hash FROM cortex_recall_suppression_v1 ORDER BY memory_id")
+            .map_err(|e| format!("backup suppression read failed: {e}"))?;
+        let rows = statement
+            .query_map([], |row| Ok(CortexBackupSuppressionV1 {
+                memory_id: row.get(0)?,
+                scope_id: row.get(1)?,
+                content_hash: row.get(2)?,
+                suppressed: row.get::<_, i64>(3)? != 0,
+                decision_hash: row.get(4)?,
+            }))
+            .map_err(|e| format!("backup suppression read failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("backup suppression read failed: {e}"))?;
+        suppression.extend(rows);
+        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links, &suppression);
         Ok(CortexBackupV1 {
             schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
             created_at: crate::time::now_iso(),
@@ -8666,6 +8764,7 @@ impl MemoryStore {
             memories,
             quarantined,
             links,
+            suppression,
             payload_sha256,
         })
     }
@@ -8682,7 +8781,7 @@ impl MemoryStore {
                 backup.schema_version
             ));
         }
-        let expected = cortex_backup_digest(&backup.memories, &backup.quarantined, &backup.links);
+        let expected = cortex_backup_digest(&backup.memories, &backup.quarantined, &backup.links, &backup.suppression);
         if backup.payload_sha256 != expected {
             return Err("backup payload digest mismatch".into());
         }
@@ -8698,6 +8797,8 @@ impl MemoryStore {
             .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
         tx.execute("DELETE FROM links", [])
             .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
+        tx.execute("DELETE FROM cortex_recall_suppression_v1", [])
+            .map_err(|e| self.persist_error(format!("restore suppression wipe failed: {e}")))?;
         for row in &backup.memories {
             restore_backup_row(&tx, row, false)?;
         }
@@ -8710,6 +8811,13 @@ impl MemoryStore {
                 rusqlite::params![link.src_id, link.dst_slug],
             )
             .map_err(|e| self.persist_error(format!("restore links failed: {e}")))?;
+        }
+        for row in &backup.suppression {
+            tx.execute(
+                "INSERT INTO cortex_recall_suppression_v1(memory_id,scope_id,content_hash,suppressed,decision_hash) VALUES(?1,?2,?3,?4,?5)",
+                rusqlite::params![row.memory_id, row.scope_id, row.content_hash, row.suppressed as i64, row.decision_hash],
+            )
+            .map_err(|e| self.persist_error(format!("restore suppression failed: {e}")))?;
         }
         tx.commit()
             .map_err(|e| self.persist_error(format!("restore commit failed: {e}")))?;
@@ -8789,6 +8897,166 @@ impl MemoryStore {
             registry.insert(entry);
         }
         Ok(())
+    }
+
+    fn reviewed_admission_disposition(
+        &self,
+        request_id: &str,
+        payload_hash: &str,
+    ) -> Result<Option<AdmissionDispositionV1>, String> {
+        let db = self.db.lock();
+        let previous: Option<(String, String)> = db
+            .query_row(
+                "SELECT payload_hash,disposition_json FROM cortex_admission_receipts_v1 WHERE request_id=?1",
+                [request_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        match previous {
+            Some((hash, _)) if hash != payload_hash => {
+                Err("proposal admission identity conflict".into())
+            }
+            Some((_, disposition)) => serde_json::from_str(&disposition)
+                .map(Some)
+                .map_err(|error| error.to_string()),
+            None => Ok(None),
+        }
+    }
+
+    /// CTX-035 eligibility is explicit, versioned, evaluated before canonical
+    /// mutation, & never treats low observed usage as rejection evidence.
+    pub(crate) fn admission_utility_eligibility(payload: &serde_json::Value) -> serde_json::Value {
+        let explicit_user = payload
+            .get("explicitUser")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let high_consequence = payload
+            .get("highConsequence")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let protected = explicit_user || high_consequence;
+        let explicitly_ephemeral = payload
+            .get("utilityClass")
+            .or_else(|| payload.get("retention"))
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| matches!(value, "ephemeral" | "transient"));
+        let eligible = protected || !explicitly_ephemeral;
+        let reason = if protected {
+            "protected_explicit_user_or_high_consequence"
+        } else if explicitly_ephemeral {
+            "explicitly_ephemeral"
+        } else {
+            "durable_candidate"
+        };
+        serde_json::json!({
+            "schemaVersion": 1,
+            "policyVersion": "cortex.admission-utility.v1",
+            "eligible": eligible,
+            "protected": protected,
+            "explicitUser": explicit_user,
+            "highConsequence": high_consequence,
+            "observedUsageCount": 0,
+            "lowUsageDecisive": false,
+            "reasonCodes": [reason]
+        })
+    }
+
+    pub(crate) fn reviewed_admission_receipt(
+        &self,
+        request_id: &str,
+        payload_hash: &str,
+        payload: &serde_json::Value,
+    ) -> Result<Option<serde_json::Value>, String> {
+        let disposition = self.reviewed_admission_disposition(request_id, payload_hash)?;
+        if disposition.is_some() {
+            self.reload_registry_from_db()?;
+        }
+        let utility = Self::admission_utility_eligibility(payload);
+        Ok(disposition.map(|value| Self::reviewed_disposition_json(value, utility)))
+    }
+
+    fn reviewed_disposition_json(
+        disposition: AdmissionDispositionV1,
+        utility: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut receipt = match disposition {
+            AdmissionDispositionV1::Inserted { id } => {
+                serde_json::json!({"outcome":"approved","memoryId":id})
+            }
+            AdmissionDispositionV1::NoOp { existing_id }
+            | AdmissionDispositionV1::UpdateMetadataOnly { existing_id } => {
+                serde_json::json!({"outcome":"duplicate","existingId":existing_id})
+            }
+            AdmissionDispositionV1::ConflictQuarantined {
+                candidate_id,
+                conflicts_with,
+                ..
+            } => serde_json::json!({
+                "outcome":"conflict",
+                "candidateId":candidate_id,
+                "existingId":conflicts_with
+            }),
+        };
+        receipt["utilityEligibility"] = utility;
+        receipt
+    }
+
+    /// Replay-safe effect of independently authorized proposal review. Exact
+    /// payload hash & typed disposition commit with canonical admission.
+    pub(crate) fn admit_reviewed_proposal(
+        &self,
+        proposal_id: &str,
+        payload_hash: &str,
+        payload: &serde_json::Value,
+        scope: &str,
+    ) -> Result<serde_json::Value, String> {
+        let utility = Self::admission_utility_eligibility(payload);
+        if utility["eligible"] != true {
+            return Ok(serde_json::json!({
+                "outcome":"utility_ineligible",
+                "proposalId":proposal_id,
+                "canonicalMutation":false,
+                "utilityEligibility":utility
+            }));
+        }
+        let text = payload
+            .get("text")
+            .or_else(|| payload.get("content"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| "proposal has no durable text".to_owned())?;
+        let name = format!(
+            "proposal-{}",
+            &crate::digest::digest_str(proposal_id)[7..39]
+        );
+        let sources = vec![proposal_id.to_owned()];
+        let lifecycle = MemoryLifecycleInputV1 {
+            authority: Some("A4".into()),
+            influence_class: Some("reference".into()),
+            ..Default::default()
+        };
+        let tier = if payload.get("kind").and_then(serde_json::Value::as_str)
+            == Some("episodic")
+        {
+            MemoryTier::Episodic
+        } else {
+            MemoryTier::Semantic
+        };
+        let disposition = self.try_admit_idempotent_observed(
+            &name,
+            text,
+            scope,
+            tier,
+            &crate::time::now_iso(),
+            &sources,
+            None,
+            &MemoryEventContext::new("proposal_admission"),
+            &lifecycle,
+            Some((proposal_id, payload_hash)),
+        )?;
+        self.reload_registry_from_db()?;
+        Ok(Self::reviewed_disposition_json(disposition, utility))
     }
 
     /// Frozen interface 1 (§16.1 admission side): route one approved proposal
@@ -9017,7 +9285,11 @@ impl MemoryStore {
         }
         let rows: Vec<(String, String, Option<String>, Option<String>)> = {
             let conn = self.db.lock();
-            conn.prepare("SELECT id, content, content_hash, embed_model FROM memories")
+            conn.prepare(
+                "SELECT id, content, content_hash, embed_model FROM memories
+                 WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s
+                   WHERE s.memory_id=memories.id AND s.suppressed=1)",
+            )
                 .and_then(|mut st| {
                     st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
                         .and_then(|rows| rows.collect())
@@ -9563,6 +9835,15 @@ pub struct CortexBackupLinkV1 {
     pub dst_slug: String,
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CortexBackupSuppressionV1 {
+    pub memory_id: String,
+    pub scope_id: String,
+    pub content_hash: String,
+    pub suppressed: bool,
+    pub decision_hash: String,
+}
+
 /// One versioned, digest-sealed Cortex backup envelope.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CortexBackupV1 {
@@ -9572,6 +9853,8 @@ pub struct CortexBackupV1 {
     pub memories: Vec<CortexBackupRowV1>,
     pub quarantined: Vec<CortexBackupRowV1>,
     pub links: Vec<CortexBackupLinkV1>,
+    #[serde(default)]
+    pub suppression: Vec<CortexBackupSuppressionV1>,
     pub payload_sha256: String,
 }
 
@@ -9615,6 +9898,7 @@ fn cortex_backup_digest(
     memories: &[CortexBackupRowV1],
     quarantined: &[CortexBackupRowV1],
     links: &[CortexBackupLinkV1],
+    suppression: &[CortexBackupSuppressionV1],
 ) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -9687,6 +9971,18 @@ fn cortex_backup_digest(
         hasher.update([0u8]);
         hasher.update(link.dst_slug.as_bytes());
         hasher.update([0u8, 0u8]);
+    }
+    // Empty legacy-v1 envelopes retain their historical digest. Suppression-
+    // aware envelopes append a domain-separated canonical control section.
+    if !suppression.is_empty() {
+        hasher.update(b"suppression\0");
+        for row in suppression {
+            for field in [&row.memory_id, &row.scope_id, &row.content_hash, &row.decision_hash] {
+                hasher.update(field.as_bytes());
+                hasher.update([0u8]);
+            }
+            hasher.update([u8::from(row.suppressed), 0u8]);
+        }
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }

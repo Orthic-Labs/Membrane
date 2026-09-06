@@ -2571,6 +2571,7 @@ dependencies = [
  "membrane-provider-sdk",
  "membrane-transcript",
  "ort",
+ "ring",
  "rusqlite",
  "serde",
  "serde_json",

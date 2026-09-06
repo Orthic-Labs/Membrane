@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/operations/membrane-memory.v1.schema.json",
+  "title": "membrane_memoryV1",
+  "description": "Native Cortex governed lifecycle. V2 record/propose operations return pending proposal state, never self-authorized truth. Historical V1 schemas remain available for legacy bindings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "operation",
+    "errorVersion",
+    "result"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "operation": {
+      "type": "string",
+      "const": "membrane_memory"
+    },
+    "errorVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "result": {
+      "$ref": "#/$defs/result"
+    }
+  },
+  "$defs": {
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/success"
+        },
+        {
+          "$ref": "#/$defs/error"
+        }
+      ]
+    },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "data"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "success"
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "error"
+        },
+        "code": {
+          "$ref": "#/$defs/errorCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "caller_required",
+        "installation_grant_denied",
+        "repository_scope_chain_denied",
+        "caller_scope_binding_denied",
+        "caller_not_authorized",
+        "cross_root_binding_denied",
+        "authorization_revoked",
+        "context_unavailable",
+        "cortex_storage_unavailable",
+        "proposal_payload_too_large",
+        "proposal_emission_text_required",
+        "proposal_scope_denied",
+        "proposal_review_unknown",
+        "proposal_already_decided",
+        "cortex_review_unavailable",
+        "cortex_review_binding_denied",
+        "cortex_review_invalid",
+        "cortex_review_denied",
+        "cortex_review_replay_conflict",
+        "cortex_review_version_conflict",
+        "cortex_control_version_conflict",
+        "memory_unavailable",
+        "memory_version_conflict",
+        "memory_envelope_invalid",
+        "memory_ineligible",
+        "memory_recipe_invalid",
+        "memory_recipe_unsupported",
+        "checkpoint_scope_denied",
+        "temporal_admission_requires_policy"
+      ]
+    },
+    "lifecycleReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "operation",
+        "status",
+        "durableId",
+        "eventId",
+        "recordedAt"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "membrane.lifecycle-receipt.v1"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "durableId": {
+          "type": "string"
+        },
+        "eventId": {
+          "type": "string"
+        },
+        "readbackDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "recordedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "data": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schemaVersion", "operation", "items", "receipt"],
+          "properties": {
+            "schemaVersion": { "const": 1 },
+            "operation": { "const": "recall" },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "scopeId", "tier", "score", "contentHash", "resolver"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "scopeId": { "type": "string" },
+                  "tier": {},
+                  "score": { "type": "number" },
+                  "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                  "resolver": { "type": "string", "pattern": "^membrane_memory_read:" },
+                  "preview": { "type": "string", "maxLength": 2000 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "receipt": { "type": "object" }
+          }
+        },        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "id",
+            "cortexStoreId",
+            "contentHash",
+            "content",
+            "offset",
+            "nextOffset",
+            "totalChars",
+            "complete",
+            "pageComplete",
+            "authority",
+            "lifecycle",
+            "scopeId",
+            "recordType",
+            "sourceRefs",
+            "provenanceAvailability",
+            "observedResolution",
+            "verifiedHelped"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "cortexStoreId": {
+              "type": "string"
+            },
+            "contentHash": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string",
+              "maxLength": 12000
+            },
+            "authority": {
+              "type": "string"
+            },
+            "lifecycle": {
+              "type": "string"
+            },
+            "scopeId": {
+              "type": "string"
+            },
+            "recordType": {
+              "type": "string"
+            },
+            "provenanceAvailability": {
+              "type": "string"
+            },
+            "schemaVersion": {
+              "const": 1
+            },
+            "offset": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "nextOffset": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "totalChars": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "complete": {
+              "type": "boolean"
+            },
+            "pageComplete": {
+              "const": true
+            },
+            "sourceRefs": {
+              "type": "array"
+            },
+            "observedResolution": {
+              "const": true
+            },
+            "verifiedHelped": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "durable",
+            "proposalId",
+            "lifecycleReceipt",
+            "reviewState",
+            "emissionHash",
+            "admissionState"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "needs_review",
+                "reviewed"
+              ]
+            },
+            "durable": {
+              "type": "boolean"
+            },
+            "proposalId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "durableId": {
+              "type": "string"
+            },
+            "reviewState": {
+              "type": "string"
+            },
+            "lifecycleReceipt": {
+              "$ref": "#/$defs/lifecycleReceipt"
+            },
+            "provenance": {
+              "type": "object"
+            },
+            "emissionHash": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "admissionState": {
+              "type": "string",
+              "enum": [
+                "not_requested",
+                "pending",
+                "completed",
+                "blocked",
+                "legacy_review_requires_reauthorization"
+              ]
+            },
+            "admission": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "lastError": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "admissionRevision": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

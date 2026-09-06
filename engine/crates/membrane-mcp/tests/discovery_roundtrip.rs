@@ -10,7 +10,7 @@ fn discovery_matches_initialize_contract() {
         initialize_response()["protocolVersion"]
     );
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
-    assert_eq!(discovery["tools"].as_array().unwrap().len(), 21);
+    assert_eq!(discovery["tools"].as_array().unwrap().len(), 23);
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn adapt_is_optional_and_read_only() {
 fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let response = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":["push"]}}})).unwrap();
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 9);
     assert!(tools.iter().any(|v| v["name"] == "membrane_push_resolve"
         && v["inputSchema"]["properties"]["selector"]["oneOf"]
             .as_array()
@@ -88,7 +88,7 @@ fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let default = McpServer
         .dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
         .unwrap();
-    assert_eq!(default["result"]["tools"].as_array().unwrap().len(), 3);
+    assert_eq!(default["result"]["tools"].as_array().unwrap().len(), 7);
 }
 
 #[test]
@@ -115,4 +115,22 @@ fn context_schema_advertises_workspace_targets_and_resolver_negotiation() {
             ["maxItems"],
         32
     );
+    assert_eq!(
+        context["inputSchema"]["properties"]["consumerCapabilities"]["properties"]["resolvers"]["items"]["enum"],
+        json!(["membrane_source_read", "membrane_memory_read"])
+    );
+}
+
+#[test]
+fn operator_review_is_opt_in_while_safe_cortex_workflow_is_default() {
+    let server = McpServer;
+    let default = server.dispatch(&json!({"jsonrpc":"2.0","id":4,"method":"tools/list"})).unwrap();
+    let names = default["result"]["tools"].as_array().unwrap().iter()
+        .map(|tool| tool["name"].as_str().unwrap()).collect::<Vec<_>>();
+    assert!(names.contains(&"membrane_knowledge_propose"));
+    assert!(names.contains(&"membrane_memory"));
+    assert!(!names.contains(&"membrane_knowledge_review"));
+    let operator = server.dispatch(&json!({"jsonrpc":"2.0","id":5,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":["operator"]}}})).unwrap();
+    assert!(operator["result"]["tools"].as_array().unwrap().iter()
+        .any(|tool| tool["name"] == "membrane_knowledge_review"));
 }

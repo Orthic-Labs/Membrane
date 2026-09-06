@@ -192,22 +192,23 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(JSON.parse(secondById[7].result.content[0].text).facts[0].fact_id, "fact-a");
     assert.equal(JSON.parse(secondById[8].result.content[0].text).scratchpad, null);
     const feedback = JSON.parse(secondById[9].result.content[0].text);
-    assert.equal(feedback.status, "persisted");
-    assert.equal(feedback.lifecycleReceipt.status, "persisted");
+    assert.equal(feedback.status, "accepted_advisory");
+    assert.equal(feedback.lifecycleReceipt.status, "accepted_advisory");
     assert.equal(feedback.source, "advisory", "an unqualified self-report must persist as advisory");
     assert.equal(feedback.verified, false, "an unqualified self-report must never land as a verified/ranking source");
 
-    // A self-report that names a resolvable cited verdict DOES persist as verified. Issued as
-    // its own request (not concurrently with the call above) to avoid exercising the resident
-    // service's post-restart event-outbox replay window with two simultaneous feedback writes.
+    // A wire self-report that carries verdictRef remains advisory. Naming a reference is not
+    // trusted observed-action evidence and cannot self-promote usefulness state. Issued separately
+    // to keep the restart/event-outbox portion of this fixture deterministic.
     const third = await rpc([
       request(10, "membrane_feedback", { ...common, receiptId: "receipt-cited-1", outcome: "used", verdictRef: "verdict-doc#section-1" }),
     ], env);
     assert.equal(third[0].result.isError, false, third[0].result.content[0].text);
     const citedFeedback = JSON.parse(third[0].result.content[0].text);
-    assert.equal(citedFeedback.status, "persisted");
-    assert.equal(citedFeedback.source, "cited_verdict");
-    assert.equal(citedFeedback.verified, true, "a resolvable cited verdict is verified and ranking-eligible");
+    assert.equal(citedFeedback.status, "accepted_advisory");
+    assert.equal(citedFeedback.lifecycleReceipt.status, "accepted_advisory");
+    assert.equal(citedFeedback.source, "advisory");
+    assert.equal(citedFeedback.verified, false, "caller verdictRef must not create verified usefulness evidence");
     assert.ok(readFileSync(store).byteLength > 0);
   } finally {
     await stopMembrane(active);

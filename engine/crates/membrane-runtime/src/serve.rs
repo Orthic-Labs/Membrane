@@ -5703,6 +5703,8 @@ pub(crate) fn run(
     );
     let api_token = Some(configured_api_token(db_path)?);
 
+    let _cortex_recovery = crate::cortex_lifecycle::AdmissionRecoveryWorker::start(store.clone())?;
+
     // Active Hub owns native MCP execution. The stdio binary is only a
     // transport client back to this authenticated in-process route.
     crate::mcp_executor::install_native_mcp_executor_for_hub(store.clone())?;
