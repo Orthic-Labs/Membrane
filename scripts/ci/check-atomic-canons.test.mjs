@@ -16,7 +16,7 @@ test("normalized canon inventory is complete & generated indexes are current", (
     groups: 7,
     implementations: 354,
     qualifications: 353,
-    decisions: 93,
+    decisions: 107,
     preservationRows: 728,
     legacyAtoms: 249,
     introducedSplits: 30,
@@ -84,4 +84,24 @@ test("Cortex governed-lifecycle additions preserve status boundaries", () => {
   assert.equal(byId.get("CTX-021").Verification, "FOCUSED_PASS");
   assert.equal(byId.get("CTX-019").Implementation, "DELIVERED");
   assert.equal(byId.get("CTX-019").Verification, "FOCUSED_PASS");
+});
+
+// Donor intake refines acceptance without inventing delivery or capability rows.
+test("Ripwire intake preserves one qualification per capability and no donor promotion", () => {
+  const cases = [["Blueprint", "blueprint.md", "BPT", 69, 4], ["Ledger", "ledger.md", "LDG", 31, 2], ["Pull", "pull.md", "PUL", 41, 2], ["Push", "push.md", "PSH", 29, 2], ["Adapt", "adapt.md", "ADP", 75, 1], ["Cortex", "cortex.md", "CTX", 42, 1], ["Membrane", "membrane.md", "MEM", 66, 2]];
+  for (const [owner, file, prefix, count, decisionCount] of cases) {
+    const canon = atomicCanonTestHooks.parseCanon({ owner, file, prefix, boundary: "RELEASED" });
+    assert.equal(canon.capabilities.length, count, file);
+    assert.equal(canon.qualifications.length, count, file);
+    const refined = canon.qualifications.filter((row) => row["Acceptance boundary"].includes("2026-09-07 Ripwire intake"));
+    assert.equal(refined.length > 0, owner !== "Cortex", file);
+    for (const row of refined) {
+      assert.ok(["PENDING", "STALE"].includes(row.State));
+      assert.equal(row.Evidence, "PENDING");
+    }
+    for (const row of canon.decisions.slice(-decisionCount)) {
+      assert.match(row["Authority/evidence"], /2026-09-07-ripwire-intake\/README\.md@[a-f0-9]{40}$/);
+      if (row.Kind === "BACKLOG") assert.equal(row.State, "HOLD");
+    }
+  }
 });

@@ -107,9 +107,9 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | ID | Capability targets | Acceptance boundary | State | Evidence | Material revision |
 |---|---|---|---|---|---|
 | PUL-Q001 | PUL-001 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q002 | PUL-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q002 | PUL-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q003 | PUL-003 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q004 | PUL-004 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q004 | PUL-004 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q005 | PUL-005 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q006 | PUL-006 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q007 | PUL-007 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -117,18 +117,18 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-Q009 | PUL-009 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q010 | PUL-010 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q011 | PUL-011 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q012 | PUL-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q012 | PUL-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q013 | PUL-013 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q014 | PUL-014 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q015 | PUL-015 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q016 | PUL-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q017 | PUL-017 | Freeze authority-contamination cases for user ruling vs peer proposal, stale vs superseding memory, hostile retrieved/repository/tool text, assistant-authored preference, & identical content moved across authority positions; reject ineligible evidence before ranking at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q018 | PUL-018 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q019 | PUL-019 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q020 | PUL-020 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q015 | PUL-015 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| PUL-Q016 | PUL-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| PUL-Q017 | PUL-017 | Freeze authority-contamination cases for user ruling vs peer proposal, stale vs superseding memory, hostile retrieved/repository/tool text, assistant-authored preference, & identical content moved across authority positions; reject ineligible evidence before ranking at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| PUL-Q018 | PUL-018 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| PUL-Q019 | PUL-019 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| PUL-Q020 | PUL-020 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q021 | PUL-021 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q022 | PUL-022 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q023 | PUL-023 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q023 | PUL-023 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q024 | PUL-024 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q025 | PUL-025 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q026 | PUL-026 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -136,7 +136,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-Q028 | PUL-028 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q029 | PUL-029 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q030 | PUL-030 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| PUL-Q031 | PUL-031 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| PUL-Q031 | PUL-031 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | PUL-Q032 | PUL-032 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q033 | PUL-033 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | PUL-Q034 | PUL-034 | Reconcile legacy none claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -146,7 +146,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-Q039 | PUL-039 | Qualify byte-stable versioned prefix reuse, real host cache hits, cold/warm token reduction, prior-packet compatibility, required-evidence invariance, changed-content invalidation, disable rollback, & released host/model non-regression | PENDING | PENDING | LOCAL |
 | PUL-Q040 | PUL-040 | Qualify `PUL-017 eligibility → ranking/selection → PUL-040 placement` end-to-end across supported hosts; prove semantic classes, membership/authority/trust/data-only invariance, atomic grouping, cache-prefix interaction, hostile-text containment, flag rollback, & released host/model non-regression | PENDING | PENDING | LOCAL |
 | PUL-Q041 | PUL-041 | At RELEASED boundary, two independently authorized repositories supply actual attributed evidence under one aggregate cap; a denied or stale target remains explicitly omitted and cannot borrow another target grant; installed native workspace delivery preserves target identity and host-capacity accounting | PENDING | PENDING | LOCAL |
-| PUL-Q042 | PUL-042 | At RELEASED boundary, every selected handle-only unit can be reopened through a server-supported resolver negotiated by the consuming host; unsupported or revoked resolvers produce a faithful alternative or typed limitation without granting extra authority | PENDING | PENDING | LOCAL |
+| PUL-Q042 | PUL-042 | At RELEASED boundary, every selected handle-only unit can be reopened through a server-supported resolver negotiated by the consuming host; unsupported or revoked resolvers produce a faithful alternative or typed limitation without granting extra authority Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 
 ## Decision register
 
@@ -160,3 +160,15 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | PUL-D006 | REFERENCE | PUL-037, PUL-039, PUL-040 | Commit bounded cross-turn suppression, reusable-prefix policy, & semantic placement as independent Pull behaviors; PUL-038 archive bundle maps to existing Ledger expansion/representation registers. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
 | PUL-D007 | REFERENCE | PUL-017, PUL-037, PUL-039, PUL-040 | Implement suppression & reusable-prefix gaps as priorities; semantic placement remains downstream defense-in-depth and can neither authorize rejected evidence nor change authority, trust restrictions, or `data_only` status. | `docs/provenance/foundation/2026-09-02-evidence-path-reconciliation/reconciliation.md@a11900a2287f25ec5d6e91a27ae3d1fa3e7ccee3`; explicit user authority, 2026-09-02 | RECORDED |
 | PUL-D008 | REFERENCE | PUL-034, PUL-041, PUL-042 | Workspace evidence assembly and consumer-aware resolver selection are independent Pull boundary capabilities and do not require Ledger/Cortex semantic synthesis; PUL-034 therefore remains exploratory. | `docs/architecture/subsystems/pull-final-implementation-plan.md`; explicit user implementation direction, 2026-09-05 | RECORDED |
+| PUL-D009 | REFERENCE | PUL-002, PUL-004, PUL-012, PUL-015, PUL-016, PUL-017, PUL-018, PUL-019, PUL-020, PUL-023, PUL-031, PUL-042 | Qualify whole-task source-owner composition and weak-result corrective discovery using independent labels, bounded callable follow-ups, and equal-budget outcome metrics. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+| PUL-D010 | BACKLOG | PUL-021, PUL-022, PUL-025 | A donor importance/relevance result is not authority to replace the named current fusion policy; graph-importance, path-tier and adaptive-cutoff experiments require paired outcome evidence. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | HOLD |
+
+## Ripwire intake - 2026-09-07
+
+Status: adopted implementation/acceptance refinements under existing atoms; the refinements remain unverified and existing qualification states are not promoted. No capability or lifecycle promotion is implied. Source-reviewed rationale: [pinned Ripwire intake](../provenance/foundation/2026-09-07-ripwire-intake/README.md).
+
+Global graph importance is not task relevance. Keep the named/versioned current fusion control until a candidate qualifies under PUL-021/022; Ripwire's reported results neither prove Membrane improvement nor authorise unconditional PageRank fusion. Query-shape hints, document/path demotion and score-gap cutoffs cannot veto independently required evidence or bypass hard eligibility.
+
+A vague coding task may require Blueprint code, Ledger documents and Cortex admitted knowledge. Acquire through the existing owners, retaining source identity, version, authority and atomic grouping. A code-local comment and a document quoting it are not independent corroboration. Do not add a second document lane or give providers final context allocation. Provider next-operation advice may inform PUL-020's one bounded corrective lane only under the existing sufficiency, grant, deadline and capability checks; it never grants an effect.
+
+Qualify the complete context-and-resolution path, not only candidate ranking. Freeze an independent task/gold set before running variants; measure all-required-evidence coverage, first relevant token position, useful evidence inside fixed token prefixes, irrelevant tokens, false-authoritative admission, no-answer quality and downstream task satisfaction. Record precomputation, cold/warm state, hardware, tokenizer, final envelope and fallback cost. A small response that omits the answer is not an efficiency win. Missing qualified providers or unavailable host facts must stay typed unavailable, never become synthetic successful delivery.

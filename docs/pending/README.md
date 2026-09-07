@@ -18,13 +18,13 @@ Atomic & competitive state lives in `docs/canon/*.md`; comparison receipts live 
 
 | Subsystem | Boundary | Committed | Exploratory | Current best/closed | Competitive pending | Lifecycle closed | Groups | Implementations | Qualifications | Decisions |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| [Membrane](../canon/membrane.md) | RELEASED | 66 | 0 | 12 | 54 | 0 | 1 | 66 | 66 | 10 |
-| [Pull](../canon/pull.md) | RELEASED | 40 | 1 | 0 | 40 | 0 | 1 | 41 | 41 | 8 |
-| [Push](../canon/push.md) | RELEASED | 29 | 0 | 3 | 26 | 0 | 1 | 29 | 29 | 12 |
-| [Cortex](../canon/cortex.md) | RELEASED | 39 | 3 | 10 | 29 | 0 | 1 | 42 | 42 | 17 |
-| [Blueprint](../canon/blueprint.md) | RELEASED | 68 | 1 | 20 | 48 | 0 | 1 | 70 | 69 | 13 |
-| [Ledger](../canon/ledger.md) | RELEASED | 30 | 1 | 3 | 27 | 0 | 1 | 31 | 31 | 15 |
-| [Adapt](../canon/adapt.md) | RELEASED | 68 | 7 | 10 | 58 | 0 | 1 | 75 | 75 | 18 |
+| [Membrane](../canon/membrane.md) | RELEASED | 66 | 0 | 12 | 54 | 0 | 1 | 66 | 66 | 12 |
+| [Pull](../canon/pull.md) | RELEASED | 40 | 1 | 0 | 40 | 0 | 1 | 41 | 41 | 10 |
+| [Push](../canon/push.md) | RELEASED | 29 | 0 | 3 | 26 | 0 | 1 | 29 | 29 | 14 |
+| [Cortex](../canon/cortex.md) | RELEASED | 39 | 3 | 10 | 29 | 0 | 1 | 42 | 42 | 18 |
+| [Blueprint](../canon/blueprint.md) | RELEASED | 68 | 1 | 20 | 48 | 0 | 1 | 70 | 69 | 17 |
+| [Ledger](../canon/ledger.md) | RELEASED | 30 | 1 | 3 | 27 | 0 | 1 | 31 | 31 | 17 |
+| [Adapt](../canon/adapt.md) | RELEASED | 68 | 7 | 10 | 58 | 0 | 1 | 75 | 75 | 19 |
 
 ## Exploratory capability rows
 

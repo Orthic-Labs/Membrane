@@ -156,22 +156,22 @@ Only committed capability rows count. Implementation, verification, qualificatio
 
 | ID | Capability targets | Acceptance boundary | State | Evidence | Material revision |
 |---|---|---|---|---|---|
-| MEM-Q001 | MEM-001 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q002 | MEM-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q001 | MEM-001 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| MEM-Q002 | MEM-002 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q003 | MEM-003 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q004 | MEM-004 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q005 | MEM-005 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q006 | MEM-006 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q007 | MEM-007 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q008 | MEM-008 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q009 | MEM-009 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q008 | MEM-008 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| MEM-Q009 | MEM-009 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q010 | MEM-010 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q011 | MEM-011 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q012 | MEM-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q013 | MEM-013 | Freeze default `membrane_context`, each optional toolset, & full 17-tool surface; measure total prompt tokens, model turns, task success, latency, cold/warm behavior, & concise-description utility on actual supported hosts/models at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q013 | MEM-013 | Freeze default `membrane_context`, each optional toolset, & full 17-tool surface; measure total prompt tokens, model turns, task success, latency, cold/warm behavior, & concise-description utility on actual supported hosts/models at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q014 | MEM-014 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q015 | MEM-015 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q016 | MEM-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q016 | MEM-016 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q017 | MEM-017 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q018 | MEM-018 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q019 | MEM-019 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -179,7 +179,7 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-Q021 | MEM-021 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q022 | MEM-022 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q023 | MEM-023 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q024 | MEM-024 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q024 | MEM-024 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q025 | MEM-025 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q026 | MEM-026 | Reconcile legacy stale claim through exact live consumer at RELEASED boundary | STALE | PENDING | LOCAL |
 | MEM-Q027 | MEM-027 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -190,26 +190,26 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-Q032 | MEM-032 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q033 | MEM-033 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q034 | MEM-034 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q035 | MEM-035 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q035 | MEM-035 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q036 | MEM-036 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q037 | MEM-037 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q038 | MEM-038 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q038 | MEM-038 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q039 | MEM-039 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q040 | MEM-040 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q040 | MEM-040 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q041 | MEM-041 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q042 | MEM-042 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q043 | MEM-043 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q042 | MEM-042 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| MEM-Q043 | MEM-043 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q044 | MEM-044 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q045 | MEM-045 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q046 | MEM-046 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q047 | MEM-047 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q047 | MEM-047 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q048 | MEM-048 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q049 | MEM-049 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q050 | MEM-050 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q051 | MEM-051 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q052 | MEM-052 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q053 | MEM-053 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| MEM-Q054 | MEM-054 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| MEM-Q054 | MEM-054 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | MEM-Q055 | MEM-055 | Prove bounded supervision & restart through tray-owned production path at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q056 | MEM-056 | Prove drain/termination leaves no resident daemon at RELEASED boundary | PENDING | PENDING | LOCAL |
 | MEM-Q057 | MEM-057 | Prove atomic activation through signed installed update at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -237,3 +237,17 @@ Only committed capability rows count. Implementation, verification, qualificatio
 | MEM-D008 | REFERENCE | MEM-028 | Blueprint explorer UI belongs MEM-028. | docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08 | RECORDED |
 | MEM-D009 | REFERENCE | MEM-004, MEM-036 | Membrane owns Push command security-gating enforcement. | docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08 | RECORDED |
 | MEM-D010 | REFERENCE | MEM-013, MEM-029, MEM-061, MEM-062, MEM-063, MEM-064, MEM-065, MEM-066 | Finish existing MCP discovery, corpus-health, & generic daemon-job ownership; corpus health is the second scheduler consumer, not a new audit or scheduler subsystem. | `docs/provenance/foundation/2026-09-02-evidence-path-reconciliation/reconciliation.md@a11900a2287f25ec5d6e91a27ae3d1fa3e7ccee3`; explicit user authority, 2026-09-02 | RECORDED |
+| MEM-D011 | REFERENCE | MEM-001, MEM-002, MEM-008, MEM-009, MEM-013, MEM-016, MEM-024, MEM-035, MEM-038, MEM-040, MEM-042, MEM-043, MEM-047, MEM-054 | Require independent whole-product semantic tracing and contract-first dogfood oracles across real boundaries; inventory presence, helper tests and donor reports do not establish delivery. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+| MEM-D012 | EXCLUSION | MEM-008, MEM-009, MEM-017, MEM-047 | Retain the Blueprint-only bounded one-shot exception; no hidden runtime, duplicate subsystem owner, automatic execution of next hints, or semantic agreement inferred from empty diagnostics. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+
+## Ripwire intake - 2026-09-07
+
+Status: adopted implementation/acceptance refinements under existing atoms; the refinements remain unverified and existing qualification states are not promoted. No capability or lifecycle promotion is implied. Source-reviewed rationale: [pinned Ripwire intake](../provenance/foundation/2026-09-07-ripwire-intake/README.md).
+
+Audit the end-to-end user journey, not the union of subsystem feature lists. Trace public discovery/request, authentication/grant, owner acquisition, eligibility, fusion/coverage, Push representation, final publication, actual consumer and follow-up resolver. Include cold start, vague tasks, document/code contradiction, edits, diagnostics, branch transitions, restart/revocation, no-answer and recovery. Map each handoff to a real production function, state/digest and terminal result; treat an unreachable helper as an implementation gap.
+
+The semantic auditor and dogfood test author must work independently against a declared frozen revision. The test author fixes external expected outcomes from contracts and source-authored fixtures before reading internal implementation, old test expectations, donor results or the other audit. Neither adopts the product's current output as its oracle. Compare their outputs only after both initial artifacts are frozen. Track surface/journey coverage and unknowns; do not claim full-system verification from a focused passing suite.
+
+Acceptance evidence separates source/type-checks, JavaScript execution, native runtime, simulated host, actual installed host and release qualification. Include control/negative paths that show a test detects missing required evidence, stale source, scope escalation, duplicate payloads, orphan residency and fake success. Compare resource and retrieval variants at the same workload/budget/cache state, and allow no improvement. Preserve pre-existing qualification gates and explicit missing host facts.
+
+Blueprint is usable on demand with Hub off but starts no watcher or replacement runtime. Operational Membrane and Ledger remain unavailable without their tray-owned daemon. Diagnostic snapshots are not canonical code resolution: an empty or incomplete diagnostic set cannot create agreement, compile success or semantic clearance. User no-build restrictions also constrain tests and advisory runner hints. This intake changes no lifecycle, production state, public schema or release claim.

@@ -178,42 +178,42 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-Q011 | BPT-011 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q012 | BPT-012 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q013 | BPT-013 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q014 | BPT-014 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q014 | BPT-014 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q015 | BPT-015 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q016 | BPT-016 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q017 | BPT-017 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q018 | BPT-018 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q019 | BPT-019 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q020 | BPT-020 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q021 | BPT-021 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q023 | BPT-023 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q019 | BPT-019 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| BPT-Q020 | BPT-020 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| BPT-Q021 | BPT-021 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| BPT-Q023 | BPT-023 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q024 | BPT-024 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q025 | BPT-025 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q026 | BPT-026 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q027 | BPT-027 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q028 | BPT-028 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q028 | BPT-028 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q029 | BPT-029 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q030 | BPT-030 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q031 | BPT-031 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q032 | BPT-032 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q033 | BPT-033 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q034 | BPT-034 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q034 | BPT-034 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q035 | BPT-035 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q036 | BPT-036 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q037 | BPT-037 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q037 | BPT-037 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q038 | BPT-038 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q039 | BPT-039 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q040 | BPT-040 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q041 | BPT-041 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q042 | BPT-042 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q041 | BPT-041 | Run focused acceptance, then qualify exact behavior at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
+| BPT-Q042 | BPT-042 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q043 | BPT-043 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q044 | BPT-044 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q044 | BPT-044 | Reconcile legacy mechanics claim through exact live consumer at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q046 | BPT-046 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q047 | BPT-047 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q048 | BPT-048 | Reconcile legacy focused claim through exact live consumer at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q049 | BPT-049 | Qualify findings baseline capture/list/delta at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q049 | BPT-049 | Qualify findings baseline capture/list/delta at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q050 | BPT-050 | Qualify SARIF export at RELEASED boundary | PENDING | PENDING | LOCAL |
-| BPT-Q051 | BPT-051 | Qualify source-bound finding explanation at RELEASED boundary | PENDING | PENDING | LOCAL |
+| BPT-Q051 | BPT-051 | Qualify source-bound finding explanation at RELEASED boundary Apply the 2026-09-07 Ripwire intake acceptance refinements for this capability before qualification. | PENDING | PENDING | LOCAL |
 | BPT-Q052 | BPT-052 | Qualify governed host evidence-pack production at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q053 | BPT-053 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
 | BPT-Q054 | BPT-054 | Run focused acceptance, then qualify exact behavior at RELEASED boundary | PENDING | PENDING | LOCAL |
@@ -252,3 +252,21 @@ For every `RECONCILE_EVIDENCE` target, exact mechanism, production consumer, & r
 | BPT-D011 | REFERENCE | BPT-059, BPT-064, BPT-068, BPT-069, BPT-070 | Explorer shell, loopback binding, API token admission, method enforcement & browser-process isolation close independently. | Sage split decision | RECORDED |
 | BPT-D012 | REFERENCE | BPT-071 | Commit donor-proven explicit cross-language seam gap as pending Blueprint provider work; general taint/dataflow platforms & similarity-inferred bridges remain excluded. | `docs/provenance/foundation/2026-08-31-implementation-comparison/reconciliation.md`; explicit user promotion authority, 2026-08-31 | RECORDED |
 | BPT-D013 | REFERENCE | BPT-041, BPT-048, BPT-049, BPT-050, BPT-051, BPT-052 | Treat broad architecture-fitness review as register/qualification work under existing atomic owners; do not create one bundled fitness capability. | `docs/provenance/foundation/2026-08-31-master-atom-intake/reconciliation.md` | RECORDED |
+| BPT-D014 | REFERENCE | BPT-014, BPT-019, BPT-020, BPT-021, BPT-023, BPT-028 | Refine code-local lexical evidence and incremental query/cache acceptance; general document indexing remains Ledger-owned. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+| BPT-D015 | REFERENCE | BPT-034, BPT-037, BPT-041, BPT-042, BPT-044, BPT-049, BPT-051 | Require contract-valid advisory next operations and comparable post-edit/test-runner evidence under existing surfaces; never auto-execute advice. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+| BPT-D016 | BACKLOG | BPT-023, BPT-026, BPT-028 | Personalized graph diffusion is a measured retrieval experiment only; no default activation, canonical edge change, or release dependency follows from donor presence. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | HOLD |
+| BPT-D017 | EXCLUSION | BPT-011, BPT-013, BPT-043 | Do not absorb a generic document registry, approximate graph truth, positional entity identity, or MCP-owned watcher residency from Ripwire. | docs/provenance/foundation/2026-09-07-ripwire-intake/README.md@596ab7275472bbc9eb946ba7ca30d05dcc303474 | RECORDED |
+
+## Ripwire intake - 2026-09-07
+
+Status: adopted implementation/acceptance refinements under existing atoms; the refinements remain unverified and existing qualification states are not promoted. No capability or lifecycle promotion is implied. Source-reviewed rationale: [pinned Ripwire intake](../provenance/foundation/2026-09-07-ripwire-intake/README.md).
+
+Code-local retrieval refinements belong to BPT-023/028, not a new document engine. Candidate lexical fields may include names, qualified names, signatures, source-local docstrings/comments, body identifiers, and resolved callee names. Keep field provenance and source/version binding; comments and bodies supply search terms, not observed call edges or authority. Do not copy arbitrary Markdown documents into this index. Qualify identifier splitting on acronym boundaries such as HTTPServer and XMLHttpRequest and preserve meaningful short identifiers; do not import a donor's minimum-token-length rule blindly.
+
+For BPT-014/019/020/021, check lightweight source/provider/config/schema/generation identity before loading a cached payload. A warm hit must not require loading every graph node or rereading every source. Update affected term statistics/postings without an unconditional corpus rebuild for every changed document. Exact global-statistic dependencies must still invalidate scores correctly. Require selective hydration and bounded work, cache-transparent answers, preserved wider cached coverage after a narrower request, and cold/warm/incremental equivalence. Equality is over contractual semantic output; explicitly nondeterministic receipts/timings are compared by their declared rules, not stripped arbitrarily. Test path loss, stale enriched candidates, corrupt caches, same-byte no-ops, and source/provider/config changes.
+
+For BPT-041/042/044, return at most one useful typed advisory next operation where available: existing operation name, validated arguments, reason, and applicable source/scope/generation binding. A next operation must be advertised/callable by the consumer or be typed unavailable. Validate it through the real adapter schema, not a duplicate hand-written list. Never auto-run repository strings, widen grants, or add a new tool merely to advertise guidance.
+
+For BPT-034/037/049/051, compare post-edit findings with a named baseline that binds source, detector/config versions and coverage. Distinguish new, persistent, resolved, changed, and unknown; noncomparable coverage is not improvement. Report structural metrics as diagnostics, not compiler proof or dead-code certainty. A test file is not a known runnable command: attach a bounded argv/runner hint only when established by current repository evidence, else preserve runner unavailability and uncovered impact. Host authorization and the user's no-build policy remain independent.
+
+Personalized graph diffusion is HOLD under the decision register. Benchmark explicit-symbol and vague tasks separately before proposing activation. Relevance scores cannot override scope, source freshness, semantic authority, or ambiguity. No LSP runtime, generic document service, automatic watcher, or second context packer is introduced.
