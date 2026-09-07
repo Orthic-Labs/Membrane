@@ -14,6 +14,16 @@ export function redactForEgress(value) {
   // Raw 40-char base64 (e.g. AWS secret access key w/out prefix) — broad but
   // safe to redact (false-positive is harmless, leak is not). Must run after
   // URL-password to avoid double-redacting.
-  out = out.replace(SECRET_RAW_BASE64_40, "[REDACTED]");
+  //
+  // One false positive is NOT harmless: a git commit SHA is exactly 40 hex
+  // characters, so this rule was rewriting `indexed_revision` inside every
+  // freshness receipt that crossed the MCP egress boundary. That corrupts the
+  // receipt — the revision a generation was indexed at is the evidence a caller
+  // uses to reason about freshness, and a redacted one is indistinguishable
+  // from a different generation. All-hex 40-char strings are hashes, not
+  // credentials; anything under a secret-NAMED key is still redacted by
+  // SECRET_KEY above, and prefixed credential shapes are matched by
+  // SECRET_VALUE.
+  out = out.replace(SECRET_RAW_BASE64_40, (match) => (/^[0-9a-f]{40}$/i.test(match) ? match : "[REDACTED]"));
   return out;
 }

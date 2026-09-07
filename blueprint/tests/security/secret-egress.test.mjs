@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { buildHostileRepo, SECRET_ENTRIES } from "../../fixtures/security/build-hostile-repo.mjs";
+import { redactForEgress } from "../../src/lib/redaction.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -123,4 +124,27 @@ test("indexing never executes repository-provided commands", () => {
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("a git commit SHA survives egress redaction while real credential shapes do not", () => {
+  // A commit SHA is exactly 40 hex characters and matched the raw-base64
+  // credential heuristic, so `indexed_revision` inside every freshness receipt
+  // crossing the MCP egress boundary was being rewritten to [REDACTED]. That
+  // corrupts the receipt: the revision a generation was indexed at is what a
+  // caller reasons about freshness with, and a redacted one is
+  // indistinguishable from a different generation.
+  const sha = "a987ea64c5bad3fd208aab1f5a06ef35318ad99d";
+  assert.equal(redactForEgress(sha), sha);
+  assert.deepEqual(
+    redactForEgress({ generation: { indexed_revision: sha, indexed_worktree_fingerprint: "99aa06d3014798d86001c324468d497f" } }),
+    { generation: { indexed_revision: sha, indexed_worktree_fingerprint: "99aa06d3014798d86001c324468d497f" } },
+  );
+
+  // Narrowing the heuristic must not reopen it. A 40-char non-hex secret is
+  // still redacted, as is anything under a secret-named key, whatever its shape.
+  const rawSecret = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
+  assert.equal(rawSecret.length, 40);
+  assert.equal(redactForEgress(rawSecret), "[REDACTED]");
+  assert.deepEqual(redactForEgress({ api_key: sha }), { api_key: "[REDACTED]" });
+  assert.equal(redactForEgress(`ghp_${"A".repeat(36)}`), "[REDACTED]");
 });
