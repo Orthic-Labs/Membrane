@@ -1224,13 +1224,13 @@ The historical Python `D--Claude` root-scope literal is therefore tracked as a *
 
 Runtime completion is never inferred from coexistence. Installed execution and process-tree qualification decide the native-only result.
 
-## 9.1 Command classification and daemon binding
+## 9.1 Explicit commands & resident lifecycle
 
-Canonical-state reads, review-context construction, approval capability consumption, admission, lifecycle actions, delivery, and live status are stateless clients of the active tray-owned daemon. They must bind the expected installation, store and release generation. Tray-off access returns typed unavailability without opening or migrating the installed canonical database, spawning a hidden service, or taking a direct-write fallback.
+Canonical-state reads, review-context construction, approval capability consumption, admission, lifecycle actions, delivery & live status use canonical installed Adapt/Cortex owners with Hub on or off. They bind expected installation, store & release generation. Explicit execution preserves authorization, transaction semantics & receipts, completes within bounded lifetime & starts no resident service.
 
-Pure analysis over explicitly supplied files—such as transcript normalization, a frozen benchmark, or snapshot validation—is a possible bounded offline transformation, not an implied exception. The Membrane runtime owner must explicitly classify and approve any such command exception. Until then the canonical client policy applies. Approved offline operations must not inspect installed canonical state or claim live context/health. A dry run that needs current canonical state remains daemon-bound.
+Analysis over explicitly supplied files, such as transcript normalization, frozen benchmarks or snapshot validation, also runs as bounded explicit work. Operations needing current canonical state use its installed storage owner independently of Hub; file-only operations never claim live state they did not inspect.
 
-The operation inventory MUST label each command's class and effect. Do not inherit Blueprint's special one-shot exception by analogy. This chapter specializes the existing cross-cutting lifecycle rule; it does not authorize another resident topology.
+Operation inventory MUST label each command's effects & whether execution is explicit or automatic. Automatic observation, review, maintenance & proposal generation require active Hub. [Shared execution boundary](../execution-lifecycle-boundary.md) applies equally to all six subsystems.
 
 # 10. Current implementation truth — refresh-required snapshot
 

@@ -9,7 +9,7 @@
 // changes, this gate must be updated in the same change — that is the
 // point: a topology regression (or an unnoticed drift back to the retired
 // in-process model) fails CI instead of silently going green.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -99,6 +99,40 @@ function check(label, condition) {
     "apps/membrane-hub/src-tauri/src/main.rs production source must use DashboardConnectionState::from_stdin() (on-demand dashboard proxies an inherited connection)",
     production.includes("DashboardConnectionState::from_stdin()"),
   );
+}
+
+// Agent-facing current doctrine must not reintroduce blanket Hub-off refusal.
+// Historical/archive documents deliberately remain outside this check.
+function currentMarkdown(directory) {
+  return readdirSync(join(root, directory), { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return entry.name === "archive" ? [] : currentMarkdown(path);
+    return entry.isFile() && entry.name.endsWith(".md") ? [path] : [];
+  });
+}
+for (const path of ["README.md", ...["docs/product", "docs/architecture", "docs/canon", "docs/reference"].flatMap(currentMarkdown)]) {
+  const prose = read(path).replace(/\s+/g, " ");
+  for (const forbidden of [
+    /tray off means Membrane is unavailable/i,
+    /tray-off access returns typed unavailability/i,
+    /canonical state remains daemon-bound/i,
+    /Blueprint's special one-shot exception/i,
+    /Operational Ledger CLI is a daemon client/i,
+    /Membrane remains unavailable/i,
+  ]) check(`${path} contradicts explicit execution boundary: ${forbidden}`, !forbidden.test(prose));
+}
+
+const boundary = read("docs/architecture/execution-lifecycle-boundary.md");
+check("execution contract must separate Hub-off explicit operations from automatic Hub-owned work",
+  boundary.includes("Explicit operations available with Hub off") && boundary.includes("Automatic work requires Hub"));
+for (const subsystem of ["Pull", "Blueprint", "Cortex", "Ledger", "Adapt", "Push"]) {
+  check(`execution contract must cover ${subsystem}`, boundary.includes(`| ${subsystem} |`));
+}
+for (const path of ["README.md", "docs/architecture/membrane.md", "docs/canon/membrane.md",
+  "docs/reference/cli/README.md", "docs/architecture/integrations/coderight.md",
+  "docs/architecture/security/mcp-threat-model.md"]) {
+  check(`${path} must retain explicit Hub-off availability doctrine`,
+    /explicit[^.\n]{0,240}Hub(?: on or)? off/i.test(read(path)));
 }
 
 if (failures.length) {

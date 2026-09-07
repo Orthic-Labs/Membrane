@@ -812,7 +812,7 @@ fn percent_encode_component(value: &str) -> String {
 }
 
 /// One blocking loopback call to the resident diagnostics surface. `Ok(None)`
-/// means nothing is listening on the port (typed degradation upstream); every
+/// means connection failed before any request was dispatched; every
 /// response body is printed verbatim so server-side typed omission envelopes
 /// reach the caller unchanged.
 fn run_diagnostics_service_call(
@@ -896,7 +896,9 @@ fn diagnostics_http_request(
     let mut stream =
         match std::net::TcpStream::connect_timeout(&address, DIAGNOSTICS_CONNECT_TIMEOUT) {
             Ok(stream) => stream,
-            Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => return Ok(None),
+            // Windows may time out connecting to an inactive loopback port.
+            // No stream exists yet, so canonical execution cannot replay a write.
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::TimedOut) => return Ok(None),
             Err(error) => return Err(format!("connect to resident failed: {error}")),
         };
     stream

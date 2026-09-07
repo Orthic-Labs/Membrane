@@ -12,6 +12,7 @@ membrane-blueprint = { path = "../../engine/crates/membrane-blueprint" }
 # The GPU renderer (`renderer-femtovg`) stays enabled for normal desktops.
 slint = { version = "1.17.1", features = ["raw-window-handle-06", "renderer-software"] }
 tray-icon = "0.21.1"
+image = { version = "=0.25.10", default-features = false, features = ["png"] }
 getrandom = "0.4.3"
 raw-window-handle = "0.6.2"
 serde_json = "1"

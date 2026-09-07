@@ -71,7 +71,7 @@ expression of §1: the user must be able to see that Membrane is not working.
 
 Required behaviour:
 
-1. Daemon dies → **tray icon turns red immediately**.
+1. Daemon dies → **tray icon status badge turns red immediately**. Windows tray embeds approved Membrane icon pack at native DPI sizes; lifecycle badge overlays a small corner, preserving product artwork. Tooltip & popover name current state.
 2. User opens the popover → it states plainly that the daemon is not running, with the typed reason.
 3. The popover offers **Restart** as an explicit action.
 4. An automatic restart mechanism runs, with crash-loop detection (carry over the existing logic in

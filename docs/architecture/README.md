@@ -22,4 +22,4 @@ superseded/derived material lives in [`../archive/`](../archive/).
 - [Update admission](security/update-admission.md)
 - [Current-state manifest](current-state-manifest.json)
 
-Visible native tray owns resident lifecycle. OS-coupled headless child daemon executes Membrane runtime. Hub dashboard is on demand. Stable V1 `hub_inactive` means tray-owned daemon inactive.
+Visible native tray owns automatic resident lifecycle. Its OS-coupled child daemon hosts watchers, schedulers & background work. Explicit operations across all six subsystems remain available with Hub off through canonical installed owners. Hub dashboard is on demand; stable V1 `hub_inactive` describes automatic service inactivity. [Execution boundary](execution-lifecycle-boundary.md) governs this distinction.

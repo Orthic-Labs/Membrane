@@ -317,9 +317,9 @@ struct PersistedWorkspaceV1 {
 
 impl DiagnosticsService {
     pub fn with_persistent_store(mut self, store: crate::MemoryStore) -> Result<Self, LiveDiagnosticsServiceError> {
+        // Router construction must remain available while the database is busy.
+        // Every logical operation hydrates & validates through state_read/transition.
         self.persistent_store = Some(store);
-        let (_, state) = self.load_persistent_state()?;
-        if let Some(state) = state { self.restore_persistent_state(state)?; }
         Ok(self)
     }
 
@@ -1624,17 +1624,15 @@ impl DiagnosticsService {
             .collect::<Vec<_>>();
         let mut profiles: Vec<&str> = self.policies.keys().map(String::as_str).collect();
         profiles.sort();
-        let sessions = self
-            .sessions
-            .iter()
-            .map(|((repo_id, worktree_id), entry)| {
-                json!({
-                    "repoId": repo_id,
-                    "worktreeId": worktree_id,
-                    "fenceCleared": entry.session.cleared_decision().is_some(),
-                })
-            })
-            .collect::<Vec<_>>();
+        // Session truth is durable; provider handles above remain process-local.
+        let sessions = match self.state_read(|view| Ok(view.sessions.iter()
+            .map(|((repo_id, worktree_id), entry)| json!({
+                "repoId": repo_id, "worktreeId": worktree_id,
+                "fenceCleared": entry.session.cleared_decision().is_some(),
+            })).collect::<Vec<_>>())) {
+            Ok(sessions) => sessions,
+            Err(error) => return json!({"error":{"code":error.code(),"detail":error.to_string()}}),
+        };
         json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "engineSchemaVersion": LIVE_DIAGNOSTICS_SCHEMA_VERSION,
@@ -2748,6 +2746,7 @@ mod tests {
         first.mutation_begin("repo-1", "wt-1").unwrap();
         drop(first);
         let mut second = persistent_service(&dir);
+        assert_eq!(second.capabilities()["sessions"].as_array().unwrap().len(), 1);
         assert_eq!(second.workspace_status("repo-1", "wt-1").unwrap()["openMutation"], true);
         second.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
         let mut third = persistent_service(&dir);
@@ -2761,6 +2760,7 @@ mod tests {
         third.workspace_close("repo-1", "wt-1").unwrap();
         assert!(second.workspace_status("repo-1", "wt-1").is_err());
         assert!(second.status()["sessions"].as_array().unwrap().is_empty());
+        assert!(second.capabilities()["sessions"].as_array().unwrap().is_empty());
     }
 
     #[test]
@@ -2773,6 +2773,7 @@ mod tests {
         store.db().lock_events().execute("UPDATE membrane_diagnostics_state SET digest='corrupt'", []).unwrap();
         assert_eq!(service.workspace_status("repo-1", "wt-1").unwrap_err().code(), "diagnostic_state_unavailable");
         assert!(!service.fence_allows_build("repo-1", "wt-1"));
+        assert_eq!(service.capabilities()["error"]["code"], "diagnostic_state_unavailable");
         let payload: String = store.db().lock_events().query_row("SELECT payload FROM membrane_diagnostics_state", [], |row| row.get(0)).unwrap();
         let mut invalid: Value = serde_json::from_str(&payload).unwrap();
         invalid["schema_version"] = json!(999);

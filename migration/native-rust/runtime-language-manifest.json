@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T14:23:32.800Z",
+ "generatedAt": "2026-09-07T14:59:38.933Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
@@ -1270,7 +1270,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "806cdd279144214cdaf7b5e5acbb341ce79629860208936fba41089f79cbad9f"
+   "content_digest": "9bfc00196fc983987e05b103d9b30fd834fff9d19f16304fdd123fc4641b49ee"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1716,7 +1716,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "18d49de732eccf59b4b74b3aabfe5af2bda1ca17244eafd2ccc9d33529f2a99a"
+   "content_digest": "441806e732a67b34735386bd8c3c158e913541b9e51da4433b9a36e30950f727"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1916,7 +1916,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "0ceb2c21e6525738edbcaebaf0b995a3558596941745de1f4adbab3c183f9aae"
+   "content_digest": "7141c23119d55c4e78d438f3e24d0cb4a26cfb8b8c2753e705aded23ca3716b8"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2314,7 +2314,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "f7418623041ffc95d2309dc452065c83e6dd3d8294c4442dc049f33baf84b6c2"
+   "content_digest": "86945e22b88ff2b40e14932d394208ac1d962be4a57f117b4dd388ce073712bd"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
@@ -2467,7 +2467,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "797edd80938399299076851866546c9ffc27a3d835481732a662b13917433de8"
+   "content_digest": "2841d8a4859e1133ab0607f211e5c007c97c353c1f4fd43c641a197860d4a971"
   }
  ]
 }

@@ -6231,7 +6231,8 @@ mod tests {
         let holder = std::thread::spawn(move || {
             let _connection = db.lock();
             let _ = entered_tx.send(());
-            let _ = release_rx.recv();
+            // A startup regression must fail this fixture, never hang all CI.
+            let _ = release_rx.recv_timeout(Duration::from_secs(5));
         });
         entered_rx.recv().unwrap();
         (release_tx, holder)

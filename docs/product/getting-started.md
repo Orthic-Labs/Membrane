@@ -2,16 +2,17 @@
 
 This path ends only with a receipt-backed packet. A packet without a receipt is a failed run.
 
-The live path uses the signed Windows install. Visible native tray owns resident
-lifecycle; its headless child daemon hosts runtime. Hub dashboard is on demand.
+Use Windows installer; unsigned internal builds follow same execution boundary.
+Visible native tray owns automatic resident lifecycle; its child daemon hosts
+watchers & background work. Hub dashboard is on demand.
 MCP client launches only installed native `membrane` binary.
-Node & Python are development/test tooling, never installed runtime dependencies.
+Blueprint uses installer-owned packaged Node; no agent-supplied Node or Python is required.
 
 ## 1. Install & launch (0:00)
 
-Install signed Windows release, then launch **Membrane tray**.
-Wait until tray reports Membrane **Running**. Tray off means Membrane is unavailable;
-no client or sidecar may start a replacement resident service.
+Install Windows package. Explicit operations work immediately with Hub off.
+Launch **Membrane tray** when automatic watchers & background processes are wanted;
+wait for **Running** before relying on automatic refresh.
 
 ## 2. Configure MCP (0:45)
 
@@ -30,8 +31,9 @@ shows the canonical transport:
 }
 ```
 
-`membrane stdio-mcp` is a bounded client process. It talks to active tray-owned daemon; it
-does not own Membrane lifecycle or durable storage.
+`membrane stdio-mcp` serves explicit operations through canonical installed owners.
+It may reuse active services or execute bounded work with Hub off. It preserves
+storage ownership & starts no watcher, scheduler or replacement daemon.
 
 ## 3. Request first packet (1:30)
 

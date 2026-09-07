@@ -84,6 +84,7 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
         vec!["diagnostics", "workspace-open", "--repo", "repo-fixture", "--worktree", "wt-fixture", "--project-root", repo.to_str().unwrap()],
         vec!["diagnostics", "mutation-begin", "--repo", "repo-fixture", "--worktree", "wt-fixture"],
         vec!["diagnostics", "workspace-status", "--repo", "repo-fixture", "--worktree", "wt-fixture"],
+        vec!["diagnostics", "workspace-status", "--repo", "repo-fixture", "--worktree", "wt-fixture", "--port", "1"],
     ] {
         let output = Command::new(current.join(filename)).args(&args)
             .current_dir(&repo).env("HOME", temp.path()).env("USERPROFILE", temp.path())
@@ -92,7 +93,7 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
             .env("MEMBRANE_DATA_ROOT", temp.path().join("data"))
             .env("MEMBRANE_CONFIG_ROOT", temp.path().join("config"))
             .env("MEMBRANE_PROJECT_REGISTRY", &registry)
-            .env("MEMBRANE_PORT", "1").env_remove("MEMBRANE_API_TOKEN").env_remove("MEMBRANE_API_TOKEN_FILE")
+            .env_remove("MEMBRANE_PORT").env_remove("MEMBRANE_API_TOKEN").env_remove("MEMBRANE_API_TOKEN_FILE")
             .env_remove("WORKSPACE_ROOT").env_remove("CORTEX_DB").output().unwrap();
         assert!(output.status.success(), "{args:?}: {}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
         let response: Value = serde_json::from_slice(&output.stdout).unwrap();
