@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, appendFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { applyFileDelta, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS, STRUCTURAL_PROVIDER } from "../src/graph/delta-store.mjs";
-import { parseFileFacts } from "../src/graph/static-provider.mjs";
+import { gitEligiblePaths, parseFileFacts } from "../src/graph/static-provider.mjs";
 import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
 import { extractDoc, isDoc, loadConfig } from "../scripts/blueprint.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
@@ -93,17 +93,18 @@ function descriptorFor(root, sourceFiles, path, renameTo = null, readStable = st
   return { descriptor, read, files: sourceFiles.filter((file) => ![normalized, target].includes(normalizePath(file.path))).concat(descriptor) };
 }
 
-async function deltaFor(db, root, event, readStable = stableRead, signal) {
+async function deltaFor(db, root, event, readStable = stableRead, signal, eligibility = null) {
   throwIfAborted(signal);
   const sourceFiles = sourceFilesFromStore(db);
   const normalized = normalizePath(event.path);
   const target = normalizePath(event.renameTo ?? normalized);
-  const current = descriptorFor(root, sourceFiles, normalized, event.renameTo, readStable);
+  const excluded = eligibility && !eligibility.files.has(target);
+  const current = excluded ? null : descriptorFor(root, sourceFiles, normalized, event.renameTo, readStable);
   const document = current && isDoc(target)
     ? extractDoc(root, target, new Set(current.files.map((file) => normalizePath(file.path))), loadConfig(root, ".agent"))
     : null;
   const provider = (document || isDoc(normalized) || isDoc(target)) ? DOC_PROVIDER : { id: "lexical", version: "repo-local-delta-v1" };
-  if (!current) return { eventKind: event.eventKind === "rename" ? "rename" : "delete", path: normalized, renameTo: event.renameTo ?? null, parsed: null, provider, ...(provider.id === DOC_PROVIDER.id ? { domain: "doc" } : {}) };
+  if (!current) return { eventKind: !excluded && event.eventKind === "rename" ? "rename" : "delete", path: normalized, renameTo: excluded ? null : event.renameTo ?? null, parsed: null, provider, ...(provider.id === DOC_PROVIDER.id ? { domain: "doc" } : {}) };
   const lexical = parseFileFacts(root, current.descriptor, { files: current.files, symbols: listSymbolMetadata(db, "lexical") });
   const extension = target.includes(".") ? target.slice(target.lastIndexOf(".") + 1).toLowerCase() : "";
   const factBatches = [{ provider: STRUCTURAL_PROVIDER, parsed: lexical }];
@@ -165,13 +166,13 @@ function finishRepair(db, plan) {
   db.prepare("DELETE FROM watch_state WHERE key='repair_progress'").run();
 }
 
-async function resumeRepair(db, root, plan, readStable, signal) {
+async function resumeRepair(db, root, plan, readStable, signal, eligibility = null) {
   // The base & frozen pre-base closure are already committed. Yield without a
   // write lock so other repositories' native callbacks can enter their queues.
   await yieldToCallbacks(signal);
   while (plan.nextIndex < plan.paths.length) {
     const path = plan.paths[plan.nextIndex];
-    const delta = await deltaFor(db, root, { eventKind: "repair", path }, readStable, signal);
+    const delta = await deltaFor(db, root, { eventKind: "repair", path }, readStable, signal, eligibility);
     await yieldToCallbacks(signal);
     db.exec("BEGIN IMMEDIATE");
     try {
@@ -188,13 +189,13 @@ async function resumeRepair(db, root, plan, readStable, signal) {
   catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
-async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal) {
+async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal, eligibility = null) {
   throwIfAborted(signal);
   let checkedSource = null;
   // Native snapshots can replay changes already included by a full build.
   // Acknowledge identical bytes through the normal delta transaction before
   // loading repository-wide symbol indexes or parsing this file's dependents.
-  if (["create", "modify"].includes(row.event_kind)) {
+  if (["create", "modify"].includes(row.event_kind) && (!eligibility || eligibility.files.has(normalizePath(row.path)))) {
     const prior = db.prepare("SELECT content_digest FROM file_state WHERE path=?").get(normalizePath(row.path));
     let current;
     try { current = prior && readStable(join(root, row.path)); } catch {}
@@ -214,7 +215,7 @@ async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDEN
   // Reuse the stable byte snapshot just checked above; changed files should
   // not be read twice merely to distinguish an identical replay.
   const baseRead = (path) => checkedSource && path === join(root, row.path) ? checkedSource : readStable(path);
-  const baseDelta = await deltaFor(db, root, event, baseRead, signal);
+  const baseDelta = await deltaFor(db, root, event, baseRead, signal, eligibility);
   throwIfAborted(signal);
   let base;
   let plan;
@@ -233,7 +234,7 @@ async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDEN
     else finishRepair(db, plan);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  if (plan.paths.length) await resumeRepair(db, root, plan, readStable, signal);
+  if (plan.paths.length) await resumeRepair(db, root, plan, readStable, signal, eligibility);
   return base;
 }
 
@@ -253,12 +254,15 @@ export async function drainJournal(db, root, { force = true, maxDependentFiles =
   // Resume before coalescing newer same-path rows: they must not supersede the
   // journal row that owns partially committed dependent work.
   const progress = readRepairProgress(db);
-  if (progress) { await resumeRepair(db, root, progress, readStable, signal); applied += 1; }
+  if (progress) { await resumeRepair(db, root, progress, readStable, signal, gitEligiblePaths(root, { trackedOnly: false })); applied += 1; }
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass += 1) {
     const rows = pendingRows(db, force);
     if (!rows.length) break;
+    // Match publication's tracked + nonignored working-tree view. Existing
+    // excluded rows still drain as deletions so prior pollution is removed.
+    const eligibility = gitEligiblePaths(root, { trackedOnly: false });
     for (const row of rows) {
-      await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal);
+      await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal, eligibility);
       applied += 1;
       // Lexical deltas may resolve synchronously. Yield after committed work
       // so native callbacks, cancellation & other roots can make progress.

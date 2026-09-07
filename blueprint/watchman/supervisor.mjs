@@ -11,6 +11,15 @@ import { reconcile as defaultReconcile } from "./reconcile.mjs";
 export const CONCURRENT_ACTOR_STARTS = 4;
 export const CONCURRENT_STARTUP_RECONCILES = 2;
 
+function startupSize(actor) {
+  let db;
+  try {
+    db = openStoreReadOnly(resolve(actor.root, ".agent/graph/graph.db"));
+    return Number(db.prepare("SELECT COUNT(*) AS n FROM generation_leaf WHERE kind='file'").get().n);
+  } catch { return Number.POSITIVE_INFINITY; }
+  finally { if (db) closeStore(db); }
+}
+
 export function defaultConfigPath() { return resolve(homedir(), ".blueprint", "watch.json"); }
 
 export function readWatchConfig(configPath = defaultConfigPath()) {
@@ -164,6 +173,7 @@ export class WatchSupervisor {
     this.startupWork = new Set();
     this.startupQueued = new Map();
     this.startupActive = 0;
+    this.startupLanes = new Set();
     this.stopping = false;
     // Minted once per supervisor OBJECT, not per OS process: this is what
     // lets status() tell "the supervisor that started this actor" apart from
@@ -232,8 +242,9 @@ export class WatchSupervisor {
     if (deferReconcile) {
       for (const actor of pendingStarts) {
         if (!actor.running || typeof actor.resumeStartup !== "function") continue;
-        this.queueStartup(actor);
+        this.queueStartup(actor, { deferPump: true });
       }
+      this.pumpStartup();
     }
     // Resident Hub startup must remain available when registry contains an
     // old/missing root: healthy enrolled actors still form one watcher, while
@@ -249,7 +260,7 @@ export class WatchSupervisor {
     return this.status();
   }
 
-  queueStartup(actor) {
+  queueStartup(actor, { deferPump = false } = {}) {
     if (this.stopping) return;
     const epoch = actor.epoch;
     const epochs = this.startupQueued.get(actor) ?? new Set();
@@ -259,20 +270,30 @@ export class WatchSupervisor {
     let complete;
     const work = new Promise((resolve) => { complete = resolve; });
     this.startupWork.add(work);
-    this.startupQueue.push({ actor, epoch, complete: () => {
+    this.startupQueue.push({ actor, epoch, size: startupSize(actor), complete: () => {
       epochs.delete(epoch);
       if (!epochs.size) this.startupQueued.delete(actor);
       this.startupWork.delete(work);
       complete();
     } });
-    this.pumpStartup();
+    if (!deferPump) this.pumpStartup();
   }
 
   get startupTail() { return Promise.all([...this.startupWork]); }
 
   pumpStartup() {
     while (!this.stopping && this.startupActive < CONCURRENT_STARTUP_RECONCILES && this.startupQueue.length) {
-      const { actor, epoch, complete } = this.startupQueue.shift();
+      const lane = this.startupLanes.has(0) ? 1 : 0;
+      // One FIFO lane guarantees large-root progress; the other admits small
+      // roots before queued bulk scans. Never preempt an active reconcile.
+      let index = 0;
+      if (lane === 1) {
+        for (let i = 1; i < this.startupQueue.length; i += 1) {
+          if (this.startupQueue[i].size < this.startupQueue[index].size) index = i;
+        }
+      }
+      const { actor, epoch, complete } = this.startupQueue.splice(index, 1)[0];
+      this.startupLanes.add(lane);
       this.startupActive += 1;
       new Promise((resolve) => setImmediate(resolve))
         .then(() => this.stopping ? undefined : actor.resumeStartup(epoch))
@@ -285,6 +306,7 @@ export class WatchSupervisor {
         })
         .finally(() => {
           this.startupActive -= 1;
+          this.startupLanes.delete(lane);
           complete();
           this.pumpStartup();
         });

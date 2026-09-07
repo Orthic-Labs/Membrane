@@ -17,6 +17,42 @@ import { CONCURRENT_STARTUP_RECONCILES, FRESHNESS, WatchSupervisor, writeWatchCo
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
+test("small startup bypasses queued bulk work while FIFO guarantees bulk progress", async () => {
+  const roots = [makeRepo("watch-heavy-a-"), makeRepo("watch-heavy-b-")];
+  const small = realpathSync(mkdtempSync(join(tmpdir(), "watch-small-")));
+  roots.push(small);
+  writeFileSync(join(small, "small.ts"), "export const small = 1;\n");
+  buildGraphGeneration(small, { outDir: ".agent", persist: true });
+  const configPath = tempConfigPath();
+  const admitted = [], started = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const supervisor = new WatchSupervisor({ configPath, actorFactory: ({ root }) => ({
+    root, epoch: 1, running: false,
+    async start() { this.running = true; admitted.push(root); },
+    async resumeStartup() {
+      assert.equal(admitted.length, 3);
+      started.push(root);
+      await gate;
+    },
+    async stop() {}, log(error) { throw error; },
+  }) });
+  try {
+    writeWatchConfig({ repos: roots.map((root) => ({ root, enabled: true })) }, configPath);
+    await supervisor.start({ deferReconcile: true });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(started, [roots[0], small]);
+    release();
+    await supervisor.startupTail;
+    assert.deepEqual(started, [roots[0], small, roots[1]]);
+  } finally {
+    release();
+    await supervisor.stop();
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  }
+});
+
 function makeRepo(prefix, { build = true } = {}) {
   const repo = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   cpSync(FIXTURE, repo, { recursive: true });

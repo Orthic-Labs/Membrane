@@ -1650,7 +1650,7 @@ function withOutputDirExcludedFromScan(root, outDir, options = {}) {
 //      unbounded Dirent array.
 const MAX_ENTRIES_PER_DIR = 5000;
 
-function gitEligiblePaths(root, options = {}) {
+export function gitEligiblePaths(root, options = {}) {
   // Portability contract: the persisted graph must be a pure function of the
   // COMMIT, not the working tree. Tracked-only (`--cached`, no `--others`) makes a
   // clean clone reproduce the graph byte-for-byte, which is what lets `.agent/`

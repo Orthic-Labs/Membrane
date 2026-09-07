@@ -9,6 +9,8 @@ import { buildGraphGeneration, graphStatus } from "../src/graph/static-provider.
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { contentDigest } from "../src/graph/generation-identity.mjs";
 import { writeSnapshot } from "../watchman/adapter.mjs";
+import { appendWatchEvents, drainJournal } from "../watchman/repo-actor.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -48,6 +50,79 @@ test("status follows reconciled untracked source additions and deletions", async
       assert.equal((await reconcile(changed, repo, { completeDocuments: true })).convergence.converged, true);
     } finally { closeStore(changed); }
     assert.equal(graphStatus(repo, ".agent").state, "fresh");
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("native replay cannot admit gitignored installer files", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-ignored-replay-"));
+  try {
+    writeFileSync(join(repo, ".gitignore"), ".agent/\ninstaller/\n");
+    writeFileSync(join(repo, "source.ts"), "export const source = 1;\n");
+    for (const args of [["init"], ["add", "."]]) {
+      const git = spawnSync("git", args, { cwd: repo, encoding: "utf8", windowsHide: true });
+      assert.equal(git.status, 0, git.stderr);
+    }
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    mkdirSync(join(repo, "installer"));
+    writeFileSync(join(repo, "installer/copy.ts"), "export const generatedCopy = 1;\n");
+    writeFileSync(join(repo, "new.ts"), "export const newSource = 1;\n");
+    const snapshot = join(repo, ".agent/graph/watch.snapshot");
+    writeFileSync(snapshot, "fixture");
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      appendWatchEvents(db, [{ eventKind: "create", path: "installer/copy.ts" }]);
+      await drainJournal(db, repo, { readStable: (path) => {
+        assert.notEqual(path, join(repo, "installer/copy.ts"), "ignored payload must never be read for indexing");
+        return stableRead(path);
+      } });
+      const result = await reconcile(db, repo, {
+        snapshotPath: snapshot,
+        adapter: {
+          eventsSince: async () => [
+            { eventKind: "create", path: "installer/copy.ts" },
+            { eventKind: "create", path: "new.ts" },
+          ],
+          writeSnapshot: async () => {},
+        },
+      });
+      assert.equal(result.convergence.converged, true);
+      assert.equal(db.prepare("SELECT 1 FROM files WHERE path='installer/copy.ts'").get(), undefined);
+      assert.ok(db.prepare("SELECT 1 FROM symbols WHERE name='newSource'").get());
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("journal removes newly ignored unchanged files and preserves rename boundary semantics", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-ignore-transition-"));
+  try {
+    writeFileSync(join(repo, ".gitignore"), ".agent/\n");
+    writeFileSync(join(repo, "old.ts"), "export const movingSymbol = 1;\n");
+    const git = spawnSync("git", ["init"], { cwd: repo, encoding: "utf8", windowsHide: true });
+    assert.equal(git.status, 0, git.stderr);
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true, trackedOnly: false });
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      // A formerly eligible, unchanged untracked file becomes ignored.
+      appendWatchEvents(db, [{ eventKind: "create", path: "old.ts" }]);
+      await drainJournal(db, repo);
+      assert.ok(db.prepare("SELECT 1 FROM files WHERE path='old.ts'").get());
+      writeFileSync(join(repo, ".gitignore"), ".agent/\nold.ts\nignored/\n");
+      appendWatchEvents(db, [{ eventKind: "modify", path: "old.ts" }]);
+      await drainJournal(db, repo);
+      assert.equal(db.prepare("SELECT 1 FROM files WHERE path='old.ts'").get(), undefined);
+      renameSync(join(repo, "old.ts"), join(repo, "visible.ts"));
+      appendWatchEvents(db, [{ eventKind: "rename", path: "old.ts", renameTo: "visible.ts" }]);
+      await drainJournal(db, repo);
+      assert.ok(db.prepare("SELECT 1 FROM files WHERE path='visible.ts'").get());
+      mkdirSync(join(repo, "ignored"));
+      renameSync(join(repo, "visible.ts"), join(repo, "ignored/moved.ts"));
+      appendWatchEvents(db, [{ eventKind: "rename", path: "visible.ts", renameTo: "ignored/moved.ts" }]);
+      await drainJournal(db, repo);
+      assert.equal(db.prepare("SELECT 1 FROM files WHERE path IN ('visible.ts','ignored/moved.ts')").get(), undefined);
+      appendWatchEvents(db, [{ eventKind: "delete", path: "absent.ts" }]);
+      await drainJournal(db, repo);
+      assert.equal(db.prepare("SELECT COUNT(*) n FROM event_journal WHERE applied=0").get().n, 0);
+    } finally { closeStore(db); }
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
