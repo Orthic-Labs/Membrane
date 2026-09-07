@@ -27,12 +27,12 @@ For each installed public operation, verify discovery & execution with Hub on & 
 
 Separately verify that stopping Hub stops every watcher, scheduler & automatic process while explicit operations remain callable. Tests that expect blanket Hub-off refusal for ordinary operations encode obsolete behavior & must be replaced.
 
-## Confirmed correction sites
+## Enforced ownership sites
 
 - `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.
-- `docs/architecture/membrane.md`: no-runtime/no-context doctrine.
-- `docs/architecture/subsystems/ledger.md`: forbids explicit local index execution.
-- `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: repeated daemon-only binding rules.
-- `docs/architecture/security/mcp-threat-model.md`: treats all client-started execution as prohibited instead of distinguishing bounded execution from hidden residency.
+- `docs/architecture/membrane.md`: all six subsystems permit explicit bounded execution with Hub off.
+- `docs/architecture/subsystems/ledger.md`: explicit indexing uses canonical Ledger owner independently of Hub.
+- `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: canonical installed owners serve explicit operations; automatic processes remain Hub-owned.
+- `docs/architecture/security/mcp-threat-model.md`: bounded explicit execution preserves authorization & process containment; automatic residency requires Hub.
 
 Blueprint installed accessibility is first delivery priority. This contract records required behavior; it is not evidence that current binaries satisfy it.
