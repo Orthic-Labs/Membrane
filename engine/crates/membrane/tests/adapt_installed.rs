@@ -38,8 +38,12 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
     std::os::unix::fs::symlink(&version, &current).unwrap();
     #[cfg(windows)]
     {
-        assert!(Command::new("cmd").args(["/C", "mklink", "/J"])
-            .arg(&current).arg(&version).output().unwrap().status.success());
+        use std::os::windows::process::CommandExt;
+        let linked = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command",
+            "New-Item -ItemType Junction -Path $env:MEMBRANE_TEST_LINK -Target $env:MEMBRANE_TEST_TARGET -ErrorAction Stop | Out-Null"])
+            .env("MEMBRANE_TEST_LINK", &current).env("MEMBRANE_TEST_TARGET", &version)
+            .creation_flags(0x08000000).output().unwrap();
+        assert!(linked.status.success(), "{}", String::from_utf8_lossy(&linked.stderr));
     }
     let output = Command::new(current.join(filename))
         .args(["adapt", "status"])

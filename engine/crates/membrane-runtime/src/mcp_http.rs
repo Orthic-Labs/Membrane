@@ -225,7 +225,9 @@ async fn handle_mcp_request(
 /// process exits or the bind fails. This is an explicit opt-in entrypoint: no
 /// default resident startup path calls it.
 pub fn run_mcp_streamable_http(port: u16, policy: HttpAdmissionPolicy) -> Result<(), String> {
-    crate::mcp_executor::install_native_mcp_transport()?;
+    let store = crate::MemoryStore::try_open(
+        crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)?;
+    crate::mcp_executor::install_native_mcp_executor_for_hub(store)?;
     let app = build_mcp_http_router(policy);
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()

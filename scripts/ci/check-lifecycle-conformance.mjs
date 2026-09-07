@@ -64,9 +64,9 @@ function check(label, condition) {
   );
 }
 
-// 5. Stateless MCP/CLI clients never spawn a runtime process — they are
-// thin HTTP clients against the loopback service the tray-owned daemon
-// hosts, and fail typed when it is absent.
+// 5. Retained JS HTTP adapter never starts a resident process. Installed native
+// MCP/CLI owns bounded explicit execution with Hub on or off. Resident process
+// authority remains tray-owned.
 {
   const mcpClient = read("mcp/client.mjs");
   check(

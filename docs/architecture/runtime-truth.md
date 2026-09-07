@@ -78,7 +78,7 @@ Adding a fourth plane is a breaking change to the contract.
 
 | Plane | Owns | Reads from | Writes to |
 |---|---|---|---|
-| Application | CLI/API handling, MCP routing, on-demand Hub views, & stateless client transports | Data | — |
+| Application | CLI/API handling, MCP routing, on-demand Hub views, & bounded explicit-operation transports | Data | — |
 | Control | daemon admission, worker supervision, & health; tray owns process lifecycle externally | Data | Data |
 | Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |
 
@@ -97,16 +97,16 @@ Mode → plane mapping (single source of truth: `membrane::modes::plane_of`):
 
 - `membrane cli …` → Application
 - active tray-owned daemon request handling → Application
-- `membrane stdio-mcp` stateless transport → Application
+- `membrane stdio-mcp` explicit-operation transport → Application
 - tray-owned daemon runtime control → Control
 
 The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`
 (`Plane`, `PlaneBoundary`, `PLANE_BOUNDARIES`, `plane_for_path`). The golden
 fixture is `schemas/registry/plane-boundaries.v1.golden.json`; the runtime
 classifies a source file into a plane by the crate segment that owns it
-(`membrane-runtime` / `membrane-mcp` / stateless `membrane` → Application,
+(`membrane-runtime` / `membrane-mcp` / bounded `membrane` → Application,
 tray-owned daemon control → Control, `cortex-store` → Data). The active daemon hosts
-resident plane work; Hub dashboard is on demand, & bounded stateless clients may
+resident plane work; Hub dashboard is on demand, & bounded explicit-operation clients may
 execute Application adapters without acquiring resident authority.
 
 Forbid list (enforced by review at book-end):

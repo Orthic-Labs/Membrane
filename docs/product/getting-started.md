@@ -52,24 +52,17 @@ timeouts, inaccessible sources, stale evidence, & budget drops remain explicit.
 
 ## 5. Check Blueprint state (3:30)
 
-With tray running, Blueprint's installed capability is available through runtime
-shipped by Membrane installer. Watcher freshness is daemon-coupled: watcher runs
-only while Membrane runs. An unenrolled repository is `not_configured`; stale or
-incomplete graph evidence is `degraded`; only a live transport/service failure is
-`blueprint_unavailable`.
+Blueprint is available through installed CLI & default MCP discovery with Hub on or off.
+Explicit graph queries initialize missing graphs; refresh reconciles changed sources.
+Only automatic watcher refresh requires active tray-owned daemon. Repository authorization,
+schema validation & generation checks apply in both modes.
 
-## 6. Prove fail-closed lifecycle (4:30)
+## 6. Verify explicit execution with Hub off (4:30)
 
-Exit Membrane tray, then repeat request. Expected native result is:
-
-```json
-{"kind":"membrane_unavailable","reason":"hub_inactive","retryable":true}
-```
-
-Client must not fabricate context or start an embedded/one-shot Membrane
-fallback. Blueprint remains independently usable only as a bounded one-shot
-operation; its watcher is not resident while tray is off. `hub_inactive` remains
-stable V1 compatibility wording for tray-owned daemon inactivity.
+Exit Membrane tray, then repeat explicit context, memory & graph requests. Requests
+execute through installed subsystem owners, preserving grants, receipts & freshness
+checks. No watcher, scheduler or Hub process should start. All six subsystems follow
+[this execution boundary](../architecture/execution-lifecycle-boundary.md).
 
 ## Source-checkout verification
 

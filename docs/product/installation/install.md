@@ -39,11 +39,12 @@ installed state. `membrane activate` accepts only stable installed `current`
 and reports installed origin, stable root, resolved version root, release
 generation, and client state.
 
-Visible native tray owns resident lifecycle. Its OS-coupled headless child daemon
-hosts the only Membrane runtime; Hub dashboard opens on demand. Headless clients
-are stateless and do not create a resident service. No external product manifest,
+Visible native tray owns automatic resident lifecycle. Its OS-coupled child daemon
+hosts watchers & scheduled work; Hub dashboard opens on demand. Explicit CLI/MCP
+operations execute through installed subsystem owners with Hub on or off, preserving
+bounded session state without starting resident services. No external product manifest,
 add-on handoff, or retired installer lane is
-active. Tray-owned daemon is sole desktop runtime host; shared release tooling
+active. Tray-owned daemon is sole automatic resident host; shared release tooling
 owns build/publication, while Membrane install contract owns activation. GitHub
 Pages plus GitHub Releases are sole public channel. Membrane is not installed as a
 Windows Service.

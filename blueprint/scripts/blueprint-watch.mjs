@@ -191,7 +191,15 @@ async function main() {
   if (command === "unenroll") return unenroll(args[0]);
   if (command === "status") return json(new WatchSupervisor({ configPath }).status());
   if (command === "barrier-all") return barrierAll();
-  if (command === "nudge") return json(await reconcile(resolve(args[0] ?? process.cwd())));
+  if (command === "nudge") {
+    if (!(await authorizeHubWatcher())) {
+      json({ schemaVersion: 1, refreshed: false, reason: "hub_inactive",
+        error: { code: "hub_inactive", message: "Automatic refresh requires Hub-owned watcher authority; use explicit Blueprint refresh for on-demand work" } });
+      process.exitCode = 2;
+      return;
+    }
+    return json(await reconcile(resolve(args[0] ?? process.cwd())));
+  }
   if (command === "logs") {
     const lines = Number(args[args.indexOf("-n") + 1] ?? 50);
     const repos = readWatchConfig(configPath).repos;

@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T13:44:31.403Z",
+ "generatedAt": "2026-09-07T13:56:09.152Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
@@ -313,7 +313,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "c34d405471081323c51fc82f13b97555b066ac20306ebc2ef04c368dd6d94169"
+   "content_digest": "3fdd989f19389272fdf8a4cb74bfdfb60c591d53a2faf0a8c478aa2bd912670e"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -886,7 +886,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "f1cfb8b7c26c4c5431196512e270630e6d2fcb14e9240c2f9cca4122c8f825d5"
+   "content_digest": "935e204fef6ed505a6fb20baecfb4806c6ffeae12ebc6798ccdd9be4ab890cfe"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1270,7 +1270,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "3f48cb6fdcce40efacb65989592511da7a0c9629ea657e4c800c55cafd2d5fe1"
+   "content_digest": "5210d501c9a522ff96613a6ffd50f39246acca34f1d1d1ba83203494768d6bfc"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1716,7 +1716,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "969003b1b5f7637617aa9f89a4f7a161d2fdf0eabc03cdd27891c9c5ab5b7286"
+   "content_digest": "11734d9ae50d9be4c798b4fc6ed8034d73d3b7e3df92a98c4bdb746f8427e6ec"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -2314,7 +2314,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "86737879714632aa3cefd5b18f7b501976df79839281497f4ad83e414c037455"
+   "content_digest": "f7418623041ffc95d2309dc452065c83e6dd3d8294c4442dc049f33baf84b6c2"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",

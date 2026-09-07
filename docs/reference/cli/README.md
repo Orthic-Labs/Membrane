@@ -29,19 +29,19 @@ membrane <mode> [flags]
 1. The binary itself parses argv with `clap`. Unknown modes are rejected before any runtime call.
 2. For `cli`, the runtime CLI parses the tail with the same `clap` schema the legacy `cortex`
    binary used, so existing scripts keep working.
-3. `stdio-mcp` is a stateless transport into active tray-owned daemon. It never hosts or
-   auto-starts a Membrane runtime.
-4. Tray-owned runtime lifecycle is not exposed as a CLI mode. Tray-daemon absence is
-   reported through legacy wire token `hub_inactive` as an explicit typed, retryable result.
+3. `stdio-mcp` executes explicit operations through installed subsystem owners with Hub on or off.
+   Its bounded session preserves diagnostic workspace state; it never auto-starts Hub or watchers.
+4. Tray owns automatic resident processes. `hub_inactive` describes their inactivity;
+   it never gates explicit memory, graph, context, Ledger, Adapt or Push operations.
+   See [execution lifecycle boundary](../../architecture/execution-lifecycle-boundary.md).
 
 ## What it does not do
 
 - It does not publish product artifacts. Publishing is a separate
   decision owned by the release engineer and is documented in `MBR-901..912` once the
   Wave 3 release gate passes.
-- It does not configure GitHub Actions or any CI runner. Every test in this crate runs through
-  the user's local `rightkit cargo test`.
-- It does not depend on `npm`, `npx`, `node`, or any other runtime.
+- Native builds & tests run through managed GitHub CI for this public repository.
+- Blueprint uses installer-bundled Node & provider assets; no developer checkout or system Node is required.
 
 ## Verifying locally
 

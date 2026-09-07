@@ -4,7 +4,8 @@ Deterministic, locally invoked productization utilities. Nothing in this directo
 adds or modifies `.github/workflows/**` or any CI configuration; every entry is
 either a node script or a manual command runner.
 
-Membrane Hub is the sole runtime/build/release/install authority. These tools
+Hub controls automatic resident processes; explicit operations use installed owners with Hub off.
+Shared Membrane packaging owns build/release/install. These tools
 derive Membrane package, support, & product truth; they do not create a
 parallel manifest, add-on, installer, or compatibility lane.
 

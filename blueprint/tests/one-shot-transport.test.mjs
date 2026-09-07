@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,11 @@ test("unregistered one-shot graph queries initialize, resolve & refresh without 
     const initialized = spawnSync("git", ["init", "--quiet", root], { encoding: "utf8", windowsHide: true });
     assert.equal(initialized.status, 0, initialized.stderr);
     mkdirSync(join(root, "src"));
+    const nudge = spawnSync(process.execPath, [fileURLToPath(new URL("../scripts/blueprint-watch.mjs", import.meta.url)), "nudge", root],
+      { encoding: "utf8", windowsHide: true, timeout: 5000, env: { ...env, MEMBRANE_HUB_CHILD: "0" } });
+    assert.equal(nudge.status, 2, nudge.stderr);
+    assert.equal(JSON.parse(nudge.stdout).reason, "hub_inactive");
+    assert.equal(existsSync(join(root, ".agent", "graph", "graph.db")), false);
     writeFileSync(join(root, "src", "retry.ts"), "export function reconnectAfterWake() { return 3; }\n");
     assert.equal(spawnSync("git", ["-C", root, "add", "src"], { windowsHide: true }).status, 0);
     assert.equal(spawnSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture"], { windowsHide: true }).status, 0);
