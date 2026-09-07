@@ -156,7 +156,11 @@ fn merged_keywords(entries: &[&MemoryEntry]) -> Vec<String> {
     seen.into_iter().take(12).collect()
 }
 
-fn dedup_key(content: &str) -> String {
+/// Stage 0's single notion of "same content": lowercase, strip every
+/// non-alphanumeric character to whitespace, collapse runs.  Stage 1's
+/// deterministic analyzer ([`crate::review`]) reuses this exact function so
+/// there is one duplicate notion in Cortex, not two divergent ones.
+pub(crate) fn dedup_key(content: &str) -> String {
     content
         .to_lowercase()
         .chars()

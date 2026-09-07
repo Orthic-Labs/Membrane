@@ -6,7 +6,8 @@
 
 use crate::{estimate_tokens, EventCursor, SessionEvent};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub const SEMANTIC_CURATION_PROPOSAL_SCHEMA_VERSION: u32 = 1;
 pub const MEMORY_CANDIDATE_EXTRACTION_SCHEMA_VERSION: u32 = 1;
@@ -704,6 +705,501 @@ pub fn bound_memory_candidate_extraction_window_with_state(
     })
 }
 
+// ---------------------------------------------------------------------------
+// CTX-023 / CTX-024: first-party deterministic Stage 1 analyzer.
+//
+// This is NOT a semantic model.  It is a closed, explainable set of lexical and
+// structural rules over the caller's own event window.  Every output is a
+// *candidate* proposal that must still pass Cortex admission; nothing here
+// writes durable truth, and every proposal names the events it derives from so
+// a reviewer can recover the parents.
+// ---------------------------------------------------------------------------
+
+/// Stable identity of the deterministic analyzer.  It is deliberately not a
+/// model name: no model is involved.
+pub const DETERMINISTIC_REVIEW_ANALYZER_ID: &str = "cortex-deterministic-review-analyzer";
+pub const DETERMINISTIC_REVIEW_ANALYZER_VERSION: u32 = 1;
+/// Shingle-overlap floor above which two events are proposed as near
+/// duplicates.  Exact normalized equality (Stage 0's rule) always qualifies.
+pub const DETERMINISTIC_NEAR_DUPLICATE_SIMILARITY: f64 = 0.85;
+
+/// Protocol-neutral view of one source event.  Cortex core deliberately does
+/// not depend on the wire contract; the runtime adapts its events into this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeterministicReviewEventV1 {
+    pub event_id: String,
+    pub seq: u64,
+    pub scope_id: String,
+    pub content_hash: String,
+    /// Flattened text of the event payload, in canonical key order.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DeterministicReviewLimitsV1 {
+    pub max_proposals: usize,
+    pub near_duplicate_similarity: f64,
+}
+
+impl Default for DeterministicReviewLimitsV1 {
+    fn default() -> Self {
+        Self {
+            max_proposals: SEMANTIC_CURATION_MAX_PROPOSALS,
+            near_duplicate_similarity: DETERMINISTIC_NEAR_DUPLICATE_SIMILARITY,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeterministicReviewFindingsV1 {
+    pub proposals: Vec<SemanticCurationProposalV1>,
+    /// True when the proposal cap stopped emission before the window was
+    /// exhausted.  The caller must record this as an omission.
+    pub truncated: bool,
+}
+
+/// Flatten a JSON payload to text in canonical (sorted) key order.  Only scalar
+/// leaves contribute; keys are included so structurally distinct payloads do
+/// not collapse into the same string.
+pub fn review_payload_text(payload: &serde_json::Value) -> String {
+    let mut out = String::new();
+    push_payload_text(payload, &mut out);
+    out.trim().to_string()
+}
+
+fn push_payload_text(value: &serde_json::Value, out: &mut String) {
+    match value {
+        serde_json::Value::Null => {}
+        serde_json::Value::Bool(inner) => push_token(&inner.to_string(), out),
+        serde_json::Value::Number(inner) => push_token(&inner.to_string(), out),
+        serde_json::Value::String(inner) => push_token(inner, out),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                push_payload_text(item, out);
+            }
+        }
+        serde_json::Value::Object(entries) => {
+            // serde_json's default map is ordered, so iteration is canonical.
+            for (key, item) in entries {
+                push_token(key, out);
+                push_payload_text(item, out);
+            }
+        }
+    }
+}
+
+fn push_token(token: &str, out: &mut String) {
+    let token = token.trim();
+    if token.is_empty() {
+        return;
+    }
+    if !out.is_empty() {
+        out.push(' ');
+    }
+    out.push_str(token);
+}
+
+/// Closed marker table.  Each entry maps a literal token sequence to a
+/// predicate family and a polarity.  Nothing outside this table is treated as
+/// an assertion, which is what keeps the rule explainable without a model.
+const ASSERTION_MARKERS: &[(&str, &str, bool)] = &[
+    ("does not use", "use", false),
+    ("do not use", "use", false),
+    ("is not", "be", false),
+    ("are not", "be", false),
+    ("was not", "be", false),
+    ("were not", "be", false),
+    ("must not", "must", false),
+    ("should not", "should", false),
+    ("will not", "will", false),
+    ("cannot", "can", false),
+    ("never", "always", false),
+    ("uses", "use", true),
+    ("use", "use", true),
+    ("is", "be", true),
+    ("are", "be", true),
+    ("was", "be", true),
+    ("were", "be", true),
+    ("must", "must", true),
+    ("should", "should", true),
+    ("will", "will", true),
+    ("can", "can", true),
+    ("always", "always", true),
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeterministicAssertion {
+    subject: String,
+    family: &'static str,
+    polarity: bool,
+    object: BTreeSet<String>,
+}
+
+fn normalized_tokens(text: &str) -> Vec<String> {
+    crate::dream::dedup_key(text)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+/// Split flattened event text into sentence-like units before matching.
+fn sentences(text: &str) -> Vec<String> {
+    text.split(|character| matches!(character, '.' | '!' | '?' | ';' | '\n'))
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// Extract at most one assertion per sentence at the FIRST marker occurrence.
+/// Subject and object are literal normalized token spans — no interpretation.
+fn extract_assertions(text: &str) -> Vec<DeterministicAssertion> {
+    let mut assertions = Vec::new();
+    for sentence in sentences(text) {
+        let tokens = normalized_tokens(&sentence);
+        if tokens.is_empty() {
+            continue;
+        }
+        let mut found: Option<(usize, usize, &'static str, bool)> = None;
+        'positions: for position in 1..tokens.len() {
+            for (marker, family, polarity) in ASSERTION_MARKERS {
+                let marker_tokens = marker.split(' ').collect::<Vec<_>>();
+                if position + marker_tokens.len() >= tokens.len() + 1 {
+                    continue;
+                }
+                if tokens[position..position + marker_tokens.len()]
+                    .iter()
+                    .zip(marker_tokens.iter())
+                    .all(|(token, marker_token)| token == marker_token)
+                {
+                    found = Some((position, marker_tokens.len(), family, *polarity));
+                    break 'positions;
+                }
+            }
+        }
+        let Some((position, marker_len, family, polarity)) = found else {
+            continue;
+        };
+        let subject = tokens[..position].join(" ");
+        let object = tokens[position + marker_len..]
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<String>>();
+        if subject.is_empty() || object.is_empty() {
+            continue;
+        }
+        assertions.push(DeterministicAssertion {
+            subject,
+            family,
+            polarity,
+            object,
+        });
+    }
+    assertions
+}
+
+fn shingles(tokens: &[String]) -> BTreeSet<String> {
+    if tokens.len() < 3 {
+        return tokens.iter().cloned().collect();
+    }
+    tokens.windows(3).map(|window| window.join(" ")).collect()
+}
+
+fn set_jaccard(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f64 {
+    let union = left.union(right).count() as f64;
+    if union == 0.0 {
+        return 0.0;
+    }
+    left.intersection(right).count() as f64 / union
+}
+
+fn stable_proposal_id(kind: &str, parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind.as_bytes());
+    for part in parts {
+        hasher.update([0u8]);
+        hasher.update(part.as_bytes());
+    }
+    let digest = hex::encode(hasher.finalize());
+    format!("cdr-{kind}-{}", &digest[..16])
+}
+
+/// Evidence naming both parents so a reviewer can recover them.  Each parent
+/// gets its own reference; a content hash is emitted once because proposal
+/// validation rejects a repeated id inside one proposal.
+fn parent_evidence(
+    earlier: &DeterministicReviewEventV1,
+    later: &DeterministicReviewEventV1,
+) -> Vec<ReviewEvidenceRefV1> {
+    let mut seen = HashSet::new();
+    [earlier, later]
+        .into_iter()
+        .map(|event| ReviewEvidenceRefV1 {
+            memory_ids: Vec::new(),
+            source_event_ids: vec![event.event_id.clone()],
+            source_content_hashes: if seen.insert(event.content_hash.clone()) {
+                vec![event.content_hash.clone()]
+            } else {
+                Vec::new()
+            },
+        })
+        .collect()
+}
+
+fn proposal(
+    kind: SemanticCurationKindV1,
+    kind_slug: &str,
+    scope_id: &str,
+    discriminator: &str,
+    earlier: &DeterministicReviewEventV1,
+    later: &DeterministicReviewEventV1,
+) -> SemanticCurationProposalV1 {
+    SemanticCurationProposalV1 {
+        schema_version: SEMANTIC_CURATION_PROPOSAL_SCHEMA_VERSION,
+        proposal_id: stable_proposal_id(
+            kind_slug,
+            &[
+                scope_id,
+                discriminator,
+                earlier.event_id.as_str(),
+                later.event_id.as_str(),
+            ],
+        ),
+        scope_id: scope_id.to_string(),
+        kind,
+        target_memory_ids: Vec::new(),
+        evidence: parent_evidence(earlier, later),
+    }
+}
+
+/// Deterministic Stage 1 analysis over one bounded event window.
+///
+/// Rules, in order:
+/// 1. **Near duplicate** — same scope and either identical Stage 0 dedup key
+///    (the exact rule [`crate::dream`] already uses) or 3-gram shingle overlap
+///    at or above the configured floor.
+/// 2. **Contradiction candidate** — same scope, same literal subject span and
+///    predicate family, and either opposite polarity (an explicit negation
+///    marker) or object token sets that do not intersect at all.
+/// 3. **Supersession candidate** — same scope, subject, family and polarity,
+///    with overlapping (restating) object tokens, taking the later event as
+///    the restatement.  Pairs already reported as near duplicates are not
+///    repeated here.
+///
+/// The output is a candidate set for human/governed review.  It asserts a
+/// *structural* relationship, never that the analyzer understood the text.
+pub fn analyze_events_for_curation(
+    events: &[DeterministicReviewEventV1],
+    limits: DeterministicReviewLimitsV1,
+) -> DeterministicReviewFindingsV1 {
+    let mut ordered = events.iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| {
+        left.seq
+            .cmp(&right.seq)
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    });
+
+    let mut proposals = Vec::new();
+    let mut truncated = false;
+    let mut near_duplicate_pairs = HashSet::new();
+    let mut emitted_ids = HashSet::new();
+    let mut push = |proposal: SemanticCurationProposalV1,
+                    proposals: &mut Vec<SemanticCurationProposalV1>,
+                    truncated: &mut bool| {
+        if !emitted_ids.insert(proposal.proposal_id.clone()) {
+            return;
+        }
+        if proposals.len() >= limits.max_proposals {
+            *truncated = true;
+            return;
+        }
+        proposals.push(proposal);
+    };
+
+    let keys = ordered
+        .iter()
+        .map(|event| normalized_tokens(&event.text))
+        .collect::<Vec<_>>();
+
+    // 1. near duplicates
+    for (left_index, left) in ordered.iter().enumerate() {
+        for (right_index, right) in ordered.iter().enumerate().skip(left_index + 1) {
+            if left.scope_id != right.scope_id {
+                continue;
+            }
+            if keys[left_index].is_empty() || keys[right_index].is_empty() {
+                continue;
+            }
+            let identical = keys[left_index] == keys[right_index];
+            let similarity = set_jaccard(
+                &shingles(&keys[left_index]),
+                &shingles(&keys[right_index]),
+            );
+            if !identical && similarity < limits.near_duplicate_similarity {
+                continue;
+            }
+            near_duplicate_pairs.insert((left.event_id.clone(), right.event_id.clone()));
+            push(
+                proposal(
+                    SemanticCurationKindV1::NearDuplicate,
+                    "near-duplicate",
+                    &left.scope_id,
+                    if identical { "exact" } else { "shingle" },
+                    left,
+                    right,
+                ),
+                &mut proposals,
+                &mut truncated,
+            );
+        }
+    }
+
+    // 2 & 3. assertion pairs, grouped by (scope, subject, predicate family)
+    let mut groups: BTreeMap<(String, String, &'static str), Vec<(usize, DeterministicAssertion)>> =
+        BTreeMap::new();
+    for (index, event) in ordered.iter().enumerate() {
+        for assertion in extract_assertions(&event.text) {
+            groups
+                .entry((
+                    event.scope_id.clone(),
+                    assertion.subject.clone(),
+                    assertion.family,
+                ))
+                .or_default()
+                .push((index, assertion));
+        }
+    }
+
+    for ((scope_id, subject, family), members) in groups {
+        for left_position in 0..members.len() {
+            for right_position in (left_position + 1)..members.len() {
+                let (left_index, left_assertion) = &members[left_position];
+                let (right_index, right_assertion) = &members[right_position];
+                if left_index == right_index {
+                    continue;
+                }
+                let earlier = ordered[*left_index];
+                let later = ordered[*right_index];
+                let discriminator = format!("{subject}|{family}");
+                if left_assertion.polarity != right_assertion.polarity {
+                    push(
+                        proposal(
+                            SemanticCurationKindV1::Contradiction,
+                            "contradiction",
+                            &scope_id,
+                            &format!("{discriminator}|polarity"),
+                            earlier,
+                            later,
+                        ),
+                        &mut proposals,
+                        &mut truncated,
+                    );
+                    continue;
+                }
+                let overlap = left_assertion
+                    .object
+                    .intersection(&right_assertion.object)
+                    .count();
+                if overlap == 0 {
+                    push(
+                        proposal(
+                            SemanticCurationKindV1::Contradiction,
+                            "contradiction",
+                            &scope_id,
+                            &format!("{discriminator}|object"),
+                            earlier,
+                            later,
+                        ),
+                        &mut proposals,
+                        &mut truncated,
+                    );
+                    continue;
+                }
+                if near_duplicate_pairs
+                    .contains(&(earlier.event_id.clone(), later.event_id.clone()))
+                {
+                    continue;
+                }
+                push(
+                    proposal(
+                        SemanticCurationKindV1::Supersession,
+                        "supersession",
+                        &scope_id,
+                        &discriminator,
+                        earlier,
+                        later,
+                    ),
+                    &mut proposals,
+                    &mut truncated,
+                );
+            }
+        }
+    }
+
+    proposals.sort_by(|left, right| left.proposal_id.cmp(&right.proposal_id));
+    DeterministicReviewFindingsV1 {
+        proposals,
+        truncated,
+    }
+}
+
+/// Build the single bounded episodic candidate for an already-gated window.
+///
+/// The caller must have obtained `window` from
+/// [`bound_memory_candidate_extraction_window_with_state`], which is the
+/// CTX-024 foreground gate: this function never decides whether extraction is
+/// permitted.  Content is a whitespace-normalized transcript of the window's
+/// own events — no summary is invented.
+pub fn extract_bounded_memory_candidate(
+    window: &ExtractionWindowV1,
+    events: &[DeterministicReviewEventV1],
+) -> Option<MemoryCandidateV1> {
+    let mut by_id = BTreeMap::new();
+    for event in events {
+        by_id.insert(event.event_id.as_str(), event);
+    }
+    let mut lines = Vec::new();
+    let mut scope_id = None;
+    for event_id in &window.event_ids {
+        let Some(event) = by_id.get(event_id.as_str()) else {
+            // The window must be built from these very events; a missing one
+            // means the caller mismatched its inputs.
+            return None;
+        };
+        if scope_id.is_none() && !event.scope_id.trim().is_empty() {
+            scope_id = Some(event.scope_id.clone());
+        }
+        let text = event.text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if text.is_empty() {
+            continue;
+        }
+        lines.push(format!("{}: {}", event.seq, text));
+    }
+    if lines.is_empty() {
+        return None;
+    }
+    let content = lines.join("\n");
+    let candidate_id = stable_proposal_id(
+        "episodic",
+        &[
+            window.session_id.as_str(),
+            &window.from_seq.to_string(),
+            &window.to_seq.to_string(),
+            &window.source_content_hashes.join(","),
+        ],
+    );
+    Some(MemoryCandidateV1 {
+        schema_version: MEMORY_CANDIDATE_EXTRACTION_SCHEMA_VERSION,
+        candidate_id,
+        session_id: window.session_id.clone(),
+        from_seq: window.from_seq,
+        to_seq: window.to_seq,
+        scope_id: scope_id.unwrap_or_else(crate::default_scope),
+        content,
+        source_event_ids: window.event_ids.clone(),
+        source_content_hashes: window.source_content_hashes.clone(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -742,6 +1238,170 @@ mod tests {
             max_duration_ms: 1_000,
             max_model_requests: 1,
         }
+    }
+
+    // ---- CTX-023 / CTX-024 deterministic analyzer -------------------------
+
+    fn analyzer_event(seq: u64, id: &str, text: &str) -> DeterministicReviewEventV1 {
+        let payload = json!({ "text": text });
+        DeterministicReviewEventV1 {
+            event_id: id.to_string(),
+            seq,
+            scope_id: "scope".to_string(),
+            content_hash: content_hash(&payload).expect("payload hashes"),
+            text: review_payload_text(&payload),
+        }
+    }
+
+    fn kinds(findings: &DeterministicReviewFindingsV1) -> Vec<SemanticCurationKindV1> {
+        let mut kinds = findings
+            .proposals
+            .iter()
+            .map(|proposal| proposal.kind)
+            .collect::<Vec<_>>();
+        kinds.sort_by_key(|kind| format!("{kind:?}"));
+        kinds
+    }
+
+    fn realistic_window() -> Vec<DeterministicReviewEventV1> {
+        vec![
+            analyzer_event(1, "e1", "The release pipeline uses the windows signing runner."),
+            // Near duplicate of e1 (punctuation/casing only).
+            analyzer_event(2, "e2", "the release pipeline uses the Windows signing runner"),
+            // Contradiction by explicit negation of the same subject/family.
+            analyzer_event(3, "e3", "The release pipeline does not use the windows signing runner."),
+            // Supersession: same subject/family/polarity, overlapping object.
+            analyzer_event(4, "e4", "The staging index is stale after four hours."),
+            analyzer_event(5, "e5", "The staging index is stale after two hours."),
+        ]
+    }
+
+    #[test]
+    fn deterministic_analyzer_reuses_stage_zero_duplicate_key() {
+        // The near-duplicate rule must agree with Stage 0's notion of "same
+        // content", not invent a second one.
+        assert_eq!(
+            crate::dream::dedup_key("The release pipeline uses the windows signing runner."),
+            crate::dream::dedup_key("the release pipeline uses the Windows signing runner")
+        );
+    }
+
+    #[test]
+    fn deterministic_analyzer_produces_all_three_proposal_kinds() {
+        let findings = analyze_events_for_curation(
+            &realistic_window(),
+            DeterministicReviewLimitsV1::default(),
+        );
+        let kinds = kinds(&findings);
+        assert!(kinds.contains(&SemanticCurationKindV1::NearDuplicate), "{kinds:?}");
+        assert!(kinds.contains(&SemanticCurationKindV1::Contradiction), "{kinds:?}");
+        assert!(kinds.contains(&SemanticCurationKindV1::Supersession), "{kinds:?}");
+        assert!(!findings.truncated);
+        validate_semantic_curation_proposals(&findings.proposals)
+            .expect("analyzer output is proposal-shaped");
+    }
+
+    #[test]
+    fn deterministic_analyzer_output_is_stable_and_parents_are_recoverable() {
+        let events = realistic_window();
+        let first = analyze_events_for_curation(&events, DeterministicReviewLimitsV1::default());
+        let second = analyze_events_for_curation(&events, DeterministicReviewLimitsV1::default());
+        assert_eq!(first, second);
+        for proposal in &first.proposals {
+            let parents = proposal
+                .evidence
+                .iter()
+                .flat_map(|evidence| evidence.source_event_ids.iter())
+                .collect::<Vec<_>>();
+            assert_eq!(parents.len(), 2, "every proposal names both parents");
+            for parent in parents {
+                assert!(
+                    events.iter().any(|event| &event.event_id == parent),
+                    "parent {parent} is recoverable from the window"
+                );
+            }
+            // Proposal-only: no admission, no mutation, no target rewrite.
+            assert!(proposal.target_memory_ids.is_empty());
+        }
+    }
+
+    #[test]
+    fn deterministic_analyzer_never_pairs_across_scopes() {
+        let mut events = realistic_window();
+        events[1].scope_id = "other-scope".to_string();
+        let findings =
+            analyze_events_for_curation(&events, DeterministicReviewLimitsV1::default());
+        for proposal in &findings.proposals {
+            assert_ne!(proposal.scope_id, "other-scope");
+            let ids = proposal
+                .evidence
+                .iter()
+                .flat_map(|evidence| evidence.source_event_ids.iter())
+                .collect::<Vec<_>>();
+            assert!(!ids.contains(&&"e2".to_string()));
+        }
+    }
+
+    #[test]
+    fn deterministic_analyzer_ignores_unrelated_events() {
+        let events = vec![
+            analyzer_event(1, "e1", "Opened the settings panel."),
+            analyzer_event(2, "e2", "Ran the installer smoke check."),
+        ];
+        let findings =
+            analyze_events_for_curation(&events, DeterministicReviewLimitsV1::default());
+        assert!(findings.proposals.is_empty(), "{:?}", findings.proposals);
+    }
+
+    #[test]
+    fn deterministic_analyzer_honours_the_proposal_cap() {
+        let findings = analyze_events_for_curation(
+            &realistic_window(),
+            DeterministicReviewLimitsV1 {
+                max_proposals: 1,
+                ..DeterministicReviewLimitsV1::default()
+            },
+        );
+        assert_eq!(findings.proposals.len(), 1);
+        assert!(findings.truncated, "truncation is recorded, not hidden");
+    }
+
+    #[test]
+    fn bounded_episodic_candidate_matches_its_window_exactly() {
+        let cursor = EventCursor {
+            session_id: "session".to_string(),
+            last_seq: 0,
+        };
+        let events = vec![event("session", 1, "e1", "shipped the installer")];
+        let decision = bound_memory_candidate_extraction_window_with_state(
+            &cursor,
+            &events,
+            &ForegroundMemoryStateV1::AvailableNoEmission,
+            limits(),
+            true,
+        )
+        .expect("window binds");
+        let MemoryCandidateExtractionDecisionV1::WindowBound { window } = decision else {
+            panic!("expected a bound window");
+        };
+        let analyzer_events = events
+            .iter()
+            .map(|event| DeterministicReviewEventV1 {
+                event_id: event.event_id.clone(),
+                seq: event.seq,
+                scope_id: event.scope_id.clone(),
+                content_hash: event.content_hash.clone(),
+                text: review_payload_text(&event.payload),
+            })
+            .collect::<Vec<_>>();
+        let candidate = extract_bounded_memory_candidate(&window, &analyzer_events)
+            .expect("candidate is extracted");
+        candidate
+            .validate_against(&window)
+            .expect("candidate is bound to its own window");
+        // Content is derived from the window's own events, not invented.
+        assert!(candidate.content.contains("shipped the installer"));
+        assert_eq!(candidate.source_event_ids, window.event_ids);
     }
 
     #[test]
