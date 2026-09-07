@@ -11,10 +11,12 @@ a real consumer and executable evidence, so the disposition can no longer
 honestly assert incompleteness. None of these claims release qualification;
 competitive closure stays UNRESOLVED until the RELEASED boundary is reachable.
 
-BPT-010 and BPT-012 were listed in an earlier draft of this receipt and are
-WITHDRAWN: adversarial review showed their promotions rested on
-`semantic-orchestrator.mjs` being a production path, which it is not. Both are
-back to PARTIAL in canon; see focused-acceptance.md for the exact reasons.
+BPT-010 and BPT-012 were withdrawn in an earlier revision after adversarial
+review showed their promotions rested on `semantic-orchestrator.mjs` being a
+production path, which it was not. They are restored here only because the gap
+itself is now closed — the build's synchronous lane enforces the isolation
+contract, and registration validates against a committed manifest independent of
+the provider. BPT-041 joins them, closed by wiring rather than by status change.
 
 Two of these were not stale bookkeeping but genuinely broken, and are recorded
 as fixed rather than reinterpreted. BPT-057 had no plugin acceptance path at
@@ -26,6 +28,9 @@ in-process caller saw the real value.
 | Atom | Scope | Competitive disposition | Best mechanism | Current evidence | Donor evidence | Gap / action |
 |---|---|---|---|---|---|---|
 | BPT-003 | COMMITTED | UNRESOLVED | Every git-tracked path receives exactly one terminal ingestion disposition, sealed into the generation manifest so nothing disappears silently. | `DELIVERED / FOCUSED_PASS`; `src/providers/source-disposition.mjs:55` via `build.mjs` into `static-provider.mjs:1457`. | Prior comparison named no donor mechanism accounting for every considered source. | Keep UNRESOLVED until RELEASED-bound qualification. |
+| BPT-010 | COMMITTED | UNRESOLVED | Provider registration validating identity, checksum and licence against a manifest independent of the provider, with the registry load-bearing on the production build path. | `DELIVERED / FOCUSED_PASS`; committed manifest + real artifact bytes; a tampered provider module fails the build closed. | Prior comparison named no donor registry enforcing integrity before execution. | Keep UNRESOLVED until RELEASED-bound qualification. |
+| BPT-012 | COMMITTED | UNRESOLVED | Providers executed repository-read-only, network-free, process-gated, with typed crashes, on the lane the build actually uses. | `DELIVERED / FOCUSED_PASS`; shared admission gate across both lanes, proven through real `buildGraphGeneration`. Timeout and mid-flight cancellation are not claimed synchronously. | Prior comparison named no donor enforcing the same envelope. | Keep UNRESOLVED until RELEASED-bound qualification. |
+| BPT-041 | COMMITTED | UNRESOLVED | allow/continue/block/noop orientation carrying scope, generation, freshness, evidence, omissions, receipt and next action, with the host enforcing rather than Blueprint. | `DELIVERED / FOCUSED_PASS`; all four actions reachable from the served recall, every branch mutation-caught. | Prior comparison named no donor returning a host-enforced orientation verdict. | Keep UNRESOLVED until RELEASED-bound qualification. |
 | BPT-011 | COMMITTED | UNRESOLVED | Rules and documents admitted only as evidence-bound declarations carrying categorical provenance and no authority. | `DELIVERED / FOCUSED_PASS`; `doc-truth-projection.mjs` plus `src/lib/rules/evaluate.mjs`. | Prior comparison named no donor keeping declarations from becoming observed facts. | Keep UNRESOLVED until RELEASED-bound qualification. |
 | BPT-013 | COMMITTED | UNRESOLVED | Stable portable identities plus deterministic entity-level rename/move reconciliation that refuses to guess an ambiguous rename. | `DELIVERED / FOCUSED_PASS`; `portable-identity.mjs` and `reanchor.mjs` wired into `watchman/reconcile.mjs`. | Prior comparison named no donor reconciling renames at entity rather than path level. | Keep UNRESOLVED until RELEASED-bound qualification. |
 | BPT-014 | COMMITTED | UNRESOLVED | Evidence bound to source address, span/hash, provider/version, generation and truth class, with categorical provenance carrying `confidence: null` and numeric confidence reserved for heuristic evidence. | `DELIVERED / FOCUSED_PASS`; `provenance.mjs:27-70` with the nullable-confidence migration. | Prior comparison named no donor separating categorical from numeric confidence. | Keep UNRESOLVED until RELEASED-bound qualification. |
