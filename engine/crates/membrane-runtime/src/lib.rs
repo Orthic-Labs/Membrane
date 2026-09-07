@@ -10,6 +10,7 @@ pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod authorization;
 pub mod background_review;
+pub mod background_review_input;
 pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;

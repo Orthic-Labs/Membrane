@@ -8,12 +8,15 @@
 use cortex_core::{ProvenanceRef, SessionEvent};
 use cortex_store::{AbsorbedStore, MemDb, SessionEvent as StoreSessionEvent};
 use membrane_protocol::background_review::{
-    BackgroundReviewActivitySignalV1, BackgroundReviewForegroundMemoryStateV1,
-    BackgroundReviewJobKindV1, BackgroundReviewReasonV1,
+    BackgroundReviewForegroundMemoryStateV1, BackgroundReviewReasonV1,
 };
 use membrane_protocol::{
     decode_command_frame, decode_launch_frame, encode_frame, DaemonCommandKind, DaemonEventKind,
     DaemonEventV1, DaemonProtocolError, DAEMON_IPC_MAX_FRAME_BYTES, DAEMON_IPC_SCHEMA_VERSION,
+};
+use membrane_runtime::background_review_input::{
+    input_path as background_review_input_path, durable_reviewed_through_seq,
+    BackgroundReviewInputSnapshotV1,
 };
 use membrane_runtime::background_review::{
     execute_background_semantic_review, AuthenticatedLoopbackSemanticReviewProvider,
@@ -44,24 +47,14 @@ enum ControlSignal {
     Invalid,
 }
 
-const BACKGROUND_REVIEW_INPUT_ENV: &str = "MEMBRANE_BACKGROUND_REVIEW_INPUT";
-const DEFAULT_BACKGROUND_REVIEW_INPUT: &str = ".membrane/background-review-input.json";
 const CORTEX_DB_RELATIVE_PATH: &str = "tools/.cache/memory/cortex-engine.db";
 const BACKGROUND_REVIEW_TICK: Duration = Duration::from_millis(250);
 
 /// Host activity/foreground snapshot consumed by daemon scheduler. It is
 /// separate from lifecycle stdin, preserving tray-daemon control ownership.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct BackgroundReviewInputSnapshot {
-    schema_version: u32,
-    activity: BackgroundReviewActivitySignalV1,
-    job_kind: BackgroundReviewJobKindV1,
-    foreground_memory_state: BackgroundReviewForegroundMemoryStateV1,
-    #[serde(default)]
-    task_id: Option<String>,
-    deadline_unix_ms: u64,
-}
+/// The shape is owned by `membrane_runtime::background_review_input`, which is
+/// also the tray-owned producer, so reader and writer cannot drift.
+type BackgroundReviewInputSnapshot = BackgroundReviewInputSnapshotV1;
 
 struct DaemonBackgroundExecutor {
     /// Always present. The authenticated loopback client takes precedence when
@@ -92,18 +85,7 @@ impl DaemonBackgroundExecutor {
     }
 
     fn input_path(root: &PathBuf) -> PathBuf {
-        if root.file_name().is_some_and(|name| name == "state")
-            && root
-                .parent()
-                .and_then(std::path::Path::file_name)
-                .is_some_and(|name| name == "Membrane")
-        {
-            return root.join(DEFAULT_BACKGROUND_REVIEW_INPUT);
-        }
-        std::env::var_os(BACKGROUND_REVIEW_INPUT_ENV)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| root.join(DEFAULT_BACKGROUND_REVIEW_INPUT))
+        background_review_input_path(root)
     }
 
     fn tick(&mut self, root: &PathBuf, scheduler: &BackgroundReviewScheduler, now: u64) {
@@ -167,13 +149,27 @@ fn load_background_semantic_input(
     snapshot: &BackgroundReviewInputSnapshot,
 ) -> Result<BackgroundSemanticReviewInputV1, BackgroundReviewReasonV1> {
     let session_id = &snapshot.activity.session_id;
-    let cursor = cursor_store.get(session_id)?;
-    let database_path = root.join(CORTEX_DB_RELATIVE_PATH);
+    // The Hub runtime thread publishes the database it actually opened; the
+    // workspace-relative default is only a fallback for a root-shaped install.
+    let database_path = std::env::var_os("CORTEX_DB")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| root.join(CORTEX_DB_RELATIVE_PATH));
     if !database_path.is_file() {
         return Err(BackgroundReviewReasonV1::CursorInputUnavailable);
     }
     let db = MemDb::open(&database_path)
         .map_err(|_| BackgroundReviewReasonV1::CursorInputUnavailable)?;
+    // Crash safety across daemon restarts: the in-memory review cursor starts
+    // empty, so seed it once from what Cortex durably knows it already
+    // reviewed. `set_initial` never moves a cursor this process already owns.
+    if let Some(reviewed_through) = durable_reviewed_through_seq(&db, session_id) {
+        let _ = cursor_store.set_initial(cortex_core::EventCursor {
+            session_id: session_id.clone(),
+            last_seq: reviewed_through,
+        });
+    }
+    let cursor = cursor_store.get(session_id)?;
     let store =
         AbsorbedStore::new(db).map_err(|_| BackgroundReviewReasonV1::CursorInputUnavailable)?;
     let high_water = store
