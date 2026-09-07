@@ -1060,6 +1060,14 @@ mod tests {
                 );"#,
             )
             .unwrap();
+            // The sanctioned read-only accessor refuses any database whose
+            // generation is not the one this binary understands, so the
+            // fixture must carry it.
+            conn.execute_batch(&format!(
+                "PRAGMA user_version = {};",
+                cortex_store::memdb::LATEST_SCHEMA_VERSION
+            ))
+            .unwrap();
         }
         let prior = std::env::var_os("MEMBRANE_DB_PATH");
         unsafe {
