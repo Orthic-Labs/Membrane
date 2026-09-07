@@ -85,7 +85,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 - Default to Node 26.5.x, pnpm 11.18.0, `python3` on Mac, & `py -3.11` on Windows.
 - Use pnpm in pnpm repositories & run package CLIs through `pnpm exec`, never npm or npx.
 - Read `docs/rules/rightkit.md` before any Rust/Cargo command; managed private-repository Rust uses `rightkit cargo <args>` or `rightkit rustc|rustdoc <args>`, direct tools & bypasses denied.
-- Public repositories declare `compile: github-actions-only` & reject local compile, test, package, signing, qualification, installed-smoke, & release execution; bind their tasks to `local-static-only` or `github-build`, & push and read managed CI instead.
+- Use GitHub for public builds except declared RightKit development lanes; see `docs/rules/rightkit.md`.
 - Diagnose broker/receipt/service failures; package-manager children must inherit RightKit.
 - Launch no visible Windows console for background automation.
 
@@ -108,7 +108,7 @@ Report `produced → verified → completion-validated → committed → pushed 
 ## Releases, signing & distribution — every product
 - Treat signing, notarization, & release publication as solved workspace capabilities; Apple & Azure are provisioned, so never gate a plan on setting them up.
 - Read `docs/rules/release-signing.md` before any release, signing, installer, updater, or publication work in any repository.
-- Build & sign each target only on its native host. Public repositories use native GitHub runners through RightKit CI; private repositories use `win` from Mac or `ssh mac` from Windows. Never initiate browser/Azure authentication or cross-compile; publish public products through GitHub Releases & private products through R2; follow `docs/rules/release-signing.md`.
+- Build/sign on native hosts: public releases use RightKit CI; private builds use `win` or `ssh mac`. Never initiate browser/Azure authentication or cross-compile. Publish public products through GitHub Releases & private products through R2; follow `docs/rules/release-signing.md`.
 - Use RightKit `right-release` from primary checkout with manifest-pinned pnpm; never build signing or installer machinery inside a product repository.
 - Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request through its configured provider, & upload no test artifact.
 
@@ -159,7 +159,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 - Run `pnpm test` for MCP/client/install-binding coverage.
 - Run `pnpm test:mcp` for the MCP surface.
-- This is an Orthic Labs public repository: `compile: github-actions-only`. Never run cargo, Rust builds/tests, packaging, signing, qualification, or release steps locally; push & read managed CI. Local scope is reads, static checks, JS/node tests, & schema validation.
+- Public validation & releases use GitHub CI. For internal unsigned installers, use declared Windows-only RightKit development mode in `.rightkit-local-development.json`; follow `docs/reference/release/local-windows-development.md`. Never run direct Cargo or publish internal artifacts.
 - Run the repository's current docs/productization checks after changing hand-maintained docs.
 
 ## Locked invariants
@@ -192,7 +192,7 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 
 Before claiming completion:
 
-- run focused tests, then relevant full suites — JS/node locally; Rust/Cargo evidence comes only from pushed, managed CI, never a local cargo run;
+- run focused tests, then relevant full suites; internal Windows Rust checks use managed RightKit, while public qualification uses pushed GitHub CI;
 - verify packet/receipt schemas together after contract changes;
 - prove Blueprint generation/schema mismatch fails closed in both Hub-hosted and bounded one-shot modes;
 - prove Pull omission, authority, freshness, sufficiency, & admission accounting;

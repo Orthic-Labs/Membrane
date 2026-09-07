@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "repository": "Orthic-Labs/Membrane",
+  "platform": "win32",
+  "purpose": "unsigned-installer"
+}

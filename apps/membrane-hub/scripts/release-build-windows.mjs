@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 
 if (process.platform !== "win32") throw new Error("Windows release build must run on Windows");
+if (process.env.MEMBRANE_PUBLIC_CI_DIRECT_CARGO === "1" && process.env.GITHUB_ACTIONS !== "true") {
+  throw new Error("direct Cargo is reserved for GitHub Actions; local installers require RightKit");
+}
 
 const sidecars = [
   "src-tauri/binaries/cortex-x86_64-pc-windows-msvc.exe",

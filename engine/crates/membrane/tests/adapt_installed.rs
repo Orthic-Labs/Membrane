@@ -75,6 +75,7 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
     let mut bindings = serde_json::Map::new();
     bindings.insert(repo.to_string_lossy().into_owned(), json!({
         "repository_id":"repo-fixture","scope_id":"scope-fixture",
+        "scope_descriptor":{"kind":"filesystem","path":repo},
         "grant_policy":{"level":"write-trusted"},
         "token_grant":{"generation":1,"issued_at":"2025-01-01T00:00:00Z"}
     }));
@@ -117,7 +118,7 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
     ];
     for (id, (name, mut arguments)) in requests.into_iter().enumerate() {
         arguments["repository"] = json!("repo-fixture");
-        arguments["caller"] = json!({"root":repo,"repositoryId":"repo-fixture","scopeId":"scope-fixture"});
+        arguments["caller"] = json!({"root":repo,"repositoryId":"repo-fixture","scopeId":"scope-fixture","scopeDescriptor":{"kind":"filesystem","path":repo}});
         writeln!(input, "{}", json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":arguments}})).unwrap();
     }
     drop(input);

@@ -954,6 +954,10 @@ export function buildDocCodeJoins(generation, options = {}) {
   const map = readDocMap(repoRoot, options);
   if (!map) return { schemaVersion: 1, provider: generation.provider.id, joins: [], supersedes: [], truncated: false, sourceDocMap: { docs: 0, claims: 0, generatedAt: null, docPaths: [], claimPaths: [] } };
   const nodesById = new Map(generation.nodes.map((node) => [node.id, node]));
+  const firstSymbolByPath = new Map();
+  for (const node of generation.nodes) {
+    if (node.kind === "symbol" && !firstSymbolByPath.has(node.path)) firstSymbolByPath.set(node.path, node);
+  }
   const docById = new Map(map.nodes.filter((node) => node.kind === "doc").map((doc) => [doc.id, doc]));
   const claimById = new Map(map.nodes.filter((node) => node.kind === "claim").map((claim) => [claim.id, claim]));
   const claimsByDoc = new Map();
@@ -980,7 +984,7 @@ export function buildDocCodeJoins(generation, options = {}) {
       for (const codeRefId of codeRefIds) {
         const codeRef = codeRefsById.get(codeRefId);
         if (!codeRef?.path) continue;
-        const codeNode = nodesById.get(`file:${codeRef.path}`) ?? generation.nodes.find((node) => node.kind === "symbol" && node.path === codeRef.path);
+        const codeNode = nodesById.get(`file:${codeRef.path}`) ?? firstSymbolByPath.get(codeRef.path);
         if (!codeNode) continue;
         const join = classifyJoin(claim, doc, codeRef, codeNode);
         if (join) joins.push(join);
@@ -1056,6 +1060,20 @@ function classifyJoin(claim, doc, codeRef, codeNode) {
 }
 
 function buildSupersedesChain(map, joins) {
+  const targetsByDoc = new Map();
+  for (const edge of map.edges) {
+    if (edge.type !== "contains") continue;
+    if (!targetsByDoc.has(edge.from)) targetsByDoc.set(edge.from, []);
+    targetsByDoc.get(edge.from).push(edge.to);
+  }
+  // Match first doc in node order, independent of contains-edge order.
+  const firstDocByClaim = new Map();
+  for (const node of map.nodes) {
+    if (node.kind !== "doc" || !node.id) continue;
+    for (const target of targetsByDoc.get(node.id) ?? []) {
+      if (!firstDocByClaim.has(target)) firstDocByClaim.set(target, node);
+    }
+  }
   const lifecycleDocs = map.nodes.filter(
     (node) => node.kind === "doc" && node.lifecycle?.status === "superseded",
   );
@@ -1069,7 +1087,7 @@ function buildSupersedesChain(map, joins) {
     (node) => node.kind === "claim" && /\b(supersedes|replaced by|deprecated by)\b/i.test(stripInlineCode(node.text ?? "")),
   );
   for (const claim of supersedeClaims) {
-    const doc = map.nodes.find((node) => node.kind === "doc" && node.id && map.edges.some((e) => e.type === "contains" && e.from === node.id && e.to === claim.id));
+    const doc = firstDocByClaim.get(claim.id);
     if (!doc) continue;
     const target = extractSupersedeTarget(claim.text);
     if (!target) continue;

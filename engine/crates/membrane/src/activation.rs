@@ -260,6 +260,14 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         Err(error) => HealthObservation::Foreign(error),
     };
     let already_running = matches!(&initial, HealthObservation::Ready { .. });
+    // Explicit installed access survives a failed resident startup. Bind MCP
+    // clients & the CLI path before attempting any automatic Hub process.
+    let clients = reconcile_clients(
+        &membrane, &options.clients, options.dry_run, run_client,
+    )?;
+    if !options.dry_run {
+        ensure_user_path(&install_root)?;
+    }
     let (release_generation, service_state, service_reason) = if options.dry_run {
         match initial {
             HealthObservation::Ready { release_generation } => {
@@ -299,28 +307,7 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
         )
     };
 
-    let clients = match reconcile_clients(
-        &membrane,
-        &options.clients,
-        options.dry_run,
-        run_client,
-    ) {
-        Ok(clients) => clients,
-        Err(error) => {
-            if !options.dry_run && !already_running {
-                let cleanup = request_resident_replacement(&tray, &workspace_root, port)
-                    .and_then(|()| wait_for_shutdown(port, &expected_generation, options.timeout));
-                if let Err(cleanup_error) = cleanup {
-                    return Err(format!(
-                        "{error}; activation cleanup failed: {cleanup_error}"
-                    ));
-                }
-            }
-            return Err(error);
-        }
-    };
     if !options.dry_run {
-        ensure_user_path(&install_root)?;
         reconcile_claude_hooks(&install_root)?;
     }
     let receipt = ActivationReceiptV1 {

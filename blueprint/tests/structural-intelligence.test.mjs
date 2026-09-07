@@ -82,3 +82,23 @@ test("unresolved inheritance becomes a frontier rather than a false exact edge",
   assert.ok(summary.frontiers.some((row) => row.relation === "INHERITS" && row.targetName === "UnknownBase" && row.state === "unresolved"));
   assert.ok(!generation.edges.some((edge) => edge.kind === "INHERITS" && edge.source === "symbol:missing:Lost"));
 });
+
+test("many declarations retain exact hierarchy without repeated repository scans", () => {
+  const count = 200;
+  let pathReads = 0;
+  const base = symbol("symbol:Base", "base.ts", "Base", "Base", ["Class"]);
+  const generation = { nodes: [base], edges: [] };
+  const declarations = [];
+  for (let i = 0; i < count; i += 1) {
+    const path = `child${i}.ts`;
+    const child = symbol(`symbol:Child${i}`, path, `Child${i}`, `Child${i}`, ["Class"]);
+    Object.defineProperty(child, "path", { enumerable: true, get() { pathReads += 1; return path; } });
+    generation.nodes.push(child);
+    declarations.push({ path, text: `class Child${i} extends Base {}`, contentHash: `hash:${i}` });
+  }
+  const summary = augmentStructuralIntelligence(generation, declarations);
+  assert.equal(summary.hierarchyEdges, count);
+  assert.deepEqual(generation.edges.filter((edge) => edge.kind === "INHERITS").map((edge) => edge.target), Array(count).fill(base.id));
+  assert.equal(summary.frontiers.length, 0);
+  assert.ok(pathReads < count * 20, `whole-repository rescans: ${pathReads} path reads for ${count} declarations`);
+});

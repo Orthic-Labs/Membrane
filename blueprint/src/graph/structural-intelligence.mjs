@@ -79,7 +79,10 @@ function typeLike(node) {
  * else terminates at an inspectable frontier rather than guessing.
  */
 export function resolveScopedSymbol(generation, { fromPath, name, typesOnly = false } = {}) {
-  const ix = indexes(generation);
+  return resolveScopedSymbolFromIndexes(indexes(generation), { fromPath, name, typesOnly });
+}
+
+function resolveScopedSymbolFromIndexes(ix, { fromPath, name, typesOnly = false }) {
   const path = normalizePath(fromPath);
   const accept = (rows) => (rows ?? []).filter((row) => !typesOnly || typeLike(row));
   const local = accept(ix.byPath.get(path)).filter((row) => row.name === name);
@@ -99,8 +102,8 @@ export function resolveScopedSymbol(generation, { fromPath, name, typesOnly = fa
   return { state: "unresolved", tier: "none", reason: "symbol_not_found", candidates: [] };
 }
 
-function sourceSymbol(generation, path, name, typesOnly = false) {
-  const rows = symbolNodes(generation).filter((node) => normalizePath(node.path) === normalizePath(path) && node.name === name && (!typesOnly || typeLike(node)));
+function sourceSymbol(ix, path, name, typesOnly = false) {
+  const rows = (ix.byPath.get(normalizePath(path)) ?? []).filter((node) => node.name === name && (!typesOnly || typeLike(node)));
   return rows.length === 1 ? rows[0] : null;
 }
 
@@ -164,8 +167,8 @@ function declaringTypeName(node) {
   return parts.length > 1 ? parts.at(-2) : null;
 }
 
-function addOverrides(generation, hierarchyEdges, edges, frontiers) {
-  const symbols = symbolNodes(generation);
+function addOverrides(ix, hierarchyEdges, edges, frontiers) {
+  const symbols = ix.symbols;
   const typeById = new Map(symbols.filter(typeLike).map((node) => [node.id, node]));
   const methodsByTypeAndName = new Map();
   for (const node of symbols) {
@@ -176,13 +179,13 @@ function addOverrides(generation, hierarchyEdges, edges, frontiers) {
     if (!methodsByTypeAndName.has(key)) methodsByTypeAndName.set(key, []);
     methodsByTypeAndName.get(key).push(node);
     node.declaringType = node.declaringType ?? typeName;
-    node.parentSymbol = node.parentSymbol ?? sourceSymbol(generation, node.path, typeName, true)?.id ?? null;
+    node.parentSymbol = node.parentSymbol ?? sourceSymbol(ix, node.path, typeName, true)?.id ?? null;
   }
   for (const relation of hierarchyEdges.filter((edge) => edge.kind === "INHERITS")) {
     const childType = typeById.get(relation.source);
     const baseType = typeById.get(relation.target);
     if (!childType || !baseType) continue;
-    const childMethods = symbols.filter((node) => normalizePath(node.path) === normalizePath(childType.path) && declaringTypeName(node) === childType.name && methodName(node));
+    const childMethods = (ix.byPath.get(normalizePath(childType.path)) ?? []).filter((node) => declaringTypeName(node) === childType.name && methodName(node));
     for (const child of childMethods) {
       const key = `${normalizePath(baseType.path)}\0${baseType.name}\0${methodName(child)}`;
       const bases = methodsByTypeAndName.get(key) ?? [];
@@ -333,17 +336,20 @@ function existingFrontiers(generation) {
  * that cannot be bound exactly becomes a resolution frontier.
  */
 export function augmentStructuralIntelligence(generation, files = []) {
+  // Symbol identities & import edges are fixed during hierarchy resolution.
+  // Share this snapshot across declarations instead of rescanning the graph.
+  const ix = indexes(generation);
   const edges = [];
   const frontiers = existingFrontiers(generation);
   const hierarchyEdges = [];
   for (const file of files) {
     for (const declaration of relationDeclarations(file)) {
-      const source = sourceSymbol(generation, file.path, declaration.sourceName, true);
+      const source = sourceSymbol(ix, file.path, declaration.sourceName, true);
       if (!source) {
         frontiers.push(frontier({ file, line: declaration.line, relation: declaration.kind, targetName: declaration.targetName, sourceId: null, outcome: { state: "unresolved", reason: "declaring_type_not_found", candidates: [] } }));
         continue;
       }
-      const outcome = resolveScopedSymbol(generation, { fromPath: file.path, name: declaration.targetName, typesOnly: true });
+      const outcome = resolveScopedSymbolFromIndexes(ix, { fromPath: file.path, name: declaration.targetName, typesOnly: true });
       if (outcome.state !== "resolved") {
         frontiers.push(frontier({ file, line: declaration.line, relation: declaration.kind, targetName: declaration.targetName, sourceId: source.id, outcome }));
         continue;
@@ -355,7 +361,7 @@ export function augmentStructuralIntelligence(generation, files = []) {
       source.rawDeclaredType = source.rawDeclaredType ?? declaration.targetName;
     }
   }
-  addOverrides(generation, hierarchyEdges, edges, frontiers);
+  addOverrides(ix, hierarchyEdges, edges, frontiers);
   canonicalEventTopics(generation, edges);
   const tests = classifyTests(generation, files, edges);
   const existingEdgeIds = new Set(generation.edges.map((edge) => edge.id));

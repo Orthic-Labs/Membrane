@@ -45,10 +45,15 @@ export function attachPortableIdentities(generation, context = {}) {
     node.portableId = portableId;
     attached += 1;
   }
+  const portableByNodeId = new Map();
+  for (const node of generation?.nodes ?? []) {
+    // Match first-occurrence lookup even when a provider repeats an ID.
+    if (!portableByNodeId.has(node.id)) portableByNodeId.set(node.id, node.portableId ?? null);
+  }
   for (const edge of generation?.edges ?? []) {
     if (edge.portableId) continue;
-    const source = generation.nodes?.find((node) => node.id === edge.source)?.portableId ?? null;
-    const target = generation.nodes?.find((node) => node.id === edge.target)?.portableId ?? null;
+    const source = portableByNodeId.get(edge.source) ?? null;
+    const target = portableByNodeId.get(edge.target) ?? null;
     if (!source || !target) continue;
     edge.portableId = digest("bp:relation", { kind: edge.kind, source, target });
     attached += 1;

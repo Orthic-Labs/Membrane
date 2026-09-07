@@ -846,7 +846,19 @@ fn read_blueprint_status_at(
 }
 
 pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
-    read_blueprint_status_at(&hub_blueprint_endpoint()?, repo_root)
+    use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient};
+    // Explicit context & diagnostics read the same Blueprint owner with or
+    // without a resident. Only automatic refresh needs the Hub-owned pipe.
+    let request_id = format!("membrane-freshness-{}-{}", std::process::id(), crate::time::now_millis());
+    let client = BlueprintClient::new(std::sync::Arc::new(
+        crate::blueprint_one_shot::ExplicitBlueprintTransport {
+            endpoint: hub_blueprint_endpoint().ok(),
+        },
+    ));
+    let result = client.execute_wire(&request_id, "", "status",
+        serde_json::json!({"repoRoot":repo_root}), None, BlueprintBounds::default(),
+        Duration::from_secs(30)).map_err(|error| error.to_string())?;
+    Ok(serde_json::json!({"protocolVersion":1,"ok":true,"result":result}))
 }
 
 pub fn evaluate_repository_freshness(store: &MemoryStore, repo_root: PathBuf) -> FreshnessVerdict {

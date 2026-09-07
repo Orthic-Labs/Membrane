@@ -8,5 +8,6 @@ test("default sidecar build preserves RightKit broker command", () => {
 });
 
 test("public CI direct Cargo mode removes only broker prefix", () => {
-  assert.deepEqual(sidecarBuildCommand({ environment: { MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1", RIGHTKIT: "/opt/rightkit" }, platform: "darwin" }), { command: "cargo", prefix: [] });
+  assert.deepEqual(sidecarBuildCommand({ environment: { GITHUB_ACTIONS: "true", MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1", RIGHTKIT: "/opt/rightkit" }, platform: "darwin" }), { command: "cargo", prefix: [] });
+  assert.throws(() => sidecarBuildCommand({ environment: { MEMBRANE_PUBLIC_CI_DIRECT_CARGO: "1" }, platform: "win32" }), /local installers require RightKit/);
 });

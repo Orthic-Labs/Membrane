@@ -21,6 +21,8 @@ With Hub active, requests may reuse resident services. With Hub stopped, equival
 
 Diagnostics workspace epochs, mutations, snapshots & baselines persist through canonical Cortex event storage. Every CLI, MCP & resident diagnostics owner reads that same versioned state; revision conflicts & corrupt payloads fail closed. Provider handles remain process-local. Explicit acquisition shuts providers down before returning; subscriptions & resident provider restart require Hub. Loopback failure after dispatch never causes a mutation replay.
 
+Installation reconciles stable-path MCP bindings & CLI access before resident startup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.
+
 ## Regression acceptance
 
 For each installed public operation, verify discovery & execution with Hub on & off. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.
@@ -30,6 +32,8 @@ Separately verify that stopping Hub stops every watcher, scheduler & automatic p
 ## Enforced ownership sites
 
 - `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.
+- `engine/crates/membrane-runtime/src/freshness.rs`: Pull & diagnostics read Blueprint through resident-or-one-shot transport.
+- `engine/crates/membrane/src/activation.rs`: explicit agent bindings precede Hub startup; `tests/activation_hub_off.rs` checks startup failure preserves them.
 - `docs/architecture/membrane.md`: all six subsystems permit explicit bounded execution with Hub off.
 - `docs/architecture/subsystems/ledger.md`: explicit indexing uses canonical Ledger owner independently of Hub.
 - `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: canonical installed owners serve explicit operations; automatic processes remain Hub-owned.

@@ -34,6 +34,21 @@ test("portable relation identity requires exact portable endpoints", () => {
   assert.equal(generation.edges[1].portableId, undefined);
 });
 
+test("portable relations preserve first endpoint identity when providers repeat node IDs", () => {
+  const first = { id: "a", symbol: "scip npm p 1 First#" };
+  const last = { id: "a", symbol: "scip npm p 1 Last#" };
+  const target = { id: "b", symbol: "scip npm p 1 Target#" };
+  const edge = { kind: "REFERENCES", source: "a", target: "b" };
+  const expected = { nodes: [first, target], edges: [{ ...edge }] };
+  attachPortableIdentities(expected);
+  const repeated = { nodes: [first, last, target], edges: [{ ...edge }] };
+  attachPortableIdentities(repeated);
+  assert.equal(repeated.edges[0].portableId, expected.edges[0].portableId);
+  const missingFirst = { nodes: [{ id: "a" }, last, target], edges: [{ ...edge }] };
+  attachPortableIdentities(missingFirst);
+  assert.equal(missingFirst.edges[0].portableId, undefined);
+});
+
 test("reanchoring follows exact entity then exact fingerprint then unique normalized text", () => {
   const exact = reanchorEvidence({ portableId: "bp:domain:sha256:" + "a".repeat(64), text: "old" }, [
     { id: "x", portableId: "bp:domain:sha256:" + "a".repeat(64), text: "new" },

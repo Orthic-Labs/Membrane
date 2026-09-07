@@ -823,7 +823,7 @@ pub fn authorize_diagnostic_identity(
         caller_root,
         caller_repository_id: repository_id,
         caller_scope_id: &caller.scope_id,
-        caller_scope_descriptor: None,
+        caller_scope_descriptor: caller.scope_descriptor.as_ref(),
         target_repository: repository_id,
         task_grant_level,
         action,

@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T14:59:38.933Z",
+ "generatedAt": "2026-09-07T15:55:46.495Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
@@ -313,7 +313,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "3fdd989f19389272fdf8a4cb74bfdfb60c591d53a2faf0a8c478aa2bd912670e"
+   "content_digest": "ad138a8d6d5f9f25c2d7b7d6421d86534b9b82d33fc77147ff25cbd6cde8aad4"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -523,7 +523,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "30dedded9873aab063d2e4a6a1931b7cb71b2231b1aa026a3e2b3ab0fb7d5f50"
+   "content_digest": "91d321c9f24754cc01d2739b89afcdfab85b32748f40e382e5b696ed6d6d0a3b"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -886,7 +886,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "935e204fef6ed505a6fb20baecfb4806c6ffeae12ebc6798ccdd9be4ab890cfe"
+   "content_digest": "7c7ae9056080112ca78d4d503130617249f3d0d32b876dfcdecb08860dc780b0"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1270,7 +1270,7 @@
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "9bfc00196fc983987e05b103d9b30fd834fff9d19f16304fdd123fc4641b49ee"
+   "content_digest": "fbad02ada7c5b14e024cb3ff236f783d5097bebf2f3d0dfb5c88a995abe5b0c4"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1716,7 +1716,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "441806e732a67b34735386bd8c3c158e913541b9e51da4433b9a36e30950f727"
+   "content_digest": "5caf1ccc6f1ba0bfc3f81cfc7147fffddd883ac28f8e3b4b60ab20b532537856"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

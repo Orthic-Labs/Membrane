@@ -1185,7 +1185,7 @@ async function build(root, outDir, options = {}) {
     understanding: optionalJson(join(root, outDir, "understanding.json")).value,
   });
   writeJsonAtomic(join(root, outDir, "phase2-plan.json"), phase2Plan);
-  const docsResult = generateDocs(root, { noReadmeLink: Boolean(options.noReadmeLink) });
+  const docsResult = generateDocs(root, { noReadmeLink: Boolean(options.noReadmeLink ?? options["no-readme-link"]) });
   const blueprintManifest = writeBlueprintManifest(root, outDir, {
     map,
     index,
