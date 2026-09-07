@@ -485,14 +485,14 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
         }
         DiagnosticsCommand::Status { port } => {
             run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
+                port,
                 "GET",
                 "/diagnostics/status",
                 None,
             )
         }
         DiagnosticsCommand::Subscribe { port } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port), "GET", "/diagnostics/subscribe", None,
+            port, "GET", "/diagnostics/subscribe", None,
         ),
         DiagnosticsCommand::WorkspaceOpen {
             repo,
@@ -500,7 +500,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             project_root,
             port,
         } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/workspace/open",
             Some(diagnostics_workspace_body_with_root(
@@ -514,7 +514,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             worktree,
             port,
         } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/workspace/close",
             Some(diagnostics_workspace_body(&repo, &worktree)),
@@ -529,14 +529,14 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 percent_encode_component(&repo),
                 percent_encode_component(&worktree)
             );
-            run_diagnostics_service_call(diagnostics_loopback_port(port), "GET", &query, None)
+            run_diagnostics_service_call(port, "GET", &query, None)
         }
         DiagnosticsCommand::MutationBegin {
             repo,
             worktree,
             port,
         } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/mutation/begin",
             Some(diagnostics_workspace_body(&repo, &worktree)),
@@ -548,7 +548,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             port,
         } => match epoch_request_body(&repo, &worktree, &file) {
             Ok(body) => run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
+                port,
                 "POST",
                 "/diagnostics/mutation/seal",
                 Some(body),
@@ -562,7 +562,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             port,
         } => match epoch_request_body(&repo, &worktree, &file) {
             Ok(body) => run_diagnostics_service_call(
-                diagnostics_loopback_port(port),
+                port,
                 "POST",
                 "/diagnostics/mutation/registerObserved",
                 Some(body),
@@ -590,7 +590,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 Ok(())
             }) {
                 Ok(body) => run_diagnostics_service_call(
-                    diagnostics_loopback_port(port),
+                    port,
                     "POST",
                     "/diagnostics/reconcile",
                     Some(body),
@@ -614,7 +614,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 Ok(())
             }) {
                 Ok(body) => run_diagnostics_service_call(
-                    diagnostics_loopback_port(port),
+                    port,
                     "POST",
                     "/diagnostics/snapshot/await",
                     Some(body),
@@ -628,7 +628,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             name,
             port,
         } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/baseline/capture",
             Some(diagnostics_named_body(&repo, &worktree, &name)),
@@ -639,13 +639,13 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
             name,
             port,
         } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/baseline/update",
             Some(diagnostics_named_body(&repo, &worktree, &name)),
         ),
         DiagnosticsCommand::ProviderRestart { key_digest, port } => run_diagnostics_service_call(
-            diagnostics_loopback_port(port),
+            port,
             "POST",
             "/diagnostics/provider/restart",
             Some(serde_json::json!({ "keyDigest": key_digest }).to_string()),
@@ -816,12 +816,18 @@ fn percent_encode_component(value: &str) -> String {
 /// response body is printed verbatim so server-side typed omission envelopes
 /// reach the caller unchanged.
 fn run_diagnostics_service_call(
-    port: u16,
+    port: Option<u16>,
     method: &str,
     path_and_query: &str,
     body: Option<String>,
 ) -> DispatchOutcome {
-    match diagnostics_http_request(port, method, path_and_query, body.as_deref()) {
+    // Normal CLI calls share canonical state directly, even while Hub runs.
+    // A requested loopback override retains the existing transport semantics.
+    let resident_control = matches!(path_and_query, "/diagnostics/subscribe" | "/diagnostics/provider/restart");
+    if port.is_none() && std::env::var_os("MEMBRANE_PORT").is_none() && !resident_control {
+        return run_diagnostics_explicit_call(method, path_and_query, body.as_deref());
+    }
+    match diagnostics_http_request(diagnostics_loopback_port(port), method, path_and_query, body.as_deref()) {
         Ok(None) => run_diagnostics_explicit_call(method, path_and_query, body.as_deref()),
         Ok(Some((status, response_body))) => {
             println!("{response_body}");
