@@ -153,7 +153,26 @@ pub(crate) fn ensure_memory_schema(db: &Connection) -> rusqlite::Result<()> {
            memory_id TEXT PRIMARY KEY, scope_id TEXT NOT NULL, content_hash TEXT NOT NULL,
            suppressed INTEGER NOT NULL CHECK(suppressed IN (0,1)), decision_hash TEXT NOT NULL) STRICT;
          CREATE TABLE IF NOT EXISTS cortex_reviewed_controls_v1(
-           nonce_key TEXT PRIMARY KEY, effect_hash TEXT NOT NULL, receipt_json TEXT NOT NULL) STRICT;"
+           nonce_key TEXT PRIMARY KEY, effect_hash TEXT NOT NULL, receipt_json TEXT NOT NULL) STRICT;
+         -- CTX-010: Cortex-side intake for lifecycle review signals originated by
+         -- another Membrane subsystem (Ledger document supersession, Blueprint
+         -- re-anchoring, ...). Append-only and ENQUEUE-ONLY: rows here are read by
+         -- `MemoryStore::lifecycle_reviews_due` and never rewrite `memories`,
+         -- `lifecycle_state`, `superseded_by`, authority or content. The primary
+         -- key is the caller's idempotency key, so a redelivered signal is a no-op.
+         CREATE TABLE IF NOT EXISTS cortex_lifecycle_review_signals_v1(
+           idempotency_key TEXT PRIMARY KEY,
+           origin_subsystem TEXT NOT NULL,
+           memory_id TEXT,
+           scope_id TEXT,
+           reason TEXT NOT NULL,
+           observed_at_ms INTEGER NOT NULL,
+           recorded_at_ms INTEGER NOT NULL,
+           CHECK(memory_id IS NOT NULL OR scope_id IS NOT NULL)) STRICT;
+         CREATE INDEX IF NOT EXISTS cortex_lifecycle_review_signals_v1_memory
+           ON cortex_lifecycle_review_signals_v1(memory_id);
+         CREATE INDEX IF NOT EXISTS cortex_lifecycle_review_signals_v1_scope
+           ON cortex_lifecycle_review_signals_v1(scope_id);"
     )
 }
 fn ensure_proposal_schema(db: &Connection) -> rusqlite::Result<()> {
@@ -1571,11 +1590,13 @@ mod tests {
         assert_eq!(legacy["authority"], "A2");
         assert_eq!(legacy["originProducer"], "manual");
         assert_eq!(legacy["lifecycle"], "active");
-        // CTX-004: no writer classified sensitivity or recorded a derivation
-        // for this row; both bind to the explicit unavailable_legacy marker,
-        // never a guessed value or a silent Null.
-        assert_eq!(legacy["sensitivity"], "unavailable_legacy");
-        assert_eq!(legacy["derivation"], "unavailable_legacy");
+        // CTX-004: every production write path now binds both fields, so a row
+        // written today carries explicit non-legacy values — `unclassified`
+        // (admission holds no signal that determines sensitivity) and
+        // `original` (a direct authored write with no parent). The
+        // `unavailable_legacy` marker is reserved for rows predating the column.
+        assert_eq!(legacy["sensitivity"], "unclassified");
+        assert_eq!(legacy["derivation"], "original");
         // Governed review admission binds the proposal as an explicit source
         // with independently verified authority; all four bindings stay distinct.
         let text="Reviewed admission carries explicit proposal provenance.";
@@ -1585,8 +1606,8 @@ mod tests {
         assert_eq!(page["authority"], "A4");
         assert_eq!(page["originProducer"], "manual");
         assert_eq!(page["lifecycle"], "active");
-        assert_eq!(page["sensitivity"], "unavailable_legacy");
-        assert_eq!(page["derivation"], "unavailable_legacy");
+        assert_eq!(page["sensitivity"], "unclassified");
+        assert_eq!(page["derivation"], "original");
         assert_eq!(page["content"], text);
     }
 
@@ -1612,7 +1633,15 @@ mod tests {
         let version: i64 = s.store.db().lock()
             .query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
         assert_eq!(version, cortex_store::memdb::LATEST_SCHEMA_VERSION);
-        let id=s.store.put("legacy-backfill", "Row present before classification existed.", "scope", cortex_core::MemoryTier::Semantic);
+        // A row that predates the classifying write paths is simulated by
+        // inserting without the two columns, so the migration default applies —
+        // exactly the situation `unavailable_legacy` is reserved for.
+        let id = "scope/legacy-backfill";
+        s.store.db().lock().execute(
+            "INSERT INTO memories (id,tier,content,keywords,score,created_at,access_count,scope_id)
+             VALUES (?1,'\"Semantic\"','Row present before classification existed.','[]',0.5,'2026-01-01T00:00:00Z',0,'scope')",
+            rusqlite::params![id],
+        ).unwrap();
         let (sensitivity, derivation): (String, String) = s.store.db().lock().query_row(
             "SELECT sensitivity, derivation FROM memories WHERE id=?1", [&id],
             |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
