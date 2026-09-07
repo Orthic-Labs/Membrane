@@ -9,6 +9,7 @@ import { assertSafeMutableStorePath, closeStore, loadGeneration, openStore } fro
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
+import { completePendingDocDomain } from "../src/lib/phase2-completion.mjs";
 
 function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
 function throwIfAborted(signal) { if (signal?.aborted) throw cancelled(); }
@@ -262,6 +263,10 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
         signal,
       });
       throwIfAborted(signal);
+      convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
+    }
+    if (options.completeDocuments) {
+      completePendingDocDomain(db, root, { outDir });
       convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
     }
     db.exec("BEGIN;");

@@ -1725,6 +1725,11 @@ function populateGenerationState(db, generation) {
   const repoRoot = generation.repoRoot ?? null;
   const files = (generation.nodes ?? []).filter((node) => node.kind === "file").map((node) => ({ ...node, path: normalizeRepoPath(node.path) }));
   const fileById = new Map(files.map((node) => [node.id, node.path]));
+  const fileByPath = new Map();
+  const nodeById = new Map();
+  // Preserve first-match ownership while avoiding a full graph scan per fact.
+  for (const file of files) if (!fileByPath.has(file.path)) fileByPath.set(file.path, file);
+  for (const node of generation.nodes ?? []) if (!nodeById.has(node.id)) nodeById.set(node.id, node);
   db.exec("DELETE FROM file_state; DELETE FROM fact_owner; DELETE FROM dependency_index; DELETE FROM generation_leaf;");
   const insertFileState = db.prepare("INSERT INTO file_state(path, content_digest, size, mtime_ms, file_identity, last_event_seq, applied_clock) VALUES (?, ?, ?, ?, ?, NULL, 0)");
   for (const file of files) {
@@ -1735,14 +1740,14 @@ function populateGenerationState(db, generation) {
   for (const node of generation.nodes ?? []) {
     const path = normalizeRepoPath(node.path);
     if (!path) continue;
-    const digest = normalizeContentDigest(files.find((file) => file.path === path)?.evidence?.[0]?.contentHash ?? "unknown");
+    const digest = normalizeContentDigest(fileByPath.get(path)?.evidence?.[0]?.contentHash ?? "unknown");
     const owner = providerForFact(node, provider);
     insertOwner.run(node.id, "node", path, digest, owner.id, owner.version, node.kind, generationId, repoRoot);
   }
   for (const edge of generation.edges ?? []) {
-    const sourcePath = normalizeRepoPath(fileById.get(edge.source) ?? (generation.nodes ?? []).find((node) => node.id === edge.source)?.path);
+    const sourcePath = normalizeRepoPath(fileById.get(edge.source) ?? nodeById.get(edge.source)?.path);
     if (!sourcePath) continue;
-    const digest = normalizeContentDigest(files.find((file) => file.path === sourcePath)?.evidence?.[0]?.contentHash ?? "unknown");
+    const digest = normalizeContentDigest(fileByPath.get(sourcePath)?.evidence?.[0]?.contentHash ?? "unknown");
     const owner = providerForFact(edge, provider);
     insertOwner.run(edge.id, "edge", sourcePath, digest, owner.id, owner.version, edge.kind, generationId, repoRoot);
     if (edge.kind === "IMPORTS" && edge.target) {

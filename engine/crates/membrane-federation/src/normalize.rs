@@ -223,10 +223,15 @@ fn normalize_generation(
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
-    let Some(digest) = value.strip_prefix("sha256:") else {
+    let (digest, length) = if let Some(digest) = value.strip_prefix("sha256:") {
+        (digest, 64)
+    } else if let Some(digest) = value.strip_prefix("xxh128:") {
+        // Blueprint graph identity is independent of release SHA-256 identity.
+        (digest, 32)
+    } else {
         return Err(CandidateNormalizationError::GenerationMalformed);
     };
-    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if digest.len() != length || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(CandidateNormalizationError::GenerationMalformed);
     }
     Ok(Some(value.to_ascii_lowercase()))

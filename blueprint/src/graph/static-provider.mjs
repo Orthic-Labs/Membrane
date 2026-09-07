@@ -1558,27 +1558,13 @@ function scanSources(root, fileLimit = 0, walkOptions = {}) {
       continue;
     }
     if (size > 2 * 1024 * 1024) continue;
-    if (!isParsed) {
-      files.push({
-        absolutePath,
-        path,
-        contentHash: `size:${size}`,
-        size,
-        lines: [],
-      });
-      if (fileLimit > 0 && files.length >= fileLimit) {
-        fileLimitReached = true;
-        break;
-      }
-      continue;
-    }
     let bytes;
     try {
       bytes = readFileSync(absolutePath);
     } catch {
       continue;
     }
-    if (bytes.includes(0)) continue;
+    if (isParsed && bytes.includes(0)) continue;
     const text = bytes.toString("utf8");
     let normalizedBytes = bytes;
     let normalizedText = text;
@@ -1592,8 +1578,8 @@ function scanSources(root, fileLimit = 0, walkOptions = {}) {
     files.push({
       absolutePath,
       path,
-      text: normalizedText,
-      lines: normalizedText.split(/\r?\n/),
+      ...(isParsed ? { text: normalizedText } : {}),
+      lines: isParsed ? normalizedText.split(/\r?\n/) : [],
       contentHash: xxh128(normalizedBytes),
       size: bytes.length,
     });

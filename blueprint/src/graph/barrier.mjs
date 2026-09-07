@@ -82,7 +82,7 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
     signal?.addEventListener("abort", forward, { once: true });
     try {
       return await bounded(
-        reconcileFn(db, repoRoot, { outDir, signal: controller.signal }),
+        reconcileFn(db, repoRoot, { outDir, completeDocuments: true, signal: controller.signal }),
         Math.max(1, timeoutMs - (Date.now() - startedMs)),
         signal,
         () => controller.abort(),

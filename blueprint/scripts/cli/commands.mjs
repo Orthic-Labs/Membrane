@@ -15,10 +15,12 @@ import { startBlueprintMcpServer } from "../blueprint-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
 import { machineError, printResult, renderArchitecture, renderDocTruth, renderExpand, renderImpact, renderSearch, renderStatus } from "./render.mjs";
 
-function serviceFor(args) {
+function serviceFor(args, root) {
   return createBlueprintApplicationService({
     outDir: String(args.out ?? ".agent"),
-    rootRegistry: new RootRegistry(readWatchConfig().repos),
+    // A local CLI invocation carries its OS caller's explicit filesystem scope.
+    // Resident & remote adapters retain their separate enrollment admission.
+    rootRegistry: new RootRegistry([{ root }]),
     allowEmbeddedRoot: false,
   });
 }
@@ -82,7 +84,7 @@ async function authorizeResidentLaunch() {
 }
 
 async function runFacadeCommand(command, args, { root, outDir }) {
-  const service = serviceFor({ out: outDir });
+  const service = serviceFor({ out: outDir }, root);
   // BPT-042 requires the same application semantics on every adapter. The
   // facade previously built only `{ repoRoot }`, so no CLI invocation could
   // express a generation-pinned or stale-tolerant request that the daemon, the

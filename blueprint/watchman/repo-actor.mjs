@@ -162,6 +162,23 @@ function applyRepairPaths(db, root, prepared, sourceClock, inOuterTransaction) {
 
 async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal) {
   throwIfAborted(signal);
+  // Native snapshots can replay changes already included by a full build.
+  // Acknowledge identical bytes through the normal delta transaction before
+  // loading repository-wide symbol indexes or parsing this file's dependents.
+  if (["create", "modify"].includes(row.event_kind)) {
+    const prior = db.prepare("SELECT content_digest FROM file_state WHERE path=?").get(normalizePath(row.path));
+    let current;
+    try { current = prior && readStable(join(root, row.path)); } catch {}
+    if (current && current.contentDigest === prior.content_digest) {
+      throwIfAborted(signal);
+      return applyFileDelta(db, {
+        eventKind: row.event_kind, path: row.path,
+        contentDigest: current.contentDigest, fileIdentity: current.fileIdentity,
+        size: current.bytes.length, mtimeMs: current.statAfter.mtimeMs,
+        sourceClock: row.source_clock, journalSeq: row.seq,
+      }, { repoRoot: root, outDir: ".agent" });
+    }
+  }
   const closure = collectDependents(db, row.path, { maxHops: MAX_HOPS, maxFiles: maxDependentFiles });
   const event = { eventKind: row.event_kind, path: row.path, renameTo: row.rename_to };
   const baseDelta = await deltaFor(db, root, event, readStable, signal);

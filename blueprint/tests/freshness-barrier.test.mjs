@@ -44,6 +44,21 @@ test("read-only query barrier detects an edit without repairing it", () => {
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("one-shot barrier completes document extraction without a resident watcher", async () => {
+  const repo = makeRepo();
+  try {
+    writeFileSync(join(repo, "README.md"), "# Updated repository\n\nExplicit document refresh.\n");
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      const receipt = await syncToCurrentSource(db, repo, { timeoutMs: 5000 });
+      assert.equal(receipt.barrierResult, "caught_up");
+      assert.equal(receipt.eventGap, false);
+      assert.equal(receipt.domainsPending.includes("doc"), false);
+      assert.equal(db.prepare("SELECT value FROM watch_state WHERE key='watcher_pid'").get(), undefined);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("corrupt clocks timeout by default and serve only with explicit allow-stale", () => {
   const repo = makeRepo();
   try {

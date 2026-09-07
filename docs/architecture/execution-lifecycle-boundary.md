@@ -1,6 +1,6 @@
 # Explicit execution & resident lifecycle
 
-**Status:** Normative user correction, 2026-09-07. Source implementation landed; native CI & installed acceptance are tracked in `audit/remediation/README.md`.
+**Status:** Normative user correction, 2026-09-07. Source implementation & installed acceptance are tracked in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
 
 This contract supersedes any statement that tray-off or Hub-off disables explicit Membrane operations, that MCP/CLI must only forward to a daemon, or that Blueprint is the only subsystem permitted bounded execution. It applies to all six subsystems & every installed agent integration, including CodeRight.
 
@@ -22,6 +22,10 @@ With Hub active, requests may reuse resident services. With Hub stopped, equival
 Diagnostics workspace epochs, mutations, snapshots & baselines persist through canonical Cortex event storage. Every CLI, MCP & resident diagnostics owner reads that same versioned state; revision conflicts & corrupt payloads fail closed. Provider handles remain process-local. Explicit acquisition shuts providers down before returning; subscriptions & resident provider restart require Hub. Loopback failure after dispatch never causes a mutation replay.
 
 Installation reconciles stable-path MCP bindings & CLI access before resident startup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.
+
+Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds select bounded local execution. Findings explanation & evidence packs use their canonical sealed-generation service when no daemon is reachable.
+
+One-shot freshness completes deterministic document extraction after applying every source delta, while leaving judgment work explicitly pending. Cold builds & incremental repair use content identity for every indexed file. Replayed identical source events acknowledge journal clocks without reparsing repository symbols. Federation validates Blueprint graph identifiers independently of release artifact identifiers.
 
 ## Regression acceptance
 

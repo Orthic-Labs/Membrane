@@ -113,6 +113,22 @@ async function withDaemon(fn) {
   }
 }
 
+test("CLI explanation and evidence pack work with no daemon", async () => {
+  const repo = buildFindingRepo();
+  try {
+    const env = { ...process.env, BLUEPRINT_DAEMON_ENDPOINT: temporaryDaemonEndpoint("absent-findings"), NODE_NO_WARNINGS: "1" };
+    const listed = await createFindingsService()["findings.get"]({ repoRoot: repo });
+    assert.ok(listed.findings.length);
+    for (const command of ["explain", "evidence-pack"]) {
+      const result = await runCli(["findings", command, "--fingerprint", listed.findings[0].fingerprint], { cwd: repo, env });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.generationId, listed.generationId);
+      assert.equal(payload.kind, command === "explain" ? "findings.explain" : "findings.evidence_pack");
+    }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("CLI: `blueprint findings explain` returns rule reasoning and source-bound evidence for a real finding", async () => {
   const repo = buildFindingRepo();
   try {

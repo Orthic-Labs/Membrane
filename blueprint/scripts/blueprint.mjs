@@ -3565,11 +3565,17 @@ async function runFindingsThroughDaemon(root, outDir, args) {
   }
 }
 
-// BPT-051/BPT-052 — governed adapters over the resident findings.explain and
-// findings.evidence_pack methods. Both atoms REQUIRE the resident daemon:
-// there is no direct-detection fallback (explanation/evidence-pack framing
-// only exists over an already-sealed generation), so an unreachable daemon
-// is reported as a typed failure rather than silently degraded.
+// Explicit findings use the same sealed-generation owner with or without Hub.
+async function localFindingsResult(method, input) {
+  const { createFindingsService } = await import("../src/lib/findings/service.mjs");
+  try {
+    const result = await createFindingsService({ outDir: input.outDir })[method](input);
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  } catch (error) {
+    return findingsCommandError(error.code ?? "findings_unavailable", error.message, error.details);
+  }
+}
 function findingsCommandError(code, message, details) {
   console.error(JSON.stringify({ schemaVersion: 1, error: { code, message, ...(details !== undefined ? { details } : {}) } }, null, 2));
   return 1;
@@ -3591,7 +3597,7 @@ async function runFindingsExplainCommand(root, outDir, args) {
     return 0;
   } catch (error) {
     if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
-      return findingsCommandError("findings_daemon_unavailable", "resident daemon did not serve findings.explain");
+      return localFindingsResult("findings.explain", { repoRoot: root, outDir, fingerprint, allowStale: Boolean(args["allow-stale"]) });
     }
     throw error;
   } finally {
@@ -3621,7 +3627,7 @@ async function runFindingsEvidencePackCommand(root, outDir, args) {
     return 0;
   } catch (error) {
     if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
-      return findingsCommandError("findings_daemon_unavailable", "resident daemon did not serve findings.evidence_pack");
+      return localFindingsResult("findings.evidence_pack", { repoRoot: root, outDir, fingerprints, allowStale: Boolean(args["allow-stale"]) });
     }
     throw error;
   } finally {
@@ -3862,12 +3868,12 @@ async function main() {
     // to repair an already-authorized graph without pretending every query is
     // an enrollment action.
     if (graphArgs.root !== undefined && subcommand !== "build") {
-      new RootRegistry(readWatchConfig().repos).resolve({ repoRoot: root });
+      new RootRegistry([{ root }]).resolve({ repoRoot: root });
     }
     return await runGraphCommand(root, outDir, subcommand, graphArgs);
   }
   if (command === "candidates") {
-    if (args.root !== undefined) new RootRegistry(readWatchConfig().repos).resolve({ repoRoot: root });
+    if (args.root !== undefined) new RootRegistry([{ root }]).resolve({ repoRoot: root });
     return await runGraphCommand(root, outDir, "candidates", args);
   }
   if (command === "findings") {

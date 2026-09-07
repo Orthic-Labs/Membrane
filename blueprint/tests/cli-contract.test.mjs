@@ -51,6 +51,20 @@ test("help prints branded Blueprint usage and exits 0", () => {
   assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
 });
 
+test("local explicit root queries work without watcher enrollment", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-cli-unenrolled-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  try {
+    const build = run(repo, ["graph", "build"]);
+    assert.equal(build.status, 0, build.stderr);
+    for (const args of [["search"], ["graph", "search"]]) {
+      const result = run(repo, [...args, "--root", repo, "--query", "placeOrder", "--json"]);
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.match(result.stdout, /placeOrder/);
+    }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("standalone blueprint-watch start is Hub-gated and cannot create a watcher", () => {
   const home = mkdtempSync(join(tmpdir(), "blueprint-watch-direct-home-"));
   try {

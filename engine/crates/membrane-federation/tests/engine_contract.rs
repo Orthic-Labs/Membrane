@@ -50,6 +50,27 @@ fn output(provider: ProviderId, id: &str) -> ProviderOutputV1 {
 }
 
 #[test]
+fn blueprint_graph_generation_survives_normalization_and_merge() {
+    let generation = "xxh128:12355fa319a70dd4add324cefb94776a";
+    let mut blueprint = output(ProviderId::Blueprint, "reconnectAfterSleep");
+    blueprint.generation = Some(generation.into());
+    let result = merge_outputs(&[ProviderId::Blueprint], &[blueprint.clone()], Some(generation))
+        .expect("canonical Blueprint graph identity is admitted");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].generation.as_deref(), Some(generation));
+    assert!(result.omissions.is_empty());
+    let mismatched = merge_outputs(&[ProviderId::Blueprint], &[blueprint.clone()],
+        Some("xxh128:00000000000000000000000000000000")).unwrap();
+    assert!(mismatched.candidates.is_empty());
+    assert!(!mismatched.omissions.is_empty());
+    for invalid in ["xxh128:123", "xxh128:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        "sha256:123", "other:12355fa319a70dd4add324cefb94776a"] {
+        blueprint.generation = Some(invalid.into());
+        assert!(normalize_provider_output(&blueprint, ProviderId::Blueprint).is_err());
+    }
+}
+
+#[test]
 fn expected_lanes_are_accounted_before_merge() {
     let result = merge_outputs(
         &[ProviderId::Anchors, ProviderId::Blueprint],

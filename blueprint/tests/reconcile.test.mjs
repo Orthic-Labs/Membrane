@@ -41,6 +41,24 @@ test("reconcile applies exactly changed files and leaves unrelated facts intact"
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("unparsed source uses content identity across cold build and incremental repair", async () => {
+  const repo = makeRepo();
+  try {
+    writeFileSync(join(repo, "Cargo.lock"), "version = 3\n");
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      const before = db.prepare("SELECT digest FROM generation_leaf WHERE path='Cargo.lock'").get().digest;
+      assert.match(before, /^xxh128:[0-9a-f]{32}$/);
+      writeFileSync(join(repo, "Cargo.lock"), "version = 4\n");
+      const result = await reconcile(db, repo);
+      assert.equal(result.convergence.converged, true);
+      assert.notEqual(db.prepare("SELECT digest FROM generation_leaf WHERE path='Cargo.lock'").get().digest, before);
+      assert.equal((await reconcile(db, repo)).convergence.converged, true);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("reconcile clears an overflow gap only after applying authority diff", async () => {
   const repo = makeRepo();
   try {

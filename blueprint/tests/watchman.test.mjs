@@ -9,9 +9,37 @@ import { BlueprintRepositoryWorker, RepositoryActor } from "../src/graph/watchma
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
 import { isEligibleWatchPath, normalizeEvents, startWatch, waitForNativeProbe } from "../watchman/adapter.mjs";
+import { appendWatchEvents, drainJournal } from "../watchman/repo-actor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
+
+test("journal replay acknowledges identical source without scanning symbols or changing graph", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-source-replay-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  try {
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      const generation = db.prepare("SELECT * FROM generation ORDER BY key").all();
+      const symbols = db.prepare("SELECT * FROM symbols ORDER BY id").all();
+      const [event] = appendWatchEvents(db, [{ eventKind: "modify", path: "src/service.ts" }]);
+      const statements = [];
+      const traced = new Proxy(db, { get(target, key) {
+        if (key === "prepare") return (sql) => { statements.push(sql); return target.prepare(sql); };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      } });
+      assert.equal(await drainJournal(traced, repo), 1);
+      assert.equal(statements.some((sql) => /SELECT[\s\S]*FROM symbols/i.test(sql)), false);
+      assert.deepEqual(db.prepare("SELECT * FROM generation ORDER BY key").all(), generation);
+      assert.deepEqual(db.prepare("SELECT * FROM symbols ORDER BY id").all(), symbols);
+      assert.equal(db.prepare("SELECT applied_clock FROM event_journal WHERE seq=? AND applied=1").get(event.seq).applied_clock, event.sourceClock);
+      assert.equal(Number(db.prepare("SELECT value FROM watch_state WHERE key='applied_clock'").get().value), event.sourceClock);
+      assert.equal(db.prepare("SELECT last_event_seq FROM file_state WHERE path='src/service.ts'").get().last_event_seq, event.seq);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("watch paths survive macOS /var to /private/var canonicalization", { skip: process.platform !== "darwin" }, () => {
   const repo = mkdtempSync("/var/tmp/blueprint-watchman-path-");
