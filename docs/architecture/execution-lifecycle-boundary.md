@@ -55,6 +55,8 @@ Separately verify that stopping Hub stops every watcher, scheduler & automatic p
 
 ## Enforced ownership sites
 
+Membrane is harness-agnostic. Codex, Claude Code & other MCP hosts consume the same installed subsystem owners that native SDK consumers such as CodeRight use. Native integration changes transport, not subsystem scope, authority, durable state, or Hub-off availability. Installed acceptance must cover both MCP-host & native-SDK paths; one consumer's success does not establish another's execution binding.
+
 - `engine/crates/membrane-runtime/src/explicit_client.rs` & `engine/crates/membrane-client/src/explicit.rs`: closed installed CLI requests & distinct bounded-owner SDK binding, with absolute request options & no replay of uncertain effects. No resident health response is synthesized.
 
 - `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.

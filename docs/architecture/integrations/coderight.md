@@ -58,7 +58,7 @@ There are distinct data classes and owners:
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
-The additive SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. Diagnostics use the same explicit client & identity, never a fabricated resident handshake.
+The additive SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. Ordinary CodeRight startup selects this bounded owner unconditionally after `locate_installed_candidate()`, regardless Hub UI state. No user switch, resident health probe, inferred Hub-mode signal, or retry through another transport selects this path. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. Diagnostics use the same explicit client & identity, never a fabricated resident handshake.
 
 The SDK selects closed operations & frames one request for exact installed `current/membrane[.exe] cli explicit-call`. CodeRight injects its governed child transport: close stdin after the frame, cap output, honor supplied absolute `CallOptions`, terminate & reap the complete child tree, & report whether action input was dispatched. SDK owns response validation & `CommitUnknown` classification; unknown dispatched effects are never replayed. Each logical host request supplies one `with_call_options` view, including all follow-up record reads; construction defaults expire after 30 seconds. The installed owner rejects changed binding before dispatch & delegates to existing memory, federation & diagnostics handlers. Provider restart keeps its resident lifecycle gate.
 
@@ -73,19 +73,19 @@ Source implementation & installed/consumer qualification are separate evidence s
 A full CodeRight agent session MUST NOT start without one compatible Membrane capability binding.
 
 The binding identifies **one compatible installed Membrane authority**, selected through
-versioned identity verification. Explicit operations use its bounded installed entry point
-with Hub off or its resident transport with Hub on. Both bind the same installation,
-release & Cortex store. CodeRight never embeds a Membrane backend.
+versioned identity verification. CodeRight explicit operations use its bounded installed
+entry point with Hub off or on, binding the same installation, release & Cortex store.
+CodeRight never embeds a Membrane backend.
 
 CodeRight must not create two knowledge universes.
 
-If a resident connection fails or tray is inactive:
+If an explicit request fails or Hub changes state:
 
 - do not open any embedded/local fallback Cortex store;
 - do not dual-write;
 - explicit operations remain available through the same verified installed authority;
-- only pre-dispatch connection failure permits switching execution transport; an uncertain
-  dispatched mutation is never replayed;
+- do not select another transport from a failed request; an uncertain dispatched mutation
+  is never replayed;
 - unknown commit outcomes remain unknown until the original backend receipt is reconciled;
 - recovery rebinds only to the same compatible installation & store identity unless an explicit migration/restart occurs.
 
@@ -868,14 +868,14 @@ does not prescribe rollout phases.
 
 ## Startup/backend
 
-- compatible installed binding through bounded & resident transports;
+- compatible installed binding through bounded execution with Hub off & on;
 - tray inactive at startup — installed explicit operations remain callable; no automatic watcher or replacement daemon starts;
-- tray quits mid-session — subsequent explicit requests use bounded installed execution;
+- tray quits mid-session — explicit requests retain the same bounded installed execution;
   uncertain in-flight writes remain unknown, with no fallback store or replay;
 - incompatible version;
 - store identity mismatch;
 - backend death;
-- no local fallback after tray-daemon bind;
+- no local fallback after installed-owner binding;
 - migration-required path.
 
 ## Event/evidence
@@ -912,7 +912,7 @@ does not prescribe rollout phases.
 - raw trace not silently inserted into Cortex;
 - admitted durable record goes to Cortex;
 - document virtual source goes to Ledger only after qualification;
-- no duplicate CodeRight memory DB when the tray-daemon Cortex binding is selected.
+- no duplicate CodeRight memory DB when installed Cortex binding is selected.
 
 ---
 
@@ -977,7 +977,7 @@ Do not:
 - make Adapt the generic trace/eval database;
 - make Cortex the generic high-volume observability database;
 - maintain a CodeRight document index competing with Ledger;
-- open any local/embedded memory store after a tray-daemon binding is lost;
+- open any local/embedded memory store after an installed-owner binding is lost;
 - execute unversioned evaluators;
 - tune routing/harness changes on the final held-out benchmark;
 - claim model/harness improvement without baseline comparison.
