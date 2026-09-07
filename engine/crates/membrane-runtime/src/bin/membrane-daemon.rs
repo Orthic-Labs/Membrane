@@ -17,6 +17,7 @@ use membrane_protocol::{
 };
 use membrane_runtime::background_review::{
     execute_background_semantic_review, AuthenticatedLoopbackSemanticReviewProvider,
+    BackgroundSemanticReviewProvider, DeterministicFirstPartySemanticReviewProvider,
     BackgroundReviewCompletion, BackgroundReviewCursorStore, BackgroundReviewProducer,
     BackgroundReviewScheduler, BackgroundSemanticReviewInputV1,
     JsonlBackgroundReviewObservationSink, JsonlBackgroundReviewProposalAdmission,
@@ -63,21 +64,30 @@ struct BackgroundReviewInputSnapshot {
 }
 
 struct DaemonBackgroundExecutor {
-    provider: Option<AuthenticatedLoopbackSemanticReviewProvider>,
+    /// Always present. The authenticated loopback client takes precedence when
+    /// an endpoint is configured; otherwise the in-process deterministic
+    /// first-party analyzer runs, so a default deployment still produces
+    /// governed proposals instead of silently doing nothing.
+    provider: Box<dyn BackgroundSemanticReviewProvider>,
     cursor_store: BackgroundReviewCursorStore,
     proposal_sink: JsonlBackgroundReviewProposalAdmission,
-    last_missing_provider_at: Option<u64>,
 }
 
 impl DaemonBackgroundExecutor {
     fn new(root: &PathBuf, bearer_token: &str) -> Self {
-        let provider =
-            AuthenticatedLoopbackSemanticReviewProvider::from_environment(bearer_token).ok();
+        let (provider, provider_label): (Box<dyn BackgroundSemanticReviewProvider>, _) =
+            match AuthenticatedLoopbackSemanticReviewProvider::from_environment(bearer_token) {
+                Ok(loopback) => (Box::new(loopback), "authenticated_loopback"),
+                Err(_) => (
+                    Box::new(DeterministicFirstPartySemanticReviewProvider::new()),
+                    "deterministic_first_party",
+                ),
+            };
+        eprintln!("membrane-daemon background-semantic-provider={provider_label}");
         Self {
             provider,
             cursor_store: BackgroundReviewCursorStore::default(),
             proposal_sink: JsonlBackgroundReviewProposalAdmission::from_workspace_root(root),
-            last_missing_provider_at: None,
         }
     }
 
@@ -97,16 +107,7 @@ impl DaemonBackgroundExecutor {
     }
 
     fn tick(&mut self, root: &PathBuf, scheduler: &BackgroundReviewScheduler, now: u64) {
-        let Some(provider) = self.provider.as_ref() else {
-            if self
-                .last_missing_provider_at
-                .map_or(true, |last| now.saturating_sub(last) >= 5_000)
-            {
-                scheduler.observe_deferred(BackgroundReviewReasonV1::SemanticProviderNotWired, now);
-                self.last_missing_provider_at = Some(now);
-            }
-            return;
-        };
+        let provider = self.provider.as_ref();
         let input_path = Self::input_path(root);
         let snapshot = match fs::read_to_string(&input_path)
             .ok()

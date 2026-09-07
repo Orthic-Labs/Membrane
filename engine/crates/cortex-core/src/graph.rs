@@ -27,7 +27,7 @@ pub struct MemoryNode {
 }
 
 /// A directed edge between two nodes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MemoryEdge {
     /// Source node id.
     pub from: String,
@@ -62,6 +62,50 @@ pub enum EdgeRejection {
     NonCanonicalRelation,
     /// An endpoint has no resolved node in this graph.
     DanglingEndpoint,
+    /// Producer or reference missing: an evidence edge cannot be
+    /// provenance-free (CTX-017).
+    MissingProvenance,
+}
+
+/// Where a canonical evidence relation came from. Every durable edge carries
+/// one; an edge without provenance is not admissible.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelationProvenance {
+    /// Producer/subsystem identity that asserted the edge.
+    pub producer: String,
+    /// The specific evidence: event id, digest, or document reference.
+    pub reference: String,
+}
+
+impl RelationProvenance {
+    pub fn new(producer: impl Into<String>, reference: impl Into<String>) -> Self {
+        Self {
+            producer: producer.into(),
+            reference: reference.into(),
+        }
+    }
+
+    fn is_bound(&self) -> bool {
+        !self.producer.trim().is_empty() && !self.reference.trim().is_empty()
+    }
+}
+
+/// A provenance-bound canonical evidence relation held in the graph. Mirrors
+/// the durable `memory_relation` row in `cortex_store::memdb`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceRelation {
+    pub edge: MemoryEdge,
+    pub provenance: RelationProvenance,
+}
+
+/// Why a stored evidence relation does not traverse as live evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationDiagnostic {
+    /// Target has no resolved node.
+    DanglingTarget,
+    /// Target resolves but is not valid at the traversal timestamp
+    /// (invalidated / superseded / suppressed window).
+    LifecycleIneligible,
 }
 
 /// In-process bi-temporal knowledge graph.
@@ -69,6 +113,11 @@ pub enum EdgeRejection {
 pub struct MemoryGraph {
     nodes: HashMap<String, MemoryNode>,
     edges: Vec<MemoryEdge>,
+    /// CTX-017 provenance-bound evidence relations. Kept separate from the
+    /// permissive `edges` list so raw ingest can never masquerade as governed
+    /// evidence.
+    #[serde(default)]
+    relations: Vec<EvidenceRelation>,
 }
 
 impl MemoryGraph {
@@ -77,6 +126,7 @@ impl MemoryGraph {
         Self {
             nodes: HashMap::new(),
             edges: Vec::new(),
+            relations: Vec::new(),
         }
     }
 
@@ -103,6 +153,85 @@ impl MemoryGraph {
         }
         self.edges.push(edge);
         Ok(())
+    }
+
+    /// Admit a provenance-bound evidence relation (CTX-017). The relation must
+    /// be in the closed vocabulary, carry non-empty provenance, and have a
+    /// resolved source. A **dangling target is accepted and retained as a
+    /// diagnostic**, mirroring durable storage: it is visible through
+    /// [`MemoryGraph::relation_diagnostics`] but never traverses.
+    pub fn add_evidence_relation(
+        &mut self,
+        relation: EvidenceRelation,
+    ) -> Result<(), EdgeRejection> {
+        if !is_canonical_relation(&relation.edge.relation) {
+            return Err(EdgeRejection::NonCanonicalRelation);
+        }
+        if !relation.provenance.is_bound() {
+            return Err(EdgeRejection::MissingProvenance);
+        }
+        if !self.nodes.contains_key(&relation.edge.from) {
+            return Err(EdgeRejection::DanglingEndpoint);
+        }
+        self.relations.retain(|existing| {
+            existing.edge.from != relation.edge.from
+                || existing.edge.to != relation.edge.to
+                || existing.edge.relation != relation.edge.relation
+        });
+        self.relations.push(relation);
+        Ok(())
+    }
+
+    /// Every stored evidence relation on `id` with its disposition at
+    /// `timestamp`: `None` means live traversable evidence. This is the
+    /// diagnostic view; dangling and lifecycle-ineligible edges appear only
+    /// here.
+    pub fn relation_diagnostics(
+        &self,
+        id: &str,
+        timestamp: &str,
+    ) -> Vec<(&EvidenceRelation, Option<RelationDiagnostic>)> {
+        self.relations
+            .iter()
+            .filter(|relation| relation.edge.from == id)
+            .map(|relation| {
+                let diagnostic = match self.nodes.get(&relation.edge.to) {
+                    None => Some(RelationDiagnostic::DanglingTarget),
+                    Some(node) => {
+                        let live = node.valid_from.as_str() <= timestamp
+                            && node
+                                .valid_to
+                                .as_ref()
+                                .is_none_or(|until| until.as_str() > timestamp);
+                        if live {
+                            None
+                        } else {
+                            Some(RelationDiagnostic::LifecycleIneligible)
+                        }
+                    }
+                };
+                (relation, diagnostic)
+            })
+            .collect()
+    }
+
+    /// Traversal view: only resolved, provenance-bound, lifecycle-applicable
+    /// evidence relations valid at `timestamp`.
+    pub fn evidence_neighbors(&self, id: &str, timestamp: &str) -> Vec<(&EvidenceRelation, &MemoryNode)> {
+        self.relation_diagnostics(id, timestamp)
+            .into_iter()
+            .filter(|(_, diagnostic)| diagnostic.is_none())
+            .filter_map(|(relation, _)| {
+                self.nodes
+                    .get(&relation.edge.to)
+                    .map(|node| (relation, node))
+            })
+            .collect()
+    }
+
+    /// All stored evidence relations, regardless of disposition.
+    pub fn all_evidence_relations(&self) -> &[EvidenceRelation] {
+        &self.relations
     }
 
     /// True when an edge is traversable evidence: closed-vocabulary relation
@@ -460,5 +589,109 @@ mod tests {
         assert!(graph.canonical_neighbors("missing").is_empty());
         // Legacy tolerant view is unchanged for diagnostic consumers.
         assert_eq!(graph.neighbors("n1").len(), 2);
+    }
+
+    // ---- CTX-017: provenance-bound evidence relations -----------------------
+
+    fn evidence(from: &str, to: &str, relation: &str) -> EvidenceRelation {
+        EvidenceRelation {
+            edge: make_edge(from, to, relation),
+            provenance: RelationProvenance::new("cortex.ingest", "event.abc123"),
+        }
+    }
+
+    const NOW: &str = "2026-09-07T00:00:00Z";
+
+    #[test]
+    fn each_canonical_relation_traverses_when_resolved_and_live() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("a", "source"));
+        for relation in CANONICAL_RELATIONS {
+            graph.add_node(make_node(relation, "target"));
+            graph
+                .add_evidence_relation(evidence("a", relation, relation))
+                .expect("admitted");
+        }
+        let mut kinds: Vec<&str> = graph
+            .evidence_neighbors("a", NOW)
+            .into_iter()
+            .map(|(relation, _)| relation.edge.relation.as_str())
+            .collect();
+        kinds.sort_unstable();
+        let mut expected = CANONICAL_RELATIONS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(kinds, expected);
+        assert!(graph
+            .evidence_neighbors("a", NOW)
+            .iter()
+            .all(|(relation, _)| relation.provenance.producer == "cortex.ingest"));
+    }
+
+    #[test]
+    fn dangling_evidence_relation_is_diagnostic_but_never_traversable() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("a", "source"));
+        graph
+            .add_evidence_relation(evidence("a", "missing", "derived_from"))
+            .expect("retained as diagnostic");
+        let diagnostics = graph.relation_diagnostics("a", NOW);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].1, Some(RelationDiagnostic::DanglingTarget));
+        assert!(graph.evidence_neighbors("a", NOW).is_empty());
+    }
+
+    #[test]
+    fn lifecycle_ineligible_target_is_diagnostic_but_never_traversable() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("a", "source"));
+        graph.add_node(make_node("b", "target"));
+        graph
+            .add_evidence_relation(evidence("a", "b", "contradicts"))
+            .expect("admitted");
+        assert_eq!(graph.evidence_neighbors("a", NOW).len(), 1);
+
+        graph.invalidate("b", "2026-08-01T00:00:00Z".to_string());
+        let diagnostics = graph.relation_diagnostics("a", NOW);
+        assert_eq!(diagnostics.len(), 1, "still visible diagnostically");
+        assert_eq!(
+            diagnostics[0].1,
+            Some(RelationDiagnostic::LifecycleIneligible)
+        );
+        assert!(graph.evidence_neighbors("a", NOW).is_empty());
+    }
+
+    #[test]
+    fn evidence_relations_require_vocabulary_provenance_and_resolved_source() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("a", "source"));
+        graph.add_node(make_node("b", "target"));
+        assert_eq!(
+            graph.add_evidence_relation(evidence("a", "b", "mentions")),
+            Err(EdgeRejection::NonCanonicalRelation)
+        );
+        let mut unprovenanced = evidence("a", "b", "supports");
+        unprovenanced.provenance.reference = "  ".to_string();
+        assert_eq!(
+            graph.add_evidence_relation(unprovenanced),
+            Err(EdgeRejection::MissingProvenance)
+        );
+        assert_eq!(
+            graph.add_evidence_relation(evidence("nobody", "b", "supports")),
+            Err(EdgeRejection::DanglingEndpoint)
+        );
+        assert!(graph.all_evidence_relations().is_empty());
+
+        // Re-admitting the same triple refreshes rather than duplicating.
+        graph
+            .add_evidence_relation(evidence("a", "b", "supports"))
+            .unwrap();
+        let mut refreshed = evidence("a", "b", "supports");
+        refreshed.provenance.reference = "event.def456".to_string();
+        graph.add_evidence_relation(refreshed).unwrap();
+        assert_eq!(graph.all_evidence_relations().len(), 1);
+        assert_eq!(
+            graph.all_evidence_relations()[0].provenance.reference,
+            "event.def456"
+        );
     }
 }

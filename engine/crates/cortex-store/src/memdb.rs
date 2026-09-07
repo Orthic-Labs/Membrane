@@ -216,9 +216,203 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 );
 ";
 
+/// CTX-017 closed relation vocabulary, mirroring
+/// `cortex_core::graph::CANONICAL_RELATIONS`. cortex-store does not depend on
+/// cortex-core, so the two lists are kept in lockstep by an equality test in
+/// membrane-runtime (which depends on both) and by the `CHECK` constraint in
+/// [`MEMORY_RELATION_SCHEMA`].
+pub const CANONICAL_RELATIONS: &[&str] = &["supports", "contradicts", "supersedes", "derived_from"];
+
+/// True when `relation` is a member of the closed CTX-017 vocabulary.
+pub fn is_canonical_relation(relation: &str) -> bool {
+    CANONICAL_RELATIONS.contains(&relation)
+}
+
+/// An evidence relation offered for durable admission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CanonicalRelationEdge {
+    pub source_id: String,
+    pub target_id: String,
+    /// One of [`CANONICAL_RELATIONS`].
+    pub relation: String,
+    /// Who produced this edge (subsystem/producer identity).
+    pub provenance_producer: String,
+    /// The specific evidence the edge came from (event id, digest, doc ref).
+    pub provenance_ref: String,
+    pub created_at: String,
+}
+
+/// Outcome of a successful admission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelationAdmission {
+    pub relation_id: String,
+    /// False when the edge was stored but its target does not resolve; such
+    /// an edge is diagnostic only and never traverses.
+    pub target_resolved: bool,
+}
+
+/// Typed refusal of an admission attempt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationRejection {
+    /// Relation outside the closed CTX-017 vocabulary.
+    NonCanonicalRelation,
+    /// Producer or reference missing: an edge cannot be provenance-free.
+    MissingProvenance,
+    /// The source record does not resolve; an edge from nowhere is not evidence.
+    UnresolvedSource,
+    Storage(String),
+}
+
+impl RelationRejection {
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NonCanonicalRelation => "non_canonical_relation",
+            Self::MissingProvenance => "missing_provenance",
+            Self::UnresolvedSource => "unresolved_source",
+            Self::Storage(_) => "relation_storage_error",
+        }
+    }
+}
+
+/// Why a stored relation is not traversable as live evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationDiagnostic {
+    /// The target id has no row in `memories`: forgotten, never ingested, or
+    /// quarantined out of the live table.
+    DanglingTarget,
+    /// The target resolves but is not live evidence — `superseded`,
+    /// otherwise non-active, or recall-suppressed.
+    LifecycleIneligible(String),
+}
+
+/// A durable relation plus its read-time disposition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredRelation {
+    pub relation_id: String,
+    pub edge: CanonicalRelationEdge,
+    /// None when the edge is live traversable evidence.
+    pub diagnostic: Option<RelationDiagnostic>,
+}
+
+impl StoredRelation {
+    /// Traversable exactly when there is no diagnostic reason not to.
+    pub fn traversable(&self) -> bool {
+        self.diagnostic.is_none()
+    }
+}
+
+fn table_present(conn: &Connection, table: &str) -> rusqlite::Result<bool> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        [table],
+        |row| row.get(0),
+    )
+}
+
+/// Read every stored relation on `source_id` and classify each one. Lifecycle
+/// eligibility mirrors the recall predicate: the target must exist, be
+/// `active` with no `superseded_by`, must not be quarantined, and must not be
+/// recall-suppressed. `cortex_recall_suppression_v1` and `memory_quarantine`
+/// are probed for existence first, because older/partially-initialised
+/// databases may not carry them.
+fn stored_relations(conn: &Connection, source_id: &str) -> Result<Vec<StoredRelation>, String> {
+    let suppression_present =
+        table_present(conn, "cortex_recall_suppression_v1").map_err(|e| e.to_string())?;
+    let quarantine_present =
+        table_present(conn, "memory_quarantine").map_err(|e| e.to_string())?;
+    let suppressed_clause = if suppression_present {
+        "EXISTS(SELECT 1 FROM cortex_recall_suppression_v1 s
+                 WHERE s.memory_id = r.target_id AND s.suppressed = 1)"
+    } else {
+        "0"
+    };
+    let quarantined_clause = if quarantine_present {
+        "EXISTS(SELECT 1 FROM memory_quarantine q WHERE q.id = r.target_id)"
+    } else {
+        "0"
+    };
+    let sql = format!(
+        "SELECT r.relation_id, r.source_id, r.target_id, r.relation,
+                r.provenance_producer, r.provenance_ref, r.created_at,
+                EXISTS(SELECT 1 FROM memories m WHERE m.id = r.target_id) AS resolved,
+                COALESCE((SELECT m.lifecycle_state FROM memories m WHERE m.id = r.target_id), '') AS state,
+                COALESCE((SELECT m.superseded_by IS NOT NULL FROM memories m WHERE m.id = r.target_id), 0) AS superseded,
+                {suppressed_clause} AS suppressed,
+                {quarantined_clause} AS quarantined
+           FROM memory_relation r
+          WHERE r.source_id = ?1
+          ORDER BY r.relation, r.target_id"
+    );
+    let mut statement = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = statement
+        .query_map([source_id], |row| {
+            let relation_id: String = row.get(0)?;
+            let edge = CanonicalRelationEdge {
+                source_id: row.get(1)?,
+                target_id: row.get(2)?,
+                relation: row.get(3)?,
+                provenance_producer: row.get(4)?,
+                provenance_ref: row.get(5)?,
+                created_at: row.get(6)?,
+            };
+            let resolved: bool = row.get(7)?;
+            let state: String = row.get(8)?;
+            let superseded: bool = row.get(9)?;
+            let suppressed: bool = row.get(10)?;
+            let quarantined: bool = row.get(11)?;
+            let diagnostic = if !resolved {
+                Some(RelationDiagnostic::DanglingTarget)
+            } else if quarantined {
+                Some(RelationDiagnostic::LifecycleIneligible("quarantined".into()))
+            } else if suppressed {
+                Some(RelationDiagnostic::LifecycleIneligible(
+                    "recall_suppressed".into(),
+                ))
+            } else if superseded {
+                Some(RelationDiagnostic::LifecycleIneligible("superseded".into()))
+            } else if state != "active" {
+                Some(RelationDiagnostic::LifecycleIneligible(format!(
+                    "lifecycle_state_{state}"
+                )))
+            } else {
+                None
+            };
+            Ok(StoredRelation {
+                relation_id,
+                edge,
+                diagnostic,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())
+}
+
+/// CTX-017 canonical evidence-relation storage (schema v27).
+///
+/// One row per admitted edge. `relation` is constrained to the closed
+/// vocabulary; provenance is mandatory and non-empty, so no edge can exist
+/// without a recorded origin. Endpoints are plain text, not foreign keys:
+/// a dangling edge stays queryable as a diagnostic and is excluded from
+/// traversal by [`MemDb::traversable_relations_from`].
+pub const MEMORY_RELATION_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS memory_relation (
+    relation_id         TEXT PRIMARY KEY,
+    source_id           TEXT NOT NULL,
+    target_id           TEXT NOT NULL,
+    relation            TEXT NOT NULL CHECK(relation IN ('supports','contradicts','supersedes','derived_from')),
+    provenance_producer TEXT NOT NULL CHECK(trim(provenance_producer) <> ''),
+    provenance_ref      TEXT NOT NULL CHECK(trim(provenance_ref) <> ''),
+    created_at          TEXT NOT NULL,
+    UNIQUE(source_id, target_id, relation)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_relation_source ON memory_relation(source_id, relation);
+CREATE INDEX IF NOT EXISTS idx_memory_relation_target ON memory_relation(target_id, relation);
+";
+
 /// Current durable Cortex schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 26;
+pub const LATEST_SCHEMA_VERSION: i64 = 27;
 
 /// CTX-004: the explicit marker used when sensitivity or derivation metadata
 /// is not known for a record — legacy rows backfilled by migration 26, or any
@@ -1334,6 +1528,31 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     require_columns(&tx, table, &["sensitivity", "derivation"])?;
                 }
             }
+            27 => {
+                // CTX-017: durable persistence for the closed evidence-relation
+                // vocabulary. `supersedes` already had a durable path
+                // (`memories.superseded_by`); `supports`, `contradicts` and
+                // `derived_from` had none, so three quarters of the vocabulary
+                // could not be persisted at all. The table stores every admitted
+                // edge with its provenance. Resolution is deliberately NOT a
+                // foreign key: an edge whose target has been forgotten or
+                // quarantined must stay visible as a diagnostic row, and is
+                // filtered out of traversal at read time instead of vanishing.
+                tx.execute_batch(MEMORY_RELATION_SCHEMA)?;
+                require_columns(
+                    &tx,
+                    "memory_relation",
+                    &[
+                        "relation_id",
+                        "source_id",
+                        "target_id",
+                        "relation",
+                        "provenance_producer",
+                        "provenance_ref",
+                        "created_at",
+                    ],
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1341,6 +1560,50 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         version = next;
     }
     Ok(())
+}
+
+/// Transactionally return a schema-v27 database to v26 without destroying
+/// evidence v26 cannot represent.
+///
+/// v26 can represent exactly one of the four canonical relations: a
+/// `supersedes` edge whose source row already carries `superseded_by =
+/// target`. Such rows are redundant with the column and are dropped
+/// losslessly. Any other stored edge — `supports`, `contradicts`,
+/// `derived_from`, or a `supersedes` edge not mirrored by the column — has no
+/// v26 representation, so the backout aborts with `InvalidQuery` rather than
+/// silently stranding it, following the `backout_v10_to_v9` precedent.
+/// Returns the number of losslessly discarded (column-mirrored) edges.
+pub fn backout_v27_to_v26<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
+    let mut conn = Connection::open(path.as_ref())?;
+    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 27 {
+        return Ok(0);
+    }
+    if version != 27 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let non_representable: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM memory_relation r
+          WHERE r.relation <> 'supersedes'
+             OR NOT EXISTS (SELECT 1 FROM memories m
+                             WHERE m.id = r.source_id AND m.superseded_by = r.target_id)",
+        [],
+        |row| row.get(0),
+    )?;
+    if non_representable != 0 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let mirrored: i64 = tx.query_row("SELECT COUNT(*) FROM memory_relation", [], |row| row.get(0))?;
+    tx.execute_batch(
+        "DROP INDEX IF EXISTS idx_memory_relation_target;
+         DROP INDEX IF EXISTS idx_memory_relation_source;
+         DROP TABLE IF EXISTS memory_relation;
+         PRAGMA user_version = 26;",
+    )?;
+    tx.commit()?;
+    Ok(mirrored as usize)
 }
 
 fn backout_v26_to_v25(path: &Path) -> rusqlite::Result<()> {
@@ -1402,6 +1665,7 @@ fn backout_v25_to_v24(path: &Path) -> rusqlite::Result<()> {
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v27_to_v26(path)?;
     backout_v26_to_v25(path)?;
     backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
@@ -1551,6 +1815,16 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
             backout_v20_to_v19(path)
         }
         26 => {
+            backout_v26_to_v25(path)?;
+            backout_v25_to_v24(path)?;
+            backout_v24_to_v23(path)?;
+            backout_v23_to_v22(path)?;
+            backout_v22_to_v21(path)?;
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
+        27 => {
+            backout_v27_to_v26(path)?;
             backout_v26_to_v25(path)?;
             backout_v25_to_v24(path)?;
             backout_v24_to_v23(path)?;
@@ -2100,6 +2374,128 @@ impl MemDb {
 
     pub fn lock_events(&self) -> MutexGuard<'_, Connection> {
         self.event_conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// CTX-017: admit one canonical evidence relation.
+    ///
+    /// Admission requires a closed-vocabulary relation, a resolved *source*
+    /// (an edge from nowhere is meaningless) and non-empty provenance. The
+    /// **target is not required to resolve**: an edge to a forgotten,
+    /// quarantined or not-yet-ingested record is stored and reported as a
+    /// diagnostic, and traversal excludes it. Re-recording the same
+    /// (source, target, relation) refreshes provenance rather than duplicating.
+    pub fn record_canonical_relation(
+        &self,
+        edge: &CanonicalRelationEdge,
+    ) -> Result<RelationAdmission, RelationRejection> {
+        if !is_canonical_relation(&edge.relation) {
+            return Err(RelationRejection::NonCanonicalRelation);
+        }
+        if edge.provenance_producer.trim().is_empty() || edge.provenance_ref.trim().is_empty() {
+            return Err(RelationRejection::MissingProvenance);
+        }
+        if edge.source_id.trim().is_empty() || edge.target_id.trim().is_empty() {
+            return Err(RelationRejection::UnresolvedSource);
+        }
+        let conn = self.lock();
+        Self::record_canonical_relation_on(&conn, edge)
+    }
+
+    /// Same admission as `record_canonical_relation`, but on a caller-held
+    /// connection or transaction.
+    ///
+    /// The production writers of these relations are already inside the
+    /// transaction that creates the fact the relation describes — a
+    /// supersession updates `memories` and records the `supersedes` edge as one
+    /// act. Recording the edge afterwards on a fresh lock would let a crash
+    /// between the two commit a supersession with no evidence relation, which
+    /// is precisely the divergence this table exists to prevent. SQLite has no
+    /// nested transactions, so a caller holding one must use this.
+    pub fn record_canonical_relation_on(
+        conn: &Connection,
+        edge: &CanonicalRelationEdge,
+    ) -> Result<RelationAdmission, RelationRejection> {
+        if !is_canonical_relation(&edge.relation) {
+            return Err(RelationRejection::NonCanonicalRelation);
+        }
+        if edge.provenance_producer.trim().is_empty() || edge.provenance_ref.trim().is_empty() {
+            return Err(RelationRejection::MissingProvenance);
+        }
+        if edge.source_id.trim().is_empty() || edge.target_id.trim().is_empty() {
+            return Err(RelationRejection::UnresolvedSource);
+        }
+        let source_resolved: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM memories WHERE id=?1)",
+                [&edge.source_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| RelationRejection::Storage(error.to_string()))?;
+        if !source_resolved {
+            return Err(RelationRejection::UnresolvedSource);
+        }
+        let target_resolved: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM memories WHERE id=?1)",
+                [&edge.target_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| RelationRejection::Storage(error.to_string()))?;
+        let relation_id = format!(
+            "rel.{}",
+            hex::encode(<sha2::Sha256 as sha2::Digest>::digest(
+                format!("{}|{}|{}", edge.source_id, edge.relation, edge.target_id).as_bytes()
+            ))
+        );
+        conn.execute(
+            "INSERT INTO memory_relation
+                (relation_id, source_id, target_id, relation, provenance_producer,
+                 provenance_ref, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(source_id, target_id, relation) DO UPDATE SET
+                provenance_producer=excluded.provenance_producer,
+                provenance_ref=excluded.provenance_ref,
+                created_at=excluded.created_at",
+            rusqlite::params![
+                relation_id,
+                edge.source_id,
+                edge.target_id,
+                edge.relation,
+                edge.provenance_producer,
+                edge.provenance_ref,
+                edge.created_at,
+            ],
+        )
+        .map_err(|error| RelationRejection::Storage(error.to_string()))?;
+        Ok(RelationAdmission {
+            relation_id,
+            target_resolved,
+        })
+    }
+
+    /// Every stored relation on `source_id`, with its diagnostic disposition.
+    /// This is the diagnostic view: dangling and lifecycle-ineligible edges
+    /// are present here and only here.
+    pub fn canonical_relations_from(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<StoredRelation>, String> {
+        let conn = self.lock();
+        stored_relations(&conn, source_id)
+    }
+
+    /// Only relations that may be traversed as live evidence: canonical
+    /// relation, resolved target, and a target that is lifecycle-eligible
+    /// (active, not superseded, not quarantined, not recall-suppressed).
+    pub fn traversable_relations_from(
+        &self,
+        source_id: &str,
+    ) -> Result<Vec<StoredRelation>, String> {
+        Ok(self
+            .canonical_relations_from(source_id)?
+            .into_iter()
+            .filter(|relation| relation.traversable())
+            .collect())
     }
 
     pub fn event_db_path(&self) -> Option<&Path> {
@@ -4285,5 +4681,235 @@ mod tests {
             quality.unknown_last_ts.as_deref(),
             Some("2026-07-09T00:00:03Z")
         );
+    }
+
+    // ---- CTX-017: canonical evidence relations -------------------------------
+
+    fn seed_memory(db: &MemDb, id: &str, lifecycle: &str, superseded_by: Option<&str>) {
+        let conn = db.lock();
+        conn.execute(
+            "INSERT INTO memories
+                (id,tier,content,keywords,score,created_at,updated_at,access_count,scope_id,
+                 inject_count,source_ids,lifecycle_state,superseded_by)
+             VALUES (?1,'\"Semantic\"','body','[]',0.5,'t','t',0,'global',0,'[]',?2,?3)",
+            rusqlite::params![id, lifecycle, superseded_by],
+        )
+        .unwrap();
+    }
+
+    fn edge(source: &str, target: &str, relation: &str) -> CanonicalRelationEdge {
+        CanonicalRelationEdge {
+            source_id: source.into(),
+            target_id: target.into(),
+            relation: relation.into(),
+            provenance_producer: "cortex.ingest".into(),
+            provenance_ref: "event.abc123".into(),
+            created_at: "2026-09-07T00:00:00Z".into(),
+        }
+    }
+
+    #[test]
+    fn every_canonical_relation_persists_and_traverses_when_resolved() {
+        let db = MemDb::open_in_memory();
+        seed_memory(&db, "global/source", "active", None);
+        for relation in CANONICAL_RELATIONS {
+            seed_memory(&db, &format!("global/{relation}"), "active", None);
+            let admission = db
+                .record_canonical_relation(&edge(
+                    "global/source",
+                    &format!("global/{relation}"),
+                    relation,
+                ))
+                .expect("canonical relation admitted");
+            assert!(admission.target_resolved, "{relation} target resolves");
+        }
+
+        let traversable = db.traversable_relations_from("global/source").unwrap();
+        assert_eq!(traversable.len(), CANONICAL_RELATIONS.len());
+        let mut kinds: Vec<&str> = traversable
+            .iter()
+            .map(|stored| stored.edge.relation.as_str())
+            .collect();
+        kinds.sort_unstable();
+        let mut expected: Vec<&str> = CANONICAL_RELATIONS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(kinds, expected);
+        // Provenance survives the round trip on every edge.
+        assert!(traversable
+            .iter()
+            .all(|stored| stored.edge.provenance_producer == "cortex.ingest"
+                && stored.edge.provenance_ref == "event.abc123"));
+    }
+
+    #[test]
+    fn relations_survive_reopen_and_refresh_provenance_without_duplicating() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("relations.db");
+        {
+            let db = MemDb::open(&path).unwrap();
+            seed_memory(&db, "global/a", "active", None);
+            seed_memory(&db, "global/b", "active", None);
+            db.record_canonical_relation(&edge("global/a", "global/b", "supports"))
+                .unwrap();
+            let mut refreshed = edge("global/a", "global/b", "supports");
+            refreshed.provenance_ref = "event.def456".into();
+            db.record_canonical_relation(&refreshed).unwrap();
+        }
+        let db = MemDb::open(&path).unwrap();
+        let stored = db.canonical_relations_from("global/a").unwrap();
+        assert_eq!(stored.len(), 1, "same triple must not duplicate");
+        assert_eq!(stored[0].edge.provenance_ref, "event.def456");
+        assert!(stored[0].traversable());
+    }
+
+    #[test]
+    fn dangling_target_is_diagnostic_and_never_traversable() {
+        let db = MemDb::open_in_memory();
+        seed_memory(&db, "global/a", "active", None);
+        let admission = db
+            .record_canonical_relation(&edge("global/a", "global/missing", "derived_from"))
+            .expect("stored as diagnostic");
+        assert!(!admission.target_resolved);
+
+        let diagnostic = db.canonical_relations_from("global/a").unwrap();
+        assert_eq!(diagnostic.len(), 1, "visible diagnostically");
+        assert_eq!(
+            diagnostic[0].diagnostic,
+            Some(RelationDiagnostic::DanglingTarget)
+        );
+        assert!(db
+            .traversable_relations_from("global/a")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn lifecycle_ineligible_targets_are_diagnostic_and_never_traversable() {
+        let db = MemDb::open_in_memory();
+        seed_memory(&db, "global/a", "active", None);
+        seed_memory(&db, "global/live", "active", None);
+        seed_memory(&db, "global/gone", "superseded", Some("global/live"));
+        seed_memory(&db, "global/archived", "archived", None);
+        seed_memory(&db, "global/quarantined", "active", None);
+        {
+            let conn = db.lock();
+            conn.execute(
+                "INSERT INTO memory_quarantine
+                    (id,tier,content,keywords,score,created_at,updated_at,access_count,scope_id,
+                     inject_count,source_ids,quarantined_at,reason)
+                 VALUES ('global/quarantined','\"Semantic\"','body','[]',0.5,'t','t',0,'global',0,
+                         '[]','t','test')",
+                [],
+            )
+            .unwrap();
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS cortex_recall_suppression_v1(
+                    memory_id TEXT PRIMARY KEY, suppressed INTEGER NOT NULL);
+                 INSERT INTO cortex_recall_suppression_v1(memory_id,suppressed)
+                 VALUES ('global/live', 1);",
+            )
+            .unwrap();
+        }
+        for (target, relation) in [
+            ("global/gone", "supports"),
+            ("global/archived", "contradicts"),
+            ("global/quarantined", "derived_from"),
+            ("global/live", "supersedes"),
+        ] {
+            db.record_canonical_relation(&edge("global/a", target, relation))
+                .expect("stored");
+        }
+
+        let diagnostic = db.canonical_relations_from("global/a").unwrap();
+        assert_eq!(diagnostic.len(), 4, "all four remain diagnostically visible");
+        assert!(
+            diagnostic
+                .iter()
+                .all(|stored| matches!(
+                    stored.diagnostic,
+                    Some(RelationDiagnostic::LifecycleIneligible(_))
+                )),
+            "{diagnostic:?}"
+        );
+        assert!(db
+            .traversable_relations_from("global/a")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn relation_admission_refuses_non_canonical_unprovenanced_and_unresolved_source() {
+        let db = MemDb::open_in_memory();
+        seed_memory(&db, "global/a", "active", None);
+        seed_memory(&db, "global/b", "active", None);
+
+        assert_eq!(
+            db.record_canonical_relation(&edge("global/a", "global/b", "mentions")),
+            Err(RelationRejection::NonCanonicalRelation)
+        );
+        let mut unprovenanced = edge("global/a", "global/b", "supports");
+        unprovenanced.provenance_ref = "  ".into();
+        assert_eq!(
+            db.record_canonical_relation(&unprovenanced),
+            Err(RelationRejection::MissingProvenance)
+        );
+        assert_eq!(
+            db.record_canonical_relation(&edge("global/nobody", "global/b", "supports")),
+            Err(RelationRejection::UnresolvedSource)
+        );
+        assert!(db
+            .canonical_relations_from("global/a")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn schema_v27_backout_drops_mirrored_supersedes_and_refuses_to_strand_evidence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("relation-backout.db");
+        {
+            let db = MemDb::open(&path).unwrap();
+            assert_eq!(
+                db.lock()
+                    .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                27
+            );
+            seed_memory(&db, "global/new", "active", None);
+            seed_memory(&db, "global/old", "superseded", Some("global/new"));
+            db.record_canonical_relation(&edge("global/old", "global/new", "supersedes"))
+                .unwrap();
+            db.record_canonical_relation(&edge("global/old", "global/new", "supports"))
+                .unwrap();
+        }
+        // `supports` has no v26 representation: aborting beats stranding it.
+        assert!(backout_v27_to_v26(&path).is_err());
+        {
+            let conn = Connection::open(&path).unwrap();
+            assert_eq!(
+                conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                    .unwrap(),
+                27
+            );
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM memory_relation", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                2
+            );
+            conn.execute("DELETE FROM memory_relation WHERE relation='supports'", [])
+                .unwrap();
+        }
+        // The remaining `supersedes` edge is mirrored by memories.superseded_by,
+        // so dropping it loses nothing.
+        assert_eq!(backout_v27_to_v26(&path).unwrap(), 1);
+        let conn = Connection::open(&path).unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            26
+        );
+        assert!(!table_present(&conn, "memory_relation").unwrap());
+        assert_eq!(backout_v27_to_v26(&path).unwrap(), 0, "idempotent below v27");
     }
 }

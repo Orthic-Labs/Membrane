@@ -43,7 +43,10 @@ pub use embed::FastEmbedder;
 pub use embed::{cosine, Embedder, HashEmbedder, EMBEDDING_MAX_SEQUENCE_TOKENS};
 pub use eval_gate::{EvalGateConfig, MemoryRetrievalEvalGate};
 pub use fingerprint::PipelineFingerprint;
-pub use graph::{MemoryEdge, MemoryGraph, MemoryNode};
+pub use graph::{
+    is_canonical_relation, EdgeRejection, EvidenceRelation, MemoryEdge, MemoryGraph, MemoryNode,
+    RelationDiagnostic, RelationProvenance, CANONICAL_RELATIONS,
+};
 pub use markdown::{parse_markdown, wikilinks, ParsedDoc};
 pub use planner::{
     plan, BlockV1, BudgetV1, CandidateV1, ContextCandidateSetV1, ContextPacketV1, ContextReceiptV2,

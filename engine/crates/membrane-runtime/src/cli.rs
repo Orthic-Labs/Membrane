@@ -1449,8 +1449,12 @@ fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
 
     let mut expired_working_context = Vec::new();
     let mut unresolved_contradictions = Vec::new();
-    if let Some(path) = db.event_db_path() {
-        let events = rusqlite::Connection::open(path).map_err(|error| error.to_string())?;
+    if db.event_db_path().is_some() {
+        // CTX-001: the event ledger is opened, migrated and WAL-configured by
+        // `MemDb::open`; the audit reuses that one authority's handle instead
+        // of opening a second ad-hoc connection that would bypass the
+        // pragmas and the migration ladder.
+        let events = db.lock_events();
         if table_exists(&events, "membrane_working_context")? {
             expired_working_context = query_ids(
                 &events,
@@ -7420,4 +7424,19 @@ fn secret_value_looks_credible(value: &str) -> bool {
         && (compact.chars().any(|character| character.is_ascii_digit())
             || compact.starts_with("sk-")
             || compact.starts_with("ghp_"))
+}
+
+#[cfg(test)]
+mod ctx017_relation_vocabulary_tests {
+    /// CTX-017: cortex-store cannot depend on cortex-core, so the closed
+    /// relation vocabulary is duplicated. membrane-runtime depends on both and
+    /// is the only place the two lists can be proven identical; a divergence
+    /// would let one side admit a relation the other refuses to persist.
+    #[test]
+    fn canonical_relation_vocabulary_matches_across_cortex_crates() {
+        assert_eq!(
+            cortex_store::memdb::CANONICAL_RELATIONS,
+            cortex_core::CANONICAL_RELATIONS
+        );
+    }
 }
