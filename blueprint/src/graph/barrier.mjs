@@ -100,7 +100,8 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
     }
     while (barrierResult === "caught_up") {
       const current = state(db);
-      if (Number(current.applied_clock ?? 0) >= targetClock && current.event_gap !== "1") break;
+      const pendingEvents = Number(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n);
+      if (Number(current.applied_clock ?? 0) >= targetClock && current.event_gap !== "1" && pendingEvents === 0) break;
       if (Date.now() - startedMs >= timeoutMs) { barrierResult = "timeout"; break; }
       await bounded(sleep(Math.min(POLL_MS, Math.max(1, timeoutMs - (Date.now() - startedMs)))), Math.max(1, timeoutMs - (Date.now() - startedMs)), signal);
     }
@@ -161,6 +162,7 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
   const sourceGapOnly = pending.some((domain) => !PHASE2_PRODUCT_DOMAINS.includes(domain));
   const graphMatchesTree =
     Number(finalState.applied_clock ?? 0) >= targetClock
+    && Number(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n) === 0
     && (finalState.event_gap !== "1" || !sourceGapOnly);
   const reseal =
     (barrierResult === "caught_up" || graphMatchesTree) && !sourceGapOnly

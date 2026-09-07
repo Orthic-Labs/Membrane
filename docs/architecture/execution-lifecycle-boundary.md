@@ -43,6 +43,8 @@ One-shot freshness completes deterministic document extraction after applying ev
 
 Blueprint evidence, line coordinates & freshness leaves identify exact source bytes, including README content. Generated README pointers are excluded only from the semantic source signature. Bounded reconciliation repairs authoritative content differences missed by native snapshots or metadata, then rescans before clearing an event gap; legacy normalized README hashes require no store reset.
 
+Incremental dependency repair commits its pre-edit closure with the base delta & retains a pending journal row until that closure completes. Each dependent commits with a durable cursor; restart resumes it before coalescing later same-path events. Parsing & committed updates yield outside write transactions so resident callbacks from other repositories can run. Partial repair remains observably stale for resident & bounded readers.
+
 ## Regression acceptance
 
 For each installed public operation, verify discovery & execution with Hub on & off. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.

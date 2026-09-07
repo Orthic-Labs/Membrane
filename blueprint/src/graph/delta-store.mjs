@@ -300,7 +300,7 @@ export function applyFileDelta(db, delta, options = {}) {
       db.prepare(`UPDATE file_state SET applied_clock=?, last_event_seq=COALESCE(?, last_event_seq),
         size=COALESCE(?, size), mtime_ms=COALESCE(?, mtime_ms), file_identity=COALESCE(?, file_identity) WHERE path=?`)
         .run(acknowledgedClock, delta.journalSeq ?? null, delta.size ?? null, delta.mtimeMs ?? null, delta.fileIdentity ?? null, path);
-      if (delta.journalSeq && hasTable(db, "event_journal")) {
+      if (delta.journalSeq && options.deferJournalAck !== true && hasTable(db, "event_journal")) {
         db.prepare("UPDATE event_journal SET applied = 1, applied_clock = ? WHERE seq = ?").run(acknowledgedClock, delta.journalSeq);
       }
       options.beforeCommit?.(db);
@@ -395,7 +395,7 @@ export function applyFileDelta(db, delta, options = {}) {
       markDomainPending(db, "doc");
     }
     setClock(db, "applied_clock", appliedClock);
-    if (delta.journalSeq && hasTable(db, "event_journal")) {
+    if (delta.journalSeq && options.deferJournalAck !== true && hasTable(db, "event_journal")) {
       db.prepare("UPDATE event_journal SET applied = 1, applied_clock = ? WHERE seq = ?").run(appliedClock, delta.journalSeq);
     }
     if (eventKind !== "repair") incrementTelemetry(db, "deltas_applied");

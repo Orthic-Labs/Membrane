@@ -12,7 +12,6 @@ import { completePendingDocDomain } from "../src/lib/phase2-completion.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 
-const REPAIR_BATCH = 50;
 const DEBOUNCE_MS = 1000;
 const MAX_DRAIN_PASSES = 5;
 
@@ -136,32 +135,61 @@ function writeRepairState(db, state) {
 
 function throwIfAborted(signal) { if (signal?.aborted) throw Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
 
-async function prepareRepairPaths(db, root, paths, readStable = stableRead, signal) {
-  const prepared = [];
-  for (const path of paths) { throwIfAborted(signal); prepared.push({ path, delta: await deltaFor(db, root, { eventKind: "repair", path }, readStable, signal) }); }
-  return prepared;
+async function yieldToCallbacks(signal) {
+  await new Promise((resolve) => setImmediate(resolve));
+  throwIfAborted(signal);
 }
 
-function applyRepairPaths(db, root, prepared, sourceClock, inOuterTransaction) {
-  const batches = [];
-  for (let index = 0; index < prepared.length; index += REPAIR_BATCH) batches.push(prepared.slice(index, index + REPAIR_BATCH));
-  for (const batch of batches) {
-    const ownBatch = !inOuterTransaction;
-    if (ownBatch) db.exec("BEGIN IMMEDIATE");
-    try {
-      for (const { path, delta } of batch) {
-        applyFileDelta(db, { ...delta, sourceClock }, { inTransaction: true, repoRoot: root, outDir: ".agent" });
-      }
-      if (ownBatch) db.exec("COMMIT");
-    } catch (error) {
-      if (ownBatch) db.exec("ROLLBACK");
-      throw error;
-    }
+function readRepairProgress(db) {
+  const raw = stateValue(db, "repair_progress");
+  if (raw == null) return null;
+  try {
+    const plan = JSON.parse(raw);
+    const row = db.prepare("SELECT * FROM event_journal WHERE seq=?").get(plan.seq);
+    if (!row || row.applied !== 0 || row.path !== plan.path || row.source_clock !== plan.sourceClock
+      || !Array.isArray(plan.paths) || !plan.paths.every((path) => typeof path === "string")
+      || !Number.isInteger(plan.nextIndex) || plan.nextIndex < 0 || plan.nextIndex > plan.paths.length
+      || !Number.isFinite(plan.baseAppliedClock) || !Array.isArray(plan.remaining)) throw new Error("invalid repair plan");
+    return plan;
+  } catch {
+    setState(db, "event_gap", 1);
+    setState(db, "event_gap_reason", "repair_progress_corrupt");
+    throw Object.assign(new Error("durable dependent repair progress is corrupt"), { code: "repair_progress_corrupt" });
   }
+}
+
+function finishRepair(db, plan) {
+  writeRepairState(db, plan.truncated ? { path: plan.path, remaining: plan.remaining } : null);
+  db.prepare("UPDATE event_journal SET applied=1, applied_clock=? WHERE seq=?").run(plan.baseAppliedClock, plan.seq);
+  db.prepare("DELETE FROM watch_state WHERE key='repair_progress'").run();
+}
+
+async function resumeRepair(db, root, plan, readStable, signal) {
+  // The base & frozen pre-base closure are already committed. Yield without a
+  // write lock so other repositories' native callbacks can enter their queues.
+  await yieldToCallbacks(signal);
+  while (plan.nextIndex < plan.paths.length) {
+    const path = plan.paths[plan.nextIndex];
+    const delta = await deltaFor(db, root, { eventKind: "repair", path }, readStable, signal);
+    await yieldToCallbacks(signal);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      applyFileDelta(db, { ...delta, sourceClock: plan.sourceClock }, { inTransaction: true, repoRoot: root, outDir: ".agent" });
+      const next = { ...plan, nextIndex: plan.nextIndex + 1 };
+      setState(db, "repair_progress", JSON.stringify(next));
+      db.exec("COMMIT");
+      plan = next;
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+    await yieldToCallbacks(signal);
+  }
+  db.exec("BEGIN IMMEDIATE");
+  try { finishRepair(db, plan); db.exec("COMMIT"); }
+  catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
 async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal) {
   throwIfAborted(signal);
+  let checkedSource = null;
   // Native snapshots can replay changes already included by a full build.
   // Acknowledge identical bytes through the normal delta transaction before
   // loading repository-wide symbol indexes or parsing this file's dependents.
@@ -169,6 +197,7 @@ async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDEN
     const prior = db.prepare("SELECT content_digest FROM file_state WHERE path=?").get(normalizePath(row.path));
     let current;
     try { current = prior && readStable(join(root, row.path)); } catch {}
+    checkedSource = current;
     if (current && current.contentDigest === prior.content_digest) {
       throwIfAborted(signal);
       return applyFileDelta(db, {
@@ -181,29 +210,30 @@ async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDEN
   }
   const closure = collectDependents(db, row.path, { maxHops: MAX_HOPS, maxFiles: maxDependentFiles });
   const event = { eventKind: row.event_kind, path: row.path, renameTo: row.rename_to };
-  const baseDelta = await deltaFor(db, root, event, readStable, signal);
+  // Reuse the stable byte snapshot just checked above; changed files should
+  // not be read twice merely to distinguish an identical replay.
+  const baseRead = (path) => checkedSource && path === join(root, row.path) ? checkedSource : readStable(path);
+  const baseDelta = await deltaFor(db, root, event, baseRead, signal);
   throwIfAborted(signal);
-  const base = applyFileDelta(db, { ...baseDelta, sourceClock: row.source_clock, journalSeq: row.seq }, { repoRoot: root, outDir: ".agent" });
-  let repairDeltas = [];
+  let base;
+  let plan;
+  db.exec("BEGIN IMMEDIATE");
   try {
-    // The base delta is committed before dependent parsing starts. This keeps
-    // all awaits outside write locks while ensuring repair deltas observe the
-    // freshly-applied source facts, matching a cold build.
-    if (base.applied && !base.noop && closure.paths.length) {
-      repairDeltas = await prepareRepairPaths(db, root, closure.paths, readStable, signal);
-      throwIfAborted(signal);
-      if (repairDeltas.length) applyRepairPaths(db, root, repairDeltas, row.source_clock, false);
-    }
-    db.exec("BEGIN IMMEDIATE");
-    if (closure.truncated) writeRepairState(db, { path: row.path, remaining: closure.remaining });
-    else writeRepairState(db, null);
-    db.prepare("UPDATE event_journal SET applied=1, applied_clock=? WHERE seq=?").run(base.appliedClock ?? row.source_clock, row.seq);
+    // Capture closure before base mutation removes incoming dependency edges.
+    // Publish base & recovery plan atomically, retaining the pending journal row
+    // until every dependent completes. A restart never takes the same-hash skip.
+    base = applyFileDelta(db, { ...baseDelta, sourceClock: row.source_clock, journalSeq: row.seq },
+      { inTransaction: true, deferJournalAck: true, repoRoot: root, outDir: ".agent" });
+    plan = { seq: row.seq, sourceClock: row.source_clock, path: row.path,
+      paths: base.noop ? [] : closure.paths, nextIndex: 0,
+      truncated: closure.truncated, remaining: closure.remaining,
+      baseAppliedClock: base.appliedClock ?? row.source_clock };
+    if (plan.paths.length) setState(db, "repair_progress", JSON.stringify(plan));
+    else finishRepair(db, plan);
     db.exec("COMMIT");
-    return base;
-  } catch (error) {
-    try { db.exec("ROLLBACK"); } catch {}
-    throw error;
-  }
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  if (plan.paths.length) await resumeRepair(db, root, plan, readStable, signal);
+  return base;
 }
 
 function pendingRows(db, force = false) {
@@ -219,6 +249,10 @@ function pendingRows(db, force = false) {
 
 export async function drainJournal(db, root, { force = true, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal } = {}) {
   let applied = 0;
+  // Resume before coalescing newer same-path rows: they must not supersede the
+  // journal row that owns partially committed dependent work.
+  const progress = readRepairProgress(db);
+  if (progress) { await resumeRepair(db, root, progress, readStable, signal); applied += 1; }
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass += 1) {
     const rows = pendingRows(db, force);
     if (!rows.length) break;
@@ -551,8 +585,13 @@ export class RepositoryActor extends EventEmitter {
     if (run && !this.active(run)) return undefined;
     if (this.reconcileInFlight) return this.reconcileInFlight;
     const signal = run?.controller.signal ?? this.stopController.signal;
+    const precedingDrain = this.drainInFlight;
     const work = Promise.resolve().then(async () => {
       try {
+        // Capture only already-running work. A later flush waits on this
+        // reconcile instead, preventing both reentry & circular waits.
+        if (precedingDrain) await precedingDrain.catch(() => {});
+        throwIfAborted(signal);
         while (this.reconcilePending) {
           if (run && !this.active(run)) return;
           this.reconcilePending = false;
@@ -593,7 +632,10 @@ export class RepositoryActor extends EventEmitter {
     // never allowed to affect the drain.
     try { this.storeLease?.heartbeat?.(); } catch { /* diagnostic only */ }
     const signal = run?.controller.signal ?? this.stopController.signal;
+    const precedingReconcile = this.reconcileInFlight;
     const drain = (async () => {
+      if (precedingReconcile) await precedingReconcile.catch(() => {});
+      throwIfAborted(signal);
       let applied = 0;
       // Events can arrive while parsing yields. Repeat until both the buffer
       // and journal are caught up, bounded inside drainJournal itself.

@@ -6,13 +6,110 @@ import { join } from "node:path";
 import test from "node:test";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { BlueprintRepositoryWorker, RepositoryActor } from "../src/graph/watchman.mjs";
-import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { closeStore, collectDependents, openStore } from "../src/graph/store-sqlite.mjs";
+import { observeCurrentSourceAtPath, syncToCurrentSource } from "../src/graph/barrier.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
 import { isEligibleWatchPath, normalizeEvents, startWatch, waitForNativeProbe } from "../watchman/adapter.mjs";
 import { appendWatchEvents, drainJournal } from "../watchman/repo-actor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
+
+test("dependent repair yields unlocked, survives cancellation & resumes before same-path coalescing", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-repair-resume-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  let db;
+  let poll;
+  try {
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const storePath = join(repo, ".agent/graph/graph.db");
+    db = openStore(storePath);
+    const closure = collectDependents(db, "src/service.ts").paths;
+    assert.ok(closure.length > 1);
+    const originalOwners = new Map(closure.map((path) => [path, db.prepare("SELECT generation_id FROM fact_owner WHERE source_path=? AND fact_id=?").get(path, `file:${path}`).generation_id]));
+    const source = join(repo, "src/service.ts");
+    writeFileSync(source, `${readFileSync(source, "utf8")}\nexport const resumeRepairProbe = true;\n`);
+    const [first] = appendWatchEvents(db, [{ eventKind: "modify", path: "src/service.ts" }]);
+    const controller = new AbortController();
+    let checkpoint;
+    let later;
+    const observe = () => {
+      assert.equal(db.isTransaction, false, "native callbacks never run inside a write transaction");
+      const raw = db.prepare("SELECT value FROM watch_state WHERE key='repair_progress'").get()?.value;
+      if (raw && JSON.parse(raw).nextIndex === 1) {
+        checkpoint = JSON.parse(raw);
+        assert.equal(db.prepare("SELECT applied FROM event_journal WHERE seq=?").get(first.seq).applied, 0);
+        assert.equal(observeCurrentSourceAtPath(repo).barrierResult, "timeout", "partial closure is not current");
+        [later] = appendWatchEvents(db, [{ eventKind: "modify", path: "src/service.ts" }]);
+        controller.abort();
+      } else poll = setImmediate(observe);
+    };
+    poll = setImmediate(observe);
+    await assert.rejects(drainJournal(db, repo, { signal: controller.signal }), { code: "request_cancelled" });
+    clearImmediate(poll);
+    assert.deepEqual(checkpoint.paths, closure, "pre-base dependency closure remains durable");
+    db.prepare("INSERT OR REPLACE INTO watch_state(key,value) VALUES ('watcher_pid',?)").run(String(process.pid));
+    assert.equal((await syncToCurrentSource(db, repo, { timeoutMs: 30 })).barrierResult, "timeout", "writable barrier also refuses unfinished repair");
+    closeStore(db);
+    db = openStore(storePath);
+    await drainJournal(db, repo);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM watch_state WHERE key='repair_progress'").get().n, 0);
+    assert.equal(db.prepare("SELECT applied FROM event_journal WHERE seq=?").get(first.seq).applied, 1);
+    assert.equal(db.prepare("SELECT applied FROM event_journal WHERE seq=?").get(later.seq).applied, 1);
+    assert.equal(observeCurrentSourceAtPath(repo).barrierResult, "caught_up");
+    for (const path of closure) {
+      const owner = db.prepare("SELECT generation_id FROM fact_owner WHERE source_path=? AND fact_id=?").get(path, `file:${path}`);
+      assert.notEqual(owner.generation_id, originalOwners.get(path), `${path} was re-derived after base mutation`);
+    }
+  } finally { clearImmediate(poll); if (db) closeStore(db); rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("overflow reconciliation waits for yielded dependent repair & later flush waits for reconciliation", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-repair-overflow-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  let actor;
+  let poll;
+  let releaseReconcile;
+  try {
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    let enteredResolve;
+    const entered = new Promise((resolve) => { enteredResolve = resolve; });
+    const release = new Promise((resolve) => { releaseReconcile = resolve; });
+    let planAtReconcile;
+    actor = new RepositoryActor({ root: repo, reconcile: async (db) => {
+      planAtReconcile = db.prepare("SELECT value FROM watch_state WHERE key='repair_progress'").get();
+      enteredResolve();
+      await release;
+      await drainJournal(db, repo);
+      db.prepare("DELETE FROM watch_state WHERE key IN ('event_gap','event_gap_reason')").run();
+    } });
+    const source = join(repo, "src/service.ts");
+    writeFileSync(source, `${readFileSync(source, "utf8")}\nexport const overflowRepairProbe = true;\n`);
+    actor.ingest([{ eventKind: "modify", path: "src/service.ts" }]);
+    let injected = false;
+    const observe = () => {
+      const raw = actor.db.prepare("SELECT value FROM watch_state WHERE key='repair_progress'").get()?.value;
+      if (raw && JSON.parse(raw).nextIndex === 1) {
+        injected = true;
+        actor.markGap(new Error("overflow during dependent repair"), "event_overflow");
+      } else poll = setImmediate(observe);
+    };
+    poll = setImmediate(observe);
+    await actor.flush(true);
+    clearImmediate(poll);
+    assert.equal(injected, true);
+    await entered;
+    assert.equal(planAtReconcile, undefined, "gap reconcile cannot enter the active dependent plan");
+    actor.ingest([{ eventKind: "modify", path: "src/service.ts" }]);
+    let flushed = false;
+    const laterFlush = actor.flush(true).then(() => { flushed = true; });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(flushed, false, "new flush waits for previously started reconciliation");
+    releaseReconcile();
+    await laterFlush;
+    assert.equal(actor.db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n, 0);
+  } finally { clearImmediate(poll); releaseReconcile?.(); await actor?.stop(); rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("journal replay acknowledges identical source without scanning symbols or changing graph", async () => {
   const repo = mkdtempSync(join(tmpdir(), "blueprint-source-replay-"));
