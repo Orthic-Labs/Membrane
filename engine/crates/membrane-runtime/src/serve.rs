@@ -3020,6 +3020,69 @@ fn membrane_snapshot_v2() -> Result<Value, String> {
     Ok(snapshot)
 }
 
+/// Observation windows currently being served. A window that completes while
+/// another is still in flight is honestly reported as foreground-active, which
+/// makes the background scheduler defer instead of competing with the turn.
+static OBSERVATION_WINDOWS_IN_FLIGHT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// CTX-023/CTX-024 producer trigger.
+///
+/// A completed Adapt observation window is the runtime's real turn boundary:
+/// it is the point at which new session events have just been appended to
+/// Cortex's append-only stream. Publishing here (rather than on a timer) means
+/// the background-review input is written from recorded state, inside the
+/// tray-owned serve process, and never when the Hub is not serving.
+///
+/// Publication never changes the host's response: a producer refusal is a
+/// stderr diagnostic, not an HTTP failure.
+fn observation_response_and_publish(store: &MemoryStore, body: &str) -> (u16, String) {
+    use std::sync::atomic::Ordering;
+    OBSERVATION_WINDOWS_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+    let response = crate::adapt_observations::response(store, body);
+    let concurrent = OBSERVATION_WINDOWS_IN_FLIGHT
+        .fetch_sub(1, Ordering::SeqCst)
+        .saturating_sub(1);
+    if response.0 == 200 {
+        publish_background_review_input(store, body, concurrent > 0);
+    }
+    response
+}
+
+fn publish_background_review_input(store: &MemoryStore, body: &str, foreground_active: bool) {
+    let Ok(crate::adapt_observations::AdaptObservationRequestV1::Analyze {
+        scope,
+        window_id,
+        session_id,
+        task_id,
+        ..
+    }) = serde_json::from_str::<crate::adapt_observations::AdaptObservationRequestV1>(body)
+    else {
+        // Acknowledge/Outcome operations append no session window.
+        return;
+    };
+    let root = crate::hub_readonly_db::configured_workspace_root();
+    match crate::background_review_input::publish_observation_window(
+        store,
+        &root,
+        &scope,
+        &session_id,
+        &task_id,
+        &window_id,
+        foreground_active,
+        crate::time::now_millis() as u64,
+    ) {
+        Ok(Some(window)) => eprintln!(
+            "membrane background-review-input published session={} seq={}..={}",
+            window.session_id, window.from_seq, window.to_seq
+        ),
+        Ok(None) => {}
+        Err(error) => {
+            eprintln!("membrane background-review-input refused: {error}")
+        }
+    }
+}
+
 fn route_with_context_ingest_lease(
     store: &MemoryStore,
     context_ingest_lease: Option<&crate::context_telemetry::ContextIngestLease>,
@@ -3042,7 +3105,7 @@ fn route_with_context_ingest_lease(
         return crate::adapt_service::operator_response(store, body);
     }
     if method == "POST" && path == crate::adapt_service::OBSERVATION_PATH {
-        return crate::adapt_observations::response(store, body);
+        return observation_response_and_publish(store, body);
     }
     if method == "GET" && (path == "/" || path == "/index.html") {
         return (200, DASHBOARD_HTML.to_string());

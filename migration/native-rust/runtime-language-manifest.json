@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T08:05:35.352Z",
+ "generatedAt": "2026-09-07T08:07:21.439Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1333,
+  "files": 1334,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1547,6 +1547,7 @@
     "engine/crates/membrane-runtime/src/agent_adapter_view.rs",
     "engine/crates/membrane-runtime/src/authorization.rs",
     "engine/crates/membrane-runtime/src/background_review.rs",
+    "engine/crates/membrane-runtime/src/background_review_input.rs",
     "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
     "engine/crates/membrane-runtime/src/cache_prefix.rs",
     "engine/crates/membrane-runtime/src/catalog.rs",
@@ -1687,7 +1688,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "502610ca4fe7502e07b1c6bfba5f7354052836b72f6f325cffe3fa16ed9d514f"
+   "content_digest": "4196298b1a9edc3c5e6f8bb5a34d13b4510df391232b424b24650290e6f1f7bd"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
