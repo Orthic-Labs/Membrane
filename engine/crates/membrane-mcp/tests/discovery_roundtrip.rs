@@ -77,7 +77,7 @@ fn adapt_is_optional_and_read_only() {
 fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let response = McpServer.dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"membrane.toolsets.v1":["push"]}}})).unwrap();
     let tools = response["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 9);
+    assert_eq!(tools.len(), 10);
     assert!(tools.iter().any(|v| v["name"] == "membrane_push_resolve"
         && v["inputSchema"]["properties"]["selector"]["oneOf"]
             .as_array()
