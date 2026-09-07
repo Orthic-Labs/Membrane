@@ -21,6 +21,8 @@ With Hub active, requests may reuse resident services. With Hub stopped, equival
 
 Resident execution receives the caller's full remaining deadline, not a shorter readiness-probe timeout. Fallback subtracts elapsed time from both its transport budget & wire deadline. A resident timeout never replays a possibly dispatched mutation through one-shot execution.
 
+CLI connection refusal or connection timeout before a stream exists permits bounded canonical execution. Windows can report either when Hub is stopped. Errors after connection or request dispatch remain ambiguous & never authorize direct mutation replay.
+
 Manual refresh must ingest current source & make changed truth queryable with Hub or watcher on or off. A successful acknowledgement with an unchanged stale graph is failure. With watching enabled under Hub, relevant source edits, additions & deletions must become queryable automatically within bounded indexing latency, without manual refresh. Verify these as separate installed acceptance cases.
 
 Watcher enrollment initializes an absent or unsealed graph before publishing enabled configuration; initialization failure must leave enrollment unsuccessful. Resident startup admits subscriptions before a bounded two-slot FIFO cold-reconciliation pool, reports pending reconciliation honestly, & never presents an uninitialized repository as healthy. Slow roots cannot monopolize both scheduling & callback execution: committed journal events yield to native callbacks between rows. Re-enrollment after explicit initialization starts its previously inactive actor. Automatic acceptance uses read-only observation so query-triggered repair cannot hide watcher failure.

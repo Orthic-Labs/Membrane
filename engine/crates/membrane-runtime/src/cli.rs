@@ -1836,7 +1836,9 @@ fn service_api_token() -> Result<Option<String>, String> {
 }
 
 fn allows_direct_fallback(kind: std::io::ErrorKind) -> bool {
-    kind == std::io::ErrorKind::ConnectionRefused
+    // Used only for connect failure, before a stream or request bytes exist.
+    // Windows loopback can time out when the resident service is stopped.
+    matches!(kind, std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::TimedOut)
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -6197,11 +6199,11 @@ mod tests {
     }
 
     #[test]
-    fn direct_db_fallback_is_only_for_connection_refused() {
+    fn direct_db_fallback_accepts_predispatch_absence_only() {
         assert!(super::allows_direct_fallback(
             std::io::ErrorKind::ConnectionRefused
         ));
-        assert!(!super::allows_direct_fallback(std::io::ErrorKind::TimedOut));
+        assert!(super::allows_direct_fallback(std::io::ErrorKind::TimedOut));
         assert!(!super::allows_direct_fallback(std::io::ErrorKind::NotFound));
         assert!(!super::allows_direct_fallback(
             std::io::ErrorKind::ConnectionReset

@@ -110,6 +110,31 @@ pub fn ensure_action(outcome: &DiscoveryOutcome) -> EnsureAction {
     }
 }
 
+fn comparable_stable_root(root: &str) -> &str {
+    #[cfg(windows)]
+    if let Some(path) = root.strip_prefix(r"\\?\") {
+        let bytes = path.as_bytes();
+        // Installed health may inherit canonicalization's verbatim DOS prefix.
+        // Remove only that spelling difference, not version links or path parts
+        // whose interpretation differs between verbatim and ordinary Win32 paths.
+        if bytes.len() >= 3 && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':' && bytes[2] == b'\\'
+            && !path.contains('/')
+            && path[3..].split('\\').all(|part| {
+                let stem = part.split('.').next().unwrap_or("").trim_end_matches(' ').to_ascii_uppercase();
+                let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+                    || ["COM", "LPT"].iter().any(|prefix| stem.strip_prefix(prefix).is_some_and(|suffix|
+                        matches!(suffix, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³")));
+                !part.is_empty() && !part.ends_with('.') && !part.ends_with(' ')
+                    && !part.chars().any(|c| c.is_control() || "<>:\"|?*".contains(c)) && !device
+            })
+        {
+            return path;
+        }
+    }
+    root
+}
+
 pub fn bind_candidate(
     candidate: KnownCandidate,
     identity: ServiceIdentity,
@@ -120,7 +145,8 @@ pub fn bind_candidate(
             message: "canonical binding requires installed runtime origin".into(),
         });
     }
-    if identity.stable_install_root.as_deref() != Some(candidate.stable_install_root.as_str()) {
+    if identity.stable_install_root.as_deref().map(comparable_stable_root)
+        != Some(comparable_stable_root(&candidate.stable_install_root)) {
         return Err(ClientError::Incompatible {
             message: "health stable install root does not match discovered candidate".into(),
         });
@@ -361,6 +387,31 @@ mod tests {
                 .map(str::to_owned)
                 .collect(),
             capabilities: vec!["memory".into(), "diagnostics".into()],
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn verbatim_health_root_binds_only_the_same_stable_dos_path() {
+        let mut health = identity();
+        health.stable_install_root = Some(format!(r"\\?\{}", candidate().stable_install_root));
+        assert!(bind_candidate(candidate(), health.clone(), &CompatibilityRequirement::default()).is_ok());
+        for root in [
+            r"\\?\C:\Users\other\AppData\Local\Orthic Labs\Membrane\current",
+            r"\\?\C:\Users\test\AppData\Local\Orthic Labs\Membrane\versions\0.1.24",
+            r"\\?\C:\Users\test\AppData\Local\Orthic Labs\Membrane\current.",
+        ] {
+            health.stable_install_root = Some(root.into());
+            assert!(bind_candidate(candidate(), health.clone(), &CompatibilityRequirement::default()).is_err());
+        }
+        for component in ["CON", "nul.txt", "Com1", "LPT9.log", "COM¹", "NUL .txt", "..", "current.", "current "] {
+            let plain = format!(r"C:\Users\{component}\Membrane\current");
+            let verbatim = format!(r"\\?\{plain}");
+            assert_ne!(comparable_stable_root(&verbatim), plain, "{component}");
+            let mut discovered = candidate();
+            discovered.stable_install_root = plain;
+            health.stable_install_root = Some(verbatim);
+            assert!(bind_candidate(discovered, health.clone(), &CompatibilityRequirement::default()).is_err());
         }
     }
 
