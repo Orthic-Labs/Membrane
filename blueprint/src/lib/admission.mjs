@@ -25,7 +25,7 @@ export const DECISION_ACTIONS = Object.freeze(["allow", "continue", "block", "no
 
 const DEFAULT_OPERATIONS = Object.freeze(["read", "search", "test", "edit"]);
 
-function decision(partial) {
+export function decision(partial) {
   const action = partial.action ?? "noop";
   if (!DECISION_ACTIONS.includes(action)) {
     throw new Error(`invalid admission action: ${action}`);
@@ -51,7 +51,7 @@ function genericClaimBoundary() {
   return claimBoundaryFor({ permitClean: false, state: "missing", generationId: null, omissions: [] });
 }
 
-function claimBoundaryFor({ permitClean, state, generationId, omissions }) {
+export function claimBoundaryFor({ permitClean, state, generationId, omissions }) {
   const restricted = !permitClean;
   const fresh = state === "fresh";
   const claimRestricted = restricted || !fresh;
@@ -85,7 +85,7 @@ function directoryScope(filePath) {
   return dir === "." ? "" : dir;
 }
 
-function pathsFromCandidateSet(candidateSet) {
+export function pathsFromCandidateSet(candidateSet) {
   const paths = new Set();
   for (const candidate of candidateSet?.candidates ?? []) {
     const ref = String(candidate.sourceRef ?? "");
@@ -96,7 +96,7 @@ function pathsFromCandidateSet(candidateSet) {
   return [...paths].sort();
 }
 
-function scopesFromPaths(paths) {
+export function scopesFromPaths(paths) {
   const scopes = new Set();
   for (const path of paths) {
     const dir = directoryScope(path);

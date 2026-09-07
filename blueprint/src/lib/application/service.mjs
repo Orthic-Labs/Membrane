@@ -48,6 +48,7 @@ import { serviceStatus } from "../../service/status.mjs";
 import { createBuildSingleflight } from "../../service/build-singleflight.mjs";
 import { RootRegistry } from "./root-registry.mjs";
 import { fail } from "./errors.mjs";
+import { claimBoundaryFor, decision, pathsFromCandidateSet, scopesFromPaths } from "../admission.mjs";
 
 function databasePath(root, outDir) {
   return join(root, outDir, "graph", "graph.db");
@@ -88,6 +89,92 @@ function suppressRows(rows, receipt, lane) {
       ? [{ reason: "stale_source_suppressed", lane, count: suppressed.length, scope: policy.wholeGeneration ? "whole_generation" : "changed_paths" }]
       : [],
   };
+}
+
+// BPT-041 — the orientation decision Blueprint reports and the HOST enforces.
+//
+// Blueprint never refuses to answer or drops evidence because of the action it
+// reports: `recallOrientation` is a pure projection of state the recall path
+// has ALREADY computed (the freshness receipt, the suppressed candidate set,
+// the recall circuit and their omissions). Removing this call would change the
+// envelope's verdict and nothing else about the evidence returned.
+//
+// Derivation, in decision order — each branch keyed to one existing signal:
+//   block    freshness receipt requires whole-generation suppression: every
+//            source-backed row is withheld, so no answer can be grounded.
+//   continue evidence is served under a generation that is truthfully stale
+//            (suppression.required, i.e. freshness === changed_since_generation)
+//            — admitted but incomplete. Mirrors lib/admission.mjs recall, which
+//            also derives `continue` from graph state, not from omission count.
+//   noop     nothing resolved to act on: no candidates and no evidence paths.
+//   allow    otherwise.
+function recallOrientation({ receipt, candidateSet, recallCircuit, omissions, generationId, outDir }) {
+  const suppression = receipt?.suppression ?? null;
+  const freshness = receipt?.freshness ?? "unknown";
+  const candidateCount = candidateSet?.candidates?.length ?? 0;
+  const pathCount = recallCircuit?.paths?.length ?? 0;
+  const rebuild = `blueprint build --out ${outDir}`;
+
+  let action = "allow";
+  let reasonCode = "recalled";
+  let reason = "Recall served from the sealed generation.";
+  let nextAction = null;
+  if (suppression?.required === true && suppression?.mode === "whole_generation") {
+    action = "block";
+    reasonCode = "stale_generation_withheld";
+    reason = "Stale-source enumeration is incomplete, so every source-backed row is withheld.";
+    nextAction = rebuild;
+  } else if (suppression?.required === true) {
+    action = "continue";
+    reasonCode = `recalled_${freshness}`;
+    reason = "Recall served under a generation that predates current worktree changes; suppressed sources are on the receipt.";
+    nextAction = rebuild;
+  } else if (candidateCount === 0 && pathCount === 0) {
+    action = "noop";
+    reasonCode = "no_candidates";
+    reason = "Recall resolved no evidence paths for this task.";
+  }
+
+  const allowedPaths = pathsFromCandidateSet(candidateSet);
+  return decision({
+    action,
+    reason,
+    reasonCode,
+    receiptId: receipt?.receiptId ?? null,
+    candidateSet,
+    allowedScopes: scopesFromPaths(allowedPaths),
+    omissions,
+    nextAction,
+    evidence: {
+      candidateCount,
+      evidencePathCount: pathCount,
+      allowedPaths,
+      recallCircuitState: recallCircuit?.state ?? null,
+      freshness,
+      suppression: suppression ?? null,
+    },
+    receipt,
+    claimBoundary: claimBoundaryFor({
+      // Claim cleanliness tracks whether the served evidence can be trusted as
+      // current, NOT whether the request found anything. `noop` on a fresh
+      // generation means "nothing matched", and a clean claim about that is
+      // still legitimate — tying this to `action === "allow"` made an empty
+      // result report its claims as restricted on an entirely current graph.
+      // Suppression is the condition that actually withholds evidence, and it
+      // is the same condition that produces `continue` and `block`.
+      permitClean: suppression?.required !== true,
+      // Match the state derivation the MCP adapter has always used
+      // (scripts/blueprint-mcp.mjs `claimBoundaryFor`): a caught-up barrier is
+      // "fresh". Deriving it from the receipt's `freshness` field instead would
+      // silently restrict claims on any repository without VCS, where freshness
+      // is "unavailable" — a stricter reading that may well be right, but it is
+      // a change to a shipped claim contract and belongs in its own canon
+      // decision, not smuggled in under the orientation wiring.
+      state: receipt?.barrierResult === "caught_up" ? "fresh" : receipt ? "stale" : "missing",
+      generationId,
+      omissions,
+    }),
+  });
 }
 
 function suppressTraversalPayload(payload, receipt) {
@@ -469,15 +556,23 @@ export function createBlueprintApplicationService({
           omissions: [...(circuit.omissions ?? []), { reason: "stale_source_suppressed", lane: "evidence_path", count: suppressedPaths }],
           state: paths.length ? circuit.state : "abstained",
         } : circuit;
+        const omissions = candidateSet.omissions ?? [];
+        const orientation = recallOrientation({
+          receipt,
+          candidateSet,
+          recallCircuit,
+          omissions,
+          generationId: meta.manifest.generationId,
+          outDir,
+        });
         return {
+          ...orientation,
           schemaVersion: 1,
-          action: "allow",
-          reasonCode: "recalled",
           generationId: meta.manifest.generationId,
           candidateSet,
           recallCircuit,
           freshnessReceipt: receipt,
-          omissions: candidateSet.omissions ?? [],
+          omissions,
         };
       }, options);
     },
