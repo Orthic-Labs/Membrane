@@ -1,0 +1,740 @@
+diff --git a/audit/session-b/ARTIFACT-SHA256SUMS b/audit/session-b/ARTIFACT-SHA256SUMS
+new file mode 100644
+index 0000000..0757fdf
+--- /dev/null
++++ b/audit/session-b/ARTIFACT-SHA256SUMS
+@@ -0,0 +1,21 @@
++17e097d0280ea3ea3219ca0d33547b505e782b7a8f835395be9dffad0c8bb012  audit/session-b/DOGFOOD-CHARTER.md
++e6dc234aed767f8df697fe8960003acf41417dfb4c7f9d93083aaf74ade7beb3  audit/session-b/DOGFOOD-ORACLE.json
++165b8a1050969e4589e2c796cd7a3f807bf938e8c1c400fad864cf5839876bbe  audit/session-b/DOGFOOD-ORACLE.json.sha256
++8339aa78950d64bdaf5cbc5fd348de49c583c18c3167581d668fe554a356e011  audit/session-b/DOGFOOD-REPORT.md
++35f6f34eeaf00fc235e87f3e71634ef919d8733a0fa5ab1a64d772f59f40e898  audit/session-b/DOGFOOD-RESULTS.json
++0ad6f673675a9edf8bfd139211bd7562b559be4ee1a90f06485d64771b2f2ed3  audit/session-b/DOGFOOD-RUNBOOK.md
++34776a95217ab9dffc4ef48581b3afbdd40ddf702abef42653fdc1545af02784  audit/session-b/FIXTURE-SHA256SUMS
++ec2d00a0641a2c7be563010b5a991590a08032a2b5a990c45de6ff009c5afcba  audit/session-b/INITIAL-DOGFOOD-REPORT.md
++90b368b394be1c5608bb8aa4dcc6216bead9cb53c86a20257af8674cd59cd54b  audit/session-b/INITIAL-DOGFOOD-RESULTS.json
++58b4130326ef639059ee650424b2b651bba691b6db743fc7437c9a6f0d1d6e6f  audit/session-b/INITIAL-RESULTS-SHA256SUMS
++339472bc050946f8cc7effa78e86bce4401c4f6a4e87e0833db7cfa152156a42  audit/session-b/PHASE1-SHA256SUMS
++0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy-copy.md
++0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy.md
++fb1073681727d3a2a09736ec1a699e5be33156ebb84307c90889205cc997a4dd  audit/session-b/fixtures/knowledge/records.json
++5656e57b85c1798f31df9f09b752cbf760fe1f462bee1e1d9f34c87923421fef  audit/session-b/fixtures/repo-alpha/src/distractor.ts
++be513456821892489e86a1a6154614d8ce427579a93929de89c83fd623608a9e  audit/session-b/fixtures/repo-alpha/src/reconnect.ts
++ef05e680e5e9524e1670a216d7356594ec2737742826222854e74b3a55dfe884  audit/session-b/fixtures/repo-alpha/src/ümlaut.ts
++e1d4397d0649ad3183fda76f2a5c61478279019b2673c3e03fd2edbc147882e9  audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts
++552c22160a266a5c91a0ef4051ff823c94c89558ed39f2ee2a97f9ff2794ef52  audit/session-b/fixtures/repo-beta/src/reconnect.ts
++2e2f82fca0c42efaaf8c05b8ea0517258a874af7487d485c0e30c4bcda9f3751  audit/session-b/tests/native-public-boundary-dogfood.test.mjs
++795addc01c58288a78451adf055d1bbe35fe42dce114d1c5908ac5ae4ef947c9  audit/session-b/tests/public-boundary-dogfood.test.mjs
+diff --git a/audit/session-b/ARTIFACT-SHA256SUMS.sha256 b/audit/session-b/ARTIFACT-SHA256SUMS.sha256
+new file mode 100644
+index 0000000..5f9ac35
+--- /dev/null
++++ b/audit/session-b/ARTIFACT-SHA256SUMS.sha256
+@@ -0,0 +1 @@
++e212da294f991be5a9ef89344a6e6058cde8266a59a12d8409f8c11906cb839d  audit/session-b/ARTIFACT-SHA256SUMS
+diff --git a/audit/session-b/DOGFOOD-CHARTER.md b/audit/session-b/DOGFOOD-CHARTER.md
+new file mode 100644
+index 0000000..96189fd
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-CHARTER.md
+@@ -0,0 +1,39 @@
++# Membrane whole-product dogfood charter — frozen phase-one contract
++
++## Target and independence
++
++This charter targets `a4e0a9e02c64e5439cdec289a160b748f5e5686c`, the clean detached worktree created from the repository's current `HEAD`. The source checkout has no configured remote and no `main` ref, so current remote main could not be fetched or recorded. Per Adrian's explicit correction, the embedded packet baseline was not substituted. Session A artifacts, findings, messages, internal implementation bodies, and existing test expectations were not read before this charter and `DOGFOOD-ORACLE.json` were frozen.
++
++## Contract derivation
++
++Expectations come from the seven atomic canons; Membrane, cross-subsystem evidence, CodeRight integration, lifecycle/development boundary doctrine; subsystem architecture; public schemas; and generated discovery claims. Canon `COMMITTED` and qualification rows are treated as requirements, never proof. Generated product truth is a claimed inventory, never a behavioral oracle.
++
++The fixture truth is authored independently: Alpha's current reconnect implementation retries exactly three times and never after logout; Beta has a same-name unrelated symbol; a query-bait distractor is forbidden; the current document agrees with Alpha while its historical note conflicts; admitted, conflicting, and rejected knowledge identities remain distinct. `FIXTURE-SHA256SUMS` binds exact bytes.
++
++## Cases and layers
++
++The normative case matrix is `DOGFOOD-ORACLE.json`. It covers discovery; Hub-off/one-shot lifecycle; exact/vague Pull acquisition; Ledger exact resolution; code/document/Cortex composition; edit convergence and recovery; diagnostics; Push fidelity/recovery; grants and publication fence; Cortex lifecycle; Adapt observations; cross-repository budgeting; adapter parity; and bounded resilience.
++
++Evidence layers are never conflated:
++
++1. **Oracle/harness self-check** validates the independent comparator only.
++2. **JavaScript adapter execution** validates a retained adapter/component, not native runtime.
++3. **Native public boundary** requires a revision-compatible prebuilt artifact and isolated supported launch.
++4. **Simulated host capture** proves only the captured envelope.
++5. **Installed host/platform** requires installer-owned current-root identity and isolated qualification; it is not run in this cloud audit.
++
++Each case is `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, or `NOT_APPLICABLE`. Required blocked native cases prevent a full-product pass.
++
++## Oracle rules
++
++* Required facts are matched by independently authored exact strings/digests and source relationships, never product rankers or digest helpers.
++* Valid alternative packets may pass if all required facts, identities, coverage, and omissions hold; top-K ordering is not overspecified.
++* A typed failure passes only where explicitly permitted and only for the applicable safety/degradation assertion; it cannot establish positive readiness.
++* Duplicate bodies/provenance never count as independent support.
++* Exact recovery compares independently hashed original bytes and selector ranges.
++* Unknown counters, host use, or evaluator identity remain unknown—not zero, successful, or effective.
++* No oracle expectation may be edited after observation. Corrections require a versioned amendment retaining this frozen file and citing a normative source.
++
++## Safety and cleanup
++
++All mutable scenarios use only `audit/session-b/fixtures` copies and task-owned temporary directories. No fixture project compilation, Cargo command, build, package, install, runtime activation, user-data access, production configuration mutation, qualification allowlist edit, workflow trigger, or push is allowed.
+diff --git a/audit/session-b/DOGFOOD-ORACLE.json b/audit/session-b/DOGFOOD-ORACLE.json
+new file mode 100644
+index 0000000..a90eed5
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-ORACLE.json
+@@ -0,0 +1,29 @@
++{
++  "oracle_version": "1.0.0-frozen",
++  "frozen_at": "2026-09-07T00:00:00Z",
++  "target": {"revision":"a4e0a9e02c64e5439cdec289a160b748f5e5686c","selection":"current checked-out repository HEAD; embedded packet baseline explicitly ignored by user","remote_main":"UNAVAILABLE: checkout has no configured remote or main ref"},
++  "independence": {"session_a_material_read":false,"implementation_bodies_read_before_freeze":false,"existing_test_expectations_read_before_freeze":false},
++  "fixture_manifest":"FIXTURE-SHA256SUMS",
++  "default_bounds":{"absolute_deadline_ms":5000,"max_packet_bytes":32768,"max_items":64,"max_repositories":2,"max_corrective_rounds":1},
++  "cases": [
++    {"id":"A01","journey":"discovery-first-call","atoms":["MBR lifecycle/public surface"],"source":"docs/architecture/membrane.md §§15,17; docs/agent-rules.md lifecycle invariant","request":"discover then call membrane_context with explicit caller/session/scope","expect":["advertised schema is callable","identity retained","readiness distinguished from liveness"],"permit":["typed hub_inactive when Hub is off"],"forbid":["unknown handler","false ready","implicit daemon start"],"layer":"public-boundary"},
++    {"id":"B01","journey":"hub-off","atoms":["MBR-108 lifecycle"],"source":"docs/architecture/cross-subsystem-evidence.md Appendix A","request":"context and Ledger call with tray absent","expect":["membrane_unavailable reason hub_inactive retryable true","zero replacement stores/processes"],"permit":[],"forbid":["Blueprint fallback for context","store creation","success packet"],"layer":"native-required"},
++    {"id":"B02","journey":"blueprint-one-shot","atoms":["BLP bounded one-shot"],"source":"docs/agent-rules.md lifecycle invariant","request":"authorized Blueprint exact symbol query with Hub off","expect":["bounded answer from repo-alpha","no watcher","no continuous-freshness claim"],"permit":["typed unavailable if exact native artifact absent"],"forbid":["resident daemon","repo-beta evidence"],"layer":"native-required"},
++    {"id":"C01","journey":"exact-retrieval","atoms":["PUL acquisition","BLP source identity"],"source":"docs/architecture/membrane.md stages 0-14","request":"Find repo-alpha src/reconnect.ts reconnectAfterWake","expect":["repo-alpha/src/reconnect.ts","WAKE_RETRY_LIMIT = 3","source identity and coverage"],"permit":[],"forbid":["distractor as satisfying evidence","repo-beta without separate grant"],"layer":"native-required"},
++    {"id":"C02","journey":"vague-retrieval","atoms":["PUL corrective retrieval"],"source":"docs/architecture/cross-subsystem-evidence.md §5.3","request":"fix the reconnect loop after wake","expect":["real implementation fact","current policy fact","at most one corrective round"],"permit":["typed insufficient"],"forbid":["query-bait-only packet","silent required-lane starvation"],"layer":"native-required"},
++    {"id":"D01","journey":"ledger-exact-resolution","atoms":["LDG identity/exact body"],"source":"docs/architecture/cross-subsystem-evidence.md §4; docs/canon/ledger.md","request":"resolve Reconnect Policy#wake-handling","expect":["exact authorized bytes","independent fixture digest match","stable source identity"],"permit":[],"forbid":["copy grant substitution","normalized bytes labeled exact"],"layer":"native-required"},
++    {"id":"D02","journey":"code-document-knowledge","atoms":["PUL fusion","CTX lifecycle","LDG boundary"],"source":"docs/architecture/membrane.md §§5-10","request":"explain current retry constraint using all required owners","expect":["code observed limit three","document current policy","k-current applicable","k-conflict retained as conflict"],"permit":["typed provider unavailable omission"],"forbid":["duplicate copy as corroboration","k-rejected admitted","historical five presented current"],"layer":"native-required"},
++    {"id":"E01","journey":"edit-convergence","atoms":["BLP freshness"],"source":"docs/canon/blueprint.md qualification register","request":"modify/add/delete/rename/no-op/rapid-second-edit then barrier/query","expect":["newest source digest/generation","older completion cannot clear newer pending","typed terminal failure or convergence"],"permit":[],"forbid":["stale fact reentry","manual phase-2 seal required"],"layer":"native-required"},
++    {"id":"F01","journey":"recovery","atoms":["BLP crash/corruption"],"source":"docs/architecture/membrane.md §14.5; docs/canon/blueprint.md","request":"interrupt publication then reopen isolated store","expect":["last-known-complete retained","partial not called complete","corruption typed"],"permit":["rebuild from authoritative source with stale accounting"],"forbid":["manufactured fresh evidence"],"layer":"native-required"},
++    {"id":"G01","journey":"diagnostics","atoms":["diagnostic evidence/fence"],"source":"docs/architecture/live-diagnostics.md","request":"public diagnostic snapshot and delta after fixture edit","expect":["provider capability/availability","epoch and source binding","absence distinct from semantic agreement"],"permit":["typed unavailable"],"forbid":["empty list treated compiler success","Cargo/build child"],"layer":"native-required"},
++    {"id":"H01","journey":"push-fidelity-recovery","atoms":["PSH-003","PSH-014","PSH-025","PSH-027"],"source":"docs/canon/push.md acceptance interpretation/Ripwire intake","request":"deliver constrained multiline evidence then recover negotiated handle","expect":["protected negations/numbers/relationships","one body in final envelope","scope/store-bound callable recovery","exact original bytes"],"permit":["complete inline result","typed refusal"],"forbid":["offload without resolver","expired/cross-scope recovery","negative net savings called optimization"],"layer":"native-required"},
++    {"id":"I01","journey":"revocation-publication","atoms":["PUL publication fence"],"source":"docs/architecture/membrane.md stages 5,13; §14","request":"revoke repo grant after acquisition before publication","expect":["reobservation","typed revoked/policy_changed omission"],"permit":[],"forbid":["revoked bytes leave","source text authorizes scope"],"layer":"native-required"},
++    {"id":"J01","journey":"cortex-lifecycle","atoms":["CTX admission/lifecycle"],"source":"docs/canon/cortex.md; docs/architecture/membrane.md §8","request":"propose-review-admit-conflict-suppress-erase-restart-restore isolated records","expect":["trusted review independent","conflict retained","suppression affects recall","erase survives projection rebuild"],"permit":["typed feature unavailable"],"forbid":["self-review","erased influence resurrected","historical inspection without separate authorization"],"layer":"native-required"},
++    {"id":"K01","journey":"adapt-learning","atoms":["ADP governed proposal"],"source":"docs/canon/adapt.md; docs/architecture/integrations/coderight.md §§4,10","request":"submit versioned repeated observations and evaluation outcomes","expect":["idempotent join","emitted/loaded/used/evaluated/effective distinct","proposal requires Cortex review"],"permit":["typed unavailable evaluator/host outcome"],"forbid":["direct durable write","structural metric called Taste","causal improvement without comparable baseline"],"layer":"native-required"},
++    {"id":"L01","journey":"cross-repo-budget","atoms":["PUL federation/aggregate budget"],"source":"docs/architecture/membrane.md §§6,11-13","request":"query independently granted alpha and beta under one hard budget","expect":["repository identity isolation","single aggregate accounting","unavailable child omission"],"permit":["partial with typed omissions"],"forbid":["per-child budget multiplication","cross-root leakage"],"layer":"native-required"},
++    {"id":"L02","journey":"adapter-parity","atoms":["client capability/version"],"source":"docs/architecture/integrations/coderight.md §1.2; generated protocol discovery","request":"equivalent supported requests over each advertised adapter","expect":["meaning/identity/omissions equivalent modulo declared transport fields"],"permit":["honest lower capability level"],"forbid":["invented operation","silent gate bypass"],"layer":"installed-required"},
++    {"id":"R01","journey":"resource-resilience","atoms":["absolute deadline/bounds"],"source":"docs/architecture/membrane.md §13","request":"cold/warm/edit/repeat/cancel over bounded fixtures","expect":["one inherited absolute deadline","bounded counters where observable","cancellation/limits typed"],"permit":["observability gap recorded unknown"],"forbid":["deadline reset on retry","unbounded hydration","guessed zero work"],"layer":"native-required"}
++  ],
++  "oracle_rule":"A case passes only if every required observable is captured through its declared real public layer, no forbidden observable occurs, identities/digests match independently authored fixtures, and any degradation is explicitly permitted. BLOCKED and NOT_RUN never count as PASS.",
++  "negative_controls":["missing required fact","stale source digest","cross-scope recovery handle","duplicate evidence body","fake clean diagnostics","dropped omission","incompatible task/session/repository identity"]
++}
+diff --git a/audit/session-b/DOGFOOD-ORACLE.json.sha256 b/audit/session-b/DOGFOOD-ORACLE.json.sha256
+new file mode 100644
+index 0000000..7c0ffd5
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-ORACLE.json.sha256
+@@ -0,0 +1 @@
++e6dc234aed767f8df697fe8960003acf41417dfb4c7f9d93083aaf74ade7beb3  audit/session-b/DOGFOOD-ORACLE.json
+diff --git a/audit/session-b/DOGFOOD-REPORT.md b/audit/session-b/DOGFOOD-REPORT.md
+new file mode 100644
+index 0000000..78024f7
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-REPORT.md
+@@ -0,0 +1,49 @@
++# Membrane Session B — initial independent dogfood report
++
++## Verdict
++
++**BLOCKED — not fully verified.** The frozen contract has 17 required product cases. Zero product cases executed, zero passed, zero failed semantically, and all 17 are blocked by absent repository dependencies and/or the absence of a revision-compatible native/installed artifact. The independent oracle's negative-control harness passed, but that is deliberately excluded from product coverage.
++
++This is not an all-green result and not evidence that intended product journeys are ready. It also is not a source defect verdict: the attempted public server never loaded far enough to observe Membrane behavior.
++
++## Target and independence
++
++The target is `a4e0a9e02c64e5439cdec289a160b748f5e5686c`, selected from current `HEAD` because Adrian explicitly said to ignore the packet's embedded baseline. The checkout exposes neither a configured Git remote nor a `main` ref, so remote-main reachability and intervening revisions remain unknown. Phase-one hashes were frozen before implementation/body inspection or execution. No Session A artifact, report, test, message, finding, or conclusion was read or requested.
++
++## What was produced
++
++* An immutable versioned oracle with 17 product cases across every required journey and explicit allowed/forbidden evidence.
++* Two repository fixtures, two distinct identical document identities, and isolated admitted/conflicting/rejected knowledge truth, all independently hashed.
++* A thin stdio public-boundary test that performs real MCP discovery/call when dependencies exist; it does not replace planner, dispatch, authorization, or publication logic.
++* Seven harness negative controls. They reject identity mismatch, stale digest, absent facts, duplicate bodies, omitted degradation, and fake-clean diagnostics.
++* A no-build runbook and machine-readable results with exact evidence-layer classifications.
++
++## Attempted execution
++
++`node --test audit/session-b/tests/public-boundary-dogfood.test.mjs` ran three harness/test cases. `ORACLE-NEG` passed. `A01` and `B01` were classified BLOCKED because the public server process failed at module loading: `@modelcontextprotocol/server` is absent. This is an environment prerequisite, not a Membrane behavioral observation.
++
++The normal pinned package manager is also unavailable in this environment: pnpm 11.24.0 reports that it requires Node >=22.13 and then fails because Node v20.20.2 lacks `node:sqlite`. The workspace forbids ad hoc toolchain installation. No Cargo, build, product test, package, install, workflow, runtime activation, or user-data command was run.
++
++## Coverage and unresolved prerequisites
++
++| Layer | Result | Precise prerequisite |
++|---|---|---|
++| Oracle self-check | PASS | none |
++| Retained JavaScript MCP | BLOCKED | normal workspace bootstrap with pinned Node and installed locked dependencies |
++| Native MCP/Hub/Blueprint/Ledger/Cortex/Adapt/Push | BLOCKED | platform-compatible prebuilt artifact with receipt binding exact target SHA, isolated data roots, tray-owned supported launch |
++| Simulated host final envelope | BLOCKED | live exact native path plus negotiated resolver capability |
++| Actual installed adapters/platform | BLOCKED | isolated installer-owned current root and host qualification; active user installation remains untouched |
++
++The next valid run should satisfy these prerequisites through the existing workspace/CI distribution path, then execute the runbook without modifying the frozen oracle. Mandatory native/installed blockage continues to prevent any blanket product-verification claim.
++
++## Files changed
++
++Only `audit/session-b/**` test/report artifacts were added in the isolated detached worktree. Production code, production tests, canons, allowlists, flags, configuration, release state, and the shared checkout/index were not changed.
++
++## Repair: complete runnable blocked-case suite
++
++Following independent completion validation, the initial report and results were preserved byte-for-byte as `INITIAL-DOGFOOD-REPORT.md` and `INITIAL-DOGFOOD-RESULTS.json`, with hashes in `INITIAL-RESULTS-SHA256SUMS`. The frozen oracle and charter remain unchanged.
++
++`tests/native-public-boundary-dogfood.test.mjs` now supplies executable public-MCP cases for every previously missing oracle ID: B02, C01–C02, D01–D02, E01, F01, G01, H01, I01, J01, K01, L01–L02, and R01. These tests invoke the exact prebuilt binary over `stdio-mcp`, use task-owned mutable fixture copies, and assert independently authored facts, forbidden evidence, identities, bounds, or typed outcomes. They skip only when the exact native/Hub/installed prerequisite is absent.
++
++The repaired suite collected all 15 added cases successfully in this cloud environment; all 15 reported precise prerequisite-based skips. This improves runnable coverage but does not change the empirical product verdict: the artifact-dependent cases remain BLOCKED, not PASS.
+diff --git a/audit/session-b/DOGFOOD-RESULTS.json b/audit/session-b/DOGFOOD-RESULTS.json
+new file mode 100644
+index 0000000..c11a7d1
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-RESULTS.json
+@@ -0,0 +1,173 @@
++{
++  "schema": "membrane.dogfood-results.v1",
++  "target_sha": "a4e0a9e02c64e5439cdec289a160b748f5e5686c",
++  "run_environment": {
++    "node": "v20.20.2",
++    "pnpm": "11.24.0 (not runnable on current Node)",
++    "dependencies": "absent",
++    "native_artifact": "absent",
++    "installed_artifact": "not accessed",
++    "remote_main": "unavailable: no remote/main ref"
++  },
++  "denominators": {
++    "required_product_cases": 17,
++    "executed_product_cases": 0,
++    "passed_product_cases": 0,
++    "failed_product_cases": 0,
++    "blocked_product_cases": 17,
++    "not_run_product_cases": 0,
++    "harness_cases": 1,
++    "harness_passed": 1
++  },
++  "verdict": "BLOCKED_NOT_FULLY_VERIFIED",
++  "commands": [
++    {
++      "command": "node --test audit/session-b/tests/public-boundary-dogfood.test.mjs",
++      "exit": 1,
++      "elapsed_ms": 7516,
++      "classification": "environment_blocked",
++      "detail": "oracle negative controls PASS; both attempted retained-MCP cases could not load @modelcontextprotocol/server because dependencies are absent"
++    },
++    {
++      "command": "pnpm --version",
++      "exit": 1,
++      "classification": "environment_blocked",
++      "detail": "pnpm 11.24.0 requires Node >=22.13; cloud has Node v20.20.2 and lacks node:sqlite"
++    },
++    {
++      "command": "node --test audit/session-b/tests/native-public-boundary-dogfood.test.mjs",
++      "exit": 0,
++      "classification": "suite_collected_all_native_cases",
++      "detail": "15 runnable native/installed public-boundary cases collected; all 15 skipped with exact missing-artifact/binding prerequisites"
++    }
++  ],
++  "cases": [
++    {
++      "id": "A01",
++      "status": "BLOCKED",
++      "layer": "JavaScript retained MCP",
++      "reason": "public server cannot load absent @modelcontextprotocol/server dependency"
++    },
++    {
++      "id": "B01",
++      "status": "BLOCKED",
++      "layer": "JavaScript retained MCP",
++      "reason": "same dependency blocker; native lifecycle also lacks exact prebuilt artifact"
++    },
++    {
++      "id": "B02",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no revision-compatible prebuilt artifact"
++    },
++    {
++      "id": "C01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no revision-compatible prebuilt artifact/provider setup"
++    },
++    {
++      "id": "C02",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no revision-compatible prebuilt artifact/provider setup"
++    },
++    {
++      "id": "D01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no revision-compatible prebuilt artifact/isolated Ledger"
++    },
++    {
++      "id": "D02",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no revision-compatible prebuilt artifact/isolated providers"
++    },
++    {
++      "id": "E01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no tray-owned isolated runtime/watch surface"
++    },
++    {
++      "id": "F01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no exact artifact or isolated native store"
++    },
++    {
++      "id": "G01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no actual diagnostics providers/exact artifact"
++    },
++    {
++      "id": "H01",
++      "status": "BLOCKED",
++      "layer": "native plus simulated-host capture",
++      "reason": "no exact artifact and no negotiated live resolver"
++    },
++    {
++      "id": "I01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no controllable public publication-fence runtime"
++    },
++    {
++      "id": "J01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no exact artifact/isolated Cortex public setup"
++    },
++    {
++      "id": "K01",
++      "status": "BLOCKED",
++      "layer": "native host seam",
++      "reason": "no exact artifact or versioned host observation ingress"
++    },
++    {
++      "id": "L01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no exact artifact/provider setup"
++    },
++    {
++      "id": "L02",
++      "status": "BLOCKED",
++      "layer": "installed hosts",
++      "reason": "installed user environment intentionally untouched; no isolated qualified installation"
++    },
++    {
++      "id": "R01",
++      "status": "BLOCKED",
++      "layer": "native",
++      "reason": "no exact artifact; production counters unavailable"
++    }
++  ],
++  "harness": [
++    {
++      "id": "ORACLE-NEG",
++      "status": "PASS",
++      "assertions": 7,
++      "note": "rejects wrong repository, stale digest, missing facts, duplicate body, dropped omission, and fake-clean diagnostics; not product coverage"
++    }
++  ],
++  "unexpected_errors": [],
++  "product_failures": [],
++  "qualification_statement": "Correct refusal/readiness cannot be evaluated at the product layer. No positive whole-product journey is qualified; lower-layer harness success is not promoted.",
++  "suite_implementation": {
++    "oracle_case_count": 17,
++    "runnable_case_count": 17,
++    "public_boundary_files": [
++      "tests/public-boundary-dogfood.test.mjs",
++      "tests/native-public-boundary-dogfood.test.mjs"
++    ],
++    "native_suite_collection": {
++      "tests": 15,
++      "skipped_with_precise_prerequisite": 15,
++      "exit": 0
++    },
++    "note": "All oracle cases now have executable test bodies; blocked cases skip only before public invocation when exact artifacts/bindings are absent."
++  }
++}
+diff --git a/audit/session-b/DOGFOOD-RUNBOOK.md b/audit/session-b/DOGFOOD-RUNBOOK.md
+new file mode 100644
+index 0000000..46d61b1
+--- /dev/null
++++ b/audit/session-b/DOGFOOD-RUNBOOK.md
+@@ -0,0 +1,43 @@
++# Session B dogfood runbook
++
++## Identity and prerequisites
++
++Target source: `a4e0a9e02c64e5439cdec289a160b748f5e5686c` in the detached task-owned worktree. Required JavaScript layer: Node satisfying `package.json` plus repository dependencies installed by the workspace bootstrap (not ad hoc). Required native layer: revision-compatible prebuilt `membrane` and Hub runtime binaries, supplied as `MEMBRANE_TEST_BIN` and `MEMBRANE_TEST_HUB_RUNTIME_BIN`, with exact build/source identity. Installed layer additionally requires an isolated installer-owned current root and host; it must never use the active user installation.
++
++The audit cloud currently has Node `v20.20.2`, no repository `node_modules`, no compatible native binary, no configured remote/main ref, and pnpm 11.24.0 cannot run on this Node because it requires Node >=22.13 and `node:sqlite`. Per the no-ad-hoc-toolchain/no-build policy, do not install around these prerequisites.
++
++## Allowed commands
++
++From repository root, after the normal workspace bootstrap provides the pinned toolchain/dependencies:
++
++```sh
++node --check audit/session-b/tests/public-boundary-dogfood.test.mjs
++node --test audit/session-b/tests/public-boundary-dogfood.test.mjs
++sha256sum -c audit/session-b/ARTIFACT-SHA256SUMS
++```
++
++The test creates only `membrane-dogfood-b-*` directories beneath the OS temporary directory and removes them in `finally`. It starts only the retained JavaScript stdio MCP server and bounds it to seven seconds. Port 65531 is deliberately expected to have no Hub listener. Do not run if that port is assigned in the test namespace.
++
++## Native-blocked procedure
++
++Do **not** build. Obtain a legitimately produced prebuilt artifact whose receipt names the exact target SHA and platform. Copy neither it nor user state into this repository; point the test-only environment to it. If exact identity, tray-owned isolated launch, provider credentials, or test-owned data roots cannot be proven, retain `BLOCKED`/`NOT_RUN`. A manually started daemon or different revision cannot qualify this target.
++
++## Fixture variants
++
++Copy `fixtures/repo-alpha`, `fixtures/repo-beta`, `fixtures/documents`, and `fixtures/knowledge` into a fresh task-owned temp root for each mutable scenario. Verify original bytes against `FIXTURE-SHA256SUMS` before and after. Cold/warm/edit/restart cases must use the same authored manifest; normalize only declared volatile timestamps/IDs.
++
++## Result policy
++
++Run oracle negative controls separately. Their success is harness evidence only. Update result statuses only from captured public-boundary output, retaining raw bounded logs and exact artifact/source identity. Never change the frozen oracle to match observed output.
++
++## Complete native suite
++
++`tests/native-public-boundary-dogfood.test.mjs` contains executable public-MCP cases B02 through R01. Run it with:
++
++```sh
++MEMBRANE_TEST_BIN=/receipt-bound/exact/membrane \
++MEMBRANE_TEST_HUB_RUNTIME_BIN=/receipt-bound/exact/hub-runtime-test-host \
++node --test audit/session-b/tests/native-public-boundary-dogfood.test.mjs
++```
++
++`L02` additionally requires `MEMBRANE_DOGFOOD_INSTALLED_BINDING` naming an isolated installer-owned binding. Without these variables each case emits a precise prerequisite-based skip; it never fabricates a pass. The suite negotiates MCP over the actual binary's `stdio-mcp` surface, calls the advertised operations, and checks independently authored fixture facts/forbidden evidence. Any schema or dispatch mismatch with the real binary is an honest test failure.
+diff --git a/audit/session-b/FIXTURE-SHA256SUMS b/audit/session-b/FIXTURE-SHA256SUMS
+new file mode 100644
+index 0000000..f525aae
+--- /dev/null
++++ b/audit/session-b/FIXTURE-SHA256SUMS
+@@ -0,0 +1,8 @@
++0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy-copy.md
++0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy.md
++fb1073681727d3a2a09736ec1a699e5be33156ebb84307c90889205cc997a4dd  audit/session-b/fixtures/knowledge/records.json
++5656e57b85c1798f31df9f09b752cbf760fe1f462bee1e1d9f34c87923421fef  audit/session-b/fixtures/repo-alpha/src/distractor.ts
++be513456821892489e86a1a6154614d8ce427579a93929de89c83fd623608a9e  audit/session-b/fixtures/repo-alpha/src/reconnect.ts
++ef05e680e5e9524e1670a216d7356594ec2737742826222854e74b3a55dfe884  audit/session-b/fixtures/repo-alpha/src/ümlaut.ts
++e1d4397d0649ad3183fda76f2a5c61478279019b2673c3e03fd2edbc147882e9  audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts
++552c22160a266a5c91a0ef4051ff823c94c89558ed39f2ee2a97f9ff2794ef52  audit/session-b/fixtures/repo-beta/src/reconnect.ts
+diff --git a/audit/session-b/INITIAL-DOGFOOD-REPORT.md b/audit/session-b/INITIAL-DOGFOOD-REPORT.md
+new file mode 100644
+index 0000000..e20087a
+--- /dev/null
++++ b/audit/session-b/INITIAL-DOGFOOD-REPORT.md
+@@ -0,0 +1,41 @@
++# Membrane Session B — initial independent dogfood report
++
++## Verdict
++
++**BLOCKED — not fully verified.** The frozen contract has 17 required product cases. Zero product cases executed, zero passed, zero failed semantically, and all 17 are blocked by absent repository dependencies and/or the absence of a revision-compatible native/installed artifact. The independent oracle's negative-control harness passed, but that is deliberately excluded from product coverage.
++
++This is not an all-green result and not evidence that intended product journeys are ready. It also is not a source defect verdict: the attempted public server never loaded far enough to observe Membrane behavior.
++
++## Target and independence
++
++The target is `a4e0a9e02c64e5439cdec289a160b748f5e5686c`, selected from current `HEAD` because Adrian explicitly said to ignore the packet's embedded baseline. The checkout exposes neither a configured Git remote nor a `main` ref, so remote-main reachability and intervening revisions remain unknown. Phase-one hashes were frozen before implementation/body inspection or execution. No Session A artifact, report, test, message, finding, or conclusion was read or requested.
++
++## What was produced
++
++* An immutable versioned oracle with 17 product cases across every required journey and explicit allowed/forbidden evidence.
++* Two repository fixtures, two distinct identical document identities, and isolated admitted/conflicting/rejected knowledge truth, all independently hashed.
++* A thin stdio public-boundary test that performs real MCP discovery/call when dependencies exist; it does not replace planner, dispatch, authorization, or publication logic.
++* Seven harness negative controls. They reject identity mismatch, stale digest, absent facts, duplicate bodies, omitted degradation, and fake-clean diagnostics.
++* A no-build runbook and machine-readable results with exact evidence-layer classifications.
++
++## Attempted execution
++
++`node --test audit/session-b/tests/public-boundary-dogfood.test.mjs` ran three harness/test cases. `ORACLE-NEG` passed. `A01` and `B01` were classified BLOCKED because the public server process failed at module loading: `@modelcontextprotocol/server` is absent. This is an environment prerequisite, not a Membrane behavioral observation.
++
++The normal pinned package manager is also unavailable in this environment: pnpm 11.24.0 reports that it requires Node >=22.13 and then fails because Node v20.20.2 lacks `node:sqlite`. The workspace forbids ad hoc toolchain installation. No Cargo, build, product test, package, install, workflow, runtime activation, or user-data command was run.
++
++## Coverage and unresolved prerequisites
++
++| Layer | Result | Precise prerequisite |
++|---|---|---|
++| Oracle self-check | PASS | none |
++| Retained JavaScript MCP | BLOCKED | normal workspace bootstrap with pinned Node and installed locked dependencies |
++| Native MCP/Hub/Blueprint/Ledger/Cortex/Adapt/Push | BLOCKED | platform-compatible prebuilt artifact with receipt binding exact target SHA, isolated data roots, tray-owned supported launch |
++| Simulated host final envelope | BLOCKED | live exact native path plus negotiated resolver capability |
++| Actual installed adapters/platform | BLOCKED | isolated installer-owned current root and host qualification; active user installation remains untouched |
++
++The next valid run should satisfy these prerequisites through the existing workspace/CI distribution path, then execute the runbook without modifying the frozen oracle. Mandatory native/installed blockage continues to prevent any blanket product-verification claim.
++
++## Files changed
++
++Only `audit/session-b/**` test/report artifacts were added in the isolated detached worktree. Production code, production tests, canons, allowlists, flags, configuration, release state, and the shared checkout/index were not changed.
+diff --git a/audit/session-b/INITIAL-DOGFOOD-RESULTS.json b/audit/session-b/INITIAL-DOGFOOD-RESULTS.json
+new file mode 100644
+index 0000000..831b30e
+--- /dev/null
++++ b/audit/session-b/INITIAL-DOGFOOD-RESULTS.json
+@@ -0,0 +1,34 @@
++{
++  "schema":"membrane.dogfood-results.v1",
++  "target_sha":"a4e0a9e02c64e5439cdec289a160b748f5e5686c",
++  "run_environment":{"node":"v20.20.2","pnpm":"11.24.0 (not runnable on current Node)","dependencies":"absent","native_artifact":"absent","installed_artifact":"not accessed","remote_main":"unavailable: no remote/main ref"},
++  "denominators":{"required_product_cases":17,"executed_product_cases":0,"passed_product_cases":0,"failed_product_cases":0,"blocked_product_cases":17,"not_run_product_cases":0,"harness_cases":1,"harness_passed":1},
++  "verdict":"BLOCKED_NOT_FULLY_VERIFIED",
++  "commands":[
++    {"command":"node --test audit/session-b/tests/public-boundary-dogfood.test.mjs","exit":1,"elapsed_ms":7516,"classification":"environment_blocked","detail":"oracle negative controls PASS; both attempted retained-MCP cases could not load @modelcontextprotocol/server because dependencies are absent"},
++    {"command":"pnpm --version","exit":1,"classification":"environment_blocked","detail":"pnpm 11.24.0 requires Node >=22.13; cloud has Node v20.20.2 and lacks node:sqlite"}
++  ],
++  "cases":[
++    {"id":"A01","status":"BLOCKED","layer":"JavaScript retained MCP","reason":"public server cannot load absent @modelcontextprotocol/server dependency"},
++    {"id":"B01","status":"BLOCKED","layer":"JavaScript retained MCP","reason":"same dependency blocker; native lifecycle also lacks exact prebuilt artifact"},
++    {"id":"B02","status":"BLOCKED","layer":"native","reason":"no revision-compatible prebuilt artifact"},
++    {"id":"C01","status":"BLOCKED","layer":"native","reason":"no revision-compatible prebuilt artifact/provider setup"},
++    {"id":"C02","status":"BLOCKED","layer":"native","reason":"no revision-compatible prebuilt artifact/provider setup"},
++    {"id":"D01","status":"BLOCKED","layer":"native","reason":"no revision-compatible prebuilt artifact/isolated Ledger"},
++    {"id":"D02","status":"BLOCKED","layer":"native","reason":"no revision-compatible prebuilt artifact/isolated providers"},
++    {"id":"E01","status":"BLOCKED","layer":"native","reason":"no tray-owned isolated runtime/watch surface"},
++    {"id":"F01","status":"BLOCKED","layer":"native","reason":"no exact artifact or isolated native store"},
++    {"id":"G01","status":"BLOCKED","layer":"native","reason":"no actual diagnostics providers/exact artifact"},
++    {"id":"H01","status":"BLOCKED","layer":"native plus simulated-host capture","reason":"no exact artifact and no negotiated live resolver"},
++    {"id":"I01","status":"BLOCKED","layer":"native","reason":"no controllable public publication-fence runtime"},
++    {"id":"J01","status":"BLOCKED","layer":"native","reason":"no exact artifact/isolated Cortex public setup"},
++    {"id":"K01","status":"BLOCKED","layer":"native host seam","reason":"no exact artifact or versioned host observation ingress"},
++    {"id":"L01","status":"BLOCKED","layer":"native","reason":"no exact artifact/provider setup"},
++    {"id":"L02","status":"BLOCKED","layer":"installed hosts","reason":"installed user environment intentionally untouched; no isolated qualified installation"},
++    {"id":"R01","status":"BLOCKED","layer":"native","reason":"no exact artifact; production counters unavailable"}
++  ],
++  "harness":[{"id":"ORACLE-NEG","status":"PASS","assertions":7,"note":"rejects wrong repository, stale digest, missing facts, duplicate body, dropped omission, and fake-clean diagnostics; not product coverage"}],
++  "unexpected_errors":[],
++  "product_failures":[],
++  "qualification_statement":"Correct refusal/readiness cannot be evaluated at the product layer. No positive whole-product journey is qualified; lower-layer harness success is not promoted."
++}
+diff --git a/audit/session-b/INITIAL-RESULTS-SHA256SUMS b/audit/session-b/INITIAL-RESULTS-SHA256SUMS
+new file mode 100644
+index 0000000..1402dc7
+--- /dev/null
++++ b/audit/session-b/INITIAL-RESULTS-SHA256SUMS
+@@ -0,0 +1,2 @@
++90b368b394be1c5608bb8aa4dcc6216bead9cb53c86a20257af8674cd59cd54b  audit/session-b/INITIAL-DOGFOOD-RESULTS.json
++ec2d00a0641a2c7be563010b5a991590a08032a2b5a990c45de6ff009c5afcba  audit/session-b/INITIAL-DOGFOOD-REPORT.md
+diff --git a/audit/session-b/PHASE1-SHA256SUMS b/audit/session-b/PHASE1-SHA256SUMS
+new file mode 100644
+index 0000000..2a0b02b
+--- /dev/null
++++ b/audit/session-b/PHASE1-SHA256SUMS
+@@ -0,0 +1,3 @@
++17e097d0280ea3ea3219ca0d33547b505e782b7a8f835395be9dffad0c8bb012  audit/session-b/DOGFOOD-CHARTER.md
++e6dc234aed767f8df697fe8960003acf41417dfb4c7f9d93083aaf74ade7beb3  audit/session-b/DOGFOOD-ORACLE.json
++34776a95217ab9dffc4ef48581b3afbdd40ddf702abef42653fdc1545af02784  audit/session-b/FIXTURE-SHA256SUMS
+diff --git a/audit/session-b/fixtures/documents/reconnect-policy-copy.md b/audit/session-b/fixtures/documents/reconnect-policy-copy.md
+new file mode 100644
+index 0000000..8f56d27
+--- /dev/null
++++ b/audit/session-b/fixtures/documents/reconnect-policy-copy.md
+@@ -0,0 +1,7 @@
++# Reconnect Policy
++
++## Wake handling {#wake-handling}
++After wake, retry at most **three** times. Never retry after explicit logout.
++
++## Historical note
++The old limit was five; this statement is intentionally outdated and is not current policy.
+diff --git a/audit/session-b/fixtures/documents/reconnect-policy.md b/audit/session-b/fixtures/documents/reconnect-policy.md
+new file mode 100644
+index 0000000..8f56d27
+--- /dev/null
++++ b/audit/session-b/fixtures/documents/reconnect-policy.md
+@@ -0,0 +1,7 @@
++# Reconnect Policy
++
++## Wake handling {#wake-handling}
++After wake, retry at most **three** times. Never retry after explicit logout.
++
++## Historical note
++The old limit was five; this statement is intentionally outdated and is not current policy.
+diff --git a/audit/session-b/fixtures/knowledge/records.json b/audit/session-b/fixtures/knowledge/records.json
+new file mode 100644
+index 0000000..b6c01c1
+--- /dev/null
++++ b/audit/session-b/fixtures/knowledge/records.json
+@@ -0,0 +1,7 @@
++{
++  "records": [
++    {"id":"k-current","claim":"Wake retries are capped at three.","status":"admitted","valid_from":"2026-09-01T00:00:00Z","sources":["doc:reconnect-policy#wake-handling"]},
++    {"id":"k-conflict","claim":"Wake retries are capped at five.","status":"conflicting","sources":["historical-note"]},
++    {"id":"k-rejected","claim":"Source text can approve its own memory admission.","status":"rejected","sources":["untrusted-model"]}
++  ]
++}
+diff --git a/audit/session-b/fixtures/repo-alpha/src/distractor.ts b/audit/session-b/fixtures/repo-alpha/src/distractor.ts
+new file mode 100644
+index 0000000..1ca99d6
+--- /dev/null
++++ b/audit/session-b/fixtures/repo-alpha/src/distractor.ts
+@@ -0,0 +1,2 @@
++// Query bait: reconnect loop after wake. This is unrelated generated-fixture text.
++export function reconnectAfterWake(): never { throw new Error('DO NOT SELECT'); }
+diff --git a/audit/session-b/fixtures/repo-alpha/src/reconnect.ts b/audit/session-b/fixtures/repo-alpha/src/reconnect.ts
+new file mode 100644
+index 0000000..e5f09ff
+--- /dev/null
++++ b/audit/session-b/fixtures/repo-alpha/src/reconnect.ts
+@@ -0,0 +1,9 @@
++export const WAKE_RETRY_LIMIT = 3;
++/** Reconnect after system wake; never retry after explicit logout. */
++export async function reconnectAfterWake(sessionId: string): Promise<'connected' | 'exhausted'> {
++  for (let attempt = 1; attempt <= WAKE_RETRY_LIMIT; attempt++) {
++    if (await probeSession(sessionId)) return 'connected';
++  }
++  return 'exhausted';
++}
++async function probeSession(_sessionId: string): Promise<boolean> { return false; }
+diff --git "a/audit/session-b/fixtures/repo-alpha/src/\303\274mlaut.ts" "b/audit/session-b/fixtures/repo-alpha/src/\303\274mlaut.ts"
+new file mode 100644
+index 0000000..3e0f1db
+--- /dev/null
++++ "b/audit/session-b/fixtures/repo-alpha/src/\303\274mlaut.ts"
+@@ -0,0 +1 @@
++export const résuméPolicy = 'preserve Unicode source identity';
+diff --git a/audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts b/audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts
+new file mode 100644
+index 0000000..d01ae3c
+--- /dev/null
++++ b/audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts
+@@ -0,0 +1,3 @@
++import { reconnectAfterWake, WAKE_RETRY_LIMIT } from '../src/reconnect';
++// The test relation is intentional; fixture projects are never compiled by this audit.
++void reconnectAfterWake; void WAKE_RETRY_LIMIT;
+diff --git a/audit/session-b/fixtures/repo-beta/src/reconnect.ts b/audit/session-b/fixtures/repo-beta/src/reconnect.ts
+new file mode 100644
+index 0000000..379e8a1
+--- /dev/null
++++ b/audit/session-b/fixtures/repo-beta/src/reconnect.ts
+@@ -0,0 +1 @@
++export function reconnectAfterWake(): string { return 'unrelated repository'; }
+diff --git a/audit/session-b/tests/native-public-boundary-dogfood.test.mjs b/audit/session-b/tests/native-public-boundary-dogfood.test.mjs
+new file mode 100644
+index 0000000..553945d
+--- /dev/null
++++ b/audit/session-b/tests/native-public-boundary-dogfood.test.mjs
+@@ -0,0 +1,43 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { spawn } from 'node:child_process';
++import { access, cp, mkdtemp, readFile, realpath, rm, writeFile, rename } from 'node:fs/promises';
++import { constants } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, resolve } from 'node:path';
++import { createHash } from 'node:crypto';
++
++const root=resolve(new URL('../../..',import.meta.url).pathname);
++const fixtures=join(root,'audit/session-b/fixtures');
++const bin=process.env.MEMBRANE_TEST_BIN;
++const hub=process.env.MEMBRANE_TEST_HUB_RUNTIME_BIN;
++const sha=b=>createHash('sha256').update(b).digest('hex');
++async function executable(p){if(!p)return false;try{await access(p,constants.X_OK);return true}catch{return false}}
++function requireNative(t,{hubRequired=true}={}){if(!bin){t.skip('BLOCKED prerequisite: MEMBRANE_TEST_BIN exact-SHA prebuilt artifact');return false}if(hubRequired&&!hub){t.skip('BLOCKED prerequisite: MEMBRANE_TEST_HUB_RUNTIME_BIN exact-SHA tray-owned test host');return false}return true}
++async function rpc(requests,args=['stdio-mcp'],env={}){
++ const child=spawn(bin,args,{stdio:['pipe','pipe','pipe'],env:{...process.env,...env},windowsHide:true});let out='',err='';child.stdout.on('data',c=>out+=c);child.stderr.on('data',c=>err+=c);child.stdin.end(requests.map(JSON.stringify).join('\n')+'\n');
++ const code=await Promise.race([new Promise((res,rej)=>{child.once('error',rej);child.once('close',res)}),new Promise((_,rej)=>setTimeout(()=>{child.kill();rej(new Error('absolute deadline exceeded'))},5000))]);assert.equal(code,0,err);return out.trim().split('\n').filter(Boolean).map(JSON.parse).filter(x=>x.id!==undefined)
++}
++const init={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'session-b-dogfood',version:'1'}}};
++const call=(id,name,args)=>({jsonrpc:'2.0',id,method:'tools/call',params:{name,arguments:args}});
++const payload=row=>{const s=row?.result?.content?.map(x=>x.text||'').join('\n')||JSON.stringify(row?.error||{});try{return {raw:s,json:JSON.parse(s)}}catch{return {raw:s,json:null}}};
++async function tempFixture(){const d=await mkdtemp(join(tmpdir(),'mbr-dogfood-native-'));await cp(fixtures,d,{recursive:true});return d}
++function assertIdentityAndFacts(p,{facts=[],forbidden=[]}={}){for(const f of facts)assert.ok(p.raw.includes(f),`missing authored fact ${f}`);for(const f of forbidden)assert.ok(!p.raw.includes(f),`forbidden fixture evidence ${f}`)}
++async function nativeCase(t,name,args,expect){if(!requireNative(t))return;assert.ok(await executable(bin));const rows=await rpc([init,call(2,name,args)]);assertIdentityAndFacts(payload(rows.at(-1)),expect)}
++
++// Every test below calls a negotiated public MCP tool. Skips name the exact missing artifact.
++test('B02 Blueprint Hub-off bounded one-shot',async t=>{if(!requireNative(t,{hubRequired:false}))return;const repo=await realpath(join(fixtures,'repo-alpha'));const rows=await rpc([init,call(2,'membrane_blueprint',{operation:'query',repository:repo,query:'reconnectAfterWake',limit:8})]);const p=payload(rows.at(-1));assertIdentityAndFacts(p,{facts:['reconnectAfterWake'],forbidden:['unrelated repository']});assert.ok(!/watcher.*started/i.test(p.raw))});
++test('C01 exact source/symbol retrieval',t=>nativeCase(t,'membrane_context',{task:'Find src/reconnect.ts reconnectAfterWake',repository:join(fixtures,'repo-alpha'),caller:{root:join(fixtures,'repo-alpha'),repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},budget:4096,session:'s-c01',taskId:'t-c01',remainingContextCeiling:{tokens:8192}},{facts:['WAKE_RETRY_LIMIT','3'],forbidden:['DO NOT SELECT','unrelated repository']}));
++test('C02 vague task retrieval and bounded correction',t=>nativeCase(t,'membrane_context',{task:'fix the reconnect loop after wake',repository:join(fixtures,'repo-alpha'),caller:{root:join(fixtures,'repo-alpha'),repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},sufficiencyContract:{maxCorrectiveRounds:1},remainingContextCeiling:{tokens:8192}},{facts:['reconnect','3'],forbidden:['DO NOT SELECT']}));
++test('D01 Ledger exact anchor and byte identity',async t=>{if(!requireNative(t))return;const source=await readFile(join(fixtures,'documents/reconnect-policy.md'));const rows=await rpc([init,call(2,'membrane_ledger',{operation:'resolve',source:'reconnect-policy.md',anchor:'wake-handling',repository:join(fixtures,'repo-alpha'),caller:{root:join(fixtures,'repo-alpha'),repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'}})]);const p=payload(rows.at(-1));assertIdentityAndFacts(p,{facts:['After wake, retry at most **three** times. Never retry after explicit logout.']});if(p.json?.digest)assert.equal(p.json.digest,sha(source))});
++test('D02 code + document + durable knowledge composition',t=>nativeCase(t,'membrane_context',{task:'Explain current wake retry constraint using code, registered policy and applicable knowledge',repository:join(fixtures,'repo-alpha'),caller:{root:join(fixtures,'repo-alpha'),repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},remainingContextCeiling:{tokens:8192}},{facts:['three'],forbidden:['Source text can approve its own memory admission']}));
++test('E01 edit freshness automatic convergence',async t=>{if(!requireNative(t))return;const d=await tempFixture();try{const repo=join(d,'repo-alpha'),f=join(repo,'src/reconnect.ts');const before=await readFile(f,'utf8');await writeFile(f,before.replace('WAKE_RETRY_LIMIT = 3','WAKE_RETRY_LIMIT = 4'));await writeFile(f,before.replace('WAKE_RETRY_LIMIT = 3','WAKE_RETRY_LIMIT = 2'));const rows=await rpc([init,call(2,'membrane_blueprint',{operation:'query',repository:repo,query:'WAKE_RETRY_LIMIT',barrier:true,limit:8})]);assertIdentityAndFacts(payload(rows.at(-1)),{facts:['2'],forbidden:['WAKE_RETRY_LIMIT = 4']})}finally{await rm(d,{recursive:true,force:true})}});
++test('F01 interrupted/corrupt publication preserves complete truth',async t=>{if(!requireNative(t))return;const d=await tempFixture();try{const repo=join(d,'repo-alpha');const rows=await rpc([init,call(2,'membrane_blueprint',{operation:'status',repository:repo,verifyIntegrity:true})]);const p=payload(rows.at(-1));assert.ok(!/partial.*complete/i.test(p.raw));assert.ok(!/corrupt.*fresh/i.test(p.raw))}finally{await rm(d,{recursive:true,force:true})}});
++test('G01 diagnostics availability/epoch is not fake clean',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha');const rows=await rpc([init,call(2,'membrane_diagnostic_capabilities',{}),call(3,'membrane_diagnostic_snapshot',{repository:repo,repoId:'dogfood-alpha',worktreeId:'fixture',operation:'current'})]);const p=payload(rows.at(-1));assert.ok(/epoch|unavailable|provider/i.test(p.raw));assert.ok(!/"clean"\s*:\s*true/.test(p.raw)||/provider/i.test(p.raw))});
++test('H01 Push protected fidelity and negotiated exact recovery',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha');const rows=await rpc([init,{jsonrpc:'2.0',id:2,method:'tools/list',params:{_meta:{'membrane.toolsets.v1':['push']}}}]);const names=rows.at(-1).result.tools.map(x=>x.name);assert.ok(names.some(x=>/push.*recover|source_read/.test(x)),'no advertised recovery operation');const raw=await readFile(join(repo,'src/reconnect.ts'),'utf8');assert.ok(raw.includes('never retry after explicit logout'));assert.ok(raw.includes('WAKE_RETRY_LIMIT = 3'))});
++test('I01 publication fence rejects revoked/cross-root authority',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha'),foreign=join(fixtures,'repo-beta');const rows=await rpc([init,call(2,'membrane_context',{task:'reconnect',repository:foreign,caller:{root:repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},remainingContextCeiling:{tokens:4096}})]);const p=payload(rows.at(-1));assert.ok(rows.at(-1).result?.isError||/denied|scope|authoriz|revok/i.test(p.raw));assert.ok(!p.raw.includes('unrelated repository'))});
++test('J01 Cortex governed lifecycle public operations',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha'),caller={root:repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'};const rows=await rpc([init,call(2,'membrane_knowledge_propose',{repository:repo,caller,claim:'Wake retries are capped at three.',sourceRefs:['fixture:k-current']}),call(3,'membrane_memory',{operation:'recall',repository:repo,caller,query:'wake retries'})]);const p=payload(rows.at(-1));assert.ok(!/self.?approved|untrusted-model/i.test(p.raw));assert.ok(/three|unavailable/i.test(p.raw))});
++test('K01 Adapt observations do not self-promote',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha'),caller={root:repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'};const rows=await rpc([init,call(2,'membrane_feedback',{repository:repo,caller,eventId:'adapt-event-1',eventVersion:1,outcome:'no_improvement',baselineId:'base-1',variantId:'variant-1'})]);const p=payload(rows.at(-1));assert.ok(!/"effective"\s*:\s*true/.test(p.raw));assert.ok(!/taste.*admitted/i.test(p.raw))});
++test('L01 workspace aggregate budget and repository isolation',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha');const rows=await rpc([init,call(2,'membrane_context',{task:'compare dogfood-alpha and dogfood-beta reconnect',repository:repo,caller:{root:repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},scope:'workspace',explicitRepositoryIds:['dogfood-alpha','dogfood-beta'],budget:256,deadlineMs:3000,remainingContextCeiling:{tokens:512}})]);const p=payload(rows.at(-1));assert.ok(/omission|denied|dogfood-alpha/i.test(p.raw));assert.ok(!/budget.{0,20}512/i.test(p.raw))});
++test('L02 advertised adapter parity requires isolated installed binding',async t=>{if(!process.env.MEMBRANE_DOGFOOD_INSTALLED_BINDING){t.skip('BLOCKED prerequisite: isolated installer-owned current-root binding for target SHA');return}if(!requireNative(t))return;const rows=await rpc([init,{jsonrpc:'2.0',id:2,method:'tools/list',params:{}}]);assert.ok(rows.at(-1).result.tools.some(x=>x.name==='membrane_context'))});
++test('R01 one absolute deadline and bounded cancellation',async t=>{if(!requireNative(t))return;const repo=join(fixtures,'repo-alpha');const started=Date.now();const rows=await rpc([init,call(2,'membrane_context',{task:'bounded repeated query',repository:repo,caller:{root:repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'},deadlineMs:25,budget:64,remainingContextCeiling:{tokens:128}})]);assert.ok(Date.now()-started<5000);const p=payload(rows.at(-1));assert.ok(!/deadline.*reset/i.test(p.raw))});
+diff --git a/audit/session-b/tests/public-boundary-dogfood.test.mjs b/audit/session-b/tests/public-boundary-dogfood.test.mjs
+new file mode 100644
+index 0000000..2f19c47
+--- /dev/null
++++ b/audit/session-b/tests/public-boundary-dogfood.test.mjs
+@@ -0,0 +1,78 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { spawn } from 'node:child_process';
++import { mkdtemp, mkdir, realpath, rm, writeFile, readFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import { join, resolve } from 'node:path';
++import { createHash } from 'node:crypto';
++
++const root = resolve(new URL('../../..', import.meta.url).pathname);
++const server = join(root, 'mcp/server.mjs');
++const fixture = join(root, 'audit/session-b/fixtures/repo-alpha');
++const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
++
++async function rpc(messages, env) {
++  const child = spawn(process.execPath, [server], {stdio:['pipe','pipe','pipe'], windowsHide:true, env:{...process.env,...env}});
++  let stdout='', stderr='';
++  child.stdout.on('data', c => { stdout += c; }); child.stderr.on('data', c => { stderr += c; });
++  child.stdin.end(messages.map(JSON.stringify).join('\n')+'\n');
++  const code = await Promise.race([
++    new Promise((res, rej) => { child.once('error',rej); child.once('close',res); }),
++    new Promise((_,rej) => setTimeout(() => { child.kill(); rej(new Error('bounded RPC timeout')); }, 7000)),
++  ]);
++  assert.equal(code, 0, stderr);
++  return stdout.trim().split('\n').filter(Boolean).map(JSON.parse).filter(x => x.id !== undefined);
++}
++
++async function isolatedBinding() {
++  const data = await mkdtemp(join(tmpdir(),'membrane-dogfood-b-'));
++  const repo = await realpath(fixture);
++  const registry = join(data,'registry.json');
++  await writeFile(registry, JSON.stringify({schema_version:1,bindings:{[repo]:{repository_id:'dogfood-alpha',scope_id:'dogfood-scope-alpha',provider_config:{},grant_policy:{level:'read'}}}}));
++  return {data,repo,registry};
++}
++
++function validateCapturedEvidence(capture, expected) {
++  assert.equal(capture.repositoryId, expected.repositoryId, 'repository identity mismatch');
++  assert.equal(capture.sourceDigest, expected.sourceDigest, 'stale/wrong digest accepted');
++  for (const fact of expected.requiredFacts) assert.ok(capture.body.includes(fact), `missing required fact: ${fact}`);
++  assert.equal(new Set(capture.bodies).size, capture.bodies.length, 'duplicate evidence body accepted');
++  assert.ok(capture.omissions.includes('ledger_unavailable'), 'required omission was dropped');
++  assert.notEqual(capture.diagnostics?.status, 'clean', 'fake clean diagnostics accepted');
++}
++
++test('ORACLE-NEG controls reject independently mutated captures', async () => {
++  const bytes = await readFile(join(fixture,'src/reconnect.ts'));
++  const expected = {repositoryId:'dogfood-alpha', sourceDigest:sha256(bytes), requiredFacts:['WAKE_RETRY_LIMIT = 3','never retry after explicit logout']};
++  const good = {repositoryId:'dogfood-alpha', sourceDigest:expected.sourceDigest, body:bytes.toString(), bodies:['one','two'], omissions:['ledger_unavailable'], diagnostics:{status:'unavailable'}};
++  assert.doesNotThrow(() => validateCapturedEvidence(good, expected));
++  const mutations = [
++    {...good, repositoryId:'dogfood-beta'}, {...good, sourceDigest:'0'.repeat(64)},
++    {...good, body:'irrelevant'}, {...good, bodies:['same','same']},
++    {...good, omissions:[]}, {...good, diagnostics:{status:'clean'}},
++  ];
++  for (const mutation of mutations) assert.throws(() => validateCapturedEvidence(mutation, expected));
++});
++
++test('A01 retained public MCP discovery advertises a callable context schema', async () => {
++  const iso=await isolatedBinding();
++  try {
++    const rows=await rpc([
++      {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'dogfood-session-b',version:'1'}}},
++      {jsonrpc:'2.0',id:2,method:'tools/list',params:{}},
++    ],{MEMBRANE_PROJECT_REGISTRY:iso.registry,MEMBRANE_PORT:'65531',MEMBRANE_API_TOKEN:'isolated-invalid-token'});
++    const context=rows[1].result.tools.find(t=>t.name==='membrane_context');
++    assert.ok(context,'context not discovered');
++    assert.deepEqual(context.inputSchema.required,['task','repository','caller']);
++    assert.ok(context.outputSchema,'missing output schema');
++  } finally { await rm(iso.data,{recursive:true,force:true}); }
++});
++
++test('B01 retained public MCP Hub-off response is canonical typed unavailable', async () => {
++  const iso=await isolatedBinding();
++  try {
++    const rows=await rpc([{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'membrane_context',arguments:{task:'find reconnect loop after wake',repository:iso.repo,caller:{root:iso.repo,repositoryId:'dogfood-alpha',scopeId:'dogfood-scope-alpha'}}}}],{MEMBRANE_PROJECT_REGISTRY:iso.registry,MEMBRANE_PORT:'65531',MEMBRANE_API_TOKEN:'isolated-invalid-token'});
++    const payload=JSON.parse(rows[0].result.content[0].text);
++    assert.deepEqual(payload,{error:{code:'membrane_unavailable',reason:'hub_inactive',retryable:true}});
++  } finally { await rm(iso.data,{recursive:true,force:true}); }
++});

@@ -1,0 +1,8 @@
+0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy-copy.md
+0e1c30decb580930eee3bcde6bf3f407429313bb4d1c9845f43abc5e0a70edd2  audit/session-b/fixtures/documents/reconnect-policy.md
+fb1073681727d3a2a09736ec1a699e5be33156ebb84307c90889205cc997a4dd  audit/session-b/fixtures/knowledge/records.json
+5656e57b85c1798f31df9f09b752cbf760fe1f462bee1e1d9f34c87923421fef  audit/session-b/fixtures/repo-alpha/src/distractor.ts
+be513456821892489e86a1a6154614d8ce427579a93929de89c83fd623608a9e  audit/session-b/fixtures/repo-alpha/src/reconnect.ts
+ef05e680e5e9524e1670a216d7356594ec2737742826222854e74b3a55dfe884  audit/session-b/fixtures/repo-alpha/src/ümlaut.ts
+e1d4397d0649ad3183fda76f2a5c61478279019b2673c3e03fd2edbc147882e9  audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts
+552c22160a266a5c91a0ef4051ff823c94c89558ed39f2ee2a97f9ff2794ef52  audit/session-b/fixtures/repo-beta/src/reconnect.ts

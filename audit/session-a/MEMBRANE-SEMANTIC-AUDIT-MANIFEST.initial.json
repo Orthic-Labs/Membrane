@@ -1,0 +1,59 @@
+{
+  "artifacts": {
+    "MEMBRANE-SEMANTIC-AUDIT.md": {
+      "bytes": 17782,
+      "sha256": "315ba6ca50d36579f3a248a865c273eb3b2ed955caec3d4c7d8841216050dd9c"
+    },
+    "MEMBRANE-SEMANTIC-TRACE-MATRIX.json": {
+      "bytes": 7148,
+      "sha256": "e838ef2177aea6f779628fe2ef8629a599f35b7e414e40df3c0239f0cc560768"
+    }
+  },
+  "coverage": {
+    "canonAtomRowsEnumerated": 353,
+    "inspected": [
+      "governing architecture/generated truth",
+      "public bindings and tool registry",
+      "native stdio/Hub dispatch",
+      "authorization",
+      "Pull core composition",
+      "Ledger dispatch",
+      "Blueprint service/storage slices",
+      "Cortex lifecycle slices",
+      "Push API/recovery",
+      "Adapt MCP boundary",
+      "diagnostics production wiring",
+      "Windows tray lifecycle slices"
+    ],
+    "uninspectedOrUnverified": [
+      "per-atom exhaustive 353-row acceptance trace",
+      "runtime execution and product tests",
+      "installed CI artifact",
+      "all parser/extractor algorithms",
+      "all edit/crash interleavings",
+      "macOS lifecycle",
+      "full CLI/HTTP/SDK parity",
+      "resource measurements"
+    ]
+  },
+  "frozenAt": "2026-09-07",
+  "independence": {
+    "productionTestsRun": false,
+    "runtimeActivated": false,
+    "sessionBContacted": false,
+    "sessionBRead": false
+  },
+  "remoteFetch": {
+    "reason": "checkout has no configured git remote",
+    "status": "blocked"
+  },
+  "schemaVersion": 1,
+  "targetLabel": "current agreed checkout state; embedded packet baseline explicitly ignored",
+  "targetSha": "a4e0a9e02c64e5439cdec289a160b748f5e5686c",
+  "tools": {
+    "git": "git version 2.43.0",
+    "node": "v20.20.2",
+    "python": "3.12.13",
+    "ripgrep": "ripgrep 15.1.0 (rev af60c2de9d)"
+  }
+}

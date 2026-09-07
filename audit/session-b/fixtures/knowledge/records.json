@@ -1,0 +1,7 @@
+{
+  "records": [
+    {"id":"k-current","claim":"Wake retries are capped at three.","status":"admitted","valid_from":"2026-09-01T00:00:00Z","sources":["doc:reconnect-policy#wake-handling"]},
+    {"id":"k-conflict","claim":"Wake retries are capped at five.","status":"conflicting","sources":["historical-note"]},
+    {"id":"k-rejected","claim":"Source text can approve its own memory admission.","status":"rejected","sources":["untrusted-model"]}
+  ]
+}
