@@ -30,6 +30,15 @@ function transportError(error, fallbackCode = "internal_error") {
     message: String(error?.message ?? error ?? "Blueprint request failed"),
   };
   if (error?.details !== undefined) payload.details = error.details;
+  // BPT-044 requires ONE typed error/retry taxonomy across every adapter.
+  // `BlueprintError` derives `retryable` and `remediation` from ERROR_METADATA,
+  // and forwarding only {code, message, details} dropped both on the wire, so a
+  // caller reached through Hub IPC saw `retryable: undefined` where every
+  // in-process adapter saw the real value. `root_not_enrolled` masked this
+  // because root-registry.mjs hand-embeds remediation into details; codes
+  // without that accident (generation_mismatch) lost the whole envelope.
+  if (error?.retryable !== undefined) payload.retryable = error.retryable;
+  if (error?.remediation !== undefined) payload.remediation = error.remediation;
   return payload;
 }
 

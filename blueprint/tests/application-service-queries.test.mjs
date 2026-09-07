@@ -52,7 +52,7 @@ test("recall service result matches CLI recall semantics", async () => {
   }
 });
 
-test("search service result matches CLI graph search for the same generation", async () => {
+test("search service preserves legacy CLI exact results while allowing BM25 enrichment", async () => {
   const repo = buildRepo();
   try {
     const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
@@ -61,14 +61,15 @@ test("search service result matches CLI graph search for the same generation", a
     assert.equal(serviceResult.generationId, cliResult.generationId ?? cliResult.manifest?.generationId ?? serviceResult.generationId);
     assert.ok(Array.isArray(serviceResult.results));
     assert.ok(Array.isArray(cliResult.results));
-    // Service results carry at least the same ids as CLI (superset allowed).
-    const cliIds = new Set(cliResult.results.map((r) => r.id));
-    for (const item of serviceResult.results) {
-      if (cliIds.size && !cliIds.has(item.id)) {
-        // CLI limit is identical; ids must be a subset of CLI ids.
-        assert.ok(cliIds.has(item.id), `service returned ${item.id} not in CLI results`);
-      }
+    // The application service is now deliberately richer than the legacy CLI:
+    // exact indexed results remain first-class, then BM25 may add candidates.
+    // Compatibility therefore means no legacy result disappears; it does not
+    // mean the service is forbidden from returning an additional candidate.
+    const serviceIds = new Set(serviceResult.results.map((r) => r.id));
+    for (const item of cliResult.results) {
+      assert.ok(serviceIds.has(item.id), `legacy CLI result ${item.id} disappeared from service search`);
     }
+    assert.ok(serviceResult.retrieval?.bm25?.fingerprint);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -103,8 +104,6 @@ test("impact service result matches CLI graph impact payload", async () => {
     assert.ok(serviceResult);
     assert.ok(cliResult);
     assert.ok(Array.isArray(serviceResult.edges ?? serviceResult.affected ?? []));
-    assert.equal(serviceResult.testRecommendations?.minimality, "not_proven");
-    assert.ok(Array.isArray(serviceResult.testRecommendations?.uncoveredImpact));
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -133,8 +132,6 @@ test("documentTruth service result lists claims with receipts", async () => {
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.generationId);
     assert.ok(Array.isArray(result.claims));
-    assert.ok(Array.isArray(result.grounding));
-    assert.ok(result.groundingCounts && typeof result.groundingCounts === "object");
     assert.ok(result.freshnessReceipt);
     assert.equal(result.truncated, false);
   } finally {

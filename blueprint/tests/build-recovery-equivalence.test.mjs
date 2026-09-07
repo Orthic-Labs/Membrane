@@ -29,6 +29,16 @@ function builtRepo() {
   return repo;
 }
 
+function edgeProjection(generation) {
+  return generation.edges.map(({ id, kind, source, target, resolved, specifier, reason, confidence, confidenceTier }) => ({
+    id, kind, source, target, resolved, specifier, reason: reason ?? null, confidence, confidenceTier,
+  }));
+}
+
+function nodeProjection(generation) {
+  return generation.nodes.map(({ id, kind, labels, name, qualifiedName, path }) => ({ id, kind, labels, name, qualifiedName, path }));
+}
+
 test("cancelled service request is typed and leaves an independent reader usable", async () => {
   const scenario = caseFor("cancelled-service-request-is-typed-and-isolated");
   const repo = builtRepo();
@@ -63,6 +73,21 @@ test("failed publication restores prior validated database", () => {
     try {
       assert.deepEqual(readManifestEnvelope(db)?.generationId ? readFileSync(target) : null, before);
     } finally { closeStore(db); }
+
+    // Recoverability alone (rollback to the prior valid db) is not the same
+    // claim as BPT-021's crash/restart equivalence: after recovery, rebuilding
+    // the same source must land on the SAME graph a from-scratch build of that
+    // source would produce — the crash must not have left the incremental path
+    // (parse cache, on-disk generation) in a state that diverges from cold.
+    const postRecovery = buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const freshRepo = mkdtempSync(join(tmpdir(), "blueprint-recovery-equivalence-cold-"));
+    try {
+      cpSync(FIXTURE, freshRepo, { recursive: true });
+      const cold = buildGraphGeneration(freshRepo, { outDir: ".agent", persist: true });
+      assert.deepEqual(nodeProjection(postRecovery), nodeProjection(cold), "post-recovery rebuild nodes diverge from a from-scratch build of the same source");
+      assert.deepEqual(edgeProjection(postRecovery), edgeProjection(cold), "post-recovery rebuild edges diverge from a from-scratch build of the same source");
+      assert.equal(postRecovery.manifest.generationId, cold.manifest.generationId, "post-recovery generation identity diverges from a from-scratch build of the same source");
+    } finally { rmSync(freshRepo, { recursive: true, force: true }); }
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 

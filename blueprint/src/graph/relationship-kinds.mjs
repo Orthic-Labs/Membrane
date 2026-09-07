@@ -8,6 +8,7 @@
 export const RELATIONSHIP_REGISTRY = Object.freeze({
   INHERITS: Object.freeze({ category: "type" }),
   IMPLEMENTS: Object.freeze({ category: "type" }),
+  OVERRIDES: Object.freeze({ category: "type" }),
   MIXES_IN: Object.freeze({ category: "type" }),
   TYPED: Object.freeze({ category: "type" }),
   USES: Object.freeze({ category: "dependency" }),

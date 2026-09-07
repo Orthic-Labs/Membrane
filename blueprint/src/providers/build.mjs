@@ -1,7 +1,15 @@
+import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "../graph/confidence-tiers.mjs";
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
+import { collectSemanticEvidenceSync } from "./semantic-orchestrator.mjs";
+import { auditSourceDispositions } from "./source-disposition.mjs";
+import { admitRepositoryPlugins } from "./plugin-loader.mjs";
+import { augmentStructuralIntelligence, STRUCTURAL_INTELLIGENCE_PROVIDER } from "../graph/structural-intelligence.mjs";
+import { augmentFrameworkIntelligence, FRAMEWORK_INTELLIGENCE_PROVIDER } from "../graph/framework-intelligence.mjs";
+import { attachPortableIdentities } from "../graph/portable-identity.mjs";
+import { detectProjectConventions } from "../graph/conventions.mjs";
 import { extractJavaScriptModuleSpecifiers, resolveModuleSpecifier } from "./modules/javascript.mjs";
 import { extractPythonModuleSpecifiers, resolvePythonModule } from "./modules/python-resolver.mjs";
 import {
@@ -307,7 +315,22 @@ function addSchemaAndIacEvidence(generation, files) {
 
 function addScipEvidence(generation, files, root, options, selectedPaths = null, allowExternalTargets = false) {
   if (options.scip === false || process.env.BLUEPRINT_SCIP === "0") return { provider: pythonScipProvider.id, state: "disabled", nodes: 0, edges: 0 };
-  const collected = pythonScipProvider.collect({ repoRoot: root, scipIndexPath: options.scipIndexPath });
+  // BPT-010/BPT-012: the production build resolves semantic providers through
+  // the provider registry (identity/licence/checksum validated against a
+  // committed manifest) and runs them on the bounded synchronous lane, so the
+  // isolation contract is enforced on real builds, not only in the async lane.
+  // `options.semanticProviders` exists so the seam is exercisable end to end;
+  // the default is the first-party set.
+  const providers = Array.isArray(options.semanticProviders) && options.semanticProviders.length
+    ? options.semanticProviders
+    : [pythonScipProvider];
+  const semantic = collectSemanticEvidenceSync(
+    { repoRoot: root, scipIndexPath: options.scipIndexPath },
+    { providers, allowProcess: options.allowProviderProcess === true },
+  );
+  const lane = semantic.results[0] ?? null;
+  const primary = providers[0];
+  const collected = lane?.output ?? { nodes: [], edges: [], reports: [], index: { state: "unavailable" } };
   const fileByPath = new Map(files.map((file) => [normalizePath(file.path), file]));
   const admittedNodeIds = new Set(generation.nodes.map((node) => node.id));
   let nodesAdded = 0;
@@ -317,7 +340,7 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     if (selectedPaths && !selectedPaths.has(normalizePath(node.path))) continue;
     if (!file || node.kind === "file" || admittedNodeIds.has(node.id)) continue;
     node.evidence = (node.evidence ?? []).map((item) => ({ ...item, contentHash: file.contentHash ?? null }));
-    node.factProvider = { id: pythonScipProvider.id, version: pythonScipProvider.version };
+    node.factProvider = { id: primary.id, version: primary.version };
     generation.nodes.push(node);
     admittedNodeIds.add(node.id);
     nodesAdded += 1;
@@ -327,11 +350,18 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     if (selectedPaths && !selectedPaths.has(normalizePath(edge.evidence?.[0]?.path))) continue;
     if (!file || !admittedNodeIds.has(edge.source) || (!allowExternalTargets && edge.target && !admittedNodeIds.has(edge.target))) continue;
     edge.evidence = edge.evidence.map((item) => ({ ...item, contentHash: file.contentHash ?? null }));
-    edge.factProvider = { id: pythonScipProvider.id, version: pythonScipProvider.version };
+    edge.factProvider = { id: primary.id, version: primary.version };
     generation.edges.push(edge);
     edgesAdded += 1;
   }
-  return { provider: pythonScipProvider.id, state: collected.index?.state ?? "unavailable", nodes: nodesAdded, edges: edgesAdded, reports: collected.reports ?? [] };
+  return {
+    provider: primary.id,
+    state: collected.index?.state ?? "unavailable",
+    nodes: nodesAdded,
+    edges: edgesAdded,
+    reports: collected.reports ?? [],
+    disposition: lane?.disposition ?? null,
+  };
 }
 
 function addBridgeEvidence(generation, files) {
@@ -341,15 +371,65 @@ function addBridgeEvidence(generation, files) {
   return collected.summary;
 }
 
+/**
+ * Repository configuration the build actually consumes. Module resolution reads
+ * tsconfig/jsconfig (paths, baseUrl, conditions) and package manifests
+ * (exports, imports, workspaces) live off disk on every build, so a change to
+ * any of them changes the graph without any source file changing.
+ */
+const BUILD_CONFIG_FILES = Object.freeze([
+  "tsconfig.json",
+  "jsconfig.json",
+  "package.json",
+  "pnpm-workspace.yaml",
+]);
+
+function isBuildConfigFile(path) {
+  const normalized = String(path ?? "").replaceAll("\\", "/");
+  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return BUILD_CONFIG_FILES.includes(base);
+}
+
+/**
+ * BPT-020's dependency DAG has a `config` parent, but nothing ever set it:
+ * `generation.augmentation.configDigest` was read by the application service
+ * and written by no one, so a real configuration change could not invalidate a
+ * cached projection through the declared parent. This computes it from the
+ * config files the build consumes, ordered by path so the digest is
+ * deterministic, and content-addressed so an edit changes it.
+ */
+function buildConfigDigest(files) {
+  const rows = (files ?? [])
+    .filter((file) => isBuildConfigFile(file?.path))
+    .map((file) => `${String(file.path).replaceAll("\\", "/")}\u0000${file.contentHash ?? ""}`)
+    .sort();
+  if (!rows.length) return null;
+  return `sha256:${createHash("sha256").update(rows.join("\u0001")).digest("hex")}`;
+}
+
 export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, files, options = {}) {
   const root = resolve(repoRoot);
   const summaries = {
+    ingestion: auditSourceDispositions(root, files),
+    // BPT-057: every plugin manifest the repository ships is admitted or
+    // refused here, before the generation is sealed and before any plugin
+    // code could run. Refusals travel in the manifest, so a poisoned plugin
+    // is visible rather than silently absent.
+    plugins: admitRepositoryPlugins(root, {
+      allowedLicenses: options.allowedPluginLicenses ?? null,
+      trustedPublishers: options.trustedPluginPublishers ?? null,
+    }),
     modules: addModuleEvidence(generation, files, root),
     frameworks: addFrameworkEvidence(generation, files),
     ...addSchemaAndIacEvidence(generation, files),
     scip: addScipEvidence(generation, files, root, options),
     bridges: addBridgeEvidence(generation, files),
   };
+  summaries.structuralIntelligence = augmentStructuralIntelligence(generation, files);
+  summaries.frameworkIntelligence = augmentFrameworkIntelligence(generation, files);
+  summaries.portableIdentity = attachPortableIdentities(generation);
+  summaries.conventions = detectProjectConventions(files);
+  summaries.configDigest = buildConfigDigest(files);
   const layers = [
     { id: MODULE_PROVIDER.id, version: MODULE_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_OR_TYPED_UNRESOLVED" },
     { id: FRAMEWORK_PROVIDER.id, version: FRAMEWORK_PROVIDER.version, role: "supplemental", precisionTier: "EVIDENCE_BOUND_HEURISTIC" },
@@ -357,6 +437,8 @@ export function augmentGenerationWithFirstPartyProviders(generation, repoRoot, f
     { id: TERRAFORM_PROVIDER.id, version: TERRAFORM_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_SYNTAX" },
     { id: pythonScipProvider.id, version: pythonScipProvider.version, role: "supplemental", precisionTier: "COMPILER", state: summaries.scip.state },
     { id: bridgeSeamProvider.id, version: bridgeSeamProvider.version, role: "supplemental", precisionTier: "EXACT_SYNTAX" },
+    { id: STRUCTURAL_INTELLIGENCE_PROVIDER.id, version: STRUCTURAL_INTELLIGENCE_PROVIDER.version, role: "supplemental", precisionTier: "EXACT_OR_TYPED_UNRESOLVED" },
+    { id: FRAMEWORK_INTELLIGENCE_PROVIDER.id, version: FRAMEWORK_INTELLIGENCE_PROVIDER.version, role: "supplemental", precisionTier: "EVIDENCE_BOUND" },
   ];
   return { schemaVersion: 1, summaries, layers };
 }
@@ -369,5 +451,8 @@ export function augmentFileFactsWithFirstPartyProviders(generation, repoRoot, fi
   addSchemaAndIacEvidence(generation, selected);
   addScipEvidence(generation, files, root, options, new Set([normalizePath(file.path)]), true);
   addBridgeEvidence(generation, selected);
+  augmentStructuralIntelligence(generation, selected);
+  augmentFrameworkIntelligence(generation, selected);
+  attachPortableIdentities(generation);
   return generation;
 }

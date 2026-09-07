@@ -14,6 +14,19 @@ import {
 import { traversalBinding, decodeTraversalCursor, encodeTraversalCursor } from "./traversal-cursor.mjs";
 import { symbolAuthorityOrder } from "./symbol-authority-order.mjs";
 import { semanticAuthorityRankForFact } from "./evidence-authority.mjs";
+import { selectTraversalPolicy } from "./traversal-policy.mjs";
+
+// BPT-027: the no-generation (in-memory / fresh ":memory:" handle) JS
+// fallback frontier scans below (indexedNeighbors, indexedPath) previously
+// had no seed/node/edge ceiling of their own — the only bound applied to
+// them lived in the wrapping boundedPayload()'s token budget, so a caller
+// invoking these RAW internal helpers directly (bypassing boundedPayload)
+// got an unbounded walk. These fallbacks now enforce the same ceilings the
+// SQL-backed, generation-bound path already respects via traversal-policy.mjs
+// (recall-circuit.mjs / seed-resolver.mjs). Derived from
+// selectTraversalPolicy's own defaults rather than a new literal, so the
+// numbers cannot drift from the canonical policy limits.
+const FALLBACK_LIMITS = selectTraversalPolicy(null, "explore.both", {});
 
 function providerId(provider) {
   return typeof provider === "string" ? provider : provider?.id ?? "unknown";
@@ -138,6 +151,7 @@ export function indexedNeighbors(db, options = {}) {
   let seenNodes;
   let seenEdges;
   let depths;
+  let fallbackTruncated = false;
   if (frontier) {
     seenNodes = new Set(frontier.seenNodes);
     seenEdges = new Set(frontier.seenEdges);
@@ -145,24 +159,31 @@ export function indexedNeighbors(db, options = {}) {
   } else {
     // No generation envelope (rare — empty/in-memory stores): fall back to
     // scanning the slim edge core in JS so the contract is preserved on a
-    // fresh ":memory:" handle.
+    // fresh ":memory:" handle. BPT-027: this frontier is ceiling-bound here
+    // (not only by the caller's boundedPayload) so a direct caller of this
+    // internal helper cannot walk an unbounded frontier.
     seenNodes = new Set([nodeId]);
     seenEdges = new Set();
     depths = new Map([[nodeId, 0]]);
     let frontierSet = new Set([nodeId]);
+    outer:
     for (let depth = 0; depth < maxDepth; depth += 1) {
       const next = new Set();
       for (const edge of listEdgeCore(db)) {
         const out = direction !== "in" && frontierSet.has(edge.source);
         const incoming = direction !== "out" && frontierSet.has(edge.target);
         if (!out && !incoming) continue;
+        if (seenEdges.size >= FALLBACK_LIMITS.maxEdges) { fallbackTruncated = true; break outer; }
         seenEdges.add(edge.id);
         const other = out ? edge.target : edge.source;
         if (!seenNodes.has(other)) {
+          if (seenNodes.size >= FALLBACK_LIMITS.maxNodes) { fallbackTruncated = true; continue; }
           next.add(other);
           depths.set(other, depth + 1);
+          seenNodes.add(other);
+        } else {
+          seenNodes.add(other);
         }
-        seenNodes.add(other);
       }
       frontierSet = next;
       if (!frontierSet.size) break;
@@ -177,8 +198,14 @@ export function indexedNeighbors(db, options = {}) {
     root: nodeId,
     nodes: hydratedNodes,
     edges: hydratedEdges,
-    truncated: false,
+    truncated: fallbackTruncated,
   };
+  if (fallbackTruncated) {
+    Object.defineProperty(result, "omissions", {
+      value: [{ reason: "bound_reached", layer: "fallback_frontier" }],
+      enumerable: true,
+    });
+  }
   Object.defineProperties(result, {
     depths: { value: depths },
     nodeMap: { value: new Map(hydratedNodes.map((node) => [node.id, node])) },
@@ -200,6 +227,14 @@ export function indexedPath(db, options = {}) {
   const generationId = meta?.manifest?.generationId ?? null;
   const queue = [[from]];
   const visited = new Set([from]);
+  // BPT-027: when there is no generation envelope, listEdgeCore(db) scans the
+  // whole edge core per queue entry with no ceiling of its own — the frontier
+  // walk below now enforces the same maxNodes/maxEdges ceiling the
+  // SQL-indexed (generationId-bound) branch effectively gets from its index
+  // scoping, so a direct caller of this internal helper cannot walk an
+  // unbounded frontier on a fresh/in-memory handle.
+  let edgesWalked = 0;
+  let boundReached = false;
   while (queue.length) {
     const path = queue.shift();
     const current = path.at(-1);
@@ -220,17 +255,35 @@ export function indexedPath(db, options = {}) {
       };
     }
     if (path.length > maxDepth) continue;
+    if (!generationId && (visited.size >= FALLBACK_LIMITS.maxNodes || edgesWalked >= FALLBACK_LIMITS.maxEdges)) {
+      boundReached = true;
+      break;
+    }
     const nextEdges = generationId
       ? listEdgeCore(db, { source: current, generationId })
       : listEdgeCore(db);
     for (const edge of nextEdges) {
       if (!edge.target) continue;
+      if (!generationId) {
+        if (edgesWalked >= FALLBACK_LIMITS.maxEdges) { boundReached = true; break; }
+        edgesWalked += 1;
+      }
       if (visited.has(edge.target)) continue;
+      if (!generationId && visited.size >= FALLBACK_LIMITS.maxNodes) { boundReached = true; break; }
       visited.add(edge.target);
       queue.push([...path, edge.target]);
     }
   }
-  return { schemaVersion: 1, provider: providerId(meta.provider), from, to, path: [], edges: [], found: false };
+  return {
+    schemaVersion: 1,
+    provider: providerId(meta.provider),
+    from,
+    to,
+    path: [],
+    edges: [],
+    found: false,
+    ...(boundReached ? { omissions: [{ reason: "bound_reached", layer: "fallback_frontier" }] } : {}),
+  };
 }
 
 function findEdgeBetween(db, source, target, generationId) {

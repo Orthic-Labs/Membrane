@@ -33,12 +33,22 @@ import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
 import { buildLivenessProjection } from "../../graph/liveness.mjs";
 import { recommendTestsForImpact } from "../../graph/test-recommendation.mjs";
 import { changesSinceReference } from "../../graph/snapshots.mjs";
+import { buildBm25CodeIndex } from "../../graph/bm25-code-index.mjs";
+import { searchAstStructure } from "../../graph/ast-structural-search.mjs";
+import { buildProcessProjection } from "../../graph/process-projection.mjs";
+import { buildContractRegistry } from "../../graph/contract-registry.mjs";
+import { projectSymbolSignatures } from "../../graph/signature-projection.mjs";
+import { buildColdStartOrientation } from "../../graph/orientation.mjs";
+import { buildProjectionDependencyDag, ProjectionCache } from "../../graph/dependency-dag.mjs";
+import { reanchorEvidence } from "../../graph/reanchor.mjs";
+import { crossCheckWithLiveVerifier } from "../../providers/semantic-orchestrator.mjs";
 import { routeFederatedQuery } from "../federation/index.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { serviceStatus } from "../../service/status.mjs";
 import { createBuildSingleflight } from "../../service/build-singleflight.mjs";
 import { RootRegistry } from "./root-registry.mjs";
 import { fail } from "./errors.mjs";
+import { claimBoundaryFor, decision, pathsFromCandidateSet, scopesFromPaths } from "../admission.mjs";
 
 function databasePath(root, outDir) {
   return join(root, outDir, "graph", "graph.db");
@@ -79,6 +89,92 @@ function suppressRows(rows, receipt, lane) {
       ? [{ reason: "stale_source_suppressed", lane, count: suppressed.length, scope: policy.wholeGeneration ? "whole_generation" : "changed_paths" }]
       : [],
   };
+}
+
+// BPT-041 — the orientation decision Blueprint reports and the HOST enforces.
+//
+// Blueprint never refuses to answer or drops evidence because of the action it
+// reports: `recallOrientation` is a pure projection of state the recall path
+// has ALREADY computed (the freshness receipt, the suppressed candidate set,
+// the recall circuit and their omissions). Removing this call would change the
+// envelope's verdict and nothing else about the evidence returned.
+//
+// Derivation, in decision order — each branch keyed to one existing signal:
+//   block    freshness receipt requires whole-generation suppression: every
+//            source-backed row is withheld, so no answer can be grounded.
+//   continue evidence is served under a generation that is truthfully stale
+//            (suppression.required, i.e. freshness === changed_since_generation)
+//            — admitted but incomplete. Mirrors lib/admission.mjs recall, which
+//            also derives `continue` from graph state, not from omission count.
+//   noop     nothing resolved to act on: no candidates and no evidence paths.
+//   allow    otherwise.
+function recallOrientation({ receipt, candidateSet, recallCircuit, omissions, generationId, outDir }) {
+  const suppression = receipt?.suppression ?? null;
+  const freshness = receipt?.freshness ?? "unknown";
+  const candidateCount = candidateSet?.candidates?.length ?? 0;
+  const pathCount = recallCircuit?.paths?.length ?? 0;
+  const rebuild = `blueprint build --out ${outDir}`;
+
+  let action = "allow";
+  let reasonCode = "recalled";
+  let reason = "Recall served from the sealed generation.";
+  let nextAction = null;
+  if (suppression?.required === true && suppression?.mode === "whole_generation") {
+    action = "block";
+    reasonCode = "stale_generation_withheld";
+    reason = "Stale-source enumeration is incomplete, so every source-backed row is withheld.";
+    nextAction = rebuild;
+  } else if (suppression?.required === true) {
+    action = "continue";
+    reasonCode = `recalled_${freshness}`;
+    reason = "Recall served under a generation that predates current worktree changes; suppressed sources are on the receipt.";
+    nextAction = rebuild;
+  } else if (candidateCount === 0 && pathCount === 0) {
+    action = "noop";
+    reasonCode = "no_candidates";
+    reason = "Recall resolved no evidence paths for this task.";
+  }
+
+  const allowedPaths = pathsFromCandidateSet(candidateSet);
+  return decision({
+    action,
+    reason,
+    reasonCode,
+    receiptId: receipt?.receiptId ?? null,
+    candidateSet,
+    allowedScopes: scopesFromPaths(allowedPaths),
+    omissions,
+    nextAction,
+    evidence: {
+      candidateCount,
+      evidencePathCount: pathCount,
+      allowedPaths,
+      recallCircuitState: recallCircuit?.state ?? null,
+      freshness,
+      suppression: suppression ?? null,
+    },
+    receipt,
+    claimBoundary: claimBoundaryFor({
+      // Claim cleanliness tracks whether the served evidence can be trusted as
+      // current, NOT whether the request found anything. `noop` on a fresh
+      // generation means "nothing matched", and a clean claim about that is
+      // still legitimate — tying this to `action === "allow"` made an empty
+      // result report its claims as restricted on an entirely current graph.
+      // Suppression is the condition that actually withholds evidence, and it
+      // is the same condition that produces `continue` and `block`.
+      permitClean: suppression?.required !== true,
+      // Match the state derivation the MCP adapter has always used
+      // (scripts/blueprint-mcp.mjs `claimBoundaryFor`): a caught-up barrier is
+      // "fresh". Deriving it from the receipt's `freshness` field instead would
+      // silently restrict claims on any repository without VCS, where freshness
+      // is "unavailable" — a stricter reading that may well be right, but it is
+      // a change to a shipped claim contract and belongs in its own canon
+      // decision, not smuggled in under the orientation wiring.
+      state: receipt?.barrierResult === "caught_up" ? "fresh" : receipt ? "stale" : "missing",
+      generationId,
+      omissions,
+    }),
+  });
 }
 
 function suppressTraversalPayload(payload, receipt) {
@@ -162,6 +258,8 @@ export function createBlueprintApplicationService({
   allowEmbeddedRoot = false,
   freshnessOwnership = "one_shot",
   buildSingleflight = createBuildSingleflight(),
+  liveVerifier = null,
+  projectionCache = new ProjectionCache(),
 } = {}) {
   if (!["one_shot", "resident"].includes(freshnessOwnership)) {
     throw new TypeError("freshnessOwnership must be one_shot or resident");
@@ -171,6 +269,28 @@ export function createBlueprintApplicationService({
     if (!allowEmbeddedRoot) return new RootRegistry().resolve(input);
     return resolve(input.repoRoot ?? process.cwd());
   };
+
+  function projectionDag(meta, generation) {
+    return buildProjectionDependencyDag({
+      sourceHash: meta?.manifest?.repo?.sourceHash ?? null,
+      providerDigest: meta?.manifest?.manifestDigest ?? null,
+      // The build writes this under `augmentation.providers` alongside the
+      // other first-party summaries; the older top-level read is kept as a
+      // fallback for generations sealed before it existed.
+      configDigest: generation?.augmentation?.providers?.configDigest
+        ?? generation?.augmentation?.configDigest
+        ?? null,
+      schemaVersion: meta?.schemaVersion ?? generation?.schemaVersion ?? null,
+      generationId: meta?.manifest?.generationId ?? generation?.manifest?.generationId ?? null,
+    });
+  }
+
+  function cachedProjection(name, db, meta, builder) {
+    const generation = loadGeneration(db);
+    const dag = projectionDag(meta, generation);
+    const cached = projectionCache.getOrBuild(name, dag, () => builder(generation));
+    return { generation, dag, ...cached };
+  }
 
   async function openFreshnessSession(input = {}, { signal } = {}) {
     throwIfAborted(signal);
@@ -334,16 +454,40 @@ export function createBlueprintApplicationService({
     async search(input = {}, options = {}) {
       return withCurrentDb(input, ({ db, meta, receipt }) => {
         const query = String(input.query ?? "").trim();
-        const generation = indexedQueryGeneration(db, query, { limit: Number(input.limit ?? 20), anchors: input.anchors ?? [] });
-        const filtered = suppressRows(queryGraph(generation, { query, limit: Number(input.limit ?? 20) }), receipt, "search");
+        const limit = Math.max(1, Math.min(200, Number(input.limit ?? 20) || 20));
+        const indexed = indexedQueryGeneration(db, query, { limit, anchors: input.anchors ?? [] });
+        const exact = suppressRows(queryGraph(indexed, { query, limit }), receipt, "search");
+        const bm25Projection = cachedProjection("bm25", db, meta, (full) => buildBm25CodeIndex(full));
+        const bm25Rows = suppressRows(
+          bm25Projection.value.search(query, { limit }).map((row) => ({ ...row.document.node, lexicalScore: row.score, lexicalExactName: row.exactName })),
+          receipt,
+          "search_bm25",
+        );
+        const seen = new Set();
+        const results = [];
+        for (const row of [...exact.rows, ...bm25Rows.rows]) {
+          if (!row?.id || seen.has(row.id)) continue;
+          seen.add(row.id);
+          results.push(row);
+          if (results.length >= limit) break;
+        }
+        const structural = input.astPattern
+          ? searchAstStructure(bm25Projection.generation, input.astPattern, { limit })
+          : null;
+        const structuralRows = structural ? suppressRows(structural.nodes, receipt, "search_structural") : { rows: [], omissions: [] };
         return {
           schemaVersion: 1,
           kind: "search",
           generationId: meta.manifest.generationId,
           provider: meta.provider,
           query,
-          results: filtered.rows,
-          omissions: filtered.omissions,
+          results,
+          retrieval: {
+            exactCount: exact.rows.length,
+            bm25: { cache: bm25Projection.cache, fingerprint: bm25Projection.fingerprint, candidateCount: bm25Rows.rows.length },
+            structural: structural ? { ...structural, nodes: structuralRows.rows } : null,
+          },
+          omissions: [...exact.omissions, ...bm25Rows.omissions, ...structuralRows.omissions],
           truncated: false,
           continuationCursor: null,
           freshnessReceipt: receipt,
@@ -352,15 +496,29 @@ export function createBlueprintApplicationService({
     },
 
     async resolve(input = {}, options = {}) {
-      return withCurrentDb(input, ({ db, meta, receipt }) => {
-        const result = indexedResolve(db, String(input.nodeId ?? ""), {
+      return withCurrentDb(input, async ({ db, meta, receipt }) => {
+        let result = indexedResolve(db, String(input.nodeId ?? ""), {
           sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
         });
+        let reanchor = null;
+        if (!result && input.previousEvidence) {
+          const current = loadGeneration(db);
+          reanchor = reanchorEvidence(input.previousEvidence, current.nodes ?? []);
+          if (reanchor.state === "ambiguous") fail("anchor_ambiguous", "Previous evidence re-anchors to more than one current fact.", { reanchor });
+          if (reanchor.state === "reanchored") {
+            result = indexedResolve(db, reanchor.targetId, {
+              sourceState: receipt.barrierResult === "caught_up" ? "clean" : "stale",
+            });
+          }
+        }
         if (!result) fail("node_not_found", `Graph node not found: ${input.nodeId}`);
         if (staleRow(result.node, staleSourcePolicy(receipt))) {
           fail("stale_source_suppressed", `Graph node is stale relative to current source: ${input.nodeId}`, { freshnessReceipt: receipt });
         }
-        return { ...result, generationId: meta.manifest.generationId, freshnessReceipt: receipt };
+        const verification = input.verifySemantic === true
+          ? await crossCheckWithLiveVerifier({ canonical: result.node, verifier: liveVerifier, request: input, sourceStateId: meta.manifest.generationId, signal: options.signal })
+          : null;
+        return { ...result, reanchor, verification, generationId: meta.manifest.generationId, freshnessReceipt: receipt };
       }, options);
     },
 
@@ -398,15 +556,23 @@ export function createBlueprintApplicationService({
           omissions: [...(circuit.omissions ?? []), { reason: "stale_source_suppressed", lane: "evidence_path", count: suppressedPaths }],
           state: paths.length ? circuit.state : "abstained",
         } : circuit;
+        const omissions = candidateSet.omissions ?? [];
+        const orientation = recallOrientation({
+          receipt,
+          candidateSet,
+          recallCircuit,
+          omissions,
+          generationId: meta.manifest.generationId,
+          outDir,
+        });
         return {
+          ...orientation,
           schemaVersion: 1,
-          action: "allow",
-          reasonCode: "recalled",
           generationId: meta.manifest.generationId,
           candidateSet,
           recallCircuit,
           freshnessReceipt: receipt,
-          omissions: candidateSet.omissions ?? [],
+          omissions,
         };
       }, options);
     },
@@ -537,6 +703,33 @@ export function createBlueprintApplicationService({
             maxHops: input.maxHops,
           }), freshnessReceipt: receipt };
         }
+        if (view === "processes") {
+          const cached = cachedProjection("processes", db, meta, (generation) => buildProcessProjection(generation, {
+            maxProcesses: input.maxProcesses,
+            maxDepth: input.maxDepth,
+            maxSteps: input.maxSteps,
+          }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "contracts") {
+          const cached = cachedProjection("contracts", db, meta, (generation) => buildContractRegistry(generation, { repoId: input.repoId ?? null }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "signatures") {
+          const cached = cachedProjection("signatures", db, meta, (generation) => projectSymbolSignatures(generation, { limit: input.limit, pathPrefix: input.pathPrefix, kinds: input.kinds }));
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
+        if (view === "orientation") {
+          const cached = cachedProjection("orientation", db, meta, (generation) => {
+            const files = (generation.nodes ?? []).filter((node) => node.kind === "file").map((node) => ({ path: node.path }));
+            return buildColdStartOrientation(generation, files, {
+              signatureLimit: input.signatureLimit,
+              entryPointLimit: input.entryPointLimit,
+              contractLimit: input.contractLimit,
+            });
+          });
+          return { ...cached.value, cache: cached.cache, freshnessReceipt: receipt };
+        }
         if (view === "projection") {
           const generation = loadGeneration(db);
           const projection = buildDisposableArchitectureProjection({
@@ -560,7 +753,7 @@ export function createBlueprintApplicationService({
             limit: input.limit,
           }), freshnessReceipt: receipt };
         }
-        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, projection, or changes.");
+        if (view !== "summary") fail("architecture_view_invalid", "Architecture view must be summary, flows, liveness, processes, contracts, signatures, orientation, projection, or changes.");
         return suppressTraversalPayload({ ...boundedArchitecture(db, {
           budget: Number(input.budget ?? 2000),
           cursor: input.cursor,
@@ -570,10 +763,12 @@ export function createBlueprintApplicationService({
     },
 
     async federate(input = {}, options = {}) {
-      const repositories = input.repositories ?? [];
+      const group = input.group ?? null;
+      const repositories = group?.repositories ?? input.repositories ?? [];
       const operation = String(input.operation ?? "recall");
       const allowedRepoIds = input.allowedRepoIds ?? repositories.map((repository) => repository.repoId);
       return routeFederatedQuery({
+        group,
         repositories,
         allowedRepoIds,
         operation,
@@ -585,6 +780,7 @@ export function createBlueprintApplicationService({
             allowEmbeddedRoot,
             freshnessOwnership,
             buildSingleflight,
+            liveVerifier,
           });
           const result = await child[method]({
             ...queryInput,

@@ -91,6 +91,24 @@ const ERROR_METADATA = Object.freeze({
     summary: "Recall established under stale graph state; rebuild to refresh the generation.",
     nextOperation: "blueprint build",
   }),
+  // BPT-041 wired lib/admission.mjs's decision() into the served recall
+  // envelope, which made these two reasonCodes reachable in production for the
+  // first time. An unmapped reasonCode degrades the display metadata callers
+  // read, so they are added here with the code that emits them.
+  stale_generation_withheld: Object.freeze({
+    retryable: true,
+    summary: "Stale-source enumeration is incomplete, so every source-backed row is withheld; rebuild to serve evidence again.",
+    nextOperation: "blueprint build",
+  }),
+  recalled_changed_since_generation: Object.freeze({
+    retryable: true,
+    summary: "Recall served under a generation that predates current worktree changes; suppressed sources are named on the receipt.",
+    nextOperation: "blueprint build",
+  }),
+  no_candidates: Object.freeze({
+    retryable: false,
+    summary: "Recall resolved no evidence paths for this task.",
+  }),
   recalled_indeterminate: Object.freeze({
     retryable: true,
     summary: "Recall established under indeterminate graph state; rebuild to get a determinate generation.",
