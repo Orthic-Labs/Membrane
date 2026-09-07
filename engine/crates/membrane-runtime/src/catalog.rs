@@ -745,6 +745,70 @@ fn is_expired(grant: &ScopeGrant) -> bool {
     ContextCatalog::now_unix() >= grant.expires_at_unix
 }
 
+#[cfg(test)]
+mod deadline_read_tests {
+    use super::*;
+
+    #[test]
+    fn deadline_read_does_not_wait_for_shared_catalog_mutex() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("catalog.db");
+        let catalog = ContextCatalog::open(&path).unwrap();
+        let guard = catalog.lock();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let deadline = membrane_federation::deadline::Deadline::at(
+                std::time::Instant::now() + std::time::Duration::from_secs(1));
+            sender.send(lookup_grant_until(&path, "missing", deadline)).unwrap();
+        });
+        let result = receiver.recv_timeout(std::time::Duration::from_secs(2));
+        drop(guard);
+        worker.join().unwrap();
+        assert!(result.expect("read must not acquire resident catalog mutex").unwrap().is_none());
+    }
+
+    #[test]
+    fn expired_deadline_never_creates_catalog() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("absent.db");
+        let deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now());
+        assert_eq!(lookup_grant_until(&path, "missing", deadline).unwrap_err(),
+            "federation deadline exhausted during owner binding");
+        assert!(!path.exists());
+    }
+}
+
+/// Request-scoped read avoids waiting on another caller's catalog mutex or
+/// running catalog migrations inside a federation deadline.
+pub(crate) fn lookup_grant_until(
+    path: &Path,
+    id: &str,
+    deadline: membrane_federation::deadline::Deadline,
+) -> Result<Option<ScopeGrant>, String> {
+    let remaining = || {
+        let remaining = deadline.remaining_at(std::time::Instant::now());
+        if remaining.is_zero() {
+            Err("federation deadline exhausted during owner binding".to_owned())
+        } else { Ok(remaining.min(std::time::Duration::from_secs(5))) }
+    };
+    remaining()?;
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| error.to_string())?;
+    conn.busy_timeout(remaining()?).map_err(|error| error.to_string())?;
+    let mut stmt = conn.prepare("SELECT * FROM scope_grants WHERE id = ?1")
+        .map_err(|error| error.to_string())?;
+    conn.busy_timeout(remaining()?).map_err(|error| error.to_string())?;
+    let result = stmt.query_row([id], grant_from_row).optional();
+    remaining()?;
+    let mut grant = result.map_err(|error| error.to_string())?;
+    if let Some(grant) = grant.as_mut() {
+        if grant.status == GrantStatus::Active && is_expired(grant) {
+            grant.status = GrantStatus::Expired;
+        }
+    }
+    Ok(grant)
+}
+
 impl ScopeGrant {
     /// Whether a grant can authorise a planner call right now.
     pub fn permits(&self) -> bool {

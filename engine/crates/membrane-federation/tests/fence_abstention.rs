@@ -120,6 +120,10 @@ impl FreshnessSource for FixtureFreshness {
 }
 
 fn engine(calls: Calls, with_candidate: bool) -> FederationEngine {
+    engine_with_freshness(calls, with_candidate, Arc::new(FixtureFreshness))
+}
+
+fn engine_with_freshness(calls: Calls, with_candidate: bool, freshness: Arc<dyn FreshnessSource>) -> FederationEngine {
     let registrations = ProviderId::ALL
         .into_iter()
         .map(|id| {
@@ -150,10 +154,60 @@ fn engine(calls: Calls, with_candidate: bool) -> FederationEngine {
     )
     .unwrap();
     let sources = SourceSet {
-        freshness: Some(Arc::new(FixtureFreshness)),
+        freshness: Some(freshness),
         ..SourceSet::default()
     };
     FederationEngine::with_release_source(registry, config, sources, FixtureRelease).unwrap()
+}
+
+struct DelayedFreshness {
+    blocking: bool,
+}
+
+#[async_trait]
+impl FreshnessSource for DelayedFreshness {
+    async fn freshness(&self, query: &membrane_provider_sdk::SourceQuery) -> SourceResult<FreshnessSnapshotV1> {
+        if self.blocking {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        } else {
+            std::future::pending::<()>().await;
+        }
+        FixtureFreshness.freshness(query).await
+    }
+}
+
+#[tokio::test]
+async fn synchronous_owner_overrun_cannot_start_providers_with_a_fresh_budget() {
+    let calls = Calls::default();
+    let engine = engine_with_freshness(calls.clone(), true, Arc::new(DelayedFreshness { blocking: true }));
+    let mut request = request();
+    request.deadline_ms = 5;
+    let result = engine.federate(&request, CancellationToken::new()).await;
+    assert!(matches!(result, Err(membrane_federation::engine::FederationEngineError::BindingDeadline)));
+    assert!(calls.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn pending_owner_is_bounded_by_ingress_deadline() {
+    let calls = Calls::default();
+    let engine = engine_with_freshness(calls.clone(), true, Arc::new(DelayedFreshness { blocking: false }));
+    let mut request = request();
+    request.deadline_ms = 5;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1),
+        engine.federate(&request, CancellationToken::new())).await.expect("owner deadline must terminate pending freshness");
+    assert!(matches!(result, Err(membrane_federation::engine::FederationEngineError::BindingDeadline)));
+    assert!(calls.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn inherited_expired_deadline_is_not_replaced_by_request_budget() {
+    let calls = Calls::default();
+    let engine = engine_with_freshness(calls.clone(), true, Arc::new(DelayedFreshness { blocking: false }));
+    let deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now());
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1),
+        engine.federate_until(&request(), CancellationToken::new(), deadline)).await.unwrap();
+    assert!(matches!(result, Err(membrane_federation::engine::FederationEngineError::BindingDeadline)));
+    assert!(calls.0.lock().unwrap().is_empty());
 }
 
 fn request() -> FederationRequestV1 {

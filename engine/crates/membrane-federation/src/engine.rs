@@ -49,6 +49,8 @@ pub enum FederationEngineError {
     Freshness(String),
     #[error("scope grant binding failed: {0}")]
     Scope(String),
+    #[error("federation deadline exhausted during owner binding")]
+    BindingDeadline,
     #[error("publication fence refused emission: {0}")]
     Fence(String),
     #[error("federation internal failure: {0}")]
@@ -216,9 +218,35 @@ impl FederationEngine {
         request: &FederationRequestV1,
         cancellation: CancellationToken,
     ) -> Result<FederationResponseV1, FederationEngineError> {
+        self.federate_with_deadline(request, cancellation, None).await
+    }
+
+    /// Continue an ingress-owned deadline; owner binding cannot reset it.
+    pub async fn federate_until(
+        &self,
+        request: &FederationRequestV1,
+        cancellation: CancellationToken,
+        deadline: Deadline,
+    ) -> Result<FederationResponseV1, FederationEngineError> {
+        self.federate_with_deadline(request, cancellation, Some(deadline)).await
+    }
+
+    async fn federate_with_deadline(
+        &self,
+        request: &FederationRequestV1,
+        cancellation: CancellationToken,
+        inherited_deadline: Option<Deadline>,
+    ) -> Result<FederationResponseV1, FederationEngineError> {
         let started = Instant::now();
         let root_source = RootSourceRef(self.root_source.as_ref());
         let normalized = NormalizedFederationRequest::normalize(request, &root_source)?;
+        let local_deadline = started.checked_add(normalized.deadline.as_duration()).unwrap_or(started);
+        let deadline = Deadline::at(inherited_deadline
+            .map(|inherited| inherited.instant().min(local_deadline))
+            .unwrap_or(local_deadline));
+        if deadline.is_exhausted(&SystemClock) {
+            return Err(FederationEngineError::BindingDeadline);
+        }
         // Validate any caller-provided publication-fence observation before
         // provider execution. Runtime adapters independently re-observe grant
         // state at the packet-emission boundary (§17.2).
@@ -227,8 +255,20 @@ impl FederationEngine {
 
         // Owner bindings happen before any provider task is created.
         let release = self.bind_release(normalized.release_generation.as_deref())?;
-        let freshness = self.bind_freshness(&query, release.clone()).await?;
-        let scope_grant = self.bind_scope(&normalized, &query).await?;
+        let freshness = tokio::time::timeout_at(
+            deadline.instant().into(), self.bind_freshness(&query, release.clone()),
+        ).await.map_err(|_| FederationEngineError::BindingDeadline)??;
+        // Synchronous owner implementations can consume an entire poll. Check
+        // after each owner too; timeout_at cannot preempt blocking owner I/O.
+        if deadline.is_exhausted(&SystemClock) {
+            return Err(FederationEngineError::BindingDeadline);
+        }
+        let scope_grant = tokio::time::timeout_at(
+            deadline.instant().into(), self.bind_scope(&normalized, &query),
+        ).await.map_err(|_| FederationEngineError::BindingDeadline)??;
+        if deadline.is_exhausted(&SystemClock) {
+            return Err(FederationEngineError::BindingDeadline);
+        }
         // Every provider output is admitted only when its generation equals
         // this one, and a provider answers with the content identity of what
         // it indexed — not with the Membrane build's release sha256. Checking
@@ -244,7 +284,6 @@ impl FederationEngine {
             .as_deref()
             .or(normalized.release_generation.as_deref());
 
-        let deadline = Deadline::from_budget(&SystemClock, normalized.deadline);
         let provider_context = ProviderContext::new(
             normalized.request_id.clone(),
             normalized.repository_root.clone(),

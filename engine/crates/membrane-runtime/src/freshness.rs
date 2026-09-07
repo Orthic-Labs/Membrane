@@ -630,6 +630,7 @@ pub struct FilesystemFreshnessProbe<'a> {
     repo_root: PathBuf,
     store: &'a MemoryStore,
     blueprint_endpoint: Option<PathBuf>,
+    deadline: Option<membrane_federation::deadline::Deadline>,
     /// The overlay this epoch read, or why it could not be used. Holding the
     /// reason keeps a malformed overlay distinguishable from an absent one:
     /// discarding the deserialization error reported both as "unavailable".
@@ -642,6 +643,7 @@ impl<'a> FilesystemFreshnessProbe<'a> {
             repo_root,
             store,
             blueprint_endpoint: None,
+            deadline: None,
             pending_overlay: None,
         }
     }
@@ -655,11 +657,14 @@ impl<'a> FilesystemFreshnessProbe<'a> {
 
 impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     fn read_epoch(&mut self) -> Result<FreshnessEpoch, String> {
+        if self.deadline.is_some_and(|deadline| deadline.is_exhausted_at(Instant::now())) {
+            return Err("federation deadline exhausted during owner binding".to_owned());
+        }
         let status = self
             .blueprint_endpoint
             .as_deref()
             .map(|endpoint| read_blueprint_status_at(endpoint, &self.repo_root))
-            .unwrap_or_else(|| read_blueprint_status(&self.repo_root))?;
+            .unwrap_or_else(|| read_blueprint_status_until(&self.repo_root, self.deadline))?;
         self.pending_overlay = status
             .get("result")
             .and_then(|value| value.get("overlay"))
@@ -846,6 +851,10 @@ fn read_blueprint_status_at(
 }
 
 pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
+    read_blueprint_status_until(repo_root, None)
+}
+
+fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
     use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient};
     // Explicit context & diagnostics read the same Blueprint owner with or
     // without a resident. Only automatic refresh needs the Hub-owned pipe.
@@ -855,14 +864,25 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
             endpoint: hub_blueprint_endpoint().ok(),
         },
     ));
+    let remaining = deadline.map(|deadline| deadline.remaining_at(Instant::now()))
+        .unwrap_or(Duration::from_secs(30)).min(Duration::from_secs(30));
+    if remaining.is_zero() {
+        return Err("federation deadline exhausted during owner binding".to_owned());
+    }
     let result = client.execute_wire(&request_id, "", "status",
         serde_json::json!({"repoRoot":repo_root}), None, BlueprintBounds::default(),
-        Duration::from_secs(30)).map_err(|error| error.to_string())?;
+        remaining).map_err(|error| error.to_string())?;
     Ok(serde_json::json!({"protocolVersion":1,"ok":true,"result":result}))
 }
 
 pub fn evaluate_repository_freshness(store: &MemoryStore, repo_root: PathBuf) -> FreshnessVerdict {
+    evaluate_repository_freshness_until(store, repo_root, None)
+}
+
+pub(crate) fn evaluate_repository_freshness_until(store: &MemoryStore, repo_root: PathBuf,
+    deadline: Option<membrane_federation::deadline::Deadline>) -> FreshnessVerdict {
     let mut probe = FilesystemFreshnessProbe::new(repo_root, store);
+    probe.deadline = deadline;
     evaluate_freshness(&mut probe, MAX_FRESHNESS_ATTEMPTS)
 }
 

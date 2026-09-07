@@ -78,10 +78,21 @@ impl NativeSourceBindings {
         scope_grant_id: Option<&str>,
         store: crate::MemoryStore,
     ) -> Result<Self, String> {
+        Self::with_store_and_deadline(_repository_root, scope_grant_id, store, None)
+    }
+
+    pub(crate) fn with_store_and_deadline(
+        _repository_root: &Path,
+        scope_grant_id: Option<&str>,
+        store: crate::MemoryStore,
+        deadline: Option<membrane_federation::deadline::Deadline>,
+    ) -> Result<Self, String> {
         let catalog_path = crate::catalog::default_catalog_path()
             .map_err(|error| format!("resolve context catalog: {error}"))?;
-        let catalog = crate::catalog::ContextCatalog::open(catalog_path)
-            .map_err(|error| format!("open context catalog: {error}"))?;
+        let catalog = if deadline.is_some() { None } else {
+            Some(crate::catalog::ContextCatalog::open(&catalog_path)
+                .map_err(|error| format!("open context catalog: {error}"))?)
+        };
         let blueprint = Arc::new(BlueprintClient::new(Arc::new(crate::blueprint_one_shot::ExplicitBlueprintTransport {
             endpoint: hub_blueprint_endpoint().ok(),
         })));
@@ -102,9 +113,11 @@ impl NativeSourceBindings {
             })),
             scope_grant: Some(Arc::new(RuntimeScopeGrantSource {
                 catalog,
+                catalog_path,
+                deadline,
                 grant_id: scope_grant_id.map(str::to_owned),
             })),
-            freshness: Some(Arc::new(RuntimeFreshnessSource { store })),
+            freshness: Some(Arc::new(RuntimeFreshnessSource { store, deadline })),
             blueprint: Some(blueprint.clone()),
             blueprint_contextual: Some(blueprint),
             release: Some(RuntimeReleaseSource),
@@ -337,6 +350,7 @@ impl SkillCatalogSource for RuntimeSkillsSource {
 #[derive(Clone)]
 struct RuntimeFreshnessSource {
     store: crate::MemoryStore,
+    deadline: Option<membrane_federation::deadline::Deadline>,
 }
 
 impl FreshnessSource for RuntimeFreshnessSource {
@@ -351,8 +365,9 @@ impl FreshnessSource for RuntimeFreshnessSource {
     {
         let store = self.store.clone();
         let root = PathBuf::from(&query.repository_root);
+        let deadline = self.deadline;
         Box::pin(async move {
-            let verdict = crate::freshness::evaluate_repository_freshness(&store, root);
+            let verdict = crate::freshness::evaluate_repository_freshness_until(&store, root, deadline);
             let graph_state = serde_json::to_string(&verdict.graph_state)
                 .unwrap_or_else(|_| "\"indeterminate\"".to_owned())
                 .trim_matches('"')
@@ -385,7 +400,9 @@ impl FreshnessSource for RuntimeFreshnessSource {
 
 #[derive(Clone)]
 struct RuntimeScopeGrantSource {
-    catalog: crate::catalog::ContextCatalog,
+    catalog: Option<crate::catalog::ContextCatalog>,
+    catalog_path: PathBuf,
+    deadline: Option<membrane_federation::deadline::Deadline>,
     grant_id: Option<String>,
 }
 
@@ -400,6 +417,8 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
         Self: 'c,
     {
         let catalog = self.catalog.clone();
+        let catalog_path = self.catalog_path.clone();
+        let deadline = self.deadline;
         let grant_id = self.grant_id.clone();
         let query = query.clone();
         Box::pin(async move {
@@ -408,7 +427,11 @@ impl ScopeGrantSource for RuntimeScopeGrantSource {
                     "scope_grant_missing".into(),
                 ));
             };
-            let grant = crate::catalog::lookup_grant(&catalog, &id)
+            let grant = match deadline {
+                Some(deadline) => crate::catalog::lookup_grant_until(&catalog_path, &id, deadline),
+                None => crate::catalog::lookup_grant(catalog.as_ref().expect("unbounded catalog owner"), &id)
+                    .map_err(|error| error.to_string()),
+            }
                 .map_err(|error| {
                     membrane_provider_sdk::ProviderError::Unavailable(error.to_string())
                 })?

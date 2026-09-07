@@ -94,6 +94,45 @@ fn workspace_budget_shares(max_tokens: usize, targets: usize) -> Vec<usize> {
         .collect()
 }
 
+/// Two joined workers share one ingress deadline. Results retain caller order;
+/// an expired queued target is never submitted to its owners.
+fn workspace_fanout<T: Sync, R: Send>(
+    requests: &[Option<T>],
+    deadline: membrane_federation::deadline::Deadline,
+    run: impl Fn(&T, membrane_federation::deadline::Deadline) -> R + Sync,
+) -> Vec<Option<R>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let next = AtomicUsize::new(0);
+    let mut results: Vec<Option<R>> = (0..requests.len()).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..requests.len().min(2)).map(|_| {
+            let next = &next;
+            let run = &run;
+            scope.spawn(move || {
+                let mut completed = Vec::new();
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(request) = requests.get(index) else { break };
+                    if deadline.is_exhausted_at(std::time::Instant::now()) { break }
+                    if let Some(request) = request {
+                        let result = run(request, deadline);
+                        if !deadline.is_exhausted_at(std::time::Instant::now()) {
+                            completed.push((index, result));
+                        }
+                    }
+                }
+                completed
+            })
+        }).collect();
+        for worker in workers {
+            for (index, result) in worker.join().expect("workspace target worker panicked") {
+                results[index] = Some(result);
+            }
+        }
+    });
+    results
+}
+
 fn workspace_target_ids(arguments: &Value) -> Result<Vec<String>, Value> {
     let Some(raw) = arguments.get("workspaceTargets") else {
         return Ok(Vec::new());
@@ -694,6 +733,7 @@ fn execute_blueprint(arguments: &Value) -> Value {
 
 impl NativeMcpExecutor for RuntimeMcpExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
+        let ingress = std::time::Instant::now();
         if name == "membrane_knowledge_propose" && arguments.get("review").is_some() {
             return error(
                 name,
@@ -900,6 +940,8 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     .and_then(Value::as_str)
                     .unwrap_or("repo");
                 if scope_kind == "workspace" {
+                    let deadline = membrane_federation::deadline::Deadline::at(ingress + Duration::from_millis(
+                        arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(2_000).clamp(1, 60_000)));
                     let requested_targets = match workspace_target_ids(arguments) {
                         Ok(targets) => targets,
                         Err(result) => return result,
@@ -926,17 +968,10 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             }
                         };
                     let shares = workspace_budget_shares(max_tokens, targets.len());
-                    let mut repository_packets = Vec::new();
-                    let mut target_receipts = Vec::new();
+                    let mut requests = Vec::with_capacity(targets.len());
                     for (target, allocation) in targets.iter().zip(shares.iter().copied()) {
                         if allocation == 0 {
-                            target_receipts.push(json!({
-                                "repositoryId": target.repository_id,
-                                "scopeId": target.scope_id,
-                                "status": "omitted",
-                                "reason": "workspace_budget_exhausted",
-                                "allocatedTokens": 0
-                            }));
+                            requests.push(None);
                             continue;
                         }
                         let mut body = json!({
@@ -992,7 +1027,24 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                                 )
                             }
                         };
-                        let (status_code, payload) = crate::pull::federation::native_route_response_with_store(&request, Some(&self.store));
+                        requests.push(Some(request));
+                    }
+                    let responses = workspace_fanout(&requests, deadline, |request, deadline| {
+                        crate::pull::federation::native_route_response_with_deadline(request, Some(&self.store), Some(deadline))
+                    });
+                    let mut repository_packets = Vec::new();
+                    let mut target_receipts = Vec::new();
+                    for ((target, allocation), response) in targets.iter().zip(shares.iter().copied()).zip(responses) {
+                        let Some((status_code, payload)) = response else {
+                            target_receipts.push(json!({
+                                "repositoryId": target.repository_id,
+                                "scopeId": target.scope_id,
+                                "status": "omitted",
+                                "reason": if allocation == 0 { "workspace_budget_exhausted" } else { "workspace_deadline_exhausted" },
+                                "allocatedTokens": allocation
+                            }));
+                            continue;
+                        };
                         let federated: Value = match serde_json::from_str(&payload) {
                             Ok(value) => value,
                             Err(_) => {
@@ -1007,11 +1059,13 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             }
                         };
                         if status_code != 200 {
+                            let deadline_exhausted = federated.get("error").and_then(Value::as_str)
+                                == Some("federation deadline exhausted during owner binding");
                             target_receipts.push(json!({
                                 "repositoryId": target.repository_id,
                                 "scopeId": target.scope_id,
-                                "status": "unavailable",
-                                "reason": federated.get("error").and_then(Value::as_str).unwrap_or("context_unavailable"),
+                                "status": if deadline_exhausted { "omitted" } else { "unavailable" },
+                                "reason": if deadline_exhausted { "workspace_deadline_exhausted" } else { federated.get("error").and_then(Value::as_str).unwrap_or("context_unavailable") },
                                 "allocatedTokens": allocation
                             }));
                             continue;
@@ -2004,6 +2058,49 @@ mod hub_transport_tests {
         assert_eq!(workspace_budget_shares(2, 4), vec![1, 1, 0, 0]);
         assert_eq!(workspace_budget_shares(7, 0), Vec::<usize>::new());
         assert_eq!(workspace_budget_shares(4096, 7).iter().sum::<usize>(), 4096);
+    }
+
+    #[test]
+    fn workspace_fanout_joins_two_workers_preserves_order_and_never_resets_deadline() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let active = AtomicUsize::new(0);
+        let peak = AtomicUsize::new(0);
+        let barrier = std::sync::Barrier::new(2);
+        let deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now() + Duration::from_secs(2));
+        let result = workspace_fanout(&[Some(0), Some(1), Some(2), None], deadline, |value, observed| {
+            assert_eq!(observed, deadline);
+            let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(current, Ordering::SeqCst);
+            if *value < 2 { barrier.wait(); }
+            if *value == 0 { std::thread::sleep(Duration::from_millis(20)); }
+            active.fetch_sub(1, Ordering::SeqCst);
+            value * 10
+        });
+        assert_eq!(result, vec![Some(0), Some(10), Some(20), None]);
+        assert_eq!(peak.load(Ordering::SeqCst), 2);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn workspace_fanout_does_not_start_expired_targets() {
+        let deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now());
+        let result: Vec<Option<usize>> = workspace_fanout(&[Some(0), Some(1), Some(2)], deadline,
+            |_, _| panic!("expired targets must not reach owners"));
+        assert_eq!(result, vec![None, None, None]);
+    }
+
+    #[test]
+    fn workspace_fanout_omits_late_target_and_retains_healthy_sibling() {
+        let barrier = std::sync::Barrier::new(2);
+        let deadline = membrane_federation::deadline::Deadline::at(std::time::Instant::now() + Duration::from_millis(100));
+        let result = workspace_fanout(&[Some(0), Some(1)], deadline, |value, observed| {
+            barrier.wait();
+            if *value == 0 {
+                std::thread::sleep(observed.remaining_at(std::time::Instant::now()) + Duration::from_millis(5));
+            }
+            *value
+        });
+        assert_eq!(result, vec![None, Some(1)]);
     }
 
     #[test]

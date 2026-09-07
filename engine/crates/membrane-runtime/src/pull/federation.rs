@@ -150,6 +150,15 @@ pub fn native_route_response_with_store(
     body: &str,
     resident: Option<&crate::MemoryStore>,
 ) -> (u16, String) {
+    native_route_response_with_deadline(body, resident, None)
+}
+
+pub(crate) fn native_route_response_with_deadline(
+    body: &str,
+    resident: Option<&crate::MemoryStore>,
+    inherited_deadline: Option<membrane_federation::deadline::Deadline>,
+) -> (u16, String) {
+    let started = Instant::now();
     let value: Value = match serde_json::from_str(body) {
         Ok(value) => value,
         Err(_) => return (400, "{\"error\":\"invalid JSON body\"}".to_owned()),
@@ -178,6 +187,9 @@ pub fn native_route_response_with_store(
         .and_then(Value::as_u64)
         .unwrap_or(2_000)
         .clamp(1, 60_000);
+    let local_deadline = started + std::time::Duration::from_millis(deadline_ms);
+    let deadline = membrane_federation::deadline::Deadline::at(inherited_deadline
+        .map(|inherited| inherited.instant().min(local_deadline)).unwrap_or(local_deadline));
     let client = value
         .get("client")
         .and_then(Value::as_str)
@@ -242,8 +254,10 @@ pub fn native_route_response_with_store(
             ))
         }
     };
-    let started = Instant::now();
     let result = (|| -> Result<Value, NativeRouteError> {
+        if deadline.is_exhausted_at(Instant::now()) {
+            return Err("federation deadline exhausted during owner binding".to_owned().into());
+        }
         let release_generation = RuntimeReleaseSource::generation()?;
         let mut request = native_request_with_h8(
             task,
@@ -290,16 +304,19 @@ pub fn native_route_response_with_store(
                     .map_err(|error| format!("serialize cortexTemporalQuery: {error}"))?,
             );
         }
-        let admitted_grant = admitted_publication_grant(&request)?;
+        let admitted_grant = admitted_publication_grant_until(&request, Some(deadline))?;
         let bindings = match resident {
-            Some(store) => federation_sources::NativeSourceBindings::with_store(
+            Some(store) => federation_sources::NativeSourceBindings::with_store_and_deadline(
                 &root,
                 scope_grant_id.as_deref(),
                 store.clone(),
+                Some(deadline),
             ),
-            None => federation_sources::NativeSourceBindings::for_repository(
+            None => federation_sources::NativeSourceBindings::with_store_and_deadline(
                 &root,
                 scope_grant_id.as_deref(),
+                crate::service::open_installed_store()?,
+                Some(deadline),
             ),
         }?;
         let native = native_federation::NativeFederation::new(bindings)?;
@@ -317,7 +334,7 @@ pub fn native_route_response_with_store(
                         .build()
                         .map_err(|error| format!("create native federation runtime: {error}"))?
                         .block_on(
-                            native.federate(&request, tokio_util::sync::CancellationToken::new()),
+                            native.federate_until(&request, tokio_util::sync::CancellationToken::new(), deadline),
                         )
                 })
                 .join()
@@ -347,7 +364,7 @@ pub fn native_route_response_with_store(
                 accepted_receipt_versions: vec![2],
                 scope_grant_present: scope_grant_id.is_some(),
                 consumer_resolvers: negotiated_consumer_resolvers(&value),
-                scope_grant_fence: post_fusion_publication_fence(&admitted_grant)?,
+                scope_grant_fence: post_fusion_publication_fence_until(&admitted_grant, Some(deadline))?,
                 gateway_process_ms: started.elapsed().as_secs_f64() * 1000.0,
             },
         )?;
@@ -467,7 +484,10 @@ pub fn native_route_response_with_store(
             serde_json::to_value(cache_prefix_diagnostic)
                 .map_err(|error| format!("serialize cache prefix diagnostic: {error}"))?,
         );
-        if let Err(error) = fence_packet_emission(post_fusion_publication_fence(&admitted_grant)?) {
+        if deadline.is_exhausted_at(Instant::now()) {
+            return Err("federation deadline exhausted during owner binding".to_owned().into());
+        }
+        if let Err(error) = fence_packet_emission(post_fusion_publication_fence_until(&admitted_grant, Some(deadline))?) {
             return Err(NativeRouteError::PolicyChanged(error));
         }
         crate::pull::delivery_state::record_selected_packet(
@@ -577,11 +597,27 @@ fn publication_catalog() -> Result<crate::catalog::ContextCatalog, String> {
 fn admitted_publication_grant(
     request: &membrane_protocol::FederationRequestV1,
 ) -> Result<Option<PublicationGrantObservation>, String> {
+    admitted_publication_grant_until(request, None)
+}
+
+fn publication_grant_lookup(id: &str, deadline: Option<membrane_federation::deadline::Deadline>)
+    -> Result<Option<crate::catalog::ScopeGrant>, String> {
+    if let Some(deadline) = deadline {
+        let path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
+        crate::catalog::lookup_grant_until(&path, id, deadline)
+    } else {
+        crate::catalog::lookup_grant(&publication_catalog()?, id).map_err(|error| error.to_string())
+    }
+}
+
+fn admitted_publication_grant_until(
+    request: &membrane_protocol::FederationRequestV1,
+    deadline: Option<membrane_federation::deadline::Deadline>,
+) -> Result<Option<PublicationGrantObservation>, String> {
     let Some(grant_id) = request.scope_grant_id.as_deref() else {
         return Ok(None);
     };
-    let catalog = publication_catalog()?;
-    let grant = crate::catalog::lookup_grant(&catalog, grant_id)
+    let grant = publication_grant_lookup(grant_id, deadline)
         .map_err(|error| format!("publication fence grant lookup failed: {error}"))?
         .ok_or_else(|| "publication fence grant missing: scope_grant_missing".to_owned())?;
     if !grant.permits() {
@@ -596,11 +632,17 @@ fn admitted_publication_grant(
 fn post_fusion_publication_fence(
     admitted: &Option<PublicationGrantObservation>,
 ) -> Result<Option<PublicationFenceV1>, String> {
+    post_fusion_publication_fence_until(admitted, None)
+}
+
+fn post_fusion_publication_fence_until(
+    admitted: &Option<PublicationGrantObservation>,
+    deadline: Option<membrane_federation::deadline::Deadline>,
+) -> Result<Option<PublicationFenceV1>, String> {
     let Some(admitted) = admitted.as_ref() else {
         return publication_fence_for_observations(None, None);
     };
-    let catalog = publication_catalog()?;
-    let current = crate::catalog::lookup_grant(&catalog, &admitted.grant_id)
+    let current = publication_grant_lookup(&admitted.grant_id, deadline)
         .map_err(|error| format!("post-fusion publication grant lookup failed: {error}"))?
         .map(|grant| publication_grant_observation(&grant));
     publication_fence_for_observations(Some(admitted), current.as_ref())

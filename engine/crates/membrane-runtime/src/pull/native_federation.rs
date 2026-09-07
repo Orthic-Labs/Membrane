@@ -156,6 +156,21 @@ impl NativeFederation {
         request: &FederationRequestV1,
         cancellation: CancellationToken,
     ) -> Result<FederationResponseV1, String> {
+        let now = std::time::Instant::now();
+        let deadline = membrane_federation::deadline::Deadline::at(now.checked_add(
+            std::time::Duration::from_millis(request.deadline_ms)).unwrap_or(now));
+        self.federate_until(request, cancellation, deadline).await
+    }
+
+    pub async fn federate_until(
+        &self,
+        request: &FederationRequestV1,
+        cancellation: CancellationToken,
+        deadline: membrane_federation::deadline::Deadline,
+    ) -> Result<FederationResponseV1, String> {
+        if deadline.is_exhausted_at(std::time::Instant::now()) {
+            return Err("federation deadline exhausted during owner binding".to_owned());
+        }
         let cancelled = cancellation.is_cancelled();
         let temporal_query = request
             .extensions
@@ -180,7 +195,12 @@ impl NativeFederation {
                 .or_else(|| request.blueprint_generation.clone()),
             anchors: request.anchors.clone(),
         };
-        match self.freshness.freshness(&query).await {
+        let freshness = tokio::time::timeout_at(deadline.instant().into(), self.freshness.freshness(&query))
+            .await.map_err(|_| "federation deadline exhausted during owner binding".to_owned())?;
+        if deadline.is_exhausted_at(std::time::Instant::now()) {
+            return Err("federation deadline exhausted during owner binding".to_owned());
+        }
+        match freshness {
             Ok(snapshot) => {
                 let stale = snapshot.value.stale;
                 if let Ok(mut current) = self.last_freshness.lock() {
@@ -204,7 +224,7 @@ impl NativeFederation {
                 queries.insert(request.request_id.clone(), temporal_query);
             }
         }
-        let response = self.engine.federate(request, cancellation).await;
+        let response = self.engine.federate_until(request, cancellation, deadline).await;
         if let Ok(mut tokens) = self.cancellations.lock() {
             tokens.remove(&request.request_id);
         }
