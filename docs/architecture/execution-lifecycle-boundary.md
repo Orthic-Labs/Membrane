@@ -45,6 +45,8 @@ Blueprint evidence, line coordinates & freshness leaves identify exact source by
 
 Incremental dependency repair commits its pre-edit closure with the base delta & retains a pending journal row until that closure completes. Each dependent commits with a durable cursor; restart resumes it before coalescing later same-path events. Parsing & committed updates yield outside write transactions so resident callbacks from other repositories can run. Partial repair remains observably stale for resident & bounded readers.
 
+After a coalesced automatic update, the watcher publishes its source observation & manifest digest together. Publication requires an exact working-tree/ledger match, complete scan, equal source/applied clocks, no event gap, no pending journal or repair, & unchanged generation throughout attestation. Resident queries only read this publication. Bounded reconciliation & automatic publication include untracked source additions under the same repository exclusions; native snapshot reads/writes also receive configured exclusions. A tracked-only cold-build scan must not erase newly observed files during refresh.
+
 ## Regression acceptance
 
 For each installed public operation, verify discovery & execution with Hub on & off. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.

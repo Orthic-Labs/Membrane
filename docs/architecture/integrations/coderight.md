@@ -66,19 +66,22 @@ There are distinct data classes and owners:
 
 A full CodeRight agent session MUST NOT start without one compatible Membrane capability binding.
 
-The binding is exactly one thing: **a compatible Membrane capability served by
-the active tray-owned daemon**, selected through the versioned handshake. There is no embedded
-CodeRight Membrane backend and no second binding mode.
+The binding identifies **one compatible installed Membrane authority**, selected through
+versioned identity verification. Explicit operations use its bounded installed entry point
+with Hub off or its resident transport with Hub on. Both bind the same installation,
+release & Cortex store. CodeRight never embeds a Membrane backend.
 
 CodeRight must not create two knowledge universes.
 
-If the tray-daemon binding later fails, or tray is not active:
+If a resident connection fails or tray is inactive:
 
 - do not open any embedded/local fallback Cortex store;
 - do not dual-write;
-- memory/knowledge-required operations return typed unavailability;
+- explicit operations remain available through the same verified installed authority;
+- only pre-dispatch connection failure permits switching execution transport; an uncertain
+  dispatched mutation is never replayed;
 - unknown commit outcomes remain unknown until the original backend receipt is reconciled;
-- recovery rebinds only to the same compatible store identity unless an explicit migration/restart occurs.
+- recovery rebinds only to the same compatible installation & store identity unless an explicit migration/restart occurs.
 
 The CodeRight daemon may enter a diagnostics/degraded shell without Membrane if that is useful operationally, but **agent execution requiring Membrane must remain blocked** until a valid binding exists.
 
@@ -859,9 +862,10 @@ does not prescribe rollout phases.
 
 ## Startup/backend
 
-- compatible tray-daemon binding;
+- compatible installed binding through bounded & resident transports;
 - tray inactive at startup — installed explicit operations remain callable; no automatic watcher or replacement daemon starts;
-- tray quits mid-session — binding lost, typed unavailability, no fallback store;
+- tray quits mid-session — subsequent explicit requests use bounded installed execution;
+  uncertain in-flight writes remain unknown, with no fallback store or replay;
 - incompatible version;
 - store identity mismatch;
 - backend death;

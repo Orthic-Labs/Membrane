@@ -3,9 +3,11 @@ import { join, resolve } from "node:path";
 import { diffLedgerAgainstTree } from "../src/graph/merkle-ledger.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 import { reconcileRenameAliases } from "../src/graph/reanchor.mjs";
-import { scanSourceMetadataPublic, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { scanSourceMetadataPublic, scanSourcesForPublication, sourceHashPublic } from "../src/graph/static-provider.mjs";
 import { stableRead } from "../src/graph/stable-read.mjs";
-import { assertSafeMutableStorePath, closeStore, loadGeneration, openStore } from "../src/graph/store-sqlite.mjs";
+import { assertSafeMutableStorePath, closeStore, getGenerationEnvelope, loadGeneration, openStore } from "../src/graph/store-sqlite.mjs";
+import { gitSourceObservation } from "../src/graph/git-source-observation.mjs";
+import { computeManifestDigest } from "../src/graph/generation-identity.mjs";
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
@@ -144,6 +146,62 @@ export function evaluateConvergenceOracle(db, sourceFiles, { traversalTruncated 
   });
 }
 
+/** Publish from the write owner only after exact indexed bytes match disk. */
+export function publishCurrentSourceObservation(db, root, { ignore = [], outDir = ".agent", scan = scanSourcesForPublication } = {}) {
+  const before = gitSourceObservation(root);
+  if (!before) return { published: false, reason: "vcs_unavailable" };
+  const state = Object.fromEntries(db.prepare("SELECT key,value FROM watch_state").all().map(({ key, value }) => [key, value]));
+  if (state.event_gap === "1" || state.repair_progress
+    || Number(state.applied_clock ?? 0) !== Number(state.source_clock ?? 0)
+    || db.prepare("SELECT 1 FROM event_journal WHERE applied=0 LIMIT 1").get()) {
+    return { published: false, reason: "pending_work" };
+  }
+  const envelope = getGenerationEnvelope(db);
+  if (!envelope?.manifest?.generationId) return { published: false, reason: "graph_missing" };
+  const rootDigest = db.prepare("SELECT digest FROM generation_leaf WHERE path='' AND kind='dir'").get()?.digest;
+  const source = scan(root, outDir, { ignoredPrefixes: normalizeIgnoredPrefixes([...readConfiguredIgnoredPrefixes(root, outDir), ...ignore]) });
+  const convergence = evaluateConvergenceOracle(db, source.files ?? [], source);
+  if (!convergence.converged) return { published: false, reason: convergence.domainsPending.length ? "pending_domains" : "source_mismatch", convergence };
+  const exact = diffLedgerAgainstTree(db, null, source.files ?? []);
+  if (source.fileLimitReached || source.truncationReasons?.length
+    || exact.changed.length || exact.added.length || exact.removed.length) {
+    return { published: false, reason: "source_mismatch" };
+  }
+  // Porcelain status does not change when an already-dirty file changes again.
+  // Re-read exact bytes: metadata/status equality alone cannot attest a tree.
+  const verifiedSource = scan(root, outDir, { ignoredPrefixes: normalizeIgnoredPrefixes([...readConfiguredIgnoredPrefixes(root, outDir), ...ignore]) });
+  if (verifiedSource.traversalTruncated || verifiedSource.fileLimitReached || verifiedSource.truncationReasons?.length
+    || verifiedSource.files.length !== source.files.length
+    || source.files.some((file, index) => file.path !== verifiedSource.files[index].path
+      || file.contentHash !== verifiedSource.files[index].contentHash)) {
+    return { published: false, reason: "source_mismatch" };
+  }
+  const after = gitSourceObservation(root);
+  if (!after || before.head !== after.head || before.statusDigest !== after.statusDigest) {
+    return { published: false, reason: "source_mismatch" };
+  }
+  const manifest = { ...envelope.manifest, repo: { ...envelope.manifest.repo,
+    sourceHash: sourceHashPublic(source.files ?? []), fileCount: source.files.length, baseCommit: after.head }, manifestDigest: undefined };
+  manifest.manifestDigest = computeManifestDigest(manifest, after);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const current = Object.fromEntries(db.prepare("SELECT key,value FROM watch_state").all().map(({ key, value }) => [key, value]));
+    if (getGenerationEnvelope(db)?.manifest?.generationId !== envelope.manifest.generationId
+      || db.prepare("SELECT digest FROM generation_leaf WHERE path='' AND kind='dir'").get()?.digest !== rootDigest
+      || current.source_clock !== state.source_clock || current.applied_clock !== state.applied_clock
+      || current.event_gap !== state.event_gap || current.domains_pending !== state.domains_pending
+      || current.repair_progress || db.prepare("SELECT 1 FROM event_journal WHERE applied=0 LIMIT 1").get()) {
+      db.exec("ROLLBACK");
+      return { published: false, reason: "pending_work" };
+    }
+    const put = db.prepare("INSERT INTO generation(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+    put.run("sourceObservation", JSON.stringify(after));
+    put.run("manifest", JSON.stringify(manifest));
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return { published: true };
+}
+
 export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
   const root = canonicalRoot(typeof dbOrRoot === "string" ? dbOrRoot : rootOrOptions);
   const ownedDbPath = typeof dbOrRoot === "string" ? join(root, options.outDir ?? ".agent", "graph", "graph.db") : null;
@@ -162,7 +220,6 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     const { signal } = options;
     throwIfAborted(signal);
     const adapter = options.adapter ?? { eventsSince, writeSnapshot };
-    const ignore = options.ignore ?? [];
     // Reuses the existing repo-relative prefix-exclusion mechanism that
     // build-time scanning already honors (graph/ignored-prefixes.mjs), so an
     // enrolled sibling repo is invisible to the JS-level scan/ledger-diff
@@ -178,8 +235,15 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     // filled the journal (34,798 observed on 2026-08-09, refilling within
     // minutes of being cleared), and each barrier call then replayed them —
     // permanent churn that stalled every graph query behind minutes of drain.
-    const configured = readConfiguredIgnoredPrefixes(root);
-    const ignoredPrefixes = [...new Set([...ignore.map((rel) => `${rel}/`), ...configured])];
+    const configured = readConfiguredIgnoredPrefixes(root, outDir);
+    // Native snapshots & their event filter must use the same exclusions as
+    // the authoritative scan. Otherwise a bounded reader reintroduces files
+    // that the scan deliberately omitted, then removes them on every query.
+    const ignore = [...new Set([...(options.ignore ?? []), ...configured])];
+    const ignoredPrefixes = normalizeIgnoredPrefixes([
+      ...(options.ignore ?? []).map((rel) => `${rel.replace(/\/$/, "")}/`),
+      ...configured,
+    ]);
     const snapshot = options.snapshotPath ?? snapshotPath(root, outDir);
     const hadSnapshot = existsSync(snapshot);
     const repairingGap = db.prepare("SELECT value FROM watch_state WHERE key='event_gap'").get()?.value === "1";
@@ -190,7 +254,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       throwIfAborted(signal);
       pending.push(...coalesceRenameEvents([
         ...fastEvents,
-        ...metadataEvents(db, root, options.scanSourceMetadata ?? scanSourceMetadataPublic, { ignoredPrefixes }),
+        ...metadataEvents(db, root, options.scanSourceMetadata ?? scanSourceMetadataPublic, { ignoredPrefixes, trackedOnly: false }),
       ]).filter((event) => !isUnchangedDocumentEvent(db, root, event)));
       diff = {
         changed: [...new Set(pending.filter((event) => event.eventKind === "modify").map((event) => event.path))].sort(),
@@ -198,7 +262,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
         removed: [...new Set(pending.filter((event) => ["delete", "rename"].includes(event.eventKind)).map((event) => event.path))].sort(),
       };
     } else {
-      const source = scanSourcesPublic(root, 0, { ignoredPrefixes });
+      const source = scanSourcesForPublication(root, outDir, { ignoredPrefixes });
       const ledgerRows = db.prepare("SELECT COUNT(*) AS n FROM generation_leaf WHERE kind='file'").get().n;
       diff = ledgerRows > 0
         ? diffLedgerAgainstTree(db, null, source.files ?? [])
@@ -238,7 +302,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       await adapter.writeSnapshot(root, snapshot, ignore);
     }
     throwIfAborted(signal);
-    let authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
+    let authorityScan = scanSourcesForPublication(root, outDir, { ignoredPrefixes });
     let convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
     // Native snapshots and metadata can miss a content mismatch, including
     // legacy normalized README identities. Repair the authoritative diff
@@ -266,7 +330,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     }
     if (options.completeDocuments) {
       completePendingDocDomain(db, root, { outDir });
-      authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
+      authorityScan = scanSourcesForPublication(root, outDir, { ignoredPrefixes });
       convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
     }
     db.exec("BEGIN;");

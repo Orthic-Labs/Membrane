@@ -207,6 +207,11 @@ export function scanSourcesPublic(root, fileLimit = 0, walkOptions = {}) {
   return scanSources(canonicalRoot(root), fileLimit, walkOptions);
 }
 
+export function scanSourcesForPublication(root, outDir = ".agent", walkOptions = {}) {
+  const canonical = canonicalRoot(root);
+  return scanSources(canonical, 0, withOutputDirExcludedFromScan(canonical, outDir, { ...walkOptions, trackedOnly: false }));
+}
+
 export function scanSourceMetadataPublic(root, walkOptions = {}) {
   const canonical = canonicalRoot(root);
   const traversal = walk(canonical, { ...walkOptions, ignoredPrefixes: configuredIgnoredPrefixes(canonical, walkOptions) });

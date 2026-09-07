@@ -8,6 +8,7 @@ import { finishEntityRenames, reconcile } from "../watchman/reconcile.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { contentDigest } from "../src/graph/generation-identity.mjs";
+import { writeSnapshot } from "../watchman/adapter.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -19,6 +20,33 @@ function makeRepo() {
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
 }
+
+test("bounded reconcile excludes configured generated paths from old native snapshots", async () => {
+  const repo = makeRepo();
+  try {
+    mkdirSync(join(repo, "generated"));
+    writeFileSync(join(repo, "generated/cache.ts"), "export const cacheBefore = 1;\n");
+    writeFileSync(join(repo, "generated-adjacent.ts"), "export const adjacentBefore = 1;\n");
+    writeFileSync(join(repo, ".agent/config.json"), JSON.stringify({ ignoredPrefixes: ["generated/"] }));
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const snapshot = join(repo, ".agent/graph/watch.snapshot");
+    // Existing snapshots can predate configuration changes or the repaired
+    // bounded path. Their excluded entries must never reenter the journal.
+    await writeSnapshot(repo, snapshot);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    writeFileSync(join(repo, "generated/cache.ts"), "export const cacheAfter = 200;\n");
+    writeFileSync(join(repo, "generated-adjacent.ts"), "export const adjacentAfter = 200;\n");
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      const result = await reconcile(db, repo, { snapshotPath: snapshot });
+      assert.equal(result.convergence.converged, true);
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE path LIKE 'generated/%'").get().n, 0);
+      assert.ok(db.prepare("SELECT 1 FROM symbols WHERE name='adjacentAfter'").get());
+      assert.equal(db.prepare("SELECT 1 FROM files WHERE path='generated/cache.ts'").get(), undefined);
+      assert.equal((await reconcile(db, repo, { snapshotPath: snapshot })).queued, 0);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("generated README pointers preserve exact identity through cold build and reconciliation", async () => {
   const repo = makeRepo();
@@ -185,6 +213,7 @@ test("reconcile CLI emits machine-readable pending-domain result and hook instal
   try {
     const git = spawnSync("git", ["init", "-q"], { cwd: repo, encoding: "utf8" });
     assert.equal(git.status, 0, git.stderr);
+    writeFileSync(join(repo, "README.md"), "# Fixture\n\nActual document addition for pending-domain coverage.\n");
     const reconcileResult = spawnSync(process.execPath, [CLI, "reconcile", "--json", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
     assert.equal(reconcileResult.status, 0, reconcileResult.stderr);
     const reconcilePayload = JSON.parse(reconcileResult.stdout);

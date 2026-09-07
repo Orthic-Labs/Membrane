@@ -11,6 +11,7 @@ import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { completePendingDocDomain } from "../src/lib/phase2-completion.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
 import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
+import { publishCurrentSourceObservation } from "./reconcile.mjs";
 
 const DEBOUNCE_MS = 1000;
 const MAX_DRAIN_PASSES = 5;
@@ -508,6 +509,18 @@ export class RepositoryActor extends EventEmitter {
     }
   }
 
+  publishSourceObservation(run = null, repairMismatch = true) {
+    const publication = publishCurrentSourceObservation(this.openDbOnce(), this.root, { ignore: this.ignore, outDir: this.outDir });
+    if (publication.reason === "source_mismatch") {
+      if (repairMismatch) this.markGap(new Error("indexed source differs during watcher publication"), "publication_source_mismatch", run);
+      else {
+        setState(this.openDbOnce(), "event_gap", 1);
+        setState(this.openDbOnce(), "event_gap_reason", "publication_source_mismatch");
+      }
+    }
+    return publication;
+  }
+
   resumeStartup(expectedEpoch = this.epoch) {
     const run = this.run;
     return this.queueLifecycle(async () => {
@@ -548,6 +561,7 @@ export class RepositoryActor extends EventEmitter {
       try { await startupReconcile; } finally { if (this.active(run) && this.reconcileInFlight === startupReconcile) this.reconcileInFlight = null; if (this.active(run) && this.reconcilePending) this.runPendingReconcile(run); }
       if (!this.active(run)) return;
       this.completeProductDomains();
+      this.publishSourceObservation(run);
       await this.track(run, this.adapter.writeSnapshot(this.root, this.snapshotPath, this.ignore));
       this.failures = 0;
   }
@@ -596,7 +610,11 @@ export class RepositoryActor extends EventEmitter {
           if (run && !this.active(run)) return;
           this.reconcilePending = false;
           const db = this.openDbOnce();
-          try { await this.reconcile(db, this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore, signal }); }
+          try {
+            await this.reconcile(db, this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore, signal });
+            this.completeProductDomains(db);
+            this.publishSourceObservation(run, false);
+          }
           catch (reconcileError) { this.log(reconcileError); }
         }
       } finally { if (!run || this.active(run)) this.reconcileInFlight = null; }
@@ -647,6 +665,7 @@ export class RepositoryActor extends EventEmitter {
       } while (this.eventBuffer.length);
       throwIfAborted(signal);
       this.completeProductDomains(db);
+      if (applied > 0) this.publishSourceObservation(run);
       return applied;
     })();
     const settledDrain = drain.then((applied) => {
