@@ -49,6 +49,25 @@ function semanticInputDigest() {
 // PARSE_CACHE_VERSION are unchanged.
 const DEFAULT_SEMANTIC_INPUT_DIGEST = semanticInputDigest();
 
+// Cache identity: the path-independent half of the extractor fingerprint —
+// schema version, provider identity, extractor semantic inputs, salt. It is
+// stamped once in the cache header so `loadParseCache` can reject a whole stale
+// cache from a few bytes, BEFORE hydrating any record payload. Checking identity
+// only per record meant the entire payload was parsed and walked before we could
+// know none of it was usable.
+export function cacheIdentity(options = {}) {
+  const semanticDigest = options.semanticInputDigest ?? DEFAULT_SEMANTIC_INPUT_DIGEST;
+  const providerId = options.providerId ?? STATIC_PROVIDER.id;
+  const providerVersion = options.providerVersion ?? STATIC_PROVIDER.version;
+  const semanticSalt = options.semanticSalt ?? "";
+  return createHash("sha256")
+    .update(`parse-cache:${PARSE_CACHE_VERSION}\n`)
+    .update(`provider:${providerId}@${providerVersion}\n`)
+    .update(`semantic-inputs:${semanticDigest}\n`)
+    .update(`semantic-salt:${semanticSalt}\n`)
+    .digest("hex");
+}
+
 export function extractorFingerprintForPath(path, options = {}) {
   const semanticDigest = options.semanticInputDigest ?? DEFAULT_SEMANTIC_INPUT_DIGEST;
   const providerId = options.providerId ?? STATIC_PROVIDER.id;
@@ -80,7 +99,12 @@ function cachePath(outDir) {
   return join(outDir, "graph", "parse-cache", "records.json");
 }
 
-export function loadParseCache(outDir, fingerprintOptions = {}) {
+// `paths`, when given, is a NARROW READ: only those records are hydrated into
+// `records`. Everything else the cache already covers is kept verbatim in
+// `retained` — unparsed, unwalked — so a narrow request neither pays for wider
+// coverage nor destroys it. `writeParseCache` and `nextCache` republish the
+// retained half untouched, which is what makes a narrow read non-destructive.
+export function loadParseCache(outDir, fingerprintOptions = {}, { paths } = {}) {
   const path = cachePath(outDir);
   if (!existsSync(path)) return emptyCache();
   let parsed;
@@ -92,26 +116,42 @@ export function loadParseCache(outDir, fingerprintOptions = {}) {
   if (!parsed || parsed.version !== PARSE_CACHE_VERSION || typeof parsed.records !== "object") {
     return emptyCache();
   }
+  // Identity BEFORE hydration. A cache written under different extractor
+  // semantics, provider or schema version is discarded here, without any record
+  // being inspected.
+  if (parsed.identity !== cacheIdentity(fingerprintOptions)) return emptyCache();
+  const wanted = paths ? new Set(paths) : null;
   const records = new Map();
+  const retained = new Map();
   for (const [recordPath, record] of Object.entries(parsed.records)) {
     if (!record || typeof record !== "object") continue;
+    if (wanted && !wanted.has(recordPath)) {
+      retained.set(recordPath, record);
+      continue;
+    }
     const expected = extractorFingerprintForPath(recordPath, fingerprintOptions);
     if (record.extractorFingerprint !== expected) continue;
     records.set(recordPath, record);
   }
-  return { version: PARSE_CACHE_VERSION, records };
+  return { version: PARSE_CACHE_VERSION, identity: parsed.identity, records, retained };
 }
 
 export function emptyCache() {
-  return { version: PARSE_CACHE_VERSION, records: new Map() };
+  return { version: PARSE_CACHE_VERSION, records: new Map(), retained: new Map() };
 }
 
 // Atomic publish: temp sibling + rename, same volume. A reader never sees a
 // half-written cache — it sees the old file or the new one.
-export function writeParseCache(outDir, cache) {
+export function writeParseCache(outDir, cache, fingerprintOptions = {}) {
   const path = cachePath(outDir);
   mkdirSync(dirname(path), { recursive: true });
-  const serializable = { version: PARSE_CACHE_VERSION, records: Object.fromEntries(cache.records) };
+  const merged = new Map(cache.retained ?? []);
+  for (const [recordPath, record] of cache.records) merged.set(recordPath, record);
+  const serializable = {
+    version: PARSE_CACHE_VERSION,
+    identity: cache.identity ?? cacheIdentity(fingerprintOptions),
+    records: Object.fromEntries(merged),
+  };
   const tmp = `${path}.${process.pid}.${xxh128(path).slice(0, 8)}.tmp`;
   writeFileSync(tmp, JSON.stringify(serializable));
   renameSync(tmp, path);
@@ -140,7 +180,10 @@ export function diffFiles(files, cache, fingerprintOptions = {}) {
 // Build the next cache from the records we are keeping plus freshly parsed
 // records. The fingerprint is stamped here, centrally, so every caller gets the
 // same semantic validity contract without remembering to add metadata itself.
-export function nextCache(entries, fingerprintOptions = {}) {
+// `retainFrom` carries forward the coverage a narrow read did not hydrate, so
+// the republished cache is a superset of what the request touched rather than a
+// truncation of it.
+export function nextCache(entries, fingerprintOptions = {}, { retainFrom } = {}) {
   const records = new Map();
   for (const { path, record } of entries) {
     records.set(path, {
@@ -148,5 +191,14 @@ export function nextCache(entries, fingerprintOptions = {}) {
       extractorFingerprint: extractorFingerprintForPath(path, fingerprintOptions),
     });
   }
-  return { version: PARSE_CACHE_VERSION, records };
+  const retained = new Map();
+  for (const [path, record] of retainFrom?.retained ?? []) {
+    if (!records.has(path)) retained.set(path, record);
+  }
+  return {
+    version: PARSE_CACHE_VERSION,
+    identity: cacheIdentity(fingerprintOptions),
+    records,
+    retained,
+  };
 }

@@ -106,7 +106,114 @@ test("exact name matches outrank partial ones", () => {
 test("tokenizer splits camelCase, snake_case and path separators", () => {
   assert.deepEqual(tokenizeCodeIdentifiers("getUserById"), ["get", "user", "by", "id"]);
   assert.deepEqual(tokenizeCodeIdentifiers("user_account_repo"), ["user", "account", "repo"]);
-  assert.deepEqual(tokenizeCodeIdentifiers("src/a.b#c"), ["src"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("src/a.b#c"), ["src", "a", "b", "c"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("kebab-case-name"), ["kebab", "case", "name"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("pkg.mod:Class#method"), ["pkg", "mod", "class", "method"]);
+  // A digit continues the run it sits in; only digit -> Upper is a boundary,
+  // which is what Ledger's aliasing does too.
+  assert.deepEqual(tokenizeCodeIdentifiers("parseUtf8Bytes"), ["parse", "utf8", "bytes"]);
+});
+
+test("tokenizer splits acronym runs from the word that follows", () => {
+  // The boundary `/([a-z0-9])([A-Z])/` alone cannot see: the acronym run
+  // swallowed the next word whole, so `HTTPServer` indexed as one opaque token
+  // and no `server` query could reach it. Ledger's identifier aliasing already
+  // splits on upper-run -> Upper+lower; these are the strings the canon names.
+  assert.deepEqual(tokenizeCodeIdentifiers("HTTPServer"), ["http", "server"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("XMLHttpRequest"), ["xml", "http", "request"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("parseJSONResponse"), ["parse", "json", "response"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("IOError"), ["io", "error"]);
+  // A pure acronym has no following word and must stay whole.
+  assert.deepEqual(tokenizeCodeIdentifiers("HTTP"), ["http"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("httpServer"), ["http", "server"]);
+});
+
+test("an acronym-prefixed symbol is reachable by the word the acronym hid", () => {
+  const found = index(["HTTPServer", "XMLHttpRequest", "placeOrder"]);
+  assert.ok(found.search("server", { limit: 5 }).map((row) => row.document.name).includes("HTTPServer"));
+  assert.ok(found.search("request", { limit: 5 }).map((row) => row.document.name).includes("XMLHttpRequest"));
+});
+
+test("non-ASCII identifiers survive tokenization", () => {
+  // `[^a-z0-9]` deleted every non-ASCII letter, so these identifiers indexed as
+  // nothing at all. Ledger's FTS5 tokenizes them; Blueprint must not diverge.
+  assert.deepEqual(tokenizeCodeIdentifiers("cafeteríaService"), ["cafetería", "service"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("Ünicode_Wert"), ["ünicode", "wert"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("données"), ["données"]);
+  // Caseless scripts (\p{Lo}) have no case boundary, exactly as in Ledger's
+  // aliasing — the point here is that the CJK text SURVIVES rather than being
+  // deleted by an ASCII-only class.
+  assert.deepEqual(tokenizeCodeIdentifiers("読み込みHandler"), ["読み込みhandler"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("読み込み_Handler"), ["読み込み", "handler"]);
+  const found = index(["cafeteríaService", "placeOrder"]);
+  assert.deepEqual(found.search("cafetería", { limit: 5 }).map((row) => row.document.name), ["cafeteríaService"]);
+});
+
+test("single-character identifiers are indexed and findable", () => {
+  // The >= 2 floor silently erased `x`, `i`, `n` — real code. Dropping it must
+  // not turn a 1-character query into a corpus-wide containment match.
+  assert.deepEqual(tokenizeCodeIdentifiers("x"), ["x"]);
+  assert.deepEqual(tokenizeCodeIdentifiers("point_x_y"), ["point", "x", "y"]);
+  const found = index(["x", "placeOrder", "maxValue"]);
+  assert.deepEqual(found.search("x", { limit: 5 }).map((row) => row.document.name), ["x"]);
+  // `maxValue` and `placeOrder` both merely CONTAIN the letter x/a; containment
+  // must not admit them.
+  assert.ok(!found.search("x", { limit: 5 }).map((row) => row.document.name).includes("maxValue"));
+  assert.deepEqual(found.search("a", { limit: 5 }).map((row) => row.document.name), []);
+});
+
+test("incremental add/replace/remove is equivalent to a cold rebuild", () => {
+  // Acceptance evidence for dropping the full-corpus recompute. df, avgdl and
+  // search output after a mutation series must be indistinguishable from an
+  // index built once from the same final document set.
+  const document = (name, extra = "") => ({
+    id: `symbol:${name}`,
+    name,
+    qualifiedName: `mod.${name}`,
+    path: `src/${name}.js`,
+    signature: extra,
+    identifiers: extra ? [extra] : [],
+    node: { id: `symbol:${name}`, name },
+  });
+
+  const warm = new Bm25CodeIndex().replace(["alpha", "beta", "gamma"].map((n) => document(n)));
+  warm.replaceDocument(document("delta"));
+  warm.replaceDocument(document("beta", "HTTPServer handler"));
+  warm.removeDocument("symbol:alpha");
+  warm.replaceDocument(document("epsilon", "XMLHttpRequest"));
+  warm.removeDocument("symbol:gamma");
+  warm.replaceDocument(document("delta", "renamedPayload"));
+  warm.removeDocument("symbol:does-not-exist");
+
+  const final = [
+    document("beta", "HTTPServer handler"),
+    document("delta", "renamedPayload"),
+    document("epsilon", "XMLHttpRequest"),
+  ];
+  const cold = new Bm25CodeIndex().replace(final);
+
+  assert.deepEqual([...warm.documents.keys()].sort(), [...cold.documents.keys()].sort());
+  assert.deepEqual(
+    [...warm.df.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+    [...cold.df.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+    "incremental df must equal a rebuilt df, including having no zero-count entries",
+  );
+  assert.equal(warm.avgdl, cold.avgdl);
+  const strip = (rows) => rows.map(({ id, score, exactName, contributions }) => ({ id, score, exactName, contributions }));
+  for (const query of ["beta", "server", "request", "renamedPayload", "delta", "handler", "src"]) {
+    assert.deepEqual(strip(warm.search(query, { limit: 20 })), strip(cold.search(query, { limit: 20 })), query);
+  }
+});
+
+test("removing every document leaves an index equivalent to an empty one", () => {
+  const doc = (name) => ({ id: `symbol:${name}`, name, qualifiedName: name, path: `src/${name}.js`, signature: "", identifiers: [], node: {} });
+  const warm = new Bm25CodeIndex().replace([doc("alpha"), doc("beta")]);
+  warm.removeDocument("symbol:alpha");
+  warm.removeDocument("symbol:beta");
+  const cold = new Bm25CodeIndex().replace([]);
+  assert.deepEqual([...warm.df.entries()], [], "df must be empty, not full of zero counts");
+  assert.equal(warm.avgdl, cold.avgdl);
+  assert.deepEqual(warm.search("alpha", { limit: 5 }), []);
 });
 
 test("the index is built only from symbol-like generation nodes", () => {

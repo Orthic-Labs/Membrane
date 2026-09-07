@@ -1,10 +1,31 @@
+// Identifier segmentation, aligned with Ledger's `add_component_aliases`
+// (engine/crates/membrane-runtime/src/ledger/index.rs) so the two lexical
+// engines agree on what a word is.
+//
+// Three boundaries, matching Ledger exactly:
+//   lower/digit -> upper   `httpServer`     -> http server
+//   upper-run   -> Upper+lower `HTTPServer` -> http server
+//                              `XMLHttpRequest` -> xml http request
+//   any non-alphanumeric   `user_account`, `src/a.b#c`
+//
+// Unicode: Ledger's FTS5 uses `unicode61 remove_diacritics 2` and normalizes
+// queries NFKC + casefold. An ASCII-only `[^a-z0-9]` split silently erased
+// every non-ASCII identifier here, so Blueprint and Ledger tokenized the same
+// query differently. We normalize NFKC and split on `\p{L}`/`\p{N}` instead.
+//
+// No minimum token length. The canon says not to import a donor's
+// minimum-token-length rule blindly, and a 1-character identifier (`x`, `i`,
+// `n`, a CJK ideograph) is real code that the >= 2 floor dropped from both the
+// index and the query. The floor is retained only where it does real work —
+// the admission gate below, where it is a containment guard, not a token rule.
 function tokenize(value) {
   return String(value ?? "")
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_./:#-]+/g, " ")
+    .normalize("NFKC")
+    .replace(/(\p{Ll}|\p{N})(\p{Lu})/gu, "$1 $2")
+    .replace(/(\p{Lu}+)(\p{Lu}\p{Ll})/gu, "$1 $2")
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 2);
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
 }
 
 function termFrequency(tokens) {
@@ -20,25 +41,62 @@ export class Bm25CodeIndex {
     this.documents = new Map();
     this.df = new Map();
     this.avgdl = 0;
+    // Sum of document lengths. Integer, so avgdl is bit-identical to the sum a
+    // full rebuild would compute in the same insertion-independent way.
+    this.totalLength = 0;
   }
 
   replace(documents = []) {
     this.documents.clear();
-    for (const document of documents) this.documents.set(String(document.id), this.#normalize(document));
-    this.#recompute();
+    this.df.clear();
+    this.totalLength = 0;
+    for (const document of documents) this.#insert(this.#normalize(document));
+    this.#refreshAvgdl();
     return this;
   }
 
+  // Incremental df/avgdl maintenance. A single changed document used to trigger
+  // an unconditional full-corpus rebuild, which the canon prohibits. df is a
+  // count of documents containing a term, so it is exactly maintainable: retract
+  // the outgoing document's unique terms, apply the incoming one's.
   replaceDocument(document) {
-    this.documents.set(String(document.id), this.#normalize(document));
-    this.#recompute();
+    const id = String(document.id);
+    const previous = this.documents.get(id);
+    if (previous) this.#retract(previous);
+    this.#insert(this.#normalize(document));
+    this.#refreshAvgdl();
     return this;
   }
 
   removeDocument(id) {
-    this.documents.delete(String(id));
-    this.#recompute();
+    const previous = this.documents.get(String(id));
+    if (previous) {
+      this.#retract(previous);
+      this.#refreshAvgdl();
+    }
     return this;
+  }
+
+  #insert(document) {
+    this.documents.set(document.id, document);
+    this.totalLength += document.length;
+    for (const token of new Set(document.tokens)) this.df.set(token, (this.df.get(token) ?? 0) + 1);
+  }
+
+  #retract(document) {
+    this.documents.delete(document.id);
+    this.totalLength -= document.length;
+    for (const token of new Set(document.tokens)) {
+      const next = (this.df.get(token) ?? 0) - 1;
+      // Deleting at zero is what keeps the incremental df map deep-equal to a
+      // rebuilt one: a rebuild never materializes a zero entry.
+      if (next > 0) this.df.set(token, next);
+      else this.df.delete(token);
+    }
+  }
+
+  #refreshAvgdl() {
+    this.avgdl = this.documents.size ? this.totalLength / this.documents.size : 0;
   }
 
   #normalize(document) {
@@ -51,16 +109,6 @@ export class Bm25CodeIndex {
     ].filter(Boolean).join(" ");
     const tokens = tokenize(weighted);
     return { ...document, id: String(document.id), tokens, tf: termFrequency(tokens), length: Math.max(1, tokens.length) };
-  }
-
-  #recompute() {
-    this.df.clear();
-    let total = 0;
-    for (const document of this.documents.values()) {
-      total += document.length;
-      for (const token of new Set(document.tokens)) this.df.set(token, (this.df.get(token) ?? 0) + 1);
-    }
-    this.avgdl = this.documents.size ? total / this.documents.size : 0;
   }
 
   search(query, { limit = 20 } = {}) {
@@ -88,16 +136,27 @@ export class Bm25CodeIndex {
     // inside query). `oldValue` and `stableValue` contain neither, so the
     // generic-half match is refused. Ranking among admitted documents remains
     // BM25's job, unchanged.
-    const flat = (value) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    //
+    // The >= 2 length floor below is NOT the tokenizer's discarded minimum-token
+    // rule. Here it guards containment specifically: a single character is a
+    // substring of almost every identifier, so `candidate.includes(word)` on a
+    // 1-character word would admit the whole corpus. A 1-character query word is
+    // still a real identifier, so instead of being dropped it is admitted by
+    // exact token equality against the document's own tokens — which reads only
+    // this document, preserving corpus-independence.
+    const flat = (value) => String(value ?? "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
     const queryWords = String(query ?? "")
       .split(/\s+/)
       .map(flat)
-      .filter((word) => word.length >= 2);
+      .filter(Boolean);
     const names = (document) => [document.name, document.qualifiedName, document.path, document.signature];
-    const covers = (document) => queryWords.some((word) => names(document).some((value) => {
-      const candidate = flat(value);
-      return candidate.length >= 2 && (candidate.includes(word) || word.includes(candidate));
-    }));
+    const covers = (document) => queryWords.some((word) => {
+      if ([...word].length < 2) return document.tf.has(word);
+      return names(document).some((value) => {
+        const candidate = flat(value);
+        return [...candidate].length >= 2 && (candidate.includes(word) || word.includes(candidate));
+      });
+    });
     const n = this.documents.size;
     const rows = [];
     for (const document of this.documents.values()) {
