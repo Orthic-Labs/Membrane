@@ -14,6 +14,12 @@
       "admissionState": "not_requested",
       "admission": null,
       "lastError": null,
+      "pregate": {
+        "producer": "manual",
+        "epistemicClass": "reported",
+        "dlp": "pass",
+        "stableIdentity": "derived"
+      },
       "lifecycleReceipt": {
         "schema": "membrane.lifecycle-receipt.v1",
         "operation": "knowledge_propose",

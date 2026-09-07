@@ -15,9 +15,9 @@ use std::time::{Instant, SystemTime};
 
 use cortex_core::{
     consolidate_dream_memories, cosine, ContextTokenAccounting, DreamAgentPolicy, DreamStatus,
-    EffectivenessGate, Embedder, HashEmbedder, MemoryEntry, MemoryRegistry,
-    MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier, MemoryUsageRecord, Outcome,
-    RetrievalTier, RoutingPolicy,
+    EffectivenessGate, Embedder, HashEmbedder, LexicalHit, MemoryEdge, MemoryEntry, MemoryGraph,
+    MemoryNode, MemoryRegistry, MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier,
+    MemoryUsageRecord, Outcome, RetrievalTier, RoutingPolicy,
 };
 
 use crate::context_telemetry::{
@@ -457,6 +457,21 @@ pub struct MemoryLifecycleEventV1 {
 #[serde(rename_all = "snake_case")]
 pub enum MemoryLifecycleKind {
     Superseded,
+}
+
+/// One row whose review clock has expired. Read-only evidence for the CTX-010
+/// time trigger: surfacing review-due never mutates authority, lifecycle
+/// state, or recall eligibility.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleReviewDueV1 {
+    pub memory_id: String,
+    pub scope_id: String,
+    pub authority: String,
+    pub lifecycle_state: String,
+    pub review_after_ms: Option<i64>,
+    pub expires_at_ms: Option<i64>,
+    pub reason: String,
 }
 
 /// Trusted execution identity for lifecycle mutations.  This is deliberately
@@ -1888,6 +1903,20 @@ fn valid_privacy_key(key: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
+/// CTX-017: a bare `cortex_core::MemoryNode` id-placeholder for the in-process resolution
+/// graphs built here (`linked_neighbors`, `relationship_graph`) — these graphs exist only to
+/// answer "does this id resolve" and "is this relation canonical", never to carry content or
+/// temporal validity, so every field but `id` is empty.
+fn diagnostic_node(id: &str) -> MemoryNode {
+    MemoryNode {
+        id: id.to_string(),
+        content: String::new(),
+        created_at: String::new(),
+        valid_from: String::new(),
+        valid_to: None,
+    }
+}
+
 fn content_hash(content: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
@@ -2279,6 +2308,12 @@ pub struct MemoryStore {
     effectiveness_history: Arc<Mutex<Vec<MemoryUsageRecord>>>,
     pending_injections: Arc<Mutex<Vec<String>>>,
     last_recall_status: Arc<Mutex<Option<String>>>,
+    /// Which lexical lane the most recent recall actually used: `"fts5"` when
+    /// `cortex_fts5` bm25 relevance fed the RRF fusion, or `"degraded:<reason>"`
+    /// when a missing/corrupt projection forced the registry-derived fallback
+    /// (see `fts5_lexical_hits`). CTX-011: this exists so degradation is
+    /// observable rather than silent.
+    last_recall_lexical_mode: Arc<Mutex<Option<String>>>,
     last_route: Arc<Mutex<Option<(cortex_core::QueryFeatures, RetrievalTier)>>>,
     dream_status: Arc<Mutex<DreamStatus>>,
     embedder_issue: Option<String>,
@@ -2422,6 +2457,7 @@ impl MemoryStore {
             effectiveness_history: Arc::new(Mutex::new(Vec::new())),
             pending_injections: Arc::new(Mutex::new(Vec::new())),
             last_recall_status: Arc::new(Mutex::new(None)),
+            last_recall_lexical_mode: Arc::new(Mutex::new(None)),
             last_route: Arc::new(Mutex::new(None)),
             dream_status: Arc::new(Mutex::new(DreamStatus {
                 agent_id: "dream-memory".into(),
@@ -2642,7 +2678,56 @@ impl MemoryStore {
                 self.persist_error(format!("link persist failed for {}: {e}", entry.id))
             })?;
         }
+        // CTX-011: this is the common write sink for `remember`, `try_put`/admission
+        // inserts and updates, and Dream's governed consolidation — keep `cortex_fts5`
+        // in step here rather than relying solely on `reindex`/restore to (re)build it,
+        // or recall's FTS5-backed lexical channel would return nothing for rows written
+        // through this path. Reads the row back rather than trusting the caller's
+        // in-flight values, so the projection reflects exactly what `memories` now
+        // holds (lifecycle columns this call did not set keep their DB defaults).
+        self.sync_fts5_projection_on(conn, &entry.id)?;
         Ok(())
+    }
+
+    /// Upsert one row of the `cortex_fts5` lexical projection from the canonical
+    /// `memories` row `id` now holds, inside `conn`'s transaction. A missing `id` is
+    /// not an error (nothing to project yet); a projection write failure is, mirroring
+    /// `hard_erase`'s treatment of the same table — a silently-stale FTS5 row would
+    /// make recall's lexical channel diverge from canonical truth.
+    fn sync_fts5_projection_on(&self, conn: &rusqlite::Connection, id: &str) -> Result<(), String> {
+        let row: Option<(String, String, String, String, String, String)> = conn
+            .query_row(
+                "SELECT record_type, scope_id, lifecycle_state, authority, content, keywords
+                   FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("fts5 sync lookup failed for {id}: {e}")))?;
+        let Some((record_type, scope_id, lifecycle, authority, content, keywords)) = row else {
+            return Ok(());
+        };
+        cortex_store::Fts5Projection::new(conn)
+            .upsert_within(&cortex_store::Fts5Document {
+                record_id: id.to_string(),
+                record_type,
+                session_id: None,
+                scope_id,
+                lifecycle,
+                authority,
+                content,
+                keywords,
+            })
+            .map_err(|e| self.persist_error(format!("fts5 sync failed for {id}: {e}")))
     }
 
     /// Rebuild the entire `links` table from every memory's content. Idempotent; covers rows
@@ -2688,6 +2773,15 @@ impl MemoryStore {
     /// One-hop linked neighbours of the seed memories, resolved to real in-scope entries and
     /// returned at a fixed discounted score (below any direct semantic hit). Dangling links (target
     /// not written, or out of scope) resolve to nothing — no phantom candidate.
+    ///
+    /// CTX-017 convergence: resolution is routed through `cortex_core::MemoryGraph` rather than
+    /// an ad hoc registry probe, so "resolved" here means exactly what it means everywhere else
+    /// this vocabulary is enforced. `[[wikilink]]` edges are added via the tolerant
+    /// `add_edge`/`neighbors` path with relation `"wikilink"` — outside `CANONICAL_RELATIONS` —
+    /// never `add_canonical_edge`/`canonical_neighbors`, so this structural-navigation lane can
+    /// never be mistaken for evidence traversal. A dangling or out-of-scope target gets no node
+    /// and so never appears here; the underlying row stays visible for diagnostics in the
+    /// `links` table (see `backfill_links`) regardless.
     pub fn linked_neighbors(
         &self,
         seed_ids: &[String],
@@ -2698,7 +2792,7 @@ impl MemoryStore {
         if seed_ids.is_empty() || limit == 0 {
             return Vec::new();
         }
-        let slugs: Vec<String> = {
+        let slugs: Vec<(String, String)> = {
             let conn = self.db.lock();
             let mut stmt = match conn.prepare("SELECT dst_slug FROM links WHERE src_id = ?1") {
                 Ok(s) => s,
@@ -2708,7 +2802,7 @@ impl MemoryStore {
             for sid in seed_ids {
                 if let Ok(rows) = stmt.query_map(rusqlite::params![sid], |r| r.get::<_, String>(0))
                 {
-                    out.extend(rows.flatten());
+                    out.extend(rows.flatten().map(|slug| (sid.clone(), slug)));
                 }
             }
             out
@@ -2718,15 +2812,26 @@ impl MemoryStore {
         }
         let reg = self.registry.read().unwrap_or_else(|e| e.into_inner());
         let seed_set: std::collections::HashSet<&String> = seed_ids.iter().collect();
+        let mut graph = MemoryGraph::new();
+        for sid in seed_ids {
+            graph.add_node(diagnostic_node(sid));
+        }
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
-        for slug in slugs {
+        for (seed_id, slug) in &slugs {
             for scope in scopes {
                 let cand_id = format!("{scope}/{slug}");
                 if seed_set.contains(&cand_id) || !seen.insert(cand_id.clone()) {
                     continue;
                 }
                 if let Some(entry) = reg.get(&cand_id) {
+                    graph.add_node(diagnostic_node(&cand_id));
+                    graph.add_edge(MemoryEdge {
+                        from: seed_id.clone(),
+                        to: cand_id.clone(),
+                        relation: "wikilink".to_string(),
+                        created_at: String::new(),
+                    });
                     out.push((entry.clone(), NEIGHBOR_SCORE));
                     break;
                 }
@@ -2735,6 +2840,9 @@ impl MemoryStore {
                 break;
             }
         }
+        // "wikilink" is never in `CANONICAL_RELATIONS`: this recall lane's resolved hits stay
+        // structural-diagnostic, never evidence, no matter how many nodes resolve.
+        debug_assert!(seed_ids.iter().all(|sid| graph.canonical_neighbors(sid).is_empty()));
         out
     }
 
@@ -3312,6 +3420,12 @@ impl MemoryStore {
             .map_err(|e| {
                 self.persist_error(format!("quarantine tombstone cleanup failed for {id}: {e}"))
             })?;
+        // This raw restore writes `memories` directly (unlike the admission_conflict
+        // origin above, which re-enters `try_admit_with_record_metadata_observed` and
+        // so already goes through `persist_entry_with_record_lifecycle_on`'s FTS5
+        // sync) — a restored-but-unindexed row would be recallable semantically but
+        // invisible to the FTS5-backed lexical channel, so sync it here too.
+        self.sync_fts5_projection_on(&tx, id)?;
         let context = MemoryEventContext::new("quarantine_restore");
         let scope_id = tx
             .query_row(
@@ -3524,6 +3638,77 @@ impl MemoryStore {
         self.record_feedback_observed(rec, &MemoryEventContext::default())
     }
 
+    /// MEM-024: resolve a `CitedVerdict` row's `verdict_ref` against the durable verdict ledger.
+    ///
+    /// A `verdict_ref` resolves only when ALL of the following hold:
+    ///   - it names the `event_id` of a `context_event_log` row with `phase='verdict.recorded'`
+    ///     and `status='success'` (the durable verdict/receipt store — verdicts are events, not
+    ///     a separate table; see `cortex_store::context_telemetry`);
+    ///   - that verdict event is on the SAME trace as this feedback row (`trace_id` equal to the
+    ///     canonicalized `trace_id` join key), so a verdict from one trace cannot be cited to
+    ///     rank a candidate observed on another; and
+    ///   - that verdict event's `artifact_id` or `artifact_sha256` identifies THIS candidate
+    ///     (matches one of its known artifact-id forms, or its `content_sha256`) — i.e. the
+    ///     verdict "explicitly names this candidate id + sha", per the module doc.
+    ///
+    /// Separately, even a resolvable reference is refused if it has already been consumed by a
+    /// *different* candidate's verified feedback row: one receipt verifies one candidate. Without
+    /// this, a single legitimate verdict event could be cited by many unrelated feedback rows to
+    /// manufacture ranking signal for candidates it never actually verified — the "receipt
+    /// identity is reused without resolution" half of MEM-024.
+    fn resolve_cited_verdict(
+        &self,
+        rec: &FeedbackRecord,
+        canonical_trace: &str,
+        legacy_artifact_id: &str,
+        memory_artifact_id: &str,
+        provider_artifact_id: &str,
+    ) -> Result<bool, String> {
+        let verdict_ref = match rec.verdict_ref.as_deref().map(str::trim) {
+            Some(r) if !r.is_empty() => r,
+            _ => return Ok(false),
+        };
+        let resolves = self
+            .db
+            .lock_events()
+            .query_row(
+                "SELECT 1 FROM context_event_log
+                   WHERE event_id = ?1 AND phase = 'verdict.recorded' AND status = 'success'
+                     AND trace_id = ?2
+                     AND (artifact_id IN (?3, ?4, ?5) OR artifact_sha256 = ?6)
+                  LIMIT 1",
+                rusqlite::params![
+                    verdict_ref,
+                    canonical_trace,
+                    legacy_artifact_id,
+                    memory_artifact_id,
+                    provider_artifact_id,
+                    rec.content_sha256,
+                ],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("verdict resolution lookup failed: {e}")))?
+            .is_some();
+        if !resolves {
+            return Ok(false);
+        }
+        let already_consumed_elsewhere = self
+            .db
+            .lock()
+            .query_row(
+                "SELECT 1 FROM context_feedback
+                   WHERE verdict_ref = ?1 AND verified = 1 AND candidate_id != ?2
+                  LIMIT 1",
+                rusqlite::params![verdict_ref, rec.candidate_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(|e| self.persist_error(format!("verdict reuse lookup failed: {e}")))?
+            .is_some();
+        Ok(!already_consumed_elsewhere)
+    }
+
     fn record_feedback_observed(
         &self,
         rec: &FeedbackRecord,
@@ -3535,6 +3720,25 @@ impl MemoryStore {
         let full_digest = content_hash(&rec.candidate_id);
         let memory_artifact_id = format!("memory.{full_digest}");
         let provider_artifact_id = format!("artifact.{full_digest}");
+        // MEM-024 fail-closed gate: a `CitedVerdict` row must not be persisted (and so must
+        // never reach ranking) unless its `verdict_ref` actually resolves to a durable verdict
+        // naming THIS candidate, and that verdict has not already been consumed by a different
+        // candidate. `validate()` only checked that `verdict_ref` is non-empty; this is the real
+        // resolution the module doc promises.
+        if rec.source == FeedbackSource::CitedVerdict
+            && !self.resolve_cited_verdict(
+                rec,
+                &canonical_trace,
+                &legacy_artifact_id,
+                &memory_artifact_id,
+                &provider_artifact_id,
+            )?
+        {
+            return Err(format!(
+                "feedback: cited-verdict row for candidate {:?} has an unresolvable verdict_ref {:?}; refusing to persist (MEM-024 fail-closed)",
+                rec.candidate_id, rec.verdict_ref
+            ));
+        }
         let feedback_target = self
             .db
             .lock_events()
@@ -4670,6 +4874,49 @@ impl MemoryStore {
             .collect()
     }
 
+    /// CTX-017 convergence: canonical `supersedes` evidence edges among `ids`, validated through
+    /// `cortex_core::MemoryGraph::add_canonical_edge`. A `memories.superseded_by` pointer is
+    /// resolved, provenance-bound lifecycle fact (see `apply_lifecycle_input_on`), so it is
+    /// exactly the kind of edge `CANONICAL_RELATIONS` exists to admit. A row whose successor
+    /// falls outside `ids` — pruned by `relationship_graph`'s node ceiling, or simply not
+    /// persisted — is rejected as a dangling endpoint here and dropped: diagnostic only (visible
+    /// via `lifecycle_json_for`/vault export), never emitted into the traversable graph.
+    fn canonical_supersedes_edges(&self, ids: &HashSet<String>) -> Vec<(String, String)> {
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        let rows: Vec<(String, String)> = {
+            let conn = self.db.lock();
+            let mut statement = match conn
+                .prepare("SELECT id, superseded_by FROM memories WHERE superseded_by IS NOT NULL")
+            {
+                Ok(statement) => statement,
+                Err(_) => return Vec::new(),
+            };
+            statement
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .map(|it| it.flatten().collect())
+                .unwrap_or_default()
+        };
+        let mut graph = MemoryGraph::new();
+        for id in ids {
+            graph.add_node(diagnostic_node(id));
+        }
+        rows.into_iter()
+            .filter(|(old, new)| ids.contains(old) && ids.contains(new))
+            .filter(|(old, new)| {
+                graph
+                    .add_canonical_edge(MemoryEdge {
+                        from: old.clone(),
+                        to: new.clone(),
+                        relation: "supersedes".to_string(),
+                        created_at: String::new(),
+                    })
+                    .is_ok()
+            })
+            .collect()
+    }
+
     /// Deterministic embedding-neighbor graph for the local and anonymous dashboards.
     pub fn relationship_graph(&self, neighbors: usize, min_cosine: f32) -> RelationshipGraph {
         const MAX_GRAPH_NODES: usize = 512;
@@ -4774,6 +5021,8 @@ impl MemoryStore {
                 .causes
                 .push("neighbor_ceiling_applied".to_owned());
         }
+        let ids_in_graph: HashSet<String> = entries.iter().map(|entry| entry.id.clone()).collect();
+        let supersedes_edges = self.canonical_supersedes_edges(&ids_in_graph);
         RelationshipGraph {
             schema_version: 2,
             nodes,
@@ -4785,6 +5034,16 @@ impl MemoryStore {
                     kind: "semantic".to_string(),
                     score,
                 })
+                .chain(
+                    supersedes_edges
+                        .into_iter()
+                        .map(|(source, target)| RelationshipGraphEdge {
+                            source,
+                            target,
+                            kind: "supersedes".to_string(),
+                            score: 1.0,
+                        }),
+                )
                 .collect(),
             completeness,
         }
@@ -4886,6 +5145,15 @@ impl MemoryStore {
         self.last_recall_status.lock().unwrap().clone()
     }
 
+    /// CTX-011 observability: which lexical lane the most recent
+    /// `recall_scored*` call actually used. `Some("fts5")` means the
+    /// `cortex_fts5` bm25 projection fed the RRF fusion; `Some("degraded:...")`
+    /// means a missing or corrupt projection forced the registry-derived
+    /// fallback lane (the reason follows the colon). `None` before any recall.
+    pub fn last_recall_lexical_mode(&self) -> Option<String> {
+        self.last_recall_lexical_mode.lock().unwrap().clone()
+    }
+
     /// Content-free lifecycle admission set for deterministic replay and audit.
     pub fn recall_eligible_ids_at(&self, as_of_ms: i64, include_expired: bool) -> HashSet<String> {
         let conn = self.db.lock();
@@ -4930,6 +5198,75 @@ impl MemoryStore {
             },
         )
         .map_err(|error| format!("lifecycle lookup failed for {id}: {error}"))
+    }
+
+    /// Checks whether `cortex_fts5` exists and is a genuine FTS5 virtual table, without
+    /// creating or otherwise mutating it (unlike `Fts5Projection::ensure_schema`, which
+    /// would auto-vivify a missing table — recall must be able to tell "never built" apart
+    /// from "built and healthy" instead of silently getting an empty freshly-created one).
+    /// `Ok(false)` is the ordinary missing-projection case (fresh DB, or a store predating
+    /// CTX-011); `Err` means the table exists under that name but is not an FTS5 table —
+    /// a genuine corruption, not an absence.
+    fn fts5_table_present(&self, conn: &rusqlite::Connection) -> Result<bool, String> {
+        let sql: Option<String> = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name=?1",
+                rusqlite::params![cortex_store::FTS5_TABLE],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("cortex_fts5 probe failed: {e}"))?;
+        match sql {
+            None => Ok(false),
+            Some(sql) if sql.to_ascii_lowercase().contains("using fts5") => Ok(true),
+            Some(_) => Err("cortex_fts5 exists but is not an FTS5 virtual table".into()),
+        }
+    }
+
+    /// CTX-011: the lexical channel recall fuses via RRF now reads bm25 relevance
+    /// from the `cortex_fts5` projection instead of a registry-derived keyword score,
+    /// when the projection is present and healthy. Returns `None` to signal "use the
+    /// existing registry-derived lexical lane" — a missing table degrades quietly
+    /// (recall must keep working without it), while a corrupt table records a
+    /// persistence error before degrading the same way, since a table that exists but
+    /// fails its schema check is a real fault, not an absence. Every path here updates
+    /// `last_recall_lexical_mode` so the caller can distinguish an FTS5-backed recall
+    /// from a degraded one rather than the degradation being silent.
+    fn fts5_lexical_hits(&self, query: &str, limit: usize) -> Option<Vec<LexicalHit>> {
+        let conn = self.db.lock();
+        match self.fts5_table_present(&conn) {
+            Ok(false) => {
+                *self.last_recall_lexical_mode.lock().unwrap() =
+                    Some("degraded:missing_table".to_string());
+                None
+            }
+            Err(error) => {
+                self.persist_error(format!("cortex_fts5 degraded: {error}"));
+                *self.last_recall_lexical_mode.lock().unwrap() =
+                    Some(format!("degraded:corrupt:{error}"));
+                None
+            }
+            Ok(true) => {
+                match cortex_store::Fts5Projection::new(&conn)
+                    .search(query, None, None, None, limit, 0)
+                {
+                    Ok(hits) => {
+                        *self.last_recall_lexical_mode.lock().unwrap() = Some("fts5".to_string());
+                        Some(
+                            hits.into_iter()
+                                .map(|hit| LexicalHit::new(hit.record_id, hit.score))
+                                .collect(),
+                        )
+                    }
+                    Err(error) => {
+                        self.persist_error(format!("cortex_fts5 search failed: {error}"));
+                        *self.last_recall_lexical_mode.lock().unwrap() =
+                            Some(format!("degraded:search_error:{error}"));
+                        None
+                    }
+                }
+            }
+        }
     }
 
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
@@ -5075,6 +5412,7 @@ impl MemoryStore {
         CortexCompletenessV1,
     ) {
         *self.last_recall_status.lock().unwrap() = None;
+        *self.last_recall_lexical_mode.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
         if limit == 0 {
             return (Vec::new(), elapsed, CortexCompletenessV1::exact(0, 0, 0));
@@ -5125,8 +5463,24 @@ impl MemoryStore {
         let lock_ms = lock_started.elapsed().as_secs_f64() * 1000.0;
         let recall_started = Instant::now();
         let vector_dispatch_v2 = vector_dispatch_v2_enabled();
+        // CTX-011: prefer the `cortex_fts5` bm25 lexical channel over the
+        // registry-derived keyword score. `fts5_lexical` is `None` when the
+        // projection is missing or corrupt, in which case both branches below
+        // fall back to exactly the pre-CTX-011 retrieval calls (including the
+        // `vector_dispatch_v2` indexed fast path) — degradation changes the
+        // lexical source, never the fused-ranking architecture the 2026-07-05
+        // gate measured above.
+        let fts5_lexical = self.fts5_lexical_hits(query, candidate_limit.saturating_mul(4).max(64));
         let mut direct_candidates: Vec<(MemoryEntry, f32)> = if scopes.is_empty() {
-            let retrieved = if vector_dispatch_v2 {
+            let retrieved = if let Some(lexical_hits) = fts5_lexical.as_ref() {
+                MemoryRetriever::retrieve_hybrid_with_lexical_hits(
+                    &registry,
+                    lexical_hits,
+                    Some(&qvec),
+                    candidate_limit,
+                    None,
+                )
+            } else if vector_dispatch_v2 {
                 MemoryRetriever::retrieve_hybrid_indexed(
                     &registry,
                     query,
@@ -5157,7 +5511,15 @@ impl MemoryStore {
                     break;
                 }
                 let scope_filter = [scope.as_str()];
-                let retrieved = if vector_dispatch_v2 {
+                let retrieved = if let Some(lexical_hits) = fts5_lexical.as_ref() {
+                    MemoryRetriever::retrieve_hybrid_with_lexical_hits(
+                        &registry,
+                        lexical_hits,
+                        Some(&qvec),
+                        per_scope_limit,
+                        Some(&scope_filter),
+                    )
+                } else if vector_dispatch_v2 {
                     MemoryRetriever::retrieve_hybrid_indexed(
                         &registry,
                         query,
@@ -8586,10 +8948,81 @@ impl MemoryStore {
         Ok(best.map(|(_, hit)| hit))
     }
 
+    /// Rebuild the `cortex_fts5` lexical projection from canonical `memories`
+    /// content. Called after restore and reindex so every projection reflects
+    /// the same canonical corpus.
+    ///
+    /// CTX-011: runtime lexical recall DOES read `cortex_fts5` — see
+    /// `fts5_lexical_hits`, which feeds its bm25 relevance into the RRF fusion
+    /// `recall_scored_detailed_timed_at` performs, falling back to the
+    /// registry-derived lexical score only when the projection is missing or
+    /// corrupt. This rebuild keeps that projection in step with canonical
+    /// content after restore/reindex; the write path (`try_put`/admission via
+    /// `persist_entry_with_record_lifecycle_on`) keeps it in step incrementally
+    /// on every insert/update, so this bulk rebuild is a repair/recovery path,
+    /// not the only way rows get in. Suppressed rows are excluded, mirroring
+    /// `reindex`'s recall-eligibility skip; suppression itself survives in
+    /// `cortex_recall_suppression_v1` (CTX-041) and is untouched here.
+    ///
+    /// Legacy best-effort wrapper: swallows the outcome. New call sites should
+    /// use `try_rebuild_fts5_from_canonical`, which reports whether the rebuild
+    /// actually completed; kept only for source-compatibility with callers
+    /// outside this file that this pass could not touch.
+    #[allow(dead_code)]
+    fn rebuild_fts5_from_canonical(&self) {
+        let _ = self.try_rebuild_fts5_from_canonical();
+    }
+
+    /// Same rebuild as `rebuild_fts5_from_canonical`, but reports the
+    /// outcome instead of swallowing it: `Ok(count)` is the number of
+    /// documents written into the projection, `Err` names the source-query
+    /// or projection-write failure so a caller can decide whether an
+    /// incomplete rebuild is acceptable for its own contract (and, on
+    /// failure, this records a persist error so `last_persist_error`
+    /// reflects the incomplete projection rather than staying clean).
+    fn try_rebuild_fts5_from_canonical(&self) -> Result<usize, String> {
+        let documents: Vec<cortex_store::Fts5Document> = {
+            let conn = self.db.lock();
+            conn.prepare(
+                "SELECT id, record_type, scope_id, lifecycle_state, authority, content, keywords
+                   FROM memories
+                  WHERE NOT EXISTS (SELECT 1 FROM cortex_recall_suppression_v1 s
+                                     WHERE s.memory_id = memories.id AND s.suppressed = 1)
+                  ORDER BY id",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok(cortex_store::Fts5Document {
+                            record_id: row.get(0)?,
+                            record_type: row.get(1)?,
+                            session_id: None,
+                            scope_id: row.get(2)?,
+                            lifecycle: row.get(3)?,
+                            authority: row.get(4)?,
+                            content: row.get(5)?,
+                            keywords: row.get(6)?,
+                        })
+                    })
+                    .and_then(|rows| rows.collect())
+            })
+            .map_err(|e| {
+                self.persist_error(format!("fts5 rebuild source query failed: {e}"))
+            })?
+        };
+        let count = documents.len();
+        let conn = self.db.lock();
+        cortex_store::Fts5Projection::new(&conn)
+            .rebuild(documents)
+            .map_err(|e| self.persist_error(format!("fts5 rebuild failed: {e}")))?;
+        Ok(count)
+    }
+
     /// §16.4 governed hard erase. Distinct from the reversible quarantine: the
     /// payload is provably cleared from every Cortex-owned projection path — the
-    /// durable `memories` row, the `links` projection, any quarantined copy, and
-    /// the deletion tombstone — in one transaction, with a content-free
+    /// durable `memories` row, the outbound and now-dangling inbound `links`
+    /// edges, any quarantined copy, the deletion tombstone, and the `cortex_fts5`
+    /// lexical document — in one transaction, with a content-free
     /// lifecycle event recording that the erase happened.
     pub fn hard_erase(&self, id: &str) -> Result<bool, String> {
         if id.trim().is_empty() {
@@ -8652,10 +9085,50 @@ impl MemoryStore {
         })?;
         tx.execute("DELETE FROM links WHERE src_id = ?1", rusqlite::params![id])
             .map_err(|e| self.persist_error(format!("hard erase links failed for {id}: {e}")))?;
+        // Inbound edges reference the target by slug, not by raw id: `dst_slug`
+        // stores the `[[wikilink]]` target text, which resolves to this id when
+        // it equals the full id or the leaf segment after the last '/' (the same
+        // resolution `backfill_links`, `linked_neighbors`, and the doctor
+        // dangling-link check use). Edges that still resolve to a surviving
+        // memory are kept; only edges left dangling by this erase are removed.
+        let leaf_slug = id.rsplit('/').next().unwrap_or(id);
+        tx.execute(
+            "DELETE FROM links WHERE (dst_slug = ?1 OR dst_slug = ?2)
+              AND NOT EXISTS (SELECT 1 FROM memories m
+                              WHERE m.id = links.dst_slug OR m.id LIKE '%/' || links.dst_slug)",
+            rusqlite::params![id, leaf_slug],
+        )
+        .map_err(|e| self.persist_error(format!("hard erase inbound links failed for {id}: {e}")))?;
         tx.execute("DELETE FROM deletions WHERE id = ?1", rusqlite::params![id])
             .map_err(|e| {
                 self.persist_error(format!("hard erase tombstone failed for {id}: {e}"))
             })?;
+        // Lexical projection: CTX-011 made runtime lexical recall a genuine
+        // reader of `cortex_fts5` (`fts5_lexical_hits`), so "every projection"
+        // is not just a §16.4 formality here — a surviving row really could
+        // resurface through recall. A missing projection table means there is
+        // nothing to delete, which is not a failure; a projection that exists
+        // but fails to delete IS a failure — a stale `cortex_fts5` row
+        // surviving under an id §16.4 claims to have erased would let that
+        // content resurface through anything that reads the projection. That
+        // failure aborts this transaction rather than letting a partial erase
+        // commit and report success.
+        let fts_exists: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='cortex_fts5')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| self.persist_error(format!("hard erase fts probe failed for {id}: {e}")))?;
+        if fts_exists {
+            tx.execute(
+                "DELETE FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id],
+            )
+            .map_err(|e| {
+                self.persist_error(format!("hard erase fts projection failed for {id}: {e}"))
+            })?;
+        }
         let context = MemoryEventContext::new("hard_erase");
         log_memory_event(
             &self.operation_attribution,
@@ -8718,12 +9191,13 @@ impl MemoryStore {
                         source_ids, 'memory' AS artifact_family, 'manual' AS producer,
                         'memory' AS record_type, authority, influence_class, lifecycle_state,
                         effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms,
-                        superseded_by, priority_class, confidence, confidence_basis
+                        superseded_by, priority_class, confidence, confidence_basis,
+                        quarantined_at, reason
                    FROM memory_quarantine ORDER BY id",
             )
             .map_err(|e| format!("backup quarantine read failed: {e}"))?;
         let rows = statement
-            .query_map([], backup_row_from_row)
+            .query_map([], backup_quarantine_row_from_row)
             .map_err(|e| format!("backup quarantine read failed: {e}"))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("backup quarantine read failed: {e}"))?;
@@ -8828,6 +9302,11 @@ impl MemoryStore {
         drop(conn);
         self.flush_event_outbox()?;
         self.reload_registry_from_db()?;
+        // Canonical rows are back; rebuild the lexical projection from them so
+        // "every projection" holds without changing recall behavior. A failed
+        // rebuild here leaves a persist error recorded rather than silently
+        // reporting a clean restore.
+        self.try_rebuild_fts5_from_canonical()?;
         self.clear_last_persist_error();
         Ok(backup.memories.len() + backup.quarantined.len())
     }
@@ -9268,6 +9747,194 @@ impl MemoryStore {
         })
     }
 
+    /// CTX-010 time trigger as a read-only scan: active rows whose
+    /// `review_after_ms` or `expires_at_ms` has passed at `now_ms`. Bounded
+    /// with exact/lower-bound completeness. Surfacing review-due performs no
+    /// canonical mutation: authority, lifecycle state and recall eligibility
+    /// are untouched by this call.
+    ///
+    /// Also runs two Cortex-owned lifecycle triggers over the same read-only
+    /// path, each enqueue-only (this call never writes `memories`,
+    /// `lifecycle_state`, or content):
+    /// - `version_changed`: an active row's content was revised in place (an
+    ///   `update` event in `memory_event_log`) since it was first admitted,
+    ///   outside the governed supersession path — whatever review clock was
+    ///   set at admission no longer speaks to the content that is actually
+    ///   live.
+    /// - `outcome_contradicted`: an observed, verified `contradicted` outcome
+    ///   was recorded in `context_feedback` against this still-active row —
+    ///   real recall usage says the row disagreed with what happened, but
+    ///   nothing has revisited it.
+    ///
+    /// Ledger/Blueprint-owned triggers (document supersession, repository
+    /// re-anchoring) are not implemented here: no Cortex-side seam currently
+    /// exists in this store for either — there is no ingestion path where
+    /// Ledger or Blueprint hand Cortex a "this document changed" or "this
+    /// evidence surface moved" signal to enqueue a review from, wired or
+    /// otherwise. That absence is itself the gap; it does not become
+    /// external merely because another Membrane subsystem would originate
+    /// the signal, since the missing piece — a Cortex-side intake for that
+    /// signal — lives in this repository and is not implemented anywhere in
+    /// it today.
+    pub fn lifecycle_reviews_due(
+        &self,
+        scope: Option<&str>,
+        now_ms: i64,
+        limit: usize,
+    ) -> Result<CortexResultPage<LifecycleReviewDueV1>, String> {
+        if limit == 0 {
+            return Err("review-due limit must be greater than zero".to_owned());
+        }
+        let conn = self.db.lock();
+        let probe = i64::try_from(limit.saturating_add(1))
+            .map_err(|_| "review-due limit exceeds SQLite integer range".to_owned())?;
+        let mut statement = conn.prepare(
+            "SELECT id, scope_id, authority, lifecycle_state, review_after_ms, expires_at_ms FROM memories \
+             WHERE (?1 IS NULL OR scope_id = ?1) AND lifecycle_state = 'active' \
+             AND (review_after_ms IS NOT NULL AND review_after_ms <= ?2 \
+               OR expires_at_ms IS NOT NULL AND expires_at_ms <= ?2) \
+             ORDER BY review_after_ms, expires_at_ms, id COLLATE BINARY LIMIT ?3",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due scan prepare failed: {error}"))
+        })?;
+        let rows = statement
+            .query_map(rusqlite::params![scope, now_ms, probe], |row| {
+                let review_after: Option<i64> = row.get(4)?;
+                let expires_at: Option<i64> = row.get(5)?;
+                let reason = if expires_at.is_some_and(|t| t <= now_ms) {
+                    "expired"
+                } else {
+                    "review_after_elapsed"
+                };
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: review_after,
+                    expires_at_ms: expires_at,
+                    reason: reason.into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due scan query failed: {error}"))
+            })?;
+        let mut items = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due scan decode failed: {error}"))
+            })?;
+        drop(statement);
+        let mut seen: HashSet<String> = items.iter().map(|item| item.memory_id.clone()).collect();
+
+        // CTX-010 version-change trigger: enqueue-only, read-only — never rewrites
+        // `memories`. Excludes ids the time trigger already surfaced.
+        let mut version_statement = conn.prepare(
+            "SELECT m.id, m.scope_id, m.authority, m.lifecycle_state, m.review_after_ms, m.expires_at_ms \
+             FROM memories m \
+             WHERE (?1 IS NULL OR m.scope_id = ?1) AND m.lifecycle_state = 'active' \
+             AND EXISTS ( \
+               SELECT 1 FROM memory_event_log e \
+               WHERE e.memory_id = m.id AND e.event_kind = 'update' \
+             ) \
+             ORDER BY m.id COLLATE BINARY LIMIT ?2",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due version-change scan prepare failed: {error}"))
+        })?;
+        let version_rows = version_statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: row.get(4)?,
+                    expires_at_ms: row.get(5)?,
+                    reason: "version_changed".into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due version-change scan query failed: {error}"))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due version-change scan decode failed: {error}"))
+            })?;
+        drop(version_statement);
+        for row in version_rows {
+            if seen.insert(row.memory_id.clone()) {
+                items.push(row);
+            }
+        }
+
+        // CTX-010 outcome-change trigger: enqueue-only, read-only — never rewrites
+        // `memories`. Excludes ids an earlier trigger already surfaced.
+        let mut outcome_statement = conn.prepare(
+            "SELECT m.id, m.scope_id, m.authority, m.lifecycle_state, m.review_after_ms, m.expires_at_ms \
+             FROM memories m \
+             WHERE (?1 IS NULL OR m.scope_id = ?1) AND m.lifecycle_state = 'active' \
+             AND EXISTS ( \
+               SELECT 1 FROM context_feedback f \
+               WHERE f.candidate_id = m.id AND f.outcome = 'contradicted' AND f.verified = 1 \
+             ) \
+             ORDER BY m.id COLLATE BINARY LIMIT ?2",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due outcome-change scan prepare failed: {error}"))
+        })?;
+        let outcome_rows = outcome_statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: row.get(4)?,
+                    expires_at_ms: row.get(5)?,
+                    reason: "outcome_contradicted".into(),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due outcome-change scan query failed: {error}"))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!("review-due outcome-change scan decode failed: {error}"))
+            })?;
+        drop(outcome_statement);
+        for row in outcome_rows {
+            if seen.insert(row.memory_id.clone()) {
+                items.push(row);
+            }
+        }
+
+        items.sort_by(|a, b| {
+            a.review_after_ms
+                .cmp(&b.review_after_ms)
+                .then(a.expires_at_ms.cmp(&b.expires_at_ms))
+                .then(a.memory_id.cmp(&b.memory_id))
+        });
+        let truncated = items.len() > limit;
+        if truncated {
+            items.truncate(limit);
+        }
+        self.clear_last_persist_error();
+        let completeness = if truncated {
+            CortexCompletenessV1::lower_bound(
+                "ceiling_truncated",
+                items.len().saturating_add(1),
+                items.len(),
+                1,
+            )
+        } else {
+            CortexCompletenessV1::exact(items.len(), items.len(), 0)
+        };
+        Ok(CortexResultPage {
+            schema_version: 1,
+            items,
+            completeness,
+        })
+    }
+
     /// Compatibility wrapper for internal diagnostics. External HTTP/CLI paths use
     /// [`try_list`](Self::try_list) so provider failures cannot become false empty results.
     pub fn list(&self, scope: Option<&str>) -> Vec<(String, String, i64, i64, i64)> {
@@ -9342,6 +10009,13 @@ impl MemoryStore {
             }
             n += 1;
         }
+        drop(reg);
+        // Embeddings are fresh; rebuild the lexical projection from the same
+        // canonical content so "every projection" holds without changing
+        // recall behavior. Suppressed rows stay excluded (see the helper). A
+        // failed rebuild leaves a persist error recorded rather than
+        // reporting reindex as fully clean.
+        self.try_rebuild_fts5_from_canonical()?;
         self.clear_last_persist_error();
         Ok((n, skipped))
     }
@@ -9831,6 +10505,17 @@ pub struct CortexBackupRowV1 {
     pub priority_class: String,
     pub confidence: Option<f64>,
     pub confidence_basis: Option<String>,
+    /// `memory_quarantine.quarantined_at` — `TEXT NOT NULL` with no default in
+    /// the real DDL (see cortex-store `memdb.rs`). `None` here for `memories`
+    /// rows, which have no such column; a quarantine row must carry `Some`,
+    /// or restore refuses it (see `restore_backup_row`).
+    #[serde(default)]
+    pub quarantined_at: Option<String>,
+    /// `memory_quarantine.reason` — `TEXT NOT NULL` with no default. Governed
+    /// metadata: `restore_quarantined()` branches on the `admission_conflict:`
+    /// prefix, so this must round-trip byte-exact through backup/restore.
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -9893,11 +10578,53 @@ fn backup_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackup
         priority_class: row.get(26)?,
         confidence: row.get(27)?,
         confidence_basis: row.get(28)?,
+        // `memories` has no `quarantined_at`/`reason` columns.
+        quarantined_at: None,
+        reason: None,
     })
 }
 
-/// Canonical backup digest: the payload fields joined with explicit separators
-/// and hashed — restore refuses any envelope that does not reproduce it.
+/// Same column layout as `backup_row_from_row` plus the two quarantine-only
+/// governance columns, read from the trailing two positions the quarantine
+/// SELECT appends.
+fn backup_quarantine_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackupRowV1> {
+    let mut backup_row = backup_row_from_row(row)?;
+    backup_row.quarantined_at = row.get(29)?;
+    backup_row.reason = row.get(30)?;
+    Ok(backup_row)
+}
+
+/// Length-prefix and feed one field's raw bytes: an 8-byte little-endian
+/// length followed by the bytes themselves. Unlike a NUL- or otherwise
+/// separator-delimited join, this cannot let a value's own bytes be
+/// misread as a field boundary — two adjacent fields whose *content*
+/// happens to contain the separator (e.g. `content` holding an embedded
+/// NUL) can never collide with a different field split.
+fn hash_len_prefixed(hasher: &mut sha2::Sha256, bytes: &[u8]) {
+    use sha2::Digest;
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
+/// Feed an `Option<T>` field: a presence tag (`0` = None, `1` = Some)
+/// followed by the length-prefixed bytes when present. The tag keeps
+/// `None` distinguishable from `Some("")`/`Some(0)` — both would otherwise
+/// hash identically to an elided field.
+fn hash_opt_len_prefixed(hasher: &mut sha2::Sha256, bytes: Option<&[u8]>) {
+    use sha2::Digest;
+    match bytes {
+        Some(bytes) => {
+            hasher.update([1u8]);
+            hash_len_prefixed(hasher, bytes);
+        }
+        None => hasher.update([0u8]),
+    }
+}
+
+/// Canonical backup digest: every field length-prefixed (and, for optional
+/// fields, presence-tagged) before hashing, so no field's own bytes can be
+/// misread as a delimiter belonging to an adjacent field — restore refuses
+/// any envelope that does not reproduce it.
 fn cortex_backup_digest(
     memories: &[CortexBackupRowV1],
     quarantined: &[CortexBackupRowV1],
@@ -9906,51 +10633,48 @@ fn cortex_backup_digest(
 ) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(b"membrane.cortex-backup.v1\0");
+    // v2: length-prefixed, presence-tagged field encoding (see
+    // `hash_len_prefixed`/`hash_opt_len_prefixed`). v1 hashed NUL-joined
+    // strings, which let field boundaries be forged by content containing
+    // the separator — bumping the version tag makes the incompatibility
+    // explicit rather than silently changing what a v1 digest string means.
+    hasher.update(b"membrane.cortex-backup-digest.v2");
     for section in [memories, quarantined] {
         for row in section {
             for field in [
-                &row.id,
-                &row.tier,
-                &row.content,
-                &row.keywords,
-                &row.created_at,
-                &row.updated_at,
-                &row.scope_id,
-                &row.source_ids,
-                &row.artifact_family,
-                &row.producer,
-                &row.record_type,
-                &row.authority,
-                &row.influence_class,
-                &row.lifecycle_state,
-                &row.priority_class,
+                row.id.as_str(),
+                row.tier.as_str(),
+                row.content.as_str(),
+                row.keywords.as_str(),
+                row.created_at.as_str(),
+                row.updated_at.as_str(),
+                row.scope_id.as_str(),
+                row.source_ids.as_str(),
+                row.artifact_family.as_str(),
+                row.producer.as_str(),
+                row.record_type.as_str(),
+                row.authority.as_str(),
+                row.influence_class.as_str(),
+                row.lifecycle_state.as_str(),
+                row.priority_class.as_str(),
             ] {
-                hasher.update(field.as_bytes());
-                hasher.update([0u8]);
+                hash_len_prefixed(&mut hasher, field.as_bytes());
             }
-            hasher.update(row.score.to_string().as_bytes());
-            hasher.update([0u8]);
-            hasher.update(row.access_count.to_string().as_bytes());
-            hasher.update([0u8]);
-            hasher.update(row.inject_count.to_string().as_bytes());
-            hasher.update([0u8]);
-            for bytes in [&row.embedding, &row.embedding_q] {
-                if let Some(bytes) = bytes {
-                    hasher.update(bytes);
-                }
-                hasher.update([0u8]);
+            hash_len_prefixed(&mut hasher, row.score.to_bits().to_le_bytes().as_slice());
+            hash_len_prefixed(&mut hasher, row.access_count.to_le_bytes().as_slice());
+            hash_len_prefixed(&mut hasher, row.inject_count.to_le_bytes().as_slice());
+            for bytes in [row.embedding.as_deref(), row.embedding_q.as_deref()] {
+                hash_opt_len_prefixed(&mut hasher, bytes);
             }
             for field in [
-                &row.content_hash,
-                &row.embed_model,
-                &row.superseded_by,
-                &row.confidence_basis,
+                row.content_hash.as_deref(),
+                row.embed_model.as_deref(),
+                row.superseded_by.as_deref(),
+                row.confidence_basis.as_deref(),
+                row.quarantined_at.as_deref(),
+                row.reason.as_deref(),
             ] {
-                if let Some(field) = field {
-                    hasher.update(field.as_bytes());
-                }
-                hasher.update([0u8]);
+                hash_opt_len_prefixed(&mut hasher, field.map(|s| s.as_bytes()));
             }
             for field in [
                 row.effective_from_ms,
@@ -9958,34 +10682,36 @@ fn cortex_backup_digest(
                 row.expires_at_ms,
                 row.review_after_ms,
             ] {
-                if let Some(field) = field {
-                    hasher.update(field.to_string().as_bytes());
-                }
-                hasher.update([0u8]);
+                hash_opt_len_prefixed(&mut hasher, field.map(|v| v.to_le_bytes()).as_ref().map(|b| b.as_slice()));
             }
-            if let Some(confidence) = row.confidence {
-                hasher.update(confidence.to_string().as_bytes());
-            }
-            hasher.update([0u8, 0u8]);
+            hash_opt_len_prefixed(
+                &mut hasher,
+                row.confidence.map(|v| v.to_bits().to_le_bytes()).as_ref().map(|b| b.as_slice()),
+            );
         }
-        hasher.update([0u8, 1u8]);
+        // Section terminator: an empty length-prefixed marker field so an
+        // empty trailing section cannot be confused with one fewer row.
+        hash_len_prefixed(&mut hasher, b"\x01section-end");
     }
     for link in links {
-        hasher.update(link.src_id.as_bytes());
-        hasher.update([0u8]);
-        hasher.update(link.dst_slug.as_bytes());
-        hasher.update([0u8, 0u8]);
+        hash_len_prefixed(&mut hasher, link.src_id.as_bytes());
+        hash_len_prefixed(&mut hasher, link.dst_slug.as_bytes());
     }
+    hash_len_prefixed(&mut hasher, b"\x01links-end");
     // Empty legacy-v1 envelopes retain their historical digest. Suppression-
     // aware envelopes append a domain-separated canonical control section.
     if !suppression.is_empty() {
-        hasher.update(b"suppression\0");
+        hash_len_prefixed(&mut hasher, b"suppression");
         for row in suppression {
-            for field in [&row.memory_id, &row.scope_id, &row.content_hash, &row.decision_hash] {
-                hasher.update(field.as_bytes());
-                hasher.update([0u8]);
+            for field in [
+                row.memory_id.as_str(),
+                row.scope_id.as_str(),
+                row.content_hash.as_str(),
+                row.decision_hash.as_str(),
+            ] {
+                hash_len_prefixed(&mut hasher, field.as_bytes());
             }
-            hasher.update([u8::from(row.suppressed), 0u8]);
+            hash_len_prefixed(&mut hasher, &[u8::from(row.suppressed)]);
         }
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
@@ -10003,19 +10729,39 @@ fn restore_backup_row(
     // and named-parameter set must both differ by target table, not just
     // the literal SQL text.
     if quarantined {
+        // `memory_quarantine.quarantined_at`/`reason` are `TEXT NOT NULL` with
+        // no default (see cortex-store `memdb.rs`) — an envelope that lost
+        // this metadata (e.g. a pre-fix backup) cannot restore a governed
+        // quarantine row, and substituting a placeholder would corrupt the
+        // `admission_conflict:`-prefix branch `restore_quarantined()` relies
+        // on. Fail loudly instead.
+        let quarantined_at = row.quarantined_at.as_ref().ok_or_else(|| {
+            format!(
+                "backup restore of {} failed: quarantine row missing quarantined_at",
+                row.id
+            )
+        })?;
+        let reason = row.reason.as_ref().ok_or_else(|| {
+            format!(
+                "backup restore of {} failed: quarantine row missing reason",
+                row.id
+            )
+        })?;
         tx.execute(
             "INSERT INTO memory_quarantine
              (id, tier, content, keywords, score, created_at, updated_at, access_count,
               embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
               source_ids, authority, influence_class,
               lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
-              review_after_ms, superseded_by, priority_class, confidence, confidence_basis)
+              review_after_ms, superseded_by, priority_class, confidence, confidence_basis,
+              quarantined_at, reason)
              VALUES
               (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
                :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
                :source_ids, :authority, :influence_class,
                :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
-               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis)",
+               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis,
+               :quarantined_at, :reason)",
             rusqlite::named_params! {
                 ":id": row.id,
                 ":tier": row.tier,
@@ -10043,6 +10789,8 @@ fn restore_backup_row(
                 ":priority_class": row.priority_class,
                 ":confidence": row.confidence,
                 ":confidence_basis": row.confidence_basis,
+                ":quarantined_at": quarantined_at,
+                ":reason": reason,
             },
         )
         .map_err(|error| format!("backup restore of {} failed: {error}", row.id))?;
@@ -11058,6 +11806,657 @@ mod tests {
         assert!(err.contains("reindex row load"), "err: {err}");
     }
 
+    fn erase_test_fts_count(store: &MemoryStore, id: &str) -> i64 {
+        store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    fn erase_test_payload_count(store: &MemoryStore, needle: &str) -> i64 {
+        let like = format!("%{needle}%");
+        let memories: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE content LIKE ?1",
+                rusqlite::params![like],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let quarantined: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_quarantine WHERE content LIKE ?1",
+                rusqlite::params![like],
+                |row| row.get(0),
+            )
+            .unwrap();
+        memories + quarantined
+    }
+
+    /// CTX-025: hard erase clears inbound link edges (both leaf-slug and
+    /// full-id `dst_slug` references) and the FTS projection document, keeps
+    /// the content-free event plus registry eviction, and preserves edges that
+    /// still resolve to a surviving memory.
+    #[test]
+    fn hard_erase_removes_inbound_links_and_fts_projection() {
+        let store = MemoryStore::new();
+        let target = store
+            .try_put(
+                "erase-target",
+                "terminal payload ERASEME-7f3a2c-needle alpha bravo charlie",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        assert_eq!(target, "global/erase-target");
+        store
+            .try_put(
+                "survivor-target",
+                "survivor payload SURVIVOR-1a9e-needle delta echo foxtrot",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer",
+                "points at [[erase-target]] and also [[survivor-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer-two",
+                "also points at [[erase-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .try_put(
+                "erase-referrer-full",
+                "points at [[global/erase-target]] with unrelated prose",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        // Populate the lexical projection through the canonical path.
+        store.reindex().unwrap();
+        assert_eq!(
+            erase_test_fts_count(&store, &target),
+            1,
+            "fts must index the target before erase"
+        );
+        let inbound_leaf: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE dst_slug = 'erase-target'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(inbound_leaf, 2, "both leaf referrers must link the target");
+
+        assert!(store.hard_erase(&target).unwrap());
+
+        assert_eq!(erase_test_payload_count(&store, "ERASEME-7f3a2c-needle"), 0);
+        assert_eq!(
+            erase_test_fts_count(&store, &target),
+            0,
+            "erased doc must leave the fts projection"
+        );
+        let remaining: Vec<(String, String)> = store
+            .db
+            .lock()
+            .prepare("SELECT src_id, dst_slug FROM links ORDER BY src_id, dst_slug")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            !remaining
+                .iter()
+                .any(|(_, dst)| dst == "erase-target" || dst == &target),
+            "no inbound edge may reference the erased slug: {remaining:?}"
+        );
+        assert!(
+            remaining
+                .iter()
+                .any(|(_, dst)| dst == "survivor-target"),
+            "edges resolving to the survivor must stay: {remaining:?}"
+        );
+        let event_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log WHERE event_kind = 'hard_erase' AND memory_id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_count, 1, "content-free hard_erase event must persist");
+        let event_meta: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT meta FROM memory_event_log WHERE event_kind = 'hard_erase' AND memory_id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_meta, "{}", "hard_erase event must stay content-free");
+        assert!(
+            store
+                .registry
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&target)
+                .is_none(),
+            "registry entry must be evicted"
+        );
+        assert!(!store.hard_erase(&target).unwrap(), "second erase finds nothing");
+    }
+
+    /// CTX-025/026/036 plus CTX-041: an erase → reindex → restore cycle keeps
+    /// the erased payload absent from every payload table and the FTS
+    /// projection, suppressed rows stay skipped by reindex, and a post-erase
+    /// backup round-trips suppression without resurrecting the payload.
+    #[test]
+    fn erase_reindex_restore_cycle_keeps_erased_payload_absent() {
+        let store = MemoryStore::new();
+        let victim = store
+            .try_put(
+                "cycle-victim",
+                "terminal payload CYCLE-VICTIM-needle-9d1 rhubarb sconce falcon",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let keeper = store
+            .try_put(
+                "cycle-keeper",
+                "keeper payload CYCLE-KEEPER-needle-3b7 points at [[cycle-victim]] harbor lantern",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let suppressed_id = store
+            .try_put(
+                "cycle-suppressed",
+                "suppressed payload CYCLE-SUPPRESSED-needle-5e2 meadow anvil comet",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let suppressed_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![suppressed_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO cortex_recall_suppression_v1(memory_id,scope_id,content_hash,suppressed,decision_hash) VALUES(?1,'global',?2,1,'cycle-test-decision')",
+                rusqlite::params![suppressed_id, content_hash(&suppressed_content)],
+            )
+            .unwrap();
+
+        assert!(store.hard_erase(&victim).unwrap());
+        // Force a re-embed decision on both rows: the keeper must be repaired
+        // while the suppressed row stays untouched (reindex skip preserved).
+        store.tamper_embed_model_for_tests(&keeper, "stale-model");
+        store.tamper_embed_model_for_tests(&suppressed_id, "stale-model");
+        store.reindex().unwrap();
+        let model_of = |id: &str| -> Option<String> {
+            store
+                .db
+                .lock()
+                .query_row(
+                    "SELECT embed_model FROM memories WHERE id = ?1",
+                    rusqlite::params![id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap()
+                .flatten()
+        };
+        assert_eq!(model_of(&keeper), Some(store.embedder.model_id().to_owned()));
+        assert_eq!(
+            model_of(&suppressed_id),
+            Some("stale-model".to_owned()),
+            "suppressed rows stay skipped by reindex"
+        );
+
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"), 0);
+        assert_eq!(erase_test_fts_count(&store, &victim), 0);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"),
+            1,
+            "suppression is recall exclusion, not deletion"
+        );
+        let inbound: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE dst_slug = 'cycle-victim' OR dst_slug = ?1",
+                rusqlite::params![victim],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(inbound, 0, "erase must clear inbound edges to the victim slug");
+
+        let backup = store.backup_cortex().unwrap();
+        assert!(!backup.memories.iter().any(|row| row.id == victim));
+        assert!(
+            backup
+                .suppression
+                .iter()
+                .any(|row| row.memory_id == suppressed_id && row.suppressed),
+            "backup must carry the suppression row"
+        );
+        let restored = store.restore_cortex(&backup).unwrap();
+        assert_eq!(restored, backup.memories.len() + backup.quarantined.len());
+        assert_eq!(
+            erase_test_payload_count(&store, "CYCLE-VICTIM-needle-9d1"),
+            0,
+            "restoring a post-erase backup must not resurrect the payload"
+        );
+        assert_eq!(erase_test_fts_count(&store, &victim), 0);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-KEEPER-needle-3b7"), 1);
+        assert_eq!(erase_test_payload_count(&store, "CYCLE-SUPPRESSED-needle-5e2"), 1);
+        let suppression_after: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_recall_suppression_v1 WHERE memory_id = ?1 AND suppressed = 1",
+                rusqlite::params![suppressed_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(suppression_after, 1, "suppression must survive the cycle");
+    }
+
+    /// CTX-026/036 plus CTX-041: a backup/restore round-trip preserves the
+    /// suppression table and drops nothing else (digest-stable envelope,
+    /// intact links, intact payloads).
+    #[test]
+    fn backup_restore_round_trip_preserves_suppression_and_drops_nothing() {
+        let store = MemoryStore::new();
+        let first = store
+            .try_put(
+                "roundtrip-first",
+                "roundtrip payload ROUNDTRIP-FIRST-needle-aa1 basalt crater dune",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let second = store
+            .try_put(
+                "roundtrip-second",
+                "roundtrip payload ROUNDTRIP-SECOND-needle-bb2 links [[roundtrip-first]] estuary fjord",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let second_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![second],
+                |row| row.get(0),
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO cortex_recall_suppression_v1(memory_id,scope_id,content_hash,suppressed,decision_hash) VALUES(?1,'global',?2,1,'roundtrip-test-decision')",
+                rusqlite::params![second, content_hash(&second_content)],
+            )
+            .unwrap();
+
+        let before = store.backup_cortex().unwrap();
+        let restored = store.restore_cortex(&before).unwrap();
+        assert_eq!(restored, before.memories.len() + before.quarantined.len());
+        let after = store.backup_cortex().unwrap();
+        assert_eq!(
+            before.payload_sha256, after.payload_sha256,
+            "round-trip must be digest-stable"
+        );
+        assert_eq!(before.suppression, after.suppression);
+        assert_eq!(after.memories.len(), 2, "round-trip must drop no rows");
+        assert!(
+            after
+                .links
+                .iter()
+                .any(|link| link.src_id == second && link.dst_slug == "roundtrip-first"),
+            "round-trip must preserve links"
+        );
+        assert!(
+            after
+                .memories
+                .iter()
+                .any(|row| row.id == first && row.content.contains("ROUNDTRIP-FIRST-needle-aa1"))
+        );
+        assert!(
+            after
+                .memories
+                .iter()
+                .any(|row| row.id == second && row.content.contains("ROUNDTRIP-SECOND-needle-bb2"))
+        );
+    }
+
+    /// CTX backup-fix: an admission-conflict quarantine row's `quarantined_at`
+    /// and `reason` must survive a backup/restore round trip byte-exact, and
+    /// `restore_quarantined()` must still take the governed
+    /// `admission_conflict:`-prefix branch afterward (proven by the
+    /// `admission_conflict_quarantined` event it alone logs), not the raw
+    /// copy-in path used for every other quarantine origin.
+    #[test]
+    fn backup_restore_round_trip_preserves_quarantine_governance_metadata() {
+        let store = MemoryStore::new();
+        let existing = store
+            .try_put(
+                "conflict-existing",
+                "The quarterly retro notes alpha bravo charlie delta echo foxtrot golf hotel item.",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let dup_result = store.try_put(
+            "conflict-duplicate",
+            "The quarterly retro notes alpha bravo charlie delta echo foxtrot golf hotel items.",
+            "global",
+            MemoryTier::Semantic,
+        );
+        assert!(
+            dup_result.is_err(),
+            "near-duplicate content must be quarantined as an admission conflict, not admitted"
+        );
+        let dup_id = "global/conflict-duplicate".to_string();
+
+        let (reason_before, quarantined_at_before): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT reason, quarantined_at FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(
+            reason_before.starts_with("admission_conflict:"),
+            "test setup must produce an admission_conflict reason, got {reason_before:?}"
+        );
+
+        let before = store.backup_cortex().unwrap();
+        let quarantined_backup_row = before
+            .quarantined
+            .iter()
+            .find(|row| row.id == dup_id)
+            .expect("quarantined duplicate must appear in the backup envelope");
+        assert_eq!(
+            quarantined_backup_row.reason.as_deref(),
+            Some(reason_before.as_str())
+        );
+        assert_eq!(
+            quarantined_backup_row.quarantined_at.as_deref(),
+            Some(quarantined_at_before.as_str())
+        );
+
+        store.restore_cortex(&before).unwrap();
+
+        let (reason_after, quarantined_at_after): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT reason, quarantined_at FROM memory_quarantine WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            reason_after, reason_before,
+            "restored reason must be byte-exact"
+        );
+        assert_eq!(
+            quarantined_at_after, quarantined_at_before,
+            "restored quarantined_at must be byte-exact"
+        );
+
+        let governed_events_before: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log
+                  WHERE event_kind = 'admission_conflict_quarantined' AND memory_id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert!(
+            store.restore_quarantined(&dup_id).unwrap(),
+            "restore_quarantined must find the restored quarantine row"
+        );
+
+        let governed_events_after: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log
+                  WHERE event_kind = 'admission_conflict_quarantined' AND memory_id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            governed_events_after,
+            governed_events_before + 1,
+            "restore_quarantined must re-run full admission (re-detecting the still-present \
+             conflict) rather than blindly copying the quarantined row into active truth"
+        );
+        let active_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![dup_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            active_count, 0,
+            "a still-conflicting candidate must not become active truth via restore"
+        );
+        assert_eq!(existing.as_str(), "global/conflict-existing");
+    }
+
+    /// A quarantine row that lost its `quarantined_at`/`reason` metadata (the
+    /// pre-fix envelope shape) cannot satisfy `memory_quarantine`'s
+    /// `NOT NULL` columns — restore must refuse it rather than substitute a
+    /// placeholder that would corrupt the `admission_conflict:` governance
+    /// check.
+    #[test]
+    fn restoring_quarantine_row_missing_governance_metadata_is_rejected() {
+        let store = MemoryStore::new();
+        let broken_row = CortexBackupRowV1 {
+            id: "global/broken-quarantine".into(),
+            tier: "\"Semantic\"".into(),
+            content: "incomplete quarantine payload".into(),
+            keywords: "[]".into(),
+            score: 0.5,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            access_count: 0,
+            embedding: None,
+            embedding_q: None,
+            scope_id: "global".into(),
+            inject_count: 0,
+            content_hash: None,
+            embed_model: None,
+            source_ids: "[]".into(),
+            artifact_family: "memory".into(),
+            producer: "manual".into(),
+            record_type: "memory".into(),
+            authority: "A0".into(),
+            influence_class: "unknown".into(),
+            lifecycle_state: "active".into(),
+            effective_from_ms: None,
+            effective_until_ms: None,
+            expires_at_ms: None,
+            review_after_ms: None,
+            superseded_by: None,
+            priority_class: "normal".into(),
+            confidence: None,
+            confidence_basis: None,
+            quarantined_at: None,
+            reason: Some("admission_conflict:existing=global/x;similarity=0.900".into()),
+        };
+        let memories = Vec::new();
+        let quarantined = vec![broken_row];
+        let links = Vec::new();
+        let suppression = Vec::new();
+        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links, &suppression);
+        let backup = CortexBackupV1 {
+            schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
+            created_at: crate::time::now_iso(),
+            embed_model: "test-embed-model".into(),
+            memories,
+            quarantined,
+            links,
+            suppression,
+            payload_sha256,
+        };
+        let error = store
+            .restore_cortex(&backup)
+            .expect_err("an envelope missing quarantine governance metadata must not restore");
+        assert!(
+            error.contains("quarantined_at"),
+            "error must name the missing field, got: {error}"
+        );
+    }
+
+    /// The digest must not let one field's content forge a different field's
+    /// boundary: `content="alpha\0beta", keywords="[]"` and
+    /// `content="alpha", keywords="beta\0[]"` must hash differently even
+    /// though the old NUL-joined encoding would concatenate to the same
+    /// bytes.
+    #[test]
+    fn backup_digest_disambiguates_nul_placement_across_adjacent_fields() {
+        fn row(content: &str, keywords: &str) -> CortexBackupRowV1 {
+            CortexBackupRowV1 {
+                id: "global/digest-row".into(),
+                tier: "\"Semantic\"".into(),
+                content: content.into(),
+                keywords: keywords.into(),
+                score: 0.5,
+                created_at: "2026-01-01T00:00:00Z".into(),
+                updated_at: "2026-01-01T00:00:00Z".into(),
+                access_count: 0,
+                embedding: None,
+                embedding_q: None,
+                scope_id: "global".into(),
+                inject_count: 0,
+                content_hash: None,
+                embed_model: None,
+                source_ids: "[]".into(),
+                artifact_family: "memory".into(),
+                producer: "manual".into(),
+                record_type: "memory".into(),
+                authority: "A0".into(),
+                influence_class: "unknown".into(),
+                lifecycle_state: "active".into(),
+                effective_from_ms: None,
+                effective_until_ms: None,
+                expires_at_ms: None,
+                review_after_ms: None,
+                superseded_by: None,
+                priority_class: "normal".into(),
+                confidence: None,
+                confidence_basis: None,
+                quarantined_at: None,
+                reason: None,
+            }
+        }
+        let rows_a = vec![row("alpha\0beta", "[]")];
+        let rows_b = vec![row("alpha", "beta\0[]")];
+        let empty_links = Vec::new();
+        let empty_suppression = Vec::new();
+        let digest_a = cortex_backup_digest(&rows_a, &[], &empty_links, &empty_suppression);
+        let digest_b = cortex_backup_digest(&rows_b, &[], &empty_links, &empty_suppression);
+        assert_ne!(
+            digest_a, digest_b,
+            "NUL-adjacent field content must not let one field forge another's boundary"
+        );
+    }
+
+    /// §16.4 hard erase must surface a `cortex_fts5` projection-delete
+    /// failure as an `Err`, not commit a partial erase and report `Ok(true)`.
+    #[test]
+    fn hard_erase_fails_when_fts_projection_delete_cannot_succeed() {
+        let store = MemoryStore::new();
+        let target = store
+            .try_put(
+                "erase-fts-fault",
+                "payload that must not silently survive a failed fts delete",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store.reindex().unwrap();
+        // SQLite refuses `CREATE TRIGGER ... ON` a virtual table, so the fault
+        // is injected by dropping the FTS5 content shadow table instead. That
+        // leaves `cortex_fts5` listed in `sqlite_master` — so `hard_erase`'s
+        // existence probe still says the projection is present and the delete
+        // is genuinely attempted — while the delete itself fails with
+        // "no such table: main.cortex_fts5_content". This is exactly the
+        // corrupt-but-present projection the erase contract must refuse to
+        // paper over.
+        store
+            .db
+            .lock()
+            .execute_batch("DROP TABLE cortex_fts5_content;")
+            .unwrap();
+
+        let result = store.hard_erase(&target);
+        assert!(
+            result.is_err(),
+            "a failed fts5 projection delete must not report Ok(true)"
+        );
+        let still_present: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![target],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            still_present, 1,
+            "a failed erase must roll back — the canonical row must survive"
+        );
+    }
+
     #[test]
     fn query_embedding_does_not_hold_the_registry_lock() {
         struct BlockingQueryEmbedder {
@@ -11528,6 +12927,217 @@ mod tests {
         assert!(!hits.is_empty());
         assert_eq!(hits[0].0.id, exact.id, "cosine order must lead");
         assert!(hits[0].1 >= hits.last().unwrap().1, "descending cosine");
+    }
+
+    /// Regression pin for CTX-011: the 2026-07-05 fused-candidates + cosine-order
+    /// architecture asserted by `recall_scored_sorts_by_cosine_over_fused_candidates`
+    /// must hold unchanged now that the lexical *source* feeding that fusion is
+    /// `cortex_fts5` instead of the registry-derived keyword score. Same scenario,
+    /// re-asserted after the write path populates the projection, so a future change
+    /// to the lexical source cannot silently re-flip the measured ranking behavior.
+    #[test]
+    fn recall_scored_regression_cosine_order_still_leads_with_fts5_lexical_channel() {
+        let store = MemoryStore::new();
+        let exact = store.remember("alpha beta procedure", vec!["alpha".into()]);
+        let _lexical_heavy = store.remember(
+            "totally different content about deploy pipelines and rollback drills",
+            vec!["alpha".into(), "beta".into(), "procedure".into()],
+        );
+        let hits = store.recall_scored("alpha beta procedure", 2, &[]);
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].0.id, exact.id, "cosine order must still lead");
+        assert_eq!(
+            store.last_recall_lexical_mode().as_deref(),
+            Some("fts5"),
+            "the write path must have populated cortex_fts5 for this recall to use it"
+        );
+    }
+
+    /// CTX-011's actual defect: runtime lexical recall never read `cortex_fts5` at
+    /// all, so a test of ordinary filtering proved nothing about the FTS5 contract.
+    /// This exercises the real seam (`MemoryStore::fts5_lexical_hits`, the function
+    /// `recall_scored_detailed_timed_at` now calls) and proves it is driven by the
+    /// `cortex_fts5` projection, not by canonical `memories`/registry content: the
+    /// write path populates the projection when the record is admitted, and
+    /// mutating *only* that projection row — leaving `memories` untouched — changes
+    /// what the lexical channel returns. A test that passed identically whether or
+    /// not this mutation happened would not have caught the original bug.
+    #[test]
+    fn fts5_lexical_hits_is_driven_by_the_projection_not_canonical_content() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put(
+                "fts-target",
+                "canonical body mentions zzqxfindme somewhere in the text",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+
+        let hits = store
+            .fts5_lexical_hits("zzqxfindme", 10)
+            .expect("write path must have populated a healthy cortex_fts5 projection");
+        assert!(
+            hits.iter().any(|hit| hit.record_id == id),
+            "fts5 must surface the freshly admitted record"
+        );
+        assert_eq!(store.last_recall_lexical_mode().as_deref(), Some("fts5"));
+
+        // Mutate ONLY the projection row for `id` — canonical `memories` content is
+        // never touched — so the indexed text no longer contains the query term.
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE cortex_fts5 SET content = 'no relevant terms here', keywords = '' \
+                 WHERE record_id = ?1",
+                rusqlite::params![id.clone()],
+            )
+            .unwrap();
+        let canonical_content: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content FROM memories WHERE id = ?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            canonical_content.contains("zzqxfindme"),
+            "canonical memories row must be untouched by the projection mutation"
+        );
+
+        let hits_after = store
+            .fts5_lexical_hits("zzqxfindme", 10)
+            .expect("table is still present and healthy after the mutation");
+        assert!(
+            !hits_after.iter().any(|hit| hit.record_id == id),
+            "lexical ranking must follow cortex_fts5, not canonical memories content"
+        );
+    }
+
+    /// The bm25 column weights `Fts5Projection::search` requests (1.0 content,
+    /// 2.0 keywords) must actually change ranking: a query term indexed in the
+    /// keywords column outranks the same term appearing only once in a long body.
+    #[test]
+    fn fts5_bm25_ranks_keyword_column_above_body_only_match() {
+        let store = MemoryStore::new();
+        {
+            let conn = store.db.lock();
+            let projection = cortex_store::Fts5Projection::new(&conn);
+            projection.ensure_schema().unwrap();
+            projection
+                .upsert(&cortex_store::Fts5Document {
+                    record_id: "kw-hit".into(),
+                    record_type: "memory".into(),
+                    session_id: None,
+                    scope_id: "global".into(),
+                    lifecycle: "active".into(),
+                    authority: "A2".into(),
+                    content: "an unrelated long passage discussing other topics entirely, \
+                              padded with extra words so it is not the shortest document"
+                        .into(),
+                    keywords: "raretermzz".into(),
+                })
+                .unwrap();
+            projection
+                .upsert(&cortex_store::Fts5Document {
+                    record_id: "body-hit".into(),
+                    record_type: "memory".into(),
+                    session_id: None,
+                    scope_id: "global".into(),
+                    lifecycle: "active".into(),
+                    authority: "A2".into(),
+                    content: "a passage that happens to mention raretermzz exactly once".into(),
+                    keywords: "".into(),
+                })
+                .unwrap();
+        }
+        let hits = store
+            .fts5_lexical_hits("raretermzz", 10)
+            .expect("projection was just created and populated");
+        assert_eq!(
+            hits.first().map(|hit| hit.record_id.as_str()),
+            Some("kw-hit"),
+            "the 2.0-weighted keywords column must outrank the 1.0-weighted content column"
+        );
+    }
+
+    /// Fail-soft boundary: a missing `cortex_fts5` projection (a store predating
+    /// CTX-011 that has not been written to since, or one where the table was
+    /// otherwise lost) must not break recall — it degrades to the pre-CTX-011
+    /// registry-derived lexical lane. Distinct from `fts5_lexical_hits`'s own unit
+    /// coverage, this proves the degradation is *observable* on the public detailed
+    /// path via `last_recall_lexical_mode`, not silent.
+    #[test]
+    fn recall_degrades_observably_when_cortex_fts5_table_is_absent() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put(
+                "degrade-target",
+                "alpha beta gamma marker content",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let populated: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_fts5 WHERE record_id = ?1",
+                rusqlite::params![id.clone()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(populated, 1, "write path must populate cortex_fts5");
+
+        // Simulate a store whose projection is unavailable (predates CTX-011, or was
+        // lost) without touching canonical `memories` or the in-memory registry.
+        store.db.lock().execute_batch("DROP TABLE cortex_fts5").unwrap();
+
+        let hits = store.recall_scored("alpha beta gamma marker", 5, &[]);
+        assert!(
+            hits.iter().any(|(entry, _)| entry.id == id),
+            "recall must still return results when cortex_fts5 is missing"
+        );
+        assert_eq!(
+            store.last_recall_lexical_mode().as_deref(),
+            Some("degraded:missing_table"),
+            "the degradation must be observable, not silent"
+        );
+        assert!(
+            store.health().last_persist_error.is_none(),
+            "a merely missing projection is not a persistence failure"
+        );
+    }
+
+    /// A `cortex_fts5` that exists under that name but is not a real FTS5 virtual
+    /// table is corruption, not absence: recall must still degrade (never panic or
+    /// fail the caller's request) but it must record a persistence error instead of
+    /// silently treating the corrupt table as though nothing were there.
+    #[test]
+    fn recall_records_persist_error_when_cortex_fts5_is_corrupt_not_missing() {
+        let store = MemoryStore::new();
+        store
+            .db
+            .lock()
+            .execute_batch("CREATE TABLE cortex_fts5 (record_id TEXT)")
+            .unwrap();
+
+        let hits = store.fts5_lexical_hits("anything", 10);
+        assert!(hits.is_none(), "a corrupt table must still degrade gracefully");
+        let mode = store
+            .last_recall_lexical_mode()
+            .expect("degradation reason must be recorded");
+        assert!(
+            mode.starts_with("degraded:corrupt:"),
+            "corrupt must be distinguishable from missing, got: {mode}"
+        );
+        assert!(
+            store.health().last_persist_error.is_some(),
+            "a corrupt (not merely missing) projection must be a recorded persistence error"
+        );
     }
 
     #[test]
@@ -12178,8 +13788,105 @@ mod tests {
             MemoryTier::Semantic,
         );
         assert!(store
-            .linked_neighbors(&[d_id], &["global".to_string()], 5)
+            .linked_neighbors(&[d_id.clone()], &["global".to_string()], 5)
             .is_empty());
+        // (b) Non-traversable does not mean invisible: the dangling raw wikilink row stays in
+        // `links` for diagnostics (doctor / backfill_links), even though it never surfaces here.
+        let dangling_row_count: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE src_id = ?1 AND dst_slug = 'nonexistent_target_abc'",
+                rusqlite::params![&d_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            dangling_row_count, 1,
+            "the dangling wikilink must remain diagnostic, not deleted"
+        );
+        let (_edges_written, resolvable) = store.backfill_links();
+        assert!(
+            resolvable < 2,
+            "the dangling target must not count as resolvable evidence: {resolvable}"
+        );
+    }
+
+    #[test]
+    fn ctx017_resolved_supersedes_edge_traverses_relationship_graph() {
+        // (a) A resolved canonical edge traverses: `supersedes` is provenance-bound
+        // (memories.superseded_by) and both endpoints resolve, so relationship_graph's
+        // canonical-relation lane surfaces it.
+        let store = MemoryStore::new();
+        let old_id = store.put(
+            "policy-v1",
+            "old policy content, superseded",
+            "global",
+            MemoryTier::Semantic,
+        );
+        let new_id = store.put(
+            "policy-v2",
+            "new policy content, current",
+            "global",
+            MemoryTier::Semantic,
+        );
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state='superseded', superseded_by=?1 WHERE id=?2",
+                rusqlite::params![&new_id, &old_id],
+            )
+            .unwrap();
+
+        let graph = store.relationship_graph(5, 2.0);
+        let supersedes = graph
+            .edges
+            .iter()
+            .find(|edge| edge.kind == "supersedes")
+            .expect("a resolved supersedes edge must traverse into the relationship graph");
+        assert_eq!(supersedes.source, old_id);
+        assert_eq!(supersedes.target, new_id);
+    }
+
+    #[test]
+    fn ctx017_dangling_supersedes_target_does_not_traverse() {
+        // (b) A dangling/unresolved relation edge does NOT traverse: a `superseded_by` pointer
+        // to an id that never resolves (never persisted) is rejected by
+        // `MemoryGraph::add_canonical_edge` as a dangling endpoint and dropped from the
+        // traversable graph, though the row remains visible via direct inspection (diagnostic).
+        let store = MemoryStore::new();
+        let old_id = store.put(
+            "policy-v1-orphan",
+            "old policy content, points at a successor that was never written",
+            "global",
+            MemoryTier::Semantic,
+        );
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state='superseded', superseded_by='global/policy-v2-missing' WHERE id=?1",
+                rusqlite::params![&old_id],
+            )
+            .unwrap();
+
+        let graph = store.relationship_graph(5, 2.0);
+        assert!(
+            graph.edges.iter().all(|edge| edge.kind != "supersedes"),
+            "a dangling supersedes target must never be traversable evidence"
+        );
+        // Still diagnostically visible: the raw column value is unchanged and inspectable.
+        let stored: Option<String> = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT superseded_by FROM memories WHERE id=?1",
+                rusqlite::params![&old_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored.as_deref(), Some("global/policy-v2-missing"));
     }
 
     #[test]
@@ -13570,6 +15277,196 @@ mod tests {
     }
 
     #[test]
+    fn ctx010_review_due_surfaces_expired_clocks_without_rewriting_authority() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let lifecycle = |review_after_ms: Option<i64>| MemoryLifecycleInputV1 {
+            review_after_ms,
+            ..Default::default()
+        };
+        let due = m
+            .try_put_attributed_lifecycle_observed(
+                "due-row",
+                "A row whose review clock has elapsed.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle(Some(now - 1)),
+            )
+            .unwrap();
+        let fresh = m
+            .try_put_attributed_lifecycle_observed(
+                "fresh-row",
+                "A row whose review clock has not elapsed.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle(Some(now + 60_000)),
+            )
+            .unwrap();
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        assert_eq!(page.completeness.state, CortexCompletenessState::Exact);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].memory_id, due);
+        assert_eq!(page.items[0].reason, "review_after_elapsed");
+        assert_eq!(page.items[0].authority, "A2");
+        assert_eq!(page.items[0].lifecycle_state, "active");
+        // Surfacing review-due rewrites nothing: the row keeps its authority
+        // and stays recall-eligible through the normal production seam.
+        let stored: String = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority FROM memories WHERE id=?1",
+                rusqlite::params![&due],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, "A2");
+        assert!(m
+            .recall_scored("review clock", 10, &["scope".into()])
+            .iter()
+            .any(|(entry, _)| entry.id == due));
+        assert!(m
+            .recall_scored("review clock", 10, &["scope".into()])
+            .iter()
+            .any(|(entry, _)| entry.id == fresh));
+        // Zero limit fails closed instead of returning a false empty page.
+        assert!(m.lifecycle_reviews_due(Some("scope"), now, 0).is_err());
+    }
+
+    #[test]
+    fn ctx010_version_change_trigger_enqueues_review_without_rewriting_authority() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let lifecycle = MemoryLifecycleInputV1 {
+            review_after_ms: Some(now + 60_000),
+            ..Default::default()
+        };
+        // Admitted with a review clock far in the future...
+        let id = m
+            .try_put_attributed_lifecycle_observed(
+                "version-changed-row",
+                "Initial content, admitted with a distant review clock.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &lifecycle,
+            )
+            .unwrap();
+        // ...then edited in place (same id) without going through a governed
+        // supersession — an `update` event, no lifecycle-state change.
+        m.put(
+            "version-changed-row",
+            "Revised content, written after the review clock was set.",
+            "scope",
+            MemoryTier::Semantic,
+        );
+        let kind: String = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT event_kind FROM memory_event_log WHERE memory_id=?1 ORDER BY event_id DESC LIMIT 1",
+                rusqlite::params![&id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kind, "update", "test setup must produce an update event");
+
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        let hit = page
+            .items
+            .iter()
+            .find(|item| item.memory_id == id)
+            .expect("edited row must be enqueued for review despite its unexpired clock");
+        assert_eq!(hit.reason, "version_changed");
+
+        // Enqueuing performs no mutation: authority and lifecycle state are untouched,
+        // and the row stays recall-eligible.
+        let (authority, state): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(authority, "A2");
+        assert_eq!(state, "active");
+    }
+
+    #[test]
+    fn ctx010_outcome_change_trigger_enqueues_review_on_verified_contradiction() {
+        let m = MemoryStore::new();
+        let now = crate::time::now_millis() as i64;
+        let id = m
+            .try_put_attributed_lifecycle_observed(
+                "contradicted-row",
+                "A claim that later gets contradicted by an observed outcome.",
+                "scope",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &MemoryEventContext::default(),
+                &MemoryLifecycleInputV1::default(),
+            )
+            .unwrap();
+        let content_sha256 = {
+            let content: String = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT content FROM memories WHERE id=?1",
+                    rusqlite::params![&id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            content_hash(&content)
+        };
+        m.record_feedback(&FeedbackRecord {
+            trace_id: "trace-ctx010-outcome".into(),
+            candidate_id: id.clone(),
+            content_sha256,
+            outcome: cortex_core::Outcome::Contradicted,
+            source: crate::feedback::FeedbackSource::ObservedAction,
+            verdict_ref: None,
+            scope_id: "scope".into(),
+        })
+        .unwrap();
+
+        let page = m.lifecycle_reviews_due(Some("scope"), now, 100).unwrap();
+        let hit = page
+            .items
+            .iter()
+            .find(|item| item.memory_id == id)
+            .expect("a verified contradicted outcome must enqueue the still-active row for review");
+        assert_eq!(hit.reason, "outcome_contradicted");
+
+        let (authority, state): (String, String) = m
+            .db
+            .lock()
+            .query_row(
+                "SELECT authority, lifecycle_state FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(authority, "A2");
+        assert_eq!(state, "active");
+    }
+
+    #[test]
     fn dream_now_records_status_for_agent_roster_surface() {
         let m = MemoryStore::new();
         m.remember(
@@ -13712,5 +15609,177 @@ mod tests {
             ..request
         };
         assert!(store.execute_lifecycle_operation(&wrong, &actor).is_err());
+    }
+
+    /// MEM-024 regression tests: a `CitedVerdict` feedback row must resolve against a real
+    /// verdict event in the durable ledger (`context_event_log`, phase `verdict.recorded`)
+    /// naming this candidate, and one verdict must not be replayable across candidates.
+    mod mem_024_cited_verdict_resolution {
+        use super::*;
+
+        /// Insert a bare-minimum `context_event_log` row standing in for a durable verdict.
+        fn insert_verdict_event(
+            m: &MemoryStore,
+            event_id: &str,
+            trace_id: &str,
+            artifact_id: Option<&str>,
+            artifact_sha256: Option<&str>,
+        ) {
+            m.db
+                .lock_events()
+                .execute(
+                    "INSERT INTO context_event_log
+                        (event_id, schema_version, ts, ingested_at, installation_id,
+                         service_instance_id, workspace_id, client, producer, session_id,
+                         trace_id, span_id, artifact_family, provider, phase, operation,
+                         status, artifact_id, artifact_sha256, traffic_class, canonical_sha256)
+                     VALUES (?1, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'inst',
+                             'svc', 'ws', 'test', 'test', 'sess', ?2, 'span-1', 'memory',
+                             'cortex', 'verdict.recorded', 'record', 'success', ?3, ?4, 'test',
+                             'sha')",
+                    rusqlite::params![event_id, trace_id, artifact_id, artifact_sha256],
+                )
+                .unwrap();
+        }
+
+        fn cited(
+            trace_id: &str,
+            candidate_id: &str,
+            content_sha256: &str,
+            verdict_ref: &str,
+        ) -> FeedbackRecord {
+            FeedbackRecord {
+                trace_id: trace_id.into(),
+                candidate_id: candidate_id.into(),
+                content_sha256: content_sha256.into(),
+                outcome: Outcome::Used,
+                source: FeedbackSource::CitedVerdict,
+                verdict_ref: Some(verdict_ref.into()),
+                scope_id: "global".into(),
+            }
+        }
+
+        #[test]
+        fn unresolvable_verdict_ref_is_rejected_and_never_ranks() {
+            let m = MemoryStore::new();
+            // Passes structural validate() (non-empty verdict_ref) but names no real event.
+            let rec = cited("trace-a", "mem-a", "sha-a", "does-not-exist");
+            let err = m
+                .record_feedback(&rec)
+                .expect_err("an unresolvable verdict_ref must be refused at persistence");
+            assert!(err.contains("MEM-024"), "error should name the gate: {err}");
+            let stored: Option<i64> = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-a'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(
+                stored.is_none(),
+                "a rejected cited-verdict row must not be persisted at all"
+            );
+        }
+
+        #[test]
+        fn resolvable_verdict_ref_ranks() {
+            let m = MemoryStore::new();
+            let canonical_trace = opaque_correlation_token("trace-b", "trace");
+            insert_verdict_event(
+                &m,
+                "verdict-1",
+                &canonical_trace,
+                None,
+                Some("sha-b"),
+            );
+            let rec = cited("trace-b", "mem-b", "sha-b", "verdict-1");
+            m.record_feedback(&rec)
+                .expect("a verdict naming this candidate's sha on the same trace must resolve");
+            let verified: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-b'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified, 1, "a resolved cited-verdict row must rank");
+        }
+
+        #[test]
+        fn advisory_never_ranks_even_with_a_verdict_ref_shaped_string() {
+            let m = MemoryStore::new();
+            let rec = FeedbackRecord {
+                trace_id: "trace-c".into(),
+                candidate_id: "mem-c".into(),
+                content_sha256: "sha-c".into(),
+                outcome: Outcome::Used,
+                source: FeedbackSource::Advisory,
+                verdict_ref: Some("looks-like-a-ref-but-is-advisory".into()),
+                scope_id: "global".into(),
+            };
+            m.record_feedback(&rec).unwrap();
+            let verified: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-c'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified, 0, "advisory feedback must never rank");
+        }
+
+        #[test]
+        fn a_verdict_cannot_be_replayed_across_different_candidates() {
+            let m = MemoryStore::new();
+            let canonical_trace = opaque_correlation_token("trace-d", "trace");
+            // One real verdict event naming a content hash that (e.g. via duplicate content)
+            // happens to match two different candidate ids.
+            insert_verdict_event(
+                &m,
+                "verdict-shared",
+                &canonical_trace,
+                None,
+                Some("dup-sha"),
+            );
+            let first = cited("trace-d", "mem-d1", "dup-sha", "verdict-shared");
+            m.record_feedback(&first)
+                .expect("the first candidate to cite a resolvable verdict must rank");
+            let verified1: i64 = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d1'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(verified1, 1);
+
+            // A second, distinct candidate replaying the SAME receipt identity must not also
+            // rank off it -- one receipt verifies one candidate (MEM-024).
+            let second = cited("trace-d", "mem-d2", "dup-sha", "verdict-shared");
+            let err = m
+                .record_feedback(&second)
+                .expect_err("a verdict already consumed by another candidate must not be reused");
+            assert!(err.contains("MEM-024"), "error should name the gate: {err}");
+            let stored2: Option<i64> = m
+                .db
+                .lock()
+                .query_row(
+                    "SELECT verified FROM context_feedback WHERE candidate_id='mem-d2'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(stored2.is_none(), "the replayed row must not be persisted");
+        }
     }
 }

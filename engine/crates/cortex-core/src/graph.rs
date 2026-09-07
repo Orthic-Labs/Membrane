@@ -34,9 +34,34 @@ pub struct MemoryEdge {
     /// Target node id.
     pub to: String,
     /// Edge label (e.g., "causally_related", "implements", "uses").
+    ///
+    /// Raw ingest may carry any label, but only [`CANONICAL_RELATIONS`] edges
+    /// with resolved endpoints are traversable (see [`MemoryGraph::canonical_neighbors`]).
+    /// Everything else is diagnostic and never authorizes traversal.
     pub relation: String,
     /// When this edge was created.
     pub created_at: String,
+}
+
+/// CTX-017 closed relation vocabulary. Only resolved, provenance-bound,
+/// lifecycle-applicable evidence relations in this set are traversable.
+/// Dangling, unresolved, or raw wikilink relations stay diagnostic and
+/// non-traversable. This set must not be widened to enable CTX-039 style
+/// multi-hop evidence traversal without explicit promotion.
+pub const CANONICAL_RELATIONS: &[&str] = &["supports", "contradicts", "supersedes", "derived_from"];
+
+/// True when `relation` is a member of the closed CTX-017 vocabulary.
+pub fn is_canonical_relation(relation: &str) -> bool {
+    CANONICAL_RELATIONS.contains(&relation)
+}
+
+/// Rejection reason for a governed edge admission attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EdgeRejection {
+    /// Relation is outside the closed CTX-017 vocabulary.
+    NonCanonicalRelation,
+    /// An endpoint has no resolved node in this graph.
+    DanglingEndpoint,
 }
 
 /// In-process bi-temporal knowledge graph.
@@ -66,6 +91,28 @@ impl MemoryGraph {
         self.edges.push(edge);
     }
 
+    /// Admit a governed evidence edge. Only closed-vocabulary relations with
+    /// both endpoints resolved are accepted; anything else is rejected with a
+    /// typed reason and must remain diagnostic, never traversable.
+    pub fn add_canonical_edge(&mut self, edge: MemoryEdge) -> Result<(), EdgeRejection> {
+        if !is_canonical_relation(&edge.relation) {
+            return Err(EdgeRejection::NonCanonicalRelation);
+        }
+        if !self.nodes.contains_key(&edge.from) || !self.nodes.contains_key(&edge.to) {
+            return Err(EdgeRejection::DanglingEndpoint);
+        }
+        self.edges.push(edge);
+        Ok(())
+    }
+
+    /// True when an edge is traversable evidence: closed-vocabulary relation
+    /// with both endpoints resolved in this graph.
+    pub fn is_traversable(&self, edge: &MemoryEdge) -> bool {
+        is_canonical_relation(&edge.relation)
+            && self.nodes.contains_key(&edge.from)
+            && self.nodes.contains_key(&edge.to)
+    }
+
     /// Get immediate neighbors of a node (1-hop expansion).
     /// Returns (edge relation, neighbor node) pairs.
     pub fn neighbors(&self, id: &str) -> Vec<(String, &MemoryNode)> {
@@ -80,6 +127,20 @@ impl MemoryGraph {
         }
 
         result
+    }
+
+    /// Traversal-safe neighbor view for governed evidence paths. Only
+    /// closed-vocabulary edges with resolved endpoints are returned; raw,
+    /// dangling, or non-canonical edges are excluded without error.
+    pub fn canonical_neighbors(&self, id: &str) -> Vec<(String, &MemoryNode)> {
+        self.neighbors(id)
+            .into_iter()
+            .filter(|(relation, neighbor)| {
+                is_canonical_relation(relation)
+                    && self.nodes.contains_key(id)
+                    && self.nodes.contains_key(&neighbor.id)
+            })
+            .collect()
     }
 
     /// Mark a node as no longer valid from a given timestamp.
@@ -362,5 +423,42 @@ mod tests {
         let graph = MemoryGraph::new();
         let results = graph.hybrid_search("nonexistent", 10);
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn ctx017_closed_vocabulary_gates_traversal_without_breaking_diagnostic_ingest() {
+        assert!(is_canonical_relation("supports"));
+        assert!(is_canonical_relation("contradicts"));
+        assert!(is_canonical_relation("supersedes"));
+        assert!(is_canonical_relation("derived_from"));
+        assert!(!is_canonical_relation("related"));
+        assert!(!is_canonical_relation("depends_on"));
+        assert!(!is_canonical_relation("wikilink"));
+
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("n1", "foo"));
+        graph.add_node(make_node("n2", "bar"));
+        // Diagnostic ingest still accepts raw labels and dangling endpoints.
+        graph.add_edge(make_edge("n1", "n2", "related"));
+        graph.add_edge(make_edge("n1", "missing", "supports"));
+        assert_eq!(graph.all_edges().len(), 2);
+        // Governed admission rejects both failure modes with typed reasons.
+        assert_eq!(
+            graph.add_canonical_edge(make_edge("n1", "n2", "related")).unwrap_err(),
+            EdgeRejection::NonCanonicalRelation
+        );
+        assert_eq!(
+            graph.add_canonical_edge(make_edge("n1", "missing", "supports")).unwrap_err(),
+            EdgeRejection::DanglingEndpoint
+        );
+        graph.add_canonical_edge(make_edge("n1", "n2", "supports")).unwrap();
+        // Traversal-safe view exposes only the canonical resolved edge.
+        let canonical = graph.canonical_neighbors("n1");
+        assert_eq!(canonical.len(), 1);
+        assert_eq!(canonical[0].0, "supports");
+        assert_eq!(canonical[0].1.id, "n2");
+        assert!(graph.canonical_neighbors("missing").is_empty());
+        // Legacy tolerant view is unchanged for diagnostic consumers.
+        assert_eq!(graph.neighbors("n1").len(), 2);
     }
 }

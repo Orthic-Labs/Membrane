@@ -135,7 +135,12 @@ fn schema(name: &str) -> Value {
         ),
         "membrane_knowledge_propose" => (
             vec!["repository", "caller", "emission"],
-            json!({"repository":{"type":"string"},"caller":caller(),"emission":{"type":"object"}}),
+            json!({"repository":{"type":"string"},"caller":caller(),"emission":{"type":"object",
+                "required":["text","producer","epistemicClass"],
+                "properties":{"text":{"type":"string","minLength":1},
+                "producer":{"type":"string","enum":["manual","agent","harness","adapt_native","ingest_hook","dream","episodic","import","checkpoint","system"]},
+                "epistemicClass":{"type":"string","enum":["observed","reported","inferred","directive"]}}},
+            }),
         ),
         "membrane_knowledge_review" => (
             vec!["repository", "caller", "review"],

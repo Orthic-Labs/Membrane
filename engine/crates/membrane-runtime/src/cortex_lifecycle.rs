@@ -178,22 +178,106 @@ fn bound(value: &Value) -> Result<String> {
     Ok(text)
 }
 
+/// CTX-002 frozen ordered pre-gate vocabulary. Gate order is
+/// schema -> scope -> producer -> DLP -> epistemic class -> stable identity,
+/// matching the legacy Cortex pipeline order. Every dimension fails closed
+/// with a typed code; missing producer or epistemic evidence is denied,
+/// never defaulted.
+pub const PREGATE_PRODUCERS: &[&str] = &[
+    "manual", "agent", "harness", "adapt_native", "ingest_hook", "dream", "episodic", "import",
+    "checkpoint", "system",
+];
+/// How the candidate claims to know. `observed` is first-hand tool/system
+/// measurement; `reported` is an agent/user assertion; `inferred` is derived
+/// from other durable records; `directive` is an explicit operator decision.
+pub const PREGATE_EPISTEMIC_CLASSES: &[&str] = &["observed", "reported", "inferred", "directive"];
+
+/// Deterministic secret-material scan for the DLP pre-gate dimension.
+/// Scope is secret/token/key material only; broader PII classes remain a
+/// documented policy gap, not a silent pass.
+fn dlp_hit(text: &str) -> Option<&'static str> {
+    const KEY_HEADERS: &[&str] = &[
+        "-----BEGIN PRIVATE KEY-----",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "-----BEGIN OPENSSH PRIVATE KEY-----",
+        "-----BEGIN EC PRIVATE KEY-----",
+    ];
+    if KEY_HEADERS.iter().any(|header| text.contains(header)) {
+        return Some("secret_key_material");
+    }
+    fn keyed(text: &str, prefix: &str, min_tail: usize) -> bool {
+        for (pos, _) in text.match_indices(prefix) {
+            let tail = &text[pos + prefix.len()..];
+            let run = tail
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                .count();
+            if run >= min_tail {
+                return true;
+            }
+        }
+        false
+    }
+    if keyed(text, "AKIA", 16) {
+        return Some("aws_access_key");
+    }
+    if keyed(text, "ghp_", 10) || keyed(text, "gho_", 10) || keyed(text, "github_pat_", 10) {
+        return Some("github_token");
+    }
+    if keyed(text, "sk-live-", 8) || keyed(text, "sk-test-", 8) {
+        return Some("api_secret");
+    }
+    if keyed(text, "xoxb-", 8) || keyed(text, "xoxp-", 8) || keyed(text, "xoxa-", 8) || keyed(text, "xoxs-", 8) {
+        return Some("chat_token");
+    }
+    if keyed(text, "AIza", 10) {
+        return Some("api_key");
+    }
+    None
+}
+
 /// Store a proposal only. Scope is the verified caller binding, not a claim in
 /// emission JSON. Legacy records are read but never silently reapproved.
 pub fn propose(store: &MemoryStore, repository: &str, scope: &str, emission: &Value) -> Result<Value> {
     let mut emission = emission.as_object().cloned()
         .ok_or_else(|| fail("proposal_emission_text_required", "emission must be an object"))?;
     let text = emission.get("text").or_else(|| emission.get("content"))
-        .and_then(Value::as_str).filter(|v| !v.trim().is_empty())
+        .and_then(Value::as_str).filter(|v| !v.trim().is_empty()).map(str::to_owned)
         .ok_or_else(|| fail("proposal_emission_text_required", "emission text is required"))?;
     if text.len() > MAX_PAYLOAD_BYTES { return Err(fail("proposal_payload_too_large", "emission exceeds limit")); }
     if emission.get("scopeId").is_some_and(|v| v.as_str() != Some(scope)) {
         return Err(fail("proposal_scope_denied", "emission scope does not match caller"));
     }
     emission.insert("scopeId".into(), json!(scope));
+    // CTX-002 ordered pre-gate, dimensions 3-6. Dimensions 1-2 (schema text,
+    // caller scope) are enforced above; every check below fails closed before
+    // any semantic admission or durable write.
+    let producer = emission.get("producer").and_then(Value::as_str).unwrap_or("").trim();
+    if !PREGATE_PRODUCERS.contains(&producer) {
+        return Err(fail("producer_denied", "emission producer is missing or not an admitted producer"));
+    }
+    // The DLP scan must inspect the content that will actually be stored, not
+    // just the outer text/content string: a nested durable payload (e.g.
+    // temporalFact) can carry secret material the outer text omits.
+    let full_emission_scan = serde_json::to_string(&emission).map_err(storage)?;
+    if let Some(class) = dlp_hit(&text).or_else(|| dlp_hit(&full_emission_scan)) {
+        return Err(fail("dlp_denied", format!("emission carries denied secret material ({class})")));
+    }
+    let epistemic = emission.get("epistemicClass").and_then(Value::as_str).unwrap_or("").trim();
+    if !PREGATE_EPISTEMIC_CLASSES.contains(&epistemic) {
+        return Err(fail("epistemic_denied", "emission epistemicClass is missing or not admitted"));
+    }
+    let claimed = emission.get("id").and_then(Value::as_str)
+        .map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned);
+    // The identity claim is evidence about identity, not content: it is
+    // checked against the derived identity, never hashed into it.
+    emission.remove("id");
     let emission_json = bound(&Value::Object(emission))?;
     let hash = digest_str(&emission_json);
     let id = digest_str(&serde_json::to_string(&(repository, scope, &hash)).map_err(storage)?);
+    if claimed.as_deref().is_some_and(|value| value != id) {
+        return Err(fail("identity_conflict", "emission id claim does not match derived stable identity"));
+    }
     {
         let db = store.db().lock_events();
         ensure_proposal_schema(&db).map_err(storage)?;
@@ -258,6 +342,8 @@ pub fn propose_temporal(
         &json!({
             "kind":"temporal",
             "text":text,
+            "producer":"agent",
+            "epistemicClass":"observed",
             "temporalFact":normalized,
             "callerFieldsStripped":["authority","veracity","supersedes"],
             "cardinalityPolicy":{
@@ -282,10 +368,19 @@ pub fn propose_temporal(
 pub fn proposal_status(store: &MemoryStore, repository: &str, scope: &str, id: &str) -> Result<Value> {
     let db = store.db().lock_events();
     ensure_proposal_schema(&db).map_err(storage)?;
-    let row = db.query_row("SELECT emission_sha256,state,created_at FROM membrane_knowledge_proposal
+    let row = db.query_row("SELECT emission_sha256,state,created_at,emission_json FROM membrane_knowledge_proposal
         WHERE proposal_id=?1 AND repository_id=?2 AND scope_id=?3", params![id, repository, scope],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)))
         .optional().map_err(storage)?.ok_or_else(|| fail("proposal_review_unknown", "proposal unavailable in caller scope"))?;
+    let stored: Value = serde_json::from_str(&row.3).map_err(storage)?;
+    // Identity claims are checked against the derived identity at intake and
+    // never stored, so every durable proposal carries derived stable identity.
+    let pregate = json!({
+        "producer": stored.get("producer"),
+        "epistemicClass": stored.get("epistemicClass"),
+        "dlp": "pass",
+        "stableIdentity": "derived",
+    });
     let admission: Option<(String, Option<String>, Option<String>, String)> = db.query_row(
         "SELECT state,last_error,receipt_json,effect_hash FROM cortex_proposal_admission_v1 WHERE proposal_id=?1", [id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).optional().map_err(storage)?;
@@ -298,6 +393,7 @@ pub fn proposal_status(store: &MemoryStore, repository: &str, scope: &str, id: &
         "emissionHash":row.0,"admissionState":admission_state,"admission":receipt,
         "lastError":admission.as_ref().and_then(|r| r.1.clone()),
         "admissionRevision":admission.as_ref().map(|r|r.3.clone()).unwrap_or_else(||"legacy".into()),
+        "pregate":pregate,
         "lifecycleReceipt":{"schema":"membrane.lifecycle-receipt.v1","operation":"knowledge_propose",
         "status":row.1,"durableId":id,"eventId":digest_str(&format!("proposal:{id}")),
         "readbackDigest":row.0,"recordedAt":row.2},
@@ -371,6 +467,9 @@ fn queue_review(store: &MemoryStore, effect: &ReviewedEffectV1) -> Result<()> {
 
 /// Bounded reconciliation, called by the tray-owned maintenance loop and on
 /// startup. It never promotes unsigned legacy approvals or fabricates trust.
+/// A crash-recoverable `admission_pending` job is a row in
+/// `cortex_proposal_admission_v1` with `state='pending'`; convergence runs the
+/// approved payload through normal Cortex admission idempotently.
 pub fn recover_pending(store: &MemoryStore, limit: usize) -> Result<Value> {
     let ids = {
         let db = store.db().lock_events();
@@ -416,7 +515,7 @@ fn recover_one(store: &MemoryStore, id: &str) -> Result<()> {
         // an expired approval. Reconcile the acknowledgement before checking
         // present-day permission to execute an unfinished effect.
         if payload.get("kind").and_then(Value::as_str) == Some("temporal") {
-            if let Some(receipt) = temporal_admission_receipt(store, &payload)? {
+            if let Some(receipt) = temporal_admission_receipt(store, &scope, &payload)? {
                 return Ok(receipt);
             }
         } else if let Some(receipt) = store
@@ -427,7 +526,7 @@ fn recover_one(store: &MemoryStore, id: &str) -> Result<()> {
         }
         verify_review(store, &effect, &repository, &scope)?;
         if payload.get("kind").and_then(Value::as_str) == Some("temporal") {
-            return admit_temporal(store, id, &payload);
+            return admit_temporal(store, id, &scope, &payload);
         }
         store.admit_reviewed_proposal(id, &hash, &payload, &scope).map_err(storage)
     })();
@@ -451,9 +550,26 @@ fn recover_one(store: &MemoryStore, id: &str) -> Result<()> {
     }
 }
 
-fn temporal_admission_receipt(store: &MemoryStore, payload: &Value) -> Result<Option<Value>> {
+/// A nested `temporalFact.scopeId` is caller-supplied payload, never an
+/// independently verified binding. The durable record and every readback of
+/// it are bound to `scope` (the caller/proposal scope carried by the signed
+/// review), and a non-empty nested claim that disagrees is a fail-closed
+/// binding denial rather than a silent overwrite that would hide an
+/// attempted cross-scope escalation.
+fn bind_temporal_scope(fact: &TemporalFact, scope: &str) -> Result<()> {
+    if !fact.scope_id.is_empty() && fact.scope_id != scope {
+        return Err(fail(
+            "cortex_review_binding_denied",
+            "temporal fact scope does not match the verified caller scope",
+        ));
+    }
+    Ok(())
+}
+
+fn temporal_admission_receipt(store: &MemoryStore, scope: &str, payload: &Value) -> Result<Option<Value>> {
     let fact: TemporalFact = serde_json::from_value(payload["temporalFact"].clone())
         .map_err(|_| fail("temporal_fact_invalid", "stored temporal proposal is malformed"))?;
+    bind_temporal_scope(&fact, scope)?;
     let Some(receipt) = store
         .temporal_facts()
         .validity_receipt(&fact.fact_id)
@@ -484,7 +600,7 @@ fn temporal_receipt_json(
     }))
 }
 
-fn admit_temporal(store: &MemoryStore, proposal_id: &str, payload: &Value) -> Result<Value> {
+fn admit_temporal(store: &MemoryStore, proposal_id: &str, scope: &str, payload: &Value) -> Result<Value> {
     let utility = MemoryStore::admission_utility_eligibility(payload);
     if utility["eligible"] != true {
         return Ok(json!({
@@ -494,8 +610,13 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, payload: &Value) -> Re
             "utilityEligibility":utility
         }));
     }
-    let fact: TemporalFact = serde_json::from_value(payload["temporalFact"].clone())
+    let mut fact: TemporalFact = serde_json::from_value(payload["temporalFact"].clone())
         .map_err(|_| fail("temporal_fact_invalid", "stored temporal proposal is malformed"))?;
+    bind_temporal_scope(&fact, scope)?;
+    // A non-empty mismatch is already rejected above; once bound, the durable
+    // record and its validation use the independently verified scope, never
+    // a value the caller could omit or forge.
+    fact.scope_id = scope.to_owned();
     validate_fact_proposal(&fact).map_err(|message| fail("temporal_fact_invalid", message))?;
     let policy = &payload["cardinalityPolicy"];
     let cardinality = policy.get("cardinality").and_then(Value::as_str);
@@ -511,15 +632,26 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, payload: &Value) -> Re
             "temporal cardinality policy is missing or inconsistent",
         ));
     }
+    // CTX-009's fourth dimension. `TemporalValidityV1` carries only valid and
+    // recorded time, so the observation instant has to be handed to the store
+    // separately or it is lost at admission.
+    let observed_at = fact.observed_at.clone();
     let record = TemporalValidityV1 {
         record_id: fact.fact_id,
         subject: fact.subject,
         predicate: fact.predicate,
         object: fact.object,
+        // fact.scope_id was already normalized to the independently verified
+        // caller/proposal scope above; a mismatching nested claim is rejected
+        // before this point, never silently overwritten.
         scope_id: fact.scope_id,
         authority: "A4".into(),
         valid_at: TemporalInstantV1::known(fact.valid_from),
-        recorded_at: TemporalInstantV1::known(fact.observed_at),
+        // CTX-009: recorded_at is admission-time (when Cortex durably wrote
+        // the record), distinct from fact.observed_at (when the fact was
+        // first witnessed). Reuse this module's existing admission clock
+        // idiom rather than introducing a new time source.
+        recorded_at: TemporalInstantV1::known(crate::time::now_iso()),
         invalid_at: fact.valid_until,
         superseded_by: None,
         revoked: false,
@@ -528,9 +660,9 @@ fn admit_temporal(store: &MemoryStore, proposal_id: &str, payload: &Value) -> Re
     };
     store
         .temporal_facts()
-        .record_validity(record, cardinality == Some("single"))
+        .record_validity_observed(record, cardinality == Some("single"), Some(&observed_at))
         .map_err(storage)?;
-    temporal_admission_receipt(store, payload)?.ok_or_else(|| {
+    temporal_admission_receipt(store, scope, payload)?.ok_or_else(|| {
         storage("temporal admission committed without readable canonical receipt")
     })
 }
@@ -597,12 +729,13 @@ pub fn resolve_memory(store: &MemoryStore, scope: &str, id: &str, expected: &str
     let mut db = store.db().lock();
     ensure_memory_schema(&db).map_err(storage)?;
     let tx = db.transaction_with_behavior(TransactionBehavior::Deferred).map_err(storage)?;
-    let row: Option<(String,String,String,String,Option<i64>,Option<i64>,Option<i64>,Option<String>,String)> = tx.query_row(
+    #[allow(clippy::type_complexity)]
+    let row: Option<(String,String,String,String,Option<i64>,Option<i64>,Option<i64>,Option<String>,String,String,String,String)> = tx.query_row(
         "SELECT content,authority,lifecycle_state,source_ids,effective_from_ms,effective_until_ms,expires_at_ms,
-          superseded_by,record_type FROM memories WHERE id=?1 AND scope_id=?2", params![id,scope],
-        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?)))
+          superseded_by,record_type,producer,sensitivity,derivation FROM memories WHERE id=?1 AND scope_id=?2", params![id,scope],
+        |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?,r.get(8)?,r.get(9)?,r.get(10)?,r.get(11)?)))
         .optional().map_err(storage)?;
-    let Some((content,authority,lifecycle,sources,from,until,expiry,superseded,kind)) = row else {
+    let Some((content,authority,lifecycle,sources,from,until,expiry,superseded,kind,producer,sensitivity,derivation_column)) = row else {
         return Err(fail("memory_unavailable", "record unavailable in caller scope"));
     };
     let suppressed: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM cortex_recall_suppression_v1 WHERE memory_id=?1 AND suppressed=1)", [id], |r| r.get(0)).map_err(storage)?;
@@ -627,7 +760,28 @@ pub fn resolve_memory(store: &MemoryStore, scope: &str, id: &str, expected: &str
         "contentHash":hash,"content":body,"offset":offset,"nextOffset":if end < total {Some(end)} else {None},
         "totalChars":total,"complete":offset==0 && end==total,"pageComplete":true,"authority":authority,"lifecycle":lifecycle,
         "scopeId":scope,"recordType":kind,"sourceRefs":serde_json::from_str::<Value>(&sources).map_err(storage)?,
-        "provenanceAvailability":"legacy_partial","observedResolution":true,"verifiedHelped":false}))
+        // CTX-004: provenance availability is explicit data, never guessed.
+        // Legacy rows without recorded sources report unavailable_legacy while
+        // authority, origin, lifecycle and derivation stay distinct fields.
+        "provenanceAvailability":if sources.trim() != "[]" && !sources.trim().is_empty() {"explicit"} else {"unavailable_legacy"},
+        "originProducer":producer,
+        // CTX-004: sensitivity is a durable column bound at write time; a row
+        // a writer never classified reports the explicit "unavailable_legacy"
+        // marker rather than a guessed classification.
+        "sensitivity":sensitivity,
+        // Derivation prefers an explicit durable `derivation` value when a
+        // writer recorded one; failing that, known supersession lineage
+        // (superseded_by is never inferred, so this is still explicit, not
+        // guessed); failing that, the row's derivation is bound to the
+        // explicit "unavailable_legacy" marker, never Null/guessed.
+        "derivation":if derivation_column != cortex_store::memdb::UNAVAILABLE_LEGACY {
+            serde_json::from_str::<Value>(&derivation_column).unwrap_or(Value::String(derivation_column))
+        } else if let Some(parent) = superseded.as_deref() {
+            json!({"supersededBy":parent})
+        } else {
+            Value::String(cortex_store::memdb::UNAVAILABLE_LEGACY.to_string())
+        },
+        "observedResolution":true,"verifiedHelped":false}))
 }
 
 /// CTX-040 minimal named/versioned retrieval recipe. Recipe selection changes
@@ -688,7 +842,12 @@ pub fn recall_recipe(store: &MemoryStore, scope: &str, args: &Value) -> Result<V
     // relationship expansion off here: CTX-040 may select lexical/vector recall,
     // but it cannot implicitly enable the CTX-039 evidence-path capability.
     let cancellation = tokio_util::sync::CancellationToken::new();
-    let (hits, _, _) = store.recall_scored_detailed_timed_cancellable(
+    // The store's own completeness envelope is the single source of truth for
+    // considered/returned/dropped counts and drop causes (cancellation, tail
+    // truncation, scope narrowing, etc). Recomputing those counts here from
+    // `hits.len()` alone would let this surface's envelope silently disagree
+    // with the store's — thread the store's envelope through unchanged.
+    let (hits, _, completeness) = store.recall_scored_detailed_timed_cancellable(
         query,
         max_items,
         &scopes,
@@ -729,10 +888,17 @@ pub fn recall_recipe(store: &MemoryStore, scope: &str, args: &Value) -> Result<V
             item
         })
         .collect::<Vec<_>>();
+    // CTX-038: the agent-visible recall surface must carry an honest
+    // completeness envelope, not just items + recipe metadata. Reuse the
+    // canonical Cortex envelope vocabulary (CortexCompletenessV1) so this
+    // surface cannot silently disagree with the lower-level store envelope
+    // it is built on.
+    let completeness = serde_json::to_value(&completeness).map_err(storage)?;
     Ok(json!({
         "schemaVersion":1,
         "operation":"recall",
         "items":items,
+        "completeness":completeness,
         "receipt":{
             "schemaVersion":1,
             "policyVersion":"cortex.recall-recipe.v1",
@@ -765,8 +931,172 @@ pub fn promote_checkpoint(store: &MemoryStore, repository: &str, scope: &str, id
         return Err(fail("checkpoint_scope_denied", "checkpoint does not match caller"));
     }
     propose(store, repository, scope, &json!({"text":checkpoint.summary,"kind":"episodic",
+        "producer":"checkpoint","epistemicClass":"reported",
         "scopeId":scope,"checkpointId":checkpoint.checkpoint_id,"sessionId":checkpoint.session_id,
         "sourceRefs":checkpoint.source_refs,"worktreeRevision":checkpoint.worktree_rev}))
+}
+
+/// CTX-023/CTX-024 Cortex-specific proposal sink: drain installation-local
+/// background-review JSONL records into the governed proposal queue.
+///
+/// Each record is validated and submitted through [`propose`], so the ordered
+/// pre-gate, pending-only queueing, and signed-review requirements apply
+/// unchanged. The drain preserves the provider-attested record scope as the
+/// caller binding; forging that scope requires write access to the
+/// installation-local file, which already implies operator trust. Draining is
+/// at-least-once and safe to retry: proposal identities are deterministic, so
+/// a re-drain is a typed idempotent no-op, never a second record.
+///
+/// Queue progress is tracked by an advancing, crash-safe line cursor
+/// persisted in a sibling `<queue>.cursor` file. A missing or corrupt cursor
+/// starts from 0; a cursor beyond the current line count means the queue was
+/// truncated or rotated underneath us, so it also resets to 0 rather than
+/// silently skipping the whole (new, shorter) file. The new offset is written
+/// only after this batch's proposals are durably recorded, so a crash between
+/// admission and the cursor write simply re-processes the batch (safe: see
+/// idempotency above), never skips it.
+pub fn drain_background_proposals(
+    store: &MemoryStore,
+    repository: &str,
+    path: &std::path::Path,
+    limit: usize,
+) -> Result<Value> {
+    use cortex_core::review::{
+        validate_semantic_curation_proposals, MemoryCandidateV1, SemanticCurationProposalV1,
+    };
+    if limit == 0 {
+        return Err(fail("memory_envelope_invalid", "drain limit must be greater than zero"));
+    }
+    let body = std::fs::read_to_string(path)
+        .map_err(|_| fail("cortex_storage_unavailable", "background proposal file is unavailable"))?;
+    let lines: Vec<&str> = body.lines().collect();
+    let total_lines = lines.len();
+    let cursor_path = {
+        let mut name = path.as_os_str().to_owned();
+        name.push(".cursor");
+        std::path::PathBuf::from(name)
+    };
+    let mut cursor_start = std::fs::read_to_string(&cursor_path)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    if cursor_start > total_lines {
+        // The queue was truncated or rotated underneath us; a stale cursor
+        // must not skip the entire (now shorter) file.
+        cursor_start = 0;
+    }
+    let mut considered = 0usize;
+    let mut proposed = 0usize;
+    let mut proposal_ids = Vec::new();
+    let mut failures = Vec::new();
+    let mut consumed = cursor_start;
+    for (index, line) in lines.iter().enumerate().skip(cursor_start) {
+        if considered >= limit {
+            break;
+        }
+        consumed = index + 1;
+        let line_no = index + 1;
+        if line.trim().is_empty() {
+            continue;
+        }
+        considered += 1;
+        let record: Value = match serde_json::from_str(line) {
+            Ok(value) => value,
+            Err(_) => {
+                failures.push(json!({"line":line_no,"code":"proposal_emission_text_required"}));
+                continue;
+            }
+        };
+        let outcome = (|| {
+            let kind = record.get("kind").and_then(Value::as_str).unwrap_or("");
+            let proposal = record.get("proposal").cloned().unwrap_or(Value::Null);
+            match kind {
+                "semantic_curation" => {
+                    let curation: SemanticCurationProposalV1 = serde_json::from_value(proposal)
+                        .map_err(|_| fail("proposal_emission_text_required", "malformed curation record"))?;
+                    validate_semantic_curation_proposals(std::slice::from_ref(&curation))
+                        .map_err(|_| fail("proposal_emission_text_required", "invalid curation record"))?;
+                    let evidence: Vec<String> = curation
+                        .evidence
+                        .iter()
+                        .flat_map(|item| {
+                            item.memory_ids
+                                .iter()
+                                .chain(item.source_event_ids.iter())
+                                .cloned()
+                        })
+                        .take(64)
+                        .collect();
+                    let text = format!(
+                        "Stage 1 {:?} review for memories [{}] per evidence [{}] (curation {})",
+                        curation.kind,
+                        curation.target_memory_ids.join(","),
+                        evidence.join(","),
+                        curation.proposal_id,
+                    );
+                    propose(
+                        store,
+                        repository,
+                        &curation.scope_id,
+                        &json!({
+                            "text": text,
+                            "kind": "semantic_curation",
+                            "producer": "dream",
+                            "epistemicClass": "inferred",
+                            "curationId": curation.proposal_id,
+                            "curationKind": format!("{:?}", curation.kind),
+                            "targetMemoryIds": curation.target_memory_ids,
+                            "jobId": record.get("jobId"),
+                        }),
+                    )
+                }
+                "memory_candidate" => {
+                    let candidate: MemoryCandidateV1 = serde_json::from_value(proposal)
+                        .map_err(|_| fail("proposal_emission_text_required", "malformed candidate record"))?;
+                    if candidate.content.trim().is_empty() || candidate.scope_id.trim().is_empty() {
+                        return Err(fail("proposal_emission_text_required", "candidate carries no content or scope"));
+                    }
+                    propose(
+                        store,
+                        repository,
+                        &candidate.scope_id,
+                        &json!({
+                            "text": candidate.content,
+                            "kind": "episodic",
+                            "producer": "episodic",
+                            "epistemicClass": "reported",
+                            "candidateId": candidate.candidate_id,
+                            "sessionId": candidate.session_id,
+                            "fromSeq": candidate.from_seq,
+                            "toSeq": candidate.to_seq,
+                            "sourceEventIds": candidate.source_event_ids,
+                            "sourceContentHashes": candidate.source_content_hashes,
+                            "jobId": record.get("jobId"),
+                        }),
+                    )
+                }
+                _ => Err(fail("proposal_emission_text_required", "unknown background proposal kind")),
+            }
+        })();
+        match outcome {
+            Ok(receipt) => {
+                proposed += 1;
+                if let Some(id) = receipt.get("proposalId").and_then(Value::as_str) {
+                    proposal_ids.push(id.to_owned());
+                }
+            }
+            Err(error) => failures.push(json!({"line":line_no,"code":error.code})),
+        }
+    }
+    // Persist the advancing cursor only now that every proposal in this batch
+    // is durably recorded (propose() commits synchronously above), so a crash
+    // before this write simply re-drains the same batch rather than skipping
+    // unconsumed records.
+    std::fs::write(&cursor_path, consumed.to_string()).map_err(storage)?;
+    Ok(json!({"schemaVersion":1,"operation":"drain_background_proposals",
+        "considered":considered,"proposed":proposed,"failed":failures.len(),
+        "proposalIds":proposal_ids,"failures":failures,
+        "complete":consumed >= total_lines}))
 }
 
 #[cfg(test)]
@@ -806,7 +1136,7 @@ mod tests {
             effect.signature_hex = hex::encode(self.key.sign(&effect.signing_bytes().unwrap()).as_ref());
         }
         fn pending(&self, text: &str) -> (String,String) {
-            let p=propose(&self.store,"repo","scope",&json!({"text":text})).unwrap();
+            let p=propose(&self.store,"repo","scope",&json!({"text":text,"producer":"manual","epistemicClass":"reported"})).unwrap();
             (p["proposalId"].as_str().unwrap().into(),p["emissionHash"].as_str().unwrap().into())
         }
         fn admitted(&self, text: &str) -> String {
@@ -972,6 +1302,7 @@ mod tests {
 
         let ephemeral = propose(&s.store, "repo", "scope", &json!({
             "text":"Transient scratch detail should not become durable memory.",
+            "producer":"manual","epistemicClass":"reported",
             "utilityClass":"ephemeral"
         })).unwrap();
         let ephemeral_id = ephemeral["proposalId"].as_str().unwrap();
@@ -989,6 +1320,7 @@ mod tests {
 
         let explicit = propose(&s.store, "repo", "scope", &json!({
             "text":"Explicit user retention survives the utility filter.",
+            "producer":"manual","epistemicClass":"reported",
             "utilityClass":"ephemeral",
             "explicitUser":true
         })).unwrap();
@@ -1006,6 +1338,7 @@ mod tests {
 
         let consequence = propose(&s.store, "repo", "scope", &json!({
             "text":"High consequence evidence survives the utility filter.",
+            "producer":"manual","epistemicClass":"reported",
             "retention":"transient",
             "highConsequence":true
         })).unwrap();
@@ -1022,6 +1355,7 @@ mod tests {
 
         let duplicate = propose(&s.store, "repo", "scope", &json!({
             "text":"Explicit user retention survives the utility filter.",
+            "producer":"manual","epistemicClass":"reported",
             "kind":"semantic"
         })).unwrap();
         let duplicate_id = duplicate["proposalId"].as_str().unwrap();
@@ -1096,6 +1430,66 @@ mod tests {
         assert_eq!(fallback["receipt"]["bounds"]["actual"]["maxPreviewChars"], 2000);
     }
 
+    /// CTX-038: `recall_recipe` is the agent-visible bounded surface; it must
+    /// carry an honest completeness envelope built from the real store
+    /// counts, not a restatement of `items.len()`.
+    #[test]
+    fn cortex_recall_recipe_completeness_envelope_is_honest_and_internally_consistent() {
+        fn assert_consistent(completeness: &Value) {
+            let considered = completeness["consideredCount"].as_u64().unwrap();
+            let returned = completeness["returnedCount"].as_u64().unwrap();
+            let dropped = completeness["droppedCount"].as_u64().unwrap();
+            assert_eq!(considered, returned + dropped, "{completeness}");
+        }
+
+        let s = Sandbox::new();
+        s.admitted("envelopetruncation candidate one bounded recall record.");
+        s.admitted("envelopetruncation candidate two bounded recall record.");
+        s.admitted("envelopetruncation candidate three bounded recall record.");
+        let truncated = recall_recipe(&s.store, "scope", &json!({
+            "query":"envelopetruncation",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":2,"maxPreviewChars":40},
+            "projection":"preview"
+        })).unwrap();
+        assert_eq!(truncated["completeness"]["state"], "lower_bound", "{truncated}");
+        assert!(truncated["completeness"]["droppedCount"].as_u64().unwrap() > 0, "{truncated}");
+        assert!(!truncated["completeness"]["causes"].as_array().unwrap().is_empty(), "{truncated}");
+        assert_eq!(truncated["completeness"]["returnedCount"],
+            json!(truncated["items"].as_array().unwrap().len() as u64));
+        assert_consistent(&truncated["completeness"]);
+
+        let s = Sandbox::new();
+        s.admitted("envelopeexact single unique bounded recall record.");
+        let exact = recall_recipe(&s.store, "scope", &json!({
+            "query":"envelopeexact",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":10,"maxPreviewChars":40},
+            "projection":"preview"
+        })).unwrap();
+        assert_eq!(exact["completeness"]["state"], "exact", "{exact}");
+        assert_eq!(exact["completeness"]["droppedCount"], 0);
+        assert_consistent(&exact["completeness"]);
+
+        let s = Sandbox::new();
+        let text = "envelopesuppressed unique bounded recall record.";
+        let id = s.admitted(text);
+        let hash = digest_str(text);
+        review(&s.store, "repo", "scope",
+            &json!(s.effect("suppress", &id, &hash, "envelope-suppress"))).unwrap();
+        let suppressed = recall_recipe(&s.store, "scope", &json!({
+            "query":"envelopesuppressed",
+            "recipe":{"name":"cortex.hybrid","version":1},
+            "bounds":{"maxItems":10,"maxPreviewChars":40},
+            "projection":"preview"
+        })).unwrap();
+        assert!(suppressed["items"].as_array().unwrap().is_empty(), "{suppressed}");
+        assert_eq!(suppressed["completeness"]["state"], "lower_bound", "{suppressed}");
+        assert_eq!(suppressed["completeness"]["droppedCount"], 1, "{suppressed}");
+        assert!(!suppressed["completeness"]["causes"].as_array().unwrap().is_empty(), "{suppressed}");
+        assert_consistent(&suppressed["completeness"]);
+    }
+
     #[test]
     fn cortex_native_record_resolution_is_hash_scope_and_page_bound() {
         let s=Sandbox::new(); let text="Exact content spans two bounded pages."; let id=s.admitted(text);
@@ -1127,11 +1521,340 @@ mod tests {
         let s=Sandbox::new();
         assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"secret","scopeId":"global"})).unwrap_err().code,"proposal_scope_denied");
     }
+
+    #[test]
+    fn ctx002_ordered_pregate_rejects_each_dimension_before_admission() {
+        let s=Sandbox::new();
+        let base = |text: &str| json!({"text":text,"producer":"manual","epistemicClass":"reported"});
+        // 1. schema: missing text fails closed.
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"producer":"manual","epistemicClass":"reported"})).unwrap_err().code,"proposal_emission_text_required");
+        // 2. scope: forged scope fails before producer/DLP/epistemic are read.
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"t","scopeId":"other","producer":"manual","epistemicClass":"reported"})).unwrap_err().code,"proposal_scope_denied");
+        // 3. producer: missing and unknown producers are denied, never defaulted.
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"t","epistemicClass":"reported"})).unwrap_err().code,"producer_denied");
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"t","producer":"model","epistemicClass":"reported"})).unwrap_err().code,"producer_denied");
+        // 4. DLP: secret material is denied even with valid producer/epistemic.
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"deploy with AKIAIOSFODNN7EXAMPLE key","producer":"manual","epistemicClass":"reported"})).unwrap_err().code,"dlp_denied");
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"-----BEGIN RSA PRIVATE KEY----- bob","producer":"manual","epistemicClass":"reported"})).unwrap_err().code,"dlp_denied");
+        // 5. epistemic: missing and unknown classes are denied.
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"t","producer":"manual"})).unwrap_err().code,"epistemic_denied");
+        assert_eq!(propose(&s.store,"repo","scope",&json!({"text":"t","producer":"manual","epistemicClass":"guess"})).unwrap_err().code,"epistemic_denied");
+        // 6. stable identity: a conflicting id claim is rejected; a matching
+        // claim is idempotent with the derived identity.
+        let clean = base("A durable candidate with full pre-gate evidence.");
+        let first = propose(&s.store,"repo","scope",&clean).unwrap();
+        let derived = first["proposalId"].as_str().unwrap().to_owned();
+        let mut forged = clean.clone();
+        forged["id"] = json!("forged-id");
+        assert_eq!(propose(&s.store,"repo","scope",&forged).unwrap_err().code,"identity_conflict");
+        let mut claimed = clean.clone();
+        claimed["id"] = json!(derived.clone());
+        let same = propose(&s.store,"repo","scope",&claimed).unwrap();
+        assert_eq!(same["proposalId"], json!(derived));
+        // Accept path carries receipt-visible pre-gate evidence and stays pending.
+        assert_eq!(first["reviewState"], "pending");
+        assert_eq!(first["pregate"]["producer"], "manual");
+        assert_eq!(first["pregate"]["epistemicClass"], "reported");
+        assert_eq!(first["pregate"]["dlp"], "pass");
+        assert_eq!(first["pregate"]["stableIdentity"], "derived");
+        assert!(s.store.entries(100).is_empty());
+    }
+
+    #[test]
+    fn ctx004_resolver_reports_explicit_provenance_availability_without_guessing() {
+        let s=Sandbox::new();
+        // Legacy direct write carries no recorded sources: absence is explicit.
+        let legacy_id=s.store.put("legacy-row", "A legacy row without recorded sources.", "scope", cortex_core::MemoryTier::Semantic);
+        assert!(!legacy_id.is_empty());
+        let legacy=resolve_memory(&s.store,"scope",&legacy_id,&digest_str("A legacy row without recorded sources."),0,12000).unwrap();
+        assert_eq!(legacy["provenanceAvailability"], "unavailable_legacy");
+        assert_eq!(legacy["authority"], "A2");
+        assert_eq!(legacy["originProducer"], "manual");
+        assert_eq!(legacy["lifecycle"], "active");
+        // CTX-004: no writer classified sensitivity or recorded a derivation
+        // for this row; both bind to the explicit unavailable_legacy marker,
+        // never a guessed value or a silent Null.
+        assert_eq!(legacy["sensitivity"], "unavailable_legacy");
+        assert_eq!(legacy["derivation"], "unavailable_legacy");
+        // Governed review admission binds the proposal as an explicit source
+        // with independently verified authority; all four bindings stay distinct.
+        let text="Reviewed admission carries explicit proposal provenance.";
+        let id=s.admitted(text);
+        let page=resolve_memory(&s.store,"scope",&id,&digest_str(text),0,12000).unwrap();
+        assert_eq!(page["provenanceAvailability"], "explicit");
+        assert_eq!(page["authority"], "A4");
+        assert_eq!(page["originProducer"], "manual");
+        assert_eq!(page["lifecycle"], "active");
+        assert_eq!(page["sensitivity"], "unavailable_legacy");
+        assert_eq!(page["derivation"], "unavailable_legacy");
+        assert_eq!(page["content"], text);
+    }
+
+    #[test]
+    fn ctx004_resolver_reports_explicit_sensitivity_and_derivation_when_bound() {
+        let s=Sandbox::new();
+        let text="Classified content with an explicitly recorded lineage.";
+        let id=s.admitted(text);
+        // Bind explicit sensitivity/derivation directly, the way a future
+        // classifying writer would: never guessed, always a durable column.
+        s.store.db().lock().execute(
+            "UPDATE memories SET sensitivity=?1, derivation=?2 WHERE id=?3",
+            rusqlite::params!["restricted", "{\"derivedFrom\":\"seed-doc-7\"}", id],
+        ).unwrap();
+        let page = resolve_memory(&s.store,"scope",&id,&digest_str(text),0,12000).unwrap();
+        assert_eq!(page["sensitivity"], "restricted");
+        assert_eq!(page["derivation"], json!({"derivedFrom":"seed-doc-7"}));
+    }
+
+    #[test]
+    fn ctx004_migration_26_backfills_sensitivity_and_derivation_explicitly() {
+        let s=Sandbox::new();
+        let version: i64 = s.store.db().lock()
+            .query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(version, cortex_store::memdb::LATEST_SCHEMA_VERSION);
+        let id=s.store.put("legacy-backfill", "Row present before classification existed.", "scope", cortex_core::MemoryTier::Semantic);
+        let (sensitivity, derivation): (String, String) = s.store.db().lock().query_row(
+            "SELECT sensitivity, derivation FROM memories WHERE id=?1", [&id],
+            |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+        assert_eq!(derivation, cortex_store::memdb::UNAVAILABLE_LEGACY);
+    }
+
+    fn temporal_fact_json(fact_id: &str, scope_id: &str, observed_at: &str) -> Value {
+        json!({
+            "factId": fact_id,
+            "subject": "repo",
+            "predicate": "owner",
+            "object": "alice",
+            "scopeId": scope_id,
+            "authority": "A0",
+            "veracity": "unverified",
+            "observedAt": observed_at,
+            "validFrom": observed_at,
+            "validUntil": Value::Null,
+            "expiresAt": Value::Null,
+            "supersedes": Value::Null
+        })
+    }
+    fn temporal_emission(fact_id: &str, scope_id: &str, observed_at: &str) -> Value {
+        json!({
+            "text": format!("temporal fact {fact_id}"),
+            "kind": "temporal",
+            "producer": "agent",
+            "epistemicClass": "observed",
+            "temporalFact": temporal_fact_json(fact_id, scope_id, observed_at),
+            "cardinalityPolicy": {
+                "policyVersion": "cortex.temporal-cardinality.v1",
+                "predicate": "owner",
+                "cardinality": "single",
+                "source": "explicit_single_valued_predicates"
+            }
+        })
+    }
+
+    #[test]
+    fn cortex_temporal_admission_rejects_nested_scope_escalation_and_writes_nothing() {
+        let s = Sandbox::new();
+        // A review signed for "scope" must not be able to plant a durable
+        // temporal record in a different scope via the nested payload.
+        let emission = temporal_emission("fact-escalate", "other-scope", "2026-01-01T00:00:00Z");
+        let p = propose(&s.store, "repo", "scope", &emission).unwrap();
+        let id = p["proposalId"].as_str().unwrap().to_owned();
+        let hash = p["emissionHash"].as_str().unwrap().to_owned();
+        let effect = s.effect("approve", &id, &hash, "escalate-1");
+        let result = review(&s.store, "repo", "scope", &json!(effect)).unwrap();
+        assert_eq!(result["admissionState"], "blocked", "{result}");
+        assert_eq!(result["lastError"], "cortex_review_binding_denied", "{result}");
+        assert!(s.store.temporal_facts().lineage("fact-escalate").unwrap().is_empty());
+
+        // Replay path: a signed "retry" of the same blocked job must hit the
+        // same fail-closed binding check, never a silent rewrite that lets a
+        // second attempt sneak the escalation through.
+        let first_hash = digest_str(&serde_json::to_string(&effect).unwrap());
+        let mut retry_effect = effect.clone();
+        retry_effect.operation = "retry".into();
+        retry_effect.nonce = "escalate-retry".into();
+        retry_effect.expected_control_revision = Some(first_hash);
+        let now = crate::time::now_millis() as u64;
+        retry_effect.issued_at_ms = now;
+        retry_effect.expires_at_ms = now + 60_000;
+        s.sign(&mut retry_effect);
+        let retried = review(&s.store, "repo", "scope", &json!(retry_effect)).unwrap();
+        assert_eq!(retried["admissionState"], "blocked", "{retried}");
+        assert_eq!(retried["lastError"], "cortex_review_binding_denied", "{retried}");
+        assert!(s.store.temporal_facts().lineage("fact-escalate").unwrap().is_empty());
+    }
+
+    #[test]
+    fn cortex_temporal_admission_admits_matching_or_empty_nested_scope() {
+        let s = Sandbox::new();
+        // Matching nested scope: normal propose_temporal path.
+        let matching = TemporalFact {
+            fact_id: "fact-match".into(), subject: "repo".into(), predicate: "owner".into(),
+            object: json!("alice"), scope_id: "scope".into(), authority: "A0".into(),
+            veracity: "unverified".into(), observed_at: "2026-01-01T00:00:00Z".into(),
+            valid_from: "2026-01-01T00:00:00Z".into(), valid_until: None, expires_at: None, supersedes: None,
+        };
+        let p = propose_temporal(&s.store, "repo", "scope", &matching, &[]).unwrap();
+        let id = p["proposalId"].as_str().unwrap().to_owned();
+        let hash = p["emissionHash"].as_str().unwrap().to_owned();
+        let effect = s.effect("approve", &id, &hash, "match-1");
+        let result = review(&s.store, "repo", "scope", &json!(effect)).unwrap();
+        assert_eq!(result["admissionState"], "completed", "{result}");
+        assert!(!s.store.temporal_facts().lineage("fact-match").unwrap().is_empty());
+
+        // Empty nested scope: no claim to verify against, still admits under
+        // the caller-verified scope. A later validFrom avoids colliding with
+        // the single-valued predicate admitted just above.
+        let emission = temporal_emission("fact-empty-scope", "", "2026-01-02T00:00:00Z");
+        let p = propose(&s.store, "repo", "scope", &emission).unwrap();
+        let id = p["proposalId"].as_str().unwrap().to_owned();
+        let hash = p["emissionHash"].as_str().unwrap().to_owned();
+        let effect = s.effect("approve", &id, &hash, "empty-scope-1");
+        let result = review(&s.store, "repo", "scope", &json!(effect)).unwrap();
+        assert_eq!(result["admissionState"], "completed", "{result}");
+        assert!(!s.store.temporal_facts().lineage("fact-empty-scope").unwrap().is_empty());
+    }
+
+    #[test]
+    fn cortex_temporal_recorded_at_is_admission_time_not_observed_time() {
+        let s = Sandbox::new();
+        let emission = temporal_emission("fact-recorded-at", "scope", "2020-01-01T00:00:00Z");
+        let p = propose(&s.store, "repo", "scope", &emission).unwrap();
+        let id = p["proposalId"].as_str().unwrap().to_owned();
+        let hash = p["emissionHash"].as_str().unwrap().to_owned();
+        let effect = s.effect("approve", &id, &hash, "recorded-at-1");
+        let result = review(&s.store, "repo", "scope", &json!(effect)).unwrap();
+        assert_eq!(result["admissionState"], "completed", "{result}");
+        let chain = s.store.temporal_facts().lineage("fact-recorded-at").unwrap();
+        let record = chain.last().unwrap();
+        let recorded_at = match &record.recorded_at {
+            TemporalInstantV1::Known { value } => value.clone(),
+            TemporalInstantV1::Unavailable { .. } => panic!("recorded_at must be known"),
+        };
+        let valid_at = match &record.valid_at {
+            TemporalInstantV1::Known { value } => value.clone(),
+            TemporalInstantV1::Unavailable { .. } => panic!("valid_at must be known"),
+        };
+        assert_eq!(valid_at, "2020-01-01T00:00:00Z");
+        assert_ne!(recorded_at, "2020-01-01T00:00:00Z");
+        assert!(recorded_at.as_str() > "2020-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn ctx023_ctx024_drain_submits_background_proposals_governed_and_idempotent() {
+        let s=Sandbox::new();
+        let dir=tempfile::tempdir().unwrap();
+        let path=dir.path().join("proposals.jsonl");
+        let curation=json!({"schemaVersion":1,"jobId":"job-1","kind":"semantic_curation",
+            "proposal":{"schemaVersion":1,"proposalId":"curation-1","scopeId":"scope",
+            "kind":"contradiction","targetMemoryIds":["scope/a"],
+            "evidence":[{"memoryIds":["scope/a"],"sourceEventIds":["e1"],"sourceContentHashes":[]}]}});
+        let candidate=json!({"schemaVersion":1,"jobId":"job-1","kind":"memory_candidate",
+            "proposal":{"schemaVersion":1,"candidateId":"cand-1","sessionId":"s1",
+            "fromSeq":1,"toSeq":2,"scopeId":"scope","content":"An episodic observation from the event window.",
+            "sourceEventIds":["e1"],"sourceContentHashes":[]}});
+        std::fs::write(&path, format!("{}\n{}\nnot json\n", curation, candidate)).unwrap();
+        let first=drain_background_proposals(&s.store,"repo",&path,100).unwrap();
+        assert_eq!(first["considered"], 3);
+        assert_eq!(first["proposed"], 2);
+        assert_eq!(first["failed"], 1);
+        assert_eq!(first["proposalIds"].as_array().unwrap().len(), 2);
+        // Proposal-first: two pending proposals, zero durable rows.
+        for id in first["proposalIds"].as_array().unwrap() {
+            let id=id.as_str().unwrap();
+            assert_eq!(proposal_status(&s.store,"repo","scope",id).unwrap()["reviewState"], "pending");
+        }
+        assert!(s.store.entries(100).is_empty());
+        assert_eq!(first["complete"], true, "{first}");
+        // Re-drain advances past the persisted cursor: the whole queue was
+        // already consumed, so nothing is reconsidered and no second record
+        // is produced (idempotent, now via queue progress rather than
+        // re-scanning the same prefix).
+        let second=drain_background_proposals(&s.store,"repo",&path,100).unwrap();
+        assert_eq!(second["considered"], 0, "{second}");
+        assert_eq!(second["proposed"], 0, "{second}");
+        assert_eq!(second["failed"], 0, "{second}");
+        assert_eq!(second["proposalIds"].as_array().unwrap().len(), 0);
+        assert_eq!(second["complete"], true, "{second}");
+        // Zero limit fails closed instead of silently draining nothing.
+        assert!(drain_background_proposals(&s.store,"repo",&path,0).is_err());
+    }
+
+    #[test]
+    fn ctx023_ctx024_drain_cursor_advances_across_calls_and_resets_on_truncation() {
+        let s=Sandbox::new();
+        let dir=tempfile::tempdir().unwrap();
+        let path=dir.path().join("proposals.jsonl");
+        let record = |n: usize| json!({"schemaVersion":1,"jobId":format!("job-{n}"),"kind":"memory_candidate",
+            "proposal":{"schemaVersion":1,"candidateId":format!("cand-{n}"),"sessionId":"s1",
+            "fromSeq":1,"toSeq":2,"scopeId":"scope","content":format!("Episodic observation number {n}."),
+            "sourceEventIds":[format!("e{n}")],"sourceContentHashes":[]}});
+        let body = (1..=5).map(|n| record(n).to_string()).collect::<Vec<_>>().join("\n") + "\n";
+        std::fs::write(&path, &body).unwrap();
+
+        let first = drain_background_proposals(&s.store, "repo", &path, 2).unwrap();
+        assert_eq!(first["considered"], 2, "{first}");
+        assert_eq!(first["proposed"], 2, "{first}");
+        assert_eq!(first["complete"], false, "{first}");
+
+        let second = drain_background_proposals(&s.store, "repo", &path, 2).unwrap();
+        assert_eq!(second["considered"], 2, "{second}");
+        assert_eq!(second["proposed"], 2, "{second}");
+        assert_eq!(second["complete"], false, "{second}");
+        // No record from the first batch is reprocessed.
+        let overlap = first["proposalIds"].as_array().unwrap().iter()
+            .any(|id| second["proposalIds"].as_array().unwrap().contains(id));
+        assert!(!overlap, "first={first} second={second}");
+
+        let third = drain_background_proposals(&s.store, "repo", &path, 2).unwrap();
+        assert_eq!(third["considered"], 1, "{third}");
+        assert_eq!(third["proposed"], 1, "{third}");
+        assert_eq!(third["complete"], true, "{third}");
+
+        let mut all_ids: Vec<String> = Vec::new();
+        for batch in [&first, &second, &third] {
+            for id in batch["proposalIds"].as_array().unwrap() {
+                all_ids.push(id.as_str().unwrap().to_owned());
+            }
+        }
+        all_ids.sort();
+        all_ids.dedup();
+        assert_eq!(all_ids.len(), 5, "{all_ids:?}");
+
+        // Queue truncated/rotated underneath the stale cursor: reset to 0
+        // rather than skipping the whole (now shorter) file.
+        std::fs::write(&path, format!("{}\n", record(1))).unwrap();
+        let after_truncation = drain_background_proposals(&s.store, "repo", &path, 2).unwrap();
+        assert_eq!(after_truncation["considered"], 1, "{after_truncation}");
+        assert_eq!(after_truncation["complete"], true, "{after_truncation}");
+    }
+
+    #[test]
+    fn ctx001_canonical_open_reports_wal_and_converges_across_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cortex.db");
+        let memdb = crate::MemDb::open(&path).unwrap();
+        for report in memdb.startup_wal_reports().iter() {
+            assert_eq!(report.status, "ok");
+            assert!(report.degradation_reason.is_none());
+        }
+        assert_eq!(memdb.startup_wal_reports()[0].effective_journal_mode.as_deref(), Some("wal"));
+        let store = MemoryStore::try_open(memdb).unwrap();
+        let pending = propose(&store,"repo","scope",&json!({"text":"Durable authority survives reopen.","producer":"manual","epistemicClass":"reported"})).unwrap();
+        let id = pending["proposalId"].as_str().unwrap().to_owned();
+        drop(store);
+        let reopened = MemoryStore::try_open(crate::MemDb::open(&path).unwrap()).unwrap();
+        for report in reopened.db().startup_wal_reports().iter() {
+            assert_eq!(report.status, "ok");
+        }
+        assert_eq!(proposal_status(&reopened,"repo","scope",&id).unwrap()["reviewState"], "pending");
+    }
 }
 
 /// Supervised by serve::run, never a standalone service. The owner supplies the
 /// same resident store handle used by MCP. A stop wakes the idle wait; work is
-/// bounded to four journals per tick and eight attempts per journal.
+/// bounded to four journals per tick and seven attempts per journal.
 pub(crate) struct AdmissionRecoveryWorker {
     stop: std::sync::mpsc::Sender<()>,
     thread: Option<std::thread::JoinHandle<()>>,

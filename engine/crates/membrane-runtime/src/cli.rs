@@ -932,6 +932,23 @@ enum Cmd {
         #[arg(long, default_value_t = 1_000)]
         limit: usize,
     },
+    /// List active rows due for review (read-only; never mutates authority). Surfaces all
+    /// CTX-010 triggers: an elapsed time clock (`expired`/`review_after_elapsed`), an in-place
+    /// content edit outside governed supersession (`version_changed`), and a verified
+    /// `contradicted` recall outcome against a still-active row (`outcome_contradicted`).
+    ReviewDue {
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
+    /// Drain installation-local background-review proposals into the governed proposal queue (proposal-first; never admits).
+    DrainBackgroundProposals {
+        repository: String,
+        path: PathBuf,
+        #[arg(long, default_value_t = 100)]
+        limit: usize,
+    },
     /// Emit the embedding-neighbor graph; --anonymous removes memory IDs and scopes.
     Graph {
         #[arg(long)]
@@ -943,6 +960,12 @@ enum Cmd {
     },
     /// Re-embed EVERY row from DB content (embedder swaps / hash-vector repair). No files needed.
     Reindex,
+    /// Permanently erase one memory by id (governed hard erase; terminal, not suppression).
+    Erase { id: String },
+    /// Write a digest-sealed Cortex backup envelope to FILE.
+    Backup { output: PathBuf },
+    /// Restore a Cortex backup envelope from FILE (transactional; refuses tampered envelopes).
+    Restore { input: PathBuf },
     /// Export the whole store as a canonical-scoped markdown tree (audit + sync medium).
     /// The DB stays authoritative; these files are generated FROM it.
     ExportMd { dir: String },
@@ -1468,7 +1491,7 @@ fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
     }))
 }
 
-fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> {
+pub fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> {
     let db = MemDb::open(db_path).map_err(|error| error.to_string())?;
     let conn = db.lock();
     conn.query_row(
@@ -4099,17 +4122,21 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     );
                 }
                 CheckpointCmd::Promote { id, as_of_ms } => {
+                    // CTX-019: promotion is proposal-first and governed. The
+                    // checkpoint's own recorded repository/scope binding is the
+                    // caller; the summary enters the durable proposal queue and
+                    // never becomes canonical truth directly.
                     let checkpoint = store
                         .load_checkpoint(&id, as_of_ms.unwrap_or_else(now_ms))
                         .map_err(|error| error.to_string())?;
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "status": "needs_review",
-                            "proposal": {"kind": "KnowledgeEmission", "checkpoint_id": checkpoint.checkpoint_id,
-                                "scope_id": checkpoint.scope_id, "content": checkpoint.summary, "source_refs": checkpoint.source_refs}
-                        })
-                    );
+                    let receipt = crate::cortex_lifecycle::promote_checkpoint(
+                        &store,
+                        &checkpoint.repository_id,
+                        &checkpoint.scope_id,
+                        &id,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    println!("{receipt}");
                 }
             }
         }
@@ -4931,6 +4958,33 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
             );
         }
+        Cmd::ReviewDue { scope, limit } => {
+            let store = open(&db)?;
+            let page = store.lifecycle_reviews_due(
+                scope.as_deref(),
+                crate::time::now_millis() as i64,
+                limit,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string(&page.items).map_err(|error| error.to_string())?
+            );
+            eprintln!(
+                "{}",
+                serde_json::to_string(&page.completeness).map_err(|error| error.to_string())?
+            );
+        }
+        Cmd::DrainBackgroundProposals { repository, path, limit } => {
+            let store = open(&db)?;
+            let receipt = crate::cortex_lifecycle::drain_background_proposals(
+                &store,
+                &repository,
+                &path,
+                limit,
+            )
+            .map_err(|error| error.to_string())?;
+            println!("{receipt}");
+        }
         Cmd::Graph {
             anonymous,
             neighbors,
@@ -4953,6 +5007,26 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             println!(
                 "{{\"reindexed\":{n},\"skipped\":{skipped},\"link_edges\":{edges},\"resolvable_links\":{resolvable},\"skills_ingested\":{skills_in},\"skills_skipped\":{skills_skip},\"skills_pruned\":{skills_pruned}}}"
             );
+        }
+        Cmd::Erase { id } => {
+            let store = open(&db)?;
+            let erased = store.hard_erase(&id)?;
+            println!("{}", serde_json::json!({"erased": erased, "id": id}));
+        }
+        Cmd::Backup { output } => {
+            let store = open(&db)?;
+            let backup = store.backup_cortex()?;
+            let bytes = serde_json::to_vec_pretty(&backup).map_err(|error| error.to_string())?;
+            std::fs::write(&output, bytes).map_err(|error| error.to_string())?;
+            println!("{}", serde_json::json!({"backed_up": backup.memories.len() + backup.quarantined.len(), "output": output}));
+        }
+        Cmd::Restore { input } => {
+            let store = open(&db)?;
+            let raw = std::fs::read_to_string(&input).map_err(|error| error.to_string())?;
+            let backup: crate::store::CortexBackupV1 =
+                serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+            let restored = store.restore_cortex(&backup)?;
+            println!("{}", serde_json::json!({"restored": restored, "input": input}));
         }
         Cmd::ExportMd { dir } => {
             let store = open(&db)?;
@@ -7119,6 +7193,83 @@ mod tests {
             crate::ledger::outline::DocReadError::SourceMissing
         );
     }
+
+    fn assert_reached_parser(result: Result<(), String>) {
+        // The allowlist gate is the only thing under test here: whatever the handler itself
+        // does with a missing id/file/db-less scan, it must not be rejected at the gate.
+        if let Err(error) = result {
+            assert!(
+                !error.contains("unsupported command"),
+                "expected the allowlist to admit this command, got: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn cortex_durable_cli_admits_erase_backup_restore_review_due_and_drain_background_proposals() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = test_db(&directory);
+        let backup_file = directory
+            .path()
+            .join("backup.json")
+            .to_string_lossy()
+            .into_owned();
+
+        // erase: reaches the parser/handler rather than being rejected by the allowlist.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane", "--db", &db, "erase", "missing-id",
+        ]));
+
+        // backup: also exercised with `--db=` to confirm both forms stay parseable.
+        let db_eq = format!("--db={db}");
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            &db_eq,
+            "backup",
+            &backup_file,
+        ]));
+
+        // restore: fed a nonexistent input file; must fail past the allowlist, not at it.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "restore",
+            "does-not-exist.json",
+        ]));
+
+        // review-due: read-only lifecycle scan.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "review-due",
+        ]));
+
+        // drain-background-proposals: requires positional repository + path args.
+        assert_reached_parser(super::run_cortex_durable_cli_from(&[
+            "membrane",
+            "--db",
+            &db,
+            "drain-background-proposals",
+            "some/repo",
+            "does-not-exist-proposals.json",
+        ]));
+    }
+
+    #[test]
+    fn cortex_durable_cli_still_rejects_a_non_cortex_command() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = test_db(&directory);
+
+        // "ledger" is a real Membrane subcommand but not on the Cortex durable axis; the
+        // allowlist guard must still reject it before the parser ever sees it.
+        let error = super::run_cortex_durable_cli_from(&[
+            "membrane", "--db", &db, "ledger", "activate", "ledger_fts",
+        ])
+        .unwrap_err();
+        assert!(error.contains("unsupported command"));
+    }
 }
 
 pub fn run_cli() {
@@ -7156,10 +7307,13 @@ pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
 /// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Ledger,
 /// Blueprint, Adapt, & orchestration stay addressable through Membrane.
 pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
+    "backup",
     "checkpoint",
     "close-unknown",
     "curate",
     "delete",
+    "drain-background-proposals",
+    "erase",
     "explain",
     "export",
     "export-md",
@@ -7181,6 +7335,8 @@ pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
     "recall",
     "replay",
     "reindex",
+    "restore",
+    "review-due",
     "ingest-skills",
     "skill-read",
     "vault-export",

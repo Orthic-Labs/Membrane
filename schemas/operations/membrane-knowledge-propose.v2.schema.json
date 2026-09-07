@@ -94,6 +94,10 @@
         "proposal_binding_unresolvable",
         "proposal_durable_write_failed",
         "proposal_scope_denied",
+        "producer_denied",
+        "dlp_denied",
+        "epistemic_denied",
+        "identity_conflict",
         "caller_required",
         "installation_grant_denied",
         "repository_scope_chain_denied",
@@ -226,6 +230,32 @@
         },
         "admissionRevision": {
           "type": "string"
+        },
+        "pregate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "producer",
+            "epistemicClass",
+            "dlp",
+            "stableIdentity"
+          ],
+          "properties": {
+            "producer": {
+              "type": "string"
+            },
+            "epistemicClass": {
+              "type": "string"
+            },
+            "dlp": {
+              "type": "string",
+              "const": "pass"
+            },
+            "stableIdentity": {
+              "type": "string",
+              "const": "derived"
+            }
+          }
         }
       }
     }

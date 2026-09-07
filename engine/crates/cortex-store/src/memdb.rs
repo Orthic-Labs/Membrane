@@ -218,7 +218,13 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable Cortex schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 25;
+pub const LATEST_SCHEMA_VERSION: i64 = 26;
+
+/// CTX-004: the explicit marker used when sensitivity or derivation metadata
+/// is not known for a record — legacy rows backfilled by migration 26, or any
+/// row a writer left unset. Never replaced by a guess; a real value must be
+/// written explicitly to move a row off this marker.
+pub const UNAVAILABLE_LEGACY: &str = "unavailable_legacy";
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1306,6 +1312,28 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                         ON memories(authority, lifecycle_state, superseded_by, effective_from_ms);",
                 )?;
             }
+            26 => {
+                // CTX-004: bind sensitivity and derivation as durable, explicit
+                // columns. Every pre-existing row is backfilled to the explicit
+                // "unavailable_legacy" marker rather than a guessed value (e.g.
+                // "public" for sensitivity or a synthesized lineage for
+                // derivation) — absent metadata stays visibly absent.
+                for table in ["memories", "memory_quarantine"] {
+                    add_column(
+                        &tx,
+                        table,
+                        "sensitivity",
+                        &format!("TEXT NOT NULL DEFAULT '{UNAVAILABLE_LEGACY}'"),
+                    )?;
+                    add_column(
+                        &tx,
+                        table,
+                        "derivation",
+                        &format!("TEXT NOT NULL DEFAULT '{UNAVAILABLE_LEGACY}'"),
+                    )?;
+                    require_columns(&tx, table, &["sensitivity", "derivation"])?;
+                }
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1313,6 +1341,27 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         version = next;
     }
     Ok(())
+}
+
+fn backout_v26_to_v25(path: &Path) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 26 {
+        return Ok(());
+    }
+    if version != 26 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    tx.execute_batch(
+        "ALTER TABLE memories DROP COLUMN sensitivity;
+         ALTER TABLE memories DROP COLUMN derivation;
+         ALTER TABLE memory_quarantine DROP COLUMN sensitivity;
+         ALTER TABLE memory_quarantine DROP COLUMN derivation;
+         PRAGMA user_version = 25;",
+    )?;
+    tx.commit()
 }
 
 fn backout_v24_to_v23(path: &Path) -> rusqlite::Result<()> {
@@ -1353,6 +1402,7 @@ fn backout_v25_to_v24(path: &Path) -> rusqlite::Result<()> {
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v26_to_v25(path)?;
     backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
     backout_v23_to_v22(path)?;
@@ -1389,6 +1439,7 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
 /// Remove only the causal-learning v23 tables and feedback qualification marker.
 pub fn backout_v23_to_v22<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v26_to_v25(path)?;
     backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
     let conn = Connection::open(path)?;
@@ -1492,6 +1543,15 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
             backout_v20_to_v19(path)
         }
         25 => {
+            backout_v25_to_v24(path)?;
+            backout_v24_to_v23(path)?;
+            backout_v23_to_v22(path)?;
+            backout_v22_to_v21(path)?;
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
+        26 => {
+            backout_v26_to_v25(path)?;
             backout_v25_to_v24(path)?;
             backout_v24_to_v23(path)?;
             backout_v23_to_v22(path)?;
@@ -3407,6 +3467,73 @@ mod tests {
         }
 
         let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+    }
+
+    /// CTX-004: migration 26 binds sensitivity/derivation as durable, explicit
+    /// columns on both memories and memory_quarantine, defaulted to the
+    /// unavailable_legacy marker rather than a guessed value.
+    #[test]
+    fn v26_adds_explicit_sensitivity_and_derivation_columns_defaulted_unavailable_legacy() {
+        let db = MemDb::open_in_memory();
+        let conn = db.lock();
+        for table in ["memories", "memory_quarantine"] {
+            let columns = conn
+                .prepare(&format!("PRAGMA table_info({table})"))
+                .and_then(|mut statement| {
+                    statement
+                        .query_map([], |row| {
+                            Ok((
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, i64>(3)?,
+                                row.get::<_, Option<String>>(4)?,
+                            ))
+                        })
+                        .and_then(|rows| rows.collect::<rusqlite::Result<Vec<_>>>())
+                })
+                .unwrap();
+            for name in ["sensitivity", "derivation"] {
+                assert!(
+                    columns.iter().any(|column| {
+                        column.0 == name
+                            && column.1 == "TEXT"
+                            && column.2 == 1
+                            && column.3.as_deref() == Some("'unavailable_legacy'")
+                    }),
+                    "{table}.{name} must be TEXT not_null default='unavailable_legacy'; have: {columns:?}"
+                );
+            }
+        }
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn v26_backout_drops_sensitivity_and_derivation_transactionally() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("v26-backout.db");
+        let db = MemDb::open(&path).unwrap();
+        drop(db);
+        backout_v26_to_v25(&path).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 25);
+        assert!(!column_exists(&conn, "memories", "sensitivity").unwrap());
+        assert!(!column_exists(&conn, "memories", "derivation").unwrap());
+        assert!(!column_exists(&conn, "memory_quarantine", "sensitivity").unwrap());
+        assert!(!column_exists(&conn, "memory_quarantine", "derivation").unwrap());
+        // Reopening must re-run migration 26 cleanly on top of the backout.
+        drop(conn);
+        let reopened = MemDb::open(&path).unwrap();
+        let version: i64 = reopened
+            .lock()
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
         assert_eq!(version, LATEST_SCHEMA_VERSION);

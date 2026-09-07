@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "8a9fc76f55300004cf564b6c400aae74994bfd6e",
- "generatedAt": "2026-09-06T11:36:42.948Z",
+ "baselineCommit": "e6645bdc3ffbc450445eba4f5362a04d31a02f79",
+ "generatedAt": "2026-09-06T19:27:15.185Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -7505,6 +7505,12 @@
   },
   {
    "id": "engine/crates/membrane-runtime/tests/cortex_relevance_spotcheck.rs",
+   "kind": "tracked-executable",
+   "runtime": "rust",
+   "production_reachable": false
+  },
+  {
+   "id": "engine/crates/membrane-runtime/tests/cortex_remaining_acceptance.rs",
    "kind": "tracked-executable",
    "runtime": "rust",
    "production_reachable": false

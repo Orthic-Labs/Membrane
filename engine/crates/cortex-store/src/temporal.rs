@@ -462,6 +462,26 @@ impl TemporalFactStore {
         record: TemporalValidityV1,
         single_valued: bool,
     ) -> Result<TemporalValidityReceiptV1, String> {
+        self.record_validity_observed(record, single_valued, None)
+    }
+
+    /// Admit a validity record while durably preserving the instant the fact
+    /// was *observed*.
+    ///
+    /// CTX-009 keeps observed, valid, recorded and expiry distinct.
+    /// `TemporalValidityV1` is the validity view and carries only valid and
+    /// recorded time, so a caller that knows the observation instant — the
+    /// governed temporal admission path, which holds the proposer's
+    /// `TemporalFact` — must pass it here or the fourth dimension is lost at
+    /// the moment of admission. `None` means the writer genuinely has no
+    /// observation instant; the column is then left empty rather than being
+    /// backfilled from recorded time, which would silently conflate the two.
+    pub fn record_validity_observed(
+        &self,
+        record: TemporalValidityV1,
+        single_valued: bool,
+        observed_at: Option<&str>,
+    ) -> Result<TemporalValidityReceiptV1, String> {
         record.validate()?;
         let mut conn = self.db.lock();
         ensure_temporal_schema(&conn)?;
@@ -569,7 +589,7 @@ impl TemporalFactStore {
                 record.scope_id,
                 record.authority,
                 if record.revoked { "revoked" } else { "supported" },
-                recorded_at_value.as_deref().unwrap_or(""),
+                observed_at.map(str::trim).filter(|value| !value.is_empty()).unwrap_or(""),
                 valid_at_value.as_deref().unwrap_or(""),
                 record.invalid_at,
                 record.expires_at,
@@ -886,12 +906,44 @@ impl TemporalFactStore {
         if let Some(conflict) = outcome.conflict {
             return Err(format!("temporal_conflict_unresolved:{}", conflict.record_ids.join(",")));
         }
+        // CTX-009 keeps observed, valid, recorded and expiry distinct.
+        // `TemporalValidityV1` is the *validity* view and carries only valid /
+        // recorded, so `TemporalFact::try_from` has to fall back to recorded
+        // time for `observed_at`. Since recorded time became the admission
+        // clock (rather than a copy of observed time), that fallback would
+        // report the admission instant as the observation instant on this
+        // compatibility surface. Re-read the durably stored observation from
+        // `membrane_temporal_fact` so the fact-shaped read stays truthful;
+        // rows with no fact-table entry (memory-derived validity) keep the
+        // recorded-time fallback.
+        let conn = self.db.lock();
         outcome
             .records
             .into_iter()
-            .map(TemporalFact::try_from)
+            .map(|record| {
+                let observed = observed_at_for(&conn, &record.record_id);
+                TemporalFact::try_from(record).map(|mut fact| {
+                    if let Some(observed) = observed {
+                        fact.observed_at = observed;
+                    }
+                    fact
+                })
+            })
             .collect()
     }
+}
+
+/// Durably stored observation instant for a fact id, if the fact table has one.
+fn observed_at_for(conn: &rusqlite::Connection, fact_id: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT observed_at FROM membrane_temporal_fact WHERE fact_id=?1",
+        rusqlite::params![fact_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .filter(|value| !value.trim().is_empty())
 }
 
 fn load_candidates(
