@@ -436,13 +436,35 @@ mod tests {
     const SESSION: &str = "session";
     const TASK: &str = "task";
 
-    fn snapshot_root() -> (tempfile::TempDir, PathBuf) {
+    /// `input_path` reads a process-global environment variable, so tests that
+    /// set it and tests that depend on its absence cannot run concurrently.
+    /// Rust runs unit tests as threads in one process, so this is a real race
+    /// and not a theoretical one: without the lock, one test's `set_var` moved
+    /// another test's snapshot out from under it.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Holds the env lock and clears the override on drop, so a panicking test
+    /// cannot leave the variable set for whichever test runs next.
+    struct EnvGuard(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            std::env::remove_var(BACKGROUND_REVIEW_INPUT_ENV);
+        }
+    }
+
+    fn lock_env() -> EnvGuard {
+        let guard = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        std::env::remove_var(BACKGROUND_REVIEW_INPUT_ENV);
+        EnvGuard(guard)
+    }
+
+    fn snapshot_root() -> (EnvGuard, tempfile::TempDir, PathBuf) {
+        let guard = lock_env();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("workspace");
         std::fs::create_dir_all(&root).unwrap();
-        // The env override must not leak between roots in one test process.
-        std::env::remove_var(BACKGROUND_REVIEW_INPUT_ENV);
-        (dir, root)
+        (guard, dir, root)
     }
 
     fn record_window(store: &MemoryStore, stream: &str, window_id: &str, seq: u64) {
@@ -483,7 +505,7 @@ mod tests {
 
     #[test]
     fn recorded_window_publishes_a_snapshot_the_daemon_reader_accepts() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
         record_window(&store, &stream, "w1", 1);
@@ -522,7 +544,7 @@ mod tests {
     /// camelCase, schemaVersion 1, `deny_unknown_fields`.
     #[test]
     fn snapshot_bytes_match_the_daemon_reader_contract() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
         record_window(&store, &stream, "w1", 1);
@@ -548,7 +570,7 @@ mod tests {
 
     #[test]
     fn no_activity_writes_no_snapshot() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         assert_eq!(
             publish_observation_window(&store, &root, SCOPE, SESSION, TASK, "w1", false, 5_000)
@@ -561,7 +583,7 @@ mod tests {
 
     #[test]
     fn cursor_advances_without_gaps_or_repeats_across_windows() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
 
@@ -596,7 +618,7 @@ mod tests {
     /// lose the window: the next boundary republishes the identical window.
     #[test]
     fn crash_between_snapshot_and_cursor_write_republishes_the_same_window() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
         record_window(&store, &stream, "w1", 1);
@@ -618,7 +640,7 @@ mod tests {
     /// The rename leaves no partial file behind and no temp file in place.
     #[test]
     fn snapshot_write_is_atomic() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
         record_window(&store, &stream, "w1", 1);
@@ -643,7 +665,7 @@ mod tests {
 
     #[test]
     fn env_override_is_honoured_for_a_workspace_root() {
-        let (dir, root) = snapshot_root();
+        let (_env, dir, root) = snapshot_root();
         let target = dir.path().join("elsewhere/input.json");
         std::env::set_var(BACKGROUND_REVIEW_INPUT_ENV, &target);
         assert_eq!(input_path(&root), target);
@@ -654,17 +676,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(target.is_file());
-        std::env::remove_var(BACKGROUND_REVIEW_INPUT_ENV);
     }
 
     #[test]
     fn installed_state_root_ignores_the_env_override() {
+        let _env = lock_env();
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("Membrane/state");
         std::fs::create_dir_all(&root).unwrap();
         std::env::set_var(BACKGROUND_REVIEW_INPUT_ENV, dir.path().join("other.json"));
         assert_eq!(input_path(&root), root.join(DEFAULT_BACKGROUND_REVIEW_INPUT));
-        std::env::remove_var(BACKGROUND_REVIEW_INPUT_ENV);
     }
 
     // ---- CTX-024 foreground coverage ----
@@ -772,7 +793,7 @@ mod tests {
 
     #[test]
     fn foreground_coverage_suppresses_extraction_and_absence_permits_it() {
-        let (_dir, root) = snapshot_root();
+        let (_env, _dir, root) = snapshot_root();
         let store = MemoryStore::new();
         let stream = adapt_consumer_stream(SCOPE, SESSION, TASK);
         record_window(&store, &stream, "w1", 1);
