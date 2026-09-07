@@ -3,6 +3,7 @@
 node_modules/
 **/dist/
 /.right-release/
+/apps/membrane-hub/.right-release/
 /apps/membrane-hub/src-tauri/binaries/
 /apps/membrane-hub/src-tauri/runtime/
 /apps/membrane-hub/src-tauri/versions/
