@@ -1,0 +1,79 @@
+{
+  "coverage": {
+    "canonAtomRowsExplicitlyMapped": 353,
+    "coverageCounts": {
+      "implementation_unknown": 43,
+      "missing_implementation": 15,
+      "partial_unverified_terminal_path": 137,
+      "source_locus_identified_prior_evidence_only": 102,
+      "source_locus_identified_unverified": 56
+    },
+    "remainingUnknowns": [
+      "runtime behavior (prohibited)",
+      "all event/crash interleavings",
+      "actual installed CI artifact",
+      "resource measurements",
+      "some terminal consumers explicitly absent"
+    ],
+    "requiredJourneysExplicit": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G",
+      "H",
+      "I",
+      "J",
+      "K",
+      "L"
+    ]
+  },
+  "finalArtifacts": {
+    "MEMBRANE-SEMANTIC-AUDIT.md": {
+      "bytes": 24476,
+      "sha256": "33dd0d7d6f2ceffac7fd43c989af20012da1bba8a0405cc77c76851c2d4b3440"
+    },
+    "MEMBRANE-SEMANTIC-TRACE-MATRIX.json": {
+      "bytes": 504891,
+      "sha256": "09d0ba320bb74e2ab0bac7dfeac7933141aa945a2115e9c6d0bb27d1e6373447"
+    }
+  },
+  "frozenAt": "2026-09-07",
+  "independence": {
+    "productionTestsRun": false,
+    "runtimeActivated": false,
+    "sessionBContacted": false,
+    "sessionBRead": false
+  },
+  "initialFrozenArtifacts": {
+    "MEMBRANE-SEMANTIC-AUDIT-MANIFEST.initial.json": {
+      "bytes": 1763,
+      "sha256": "4f476e078d8078bfbe1b52f083cfac3a4266837b44e81f6fee6c989b8788e2fc"
+    },
+    "MEMBRANE-SEMANTIC-AUDIT.initial.md": {
+      "bytes": 17782,
+      "sha256": "315ba6ca50d36579f3a248a865c273eb3b2ed955caec3d4c7d8841216050dd9c"
+    },
+    "MEMBRANE-SEMANTIC-TRACE-MATRIX.initial.json": {
+      "bytes": 7148,
+      "sha256": "e838ef2177aea6f779628fe2ef8629a599f35b7e414e40df3c0239f0cc560768"
+    }
+  },
+  "manifestSelfHash": "external_sha256sum_only",
+  "remoteFetch": {
+    "reason": "checkout has no configured git remote",
+    "status": "blocked"
+  },
+  "repairReason": "Completion Oracle required explicit per-atom mapping and deeper E/F/J/K traces",
+  "schemaVersion": 2,
+  "targetLabel": "current agreed checkout state; embedded packet baseline explicitly ignored",
+  "targetSha": "a4e0a9e02c64e5439cdec289a160b748f5e5686c",
+  "tools": {
+    "git": "git version 2.43.0",
+    "node": "v20.20.2",
+    "python": "3.12.13",
+    "ripgrep": "ripgrep 15.1.0 (rev af60c2de9d)"
+  }
+}

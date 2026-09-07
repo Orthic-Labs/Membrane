@@ -1,0 +1,173 @@
+{
+  "schema": "membrane.dogfood-results.v1",
+  "target_sha": "a4e0a9e02c64e5439cdec289a160b748f5e5686c",
+  "run_environment": {
+    "node": "v20.20.2",
+    "pnpm": "11.24.0 (not runnable on current Node)",
+    "dependencies": "absent",
+    "native_artifact": "absent",
+    "installed_artifact": "not accessed",
+    "remote_main": "unavailable: no remote/main ref"
+  },
+  "denominators": {
+    "required_product_cases": 17,
+    "executed_product_cases": 0,
+    "passed_product_cases": 0,
+    "failed_product_cases": 0,
+    "blocked_product_cases": 17,
+    "not_run_product_cases": 0,
+    "harness_cases": 1,
+    "harness_passed": 1
+  },
+  "verdict": "BLOCKED_NOT_FULLY_VERIFIED",
+  "commands": [
+    {
+      "command": "node --test audit/session-b/tests/public-boundary-dogfood.test.mjs",
+      "exit": 1,
+      "elapsed_ms": 7516,
+      "classification": "environment_blocked",
+      "detail": "oracle negative controls PASS; both attempted retained-MCP cases could not load @modelcontextprotocol/server because dependencies are absent"
+    },
+    {
+      "command": "pnpm --version",
+      "exit": 1,
+      "classification": "environment_blocked",
+      "detail": "pnpm 11.24.0 requires Node >=22.13; cloud has Node v20.20.2 and lacks node:sqlite"
+    },
+    {
+      "command": "node --test audit/session-b/tests/native-public-boundary-dogfood.test.mjs",
+      "exit": 0,
+      "classification": "suite_collected_all_native_cases",
+      "detail": "15 runnable native/installed public-boundary cases collected; all 15 skipped with exact missing-artifact/binding prerequisites"
+    }
+  ],
+  "cases": [
+    {
+      "id": "A01",
+      "status": "BLOCKED",
+      "layer": "JavaScript retained MCP",
+      "reason": "public server cannot load absent @modelcontextprotocol/server dependency"
+    },
+    {
+      "id": "B01",
+      "status": "BLOCKED",
+      "layer": "JavaScript retained MCP",
+      "reason": "same dependency blocker; native lifecycle also lacks exact prebuilt artifact"
+    },
+    {
+      "id": "B02",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no revision-compatible prebuilt artifact"
+    },
+    {
+      "id": "C01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no revision-compatible prebuilt artifact/provider setup"
+    },
+    {
+      "id": "C02",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no revision-compatible prebuilt artifact/provider setup"
+    },
+    {
+      "id": "D01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no revision-compatible prebuilt artifact/isolated Ledger"
+    },
+    {
+      "id": "D02",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no revision-compatible prebuilt artifact/isolated providers"
+    },
+    {
+      "id": "E01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no tray-owned isolated runtime/watch surface"
+    },
+    {
+      "id": "F01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no exact artifact or isolated native store"
+    },
+    {
+      "id": "G01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no actual diagnostics providers/exact artifact"
+    },
+    {
+      "id": "H01",
+      "status": "BLOCKED",
+      "layer": "native plus simulated-host capture",
+      "reason": "no exact artifact and no negotiated live resolver"
+    },
+    {
+      "id": "I01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no controllable public publication-fence runtime"
+    },
+    {
+      "id": "J01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no exact artifact/isolated Cortex public setup"
+    },
+    {
+      "id": "K01",
+      "status": "BLOCKED",
+      "layer": "native host seam",
+      "reason": "no exact artifact or versioned host observation ingress"
+    },
+    {
+      "id": "L01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no exact artifact/provider setup"
+    },
+    {
+      "id": "L02",
+      "status": "BLOCKED",
+      "layer": "installed hosts",
+      "reason": "installed user environment intentionally untouched; no isolated qualified installation"
+    },
+    {
+      "id": "R01",
+      "status": "BLOCKED",
+      "layer": "native",
+      "reason": "no exact artifact; production counters unavailable"
+    }
+  ],
+  "harness": [
+    {
+      "id": "ORACLE-NEG",
+      "status": "PASS",
+      "assertions": 7,
+      "note": "rejects wrong repository, stale digest, missing facts, duplicate body, dropped omission, and fake-clean diagnostics; not product coverage"
+    }
+  ],
+  "unexpected_errors": [],
+  "product_failures": [],
+  "qualification_statement": "Correct refusal/readiness cannot be evaluated at the product layer. No positive whole-product journey is qualified; lower-layer harness success is not promoted.",
+  "suite_implementation": {
+    "oracle_case_count": 17,
+    "runnable_case_count": 17,
+    "public_boundary_files": [
+      "tests/public-boundary-dogfood.test.mjs",
+      "tests/native-public-boundary-dogfood.test.mjs"
+    ],
+    "native_suite_collection": {
+      "tests": 15,
+      "skipped_with_precise_prerequisite": 15,
+      "exit": 0
+    },
+    "note": "All oracle cases now have executable test bodies; blocked cases skip only before public invocation when exact artifacts/bindings are absent."
+  }
+}
