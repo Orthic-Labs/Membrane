@@ -30,7 +30,10 @@ test("journal replay acknowledges identical source without scanning symbols or c
         const value = Reflect.get(target, key, target);
         return typeof value === "function" ? value.bind(target) : value;
       } });
+      let nativeCallbackRan = false;
+      setImmediate(() => { nativeCallbackRan = true; });
       assert.equal(await drainJournal(traced, repo), 1);
+      assert.equal(nativeCallbackRan, true, "synchronous replay yields to native callbacks before drain completion");
       assert.equal(statements.some((sql) => /SELECT[\s\S]*FROM symbols/i.test(sql)), false);
       assert.deepEqual(db.prepare("SELECT * FROM generation ORDER BY key").all(), generation);
       assert.deepEqual(db.prepare("SELECT * FROM symbols ORDER BY id").all(), symbols);

@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "adbd9770af0cb58a5556fe70504bd659c3799e80",
- "generatedAt": "2026-09-07T19:14:36.431Z",
+ "baselineCommit": "011ed798b18972836e91b8f9480aa1cde0876fa6",
+ "generatedAt": "2026-09-07T19:56:46.720Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,

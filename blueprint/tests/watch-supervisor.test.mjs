@@ -6,7 +6,7 @@ import test from "node:test";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { RepositoryActor } from "../watchman/repo-actor.mjs";
-import { FRESHNESS, WatchSupervisor, writeWatchConfig } from "../watchman/supervisor.mjs";
+import { CONCURRENT_STARTUP_RECONCILES, FRESHNESS, WatchSupervisor, writeWatchConfig } from "../watchman/supervisor.mjs";
 
 // P2: one resident supervisor, one worker per enrolled repository, with
 // honest freshness — a repo must never read as "current" just because
@@ -28,10 +28,10 @@ function tempConfigPath() {
   return join(mkdtempSync(join(tmpdir(), "blueprint-watch-config-")), "watch.json");
 }
 
-test("resident startup admits the whole fleet before one-at-a-time cold work", async () => {
+test("resident startup admits fleet before bounded cold work & slow roots do not starve peers", async () => {
   const configPath = tempConfigPath();
   const roots = Array.from({ length: 7 }, (_, index) => join(dirname(configPath), String(index)));
-  const admitted = [], completed = [];
+  const admitted = [], started = [], completed = [];
   let release;
   const gate = new Promise((resolve) => { release = resolve; });
   let active = 0, maximum = 0;
@@ -40,6 +40,7 @@ test("resident startup admits the whole fleet before one-at-a-time cold work", a
     async start({ deferReconcile }) { assert.equal(deferReconcile, true); this.running = true; admitted.push(root); },
     async resumeStartup() {
       assert.deepEqual(admitted, roots);
+      started.push(root);
       maximum = Math.max(maximum, ++active);
       if (root === roots[0]) await gate;
       completed.push(root); active--;
@@ -51,10 +52,36 @@ test("resident startup admits the whole fleet before one-at-a-time cold work", a
     await supervisor.start({ deferReconcile: true });
     assert.deepEqual(admitted, roots);
     assert.deepEqual(completed, []);
+    for (let tick = 0; tick < roots.length + 2; tick++) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(started, roots, "cold work starts in FIFO order");
+    assert.deepEqual(completed, roots.slice(1), "healthy tail completes while first root is still blocked");
     release(); await supervisor.startupTail;
-    assert.deepEqual(completed, roots);
-    assert.equal(maximum, 1);
+    assert.deepEqual(completed, [...roots.slice(1), roots[0]]);
+    assert.equal(maximum, CONCURRENT_STARTUP_RECONCILES);
   } finally { release(); await supervisor.stop(); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
+
+test("cold scheduler deduplicates epochs & discards queued work during stop", async () => {
+  const supervisor = new WatchSupervisor();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const started = [];
+  const actors = Array.from({ length: 3 }, (_, index) => ({
+    epoch: 1, log(error) { throw error; },
+    async resumeStartup() { started.push(index); await gate; },
+    async stop() { release(); },
+  }));
+  for (const [index, actor] of actors.entries()) {
+    supervisor.actors.set(index, actor);
+    supervisor.queueStartup(actor);
+    supervisor.queueStartup(actor);
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(started, [0, 1]);
+  await supervisor.stop();
+  assert.deepEqual(started, [0, 1], "queued actor never starts after stop");
+  assert.equal(supervisor.startupWork.size, 0);
+  assert.equal(supervisor.startupQueued.size, 0);
 });
 
 test("admitted watcher stays degraded until cold reconciliation finishes", async () => {

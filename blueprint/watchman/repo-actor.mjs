@@ -222,7 +222,14 @@ export async function drainJournal(db, root, { force = true, maxDependentFiles =
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass += 1) {
     const rows = pendingRows(db, force);
     if (!rows.length) break;
-    for (const row of rows) { await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal); applied += 1; }
+    for (const row of rows) {
+      await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal);
+      applied += 1;
+      // Lexical deltas may resolve synchronously. Yield after committed work
+      // so native callbacks, cancellation & other roots can make progress.
+      await new Promise((resolve) => setImmediate(resolve));
+      throwIfAborted(signal);
+    }
     force = true;
   }
   const pending = db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n;

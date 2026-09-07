@@ -8,6 +8,66 @@ use tokio_util::sync::CancellationToken;
 
 pub(crate) struct OneShotTransport;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct Probe {
+        calls: Mutex<Vec<(Duration, u64)>>,
+        result: Result<BlueprintWireResponse, BlueprintClientError>,
+        delay: Duration,
+    }
+    impl BlueprintTransport for Probe {
+        fn exchange(&self, request: &BlueprintWireRequest, _: BlueprintBounds,
+            deadline: Duration, _: CancellationToken) -> Result<BlueprintWireResponse, BlueprintClientError> {
+            self.calls.lock().unwrap().push((deadline, request.deadline_ms));
+            std::thread::sleep(self.delay);
+            self.result.clone()
+        }
+    }
+    fn probe(result: Result<BlueprintWireResponse, BlueprintClientError>) -> Probe {
+        Probe { calls: Mutex::new(Vec::new()), result, delay: Duration::ZERO }
+    }
+    fn success() -> Result<BlueprintWireResponse, BlueprintClientError> {
+        Ok(BlueprintWireResponse { protocol_version: Some(1), request_id: Some("budget".into()),
+            ok: true, generation: None, result: Some(serde_json::json!({})), error: None })
+    }
+    fn request() -> BlueprintWireRequest {
+        BlueprintWireRequest { protocol_version: 1, request_id: "budget".into(), repo_id: None,
+            generation: None, method: "refresh".into(), deadline_ms: 30000, input: serde_json::json!({}) }
+    }
+    #[test]
+    fn explicit_resident_refresh_receives_full_caller_budget() {
+        let resident = probe(success());
+        let fallback = probe(success());
+        exchange_explicit(Some(&resident), &fallback, &request(), BlueprintBounds::default(),
+            Duration::from_secs(30), CancellationToken::new()).unwrap();
+        assert_eq!(*resident.calls.lock().unwrap(), vec![(Duration::from_secs(30), 30000)]);
+        assert!(fallback.calls.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn explicit_fallback_preserves_remaining_ingress_budget_on_wire() {
+        let mut resident = probe(Err(BlueprintClientError::Unavailable("closed".into())));
+        resident.delay = Duration::from_millis(20);
+        let fallback = probe(success());
+        exchange_explicit(Some(&resident), &fallback, &request(), BlueprintBounds::default(),
+            Duration::from_secs(30), CancellationToken::new()).unwrap();
+        let calls = fallback.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].0 < Duration::from_secs(30));
+        assert_eq!(calls[0].1, calls[0].0.as_millis() as u64);
+    }
+    #[test]
+    fn explicit_resident_timeout_does_not_replay_mutation() {
+        let resident = probe(Err(BlueprintClientError::Timeout));
+        let fallback = probe(success());
+        assert_eq!(exchange_explicit(Some(&resident), &fallback, &request(), BlueprintBounds::default(),
+            Duration::from_secs(30), CancellationToken::new()).unwrap_err(), BlueprintClientError::Timeout);
+        assert!(fallback.calls.lock().unwrap().is_empty());
+    }
+}
+
 pub(crate) struct ExplicitBlueprintTransport {
     pub endpoint: Option<PathBuf>,
 }
@@ -15,19 +75,32 @@ pub(crate) struct ExplicitBlueprintTransport {
 impl BlueprintTransport for ExplicitBlueprintTransport {
     fn exchange(&self, request: &BlueprintWireRequest, bounds: BlueprintBounds,
         deadline: Duration, cancellation: CancellationToken) -> Result<BlueprintWireResponse, BlueprintClientError> {
+        use membrane_federation::blueprint_client::UnixBlueprintTransport;
+        let resident = self.endpoint.as_ref().map(|endpoint| UnixBlueprintTransport::new(endpoint.clone()));
+        exchange_explicit(resident.as_ref().map(|transport| transport as &dyn BlueprintTransport),
+            &OneShotTransport, request, bounds, deadline, cancellation)
+    }
+}
+
+fn exchange_explicit(resident: Option<&dyn BlueprintTransport>, one_shot: &dyn BlueprintTransport,
+    request: &BlueprintWireRequest, bounds: BlueprintBounds, deadline: Duration,
+    cancellation: CancellationToken) -> Result<BlueprintWireResponse, BlueprintClientError> {
         let started = Instant::now();
-        if let Some(endpoint) = &self.endpoint {
-            use membrane_federation::blueprint_client::UnixBlueprintTransport;
-            let response = UnixBlueprintTransport::new(endpoint.clone()).exchange(request, bounds,
-                deadline.min(Duration::from_secs(2)), cancellation.clone());
+        if let Some(resident) = resident {
+            // This is the operation itself, not a readiness probe. A live Hub
+            // receives the caller's budget, including explicit synchronization.
+            let response = resident.exchange(request, bounds, deadline, cancellation.clone());
             match response {
                 Err(BlueprintClientError::Unavailable(_)) => {},
                 Ok(response) if !response.ok && response.error.as_ref().is_some_and(|error| matches!(error.code.as_deref(), Some("root_not_enrolled" | "graph_missing" | "not_configured"))) => {},
                 other => return other,
             }
         }
-        OneShotTransport.exchange(request, bounds, deadline.saturating_sub(started.elapsed()), cancellation)
-    }
+        let remaining = deadline.saturating_sub(started.elapsed());
+        if remaining.is_zero() { return Err(BlueprintClientError::Timeout); }
+        let mut request = request.clone();
+        request.deadline_ms = remaining.as_millis().clamp(1, u64::MAX as u128) as u64;
+        one_shot.exchange(&request, bounds, remaining, cancellation)
 }
 
 /// Explicit CLI work has finite lifetime & never grants resident authority.

@@ -9,6 +9,7 @@ import { reconcile as defaultReconcile } from "./reconcile.mjs";
 // How many cold actor starts may run at once. Serial startup starved the tail
 // of a 19-repo fleet; unbounded startup would run 19 full reconciles at once.
 export const CONCURRENT_ACTOR_STARTS = 4;
+export const CONCURRENT_STARTUP_RECONCILES = 2;
 
 export function defaultConfigPath() { return resolve(homedir(), ".blueprint", "watch.json"); }
 
@@ -159,7 +160,11 @@ export class WatchSupervisor {
     this.signalHandler = null;
     this.configMtime = 0;
     this.deferReconcile = false;
-    this.startupTail = Promise.resolve();
+    this.startupQueue = [];
+    this.startupWork = new Set();
+    this.startupQueued = new Map();
+    this.startupActive = 0;
+    this.stopping = false;
     // Minted once per supervisor OBJECT, not per OS process: this is what
     // lets status() tell "the supervisor that started this actor" apart from
     // "some supervisor incarnation that once did and may since be gone" even
@@ -222,7 +227,8 @@ export class WatchSupervisor {
       }),
     );
     // Admit every native subscription before any cold scan. Heavy startup
-    // reconciliation is FIFO, one at a time, & yields to native callbacks.
+    // reconciliation uses a bounded FIFO pool, so one slow root does not
+    // prevent healthy peers from becoming current.
     if (deferReconcile) {
       for (const actor of pendingStarts) {
         if (!actor.running || typeof actor.resumeStartup !== "function") continue;
@@ -244,15 +250,49 @@ export class WatchSupervisor {
   }
 
   queueStartup(actor) {
+    if (this.stopping) return;
     const epoch = actor.epoch;
-    const work = this.startupTail.then(async () => {
-      await new Promise((resolve) => setImmediate(resolve));
-      await actor.resumeStartup(epoch);
-    });
-    this.startupTail = work.catch((error) => actor.log(error));
+    const epochs = this.startupQueued.get(actor) ?? new Set();
+    if (epochs.has(epoch)) return;
+    epochs.add(epoch);
+    this.startupQueued.set(actor, epochs);
+    let complete;
+    const work = new Promise((resolve) => { complete = resolve; });
+    this.startupWork.add(work);
+    this.startupQueue.push({ actor, epoch, complete: () => {
+      epochs.delete(epoch);
+      if (!epochs.size) this.startupQueued.delete(actor);
+      this.startupWork.delete(work);
+      complete();
+    } });
+    this.pumpStartup();
+  }
+
+  get startupTail() { return Promise.all([...this.startupWork]); }
+
+  pumpStartup() {
+    while (!this.stopping && this.startupActive < CONCURRENT_STARTUP_RECONCILES && this.startupQueue.length) {
+      const { actor, epoch, complete } = this.startupQueue.shift();
+      this.startupActive += 1;
+      new Promise((resolve) => setImmediate(resolve))
+        .then(() => this.stopping ? undefined : actor.resumeStartup(epoch))
+        .catch((error) => {
+          try { actor.log(error); }
+          catch (logError) {
+            process.stderr.write(`${JSON.stringify({ event: "watcher_startup_log_failed", root: actor.root,
+              error: String(error?.message ?? error), logError: String(logError?.message ?? logError) })}\n`);
+          }
+        })
+        .finally(() => {
+          this.startupActive -= 1;
+          complete();
+          this.pumpStartup();
+        });
+    }
   }
 
   async start(options = {}) {
+    this.stopping = false;
     this.deferReconcile = options.deferReconcile === true;
     // Existing in-process supervisors may tolerate one repo failure and keep
     // serving healthy peers; resident blueprint-watch opts into strict
@@ -279,6 +319,8 @@ export class WatchSupervisor {
   }
 
   async stop() {
+    this.stopping = true;
+    for (const entry of this.startupQueue.splice(0)) entry.complete();
     clearInterval(this.poller);
     if (this.signalHandler) process.off("SIGHUP", this.signalHandler);
     for (const actor of this.actors.values()) await actor.stop();
