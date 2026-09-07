@@ -8,8 +8,8 @@ use serde_json::Value;
 fn failed_hub_start_preserves_installed_client_binding() {
     let temp = tempfile::tempdir().unwrap();
     let local = temp.path().join("local");
-    let product = local.join("Orthic Labs/Membrane");
-    let version = product.join("versions/test");
+    let product = local.join("Orthic Labs").join("Membrane");
+    let version = product.join("versions").join("test");
     let current = product.join("current");
     fs::create_dir_all(&version).unwrap();
     fs::copy(env!("CARGO_BIN_EXE_membrane"), version.join("membrane.exe")).unwrap();

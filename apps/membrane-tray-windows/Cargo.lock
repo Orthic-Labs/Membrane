@@ -3148,6 +3148,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-blueprint"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "membrane-protocol"
 version = "0.1.0"
 dependencies = [
@@ -3166,6 +3175,7 @@ version = "0.1.0"
 dependencies = [
  "getrandom 0.4.3",
  "image",
+ "membrane-blueprint",
  "membrane-protocol",
  "raw-window-handle",
  "serde_json",

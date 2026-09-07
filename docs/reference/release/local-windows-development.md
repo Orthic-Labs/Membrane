@@ -21,7 +21,10 @@ Record source commit/tree identity, installer SHA-256 & measured build duration.
 Install exact output, verify stable `current` bindings, then exercise Blueprint &
 all explicit Membrane operations with Hub stopped before agent handoff. Hub starts
 only for resident-process verification. Installer source is shared with GitHub;
-GitHub CI continues validating commits & owns public release qualification.
+Local build, focused local tests & installed acceptance gate internal delivery.
+GitHub CI may validate pushed commits in parallel; do not wait for CI or dispatch
+a duplicate hosted installer build for this internal loop. GitHub owns public
+release qualification.
 
 The first local build fills caches. Compare subsequent measured builds before
 claiming a speed improvement. Updates currently use the next installer; Hub has
