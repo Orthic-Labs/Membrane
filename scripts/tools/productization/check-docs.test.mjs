@@ -66,7 +66,8 @@ test("README link evaluator fails on a deliberately broken link", () => {
 });
 
 test("live source reports the current registry and Windows as sole tier-1 target", () => {
-  assert.equal(truth.toolCount, 17);
+  // The current native registry includes Ledger, Push, Adapt and Cortex additions.
+  assert.equal(truth.toolCount, 23);
   assert.deepEqual(platforms.tier1, ["Windows"]);
   assert.deepEqual(platforms.bestEffort, []);
 });
