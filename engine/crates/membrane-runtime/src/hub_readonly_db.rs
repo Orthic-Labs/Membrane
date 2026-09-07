@@ -242,7 +242,12 @@ mod tests {
                 }
                 index += 1;
             }
-            for _ in text[start..index].lines().skip(1) {
+            // Emit one newline per newline consumed. `lines().skip(1)` was
+            // equivalent only while every stripped region ended on `}` with no
+            // trailing newline; the `#[cfg(test)]` field case stops *before*
+            // the enclosing `}`, so its region ends with a newline and that
+            // form lost a line.
+            for _ in text[start..index].bytes().filter(|byte| *byte == b'\n') {
                 out.push('\n');
             }
             cursor = index;
