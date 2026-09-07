@@ -24,11 +24,11 @@ Normative statements below define the selected target. Section 5 is the separate
 
 ## Runtime lifecycle binding — normative
 
-Membrane runtime exists only in the headless child daemon of the visible native tray, with OS-enforced lifetime coupling. CodeRight binds to that active daemon; there is no embedded CodeRight Membrane backend.
+Resident Membrane work runs in tray-owned child daemon with OS-enforced lifetime coupling. Explicit Ledger operations also run through bounded installed execution with Hub off. CodeRight uses these same installed operations & does not implement another Ledger backend.
 
-Operational MCP, CLI and host surfaces are stateless authenticated clients. They MUST NOT open operational Ledger storage, start a replacement runtime, silently fall back to local index execution or create an index when reporting inactive status. Tray off returns the canonical typed `membrane_unavailable { reason: hub_inactive, retryable: true }` response. An explicitly retained offline developer utility must be separately named and excluded from normal product context behavior.
+MCP, CLI & host surfaces dispatch to Ledger-owned services. Explicit registration, indexing, search & resolution remain available with Hub off using canonical installed storage & unchanged grants, transaction rules & budgets. No transport opens Ledger tables directly. Status inspection does not authorize indexing, and no explicit operation starts a replacement daemon or watcher.
 
-Blueprint remains independently usable but not independently resident. Its bounded one-shot exception is not permission for a resident or fallback Ledger service. All continuous Ledger update work uses the existing daemon's scheduling and cancellation mechanisms.
+All six subsystems support explicit execution independently of Hub. All continuous Ledger update work uses active daemon scheduling & cancellation; closing Hub stops automatic work while preserving explicit access.
 
 ---
 

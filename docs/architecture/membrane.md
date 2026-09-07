@@ -48,11 +48,7 @@ Ledger registers, indexes, and resolves document sections without owning documen
 Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-The visible tray app is the sole resident lifecycle authority, and the Membrane runtime executes
-inside its headless child daemon with OS-enforced lifetime coupling. There is no standalone or
-orphanable Membrane runtime. When the tray is inactive there is no Membrane runtime and no
-Membrane context; requests return typed
-`membrane_unavailable { reason: hub_inactive, retryable: true }`.
+Visible tray owns automatic work & resident lifecycle through its OS-coupled child daemon. Explicit operations across all six subsystems remain available with tray inactive through bounded installed execution. No request starts an orphanable daemon or automatic watcher.
 
 Blueprint is **independently usable but not independently resident**. Its
 continuous watcher/freshness role runs only inside the active tray-owned daemon. With tray inactive, the
@@ -1178,11 +1174,7 @@ Membrane
 → RecallCircuit
 ```
 
-While the tray-owned daemon is active, normal Membrane requests never create a per-query Node
-process. If the tray is inactive, Membrane returns typed
-`membrane_unavailable { reason: hub_inactive, retryable: true }` and does not
-fall back to Blueprint. An explicit direct Blueprint request may use the
-bounded one-shot path defined by Blueprint's canon.
+Requests may reuse active Blueprint services. With tray inactive or repository absent from watcher enrollment, explicit requests use bounded Blueprint-owned execution. Pull retains source evidence through the same request path. Transport unavailability never disables an otherwise authorized explicit operation; schema/generation failures remain typed & closed.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
@@ -2107,8 +2099,7 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 - validate schema/generation before conversion;
 - convert one complete path into one atomic evidence unit/candidate;
 - obtain code-anchor resolution from Blueprint;
-- remove subprocess fallback from Membrane; tray unavailability returns typed
-  `membrane_unavailable { hub_inactive }` and invokes no Blueprint one-shot.
+- preserve bounded Blueprint-owned execution when resident transport is unavailable; retain request authorization, deadline, generation/schema checks & process cleanup.
 
 **Do not add**
 - Blueprint graph traversal;

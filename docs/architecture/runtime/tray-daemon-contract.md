@@ -2,7 +2,7 @@
 
 **Status:** implementation contract · Architecture B
 **Decision source:** [`tray-daemon-process.md`](../adr/tray-daemon-process.md)
-**Governing invariant:** Membrane runtime never runs without a visible tray surface.
+**Governing invariant:** Automatic resident processes require visible tray ownership. Explicit operations remain available with Hub stopped; [execution lifecycle boundary](../execution-lifecycle-boundary.md) governs that distinction.
 
 ## 1. Process topology & ownership
 
@@ -11,6 +11,7 @@
 | Tray | resident | operating-system startup entry | visible icon/popover, daemon launch/supervision, crash-loop state, dashboard launch |
 | Daemon | resident child | tray | `run_hub_runtime`, Blueprint/Adapt resident work, authenticated local snapshot service |
 | Dashboard | on demand | tray launch action | existing Tauri shell & read-only Hub views; exits when window closes |
+| Explicit CLI/MCP work | bounded request/session | invoking user or agent | all supported subsystem operations through installed owners; no automatic watcher or resident service |
 
 Tray is SwiftUI + AppKit on macOS & Slint + Rust on Windows. Daemon is headless Rust. Dashboard
 remains Tauri. Existing `externalBin` entries for `cortex` & `membrane` remain on-demand CLI tools;
@@ -20,7 +21,7 @@ they are not resident sidecars.
 ownership:
 
 - tray owns process lifecycle & user-visible status;
-- daemon owns runtime execution & local service endpoints;
+- daemon owns automatic resident execution & local service endpoints;
 - dashboard owns full-screen presentation only.
 
 ## 2. Bootstrap & IPC

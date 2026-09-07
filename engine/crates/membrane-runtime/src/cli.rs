@@ -325,6 +325,15 @@ pub(crate) struct DeployedRuntime {
 }
 
 fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
+    if let Ok(runtime) = crate::service::runtime_from_exe(exe) {
+        if runtime.origin == "installed" {
+            return Some(DeployedRuntime {
+                port: runtime.port, db: runtime.db, token_file: runtime.token,
+                ort: runtime.ort, hf_home: runtime.hf_home,
+                semantic_adjudicator_trust: runtime.workspace_root.join("tools/lib/memory/adapt-semantic-adjudicator-trust.json"),
+            });
+        }
+    }
     let bin = exe.parent()?;
     if bin.file_name()?.to_string_lossy() != "bin" {
         return None;
@@ -3144,7 +3153,7 @@ fn adapt_value<T: Serialize>(value: &T) -> Result<serde_json::Value, String> {
 }
 
 impl AdaptCmd {
-    pub(crate) fn requires_resident(&self) -> bool {
+    pub(crate) fn requires_canonical_store(&self) -> bool {
         !matches!(
             self,
             Self::Mine { .. }
@@ -3194,10 +3203,10 @@ fn run_adapt(
     db_arg: Option<String>,
     deployed: Option<&DeployedRuntime>,
 ) -> Result<(), String> {
-    if command.requires_resident() {
+    if command.requires_canonical_store() {
         if db_arg.is_some() {
             return Err(
-                "Adapt canonical operations use the installed daemon; --db is not permitted".into(),
+                "Adapt canonical operations use installed storage; --db is not permitted".into(),
             );
         }
         command.resolve_inputs()?;

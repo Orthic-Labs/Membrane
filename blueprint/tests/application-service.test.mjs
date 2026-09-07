@@ -42,6 +42,19 @@ async function expectBlueprintError(promise, code) {
   assert.fail(`expected error code ${code}`);
 }
 
+for (const freshnessOwnership of ["resident", "one_shot"]) {
+  test(`${freshnessOwnership} rejects incompatible sealed graph schema`, async () => {
+    const repo = builtRepo();
+    try {
+      writeEnvelope(repo, "schemaVersion", 999);
+      const service = createBlueprintApplicationService({ allowEmbeddedRoot: true, freshnessOwnership });
+      await expectBlueprintError(service.search({ repoRoot: repo, query: "order" }), "schema_mismatch");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+}
+
 test("status works on a built graph and reports repository identity", async () => {
   const repo = builtRepo();
   try {

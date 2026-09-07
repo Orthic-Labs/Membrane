@@ -38,12 +38,17 @@ CREATE TABLE IF NOT EXISTS ledger_erasure_fences (
 static DAEMON_OWNER: OnceLock<Result<Arc<LedgerService>, String>> = OnceLock::new();
 
 /// Called only when the tray-owned daemon installs its native operation owner.
-/// Failure is isolated to Ledger; clients cannot create an alternative owner.
+/// Failure is isolated to Ledger; explicit requests use canonical request owners.
 pub(crate) fn install_daemon_owner() {
     DAEMON_OWNER.get_or_init(|| LedgerDb::open_default().and_then(LedgerService::new).map(Arc::new));
 }
 pub(crate) fn active_owner() -> Result<Arc<LedgerService>, String> {
     DAEMON_OWNER.get().ok_or("membrane_unavailable:hub_inactive")?.clone()
+}
+
+/// Request-scoped owner; opens canonical storage without installing residency.
+pub(crate) fn open_explicit_owner() -> Result<Arc<LedgerService>, String> {
+    LedgerDb::open_default().and_then(LedgerService::new).map(Arc::new)
 }
 
 #[derive(Clone)]

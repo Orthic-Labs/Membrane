@@ -77,7 +77,7 @@ fn optional(value:&mut Value, key:&str, field:&Option<String>) {
 pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
     // Discover the active installation before any index/source work. This
     // client never opens a Ledger DB, starts a daemon, or chooses cwd as scope.
-    let client = crate::mcp_executor::active_hub_client()?;
+    let client = crate::mcp_executor::native_operation_client();
     let (tool,args) = match command {
         LedgerCmd::Outline{repo,path,json:as_json,continuation_cursor} => {
             if !as_json {return Err("ledger outline requires --json".into());}

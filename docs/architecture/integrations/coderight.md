@@ -49,24 +49,14 @@ There are distinct data classes and owners:
 
 ## Runtime lifecycle binding (normative)
 
-**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. CodeRight must retain installed Membrane operation access with Hub off through bounded explicit execution; only automatic background execution requires Hub.
+[Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
-These decisions are canonical and take precedence over any wording later in this
-document that implies a different runtime topology:
-
-- Membrane runtime exists only inside the headless child daemon of the visible
-  native tray, with OS-enforced lifetime coupling. There is no standalone or
-  orphanable Membrane runtime.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds through
-  the active tray-owned daemon, or it has no binding.
-- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
-  launch, auto-start, or register a Membrane process.
-- **Tray off → no Membrane context.** Requests return typed
-  `membrane_unavailable { reason: hub_inactive, retryable: true }`.
-- **Ledger** is the canonical subsystem name; it replaces Guide.
-- Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
-  access is an explicit bounded one-shot operation that never daemonizes.
+- Explicit agent operations remain available with Hub on or off through installed product services.
+- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
+- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- A failed response after dispatch must not silently replay a possibly completed write.
+- CodeRight consumes installed Membrane operations; it does not implement another backend.
 
 ---
 
@@ -870,7 +860,7 @@ does not prescribe rollout phases.
 ## Startup/backend
 
 - compatible tray-daemon binding;
-- tray inactive at startup — typed `membrane_unavailable { hub_inactive }`, no binding, no spawned process;
+- tray inactive at startup — installed explicit operations remain callable; no automatic watcher or replacement daemon starts;
 - tray quits mid-session — binding lost, typed unavailability, no fallback store;
 - incompatible version;
 - store identity mismatch;

@@ -27,7 +27,7 @@ Separately verify that stopping Hub stops every watcher, scheduler & automatic p
 
 ## Confirmed correction sites
 
-- `engine/crates/membrane-runtime/src/mcp_executor.rs`: shared unavailable-Hub executor rejects all tools except in-progress Blueprint exception.
+- `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.
 - `docs/architecture/membrane.md`: no-runtime/no-context doctrine.
 - `docs/architecture/subsystems/ledger.md`: forbids explicit local index execution.
 - `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: repeated daemon-only binding rules.

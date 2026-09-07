@@ -3,10 +3,11 @@
 // This process never starts a watcher or registers a resident root.
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { createFindingsService } from "../src/lib/findings/service.mjs";
 import { createBuildSingleflight, runLocalBuild } from "../src/service/build-singleflight.mjs";
 import { encodeResponse, validateProtocolVersion, validateDeadlineMs } from "../src/service/protocol.mjs";
 
-const methods = new Set(["status", "search", "resolve", "recall", "expand", "impact", "path", "architecture", "documentTruth", "refresh", "build", "snapshot_get", "snapshot_list", "changes"]);
+const methods = new Set(["status", "search", "resolve", "recall", "expand", "impact", "path", "architecture", "documentTruth", "refresh", "build", "snapshot_get", "snapshot_list", "changes", "findings.get"]);
 let request;
 let timer;
 try {
@@ -25,8 +26,10 @@ try {
   }
   const controller = new AbortController();
   timer = setTimeout(() => controller.abort(), request.deadlineMs);
+  const rootRegistry = new RootRegistry([{ root: request.input.repoRoot, repoId: request.repoId }]);
+  const repoRoot = rootRegistry.resolve({ repoRoot: request.input.repoRoot, repoId: request.repoId });
   const service = createBlueprintApplicationService({
-    rootRegistry: new RootRegistry([{ root: request.input.repoRoot, repoId: request.repoId }]),
+    rootRegistry,
     freshnessOwnership: "one_shot",
     buildSingleflight: createBuildSingleflight({ runner: async (input) => {
       const result = await runLocalBuild(input);
@@ -43,8 +46,12 @@ try {
       options: { noReadmeLink: true } }, { signal: controller.signal });
     if (built.exitCode !== 0) throw Object.assign(new Error(built.stderr.slice(-8192)), { code: "graph_build_failed" });
   }
-  const result = await service[request.method === "build" ? "refresh" : request.method]({
-    ...request.input, generation: request.generation, timeoutMs: request.deadlineMs,
+  if (request.method === "findings.get") {
+    await service.refresh({ ...request.input, generation: request.generation }, { signal: controller.signal });
+  }
+  const owner = request.method === "findings.get" ? createFindingsService() : service;
+  const result = await owner[request.method === "build" ? "refresh" : request.method]({
+    ...request.input, repoRoot, generation: request.generation, timeoutMs: request.deadlineMs,
   }, { signal: controller.signal });
   process.stdout.write(encodeResponse({ requestId: request.requestId, ok: true,
     generation: result?.generationId ?? null, result, error: null }));

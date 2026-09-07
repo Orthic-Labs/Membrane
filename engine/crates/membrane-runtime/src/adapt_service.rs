@@ -262,8 +262,8 @@ pub fn operator_response(store: &MemoryStore, body: &str) -> (u16, String) {
         }
         let command: crate::cli::AdaptCmd =
             serde_json::from_str(body).map_err(|e| format!("invalid Adapt command: {e}"))?;
-        if !command.requires_resident() {
-            return Err("offline operation is not a daemon command".into());
+        if !command.requires_canonical_store() {
+            return Err("offline operation does not require canonical storage".into());
         }
         let deployed = crate::cli::current_deployed_runtime();
         crate::cli::execute_adapt_command(command, Some(store), deployed.as_ref())

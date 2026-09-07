@@ -25,24 +25,14 @@ The main decisions are:
 
 ## Runtime lifecycle binding (normative)
 
-**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. Every explicit subsystem operation remains available with Hub off; only automatic background execution & resident processes require Hub.
+[Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) governs every subsystem & client:
 
-These decisions are canonical and take precedence over any wording later in this
-document that implies a different runtime topology:
-
-- Membrane runtime exists only inside the headless child daemon of the visible
-  native tray, with OS-enforced lifetime coupling. There is no standalone or
-  orphanable Membrane runtime.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds through
-  the active tray-owned daemon, or it has no binding.
-- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
-  launch, auto-start, or register a Membrane process.
-- **Tray off → no Membrane context.** Requests return typed
-  `membrane_unavailable { reason: hub_inactive, retryable: true }`.
-- **Ledger** is the canonical subsystem name; it replaces Guide.
-- Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
-  access is an explicit bounded one-shot operation that never daemonizes.
+- Explicit agent operations remain available with Hub on or off through installed product services.
+- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
+- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- A failed response after dispatch must not silently replay a possibly completed write.
+- CodeRight consumes installed Membrane operations; it does not implement another backend.
 
 ---
 
@@ -673,12 +663,12 @@ installed-artifact test, not a unit test.
 
 | Scenario | Required result |
 |---|---|
-| Tray off, agent invokes Membrane | typed `membrane_unavailable { hub_inactive }`; zero Membrane processes spawned |
+| Tray off, agent invokes Membrane | explicit operation executes through installed service owners & bounded work; no automatic resident process starts |
 | Tray on | visible tray plus one headless child daemon; Hub dashboard optional and on demand |
 | Tray quits | daemon disappears with tray; no orphan, no restart |
-| Agent launches stdio MCP | only a stateless adapter process exists; it launches nothing |
+| Agent launches stdio MCP | adapter accepts explicit work; request-scoped execution may run, but never starts watchers or a replacement daemon |
 | Tray off, explicit Blueprint query | bounded one-shot operation runs, reports generation + freshness, exits |
-| Tray off, normal Membrane context request | typed unavailable; **no** Blueprint one-shot fallback is invoked |
+| Tray off, normal Membrane context request | planner returns authorized context using canonical storage & bounded Blueprint evidence retrieval |
 | Tray on, one-shot Blueprint writer attempted | routes through the owner or fails `resident_owner_active`; never a second writer |
 | Crashed tray or daemon | stale lease metadata cannot permanently lock the Blueprint store; OS lock semantics release it |
 | Blueprint graph queried after source changed | freshness reports `changed_since_generation`, not silent success |

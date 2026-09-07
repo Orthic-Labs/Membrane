@@ -2,7 +2,7 @@
 
 **Status:** Current security architecture
 **Surface:** Native stdio MCP & authenticated Streamable-HTTP MCP
-**Runtime:** Stateless clients connect to active tray-owned daemon; closing Hub dashboard has no effect. `hub_inactive` remains V1 compatibility token for daemon inactivity.
+**Runtime:** Explicit operations use active services or bounded installed execution with Hub off. Hub owns automatic work & resident lifetime. `hub_inactive` describes automatic-service inactivity, not permission for explicit operations.
 
 ## Boundary
 
@@ -33,7 +33,7 @@ No caller level grants semantic authority. Repository/model text remains data. P
 | Threat | Control | Required evidence |
 |---|---|---|
 | Cross-root request | Canonical root registry resolves exact installation, repository, scope, grant, caller, & target; unknown/ambiguous/cross-root denies | Binding identity + typed denial |
-| Client starts hidden runtime | MCP/CLI are stateless clients; inactive tray-owned daemon returns `membrane_unavailable { hub_inactive }` & spawns nothing | Process/lifecycle test |
+| Client starts hidden residency | Explicit MCP/CLI work terminates without starting Hub, watchers, schedulers or a replacement daemon; automatic work remains tray-owned | Hub-off explicit execution, cancellation & process/lifecycle tests |
 | Origin/host/token abuse over HTTP | Loopback bind, authenticated Streamable HTTP, strict origin/host/token checks, rotation, no credential reflection | Negative transport tests |
 | Raw durable write | No raw write tool; `KnowledgeEmission` enters Cortex pending/quarantine/admission path | Emission ID + disposition |
 | Unauthorized diagnostic mutation/restart | Exact scope grant, caller class, target, workspace epoch, provider identity, & mutation lifecycle checks | Mutation/provider receipt |
@@ -58,6 +58,6 @@ Before external-client qualification:
 2. raw database/filesystem/token/enrollment/daemon-start surfaces remain absent;
 3. cross-root, expired/revoked grant, unsafe origin/host/token, corrupt registry, stale generation, & stale diagnostic epoch deny with typed errors;
 4. proposal writes retain provenance & admission/quarantine semantics;
-5. inactive tray-owned daemon spawns nothing & returns `hub_inactive` compatibility reason;
+5. every explicit operation remains available with tray-owned daemon inactive, while no watcher or automatic resident process starts;
 6. tokens & sensitive payloads remain absent from logs, webview data, errors, receipts, & support bundles;
 7. stdio & HTTP projections preserve same application behavior, authorization, typed errors, & receipts.

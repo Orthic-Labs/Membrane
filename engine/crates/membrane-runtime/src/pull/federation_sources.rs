@@ -4,7 +4,7 @@
 //! storage, or Blueprint transport themselves.
 
 use membrane_federation::blueprint_client::{
-    BlueprintClient, ContextualBlueprintSource, UnixBlueprintTransport,
+    BlueprintClient, ContextualBlueprintSource,
 };
 use membrane_federation::providers::rules::{
     DeliveryKey, DeliveryLedger, DeliveryMode, DeliveryReceipt, LedgerError, RuleDocument,
@@ -69,11 +69,7 @@ impl NativeSourceBindings {
         repository_root: &Path,
         scope_grant_id: Option<&str>,
     ) -> Result<Self, String> {
-        let db_path = crate::pull::federation::db_path_for(repository_root);
-        let db = crate::MemDb::open(&db_path)
-            .map_err(|error| format!("open Cortex database: {error}"))?;
-        let store = crate::MemoryStore::try_open(db)
-            .map_err(|error| format!("open Cortex store: {error}"))?;
+        let store = crate::service::open_installed_store()?;
         Self::with_store(repository_root, scope_grant_id, store)
     }
 
@@ -86,15 +82,14 @@ impl NativeSourceBindings {
             .map_err(|error| format!("resolve context catalog: {error}"))?;
         let catalog = crate::catalog::ContextCatalog::open(catalog_path)
             .map_err(|error| format!("open context catalog: {error}"))?;
-        let endpoint = hub_blueprint_endpoint()?;
-        let blueprint = Arc::new(BlueprintClient::new(Arc::new(UnixBlueprintTransport::new(
-            endpoint,
-        ))));
+        let blueprint = Arc::new(BlueprintClient::new(Arc::new(crate::blueprint_one_shot::ExplicitBlueprintTransport {
+            endpoint: hub_blueprint_endpoint().ok(),
+        })));
         let cancellations = Arc::new(Mutex::new(HashMap::new()));
         let temporal_queries = Arc::new(Mutex::new(HashMap::new()));
 
         Ok(Self {
-            ledger: crate::ledger::service::active_owner().ok(),
+            ledger: crate::ledger::service::active_owner().or_else(|_| crate::ledger::service::open_explicit_owner()).ok(),
             audit: None,
             decisions: None,
             skills: Some(Arc::new(RuntimeSkillsSource {

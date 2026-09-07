@@ -8,6 +8,28 @@ use tokio_util::sync::CancellationToken;
 
 pub(crate) struct OneShotTransport;
 
+pub(crate) struct ExplicitBlueprintTransport {
+    pub endpoint: Option<PathBuf>,
+}
+
+impl BlueprintTransport for ExplicitBlueprintTransport {
+    fn exchange(&self, request: &BlueprintWireRequest, bounds: BlueprintBounds,
+        deadline: Duration, cancellation: CancellationToken) -> Result<BlueprintWireResponse, BlueprintClientError> {
+        let started = Instant::now();
+        if let Some(endpoint) = &self.endpoint {
+            use membrane_federation::blueprint_client::UnixBlueprintTransport;
+            let response = UnixBlueprintTransport::new(endpoint.clone()).exchange(request, bounds,
+                deadline.min(Duration::from_secs(2)), cancellation.clone());
+            match response {
+                Err(BlueprintClientError::Unavailable(_)) => {},
+                Ok(response) if !response.ok && response.error.as_ref().is_some_and(|error| matches!(error.code.as_deref(), Some("root_not_enrolled" | "graph_missing" | "not_configured"))) => {},
+                other => return other,
+            }
+        }
+        OneShotTransport.exchange(request, bounds, deadline.saturating_sub(started.elapsed()), cancellation)
+    }
+}
+
 /// Explicit CLI work has finite lifetime & never grants resident authority.
 pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|error| error.to_string())?;

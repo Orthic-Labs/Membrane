@@ -35,24 +35,14 @@ The final improvement plan is the execution companion. It records source finding
 
 ## Runtime lifecycle binding (normative)
 
-**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. Explicit Adapt inspection, feedback & authorized proposal operations remain available with Hub off. Only automatic background execution requires Hub.
+[Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
-These decisions are canonical and take precedence over any wording later in this
-document that implies a different runtime topology:
-
-- Membrane runtime exists only inside the headless child daemon of the visible
-  native tray, with OS-enforced lifetime coupling. There is no standalone or
-  orphanable Membrane runtime.
-- There is **no embedded CodeRight Membrane backend**. CodeRight binds to
-  the active tray-owned daemon, or it has no binding.
-- MCP and CLI surfaces are **stateless daemon clients/transports**. They never
-  launch, auto-start, or register a Membrane process.
-- **Tray off → no Membrane context.** Requests return typed
-  `membrane_unavailable { reason: hub_inactive, retryable: true }`.
-- **Ledger** is the canonical subsystem name; it replaces Guide.
-- Blueprint is **independently usable but not independently resident**.
-  Continuous watcher/freshness runs only inside the tray-owned daemon; with tray off, Blueprint
-  access is an explicit bounded one-shot operation that never daemonizes.
+- Explicit agent operations remain available with Hub on or off through installed product services.
+- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
+- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- A failed response after dispatch must not silently replay a possibly completed write.
+- CodeRight consumes installed Membrane operations; it does not implement another backend.
 
 ---
 
@@ -1106,7 +1096,7 @@ All durable Adapt outputs must cross one typed Cortex admission contract.
 
 Taste and Insights may have different authority/influence classes, but neither may create a parallel durable truth store.
 
-Historical `insight_persistence.py` material is differential/reference evidence only, not proof of native runtime admission. Native Taste and Insight records use the existing verified Cortex interfaces; all production adapters must preserve that single typed boundary and daemon ownership.
+Historical `insight_persistence.py` material is differential/reference evidence only, not proof of native runtime admission. Native Taste and Insight records use the existing verified Cortex interfaces; all production adapters must preserve that single typed storage boundary across resident & explicit execution.
 
 ## 7.2 Influence classes
 
@@ -1524,7 +1514,7 @@ Receipts must not imply certainty that the evidence does not support.
 
 ## 12.5 Optional agent-facing inspection (ADP-074)
 
-Provide a small negotiated read-only Adapt surface for applicable preferences, selection explanations, Insight and proposal inspection, and links to bounded evidence. Do not load a large tool catalogue into every prompt. Keep the default context entrypoint small; optional capabilities or resources reveal only the read operations supported by the active daemon and caller scope.
+Provide a small negotiated read-only Adapt surface for applicable preferences, selection explanations, Insight and proposal inspection, and links to bounded evidence. Do not load a large tool catalogue into every prompt. Keep the default context entrypoint small; optional capabilities or resources reveal only the read operations supported by installed runtime & caller scope, with Hub on or off.
 
 The inspector explains selected, nonmatching, conflicting, inactive, budget-omitted and unavailable outcomes using current record/version and receipt links. It does not treat inspection as exposure, return full transcript archives by default, approve a proposal, activate a guard, or mutate lifecycle. Ordinary agent proposal/feedback operations remain bounded and distinct from independent user control.
 

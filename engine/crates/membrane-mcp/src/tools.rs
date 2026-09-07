@@ -247,9 +247,9 @@ pub(crate) fn definitions() -> Value {
                 }
                 let mut tool = json!({
                   "name":name,"description":match *name {
-                    "membrane_context" => "Federate bounded, grant-aware context through resident Membrane planner.",
+                    "membrane_context" => "Federate bounded, grant-aware context through Membrane planner, with Hub on or off.",
                     "membrane_source_read" => "Resolve hash/revision/span-bound source reference.",
-                    "membrane_ledger" => "Navigate resident Ledger document index. Final prompt admission remains Pull-owned.",
+                    "membrane_ledger" => "Navigate Ledger document index with Hub on or off. Final prompt admission remains Pull-owned.",
                     "membrane_adapt_inspect" => "Read scoped Taste decisions, Insights & live Adapt progress.",
                     "membrane_knowledge_propose" => "Submit untrusted knowledge proposal. No caller can self-review or admit truth.",
                     "membrane_knowledge_review" => "Apply installation-trusted signed Cortex review or reversible recall suppression.",

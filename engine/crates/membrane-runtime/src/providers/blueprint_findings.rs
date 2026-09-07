@@ -340,6 +340,35 @@ pub struct DaemonFindingsClient {
     endpoint: PathBuf,
 }
 
+/// Explicit diagnostic evidence uses installed bounded Blueprint execution.
+pub struct ExplicitFindingsClient;
+
+impl BlueprintFindingsClient for ExplicitFindingsClient {
+    fn fetch(&mut self, repo_root: &Path, timeout_ms: u64, paths: &[String])
+        -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
+        use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintTransport, BlueprintWireRequest, BlueprintClientError};
+        let request = BlueprintWireRequest {
+            protocol_version: 1,
+            request_id: format!("explicit-findings-{}-{}", std::process::id(), crate::time::now_millis()),
+            repo_id: None, generation: None, method: "findings.get".into(),
+            deadline_ms: timeout_ms.max(1),
+            input: serde_json::json!({"repoRoot":repo_root.to_string_lossy(),"paths":paths}),
+        };
+        let response = crate::blueprint_one_shot::OneShotTransport.exchange(
+            &request, BlueprintBounds { max_response_bytes: 64 * 1024, ..BlueprintBounds::default() },
+            std::time::Duration::from_millis(timeout_ms.max(1)), tokio_util::sync::CancellationToken::new())
+            .map_err(|error| match error {
+                BlueprintClientError::Timeout | BlueprintClientError::Cancelled => BlueprintFindingsError::DeadlineExceeded,
+                BlueprintClientError::Unavailable(detail) => BlueprintFindingsError::Unavailable(detail),
+                other => BlueprintFindingsError::Protocol(other.to_string()),
+            })?;
+        if response.request_id.as_deref() != Some(request.request_id.as_str()) || response.protocol_version != Some(1) {
+            return Err(BlueprintFindingsError::Protocol("response identity mismatch".into()));
+        }
+        parse_envelope(&serde_json::to_string(&response).map_err(|error| BlueprintFindingsError::Protocol(error.to_string()))?)
+    }
+}
+
 impl DaemonFindingsClient {
     pub fn new(endpoint: PathBuf) -> Self {
         Self { endpoint }

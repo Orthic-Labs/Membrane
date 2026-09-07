@@ -1042,14 +1042,7 @@ pub fn run_memory_candidates(
     let canonical_repo = repo
         .canonicalize()
         .map_err(|e| format!("resolve repo: {e}"))?;
-    let workspace = canonical_repo
-        .parent()
-        .ok_or_else(|| "repo has no parent".to_string())?
-        .to_path_buf();
-    let db_path = db_path_for(&workspace);
-    let db = crate::MemDb::open(&db_path)
-        .map_err(|e| format!("open cortex db at {}: {e}", db_path.display()))?;
-    let store = crate::MemoryStore::try_open(db).map_err(|e| format!("open MemoryStore: {e}"))?;
+    let store = crate::service::open_installed_store()?;
 
     let scope_id = scope.clone().unwrap_or_else(|| "D--Claude".to_string());
     // The CLI always has a real, already-canonicalized repo root in hand (canonicalize()

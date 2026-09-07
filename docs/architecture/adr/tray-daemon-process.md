@@ -101,13 +101,12 @@ alive with no icon.
 
 ## 7. Current doctrine wording
 
-Current architecture preserves the original invariant — no runtime without a visible surface —
-while binding execution to the tray's OS-coupled child daemon:
+The 2026-09-07 [execution lifecycle decision](../execution-lifecycle-boundary.md) narrows tray ownership to automatic resident work:
 
-> Membrane runtime never runs without a visible tray surface. The runtime executes as a child
-> process of the resident tray app, with OS-enforced lifetime coupling; no tray means no runtime
-> (typed `membrane_unavailable { hub_inactive }`). `hub_inactive` remains the V1 compatibility
-> token for tray-owned daemon inactivity; closing the on-demand Hub dashboard does not stop runtime.
+> Automatic Membrane processes run inside tray-owned daemon with OS-enforced lifetime coupling.
+> Explicit operations across all six subsystems execute through installed owners with Hub on or off.
+> `hub_inactive` describes automatic resident service inactivity, never blanket capability refusal.
+> Closing dashboard does not stop tray-owned processes.
 
 ## 8. Bound contracts
 

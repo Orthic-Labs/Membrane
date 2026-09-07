@@ -320,16 +320,30 @@ fn runtime_from_exe_at_workspace(
     })
 }
 
+pub(crate) fn open_installed_store() -> Result<crate::MemoryStore, String> {
+    let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let runtime = runtime_from_installed_exe(&exe)?;
+    if let Some(parent) = runtime.db.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    crate::MemoryStore::try_open(crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)
+}
+
 fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
-    let current = exe
-        .parent()
-        .filter(|path| path.file_name().is_some_and(|name| name == "current"))
-        .ok_or_else(|| "executable is not under installed current".to_string())?;
+    let executable_root = exe.parent().ok_or_else(|| "executable has no parent".to_string())?;
+    let current = if executable_root.file_name().is_some_and(|name| name == "current") {
+        executable_root.to_path_buf()
+    } else if executable_root.parent().and_then(Path::file_name).is_some_and(|name| name == "versions") {
+        executable_root.parent().and_then(Path::parent)
+            .ok_or_else(|| "installed version has no product root".to_string())?.join("current")
+    } else {
+        return Err("executable is not under installed current".into());
+    };
     let product_root = current
         .parent()
         .ok_or_else(|| "installed current has no product root".to_string())?;
     let versions = product_root.join("versions");
-    let pointer = std::fs::read_link(current)
+    let pointer = std::fs::read_link(&current)
         .map_err(|error| format!("read installed current pointer: {error}"))?;
     let pointer = if pointer.is_absolute() {
         pointer
@@ -342,6 +356,9 @@ fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
         .map_err(|error| format!("resolve installed versions: {error}"))?;
     if version_root.parent() != Some(versions.as_path()) || !version_root.is_dir() {
         return Err("installed current does not target one direct version".into());
+    }
+    if std::fs::canonicalize(executable_root).map_err(|error| error.to_string())? != version_root {
+        return Err("executable is not active installed version".into());
     }
     let state = product_root.join("state");
     runtime_from_installed_state(&state, current.to_path_buf(), version_root)

@@ -38,7 +38,7 @@ test("unregistered one-shot graph queries initialize, resolve & refresh without 
       const response = request(method, { anchor: node.id, depth: 1, budget: 1000 }, found.generation);
       assert.equal(response.ok, true, JSON.stringify(response));
     }
-    for (const method of ["architecture", "documentTruth", "snapshot_list"]) {
+    for (const method of ["architecture", "documentTruth", "snapshot_list", "findings.get"]) {
       const response = request(method, {}, found.generation);
       assert.equal(response.ok, true, JSON.stringify(response));
     }
