@@ -6,10 +6,9 @@
 ;   2. point the stable junction      $INSTDIR\current  ->  versions\<version>
 ;   3. register uninstall, Start Menu shortcut and the login-launch Run value
 ;   4. write  $INSTDIR\logs\install-<version>.log  with one line per step
-; It never activates the product. Activation (client hooks, PATH, resident
-; tray) is the product's own command, `membrane activate`, which the
-; qualification script and the first interactive launch run where its output
-; is visible. Silent installs (/S) do nothing beyond the four steps above.
+; Every installation reconciles explicit client hooks & PATH through installed
+; `membrane activate --bindings-only`. Silent installs leave resident services
+; stopped; interactive installs additionally request resident activation.
 ;
 ; NSIS quoting rule used throughout: strings are single-quoted when they
 ; contain double quotes. A dollar sign directly before a double quote is NOT
@@ -428,11 +427,26 @@ Section Install
   ${EndIf}
   ${Log} "register ok"
 
-  ; 4. Activation is the product's job. Interactive installs run it here with
+  ; Explicit access is required even when silent setup never launches Hub.
+  StrCpy $InstallStep "bind-installed-clients"
+  nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --bindings-only --install-root "$INSTDIR\current"'
+  Pop $R0
+  Pop $R2
+  ClearErrors
+  FileOpen $9 "$INSTDIR\logs\bindings.log" w
+  ${IfNot} ${Errors}
+    FileWrite $9 "$R2"
+    FileClose $9
+  ${EndIf}
+  ${If} $R0 != 0
+    Goto install_failed
+  ${EndIf}
+  ${Log} "bind-installed-clients ok"
+
+  ; 4. Resident activation is the product's job. Interactive installs run it here with
   ;    the console hidden and its output captured to logs\activate.log; its
   ;    result is recorded, never fatal, and the finish page's tray launch only
-  ;    happens after it returns. Silent installs leave activation to the caller
-  ;    (qualification runs `membrane activate` itself).
+  ;    happens after it returns. Silent installs retain explicit bindings only.
   ${IfNot} ${Silent}
     DetailPrint "Activating Membrane"
     nsExec::ExecToStack /TIMEOUT=90000 '"$INSTDIR\current\membrane.exe" activate --install-root "$INSTDIR\current"'

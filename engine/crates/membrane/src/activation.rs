@@ -227,6 +227,15 @@ pub fn default_install_root() -> Result<PathBuf, String> {
 }
 
 pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
+    activate_with_residency(options, true)
+}
+
+/// Reconcile installed explicit entry points without starting resident services.
+pub fn activate_bindings(options: ActivationOptions) -> Result<ActivationReceiptV1, String> {
+    activate_with_residency(options, false)
+}
+
+fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> Result<ActivationReceiptV1, String> {
     let (install_root, version_root) = validate_installed_root(&options.install_root)?;
     let product_root = install_root
         .parent()
@@ -268,7 +277,7 @@ pub fn activate(options: ActivationOptions) -> Result<ActivationReceiptV1, Strin
     if !options.dry_run {
         ensure_user_path(&install_root)?;
     }
-    let (release_generation, service_state, service_reason) = if options.dry_run {
+    let (release_generation, service_state, service_reason) = if options.dry_run || !start_resident {
         match initial {
             HealthObservation::Ready { release_generation } => {
                 (release_generation, "ready".to_string(), None)

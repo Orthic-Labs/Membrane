@@ -180,6 +180,9 @@ struct UninstallArgs {
 
 #[derive(Debug, clap::Args)]
 struct ActivateArgs {
+    /// Reconcile explicit client bindings without starting Hub or background services.
+    #[arg(long, default_value_t = false)]
+    bindings_only: bool,
     /// Installed stable `current` directory. Defaults to the user-local
     /// product root's stable current path.
     #[arg(long)]
@@ -247,6 +250,7 @@ pub struct UninstallInvocation {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivationInvocation {
+    pub bindings_only: bool,
     pub install_root: Option<std::path::PathBuf>,
     pub clients: Vec<String>,
     pub timeout_ms: u64,
@@ -406,6 +410,7 @@ where
             install: None,
             uninstall: None,
             activation: Some(ActivationInvocation {
+                bindings_only: args.bindings_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -421,6 +426,7 @@ where
             install: None,
             uninstall: None,
             activation: Some(ActivationInvocation {
+                bindings_only: args.bindings_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -436,6 +442,7 @@ where
             install: None,
             uninstall: None,
             activation: Some(ActivationInvocation {
+                bindings_only: args.bindings_only,
                 install_root: args.install_root,
                 clients: args.client,
                 timeout_ms: args.timeout_ms,
@@ -770,6 +777,7 @@ mod tests {
         assert_eq!(
             inv.activation,
             Some(ActivationInvocation {
+                bindings_only: false,
                 install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
                 clients: vec!["codex".to_string()],
                 timeout_ms: 45_000,
@@ -800,6 +808,7 @@ mod tests {
         assert_eq!(
             inv.activation,
             Some(ActivationInvocation {
+                bindings_only: false,
                 install_root: Some(std::path::PathBuf::from(r"C:\Membrane")),
                 clients: vec!["claude".to_string()],
                 timeout_ms: 4_000,

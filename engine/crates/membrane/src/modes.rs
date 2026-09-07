@@ -136,7 +136,12 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
         timeout: std::time::Duration::from_millis(invocation.timeout_ms.clamp(1_000, 120_000)),
         dry_run: invocation.dry_run,
     };
-    match crate::activation::activate(options) {
+    let result = if invocation.bindings_only {
+        crate::activation::activate_bindings(options)
+    } else {
+        crate::activation::activate(options)
+    };
+    match result {
         Ok(receipt) => match serde_json::to_string_pretty(&receipt) {
             Ok(json) => {
                 println!("{json}");
@@ -151,6 +156,9 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
 }
 
 fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
+    if invocation.bindings_only {
+        return DispatchOutcome::UserError("--bindings-only applies to activate only".into());
+    }
     let install_root = match invocation
         .install_root
         .clone()

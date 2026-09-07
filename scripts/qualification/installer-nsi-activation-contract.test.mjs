@@ -5,7 +5,7 @@ import test from "node:test";
 // The Windows installer does four things and records each: extract the
 // version tree into place and verify it, point the stable junction, register
 // uninstall and shortcuts, and write one log line per step. Silent installs
-// never activate; interactive installs run `membrane activate` hidden,
+// reconcile bindings without residency; interactive installs run `membrane activate` hidden,
 // synchronously and non-fatally with its output captured. The template cannot
 // be compiled locally, so these tests pin the structural contract.
 const nsi = readFileSync(
@@ -25,6 +25,16 @@ const code = (body) => body.split(/\r?\n/).filter((line) => !line.trim().startsW
 const install = section(nsi, "Install");
 const installLines = code(install);
 const uninstall = section(nsi, "Uninstall");
+
+test("silent installs reconcile installed bindings before optional resident activation", () => {
+  const bind = install.indexOf('activate --bindings-only --install-root "$INSTDIR\\current"');
+  const resident = install.indexOf('${IfNot} ${Silent}');
+  assert.ok(bind >= 0 && resident > bind);
+  const step = install.slice(install.indexOf('StrCpy $InstallStep "bind-installed-clients"'), resident);
+  assert.match(step, /nsExec::ExecToStack \/TIMEOUT=90000/);
+  assert.match(step, /bindings\.log/);
+  assert.match(step, /\$\{If\} \$R0 != 0\s+Goto install_failed/);
+});
 
 test("the template never uses the invalid $\" quote form", () => {
   assert.doesNotMatch(nsi, /\$"/);
