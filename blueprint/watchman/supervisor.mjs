@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { closeStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { closeStore, getGenerationEnvelope, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { RepositoryActor } from "./repo-actor.mjs";
 import { reconcile as defaultReconcile } from "./reconcile.mjs";
 
@@ -70,6 +70,11 @@ function repoStatus(root, outDir = ".agent", live = {}) {
   let db;
   try {
     db = openStoreReadOnly(dbPath);
+    const manifest = getGenerationEnvelope(db).manifest;
+    if (!manifest?.complete || !manifest.generationId) {
+      return { root, pid: null, alive: false, sourceClock: 0, appliedClock: 0, eventGap: 1, pendingEvents: 0,
+        freshness: FRESHNESS.UNWATCHED, reason: "no_graph_built" };
+    }
     const state = Object.fromEntries(db.prepare("SELECT key,value FROM watch_state").all().map((row) => [row.key, row.value]));
     const pid = Number(state.watcher_pid ?? 0) || null;
     const persistedOwner = state.watcher_owner ?? null;
@@ -153,6 +158,8 @@ export class WatchSupervisor {
     this.poller = null;
     this.signalHandler = null;
     this.configMtime = 0;
+    this.deferReconcile = false;
+    this.startupTail = Promise.resolve();
     // Minted once per supervisor OBJECT, not per OS process: this is what
     // lets status() tell "the supervisor that started this actor" apart from
     // "some supervisor incarnation that once did and may since be gone" even
@@ -167,7 +174,7 @@ export class WatchSupervisor {
     this.hasActed = false;
   }
 
-  async reload({ failOnStart = false } = {}) {
+  async reload({ failOnStart = false, deferReconcile = this.deferReconcile } = {}) {
     this.hasActed = true;
     const configMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
     const config = readWatchConfig(this.configPath);
@@ -185,8 +192,18 @@ export class WatchSupervisor {
     // big repo peaks a few hundred MB, and 19 at once is what melts the host.
     const pendingStarts = [];
     for (const repo of config.repos) {
-      if (this.actors.has(repo.root)) continue;
-      const actor = this.actorFactory({ root: repo.root, reconcile: this.reconcile, ignore: siblingIgnoreList(repo.root, config.repos), ownerId: this.instanceId });
+      if (this.actors.has(repo.root)) {
+        const existing = this.actors.get(repo.root);
+        if (!existing.running && !existing.retryTimer) pendingStarts.push(existing);
+        continue;
+      }
+      let actor;
+      actor = this.actorFactory({ root: repo.root, reconcile: this.reconcile, ignore: siblingIgnoreList(repo.root, config.repos), ownerId: this.instanceId,
+        restart: async () => {
+          await actor.start({ deferReconcile });
+          if (deferReconcile) this.queueStartup(actor);
+        },
+      });
       this.actors.set(repo.root, actor);
       pendingStarts.push(actor);
     }
@@ -196,7 +213,7 @@ export class WatchSupervisor {
       Array.from({ length: Math.min(CONCURRENT_ACTOR_STARTS, pendingStarts.length) }, async () => {
         while (next < pendingStarts.length) {
           const actor = pendingStarts[next++];
-          try { await actor.start(); }
+          try { await actor.start({ deferReconcile }); }
           catch (error) {
             actor.log(error);
             failures.push(error);
@@ -204,6 +221,14 @@ export class WatchSupervisor {
         }
       }),
     );
+    // Admit every native subscription before any cold scan. Heavy startup
+    // reconciliation is FIFO, one at a time, & yields to native callbacks.
+    if (deferReconcile) {
+      for (const actor of pendingStarts) {
+        if (!actor.running || typeof actor.resumeStartup !== "function") continue;
+        this.queueStartup(actor);
+      }
+    }
     // Resident Hub startup must remain available when registry contains an
     // old/missing root: healthy enrolled actors still form one watcher, while
     // each failed root stays visible as an honestly unwatched row. Fail only
@@ -218,7 +243,17 @@ export class WatchSupervisor {
     return this.status();
   }
 
+  queueStartup(actor) {
+    const epoch = actor.epoch;
+    const work = this.startupTail.then(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      await actor.resumeStartup(epoch);
+    });
+    this.startupTail = work.catch((error) => actor.log(error));
+  }
+
   async start(options = {}) {
+    this.deferReconcile = options.deferReconcile === true;
     // Existing in-process supervisors may tolerate one repo failure and keep
     // serving healthy peers; resident blueprint-watch opts into strict
     // readiness explicitly with { failOnStart: true }.
@@ -247,6 +282,7 @@ export class WatchSupervisor {
     clearInterval(this.poller);
     if (this.signalHandler) process.off("SIGHUP", this.signalHandler);
     for (const actor of this.actors.values()) await actor.stop();
+    await this.startupTail;
     this.actors.clear();
   }
 }

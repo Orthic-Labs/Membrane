@@ -7,6 +7,8 @@ import { spawn } from "node:child_process";
 import { WatchSupervisor, defaultConfigPath, readWatchConfig, writeWatchConfig } from "../watchman/supervisor.mjs";
 import { reconcile } from "../watchman/reconcile.mjs";
 import { syncToCurrentSourceAtPath } from "../src/graph/barrier.mjs";
+import { closeStore, getGenerationEnvelope, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { runLocalBuild } from "../src/service/build-singleflight.mjs";
 
 const configPath = defaultConfigPath();
 const pidPath = join(dirname(configPath), "watchman.pid");
@@ -96,8 +98,23 @@ function claimPidfile() {
   }
 }
 
-function enroll(root) {
+async function enroll(root) {
   const absolute = resolve(root ?? process.cwd());
+  const dbPath = join(absolute, ".agent", "graph", "graph.db");
+  const initialized = () => {
+    if (!existsSync(dbPath)) return false;
+    const db = openStoreReadOnly(dbPath);
+    try {
+      const manifest = getGenerationEnvelope(db).manifest;
+      return Boolean(manifest?.complete && manifest.generationId);
+    } finally { closeStore(db); }
+  };
+  if (!initialized()) {
+    const result = await runLocalBuild({ root: absolute, outDir: ".agent", options: { noReadmeLink: true } });
+    if (result.exitCode !== 0 || !initialized()) {
+      throw Object.assign(new Error(`watch enrollment initialization failed: ${result.stderr}`), { code: "graph_initialization_failed" });
+    }
+  }
   const config = readWatchConfig(configPath);
   if (!config.repos.some((repo) => repo.root === absolute)) config.repos.push({ root: absolute, enabled: true });
   writeWatchConfig(config, configPath);
@@ -157,7 +174,7 @@ async function start() {
     // Initial actor startup is strict: a resident service is not ready when
     // any enrolled actor failed. Cold reconcile may take minutes, while the
     // Hub-owned parent publishes its own bounded running envelope promptly.
-    await supervisor.start({ failOnStart: true });
+    await supervisor.start({ failOnStart: true, deferReconcile: true });
     if (!stopping) json(supervisor.status());
   } catch (error) {
     console.error(error.stack ?? error);

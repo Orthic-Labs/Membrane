@@ -28,6 +28,90 @@ function tempConfigPath() {
   return join(mkdtempSync(join(tmpdir(), "blueprint-watch-config-")), "watch.json");
 }
 
+test("resident startup admits the whole fleet before one-at-a-time cold work", async () => {
+  const configPath = tempConfigPath();
+  const roots = Array.from({ length: 7 }, (_, index) => join(dirname(configPath), String(index)));
+  const admitted = [], completed = [];
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let active = 0, maximum = 0;
+  const supervisor = new WatchSupervisor({ configPath, actorFactory: ({ root }) => ({
+    running: false, epoch: 1, log(error) { throw error; },
+    async start({ deferReconcile }) { assert.equal(deferReconcile, true); this.running = true; admitted.push(root); },
+    async resumeStartup() {
+      assert.deepEqual(admitted, roots);
+      maximum = Math.max(maximum, ++active);
+      if (root === roots[0]) await gate;
+      completed.push(root); active--;
+    },
+    async stop() { this.running = false; },
+  }) });
+  try {
+    writeWatchConfig({ repos: roots.map(root => ({ root, enabled: true })) }, configPath);
+    await supervisor.start({ deferReconcile: true });
+    assert.deepEqual(admitted, roots);
+    assert.deepEqual(completed, []);
+    release(); await supervisor.startupTail;
+    assert.deepEqual(completed, roots);
+    assert.equal(maximum, 1);
+  } finally { release(); await supervisor.stop(); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
+
+test("admitted watcher stays degraded until cold reconciliation finishes", async () => {
+  const root = makeRepo("blueprint-admission-freshness-");
+  const configPath = tempConfigPath();
+  const supervisor = new WatchSupervisor({ configPath });
+  try {
+    writeWatchConfig({ repos: [{ root, enabled: true }] }, configPath);
+    await supervisor.start({ deferReconcile: true });
+    assert.equal(supervisor.status().repos[0].reason, "startup_reconcile_pending");
+    await supervisor.startupTail;
+    assert.equal(supervisor.status().repos[0].freshness, FRESHNESS.CURRENT);
+  } finally { await supervisor.stop(); rmSync(root, { recursive: true, force: true }); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
+
+test("re-enrollment starts a previously empty repository after explicit initialization", async () => {
+  const root = makeRepo("blueprint-enroll-recover-", { build: false });
+  const configPath = tempConfigPath();
+  const supervisor = new WatchSupervisor({ configPath });
+  try {
+    writeWatchConfig({ repos: [{ root, enabled: true }] }, configPath);
+    await supervisor.start({ deferReconcile: true });
+    assert.equal(supervisor.status().repos[0].reason, "no_graph_built");
+    buildGraphGeneration(root, { outDir: ".agent", persist: true });
+    await supervisor.reload();
+    await supervisor.startupTail;
+    assert.equal(supervisor.status().repos[0].freshness, FRESHNESS.CURRENT);
+  } finally { await supervisor.stop(); rmSync(root, { recursive: true, force: true }); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
+
+test("resident maintenance never scans an empty graph store", async () => {
+  const root = makeRepo("blueprint-empty-enrollment-", { build: false });
+  const configPath = tempConfigPath();
+  const dbPath = join(root, ".agent", "graph", "graph.db");
+  mkdirSync(dirname(dbPath), { recursive: true }); closeStore(openStore(dbPath));
+  let scans = 0;
+  const supervisor = new WatchSupervisor({ configPath, reconcile: async () => { scans++; } });
+  try {
+    writeWatchConfig({ repos: [{ root, enabled: true }] }, configPath);
+    await supervisor.start({ deferReconcile: true }); await supervisor.startupTail;
+    assert.equal(scans, 0);
+    assert.equal(supervisor.status().repos[0].reason, "no_graph_built");
+    assert.equal(supervisor.actors.get(root).db, null);
+  } finally { await supervisor.stop(); rmSync(root, { recursive: true, force: true }); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
+
+test("queued cold work cannot reopen a stopped actor", async () => {
+  const root = makeRepo("blueprint-stopped-cold-actor-");
+  let scans = 0;
+  const actor = new RepositoryActor({ root, reconcile: async () => { scans++; } });
+  try {
+    await actor.start({ deferReconcile: true }); const epoch = actor.epoch;
+    await actor.stop(); await actor.resumeStartup(epoch);
+    assert.equal(scans, 0); assert.equal(actor.db, null);
+  } finally { await actor.stop(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test("enrollment written during startup remains pending until admitted", async () => {
   const configPath = tempConfigPath();
   const first = join(dirname(configPath), "first");

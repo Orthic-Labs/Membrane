@@ -3,7 +3,7 @@
 // stable and schema-valid.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, cpSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, cpSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,7 @@ import { seedStore, readEnvelope, writeEnvelope, mutateManifest } from "./_store
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { BlueprintError } from "../src/lib/application/errors.mjs";
 import { syncToCurrentSource } from "../src/graph/barrier.mjs";
+import { openStore, closeStore } from "../src/graph/store-sqlite.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
@@ -84,6 +85,23 @@ test("missing graph initializes a sealed Phase 1 graph before search", async () 
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("explicit refresh initializes an existing empty graph store", async () => {
+  const repo = tempRepo();
+  try {
+    assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: repo }).status, 0);
+    assert.equal(spawnSync("git", ["add", "."], { cwd: repo }).status, 0);
+    assert.equal(spawnSync("git", ["-c", "user.name=Blueprint Test", "-c", "user.email=blueprint@example.invalid", "commit", "-qm", "fixture"], { cwd: repo }).status, 0);
+    mkdirSync(join(repo, ".agent", "graph"), { recursive: true });
+    closeStore(openStore(join(repo, ".agent", "graph", "graph.db")));
+    const service = createBlueprintApplicationService({ rootRegistry: new RootRegistry([{ root: repo }]) });
+    const refreshed = await service.refresh({ repoRoot: repo });
+    assert.equal(refreshed.freshnessReceipt.barrierResult, "caught_up");
+    const found = await service.search({ repoRoot: repo, query: "placeOrder" });
+    assert.ok(found.results.some(row => row.name === "OrderService.placeOrder"), JSON.stringify(found));
+    assert.equal(found.freshnessReceipt.freshness, "fresh");
+  } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("direct application service rejects an unenrolled explicit root with remediation", async () => {
@@ -263,7 +281,7 @@ test("search on a seeded generation without building works read-only", async () 
   const repo = tempRepo();
   try {
     seedStore(repo, {
-      manifest: { generationId: "xxh128:seed-1", manifestDigest: "sha256:seed-1", provider: "blueprint-static" },
+      manifest: { complete: true, generationId: "xxh128:seed-1", manifestDigest: "sha256:seed-1", provider: "blueprint-static" },
       provider: { id: "blueprint-static", version: "0.2.0", precisionTier: "LEXICAL" },
       nodes: [
         {

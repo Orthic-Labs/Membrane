@@ -60,6 +60,26 @@ test("help prints branded Blueprint usage and exits 0", () => {
   assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
 });
 
+test("watch enrollment initializes source before publishing enabled configuration", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-enroll-cold-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  try {
+    enroll(repo);
+    assert.ok(existsSync(join(repo, ".agent", "graph", "graph.db")));
+    const result = run(repo, ["graph", "search", "--root", repo, "--query", "placeOrder", "--json"]);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /OrderService.placeOrder/);
+  } finally { unenroll(repo); rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("failed watcher initialization does not publish enabled enrollment", () => {
+  const missing = join(TEST_HOME, "missing-repository");
+  const result = spawnSync(process.execPath, [WATCH, "enroll", missing], { encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  const config = join(TEST_HOME, ".blueprint", "watch.json");
+  assert.ok(!existsSync(config) || !readFileSync(config, "utf8").includes("missing-repository"));
+});
+
 test("denied rebuild leaves side artifacts untouched", () => {
   const repo = mkdtempSync(join(tmpdir(), "blueprint-build-lease-"));
   cpSync(FIXTURE, repo, { recursive: true });

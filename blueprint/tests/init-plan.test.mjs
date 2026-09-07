@@ -22,6 +22,8 @@ test("buildInitPlan is side-effect free", () => {
     assert.deepEqual(plan.hosts, ["generic"]);
     assert.ok(plan.actions.some((a) => a.id === "build-generation"));
     assert.ok(plan.uninstallCommand.includes("blueprint uninstall"));
+    const watching = buildInitPlan({ root, host: "generic", watch: "on" });
+    assert.ok(watching.actions.findIndex(a => a.id === "build-generation") < watching.actions.findIndex(a => a.id === "enroll-watch"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

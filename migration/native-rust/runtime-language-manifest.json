@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T15:55:46.495Z",
+ "generatedAt": "2026-09-07T19:14:28.942Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
-  "files": 1344,
+  "files": 1346,
   "rows": 58,
   "byRuntime": {
    "python": 8,
@@ -313,7 +313,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "ad138a8d6d5f9f25c2d7b7d6421d86534b9b82d33fc77147ff25cbd6cde8aad4"
+   "content_digest": "32beb81441c639b70a3768672a90c197234cfa1522f23dc32ac6d4cb8a6fa8b2"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -523,7 +523,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "91d321c9f24754cc01d2739b89afcdfab85b32748f40e382e5b696ed6d6d0a3b"
+   "content_digest": "810b6350a275eea0cd8e58ceaa4e78ae0eeeb371d7c552c767c460d325d823e0"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -546,7 +546,7 @@
     "blueprint/watchman/repo-actor.mjs",
     "blueprint/watchman/supervisor.mjs"
    ],
-   "content_digest": "efd363a1c042b5e027c2f7da75cac63934812cac4679d1826681719addeff416"
+   "content_digest": "507716f7b3f84c7eec2f953b5c8b2f5a367b9783f6e89d5a75b84e5eaf6ccfe5"
   },
   {
    "id": "blueprint-development-blueprint/action",
@@ -720,6 +720,7 @@
     "blueprint/tests/dependency-dag.test.mjs",
     "blueprint/tests/dependency-repair.test.mjs",
     "blueprint/tests/derived-fact-owner.test.mjs",
+    "blueprint/tests/doc-code-join-index.test.mjs",
     "blueprint/tests/doc-truth-projection.test.mjs",
     "blueprint/tests/doctor-repair.test.mjs",
     "blueprint/tests/evidence-authority-boundary.test.mjs",
@@ -886,7 +887,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "7c7ae9056080112ca78d4d503130617249f3d0d32b876dfcdecb08860dc780b0"
+   "content_digest": "e21345e1ff34726127b61b69c7a5a3dd2164b9d4c6bcfdae65d8d7665ce1f84a"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1266,11 +1267,12 @@
     "engine/crates/membrane/src/serve.rs",
     "engine/crates/membrane/src/uninstall.rs",
     "engine/crates/membrane/src/update.rs",
+    "engine/crates/membrane/tests/activation_hub_off.rs",
     "engine/crates/membrane/tests/adapt_installed.rs",
     "engine/crates/membrane/tests/dispatch.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "fbad02ada7c5b14e024cb3ff236f783d5097bebf2f3d0dfb5c88a995abe5b0c4"
+   "content_digest": "c70e37090be50d75e1f0e60d6ca7d39aed46278af58afbb2cd86cb01a2bd1744"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1432,7 +1434,7 @@
     "engine/crates/membrane-federation/tests/provider_skills.rs",
     "engine/crates/membrane-federation/tests/shadow_diff.rs"
    ],
-   "content_digest": "4c703e3a81b8b1fbccc33a7b3d35562676030d4afec7e41cebce27d6f6b41f71"
+   "content_digest": "c6073d253d5843d35ff1de9a00a28d8829b7ee370efc66debb5a64cdb59939d7"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-mcp",
@@ -1716,7 +1718,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "5caf1ccc6f1ba0bfc3f81cfc7147fffddd883ac28f8e3b4b60ab20b532537856"
+   "content_digest": "58c23eafc9be6afe08d7e72420ff1121d2af830941ab20872fb4fa8d5d8f63d6"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1916,7 +1918,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "7141c23119d55c4e78d438f3e24d0cb4a26cfb8b8c2753e705aded23ca3716b8"
+   "content_digest": "4f152fac911a627ee54ad29644f697d781c99fe1580f7812bafcc75a75c121a6"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",

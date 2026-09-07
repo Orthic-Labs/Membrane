@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { observeCurrentSourceAtPath, syncToCurrentSourceAtPath } from "../../graph/barrier.mjs";
 import {
   closeStore,
+  getGenerationEnvelope,
   listClaimSlice,
   listDocumentSupersession,
   loadGeneration,
@@ -296,7 +297,14 @@ export function createBlueprintApplicationService({
     throwIfAborted(signal);
     const root = resolveRoot(input);
     const dbPath = databasePath(root, outDir);
-    const initialized = !existsSync(dbPath);
+    let initialized = !existsSync(dbPath);
+    if (!initialized) {
+      const existing = openStoreReadOnly(dbPath);
+      try {
+        const manifest = getGenerationEnvelope(existing).manifest;
+        initialized = !manifest?.complete || !manifest.generationId;
+      } finally { closeStore(existing); }
+    }
     if (initialized) {
       const build = await buildSingleflight.build({
         root,

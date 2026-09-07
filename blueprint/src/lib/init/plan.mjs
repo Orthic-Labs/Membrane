@@ -40,13 +40,13 @@ export function buildInitPlan({
     actions.push({ id: "install-mcp", kind: "file-edit", path, reversible: true });
   }
   const watchEnabled = watch === "on" || (watch === "auto" && scope === "project");
-  if (watchEnabled) {
-    actions.push({ id: "enroll-watch", kind: "service", reversible: true });
-  }
   if (hooks !== "none") {
     actions.push({ id: "install-hooks", kind: "hooks", level: hooks, reversible: true });
   }
   actions.push({ id: "build-generation", kind: "command", reversible: false });
+  if (watchEnabled) {
+    actions.push({ id: "enroll-watch", kind: "service", reversible: true });
+  }
   return {
     schemaVersion: INIT_PLAN_VERSION,
     root,

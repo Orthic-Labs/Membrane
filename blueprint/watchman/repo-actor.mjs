@@ -6,7 +6,7 @@ import { parseFileFacts } from "../src/graph/static-provider.mjs";
 import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
 import { extractDoc, isDoc, loadConfig } from "../scripts/blueprint.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
-import { assertSafeMutableStorePath, collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { assertSafeMutableStorePath, collectDependents, closeStore, getGenerationEnvelope, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 import { completePendingDocDomain } from "../src/lib/phase2-completion.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
@@ -249,7 +249,7 @@ function isOverflowError(error) {
 }
 
 export class RepositoryActor extends EventEmitter {
-  constructor({ root, outDir = ".agent", snapshotPath = null, reconcile = null, adapter = { startWatch, writeSnapshot, eventsSince }, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, ignore = [], ownerId = null }) {
+  constructor({ root, outDir = ".agent", snapshotPath = null, reconcile = null, adapter = { startWatch, writeSnapshot, eventsSince }, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, ignore = [], ownerId = null, restart = null }) {
     super();
     this.root = canonicalRoot(root);
     this.outDir = outDir;
@@ -282,6 +282,8 @@ export class RepositoryActor extends EventEmitter {
     this.subscription = null;
     this.timer = null;
     this.running = false;
+    this.startupPending = false;
+    this.restart = restart ?? (() => this.start());
     this.failures = 0;
     this.retryTimer = null;
     // The store handle is opened once and held for the actor's lifetime
@@ -320,6 +322,12 @@ export class RepositoryActor extends EventEmitter {
     const logPath = join(this.root, this.outDir, "graph", "watchman.log");
     mkdirSync(dirname(logPath), { recursive: true });
     appendFileSync(logPath, `${new Date().toISOString()} ${error?.stack ?? error}\n`);
+  }
+
+  lifecycleEvent(event, details = {}) {
+    const logPath = join(this.root, this.outDir, "graph", "watchman.log");
+    mkdirSync(dirname(logPath), { recursive: true });
+    appendFileSync(logPath, `${JSON.stringify({ schemaVersion: 1, at: new Date().toISOString(), event, root: this.root, epoch: this.epoch, ...details })}\n`);
   }
 
   openDbOnce() {
@@ -382,13 +390,13 @@ export class RepositoryActor extends EventEmitter {
     return queued;
   }
 
-  start() {
+  start({ deferReconcile = false } = {}) {
     const expectedEpoch = this.epoch;
     return this.queueLifecycle(async () => {
       if (this.running || this.epoch !== expectedEpoch) return;
       const run = this.beginRun();
       this.running = true;
-      return this.track(run, this.startRun(run));
+      return this.track(run, this.startRun(run, { deferReconcile }));
     });
   }
 
@@ -408,9 +416,19 @@ export class RepositoryActor extends EventEmitter {
     }
   }
 
-  async startRun(run) {
+  async startRun(run, { deferReconcile = false } = {}) {
     try {
       if (!existsSync(this.root)) throw new Error(`watch root is unavailable: ${this.root}`);
+      if (this.ownerId) {
+        // Automatic maintenance cannot create first truth by reconciling an
+        // empty store. Explicit build/refresh publishes the initial graph.
+        let db;
+        try {
+          if (existsSync(this.dbPath)) db = openStoreReadOnly(this.dbPath);
+          const manifest = db ? getGenerationEnvelope(db).manifest : null;
+          if (!manifest?.complete || !manifest.generationId) { this.running = false; return; }
+        } finally { if (db) closeStore(db); }
+      }
       await this.initialize();
       if (!this.active(run)) return;
       // Both callbacks are invoked by the watcher outside any promise chain, so
@@ -433,6 +451,47 @@ export class RepositoryActor extends EventEmitter {
         return;
       }
       this.subscription = subscription;
+      if (deferReconcile) {
+        this.startupPending = true;
+        setState(this.openDbOnce(), "event_gap", 1);
+        setState(this.openDbOnce(), "event_gap_reason", "startup_reconcile_pending");
+        this.lifecycleEvent("watcher_subscription_admitted");
+        return;
+      }
+      await this.finishStartup(run);
+    } catch (error) {
+      if (!this.current(run) || error?.code === "request_cancelled") return;
+      this.handleFailure(error, null, run);
+      this.running = false;
+      throw error;
+    }
+  }
+
+  resumeStartup(expectedEpoch = this.epoch) {
+    const run = this.run;
+    return this.queueLifecycle(async () => {
+      if (!run || run.epoch !== expectedEpoch || !this.active(run) || !this.startupPending) return;
+      const started = Date.now();
+      this.lifecycleEvent("watcher_startup_reconcile_started");
+      try { await this.track(run, this.finishStartup(run)); }
+      catch (error) {
+        this.lifecycleEvent("watcher_startup_reconcile_failed", { code: error?.code ?? "startup_failed", message: String(error?.message ?? error) });
+        if (!this.current(run) || error?.code === "request_cancelled") return;
+        this.handleFailure(error, null, run);
+        this.running = false;
+        throw error;
+      } finally {
+        this.lifecycleEvent("watcher_startup_reconcile_finished", { elapsedMs: Date.now() - started, cancelled: !this.current(run) });
+        this.startupPending = false;
+        if (this.active(run)) {
+          if (this.eventBuffer.length) this.scheduleFlush(run);
+          if (this.reconcilePending) this.runPendingReconcile(run);
+        }
+      }
+    });
+  }
+
+  async finishStartup(run) {
       // startWatch resolves only after the native callback observes its probe.
       // Reconcile the saved-snapshot gap only after that readiness barrier,
       // then checkpoint this exact post-reconcile state for next startup.
@@ -450,12 +509,6 @@ export class RepositoryActor extends EventEmitter {
       this.completeProductDomains();
       await this.track(run, this.adapter.writeSnapshot(this.root, this.snapshotPath, this.ignore));
       this.failures = 0;
-    } catch (error) {
-      if (!this.current(run) || error?.code === "request_cancelled") return;
-      this.handleFailure(error, null, run);
-      this.running = false;
-      throw error;
-    }
   }
 
   // Runs a watcher callback so that no failure inside it can escape into the
@@ -487,6 +540,7 @@ export class RepositoryActor extends EventEmitter {
   }
 
   runPendingReconcile(run = this.run) {
+    if (this.startupPending) return undefined;
     if (run && !this.active(run)) return undefined;
     if (this.reconcileInFlight) return this.reconcileInFlight;
     const signal = run?.controller.signal ?? this.stopController.signal;
@@ -558,6 +612,7 @@ export class RepositoryActor extends EventEmitter {
   }
 
   scheduleFlush(run = null) {
+    if (this.startupPending) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       if (!run || this.active(run)) this.flush(false, run).catch((error) => this.handleFailure(error, null, run));
@@ -579,7 +634,7 @@ export class RepositoryActor extends EventEmitter {
       const stopGeneration = this.stopGeneration;
       this.stop({ retry: true }).then(() => {
         if (this.epoch !== retryEpoch + 1 || this.stopGeneration !== stopGeneration) return;
-        return this.start();
+        return this.restart();
       }).catch((retryError) => this.log(retryError));
     }, delay);
     this.retryTimer.unref?.();
@@ -592,6 +647,7 @@ export class RepositoryActor extends EventEmitter {
     this.epoch += 1;
     if (!retry) this.stopGeneration += 1;
     this.running = false;
+    this.startupPending = false;
     clearTimeout(this.timer);
     clearTimeout(this.retryTimer);
     run?.controller.abort();
