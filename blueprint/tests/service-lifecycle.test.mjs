@@ -327,6 +327,13 @@ test("Hub-owned service hands watcher lease to explicit build then resumes watch
     const cliCode = await new Promise((resolve) => cliSearch.once("close", resolve));
     assert.equal(cliCode, 0, cliError);
     assert.match(cliOutput, /afterExplicitRefresh/);
+    // A read made before debounce must repair through bounded ownership,
+    // including when the automatic watcher has not caught up yet.
+    writeFileSync(join(root, "source.mjs"), "export const afterExplicitQuery = 4;\n");
+    const direct = await client.request({ method: "search", input: { repoRoot: root, query: "afterExplicitQuery" }, deadlineMs: 15000 });
+    assert.equal(direct.ok, true, JSON.stringify(direct));
+    assert.match(JSON.stringify(direct.result), /afterExplicitQuery/);
+    await until(() => isStoreLeaseHeld(dbPath), "watcher did not resume after explicit read repair");
     await client.close(); client = null;
     const exited = new Promise((resolve) => child.once("close", resolve));
     child.stdin.end();

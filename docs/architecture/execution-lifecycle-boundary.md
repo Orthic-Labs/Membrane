@@ -19,6 +19,10 @@ Explicit execution uses installed product entry points, bounded process lifetime
 
 With Hub active, requests may reuse resident services. With Hub stopped, equivalent explicit requests execute on demand. Automatic subscriptions report inactivity when Hub is stopped; ordinary explicit requests must not fail solely with `hub_inactive`.
 
+Manual refresh must ingest current source & make changed truth queryable with Hub or watcher on or off. A successful acknowledgement with an unchanged stale graph is failure. With watching enabled under Hub, relevant source edits, additions & deletions must become queryable automatically within bounded indexing latency, without manual refresh. Verify these as separate installed acceptance cases.
+
+A resident freshness failure does not gate an explicit graph read: the service hands off the watcher lease & executes its authorized bounded freshness path. Generation/schema mismatches & caller authorization still fail closed. Watcher startup must retain enrollment revisions arriving during startup; CLI tests use isolated enrollment homes so fixture roots never enter user configuration.
+
 Diagnostics workspace epochs, mutations, snapshots & baselines persist through canonical Cortex event storage. Every CLI, MCP & resident diagnostics owner reads that same versioned state; revision conflicts & corrupt payloads fail closed. Provider handles remain process-local. Explicit acquisition shuts providers down before returning; subscriptions & resident provider restart require Hub. Loopback failure after dispatch never causes a mutation replay.
 
 Installation reconciles stable-path MCP bindings & CLI access before resident startup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.

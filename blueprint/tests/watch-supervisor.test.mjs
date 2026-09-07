@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
@@ -27,6 +27,31 @@ function makeRepo(prefix, { build = true } = {}) {
 function tempConfigPath() {
   return join(mkdtempSync(join(tmpdir(), "blueprint-watch-config-")), "watch.json");
 }
+
+test("enrollment written during startup remains pending until admitted", async () => {
+  const configPath = tempConfigPath();
+  const first = join(dirname(configPath), "first");
+  const second = join(dirname(configPath), "second");
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const started = [];
+  const supervisor = new WatchSupervisor({ configPath, actorFactory: ({ root }) => ({
+    running: true, log() {}, stop: async () => {},
+    start: async () => { started.push(root); if (root === first) await gate; },
+  }) });
+  try {
+    writeWatchConfig({ repos: [{ root: first, enabled: true }] }, configPath);
+    const starting = supervisor.reload();
+    await new Promise((resolve) => setImmediate(resolve));
+    writeWatchConfig({ repos: [{ root: first, enabled: true }, { root: second, enabled: true }] }, configPath);
+    const changed = new Date(Date.now() + 2000);
+    utimesSync(configPath, changed, changed);
+    release(); await starting;
+    assert.notEqual(supervisor.configMtime, statSync(configPath).mtimeMs);
+    await supervisor.reload();
+    assert.deepEqual(started, [first, second]);
+  } finally { release(); await supervisor.stop(); rmSync(dirname(configPath), { recursive: true, force: true }); }
+});
 
 test("a never-enrolled-and-built repo reports unwatched, not current", () => {
   const repo = makeRepo("blueprint-fleet-unwatched-", { build: false });

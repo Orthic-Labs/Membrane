@@ -169,6 +169,7 @@ export class WatchSupervisor {
 
   async reload({ failOnStart = false } = {}) {
     this.hasActed = true;
+    const configMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
     const config = readWatchConfig(this.configPath);
     const wanted = new Map(config.repos.map((repo) => [repo.root, repo]));
     for (const [root, actor] of this.actors) {
@@ -211,7 +212,9 @@ export class WatchSupervisor {
     if (failOnStart && failures.length && ![...this.actors.values()].some((actor) => actor.running)) {
       throw failures[0];
     }
-    this.configMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
+    // Startup can await slow actors. Never acknowledge a config revision
+    // written during that wait until its roots have actually been admitted.
+    this.configMtime = configMtime;
     return this.status();
   }
 

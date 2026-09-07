@@ -135,6 +135,11 @@ export function createDaemonServer({ service = null, findingsService = null, end
     allowEmbeddedRoot: false,
     freshnessOwnership: "resident",
   });
+  const explicitService = service ? null : createBlueprintApplicationService({
+    rootRegistry: registry,
+    allowEmbeddedRoot: false,
+    freshnessOwnership: "one_shot",
+  });
   const findingsMethods = findingsService ?? createFindingsService();
   const builds = buildSingleflight ?? createBuildSingleflight();
   const socketPath = endpoint ?? daemonEndpoint();
@@ -281,9 +286,18 @@ export function createDaemonServer({ service = null, findingsService = null, end
           throw endpointError("service_unavailable", `Blueprint service operation is unavailable: ${message.method}`);
         }
         entry.work = (async () => {
-          const session = message.method !== "federate" && typeof appService.openFreshnessSession === "function"
-            ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))
-            : null;
+          let session;
+          try {
+            session = message.method !== "federate" && typeof appService.openFreshnessSession === "function"
+              ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))
+              : null;
+          } catch (error) {
+            if (error?.code !== "stale_blocked" || !explicitService) throw error;
+            // Automatic watching is not a prerequisite for explicit reads.
+            // Hand off its lease & run the same bounded, authorized freshness
+            // path used with Hub off; retain generation/schema failures.
+            return withExplicitWrite(root, () => explicitService[message.method](mergedInput, { signal: controller.signal }));
+          }
           try {
             return await method(mergedInput, { signal: controller.signal, session });
           } finally {

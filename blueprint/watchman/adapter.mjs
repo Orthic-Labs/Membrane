@@ -34,15 +34,20 @@ function normalizedRelative(value) {
 
 export async function waitForNativeProbe(readyPromise, timeoutMs = PROBE_CADENCE_MS, signal) {
   let probeTimer;
+  let probeCheck;
   let onAbort;
   try {
     await Promise.race([
       readyPromise,
       new Promise((_, reject) => {
         probeTimer = setTimeout(() => {
-          const error = new Error("native watcher readiness probe timed out");
-          error.code = "watch_probe_timeout";
-          reject(error);
+          // A busy startup may delay both timers & native callbacks. Drain
+          // queued I/O once before declaring an already-delivered probe lost.
+          probeCheck = setImmediate(() => {
+            const error = new Error("native watcher readiness probe timed out");
+            error.code = "watch_probe_timeout";
+            reject(error);
+          });
         }, timeoutMs);
       }),
       new Promise((_, reject) => {
@@ -53,6 +58,7 @@ export async function waitForNativeProbe(readyPromise, timeoutMs = PROBE_CADENCE
     ]);
   } finally {
     clearTimeout(probeTimer);
+    clearImmediate(probeCheck);
     signal?.removeEventListener("abort", onAbort);
   }
 }

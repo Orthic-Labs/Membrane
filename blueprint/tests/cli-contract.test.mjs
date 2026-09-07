@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
-import test from "node:test";
+import { spawnSync as spawnNative } from "node:child_process";
+import test, { after } from "node:test";
 
 import { EXIT } from "../scripts/cli/args.mjs";
 import { acquireStoreLease } from "../src/graph/store-lease.mjs";
@@ -16,6 +16,14 @@ const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
 const WATCH = join(ROOT, "scripts/blueprint-watch.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
+const TEST_HOME = mkdtempSync(join(tmpdir(), "blueprint-cli-home-"));
+after(() => rmSync(TEST_HOME, { recursive: true, force: true }));
+
+function spawnSync(command, args, options = {}) {
+  return spawnNative(command, args, { ...options, windowsHide: true,
+    env: { ...process.env, HOME: TEST_HOME, USERPROFILE: TEST_HOME, ...options.env },
+  });
+}
 
 function enroll(repo) {
   const result = spawnSync(process.execPath, [WATCH, "enroll", repo], { encoding: "utf8" });

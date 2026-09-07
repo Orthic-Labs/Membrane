@@ -526,6 +526,18 @@ test("native watcher readiness timeout remains typed", async () => {
   );
 });
 
+test("ready callbacks queued behind a busy timer phase beat probe expiry", async () => {
+  let ready;
+  const promise = new Promise((resolve) => { ready = resolve; });
+  // Model another actor's synchronous startup delaying this timer phase.
+  setTimeout(() => {
+    const until = performance.now() + 20;
+    while (performance.now() < until) {}
+    setImmediate(ready);
+  }, 0);
+  await waitForNativeProbe(promise, 5);
+});
+
 test("aborted readiness does not report a watcher gap", async () => {
   const controller = new AbortController();
   queueMicrotask(() => controller.abort());
