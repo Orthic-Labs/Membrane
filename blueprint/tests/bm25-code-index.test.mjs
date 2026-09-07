@@ -160,6 +160,26 @@ test("single-character identifiers are indexed and findable", () => {
   // must not admit them.
   assert.ok(!found.search("x", { limit: 5 }).map((row) => row.document.name).includes("maxValue"));
   assert.deepEqual(found.search("a", { limit: 5 }).map((row) => row.document.name), []);
+
+  // The discriminating case for the guard. `maxValue` shares the token `value`
+  // with the query, so it scores; the only thing that can keep it out is
+  // admission. A 1-character word decided by containment admits it, because
+  // "maxvalue" happens to contain the letter x. Deciding it by exact token
+  // membership does not — and stays corpus-independent either way.
+  const mixed = index(["maxValue", "oldValue", "x"]);
+  const names = mixed.search("oldValue x", { limit: 5 }).map((row) => row.document.name);
+  assert.ok(names.includes("oldValue"));
+  assert.ok(names.includes("x"), "the real 1-character symbol is named by the query");
+  assert.ok(!names.includes("maxValue"), "a letter appearing inside an identifier does not name it");
+});
+
+test("1-character admission does not depend on what else is indexed", () => {
+  const of = (names, query) => index(names).search(query, { limit: 20 }).map((row) => row.document.name);
+  const base = ["maxValue", "oldValue", "x"];
+  const baseline = of(base, "oldValue x");
+  for (const extra of [["xRay", "xAxis"], ["indexValue", "boxValue", "fixValue"]]) {
+    assert.deepEqual(of([...base, ...extra], "oldValue x").filter((n) => base.includes(n)), baseline);
+  }
 });
 
 test("incremental add/replace/remove is equivalent to a cold rebuild", () => {
