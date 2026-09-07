@@ -134,7 +134,11 @@ test("a git commit SHA survives egress redaction while real credential shapes do
   // caller reasons about freshness with, and a redacted one is
   // indistinguishable from a different generation.
   const sha = "a987ea64c5bad3fd208aab1f5a06ef35318ad99d";
-  assert.equal(redactForEgress(sha), sha);
+  // Exemption is by FIELD NAME, never by value shape. A bare 40-hex string is
+  // still redacted: legacy GitHub personal access tokens and hex-encoded
+  // 20-byte secrets have exactly that shape, and this rule exists to catch
+  // credentials arriving with no prefix and no telltale key.
+  assert.equal(redactForEgress(sha), "[REDACTED]");
   assert.deepEqual(
     redactForEgress({ generation: { indexed_revision: sha, indexed_worktree_fingerprint: "99aa06d3014798d86001c324468d497f" } }),
     { generation: { indexed_revision: sha, indexed_worktree_fingerprint: "99aa06d3014798d86001c324468d497f" } },
@@ -145,6 +149,11 @@ test("a git commit SHA survives egress redaction while real credential shapes do
   const rawSecret = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
   assert.equal(rawSecret.length, 40);
   assert.equal(redactForEgress(rawSecret), "[REDACTED]");
+  // A credential hiding under a content-addressed key name is the cost of the
+  // exemption; keep it as narrow as possible and prove the secret-named keys
+  // still win over it.
+  assert.deepEqual(redactForEgress({ generation: { token: sha } }), { generation: { token: "[REDACTED]" } });
+  assert.deepEqual(redactForEgress({ revision_token: sha }), { revision_token: "[REDACTED]" });
   assert.deepEqual(redactForEgress({ api_key: sha }), { api_key: "[REDACTED]" });
   assert.equal(redactForEgress(`ghp_${"A".repeat(36)}`), "[REDACTED]");
 });

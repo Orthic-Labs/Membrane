@@ -17,15 +17,25 @@
 //! every other rejection reason is an admission omission but not budget
 //! pressure.
 
-use crate::hub_readonly_db::{now_unix_ms, open_readonly_catalog};
+use crate::hub_readonly_db::{now_unix_ms, open_readonly_catalog, REASON_MISSING_INPUT};
 use membrane_protocol::{AdmissionReasonCountV1, HubAdmissionV1, HUB_ADMISSION_SCHEMA_VERSION};
 
 const WINDOW_HOURS: u32 = 24;
 const BUDGET_REASONS: [&str; 2] = ["budget_exhausted", "packet_block_limit"];
 
-pub fn build_admission_report() -> Option<HubAdmissionV1> {
+/// `Err` carries the typed catalog refusal reason (e.g.
+/// `schema_generation_mismatch`) so a degraded catalog is never reported as
+/// an absent one.
+pub fn try_build_admission_report() -> Result<HubAdmissionV1, &'static str> {
     let conn = open_readonly_catalog()?;
-    build_admission_report_from(&conn, WINDOW_HOURS)
+    build_admission_report_from(&conn, WINDOW_HOURS).ok_or(REASON_MISSING_INPUT)
+}
+
+/// Snapshot-facing form: `HubAdmissionV1` is an optional section with no
+/// reason channel of its own, so the typed reason is available via
+/// [`try_build_admission_report`].
+pub fn build_admission_report() -> Option<HubAdmissionV1> {
+    try_build_admission_report().ok()
 }
 
 pub(crate) fn build_admission_report_from(
