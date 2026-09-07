@@ -7,9 +7,11 @@
 use cortex_core::review::{
     bound_memory_candidate_extraction_window_with_state, select_review_input,
     validate_memory_candidates_for_window, validate_semantic_curation_proposals,
-    ForegroundMemoryStateV1, MemoryCandidateExtractionDecisionV1,
+    DeterministicReviewLimitsV1, ForegroundMemoryEmissionV1, ForegroundMemoryStateV1,
+    MemoryCandidateExtractionDecisionV1,
     MemoryCandidateExtractionLimitsV1, MemoryCandidateV1, ReviewInputSelectionLimitsV1,
-    SemanticCurationProposalV1, REVIEW_INPUT_NOVELTY_FLOOR,
+    SemanticCurationProposalV1, DETERMINISTIC_REVIEW_ANALYZER_ID,
+    DETERMINISTIC_REVIEW_ANALYZER_VERSION, REVIEW_INPUT_NOVELTY_FLOOR,
 };
 use cortex_core::{EventCursor, SessionEvent};
 use membrane_protocol::background_review::{
@@ -671,6 +673,373 @@ impl BackgroundSemanticReviewProvider for NoBackgroundSemanticReviewProvider {
         Err(BackgroundSemanticReviewProviderError::Unavailable(
             "semantic_provider_not_wired".into(),
         ))
+    }
+}
+
+/// First-party, in-process, deterministic semantic-review provider.
+///
+/// It calls no model and opens no socket.  It runs Cortex's own deterministic
+/// analyzer ([`cortex_core::review::analyze_events_for_curation`] and
+/// [`cortex_core::review::extract_bounded_memory_candidate`]) over the
+/// request's own event window and returns proposal-only candidates.  Nothing
+/// here admits, writes, or advances durable truth: the governed proposal queue
+/// in [`execute_background_semantic_review`] remains the only path onward.
+///
+/// It intentionally refuses [`BackgroundReviewJobKindV1::AdaptBehavioralReview`]:
+/// a deterministic duplicate/assertion analyzer is not a behavioral learner and
+/// must not pretend to be one.
+pub struct DeterministicFirstPartySemanticReviewProvider {
+    limits: DeterministicReviewLimitsV1,
+    now_unix_ms: Option<u64>,
+}
+
+impl std::fmt::Debug for DeterministicFirstPartySemanticReviewProvider {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DeterministicFirstPartySemanticReviewProvider")
+            .field("limits", &self.limits)
+            .field("now_unix_ms", &self.now_unix_ms)
+            .finish()
+    }
+}
+
+impl Default for DeterministicFirstPartySemanticReviewProvider {
+    fn default() -> Self {
+        Self {
+            limits: DeterministicReviewLimitsV1::default(),
+            now_unix_ms: None,
+        }
+    }
+}
+
+impl DeterministicFirstPartySemanticReviewProvider {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_limits(mut self, limits: DeterministicReviewLimitsV1) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Pin the clock used for the deadline check and provenance timestamp.
+    pub fn with_now_unix_ms(mut self, now_unix_ms: u64) -> Self {
+        self.now_unix_ms = Some(now_unix_ms);
+        self
+    }
+
+    /// Truthful analyzer identity.  This is not a model name.
+    pub fn provider_label() -> String {
+        format!(
+            "{DETERMINISTIC_REVIEW_ANALYZER_ID}@{DETERMINISTIC_REVIEW_ANALYZER_VERSION}"
+        )
+    }
+
+    fn now(&self) -> u64 {
+        self.now_unix_ms.unwrap_or_else(unix_ms)
+    }
+
+    fn result(
+        &self,
+        request: &BackgroundSemanticReviewRequestV1,
+        curation_proposals: Vec<serde_json::Value>,
+        memory_candidates: Vec<serde_json::Value>,
+        next_cursor: Option<BackgroundReviewCursorV1>,
+        status: BackgroundSemanticReviewStatusV1,
+    ) -> BackgroundSemanticReviewResultV1 {
+        let observed_at_unix_ms = self.now();
+        // The receipt binds this result to the exact request bytes it analyzed;
+        // there is no upstream host receipt to point at because no external
+        // producer was involved.
+        let receipt_digest = digest_str(&canonical_json_of(request));
+        let provenance_receipt = membrane_protocol::HostObservationProvenanceV1::new(
+            format!("{DETERMINISTIC_REVIEW_ANALYZER_ID}-{}", request.job_id),
+            Self::provider_label(),
+            observed_at_unix_ms,
+            receipt_digest,
+        );
+        BackgroundSemanticReviewResultV1 {
+            schema_version: BackgroundSemanticReviewResultV1::SCHEMA_VERSION,
+            job_id: request.job_id.clone(),
+            job_kind: request.job_kind,
+            session_id: request.session_id.clone(),
+            task_id: request.task_id.clone(),
+            turn_id: request.turn_id.clone(),
+            curation_proposals,
+            memory_candidates,
+            next_cursor,
+            // No model ran, and usage is not measured: claiming either would be
+            // a fabrication.
+            model: None,
+            provider: Some(Self::provider_label()),
+            usage: None,
+            provenance_receipt,
+            status,
+        }
+    }
+
+    fn refuse(
+        &self,
+        request: &BackgroundSemanticReviewRequestV1,
+        reason: BackgroundReviewReasonV1,
+    ) -> BackgroundSemanticReviewResultV1 {
+        self.result(
+            request,
+            Vec::new(),
+            Vec::new(),
+            None,
+            BackgroundSemanticReviewStatusV1::Blocked { reason },
+        )
+    }
+}
+
+/// Flatten one wire event into the analyzer's protocol-neutral view.
+fn analyzer_event(
+    event: &BackgroundReviewSessionEventV1,
+) -> cortex_core::review::DeterministicReviewEventV1 {
+    cortex_core::review::DeterministicReviewEventV1 {
+        event_id: event.event_id.clone(),
+        seq: event.seq,
+        scope_id: event.scope_id.clone(),
+        content_hash: event.content_hash.clone(),
+        text: cortex_core::review::review_payload_text(&event.payload),
+    }
+}
+
+/// Inverse of [`protocol_event`], so the provider can reuse Cortex's own
+/// foreground gate rather than restating it.
+fn core_event(event: &BackgroundReviewSessionEventV1) -> SessionEvent {
+    SessionEvent {
+        schema_version: event.schema_version,
+        session_id: event.session_id.clone(),
+        seq: event.seq,
+        event_id: event.event_id.clone(),
+        event_type: event.event_type.clone(),
+        payload: event.payload.clone(),
+        scope_id: event.scope_id.clone(),
+        authority: event.authority.clone(),
+        influence_class: event.influence_class.clone(),
+        lifecycle: event.lifecycle.clone(),
+        retention: event.retention.clone(),
+        provenance: event
+            .provenance
+            .iter()
+            .map(|item| cortex_core::ProvenanceRef {
+                source: item.source.clone(),
+                source_event_ids: item.source_event_ids.clone(),
+                producer: item.producer.clone(),
+            })
+            .collect(),
+        occurred_at_ms: event.occurred_at_ms,
+        recorded_at_ms: event.recorded_at_ms,
+        content_hash: event.content_hash.clone(),
+    }
+}
+
+/// Translate the wire foreground signal into Cortex's three-state signal.  The
+/// emission id is synthesized from the range because the wire contract carries
+/// only the range; identity of the foreground writer is not invented.
+fn core_foreground_state(
+    state: &BackgroundReviewForegroundMemoryStateV1,
+    session_id: &str,
+) -> ForegroundMemoryStateV1 {
+    match state {
+        BackgroundReviewForegroundMemoryStateV1::Unavailable => {
+            ForegroundMemoryStateV1::Unavailable
+        }
+        BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission => {
+            ForegroundMemoryStateV1::AvailableNoEmission
+        }
+        BackgroundReviewForegroundMemoryStateV1::AvailableEmission { range } => {
+            ForegroundMemoryStateV1::AvailableEmission(ForegroundMemoryEmissionV1 {
+                emission_id: format!(
+                    "foreground-emission-{session_id}-{}-{}",
+                    range.start_seq, range.end_seq
+                ),
+                session_id: session_id.to_string(),
+                start_seq: range.start_seq,
+                end_seq: range.end_seq,
+            })
+        }
+    }
+}
+
+impl BackgroundSemanticReviewProvider for DeterministicFirstPartySemanticReviewProvider {
+    fn execute(
+        &self,
+        request: &BackgroundSemanticReviewRequestV1,
+    ) -> Result<BackgroundSemanticReviewResultV1, BackgroundSemanticReviewProviderError> {
+        request
+            .validate()
+            .map_err(|error| BackgroundSemanticReviewProviderError::Protocol(error.to_string()))?;
+        if !request
+            .restricted_capabilities
+            .iter()
+            .any(|capability| capability == BACKGROUND_SEMANTIC_CAPABILITY)
+        {
+            return Ok(self.refuse(request, BackgroundReviewReasonV1::InvalidJob));
+        }
+        if self.now() >= request.deadline_unix_ms {
+            return Ok(self.refuse(request, BackgroundReviewReasonV1::TimeGate));
+        }
+        if request.per_turn_budget_remaining == 0 {
+            return Ok(self.refuse(request, BackgroundReviewReasonV1::PerTurnBudgetExceeded));
+        }
+        if request.aggregate_budget_remaining == 0 {
+            return Ok(self.refuse(request, BackgroundReviewReasonV1::AggregateBudgetExceeded));
+        }
+        let budget = request
+            .per_turn_budget_remaining
+            .min(request.aggregate_budget_remaining)
+            .min(usize::MAX as u64) as usize;
+
+        match request.job_kind {
+            // Not a behavioral learner. Refusing is truthful; inventing Adapt
+            // categories from lexical rules would not be.
+            BackgroundReviewJobKindV1::AdaptBehavioralReview => Ok(self.refuse(
+                request,
+                BackgroundReviewReasonV1::SemanticProviderNotWired,
+            )),
+            BackgroundReviewJobKindV1::CortexSemanticDream => {
+                // Budget bounds the window analyzed. Truncation is safe because
+                // the cursor only advances over the prefix actually analyzed.
+                let mut spent = 0usize;
+                let mut analyzed = Vec::new();
+                for event in &request.events {
+                    let cost = cortex_core::estimate_tokens(&event.payload.to_string());
+                    if spent.saturating_add(cost) > budget {
+                        break;
+                    }
+                    spent = spent.saturating_add(cost);
+                    analyzed.push(event);
+                }
+                if analyzed.is_empty() {
+                    return Ok(
+                        self.refuse(request, BackgroundReviewReasonV1::PerTurnBudgetExceeded)
+                    );
+                }
+                let events = analyzed
+                    .iter()
+                    .map(|event| analyzer_event(event))
+                    .collect::<Vec<_>>();
+                let findings =
+                    cortex_core::review::analyze_events_for_curation(&events, self.limits);
+                let mut proposals = Vec::new();
+                for proposal in &findings.proposals {
+                    let value = serde_json::to_value(proposal).map_err(|error| {
+                        BackgroundSemanticReviewProviderError::Encode(error.to_string())
+                    })?;
+                    proposals.push(value);
+                }
+                let next_cursor = if proposals.is_empty() {
+                    None
+                } else {
+                    analyzed.last().map(|event| BackgroundReviewCursorV1 {
+                        session_id: request.session_id.clone(),
+                        last_seq: event.seq,
+                    })
+                };
+                Ok(self.result(
+                    request,
+                    proposals,
+                    Vec::new(),
+                    next_cursor,
+                    BackgroundSemanticReviewStatusV1::Proposals,
+                ))
+            }
+            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction => {
+                let cursor = EventCursor {
+                    session_id: request.cursor.session_id.clone(),
+                    last_seq: request.cursor.last_seq,
+                };
+                let events = request.events.iter().map(core_event).collect::<Vec<_>>();
+                let foreground_state =
+                    core_foreground_state(&request.foreground_memory_state, &request.session_id);
+                let limits = MemoryCandidateExtractionLimitsV1 {
+                    max_events:
+                        membrane_protocol::background_review::BACKGROUND_SEMANTIC_REVIEW_MAX_EVENTS,
+                    max_input_tokens: budget.max(1),
+                    max_duration_ms: request.deadline_unix_ms.saturating_sub(self.now()).max(1),
+                    max_model_requests: 1,
+                };
+                // CTX-024's gate, evaluated by Cortex's own function: extraction
+                // proceeds only when authoritative foreground memory does not
+                // already cover this cursor range.
+                let decision = bound_memory_candidate_extraction_window_with_state(
+                    &cursor,
+                    &events,
+                    &foreground_state,
+                    limits,
+                    true,
+                );
+                let window = match decision {
+                    Ok(MemoryCandidateExtractionDecisionV1::WindowBound { window }) => window,
+                    Ok(MemoryCandidateExtractionDecisionV1::Skipped { .. }) => {
+                        // Covered by foreground memory, or no new events: a
+                        // completed no-op, never a fabricated candidate.
+                        return Ok(self.result(
+                            request,
+                            Vec::new(),
+                            Vec::new(),
+                            None,
+                            BackgroundSemanticReviewStatusV1::Proposals,
+                        ));
+                    }
+                    Ok(MemoryCandidateExtractionDecisionV1::Blocked { reason }) => {
+                        let reason = match reason {
+                            cortex_core::review::MemoryCandidateExtractionBlockerV1::ForegroundMemoryEmissionSignalUnavailable => {
+                                BackgroundReviewReasonV1::ForegroundMemoryEmissionSignalUnavailable
+                            }
+                            cortex_core::review::MemoryCandidateExtractionBlockerV1::ModelInputUnavailable => {
+                                BackgroundReviewReasonV1::ModelInputUnavailable
+                            }
+                            cortex_core::review::MemoryCandidateExtractionBlockerV1::CursorInputUnavailable => {
+                                BackgroundReviewReasonV1::CursorInputUnavailable
+                            }
+                        };
+                        return Ok(self.refuse(request, reason));
+                    }
+                    // The only errors here are input-budget overruns and cursor
+                    // mismatches; both are refusals, never a partial candidate.
+                    Err(_) => {
+                        return Ok(
+                            self.refuse(request, BackgroundReviewReasonV1::PerTurnBudgetExceeded)
+                        )
+                    }
+                };
+                let analyzer_events = request
+                    .events
+                    .iter()
+                    .map(analyzer_event)
+                    .collect::<Vec<_>>();
+                let Some(candidate) = cortex_core::review::extract_bounded_memory_candidate(
+                    &window,
+                    &analyzer_events,
+                ) else {
+                    return Ok(self.result(
+                        request,
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        BackgroundSemanticReviewStatusV1::Proposals,
+                    ));
+                };
+                let value = serde_json::to_value(&candidate).map_err(|error| {
+                    BackgroundSemanticReviewProviderError::Encode(error.to_string())
+                })?;
+                let next_cursor = request.events.last().map(|event| BackgroundReviewCursorV1 {
+                    session_id: request.session_id.clone(),
+                    last_seq: event.seq,
+                });
+                Ok(self.result(
+                    request,
+                    Vec::new(),
+                    vec![value],
+                    next_cursor,
+                    BackgroundSemanticReviewStatusV1::Proposals,
+                ))
+            }
+        }
     }
 }
 
@@ -2224,6 +2593,428 @@ mod tests {
 
     fn scheduler() -> BackgroundReviewScheduler {
         BackgroundReviewScheduler::new(config()).unwrap()
+    }
+
+    // ---- CTX-023 / CTX-024 deterministic first-party provider ------------
+
+    fn deterministic_event(seq: u64, id: &str, text: &str) -> BackgroundReviewSessionEventV1 {
+        let payload = serde_json::json!({ "text": text });
+        BackgroundReviewSessionEventV1 {
+            schema_version: 1,
+            session_id: "session-1".to_string(),
+            seq,
+            event_id: id.to_string(),
+            event_type: "assistant_message".to_string(),
+            payload,
+            scope_id: "scope".to_string(),
+            authority: "observed".to_string(),
+            influence_class: "episodic".to_string(),
+            lifecycle: "active".to_string(),
+            retention: "session".to_string(),
+            provenance: Vec::new(),
+            occurred_at_ms: seq,
+            recorded_at_ms: seq,
+            content_hash: format!("sha256:{seq:064}"),
+        }
+    }
+
+    fn deterministic_window() -> Vec<BackgroundReviewSessionEventV1> {
+        vec![
+            deterministic_event(1, "e1", "The release pipeline uses the windows signing runner."),
+            deterministic_event(2, "e2", "the release pipeline uses the Windows signing runner"),
+            deterministic_event(
+                3,
+                "e3",
+                "The release pipeline does not use the windows signing runner.",
+            ),
+            deterministic_event(4, "e4", "The staging index is stale after four hours."),
+            deterministic_event(5, "e5", "The staging index is stale after two hours."),
+        ]
+    }
+
+    fn deterministic_request(
+        kind: BackgroundReviewJobKindV1,
+        foreground_memory_state: BackgroundReviewForegroundMemoryStateV1,
+        per_turn_budget_remaining: u64,
+        aggregate_budget_remaining: u64,
+    ) -> BackgroundSemanticReviewRequestV1 {
+        let request = BackgroundSemanticReviewRequestV1 {
+            schema_version: BackgroundSemanticReviewRequestV1::SCHEMA_VERSION,
+            job_id: "job-1".to_string(),
+            job_kind: kind,
+            session_id: "session-1".to_string(),
+            task_id: None,
+            turn_id: "turn-1".to_string(),
+            cursor: BackgroundReviewCursorV1 {
+                session_id: "session-1".to_string(),
+                last_seq: 0,
+            },
+            events: deterministic_window(),
+            review_input_selection: None,
+            foreground_memory_state,
+            per_turn_budget_remaining,
+            aggregate_budget_remaining,
+            deadline_unix_ms: 10_000,
+            restricted_capabilities: vec![
+                BACKGROUND_SEMANTIC_CAPABILITY.to_string(),
+                "no_durable_writes".to_string(),
+            ],
+        };
+        request.validate().expect("test request is well formed");
+        request
+    }
+
+    fn deterministic_provider() -> DeterministicFirstPartySemanticReviewProvider {
+        DeterministicFirstPartySemanticReviewProvider::new().with_now_unix_ms(1_000)
+    }
+
+    #[test]
+    fn deterministic_provider_produces_curation_proposals_from_the_event_window() {
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider()
+            .execute(&request)
+            .expect("deterministic provider runs in process");
+        result
+            .validate_against(&request)
+            .expect("result is bound to its request");
+        assert_eq!(result.status, BackgroundSemanticReviewStatusV1::Proposals);
+        assert!(result.memory_candidates.is_empty());
+        let proposals = result
+            .curation_proposals
+            .iter()
+            .map(|value| serde_json::from_value::<SemanticCurationProposalV1>(value.clone()))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("proposals decode");
+        validate_semantic_curation_proposals(&proposals).expect("proposals are well formed");
+        let kinds = proposals
+            .iter()
+            .map(|proposal| proposal.kind)
+            .collect::<Vec<_>>();
+        assert!(kinds.contains(&cortex_core::review::SemanticCurationKindV1::NearDuplicate));
+        assert!(kinds.contains(&cortex_core::review::SemanticCurationKindV1::Contradiction));
+        assert!(kinds.contains(&cortex_core::review::SemanticCurationKindV1::Supersession));
+    }
+
+    #[test]
+    fn deterministic_provider_never_claims_a_model_and_names_itself_truthfully() {
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&request).expect("runs");
+        assert!(result.model.is_none(), "no model ran");
+        assert!(result.usage.is_none(), "nothing measured, nothing claimed");
+        assert_eq!(
+            result.provider.as_deref(),
+            Some(DeterministicFirstPartySemanticReviewProvider::provider_label().as_str())
+        );
+        assert!(result
+            .provenance_receipt
+            .source
+            .contains("cortex-deterministic-review-analyzer"));
+        result
+            .provenance_receipt
+            .validate()
+            .expect("receipt is well formed");
+    }
+
+    #[test]
+    fn deterministic_proposals_are_proposal_only_with_recoverable_parents() {
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&request).expect("runs");
+        let known = request
+            .events
+            .iter()
+            .map(|event| event.event_id.as_str())
+            .collect::<HashSet<_>>();
+        for value in &result.curation_proposals {
+            let proposal =
+                serde_json::from_value::<SemanticCurationProposalV1>(value.clone()).expect("decodes");
+            // Nothing is admitted or targeted at durable memory by the producer.
+            assert!(proposal.target_memory_ids.is_empty());
+            let parents = proposal
+                .evidence
+                .iter()
+                .flat_map(|evidence| evidence.source_event_ids.iter())
+                .collect::<Vec<_>>();
+            assert_eq!(parents.len(), 2);
+            for parent in parents {
+                assert!(known.contains(parent.as_str()));
+            }
+        }
+    }
+
+    #[test]
+    fn deterministic_provider_truncates_the_window_to_the_remaining_budget() {
+        let events = deterministic_window();
+        let budget = events
+            .iter()
+            .take(2)
+            .map(|event| cortex_core::estimate_tokens(&event.payload.to_string()) as u64)
+            .sum::<u64>();
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            budget,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&request).expect("runs");
+        result.validate_against(&request).expect("result validates");
+        // Only the affordable prefix is consumed, so nothing is silently lost.
+        assert_eq!(
+            result.next_cursor.as_ref().map(|cursor| cursor.last_seq),
+            Some(2)
+        );
+        for value in &result.curation_proposals {
+            let proposal =
+                serde_json::from_value::<SemanticCurationProposalV1>(value.clone()).expect("decodes");
+            for evidence in &proposal.evidence {
+                for id in &evidence.source_event_ids {
+                    assert!(id == "e1" || id == "e2", "unbudgeted event {id} was analyzed");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn deterministic_provider_refuses_exhausted_budgets_and_expired_deadlines() {
+        let per_turn = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            0,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&per_turn).expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::PerTurnBudgetExceeded
+            }
+        );
+        result.validate_against(&per_turn).expect("validates");
+
+        let aggregate = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            0,
+        );
+        let result = deterministic_provider().execute(&aggregate).expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::AggregateBudgetExceeded
+            }
+        );
+
+        let expired = deterministic_request(
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = DeterministicFirstPartySemanticReviewProvider::new()
+            .with_now_unix_ms(expired.deadline_unix_ms)
+            .execute(&expired)
+            .expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::TimeGate
+            }
+        );
+        assert!(result.curation_proposals.is_empty() && result.memory_candidates.is_empty());
+        result.validate_against(&expired).expect("validates");
+    }
+
+    #[test]
+    fn deterministic_provider_does_not_impersonate_an_adapt_behavioral_learner() {
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::AdaptBehavioralReview,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&request).expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::SemanticProviderNotWired
+            }
+        );
+    }
+
+    #[test]
+    fn ctx_024_extraction_runs_only_when_foreground_memory_does_not_cover_the_range() {
+        // Foreground memory already covers seq 1..6: background extraction must
+        // produce nothing at all.
+        let covered = deterministic_request(
+            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+            BackgroundReviewForegroundMemoryStateV1::AvailableEmission {
+                range: BackgroundReviewEventRangeV1 {
+                    start_seq: 1,
+                    end_seq: 6,
+                },
+            },
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&covered).expect("runs");
+        result.validate_against(&covered).expect("validates");
+        assert!(result.memory_candidates.is_empty(), "foreground already covers the range");
+        assert!(result.next_cursor.is_none());
+
+        // Foreground memory is authoritative but emitted nothing here: extraction
+        // is permitted.
+        let uncovered = deterministic_request(
+            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&uncovered).expect("runs");
+        result.validate_against(&uncovered).expect("validates");
+        assert_eq!(result.memory_candidates.len(), 1);
+        assert!(result.curation_proposals.is_empty());
+        let candidate =
+            serde_json::from_value::<MemoryCandidateV1>(result.memory_candidates[0].clone())
+                .expect("candidate decodes");
+        assert_eq!(
+            candidate.source_event_ids,
+            uncovered
+                .events
+                .iter()
+                .map(|event| event.event_id.clone())
+                .collect::<Vec<_>>()
+        );
+        assert!(candidate.content.contains("release pipeline"));
+
+        // A disjoint foreground emission does not cover this cursor range.
+        let disjoint = deterministic_request(
+            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+            BackgroundReviewForegroundMemoryStateV1::AvailableEmission {
+                range: BackgroundReviewEventRangeV1 {
+                    start_seq: 40,
+                    end_seq: 50,
+                },
+            },
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&disjoint).expect("runs");
+        assert_eq!(result.memory_candidates.len(), 1);
+
+        // No authoritative foreground signal at all: fail closed.
+        let unavailable = deterministic_request(
+            BackgroundReviewJobKindV1::CortexMemoryCandidateExtraction,
+            BackgroundReviewForegroundMemoryStateV1::Unavailable,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&unavailable).expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::ForegroundMemoryEmissionSignalUnavailable
+            }
+        );
+        assert!(result.memory_candidates.is_empty());
+    }
+
+    #[derive(Debug, Default)]
+    struct RecordingProposalSink {
+        curation: Mutex<Vec<SemanticCurationProposalV1>>,
+        candidates: Mutex<Vec<MemoryCandidateV1>>,
+    }
+
+    impl BackgroundReviewProposalAdmission for RecordingProposalSink {
+        fn admit_curation(
+            &self,
+            _job: &BackgroundReviewJobV1,
+            proposals: &[SemanticCurationProposalV1],
+        ) -> Result<(), BackgroundReviewReasonV1> {
+            self.curation.lock().unwrap().extend_from_slice(proposals);
+            Ok(())
+        }
+
+        fn admit_memory_candidates(
+            &self,
+            _job: &BackgroundReviewJobV1,
+            candidates: &[MemoryCandidateV1],
+        ) -> Result<(), BackgroundReviewReasonV1> {
+            self.candidates.lock().unwrap().extend_from_slice(candidates);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn deterministic_provider_produces_proposals_through_the_governed_path() {
+        let scheduler = BackgroundReviewScheduler::new(BackgroundReviewConfigV1 {
+            per_turn_input_budget: 100_000,
+            aggregate_input_budget: 200_000,
+            ..config()
+        })
+        .expect("scheduler config is valid");
+        scheduler.set_hub_active(true, 0);
+        scheduler.record_activity(4);
+        let job = job(
+            "job-1",
+            BackgroundReviewJobKindV1::CortexSemanticDream,
+            "turn-1",
+            1,
+        );
+        assert!(matches!(
+            scheduler.start(job.clone(), 0),
+            BackgroundReviewDecision::Started { .. }
+        ));
+        let input = BackgroundSemanticReviewInputV1 {
+            task_id: None,
+            cursor: EventCursor {
+                session_id: "session-1".to_string(),
+                last_seq: 0,
+            },
+            events: deterministic_window().iter().map(core_event).collect(),
+            reviewed_baseline: Vec::new(),
+            foreground_memory_state: ForegroundMemoryStateV1::AvailableNoEmission,
+        };
+        let sink = RecordingProposalSink::default();
+        let cursor_store = BackgroundReviewCursorStore::default();
+        cursor_store
+            .set_initial(EventCursor {
+                session_id: "session-1".to_string(),
+                last_seq: 0,
+            })
+            .expect("cursor seeds");
+        let execution = execute_background_semantic_review(
+            &scheduler,
+            &job,
+            &input,
+            &deterministic_provider(),
+            Some(&sink),
+            &cursor_store,
+            10_000,
+            1,
+        );
+        assert_eq!(
+            execution.status,
+            BackgroundReviewExecutionStatusV1::Proposals,
+            "{execution:?}"
+        );
+        assert!(!execution.proposals.is_empty(), "governed path admitted proposals");
+        assert!(sink.candidates.lock().unwrap().is_empty());
+        assert!(!sink.curation.lock().unwrap().is_empty());
     }
 
     #[test]

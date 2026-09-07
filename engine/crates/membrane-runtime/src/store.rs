@@ -474,6 +474,39 @@ pub struct LifecycleReviewDueV1 {
     pub reason: String,
 }
 
+/// CTX-010: subsystems permitted to originate a lifecycle review signal. A
+/// closed set, so an unknown origin string is refused rather than recorded as
+/// unattributed evidence.
+pub const LIFECYCLE_REVIEW_SIGNAL_ORIGINS: &[&str] =
+    &["ledger", "blueprint", "pull", "push", "adapt", "membrane"];
+
+/// CTX-010 intake record: one externally-originated "this changed, review it"
+/// signal handed to Cortex by another Membrane subsystem.
+///
+/// This is an ENQUEUE-ONLY seam. Recording a signal appends one row to
+/// `cortex_lifecycle_review_signals_v1` and touches nothing else: content,
+/// authority, `lifecycle_state` and `superseded_by` of the target record are
+/// never read-modified-written by this path. Time (and now an external
+/// observation) triggers review; neither rewrites authority.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleReviewSignalV1 {
+    /// Originating subsystem; must be one of [`LIFECYCLE_REVIEW_SIGNAL_ORIGINS`].
+    pub origin_subsystem: String,
+    /// Target record id, when the origin knows the exact record.
+    pub memory_id: Option<String>,
+    /// Target scope, when the origin only knows the affected scope. At least
+    /// one of `memory_id`/`scope_id` must be present.
+    pub scope_id: Option<String>,
+    /// Why the origin believes a review is owed (free text, bounded).
+    pub reason: String,
+    /// When the origin observed the change, in epoch milliseconds.
+    pub observed_at_ms: i64,
+    /// Caller-supplied delivery identity. Redelivering the same key is a no-op,
+    /// so an at-least-once transport cannot enqueue the same review twice.
+    pub idempotency_key: String,
+}
+
 /// Trusted execution identity for lifecycle mutations.  This is deliberately
 /// constructed outside request JSON (manifest/startup lease/loopback), so a
 /// caller cannot self-assert actor or authority in a mutation body.
@@ -650,6 +683,79 @@ impl Default for MemoryRecordMetadata {
             producer: "manual".into(),
             record_type: "memory".into(),
         }
+    }
+}
+
+/// CTX-004 sensitivity vocabulary. These are the values a Cortex *write path*
+/// binds; `cortex_store::memdb::UNAVAILABLE_LEGACY` is deliberately NOT one of
+/// them — that marker means exactly "this row was written before the column
+/// existed" and no admission may ever produce it.
+///
+/// There is no content classifier (no DLP/PII scanner) anywhere on the Cortex
+/// admission path in this repository today, so admission cannot honestly claim
+/// a record is "public" or "confidential" from its bytes. What admission *does*
+/// know is disposition: a record parked in `memory_quarantine` is held out of
+/// normal recall pending human review, which is a conservative restriction the
+/// write path can state as fact.
+pub const SENSITIVITY_RESTRICTED: &str = "restricted";
+/// Bound when admission has no signal that determines sensitivity. Explicit and
+/// distinct from `UNAVAILABLE_LEGACY`: it asserts "a writer looked and no
+/// available signal classified this record", not "nobody ever looked".
+pub const SENSITIVITY_UNCLASSIFIED: &str = "unclassified";
+
+/// CTX-004 derivation marker for a record admitted with no parent: a direct
+/// authored/observed write. This is not a guess — the admission genuinely has
+/// no lineage, and saying so explicitly is what the atom requires.
+pub const DERIVATION_ORIGINAL: &str = "original";
+
+/// Producers/record types whose output is, by construction, derived from
+/// already-admitted Cortex records rather than authored fresh. Kept as an
+/// explicit list so an unknown producer is never silently called "derived".
+fn derived_producer_kind(metadata: &MemoryRecordMetadata) -> Option<&'static str> {
+    match (metadata.producer.as_str(), metadata.record_type.as_str()) {
+        ("dream_memory", _) | (_, "consolidated_memory") => Some("consolidated"),
+        _ => None,
+    }
+}
+
+/// CTX-004: bind `derivation` from lineage the admission actually holds.
+///
+/// Precedence is by strength of evidence:
+/// 1. `lifecycle.supersedes` — the caller named the parent record and
+///    `apply_lifecycle_input_on` validated it (same scope, active, acyclic),
+///    so the parent id is recorded verbatim;
+/// 2. a derived producer (Dream consolidation / curation) — the record was
+///    synthesized from other records by a known pipeline;
+/// 3. otherwise `original` — a direct authored write with no parent.
+fn classify_derivation(metadata: &MemoryRecordMetadata, lifecycle: &MemoryLifecycleInputV1) -> String {
+    if let Some(parent) = lifecycle.supersedes.as_deref() {
+        return serde_json::json!({ "kind": "supersession", "supersedes": parent }).to_string();
+    }
+    if let Some(kind) = derived_producer_kind(metadata) {
+        return serde_json::json!({
+            "kind": kind,
+            "producer": metadata.producer,
+            "recordType": metadata.record_type,
+        })
+        .to_string();
+    }
+    DERIVATION_ORIGINAL.to_owned()
+}
+
+/// CTX-004: bind `sensitivity` from the signals admission carries.
+///
+/// The only structural signal in this store that conservatively determines a
+/// restriction is quarantine disposition (`quarantined = true`): such a row is
+/// withheld from recall pending review. `artifact_family`, `producer`,
+/// `record_type`, scope and authority describe *where a record came from and
+/// how much it may influence*, not how sensitive its content is — treating
+/// them as a sensitivity classifier would assert more than the inputs support.
+/// Every other row is therefore bound to the explicit `unclassified` value.
+fn classify_sensitivity(quarantined: bool) -> &'static str {
+    if quarantined {
+        SENSITIVITY_RESTRICTED
+    } else {
+        SENSITIVITY_UNCLASSIFIED
     }
 }
 
@@ -2603,8 +2709,8 @@ impl MemoryStore {
         let blob_q = entry.embedding.as_deref().map(embedding_to_quantized_blob);
         conn.execute(
             "INSERT INTO memories
-                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type, authority, influence_class, effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, COALESCE(?23, 'normal'), ?24, ?25)
+                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type, authority, influence_class, effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis, sensitivity, derivation)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, COALESCE(?23, 'normal'), ?24, ?25, ?27, ?28)
              ON CONFLICT(id) DO UPDATE SET
                  tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
                  score=excluded.score, updated_at=excluded.updated_at, embedding=NULL,
@@ -2619,7 +2725,11 @@ impl MemoryStore {
                  review_after_ms=COALESCE(excluded.review_after_ms, memories.review_after_ms),
                  priority_class=CASE WHEN ?26 THEN excluded.priority_class ELSE memories.priority_class END,
                  confidence=COALESCE(excluded.confidence, memories.confidence),
-                 confidence_basis=COALESCE(excluded.confidence_basis, memories.confidence_basis)",
+                 confidence_basis=COALESCE(excluded.confidence_basis, memories.confidence_basis),
+                 -- CTX-004: a re-write is an admission too; it re-binds the
+                 -- classification from the evidence THIS write carries. It can
+                 -- never leave (or restore) the legacy marker on a live row.
+                 sensitivity=excluded.sensitivity, derivation=excluded.derivation",
             rusqlite::params![
                 entry.id,
                 tier,
@@ -2647,6 +2757,11 @@ impl MemoryStore {
                 lifecycle.confidence,
                 lifecycle.confidence_basis.as_deref(),
                 lifecycle.priority_class.is_some(),
+                // CTX-004 (?27/?28): bound from what this admission actually
+                // knows — quarantine disposition (none here: this sink writes
+                // active `memories` rows) and the caller's declared lineage.
+                classify_sensitivity(false),
+                classify_derivation(metadata, lifecycle),
             ],
         )
         .map_err(|e| self.persist_error(format!("memory persist failed for {}: {e}", entry.id)))?;
@@ -3154,12 +3269,19 @@ impl MemoryStore {
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
                      source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
                      effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
-                     priority_class, confidence, confidence_basis, quarantined_at, reason)
+                     priority_class, confidence, confidence_basis, quarantined_at, reason,
+                     sensitivity, derivation)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
                         source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
                         effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
-                        priority_class, confidence, confidence_basis, ?2, ?3
+                        priority_class, confidence, confidence_basis, ?2, ?3,
+                        -- CTX-004: quarantining is a disposition change, not a
+                        -- lineage change. Sensitivity is re-bound conservatively
+                        -- to `restricted` (the row is now withheld from recall);
+                        -- `derivation` carries the row's existing lineage
+                        -- forward verbatim rather than being re-guessed.
+                        ?4, derivation
                    FROM memories WHERE id = ?1
                  ON CONFLICT(id) DO UPDATE SET
                     tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
@@ -3175,8 +3297,9 @@ impl MemoryStore {
                     superseded_by=excluded.superseded_by, priority_class=excluded.priority_class,
                     confidence=excluded.confidence, confidence_basis=excluded.confidence_basis,
                     quarantined_at=excluded.quarantined_at,
-                    reason=excluded.reason",
-                rusqlite::params![id, quarantined_at, reason],
+                    reason=excluded.reason,
+                    sensitivity=excluded.sensitivity, derivation=excluded.derivation",
+                rusqlite::params![id, quarantined_at, reason, classify_sensitivity(true)],
             )
             .map_err(|e| {
                 self.persist_error(format!("{fail_prefix} persist failed for {id}: {e}"))
@@ -3383,27 +3506,51 @@ impl MemoryStore {
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
                      source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
                      effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
-                     priority_class, confidence, confidence_basis)
+                     priority_class, confidence, confidence_basis, sensitivity, derivation)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
                         source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
                         effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
-                        priority_class, confidence, confidence_basis
+                        priority_class, confidence, confidence_basis,
+                        -- CTX-004: leaving quarantine lifts the disposition-based
+                        -- restriction, so sensitivity re-binds through the same
+                        -- classifier (?2). Derivation is rewritten below to record
+                        -- the promotion, keeping the row's prior lineage inside it.
+                        ?2, derivation
                    FROM memory_quarantine WHERE id = ?1
                  ON CONFLICT(id) DO NOTHING",
-                rusqlite::params![id],
+                rusqlite::params![id, classify_sensitivity(false)],
             )
             .map_err(|e| self.persist_error(format!("quarantine restore failed for {id}: {e}")))?;
         if restored == 0 {
             return Ok(false);
         }
+        // CTX-004: this row's lineage is now known exactly — it was promoted out
+        // of quarantine — and the lineage it carried while quarantined is kept
+        // inside the new value rather than discarded or re-guessed.
+        let prior_derivation: String = tx
+            .query_row(
+                "SELECT derivation FROM memories WHERE id=?1",
+                rusqlite::params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                self.persist_error(format!("quarantine restore derivation read failed for {id}: {e}"))
+            })?;
+        let promoted_derivation = serde_json::json!({
+            "kind": "promoted_from_quarantine",
+            "prior": serde_json::from_str::<serde_json::Value>(&prior_derivation)
+                .unwrap_or(serde_json::Value::String(prior_derivation.clone())),
+        })
+        .to_string();
         tx.execute(
-            "UPDATE memories SET artifact_family=?2, producer=?3, record_type=?4 WHERE id=?1",
+            "UPDATE memories SET artifact_family=?2, producer=?3, record_type=?4, derivation=?5 WHERE id=?1",
             rusqlite::params![
                 id,
                 restored_metadata.artifact_family,
                 restored_metadata.producer,
                 restored_metadata.record_type,
+                promoted_derivation,
             ],
         )
         .map_err(|error| {
@@ -4033,6 +4180,23 @@ impl MemoryStore {
         if updated != 1 {
             return Err("lifecycle supersedes subject is not active".into());
         }
+        // CTX-017: the supersession and the canonical evidence relation that
+        // records it are one act. Writing the relation on a separate connection
+        // afterwards would let a crash in between commit a supersession with no
+        // relation, which is the divergence the relation table exists to
+        // prevent — so it goes in this transaction, on this handle.
+        cortex_store::memdb::MemDb::record_canonical_relation_on(
+            &tx,
+            &cortex_store::memdb::CanonicalRelationEdge {
+                source_id: replacement.id.clone(),
+                target_id: subject_id.to_string(),
+                relation: "supersedes".into(),
+                provenance_producer: "cortex.lifecycle".into(),
+                provenance_ref: event_id.clone(),
+                created_at: crate::time::now_iso(),
+            },
+        )
+        .map_err(|rejection| format!("lifecycle supersedes relation rejected: {}", rejection.code()))?;
         tx.execute(
             "INSERT INTO memory_event_log (ts, event_kind, memory_id, surface, scope_id, quantity, meta, event_uid, installation_id, client, artifact_id, identity_status) VALUES (?1, 'superseded', ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9, 'observed')",
             rusqlite::params![crate::time::now_iso(), subject_id, context.surface, replacement.scope_id, meta, event_id, self.operation_attribution.installation_id, context.surface, stable_artifact_id(subject_id)],
@@ -4887,16 +5051,37 @@ impl MemoryStore {
         }
         let rows: Vec<(String, String)> = {
             let conn = self.db.lock();
-            let mut statement = match conn
+            // Prefer the durable canonical relation table (schema v27), which
+            // records provenance alongside each edge. Fall back to the
+            // `memories.superseded_by` pointer for rows superseded before that
+            // table existed, so history stays traversable. The union is
+            // deduplicated by the graph's own `add_canonical_edge` below, which
+            // refuses a repeat of the same edge.
+            let mut rows: Vec<(String, String)> = conn
+                .prepare(
+                    "SELECT target_id, source_id FROM memory_relation WHERE relation='supersedes'",
+                )
+                .and_then(|mut statement| {
+                    statement
+                        .query_map([], |row| {
+                            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                        })
+                        .map(|it| it.flatten().collect::<Vec<_>>())
+                })
+                .unwrap_or_default();
+            let legacy: Vec<(String, String)> = match conn
                 .prepare("SELECT id, superseded_by FROM memories WHERE superseded_by IS NOT NULL")
             {
-                Ok(statement) => statement,
-                Err(_) => return Vec::new(),
+                Ok(mut statement) => statement
+                    .query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map(|it| it.flatten().collect())
+                    .unwrap_or_default(),
+                Err(_) => Vec::new(),
             };
-            statement
-                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-                .map(|it| it.flatten().collect())
-                .unwrap_or_default()
+            rows.extend(legacy);
+            rows
         };
         let mut graph = MemoryGraph::new();
         for id in ids {
@@ -7285,7 +7470,11 @@ impl MemoryStore {
                     return Err(format!("memory {:?} not found", request.memory_id));
                 }
                 let now = crate::time::now_iso();
-                tx.execute("INSERT INTO memory_quarantine (id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,quarantined_at,reason) SELECT id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,?2,?3 FROM memories WHERE id=?1 ON CONFLICT(id) DO UPDATE SET quarantined_at=excluded.quarantined_at,reason=excluded.reason", rusqlite::params![&request.memory_id, now, &request.reason_ref]).map_err(|e| e.to_string())?;
+                // CTX-004: `sensitivity` re-binds to the conservative `restricted` value a
+                // quarantined row earns by disposition; `derivation` is copied from the
+                // source row, since moving a record to quarantine does not change where
+                // it came from.
+                tx.execute("INSERT INTO memory_quarantine (id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,quarantined_at,reason,sensitivity,derivation) SELECT id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,?2,?3,?4,derivation FROM memories WHERE id=?1 ON CONFLICT(id) DO UPDATE SET quarantined_at=excluded.quarantined_at,reason=excluded.reason,sensitivity=excluded.sensitivity,derivation=excluded.derivation", rusqlite::params![&request.memory_id, now, &request.reason_ref, classify_sensitivity(true)]).map_err(|e| e.to_string())?;
                 tx.execute(
                     "DELETE FROM memories WHERE id=?1",
                     rusqlite::params![&request.memory_id],
@@ -8717,12 +8906,13 @@ impl MemoryStore {
                     "INSERT INTO memory_quarantine
                         (id, tier, content, keywords, score, created_at, updated_at, access_count,
                          embedding, embedding_q, scope_id, content_hash, source_ids, authority,
-                         influence_class, quarantined_at, reason)
-                     VALUES (?1, ?2, ?3, ?4, 0.5, ?5, ?5, 0, NULL, ?6, ?7, ?8, ?9, 'A0', 'unresolved', ?5, ?10)
+                         influence_class, quarantined_at, reason, sensitivity, derivation)
+                     VALUES (?1, ?2, ?3, ?4, 0.5, ?5, ?5, 0, NULL, ?6, ?7, ?8, ?9, 'A0', 'unresolved', ?5, ?10, ?11, ?12)
                      ON CONFLICT(id) DO UPDATE SET
                         content = excluded.content, keywords = excluded.keywords,
                         embedding_q = excluded.embedding_q, source_ids = excluded.source_ids,
-                        quarantined_at = excluded.quarantined_at, reason = excluded.reason",
+                        quarantined_at = excluded.quarantined_at, reason = excluded.reason,
+                        sensitivity = excluded.sensitivity, derivation = excluded.derivation",
                     rusqlite::params![
                         id,
                         tier_json,
@@ -8734,6 +8924,15 @@ impl MemoryStore {
                         content_hash(content),
                         source_ids_json,
                         reason,
+                        // CTX-004: quarantined by disposition, and its lineage
+                        // is known exactly — this candidate was held against a
+                        // specific existing record, recorded verbatim.
+                        classify_sensitivity(true),
+                        serde_json::json!({
+                            "kind": "admission_conflict",
+                            "conflictsWith": hit.existing_id,
+                        })
+                        .to_string(),
                     ],
                 )
                 .map_err(|e| {
@@ -9747,6 +9946,89 @@ impl MemoryStore {
         })
     }
 
+    /// CTX-010 intake seam: record one externally-originated lifecycle review
+    /// signal. This is the call another Membrane subsystem (Ledger on document
+    /// supersession, Blueprint on repository re-anchoring) makes to hand Cortex
+    /// a "this changed, enqueue a review" observation.
+    ///
+    /// Invariant (the atom's core): this ENQUEUES REVIEW ONLY. The single write
+    /// it performs is an append to `cortex_lifecycle_review_signals_v1`; it
+    /// never writes `memories` — not content, not `authority`, not
+    /// `lifecycle_state`, not `superseded_by` — and never marks a record
+    /// expired, superseded or archived. The signal becomes visible through
+    /// [`lifecycle_reviews_due`](Self::lifecycle_reviews_due), where a governed
+    /// reviewer decides what (if anything) happens to the record.
+    ///
+    /// Idempotent by `idempotency_key`: a redelivered signal returns
+    /// `Ok(false)` and leaves the stored row byte-identical, so an
+    /// at-least-once transport cannot enqueue the same review twice.
+    /// A signal whose target record does not exist is still recorded — the
+    /// signal is evidence about an observation, not an assertion about
+    /// Cortex's current contents — but it surfaces nothing until a matching
+    /// active record exists.
+    pub fn record_lifecycle_review_signal(
+        &self,
+        signal: &LifecycleReviewSignalV1,
+    ) -> Result<bool, String> {
+        let origin = signal.origin_subsystem.trim();
+        if !LIFECYCLE_REVIEW_SIGNAL_ORIGINS.contains(&origin) {
+            return Err(format!(
+                "lifecycle review signal origin must be one of {LIFECYCLE_REVIEW_SIGNAL_ORIGINS:?}"
+            ));
+        }
+        let key = signal.idempotency_key.trim();
+        if key.is_empty() || key.len() > 256 {
+            return Err("lifecycle review signal idempotency key must be 1..=256 bytes".to_owned());
+        }
+        let reason = signal.reason.trim();
+        if reason.is_empty() || reason.len() > 512 {
+            return Err("lifecycle review signal reason must be 1..=512 bytes".to_owned());
+        }
+        let memory_id = signal
+            .memory_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let scope_id = signal
+            .scope_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        if memory_id.is_none() && scope_id.is_none() {
+            return Err(
+                "lifecycle review signal must target a memory id or a scope".to_owned(),
+            );
+        }
+        if signal.observed_at_ms < 0 {
+            return Err("lifecycle review signal observed_at_ms must be non-negative".to_owned());
+        }
+        let recorded_at_ms = crate::time::now_millis() as i64;
+        let inserted = self
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO cortex_lifecycle_review_signals_v1
+                    (idempotency_key, origin_subsystem, memory_id, scope_id, reason,
+                     observed_at_ms, recorded_at_ms)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                 ON CONFLICT(idempotency_key) DO NOTHING",
+                rusqlite::params![
+                    key,
+                    origin,
+                    memory_id,
+                    scope_id,
+                    reason,
+                    signal.observed_at_ms,
+                    recorded_at_ms,
+                ],
+            )
+            .map_err(|error| {
+                self.persist_error(format!("lifecycle review signal insert failed: {error}"))
+            })?;
+        self.clear_last_persist_error();
+        Ok(inserted == 1)
+    }
+
     /// CTX-010 time trigger as a read-only scan: active rows whose
     /// `review_after_ms` or `expires_at_ms` has passed at `now_ms`. Bounded
     /// with exact/lower-bound completeness. Surfacing review-due performs no
@@ -9766,16 +10048,19 @@ impl MemoryStore {
     ///   real recall usage says the row disagreed with what happened, but
     ///   nothing has revisited it.
     ///
-    /// Ledger/Blueprint-owned triggers (document supersession, repository
-    /// re-anchoring) are not implemented here: no Cortex-side seam currently
-    /// exists in this store for either — there is no ingestion path where
-    /// Ledger or Blueprint hand Cortex a "this document changed" or "this
-    /// evidence surface moved" signal to enqueue a review from, wired or
-    /// otherwise. That absence is itself the gap; it does not become
-    /// external merely because another Membrane subsystem would originate
-    /// the signal, since the missing piece — a Cortex-side intake for that
-    /// signal — lives in this repository and is not implemented anywhere in
-    /// it today.
+    /// - `external_signal_<origin>`: another Membrane subsystem (Ledger on
+    ///   document supersession, Blueprint on repository re-anchoring, ...)
+    ///   recorded a signal through
+    ///   [`record_lifecycle_review_signal`](Self::record_lifecycle_review_signal)
+    ///   naming this record or its scope. Like every other trigger here it is
+    ///   read-only and enqueue-only: the external origin can cause a review to
+    ///   be surfaced, never a rewrite of authority, lifecycle state or content.
+    ///
+    /// No subsystem in this repository calls the intake seam on its own
+    /// schedule yet: Ledger's supersession path and Blueprint's re-anchoring
+    /// path still have to be wired to it, and that wiring lives in those
+    /// subsystems' own modules. What is landed here is the Cortex side —
+    /// durable intake, idempotent recording, and surfacing.
     pub fn lifecycle_reviews_due(
         &self,
         scope: Option<&str>,
@@ -9902,6 +10187,61 @@ impl MemoryStore {
             })?;
         drop(outcome_statement);
         for row in outcome_rows {
+            if seen.insert(row.memory_id.clone()) {
+                items.push(row);
+            }
+        }
+
+        // CTX-010 external-signal trigger: enqueue-only, read-only — this scan
+        // joins `memories` against the intake table and writes nothing. A
+        // signal naming a record matches that record; a signal naming only a
+        // scope matches the active records in that scope. The surfaced origin
+        // is the most recently observed signal for the row (ties broken by
+        // idempotency key) so the reason token is deterministic.
+        let mut external_statement = conn.prepare(
+            "SELECT m.id, m.scope_id, m.authority, m.lifecycle_state, m.review_after_ms, m.expires_at_ms, \
+                    (SELECT s.origin_subsystem FROM cortex_lifecycle_review_signals_v1 s \
+                      WHERE s.memory_id = m.id \
+                         OR (s.memory_id IS NULL AND s.scope_id = m.scope_id) \
+                      ORDER BY s.observed_at_ms DESC, s.idempotency_key LIMIT 1) \
+             FROM memories m \
+             WHERE (?1 IS NULL OR m.scope_id = ?1) AND m.lifecycle_state = 'active' \
+             AND EXISTS ( \
+               SELECT 1 FROM cortex_lifecycle_review_signals_v1 s \
+               WHERE s.memory_id = m.id \
+                  OR (s.memory_id IS NULL AND s.scope_id = m.scope_id) \
+             ) \
+             ORDER BY m.id COLLATE BINARY LIMIT ?2",
+        ).map_err(|error| {
+            self.persist_error(format!("review-due external-signal scan prepare failed: {error}"))
+        })?;
+        let external_rows = external_statement
+            .query_map(rusqlite::params![scope, probe], |row| {
+                let origin: Option<String> = row.get(6)?;
+                Ok(LifecycleReviewDueV1 {
+                    memory_id: row.get(0)?,
+                    scope_id: row.get(1)?,
+                    authority: row.get(2)?,
+                    lifecycle_state: row.get(3)?,
+                    review_after_ms: row.get(4)?,
+                    expires_at_ms: row.get(5)?,
+                    reason: format!(
+                        "external_signal_{}",
+                        origin.unwrap_or_else(|| "unknown".to_owned())
+                    ),
+                })
+            })
+            .map_err(|error| {
+                self.persist_error(format!("review-due external-signal scan query failed: {error}"))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|error| {
+                self.persist_error(format!(
+                    "review-due external-signal scan decode failed: {error}"
+                ))
+            })?;
+        drop(external_statement);
+        for row in external_rows {
             if seen.insert(row.memory_id.clone()) {
                 items.push(row);
             }
@@ -15568,6 +15908,269 @@ mod tests {
             "t"
         )
         .is_err());
+    }
+
+    /// CTX-004: a row admitted through the common write sink is BOUND to an
+    /// explicit sensitivity and derivation. `unavailable_legacy` must never be
+    /// producible by a write path — it means exactly "predates the column".
+    #[test]
+    fn ctx004_new_admission_binds_explicit_sensitivity_and_derivation() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put("fresh", "a freshly authored record", "global", MemoryTier::Semantic)
+            .unwrap();
+        let (sensitivity, derivation): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT sensitivity, derivation FROM memories WHERE id=?1",
+                rusqlite::params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(sensitivity, SENSITIVITY_UNCLASSIFIED);
+        assert_eq!(derivation, DERIVATION_ORIGINAL);
+        assert_ne!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+        assert_ne!(derivation, cortex_store::memdb::UNAVAILABLE_LEGACY);
+    }
+
+    /// CTX-004: a superseding admission records its parent as derivation, from
+    /// the validated `supersedes` input — not from a guess about content.
+    #[test]
+    fn ctx004_superseding_record_binds_parent_as_derivation() {
+        let store = MemoryStore::new();
+        store
+            .try_put("parent", "the record being replaced", "global", MemoryTier::Semantic)
+            .unwrap();
+        let context = MemoryEventContext::new("loopback");
+        let replacement = store
+            .try_put_attributed_lifecycle_observed(
+                "child",
+                "the replacing record",
+                "global",
+                MemoryTier::Semantic,
+                "memory",
+                "manual",
+                "memory",
+                &context,
+                &MemoryLifecycleInputV1 {
+                    supersedes: Some("global/parent".into()),
+                    ..MemoryLifecycleInputV1::default()
+                },
+            )
+            .unwrap();
+        let derivation: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT derivation FROM memories WHERE id=?1",
+                rusqlite::params![replacement],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&derivation).unwrap();
+        assert_eq!(parsed["kind"], "supersession");
+        assert_eq!(parsed["supersedes"], "global/parent");
+        // The superseded parent keeps its own binding: supersession rewrites the
+        // parent's lifecycle state, never its recorded lineage.
+        let parent_derivation: String = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT derivation FROM memories WHERE id='global/parent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent_derivation, DERIVATION_ORIGINAL);
+    }
+
+    /// CTX-004: a row written before the columns existed keeps
+    /// `unavailable_legacy`. Nothing retroactively reclassifies it — the marker
+    /// stays a truthful statement about that row's history.
+    #[test]
+    fn ctx004_legacy_row_is_not_retroactively_reclassified() {
+        let store = MemoryStore::new();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO memories (id,tier,content,keywords,score,created_at,access_count,scope_id)
+                 VALUES ('global/legacy','\"Semantic\"','legacy body','[]',0.5,'2026-01-01T00:00:00Z',0,'global')",
+                [],
+            )
+            .unwrap();
+        // An unrelated later admission must not touch the legacy row.
+        store
+            .try_put("later", "an unrelated later record", "global", MemoryTier::Semantic)
+            .unwrap();
+        let (sensitivity, derivation): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT sensitivity, derivation FROM memories WHERE id='global/legacy'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+        assert_eq!(derivation, cortex_store::memdb::UNAVAILABLE_LEGACY);
+    }
+
+    /// CTX-004: quarantine rows are bound too — conservatively `restricted` by
+    /// disposition, with the source row's lineage carried forward unchanged.
+    #[test]
+    fn ctx004_quarantined_row_is_bound_to_restricted_sensitivity() {
+        let store = MemoryStore::new();
+        store
+            .try_put("suspect", "a record about to be quarantined", "global", MemoryTier::Semantic)
+            .unwrap();
+        let actor = VerifiedMemoryActor::from_execution_context(
+            "reviewer",
+            "A1",
+            "loopback",
+            "session-q",
+            "trace-q",
+        )
+        .unwrap();
+        let request = MemoryLifecycleOperationV1 {
+            operation: MemoryLifecycleOperation::Quarantine,
+            memory_id: "global/suspect".into(),
+            replacement_id: None,
+            scope_id: Some("global".into()),
+            expected_content_sha256: None,
+            reason_ref: "review-q".into(),
+            content: None,
+            tier: None,
+        };
+        store.execute_lifecycle_operation(&request, &actor).unwrap();
+        let (sensitivity, derivation): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT sensitivity, derivation FROM memory_quarantine WHERE id='global/suspect'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(sensitivity, SENSITIVITY_RESTRICTED);
+        assert_eq!(derivation, DERIVATION_ORIGINAL);
+        assert_ne!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+    }
+
+    fn ctx010_signal(key: &str, memory_id: Option<&str>, scope: Option<&str>) -> LifecycleReviewSignalV1 {
+        LifecycleReviewSignalV1 {
+            origin_subsystem: "ledger".into(),
+            memory_id: memory_id.map(str::to_owned),
+            scope_id: scope.map(str::to_owned),
+            reason: "source document superseded".into(),
+            observed_at_ms: 1_000,
+            idempotency_key: key.into(),
+        }
+    }
+
+    /// CTX-010: an externally-originated signal enqueues a review and surfaces
+    /// through `lifecycle_reviews_due` alongside the Cortex-owned triggers.
+    #[test]
+    fn ctx010_external_signal_enqueues_review() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put("doc-backed", "a record backed by a ledger document", "global", MemoryTier::Semantic)
+            .unwrap();
+        // No trigger fires before the signal is recorded.
+        assert!(store.lifecycle_reviews_due(None, 10_000, 10).unwrap().items.is_empty());
+        assert!(store.record_lifecycle_review_signal(&ctx010_signal("ledger-1", Some(&id), None)).unwrap());
+        let due = store.lifecycle_reviews_due(None, 10_000, 10).unwrap();
+        let row = due
+            .items
+            .iter()
+            .find(|item| item.memory_id == id)
+            .expect("external signal must enqueue a review");
+        assert_eq!(row.reason, "external_signal_ledger");
+        // A scope-targeted signal from another subsystem surfaces the scope's
+        // active records too.
+        let other = MemoryStore::new();
+        let scoped = other
+            .try_put("scoped", "a record in an re-anchored scope", "global", MemoryTier::Semantic)
+            .unwrap();
+        let mut blueprint = ctx010_signal("blueprint-1", None, Some("global"));
+        blueprint.origin_subsystem = "blueprint".into();
+        assert!(other.record_lifecycle_review_signal(&blueprint).unwrap());
+        let due = other.lifecycle_reviews_due(None, 10_000, 10).unwrap();
+        assert_eq!(due.items.len(), 1);
+        assert_eq!(due.items[0].memory_id, scoped);
+        assert_eq!(due.items[0].reason, "external_signal_blueprint");
+        // Origins outside the closed set are refused rather than recorded.
+        let mut forged = ctx010_signal("forged-1", Some(&scoped), None);
+        forged.origin_subsystem = "attacker".into();
+        assert!(other.record_lifecycle_review_signal(&forged).is_err());
+        // A signal must name a target.
+        let mut untargeted = ctx010_signal("untargeted-1", None, None);
+        untargeted.scope_id = None;
+        assert!(other.record_lifecycle_review_signal(&untargeted).is_err());
+    }
+
+    /// CTX-010: redelivering the same signal is a no-op — one review, not two.
+    #[test]
+    fn ctx010_external_signal_recording_is_idempotent() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put("repeat", "a record with a redelivered signal", "global", MemoryTier::Semantic)
+            .unwrap();
+        assert!(store.record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None)).unwrap());
+        assert!(!store.record_lifecycle_review_signal(&ctx010_signal("ledger-dup", Some(&id), None)).unwrap());
+        let stored: i64 = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_lifecycle_review_signals_v1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, 1);
+        let due = store.lifecycle_reviews_due(None, 10_000, 10).unwrap();
+        assert_eq!(due.items.iter().filter(|item| item.memory_id == id).count(), 1);
+    }
+
+    /// CTX-010 core invariant: time (and now an external observation) triggers
+    /// review, but never rewrites authority. Recording a signal must leave the
+    /// target record's content, authority, lifecycle state and successor
+    /// byte-identical.
+    #[test]
+    fn ctx010_external_signal_never_rewrites_the_record() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put("immutable", "content that must not change", "global", MemoryTier::Semantic)
+            .unwrap();
+        let before: (String, String, String, Option<String>, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, authority, lifecycle_state, superseded_by, influence_class
+                   FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        let mut hostile = ctx010_signal("ledger-hostile", Some(&id), None);
+        hostile.reason = "document deleted; archive this record immediately".into();
+        assert!(store.record_lifecycle_review_signal(&hostile).unwrap());
+        // Surfacing the review is also read-only.
+        assert!(!store.lifecycle_reviews_due(None, 10_000, 10).unwrap().items.is_empty());
+        let after: (String, String, String, Option<String>, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT content, authority, lifecycle_state, superseded_by, influence_class
+                   FROM memories WHERE id=?1",
+                rusqlite::params![&id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(before, after);
+        assert_eq!(after.2, "active");
+        assert!(after.3.is_none());
     }
 
     #[test]
