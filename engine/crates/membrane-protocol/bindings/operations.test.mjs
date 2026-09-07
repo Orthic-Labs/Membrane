@@ -28,7 +28,7 @@ import {
 // pins the SAME digest. A drift in the Rust registry, the on-disk JSON, or
 // the canonical rules fails BOTH suites.
 const PINNED_INDEX_DIGEST =
-  "sha256:152cc7b0ca04dbe55b325971ba2ed04d7b653bbfc2781aa8e122d39e97edaf6f";
+  "sha256:71597b1a729ceea253e4cd4e5f8d3838125663f71295f7bf19494593c7e45416";
 
 for (const operation of OPERATIONS) {
   test(`${operation.name}: validates, round-trips, and lists every error code in the schema`, () => {

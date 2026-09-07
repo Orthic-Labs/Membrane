@@ -9,7 +9,13 @@
 //!     Inherently verified, per-candidate, lossless. This is the coverage fix
 //!     from Council Loop 1 (grounded in Memory-R1 / AgeMem store/update/delete-as-feedback).
 //!   - `CitedVerdict` — an external verdict that *explicitly names this candidate id + sha*.
-//!     Verified only when `verdict_ref` resolves (fail-closed).
+//!     Verified only when `verdict_ref` resolves (fail-closed). Structural validation here
+//!     (`validate()`) only rejects an empty `verdict_ref`; the store performs the actual
+//!     resolution against the durable verdict ledger (`context_event_log`, phase
+//!     `verdict.recorded`) at persistence time and refuses to persist a `CitedVerdict` row
+//!     whose reference does not resolve to a matching verdict naming this candidate's
+//!     artifact identity or content hash on the same trace — see
+//!     `MemoryStore::resolve_cited_verdict` in `store.rs` (MEM-024).
 //!   - `Advisory` — agent self-report or an uncited verdict. Persisted for observability but
 //!     NEVER drives ranking (GhostWriter write-time defense).
 
@@ -70,7 +76,11 @@ pub struct FeedbackRecord {
 }
 
 impl FeedbackRecord {
-    /// Does this row affect ranking? Only verified sources do; advisory never does.
+    /// Does this row affect ranking, assuming it is persisted as constructed? Only verified
+    /// sources do; advisory never does. NOTE: for `CitedVerdict` this reflects the *source*
+    /// only — it does not itself prove `verdict_ref` resolves. The store gates actual
+    /// persistence of an unresolvable `CitedVerdict` row (see module doc / MEM-024), so any
+    /// row that made it into durable storage with this source has already been resolved.
     pub fn verified(&self) -> bool {
         matches!(
             self.source,
@@ -78,9 +88,12 @@ impl FeedbackRecord {
         )
     }
 
-    /// Validate the record before persistence. Fail-closed: a `CitedVerdict` with no resolvable
-    /// `verdict_ref` is rejected (it cannot be trusted to rank). Advisory rows always validate but
-    /// carry `verified() == false`.
+    /// Structurally validate the record before persistence: non-empty join key, and (for
+    /// `CitedVerdict`) a non-empty `verdict_ref`. This is necessary but NOT sufficient for a
+    /// `CitedVerdict` row to rank — it only rules out the trivially-empty case. Real,
+    /// fail-closed resolution of `verdict_ref` against the durable verdict ledger happens in
+    /// the store at persistence time (`MemoryStore::resolve_cited_verdict`); an unresolvable
+    /// reference is rejected there even though it passes this check (MEM-024).
     pub fn validate(&self) -> Result<(), String> {
         if self.trace_id.trim().is_empty() {
             return Err("feedback: empty trace_id".into());

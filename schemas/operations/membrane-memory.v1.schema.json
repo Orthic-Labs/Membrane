@@ -100,6 +100,7 @@
         "proposal_payload_too_large",
         "proposal_emission_text_required",
         "proposal_scope_denied",
+        "dlp_denied",
         "proposal_review_unknown",
         "proposal_already_decided",
         "cortex_review_unavailable",

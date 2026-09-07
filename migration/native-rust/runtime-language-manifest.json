@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-06T16:05:40.739Z",
+ "generatedAt": "2026-09-06T22:05:35.124Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1302,
+  "files": 1303,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1118,7 +1118,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "eb7731908b60ca88eea32168d589a98faf78c3a30d4ab31bc35e05e08c71ee1b"
+   "content_digest": "351c50a7abe10ddbf56a9f5d709d0e2f1888844966cd6199797d800ab2952866"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1174,7 +1174,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "59c499779c84a78c0c253686077e12810fd77ce9864a86406b98c336f5c8acfc"
+   "content_digest": "51c3213cc10d8e6de871d682f84a7a827728a5e60c14f68f20d26cfd0c03a50d"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
@@ -1404,7 +1404,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "fdf0e712fedbe90457c646ab0df272731e2d343051c56df7430dccfa80283ba9"
+   "content_digest": "edd8d46e54ef2f5770c8c4fa9ef4dd2f1d8ad460ee6eb6cd6f0ea4620e4e9641"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1456,7 +1456,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "b8a8ed8ddb4b0c1203d2bef4aae9d28aa1913ec6d485c30b92618e3181218c0f"
+   "content_digest": "29d85b6248d83390ac6b38368944e37b7c235767fddf849f83a092fced2a87bb"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1624,6 +1624,7 @@
     "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
     "engine/crates/membrane-runtime/tests/cortex_lifecycle_gaps.rs",
     "engine/crates/membrane-runtime/tests/cortex_relevance_spotcheck.rs",
+    "engine/crates/membrane-runtime/tests/cortex_remaining_acceptance.rs",
     "engine/crates/membrane-runtime/tests/diagnostics_authorization.rs",
     "engine/crates/membrane-runtime/tests/fixtures/ledger-eval-v1/build_corpus.py",
     "engine/crates/membrane-runtime/tests/hub_snapshot_cli_contract.rs",
@@ -1656,7 +1657,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "2b85b29e16ae0ce0786b9b21f81a8556cb99859eed030309afd0e1b578ac0210"
+   "content_digest": "55fb95830a9c16372b946e49a0b6946de9d3431edaca7a5c3896f5dfac12431f"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -2254,7 +2255,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "3c4d26fb318869128cf4ad1743efbc3494f538f13d2aae0411615a72597b5bba"
+   "content_digest": "33edab63e5c5b215e93b5e519ff1d4029cf1cd533f241554853913d10c609497"
   },
   {
    "id": "tests-root-tests-root",
