@@ -435,7 +435,7 @@ async function finalizeAndPersistGraphGeneration(root, outDir, generation, optio
     await augmentGenerationWithTreeSitter(generation, root, {});
   }
   finalizeGenerationIdentity(generation);
-  return persistGenerationToStore(root, outDir, generation);
+  return options.persist ? options.persist(generation) : persistGenerationToStore(root, outDir, generation);
 }
 
 function writeJson(path, value) {
@@ -1068,6 +1068,13 @@ function classifyStatus(line) {
 }
 
 async function build(root, outDir, options = {}) {
+  const dbPath = join(resolve(root, outDir), "graph", "graph.db");
+  // Own every output before the first side artifact, not just final SQLite
+  // adoption. A denied writer must leave the prior generation untouched.
+  return withStoreLease(dbPath, { ownerKind: "one_shot" }, () => buildUnderLease(root, outDir, options, dbPath));
+}
+
+async function buildUnderLease(root, outDir, options, dbPath) {
   const config = loadConfig(root, outDir);
   const limit = Number(options.limit ?? 0);
   // The dirty-tree refusal is gone with the committed artifact that caused it.
@@ -1173,7 +1180,9 @@ async function build(root, outDir, options = {}) {
   // Sealed into the store envelope so a downstream consumer can distinguish a
   // committed snapshot from a dirty-overlay build without shelling out to git.
   graphGeneration.sourceObservation = sourceObservation ?? null;
-  await finalizeAndPersistGraphGeneration(root, outDir, graphGeneration);
+  await finalizeAndPersistGraphGeneration(root, outDir, graphGeneration, {
+    persist: (generation) => persistGenerationToStoreUnderLease(dbPath, generation),
+  });
   const queue = buildUnderstandingQueue(root, docs, files, signature, graphGeneration);
   writeJson(join(root, outDir, "queue.json"), queue);
   const flows = graphFlowInventory(graphGeneration);

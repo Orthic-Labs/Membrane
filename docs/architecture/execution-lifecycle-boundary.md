@@ -23,7 +23,11 @@ Diagnostics workspace epochs, mutations, snapshots & baselines persist through c
 
 Installation reconciles stable-path MCP bindings & CLI access before resident startup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.
 
-Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds select bounded local execution. Findings explanation & evidence packs use their canonical sealed-generation service when no daemon is reachable.
+Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds reuse an available resident owner or fall back to bounded local execution. Findings explanation & evidence packs use their canonical sealed-generation service when no daemon is reachable.
+
+Hub-owned explicit builds & refreshes stop the resident watcher, finish the bounded write, then restart the authenticated watcher. The service parent serializes actual workers through this handoff; cancellation of a client waiter cannot restart a watcher while its shared build still writes. Full builds acquire the canonical store lease before writing any side artifact. Independent Windows requests own separate unnamed Job Objects; terminating one request cannot terminate another, & forced termination never reports success.
+
+Ordinary Pull results need no protected block to be deliverable. An empty protected set preserves its meaning; exact packet measurement, host capacity, evidence lineage & reversible-recovery checks still govern delivery.
 
 One-shot freshness completes deterministic document extraction after applying every source delta, while leaving judgment work explicitly pending. Cold builds & incremental repair use content identity for every indexed file. Replayed identical source events acknowledge journal clocks without reparsing repository symbols. Federation validates Blueprint graph identifiers independently of release artifact identifiers.
 

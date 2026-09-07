@@ -103,17 +103,19 @@ export function runLocalBuild({ root, outDir, options }) {
     });
     const stdout = [];
     const stderr = [];
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 300_000);
     child.stdout.on("data", (chunk) => stdout.push(chunk));
     child.stderr.on("data", (chunk) => stderr.push(chunk));
-    child.once("error", (error) => rejectBuild(typedError("build_spawn_failed", String(error.message ?? error))));
-    child.once("close", (exitCode, signal) => resolveBuild({
+    child.once("error", (error) => { clearTimeout(timer); rejectBuild(typedError("build_spawn_failed", String(error.message ?? error))); });
+    child.once("close", (exitCode, signal) => { clearTimeout(timer); resolveBuild({
       schemaVersion: 1,
       kind: "build",
-      exitCode: Number.isInteger(exitCode) ? exitCode : 10,
+      exitCode: !timedOut && Number.isInteger(exitCode) ? exitCode : 10,
       signal: signal ?? null,
       stdout: Buffer.concat(stdout).toString("utf8"),
-      stderr: Buffer.concat(stderr).toString("utf8"),
-    }));
+      stderr: Buffer.concat(stderr).toString("utf8") + (timedOut ? "\nBlueprint build deadline exceeded" : ""),
+    }); });
   });
 }
 

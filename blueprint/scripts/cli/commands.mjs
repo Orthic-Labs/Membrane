@@ -10,18 +10,44 @@ import { recoverPendingUpdate } from "../../src/lib/update/apply.mjs";
 import { timingSafeEqual } from "node:crypto";
 import { join, resolve } from "node:path";
 import { createDaemonServer } from "../../src/service/server.mjs";
+import { createBuildSingleflight, runLocalBuild } from "../../src/service/build-singleflight.mjs";
+import { DaemonClient } from "../../src/service/client.mjs";
+import { METHODS } from "../../src/service/protocol.mjs";
 import { readWatchConfig } from "../../watchman/supervisor.mjs";
 import { startBlueprintMcpServer } from "../blueprint-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
 import { machineError, printResult, renderArchitecture, renderDocTruth, renderExpand, renderImpact, renderSearch, renderStatus } from "./render.mjs";
 
 function serviceFor(args, root) {
-  return createBlueprintApplicationService({
+  const local = createBlueprintApplicationService({
     outDir: String(args.out ?? ".agent"),
     // A local CLI invocation carries its OS caller's explicit filesystem scope.
     // Resident & remote adapters retain their separate enrollment admission.
     rootRegistry: new RootRegistry([{ root }]),
     allowEmbeddedRoot: false,
+  });
+  // Resident service owns its configured default output; custom CLI output
+  // stays with its explicit local owner.
+  if (String(args.out ?? ".agent") !== ".agent") return local;
+  return new Proxy({ ...local }, {
+    get(target, name) {
+      if (!METHODS.includes(name) || typeof target[name] !== "function") return target[name];
+      return async (input, options) => {
+        // Reuse the Hub-owned reader when available; direct CLI queries must
+        // not contend for a resident watcher's write lease.
+        const client = new DaemonClient();
+        try {
+          const response = await client.request({ method: name, input, deadlineMs: 30000 });
+          if (response.ok) return response.result;
+          if (!["root_not_enrolled", "method_unknown"].includes(response.error?.code)) {
+            throw Object.assign(new Error(response.error?.message ?? "Blueprint request failed"), response.error);
+          }
+        } catch (error) {
+          if (!["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) throw error;
+        } finally { await client.close().catch(() => {}); }
+        return target[name](input, options);
+      };
+    },
   });
 }
 
@@ -235,10 +261,16 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         let watcherError = "";
         let watcherOutput = "";
         let watcherSpawnError = null;
-        try {
-          endpoint = await startSnapshotServer({ root, authToken: process.env.BLUEPRINT_SNAPSHOT_TOKEN });
-          daemon = createDaemonServer({ registryEntries: readWatchConfig().repos });
-          daemonAddress = await daemon.listen();
+        let shuttingDown = false;
+        let shutdown = () => {};
+        let writeTail = Promise.resolve();
+        const expectedExits = new WeakSet();
+        const lifecycle = (event, details = {}) => console.error(JSON.stringify({ event, owner: "hub", ...details }));
+        const startWatcher = async () => {
+          if (shuttingDown) return;
+          watcherError = "";
+          watcherOutput = "";
+          watcherSpawnError = null;
           // Blueprint, not any peer, owns its watcher. Keep it attached to this
           // foreground service so Hub termination also stops the watcher.
           const watcherScript = resolve(import.meta.dirname, "../blueprint-watch.mjs");
@@ -259,6 +291,12 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           watcher.stderr?.setEncoding("utf8");
           watcher.stderr?.on("data", (chunk) => { watcherError += chunk; });
           watcher.once("error", (error) => { watcherSpawnError = error; });
+          const child = watcher;
+          child.once("exit", (code) => {
+            if (shuttingDown || expectedExits.has(child)) return;
+            lifecycle("blueprint_watcher_failed", { pid: child.pid, code });
+            shutdown(true);
+          });
           await new Promise((resolve) => setTimeout(resolve, 150));
           if (watcherSpawnError || watcher.exitCode !== null) {
             const detail = `${watcherOutput}\n${watcherError}`.toLowerCase();
@@ -268,8 +306,51 @@ async function runFacadeCommand(command, args, { root, outDir }) {
             error.code = lifecycle ?? (watcherSpawnError?.code ?? "blueprint_watcher_unavailable");
             throw error;
           }
+          lifecycle("blueprint_watcher_started", { pid: child.pid });
+        };
+        const stopWatcher = async () => {
+          const child = watcher;
+          if (!child || child.exitCode !== null || child.signalCode !== null) return;
+          expectedExits.add(child);
+          let timer;
+          const exited = new Promise((settle) => child.once("close", settle));
+          // Pipe closure allows actors to flush & release SQLite leases on
+          // Windows too, where child.kill(SIGTERM) is immediate termination.
+          child.stdin.end();
+          timer = setTimeout(() => child.kill("SIGKILL"), WATCHER_DRAIN_TIMEOUT_MS);
+          try { await exited; } finally { clearTimeout(timer); }
+          lifecycle("blueprint_watcher_stopped", { pid: child.pid });
+        };
+        const withExplicitWrite = (repoRoot, operation, run) => {
+          const work = writeTail.then(async () => {
+            if (shuttingDown) throw Object.assign(new Error("Hub is stopping"), { code: "hub_inactive" });
+            lifecycle(`blueprint_explicit_${operation}_started`, { root: repoRoot });
+            await stopWatcher();
+            try { return await run(); }
+            finally {
+              if (!shuttingDown) {
+                try { await startWatcher(); }
+                catch (error) { shutdown(true); throw error; }
+              }
+              lifecycle(`blueprint_explicit_${operation}_finished`, { root: repoRoot });
+            }
+          });
+          // Serialize actual workers, not client waiters: cancellation must
+          // never restart the watcher while a shared build is still writing.
+          writeTail = work.catch(() => {});
+          return work;
+        };
+        const buildRunner = (identity) => withExplicitWrite(identity.root, "build", () => runLocalBuild(identity));
+        try {
+          endpoint = await startSnapshotServer({ root, authToken: process.env.BLUEPRINT_SNAPSHOT_TOKEN });
+          await startWatcher();
+          daemon = createDaemonServer({ registryEntries: readWatchConfig().repos,
+            buildSingleflight: createBuildSingleflight({ runner: buildRunner }),
+            withExplicitWrite: (repoRoot, run) => withExplicitWrite(repoRoot, "refresh", run) });
+          daemonAddress = await daemon.listen();
         } catch (error) {
-          watcher?.kill("SIGTERM");
+          shuttingDown = true;
+          await stopWatcher();
           await daemon?.close().catch(() => {});
           await endpoint?.close().catch(() => {});
           const code = error?.code ?? "snapshot_server_failed";
@@ -283,32 +364,14 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
         await new Promise((resolve) => {
-          let shuttingDown = false;
-          const stopWatcher = async () => {
-            if (!watcher || watcher.exitCode !== null) return;
-            watcher.kill("SIGTERM");
-            const exited = await Promise.race([
-              new Promise((settle) => watcher.once("exit", () => settle(true))),
-              new Promise((settle) => setTimeout(() => settle(false), WATCHER_DRAIN_TIMEOUT_MS)),
-            ]);
-            if (!exited && watcher.exitCode === null) watcher.kill("SIGKILL");
-          };
-          const shutdown = (failure = false) => {
+          shutdown = (failure = false) => {
             if (shuttingDown) return;
             shuttingDown = true;
             if (failure) process.exitCode = EXIT.INTERNAL;
             clearInterval(keepAlive);
             Promise.allSettled([stopWatcher(), daemon.close(), endpoint.close()]).finally(resolve);
           };
-          const watcherExit = (code) => {
-            if (shuttingDown) return;
-            // A resident watcher disappearing makes service readiness false;
-            // let Hub observe a typed failure instead of a false running loop.
-            if (code !== 0) process.exitCode = EXIT.INTERNAL;
-            shutdown(true);
-          };
-          watcher.once("exit", watcherExit);
-          if (watcher.exitCode !== null) watcherExit(watcher.exitCode);
+          if (watcher.exitCode !== null || watcher.signalCode !== null) shutdown(true);
           process.once("SIGTERM", () => shutdown(false));
           process.once("SIGINT", () => shutdown(false));
           if (process.env.MEMBRANE_HUB_CHILD === "1") {

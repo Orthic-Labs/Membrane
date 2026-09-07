@@ -38,7 +38,7 @@ pub(crate) fn run_cli(args: &[String]) -> Result<(), String> {
     let entry = runtime.join("app/package/scripts/blueprint.mjs");
     if !node.is_file() || !entry.is_file() { return Err("packaged Blueprint CLI missing".into()); }
     let mut command = Command::new(node);
-    command.arg(entry).args(args).env_clear().env("BLUEPRINT_LOCAL_BUILD", "1").stdin(Stdio::null())
+    command.arg(entry).args(args).env_clear().stdin(Stdio::null())
         .stdout(Stdio::inherit()).stderr(Stdio::inherit());
     for key in ["PATH", "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR"] {
         if let Some(value) = std::env::var_os(key) { command.env(key, value); }

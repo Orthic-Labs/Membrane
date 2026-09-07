@@ -17,6 +17,7 @@ import { createDaemonServer } from "../src/service/server.mjs";
 import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../src/graph/generation-identity.mjs";
 import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore } from "../src/graph/store-sqlite.mjs";
 import { validateSnapshot } from "../src/lib/snapshot.mjs";
+import { isStoreLeaseHeld } from "../src/graph/store-lease.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "blueprint.mjs");
@@ -259,6 +260,83 @@ test("blueprint service start/stop are forbidden per D-S03", () => {
     const result = spawnSync(process.execPath, [CLI, "service", cmd, "--json"], { encoding: "utf8" });
     const payload = JSON.parse(result.stdout || result.stderr || "{}");
     assert.ok(payload.error || result.status !== 0, `service ${cmd} must be forbidden`);
+  }
+});
+
+test("Hub-owned service hands watcher lease to explicit build then resumes watcher", async () => {
+  const home = mkdtempSync(join(tmpdir(), "blueprint-build-handoff-home-"));
+  const root = temporaryRepository("blueprint-build-handoff-repo");
+  const endpoint = temporaryDaemonEndpoint("build-handoff");
+  const env = { ...process.env, HOME: home, USERPROFILE: home, BLUEPRINT_DAEMON_ENDPOINT: endpoint };
+  let child;
+  let client;
+  let stderr = "";
+  async function until(predicate, message) {
+    const deadline = Date.now() + 20000;
+    while (!predicate() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.ok(predicate(), `${message}\n${stderr}`);
+  }
+  try {
+    writeFileSync(join(root, ".gitignore"), ".agent/\ndocs/\n");
+    execFileSync("git", ["add", "source.mjs", ".gitignore"], { cwd: root });
+    execFileSync("git", ["-c", "user.name=Blueprint Test", "-c", "user.email=blueprint@example.invalid", "commit", "-qm", "fixture"], { cwd: root });
+    const initial = spawnSync(process.execPath, [CLI, "build", "--root", root, "--no-readme-link"], { env, encoding: "utf8", timeout: 30000, windowsHide: true });
+    assert.equal(initial.status, 0, initial.stderr);
+    mkdirSync(join(home, ".blueprint"), { recursive: true });
+    writeFileSync(join(home, ".blueprint/watch.json"), JSON.stringify({ version: 1, repos: [{ root, repoId: "handoff", enabled: true }] }));
+    const token = randomBytes(32).toString("hex");
+    child = spawn(process.execPath, [CLI, "service", "run", "--root", root, "--json"], {
+      env: { ...env, MEMBRANE_HUB_CHILD: "1", MEMBRANE_HUB_PARENT_PID: String(process.pid), MEMBRANE_HUB_LAUNCH_TOKEN: token },
+      stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
+    });
+    child.stdin.write(`${token}\n`);
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    await until(() => stdout.includes('"running"'), "service did not start");
+    const firstPid = JSON.parse(stdout.trim().split(/\r?\n/)[0]).watcherPid;
+    const dbPath = join(root, ".agent/graph/graph.db");
+    await until(() => isStoreLeaseHeld(dbPath), "watcher did not own store");
+    writeFileSync(join(root, "source.mjs"), "export const afterRebuild = 2;\n");
+    client = new DaemonClient({ endpoint });
+    const result = await client.request({ method: "build", input: { repoRoot: root, options: { noReadmeLink: true } }, deadlineMs: 30000 });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.result.exitCode, 0, JSON.stringify(result));
+    assert.match(result.result.stdout, /built .agent\/map.json/);
+    assert.throws(() => process.kill(firstPid, 0), "old watcher retained lease");
+    await until(() => isStoreLeaseHeld(dbPath), "watcher did not reacquire rebuilt store");
+    assert.match(stderr, /blueprint_explicit_build_finished/);
+    const searched = await client.request({ method: "search", input: { repoRoot: root, query: "afterRebuild" }, deadlineMs: 10000 });
+    assert.equal(searched.ok, true, JSON.stringify(searched));
+    assert.match(JSON.stringify(searched.result), /afterRebuild/);
+    writeFileSync(join(root, "source.mjs"), "export const afterExplicitRefresh = 3;\n");
+    const refreshed = await client.request({ method: "refresh", input: { repoRoot: root, timeoutMs: 10000 }, deadlineMs: 15000 });
+    assert.equal(refreshed.ok, true, JSON.stringify(refreshed));
+    assert.equal(refreshed.result.kind, "refresh");
+    await until(() => isStoreLeaseHeld(dbPath), "watcher did not reacquire refreshed store");
+    const afterRefresh = await client.request({ method: "search", input: { repoRoot: root, query: "afterExplicitRefresh" }, deadlineMs: 10000 });
+    assert.equal(afterRefresh.ok, true, JSON.stringify(afterRefresh));
+    assert.match(JSON.stringify(afterRefresh.result), /afterExplicitRefresh/);
+    // Use asynchronous child execution: the test's live service must continue
+    // servicing its pipe while the CLI awaits the resident response.
+    const cliSearch = spawn(process.execPath, [CLI, "search", "--root", root, "--query", "afterExplicitRefresh", "--json"], { env, windowsHide: true });
+    let cliOutput = "";
+    let cliError = "";
+    cliSearch.stdout.on("data", (chunk) => { cliOutput += chunk; });
+    cliSearch.stderr.on("data", (chunk) => { cliError += chunk; });
+    const cliCode = await new Promise((resolve) => cliSearch.once("close", resolve));
+    assert.equal(cliCode, 0, cliError);
+    assert.match(cliOutput, /afterExplicitRefresh/);
+    await client.close(); client = null;
+    const exited = new Promise((resolve) => child.once("close", resolve));
+    child.stdin.end();
+    await exited;
+    assert.equal(isStoreLeaseHeld(dbPath), false, "watcher outlived Hub pipe");
+  } finally {
+    await client?.close();
+    if (child && child.exitCode === null && child.signalCode === null) { const closed = new Promise((resolve) => child.once("close", resolve)); child.kill("SIGKILL"); await closed; }
+    rmSync(root, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

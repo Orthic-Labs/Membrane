@@ -51,7 +51,8 @@ fn build_with_recovery(packet: &ContextPacketV1, basis: membrane_protocol::host_
         all_ids.push(block.id.clone());
         if block.protected { protected.push(block.id.clone()); }
     }
-    if protected.is_empty() { return Err(PacketReductionRequestError::NoProtectedMaterial); }
+    // Ordinary retrieval may contain no protected blocks. The empty protected
+    // set is valid; exact measurement, recovery & host capacity still apply.
     // Refused query policy is terminal. The public opt-in cannot mint proof.
     let policy_admitted = match policy {
         PushPolicy::Control => true,

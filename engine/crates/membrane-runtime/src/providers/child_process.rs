@@ -259,14 +259,14 @@ pub fn spawn_contained_command(mut command: Command) -> std::io::Result<Sanitize
 /// [`WindowsJob::create`] or borrowed from a live child.
 #[cfg(windows)]
 mod windows_job {
-    use std::ffi::{c_void, CString};
+    use std::ffi::c_void;
     use std::os::windows::io::RawHandle;
 
     type Handle = *mut c_void;
 
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOBOBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: i32 = 9;
-    const NO_ERROR_EXIT_CODE: u32 = 0;
+    const ERROR_PROCESS_ABORTED: u32 = 1067;
     const INVALID_HANDLE_VALUE: Handle = std::ptr::null_mut();
 
     #[repr(C)]
@@ -345,8 +345,9 @@ mod windows_job {
         pub fn create() -> Option<Self> {
             // SAFETY: no attributes and no name; we own the returned handle.
             let handle = unsafe {
-                let name = CString::new("membrane-live-diagnostics-job").ok()?;
-                CreateJobObjectW(std::ptr::null_mut(), name.as_ptr() as *const u16)
+                // Each request owns a distinct job. A shared name joins
+                // unrelated operations, so one request's teardown kills them.
+                CreateJobObjectW(std::ptr::null_mut(), std::ptr::null())
             };
             if handle.is_null() || handle == INVALID_HANDLE_VALUE {
                 return None;
@@ -385,7 +386,7 @@ mod windows_job {
         pub fn terminate(&self) {
             // SAFETY: self.handle is a valid job handle.
             unsafe {
-                TerminateJobObject(self.handle, NO_ERROR_EXIT_CODE);
+                TerminateJobObject(self.handle, ERROR_PROCESS_ABORTED);
             }
         }
     }
@@ -690,6 +691,34 @@ pub fn drain_frames_until(frames: &Receiver<String>, budget_ms: u64) {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[cfg(windows)]
+    #[test]
+    fn independent_windows_requests_survive_peer_teardown() {
+        use std::io::BufRead;
+        use std::os::windows::process::CommandExt;
+        fn sleeper() -> SanitizedProcess {
+            let mut command = Command::new("powershell.exe");
+            command.args(["-NoProfile", "-NonInteractive", "-Command",
+                "[Console]::WriteLine('ready'); Start-Sleep -Seconds 30"])
+                .creation_flags(0x08000000).stdin(Stdio::null())
+                .stdout(Stdio::piped()).stderr(Stdio::null());
+            let mut process = spawn_contained_command(command).unwrap();
+            let mut line = String::new();
+            std::io::BufReader::new(process.child.stdout.take().unwrap())
+                .read_line(&mut line).unwrap();
+            assert_eq!(line.trim(), "ready");
+            process
+        }
+        let mut first = sleeper();
+        let mut second = sleeper();
+        first.kill_tree();
+        let first_status = first.child.wait().unwrap();
+        let second_status = second.child.try_wait().unwrap();
+        second.kill_tree();
+        assert!(!first_status.success(), "terminated work must not report success");
+        assert!(second_status.is_none(), "peer teardown killed independent request");
+    }
 
     fn executable(path: &Path) {
         std::fs::write(path, "#!/bin/sh\n").unwrap();

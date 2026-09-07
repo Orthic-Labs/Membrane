@@ -127,7 +127,7 @@ function releaseUnixLock(lock) {
   }
 }
 
-export function createDaemonServer({ service = null, findingsService = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
+export function createDaemonServer({ service = null, findingsService = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null, withExplicitWrite = (_root, work) => work() } = {}) {
   const registry = rootRegistry ?? (service || registryEntries.length === 0 ? null : new RootRegistry(registryEntries));
   const queueRegistry = rootRegistry ?? (registryEntries.length > 0 ? new RootRegistry(registryEntries) : null);
   const appService = service ?? createBlueprintApplicationService({
@@ -267,6 +267,10 @@ export function createDaemonServer({ service = null, findingsService = null, end
       if (root) mergedInput.repoRoot = root;
       if (message.method === "build") {
         entry.work = builds.build({ root, outDir: mergedInput.outDir, options: mergedInput.options ?? mergedInput }, { signal: controller.signal });
+      } else if (message.method === "refresh") {
+        // Refresh owns a one-shot write barrier; the Hub parent hands off its
+        // watcher lease before this begins & restores residency after drain.
+        entry.work = withExplicitWrite(root, () => appService.refresh(mergedInput, { signal: controller.signal }));
       } else if (FINDINGS_SERVICE_METHODS.includes(message.method)) {
         // Findings own their freshness model (§7.1): they serve the pinned
         // sealed generation directly instead of opening a freshness session.

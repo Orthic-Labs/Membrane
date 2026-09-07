@@ -258,6 +258,23 @@ mod tests {
         assert_eq!(result.selection_receipt.decision, "selected");
     }
 
+    #[test]
+    fn ordinary_retrieval_needs_no_invented_protected_material() {
+        let mut packet = packet();
+        packet.blocks = vec![block("ordinary", false, 96)];
+        let selected = select_packet_for_h8(&packet, &ceiling()).unwrap();
+        assert!(selected.plan.protected.is_empty());
+        for representation in &selected.plan.representations {
+            let blocks: Vec<BlockV1> = serde_json::from_value(representation.content["blocks"].clone()).unwrap();
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].text, packet.blocks[0].text);
+            assert!(!blocks[0].protected);
+        }
+        let mut insufficient = ceiling();
+        insufficient.remaining_tokens.estimate.value = Some(1);
+        assert!(select_packet_for_h8(&packet, &insufficient).is_err());
+    }
+
     /// A Rust source block big enough that budget-bounded skeletonization
     /// (which drops function bodies) actually shrinks it relative to raw
     /// compression, so the two transforms are distinguishable in a test.

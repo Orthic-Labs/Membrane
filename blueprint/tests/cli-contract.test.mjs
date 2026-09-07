@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import { EXIT } from "../scripts/cli/args.mjs";
+import { acquireStoreLease } from "../src/graph/store-lease.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -49,6 +50,24 @@ test("help prints branded Blueprint usage and exits 0", () => {
   const result = run(process.cwd(), ["--help"]);
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
+});
+
+test("denied rebuild leaves side artifacts untouched", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-build-lease-"));
+  cpSync(FIXTURE, repo, { recursive: true });
+  let lease;
+  try {
+    const built = run(repo, ["build", "--no-readme-link"]);
+    assert.equal(built.status, 0, built.stderr);
+    const map = readFileSync(join(repo, ".agent/map.json"));
+    lease = acquireStoreLease(join(repo, ".agent/graph/graph.db"), { ownerKind: "hub" });
+    const denied = spawnSync(process.execPath, [CLI, "build", "--root", repo], {
+      encoding: "utf8", env: { ...process.env, BLUEPRINT_LOCAL_BUILD: "1" }, timeout: 15000,
+    });
+    assert.notEqual(denied.status, 0);
+    assert.match(denied.stderr, /resident_owner_active/);
+    assert.deepEqual(readFileSync(join(repo, ".agent/map.json")), map);
+  } finally { lease?.release(); rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("local explicit root queries work without watcher enrollment", () => {
