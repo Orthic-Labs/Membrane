@@ -38,9 +38,9 @@ The final improvement plan is the execution companion. It records source finding
 [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- One installed Membrane controller owns background processes; Hub or CodeRight daemon holds its lifetime, & only final holder loss drains it.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- With neither resident holder active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon holds full residency independently of Hub UI.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
@@ -1230,7 +1230,7 @@ Canonical-state reads, review-context construction, approval capability consumpt
 
 Analysis over explicitly supplied files, such as transcript normalization, frozen benchmarks or snapshot validation, also runs as bounded explicit work. Operations needing current canonical state use its installed storage owner independently of Hub; file-only operations never claim live state they did not inspect.
 
-Operation inventory MUST label each command's effects & whether execution is explicit or automatic. Automatic observation, review, maintenance & proposal generation require active Hub. [Shared execution boundary](../execution-lifecycle-boundary.md) applies equally to all six subsystems.
+Operation inventory MUST label each command's effects & whether execution is explicit or automatic. Automatic observation, review, maintenance & proposal generation require an active Hub or CodeRight daemon holder. [Shared execution boundary](../execution-lifecycle-boundary.md) applies equally to all six subsystems.
 
 # 10. Current implementation truth — refresh-required snapshot
 

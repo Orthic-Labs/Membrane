@@ -21,7 +21,7 @@
 
 ## 0. Executive decision
 
-**Lifecycle correction (2026-09-07):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only & tray-off refusal statements throughout this document. All explicit Membrane operations remain available independently of Hub; only automatic background work & resident processes require Hub.
+**Lifecycle corrections (2026-09-07 & 2026-09-08):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only, tray-off refusal & Hub-only residency statements throughout this document. All explicit operations remain available without residency. Hub or CodeRight daemon holds one installed Membrane controller for full background services; only final holder loss drains them. CodeRight requires installer-owned Membrane, installs it when absent, & never consumes development runtime.
 
 Membrane does not need a larger architecture. It needs a sharper one.
 
@@ -48,10 +48,10 @@ Ledger registers, indexes, and resolves document sections without owning documen
 Adapt turns experience into governed Taste and Insights proposals; it never bypasses Cortex durable admission or Membrane context admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-Visible tray owns automatic work & resident lifecycle through its OS-coupled child daemon. Explicit operations across all six subsystems remain available with tray inactive through bounded installed execution. No request starts an orphanable daemon or automatic watcher.
+One Membrane controller owns automatic work through its OS-coupled child daemon. Hub & CodeRight daemon hold independent lifetimes of that controller. Explicit operations across all six subsystems remain available without either holder through bounded installed execution. No ordinary request starts an orphanable daemon or automatic watcher.
 
 Blueprint is **independently usable but not independently resident**. Its
-continuous watcher/freshness role runs only inside the active tray-owned daemon. With tray inactive, the
+continuous watcher/freshness role runs inside the shared controller-owned runtime. With no resident holder, the
 persisted Blueprint graph remains explicitly queryable through bounded one-shot
 Blueprint operations that never daemonize, never start the tray/daemon runtime, and never register an
 OS service.
@@ -64,11 +64,11 @@ The product objective is:
 
 ### 0.1 Physical co-location does not imply semantic ownership
 
-Blueprint is a named Membrane subsystem at the product/system level, while remaining independently usable and separately bounded at package, protocol, storage, testing, and responsibility layers. Independently usable is not independently resident: its watcher runs only inside the active tray-owned daemon, and tray-off access is a bounded one-shot operation.
+Blueprint is a named Membrane subsystem at the product/system level, while remaining independently usable and separately bounded at package, protocol, storage, testing, and responsibility layers. Independently usable is not independently resident: its watcher runs inside the shared Membrane controller's runtime, held by Hub or CodeRight daemon. With neither holder, explicit access uses bounded one-shot execution.
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 
-Blueprint owns its watcher and SQLite evidence store; that watcher is resident only inside the active tray-owned daemon. Cortex has its own durable-knowledge SQLite store, but Cortex has no resident service authority. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
+Blueprint owns its watcher and SQLite evidence store; that watcher is resident only inside the shared Membrane runtime. Cortex has its own durable-knowledge SQLite store, but Cortex has no resident service authority. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
 
 `engine/**` and `mcp/**` do not import `blueprint/src/**`. Membrane consumes Blueprint through Blueprint-owned schemas/service methods exactly as an external consumer would.
 
@@ -99,10 +99,10 @@ retain separate ownership, tests, metrics, and improvement paths:
 | **Ledger** | Register and navigate indexed document sections with hash-bound references. | Registry/navigation/index projections only; no document truth or durable memory. |
 | **Adapt** | Mine experience into Taste preferences and Insights failure/gotcha proposals. | Proposal eligibility is separate from Cortex durable admission and Membrane context admission; no direct durable writes. |
 
-Membrane Hub is not a seventh axis. The native tray owns resident lifecycle; its headless child
+Membrane Hub is not a seventh axis. One controller owns resident lifecycle while Hub or CodeRight daemon holds it; its headless child
 daemon hosts Membrane runtime, and the Hub dashboard runs on demand. Installation, update, and
 release remain one Membrane product authority. Blueprint retains an independently versioned
-package and protocol, but its continuous runtime role is hosted inside the tray-owned daemon and
+package and protocol, but its continuous runtime role is hosted inside the controller-owned runtime and
 reached through one typed native client.
 
 The current release-qualified target is Windows x86_64. Other targets are not
@@ -1163,18 +1163,18 @@ Membrane:
 
 Membrane does not traverse the Blueprint graph itself.
 
-The normal machine-to-machine transport is the tray-owned daemon's Blueprint query role
+The normal resident machine-to-machine transport is the shared runtime's Blueprint query role
 over local IPC through a long-lived Membrane-side client. Blueprint has no
 independently resident daemon.
 
 ```text
 Membrane
-→ tray-owned daemon Blueprint client
+→ controller-owned runtime Blueprint client
 → Blueprint protocol `recall`
 → RecallCircuit
 ```
 
-Requests may reuse active Blueprint services. With tray inactive or repository absent from watcher enrollment, explicit requests use bounded Blueprint-owned execution. Pull retains source evidence through the same request path. Transport unavailability never disables an otherwise authorized explicit operation; schema/generation failures remain typed & closed.
+Requests may reuse active Blueprint services. With neither resident holder active or repository absent from watcher enrollment, explicit requests use bounded Blueprint-owned execution. Pull retains source evidence through the same request path. Transport unavailability never disables an otherwise authorized explicit operation; schema/generation failures remain typed & closed.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
@@ -1433,7 +1433,7 @@ Never silently delete the database and regenerate as if nothing happened.
 
 # 15. Runtime responsibility planes and operations
 
-Preserve the three responsibility planes inside the tray-owned daemon runtime:
+Preserve the three responsibility planes inside the controller-owned resident runtime:
 
 ```text
 Application
@@ -1482,20 +1482,17 @@ It does not own network transport.
 
 ## Tray, daemon, and Hub boundary
 
-Native tray owns:
+Native Hub owns:
 
 - start-at-login;
-- the sole resident lifecycle and visible status surface;
-- activation/update lifecycle;
-- daemon restart/backoff;
-- the Blueprint watcher/query residency while tray is active.
+- its own lifetime holder and visible status surface;
+- installed activation/update requests.
 
-Tray is the only resident lifecycle authority. It launches one headless child daemon with
-OS-enforced lifetime coupling; that daemon is the only process in which Membrane runtime executes.
-Tray owns visible status, restart, drain, and shutdown. Daemon owns service identity, ports, leases,
-readiness, and runtime execution. Hub dashboard is on demand and owns neither resident lifecycle nor
+One installed Membrane controller owns resident restart/backoff, drain and shutdown. It launches one headless child daemon with
+OS-enforced lifetime coupling. Hub or CodeRight daemon holds full resident services; losing one holder preserves the other, and final holder loss drains the child tree. Controller crash still terminates its children. Explicit operations also execute through bounded installed owners when no holder exists.
+Daemon owns service identity, ports, readiness, and runtime execution. Hub dashboard is on demand and owns neither independent lifecycle nor
 runtime. Blueprint owns its package, protocol, store, watcher semantics, and query behavior, while
-tray owns their resident lifecycle. Cortex may expose durable-memory library and CLI operations to daemon, but it does
+Membrane controller owns their resident lifetime. Cortex may expose durable-memory library and CLI operations to daemon, but it does
 not claim a resident service, service identity, port, lease, or process
 lifecycle.
 
@@ -1579,7 +1576,7 @@ version. Rerunning bootstrap updates; exact version pins are supported;
 downgrade requires an explicit flag. No resident or background updater exists.
 
 `membrane activate` is the single idempotent activation authority. It starts or
-repairs tray-owned residency, waits for exact daemon health, and reconciles
+repairs the Hub holder's installed residency, waits for exact daemon health, and reconciles
 supported harness registrations to absolute `membrane stdio-mcp` bindings.
 Install scripts and optional graphical packages call this command rather than
 reimplementing registration or lifecycle policy.
@@ -2094,7 +2091,7 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 
 **Rename / modify**
 - `engine/federation/providers/blueprint.py` — final name of the former repository-truth adapter.
-- use a long-lived client to the tray-owned daemon Blueprint role for the normal path;
+- use a long-lived client to the shared resident Blueprint role when either holder is active;
 - request generation-bound `RecallCircuit`;
 - validate schema/generation before conversion;
 - convert one complete path into one atomic evidence unit/candidate;
@@ -2132,7 +2129,7 @@ The early slice is complete only when:
 1. multi-signal requirements are deterministic and unioned;
 2. broad fallback is exercised on ambiguity;
 3. outcome rows join to delivered candidate/packet ids;
-4. normal Blueprint recall uses the tray-owned daemon Blueprint role and never a
+4. resident Blueprint recall uses the controller-owned runtime Blueprint role and never a
    per-query process;
 5. Blueprint generation mismatch fails closed;
 6. each complete RecallCircuit path stays atomic;
@@ -2279,8 +2276,7 @@ from subsystem canons.
 - Generation mismatch fails closed for Blueprint.
 - A `no_relevant_seed` Blueprint result emits no fake repository context.
 - Code anchor relocation/re-anchoring is delegated to Blueprint.
-- Blueprint recall uses the tray-owned daemon client while tray is active; Membrane
-      has no one-shot fallback when tray is inactive.
+- Blueprint recall uses the shared resident client while Hub or CodeRight daemon holds it; authorized explicit requests use bounded one-shot execution when no resident service exists.
 - Membrane contains no duplicate structural re-anchor implementation.
 - Unsupported/ambiguous/missing are not collapsed.
 - Repository evidence remains `data_only`.
@@ -2423,6 +2419,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. The visible native tray owns automatic resident lifecycle; its OS-coupled child daemon hosts watchers, schedulers & background processes, while Hub dashboard runs on demand. All six subsystems support explicit bounded operations with Hub off through canonical installed owners.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Ledger, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Ledger registers and navigates indexed documents. Adapt learns user-backed Taste preferences and evidence-backed Insights failures/gotchas. Push performs reversible reduction. Membrane planner determines what deserves agent attention now, in what form, under whose authority, and records why. One installed controller owns watchers, schedulers & background processes while Hub or CodeRight daemon holds its lifetime. Hub UI is optional for CodeRight. All six subsystems support explicit bounded operations without residency through canonical installed owners.**
 
 That is the canonical shape.

@@ -51,8 +51,8 @@ For landed behavior, read generated `docs/product/README.md`, `docs/architecture
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
 - New documentation and current-product code use Pull / Push / Cortex / Blueprint / Ledger / Adapt. Guide is retired; legacy `guide` names exist only at explicit compatibility/history boundaries.
-- Keep explicit agent operations available with Hub on or off across Pull, Blueprint, Cortex, Ledger, Adapt & Push; Hub owns only automatic background work & resident processes. Execute Hub-off requests through bounded installed execution with normal authorization, storage ownership & cancellation. See `docs/architecture/execution-lifecycle-boundary.md`.
-- Keep every explicit Blueprint operation independent of Hub, including graph inspection, refresh, build, analysis & export; only auto-refresh watchers & automatic processes require active Hub. Never substitute watcher enrollment for repository authorization.
+- Keep explicit operations available across all six subsystems without residency; Hub or CodeRight daemon holds one installed Membrane controller for full background work, and only final holder loss drains it. CodeRight requires installer-owned Membrane: adopt compatible installed `current`, install when absent, update through canonical installer when incompatible, & never execute development runtime. See `docs/architecture/execution-lifecycle-boundary.md`.
+- Keep every explicit Blueprint operation independent of Hub, including graph inspection, refresh, build, analysis & export; auto-refresh requires an active Hub or CodeRight daemon holder. Never substitute watcher enrollment for repository authorization.
 - A capability is not landed until the production path executes it and frozen acceptance evidence shows it meets or improves the baseline it replaces.
 
 ## Boundary discipline

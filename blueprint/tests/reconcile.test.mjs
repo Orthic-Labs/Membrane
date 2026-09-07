@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { finishEntityRenames, reconcile } from "../watchman/reconcile.mjs";
-import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { buildGraphGeneration, graphStatus } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { contentDigest } from "../src/graph/generation-identity.mjs";
 import { writeSnapshot } from "../watchman/adapter.mjs";
@@ -20,6 +20,36 @@ function makeRepo() {
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
 }
+
+test("status follows reconciled untracked source additions and deletions", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-untracked-status-"));
+  try {
+    writeFileSync(join(repo, ".gitignore"), ".agent/\nignored.ts\n");
+    writeFileSync(join(repo, "tracked.ts"), "export const tracked = 1;\n");
+    for (const args of [["init"], ["add", "."]]) {
+      const git = spawnSync("git", args, { cwd: repo, encoding: "utf8", windowsHide: true });
+      assert.equal(git.status, 0, git.stderr);
+    }
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    writeFileSync(join(repo, "added.ts"), "export const newlyAdded = 2;\n");
+    writeFileSync(join(repo, "ignored.ts"), "export const ignored = 3;\n");
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      assert.equal((await reconcile(db, repo, { completeDocuments: true })).convergence.converged, true);
+      assert.ok(db.prepare("SELECT 1 FROM symbols WHERE name='newlyAdded'").get());
+      assert.equal(db.prepare("SELECT 1 FROM files WHERE path='ignored.ts'").get(), undefined);
+    } finally { closeStore(db); }
+    assert.equal(graphStatus(repo, ".agent").state, "fresh");
+    assert.deepEqual(graphStatus(repo, ".agent").pendingPaths, []);
+    rmSync(join(repo, "added.ts"));
+    assert.deepEqual(graphStatus(repo, ".agent").pendingPaths, ["added.ts"]);
+    const changed = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      assert.equal((await reconcile(changed, repo, { completeDocuments: true })).convergence.converged, true);
+    } finally { closeStore(changed); }
+    assert.equal(graphStatus(repo, ".agent").state, "fresh");
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("bounded reconcile excludes configured generated paths from old native snapshots", async () => {
   const repo = makeRepo();

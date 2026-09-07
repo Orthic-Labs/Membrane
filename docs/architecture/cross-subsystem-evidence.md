@@ -28,9 +28,9 @@ The main decisions are:
 [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- One installed Membrane controller owns background processes; Hub or CodeRight daemon holds its lifetime, & only final holder loss drains it.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- With neither resident holder active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon holds full residency independently of Hub UI.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 

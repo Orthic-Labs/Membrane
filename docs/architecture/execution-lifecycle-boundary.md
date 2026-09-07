@@ -1,12 +1,21 @@
 # Explicit execution & resident lifecycle
 
-**Status:** Normative user correction, 2026-09-07. Source implementation & installed acceptance are tracked in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
+**Status:** Normative user corrections, 2026-09-07 & 2026-09-08. Source implementation & installed acceptance are tracked in `audit/remediation/README.md`. Internal Windows delivery uses local RightKit builds & installed checks; CI does not gate that loop.
 
 This contract supersedes any statement that tray-off or Hub-off disables explicit Membrane operations, that MCP/CLI must only forward to a daemon, or that Blueprint is the only subsystem permitted bounded execution. It applies to all six subsystems & every installed agent integration, including CodeRight.
 
-Hub owns automatic background execution & resident process lifetime. It does not own availability of explicitly requested operations. An agent must be able to invoke any supported explicit Membrane operation with Hub stopped.
+Membrane owns one resident controller. An active Hub or CodeRight daemon holds its lifetime; either holder activates full Membrane background services, including Blueprint watchers. Hub UI is optional when CodeRight daemon is active. Releasing or losing one holder preserves services required by another; final holder loss drains every resident worker. Explicit operations remain available when neither holder exists.
 
-| Subsystem | Explicit operations available with Hub off | Automatic work requires Hub |
+CodeRight treats Membrane as a required installed dependency. It adopts a compatible installer-owned installation, invokes the canonical installer when genuinely absent, & routes incompatible installations through canonical update/repair before full daemon readiness. A known offline installation is not absence. Every runtime binding, bootstrap, executable, asset & lifecycle request targets verified stable `current` and its active installed generation. Development checkouts, CWD, PATH guesses, workspace overrides, staging directories & copied developer binaries cannot supply runtime authority. Installation & durable state remain owned by Membrane.
+
+| Hub holder | CodeRight daemon holder | Required behavior |
+|---|---|---|
+| Absent | Absent | Bounded explicit operations; no automatic workers |
+| Active | Absent | Full resident Membrane |
+| Absent | Active | Full resident Membrane; Hub UI optional |
+| Active | Active | Same controller, runtime & storage owners; either holder may leave independently |
+
+| Subsystem | Explicit operations available without a resident holder | Automatic work requires Hub or CodeRight daemon holder |
 |---|---|---|
 | Pull | Context retrieval, planning, fusion & receipts | Scheduled retrieval or prewarming |
 | Blueprint | Graph inspection, initial build, refresh, rebuild, search, traversal, analysis, verification & export | Auto-refresh watchers & scheduled analysis |
@@ -17,25 +26,25 @@ Hub owns automatic background execution & resident process lifetime. It does not
 
 Explicit execution uses installed product entry points, bounded process lifetime & existing subsystem services. It preserves repository authorization, caller identity, grants, freshness, generation/schema validation, transaction semantics & concurrency control. It never starts Hub, installs a service, enrolls a watcher or leaves a resident process behind. This contract does not authorize bypassing another subsystem's storage owner or protected effects.
 
-With Hub active, requests may reuse resident services. With Hub stopped, equivalent explicit requests execute on demand. Automatic subscriptions report inactivity when Hub is stopped; ordinary explicit requests must not fail solely with `hub_inactive`.
+With either resident holder active, requests may reuse resident services. With neither active, equivalent explicit requests execute on demand. Automatic subscriptions report inactivity only when no resident holder exists; ordinary explicit requests must not fail solely with `hub_inactive`.
 
 Resident execution receives the caller's full remaining deadline, not a shorter readiness-probe timeout. Fallback subtracts elapsed time from both its transport budget & wire deadline. A resident timeout never replays a possibly dispatched mutation through one-shot execution.
 
 CLI connection refusal or connection timeout before a stream exists permits bounded canonical execution. Windows can report either when Hub is stopped. Errors after connection or request dispatch remain ambiguous & never authorize direct mutation replay.
 
-Manual refresh must ingest current source & make changed truth queryable with Hub or watcher on or off. A successful acknowledgement with an unchanged stale graph is failure. With watching enabled under Hub, relevant source edits, additions & deletions must become queryable automatically within bounded indexing latency, without manual refresh. Verify these as separate installed acceptance cases.
+Manual refresh must ingest current source & make changed truth queryable with Hub or watcher on or off. A successful acknowledgement with an unchanged stale graph is failure. With watching enabled under either resident holder, relevant source edits, additions & deletions must become queryable automatically within bounded indexing latency, without manual refresh. Verify these as separate installed acceptance cases.
 
 Watcher enrollment initializes an absent or unsealed graph before publishing enabled configuration; initialization failure must leave enrollment unsuccessful. Resident startup admits subscriptions before a bounded two-slot FIFO cold-reconciliation pool, reports pending reconciliation honestly, & never presents an uninitialized repository as healthy. Slow roots cannot monopolize both scheduling & callback execution: committed journal events yield to native callbacks between rows. Re-enrollment after explicit initialization starts its previously inactive actor. Automatic acceptance uses read-only observation so query-triggered repair cannot hide watcher failure.
 
 A resident freshness failure does not gate an explicit graph read: the service hands off the watcher lease & executes its authorized bounded freshness path. Generation/schema mismatches & caller authorization still fail closed. Watcher startup must retain enrollment revisions arriving during startup; CLI tests use isolated enrollment homes so fixture roots never enter user configuration.
 
-Diagnostics workspace epochs, mutations, snapshots & baselines persist through canonical Cortex event storage. Every CLI, MCP & resident diagnostics owner reads that same versioned state; revision conflicts & corrupt payloads fail closed. Provider handles remain process-local. Explicit acquisition shuts providers down before returning; subscriptions & resident provider restart require Hub. Loopback failure after dispatch never causes a mutation replay.
+Diagnostics workspace epochs, mutations, snapshots & baselines persist through canonical Cortex event storage. Every CLI, MCP & resident diagnostics owner reads that same versioned state; revision conflicts & corrupt payloads fail closed. Provider handles remain process-local. Explicit acquisition shuts providers down before returning; subscriptions & resident provider restart require a resident holder. Loopback failure after dispatch never causes a mutation replay.
 
 Installation reconciles stable-path MCP bindings & CLI access before resident startup. A failed Hub launch must not remove those explicit entry points. Pull freshness reads use the same bounded Blueprint transport as explicit graph operations; diagnostics preserve enrolled scope descriptors when authorizing CLI calls. Cold Blueprint initialization preserves repository source files unless the caller explicitly requests documentation changes.
 
 Local CLI invocation carries its OS caller's explicit repository scope; watcher enrollment is never its admission list. Remote adapters retain their caller/root authorization. Native explicit builds reuse an available resident owner or fall back to bounded local execution. Findings explanation & evidence packs use their canonical sealed-generation service when no daemon is reachable.
 
-Hub-owned explicit builds & refreshes stop the resident watcher, finish the bounded write, then restart the authenticated watcher. The service parent serializes actual workers through this handoff; cancellation of a client waiter cannot restart a watcher while its shared build still writes. Full builds acquire the canonical store lease before writing any side artifact. Independent Windows requests own separate unnamed Job Objects; terminating one request cannot terminate another, & forced termination never reports success.
+Resident explicit builds & refreshes stop the resident watcher, finish the bounded write, then restart the authenticated watcher. The service parent serializes actual workers through this handoff; cancellation of a client waiter cannot restart a watcher while its shared build still writes. Full builds acquire the canonical store lease before writing any side artifact. Independent Windows requests own separate unnamed Job Objects; terminating one request cannot terminate another, & forced termination never reports success.
 
 Ordinary Pull results need no protected block to be deliverable. An empty protected set preserves its meaning; exact packet measurement, host capacity, evidence lineage & reversible-recovery checks still govern delivery.
 
@@ -49,9 +58,9 @@ After a coalesced automatic update, the watcher publishes its source observation
 
 ## Regression acceptance
 
-For each installed public operation, verify discovery & execution with Hub on & off. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.
+For each installed public operation, verify discovery & execution across all four holder states above. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.
 
-Separately verify that stopping Hub stops every watcher, scheduler & automatic process while explicit operations remain callable. Tests that expect blanket Hub-off refusal for ordinary operations encode obsolete behavior & must be replaced.
+Verify release, crash, expiry & restart independently for both holders. Losing either holder must retain services used by the other; losing the final holder must stop every watcher, scheduler & automatic process while explicit operations remain callable. Verify cold CodeRight startup with no Hub UI, simultaneous acquire without duplicate runtime, & truthful per-repository catch-up. Test installed-plus-development coexistence, development-only refusal, genuinely missing installation, incompatible installation update, & rejection of development executable or asset substitution.
 
 ## Enforced ownership sites
 
@@ -59,12 +68,12 @@ Membrane is harness-agnostic. Codex, Claude Code & other MCP hosts consume the s
 
 - `engine/crates/membrane-runtime/src/explicit_client.rs` & `engine/crates/membrane-client/src/explicit.rs`: closed installed CLI requests & distinct bounded-owner SDK binding, with absolute request options & no replay of uncertain effects. No resident health response is synthesized.
 
-- `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.
+- `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when no resident service is available; dispatched writes are never replayed after uncertain transport failure.
 - `engine/crates/membrane-runtime/src/freshness.rs`: Pull & diagnostics read Blueprint through resident-or-one-shot transport.
 - `engine/crates/membrane/src/activation.rs`: explicit agent bindings precede Hub startup; `tests/activation_hub_off.rs` checks startup failure preserves them.
 - `docs/architecture/membrane.md`: all six subsystems permit explicit bounded execution with Hub off.
 - `docs/architecture/subsystems/ledger.md`: explicit indexing uses canonical Ledger owner independently of Hub.
-- `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: canonical installed owners serve explicit operations; automatic processes remain Hub-owned.
-- `docs/architecture/security/mcp-threat-model.md`: bounded explicit execution preserves authorization & process containment; automatic residency requires Hub.
+- `docs/architecture/subsystems/adapt.md`, `cross-subsystem-evidence.md` & `integrations/coderight.md`: canonical installed owners serve explicit operations; automatic processes require Hub or CodeRight daemon lifetime.
+- `docs/architecture/security/mcp-threat-model.md`: bounded explicit execution preserves authorization & process containment; automatic residency requires an authenticated local holder.
 
 Blueprint installed accessibility is first delivery priority. This contract records required behavior; it is not evidence that current binaries satisfy it.

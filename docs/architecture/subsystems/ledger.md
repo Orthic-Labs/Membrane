@@ -12,7 +12,7 @@
 
 ## Executive decision
 
-**Lifecycle correction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) supersedes prohibitions on bounded Hub-off execution throughout this document. Explicit registration, indexing, search & resolution remain available through Ledger-owned services with Hub off. Only watchers & automatic background indexing require Hub.
+**Lifecycle correction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) supersedes prohibitions on bounded Hub-off execution throughout this document. Explicit registration, indexing, search & resolution remain available through Ledger-owned services. Watchers & automatic background indexing require an active Hub or CodeRight daemon holder of the shared Membrane controller.
 
 Complete Ledger as a daemon-owned, source-bound document service reachable through the normal harness path. Retain its existing SQLite/FTS5 and structural mechanisms. Correct identity, lifecycle, complete-projection and resolver defects before enabling native document-provider delivery.
 
@@ -24,11 +24,11 @@ Normative statements below define the selected target. Section 5 is the separate
 
 ## Runtime lifecycle binding — normative
 
-Resident Membrane work runs in tray-owned child daemon with OS-enforced lifetime coupling. Explicit Ledger operations also run through bounded installed execution with Hub off. CodeRight uses these same installed operations & does not implement another Ledger backend.
+Resident Membrane work runs in a controller-owned child daemon with OS-enforced lifetime coupling. Hub & CodeRight daemon hold independent lifetimes of this same controller. Explicit Ledger operations also run through bounded installed execution when neither holder exists. CodeRight uses these same installed operations & does not implement another Ledger backend.
 
 MCP, CLI & host surfaces dispatch to Ledger-owned services. Explicit registration, indexing, search & resolution remain available with Hub off using canonical installed storage & unchanged grants, transaction rules & budgets. No transport opens Ledger tables directly. Status inspection does not authorize indexing, and no explicit operation starts a replacement daemon or watcher.
 
-All six subsystems support explicit execution independently of Hub. All continuous Ledger update work uses active daemon scheduling & cancellation; closing Hub stops automatic work while preserving explicit access.
+All six subsystems support explicit execution independently of Hub. All continuous Ledger update work uses active daemon scheduling & cancellation; final resident holder loss stops automatic work while preserving explicit access.
 
 ---
 
@@ -474,4 +474,4 @@ Source-derived current-state claims are confined to the reviewed baseline. Norma
 
 # 22. Final canonical statement
 
-> Ledger is Membrane's granted document registry, structural indexing, navigation, source-local retrieval and exact source-resolution subsystem. It owns rebuildable source-bound AST/FTS/link/conversion projections and bounded reference/drift diagnostics, while authoritative bytes remain with their source owner. It is operated by the tray-owned daemon and consumed through usable host contracts. Blueprint owns repository truth, Cortex durable knowledge, Adapt proposals, Pull final context admission/fusion, Push faithful reduction, and CodeRight agent execution. A capability is complete only when its actual supported production path and applicable acceptance evidence prove it—not when its table, helper or architecture diagram exists.
+> Ledger is Membrane's granted document registry, structural indexing, navigation, source-local retrieval and exact source-resolution subsystem. It owns rebuildable source-bound AST/FTS/link/conversion projections and bounded reference/drift diagnostics, while authoritative bytes remain with their source owner. It executes through the shared installed resident runtime or bounded explicit owner and is consumed through usable host contracts. Blueprint owns repository truth, Cortex durable knowledge, Adapt proposals, Pull final context admission/fusion, Push faithful reduction, and CodeRight agent execution. A capability is complete only when its actual supported production path and applicable acceptance evidence prove it—not when its table, helper or architecture diagram exists.

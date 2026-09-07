@@ -52,13 +52,15 @@ There are distinct data classes and owners:
 [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) governs every subsystem & client:
 
 - Explicit agent operations remain available with Hub on or off through installed product services.
-- Hub owns automatic background execution & resident process lifetime, including watchers & schedulers.
+- One Membrane controller owns resident processes. Hub & CodeRight daemon hold independent lifetimes; either enables watchers & automatic services, & only final holder loss drains them.
 - MCP, CLI & CodeRight reuse canonical authorization, storage owners, freshness, generation/schema checks & request budgets.
-- Hub-off execution is bounded, never starts Hub or registers a service, & leaves no automatic process behind.
+- With neither Hub nor CodeRight daemon active, explicit execution is bounded & leaves no automatic process behind. CodeRight daemon activation acquires full Membrane residency without requiring Hub UI.
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
-The additive SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. Ordinary CodeRight startup selects this bounded owner unconditionally after `locate_installed_candidate()`, regardless Hub UI state. No user switch, resident health probe, inferred Hub-mode signal, or retry through another transport selects this path. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. Diagnostics use the same explicit client & identity, never a fabricated resident handshake.
+The bounded SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. It supplies explicit operations independently of resident lifetime. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. This binding alone does not satisfy CodeRight daemon startup: daemon readiness requires an independently verified resident lifetime with full background services.
+
+CodeRight daemon must acquire its Membrane lifetime before publishing full readiness, retain & renew it while running, & release it through its single shutdown path. Membrane validates OS-bound holder identity & reports service loss explicitly. Hub acquisition must adopt the same runtime; Hub exit cannot drain it while CodeRight remains active, & CodeRight exit cannot drain it while Hub remains active. Controller crash still drains its child process tree. Background readiness means required services are active; each repository reports catch-up or degradation separately.
 
 The SDK selects closed operations & frames one request for exact installed `current/membrane[.exe] cli explicit-call`. CodeRight injects its governed child transport: close stdin after the frame, cap output, honor supplied absolute `CallOptions`, terminate & reap the complete child tree, & report whether action input was dispatched. SDK owns response validation & `CommitUnknown` classification; unknown dispatched effects are never replayed. Each logical host request supplies one `with_call_options` view, including all follow-up record reads; construction defaults expire after 30 seconds. The installed owner rejects changed binding before dispatch & delegates to existing memory, federation & diagnostics handlers. Provider restart keeps its resident lifecycle gate.
 
@@ -70,12 +72,14 @@ Source implementation & installed/consumer qualification are separate evidence s
 
 ## 1.1 What "mandatory" means
 
-A full CodeRight agent session MUST NOT start without one compatible Membrane capability binding.
+A full CodeRight agent session MUST NOT start without one compatible installed Membrane capability binding. CodeRight daemon additionally requires verified full resident services, including Blueprint watchers, before publishing full readiness.
 
 The binding identifies **one compatible installed Membrane authority**, selected through
-versioned identity verification. CodeRight explicit operations use its bounded installed
-entry point with Hub off or on, binding the same installation, release & Cortex store.
+versioned identity verification. CodeRight uses only installer-owned stable `current`
+and its verified active generation, binding the same installation, release & Cortex store.
 CodeRight never embeds a Membrane backend.
+
+If compatible Membrane is installed, adopt it. If genuinely absent, CodeRight setup invokes the canonical Membrane installer, then rediscovers & verifies the installed result. Incompatible installations use canonical update/repair; offline, denied, corrupt or timed-out known installations never authorize a second installation. Development checkouts, CWD, PATH guesses, workspace environment overrides, candidate artifacts & developer binaries are excluded from production discovery, provisioning & runtime launch. SDK source dependencies do not authorize executing repository runtime code.
 
 CodeRight must not create two knowledge universes.
 
@@ -868,10 +872,15 @@ does not prescribe rollout phases.
 
 ## Startup/backend
 
-- compatible installed binding through bounded execution with Hub off & on;
-- tray inactive at startup — installed explicit operations remain callable; no automatic watcher or replacement daemon starts;
-- tray quits mid-session — explicit requests retain the same bounded installed execution;
+- compatible installed binding with Hub alone, CodeRight daemon alone, both active & neither active;
+- tray inactive at CodeRight daemon startup — acquire full Membrane residency through its installed controller, including watchers; Hub UI remains optional;
+- tray quits mid-session — CodeRight lifetime retains the same resident Membrane services;
   uncertain in-flight writes remain unknown, with no fallback store or replay;
+- CodeRight daemon exits while Hub remains — Hub retains resident services;
+- final holder exits — all automatic workers stop; bounded explicit requests remain available;
+- compatible installed Membrane coexists with a development checkout — only installed executable/assets are used;
+- development checkout exists without installed Membrane — canonical installer runs; checkout never supplies runtime;
+- truly absent installed dependency — installer result is rediscovered & verified before full readiness;
 - incompatible version;
 - store identity mismatch;
 - backend death;

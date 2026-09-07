@@ -123,9 +123,12 @@ fn main() -> Result<(), slint::PlatformError> {
         .as_ref()
         .map(|workspace| workspace.root.clone())
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let http_port = std::env::var("MEMBRANE_HTTP_PORT")
+    let http_port = resolved_workspace.as_ref().ok()
+        .filter(|workspace| workspace.origin == workspace::RuntimeOrigin::Installed)
+        .map(|workspace| workspace.http_port)
+        .or_else(|| std::env::var("MEMBRANE_HTTP_PORT")
         .ok()
-        .and_then(|value| value.parse().ok())
+        .and_then(|value| value.parse().ok()))
         .or_else(|| {
             resolved_workspace
                 .as_ref()
@@ -224,8 +227,7 @@ fn main() -> Result<(), slint::PlatformError> {
         match workspace::resolve() {
             Ok(workspace) => {
                 let mut supervisor = callback_supervisor.borrow_mut();
-                supervisor.set_workspace(workspace.root, workspace.http_port);
-                supervisor.set_origin(workspace.origin);
+                supervisor.set_workspace(&workspace);
                 supervisor.manual_restart_process(now);
             }
             Err(reason) => {
@@ -368,8 +370,7 @@ fn main() -> Result<(), slint::PlatformError> {
                 match workspace::resolve() {
                     Ok(workspace) => {
                         let mut supervisor = timer_supervisor.borrow_mut();
-                        supervisor.set_workspace(workspace.root, workspace.http_port);
-                        supervisor.set_origin(workspace.origin);
+                        supervisor.set_workspace(&workspace);
                         supervisor.manual_restart_process(now);
                     }
                     Err(reason) => {

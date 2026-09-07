@@ -413,8 +413,12 @@ export function graphStatus(repoRoot, outDir, options = {}) {
   // a stale comparison.
   const manifestFileLimit = Number(manifest.fileLimit ?? 0);
   const rescanLimit = options.fileLimit ?? manifestFileLimit ?? 0;
-  // Same run-owned output exclusion the build used — see withOutputDirExcludedFromScan.
-  const sources = scanSources(root, rescanLimit, withOutputDirExcludedFromScan(root, outDir, options));
+  // Reconciliation and resident publication admit untracked, unignored source.
+  // Status must compare that same working tree against the ledger, otherwise an
+  // applied addition is reported as removed by a tracked-only cold-build scan.
+  const sources = scanSources(root, rescanLimit, withOutputDirExcludedFromScan(root, outDir, {
+    ...options, trackedOnly: false,
+  }));
   const scanned = sources.files.length > 0;
   const scanTruncated = Boolean(sources.traversalTruncated);
   const currentHash = scanned && !scanTruncated ? sourceHash(sources.files) : manifest.repo?.sourceHash;

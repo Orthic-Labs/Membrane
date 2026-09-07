@@ -240,9 +240,11 @@ impl Supervisor {
         self.drain_complete
     }
 
-    pub fn set_workspace(&mut self, workspace_root: PathBuf, http_port: u16) {
-        self.workspace_root = workspace_root;
-        self.http_port = http_port;
+    pub fn set_workspace(&mut self, workspace: &workspace::Workspace) {
+        self.workspace_root = workspace.root.clone();
+        self.http_port = workspace.http_port;
+        self.set_origin(workspace.origin);
+        self.daemon_path = workspace.daemon_path().unwrap_or_else(default_daemon_path);
     }
 
     pub fn block_startup(&mut self, reason: &str, now_ms: u64) -> Transition {
@@ -781,6 +783,26 @@ mod tests {
             PathBuf::from(r"C:\daemon.exe"),
             4317,
         )
+    }
+
+    #[test]
+    fn repaired_installed_workspace_replaces_previous_executable_and_port() {
+        let mut supervisor = test_supervisor();
+        let current = PathBuf::from("/installed/Membrane/current");
+        let resolved = workspace::Workspace {
+            root: PathBuf::from("/installed/Membrane/state"),
+            http_port: workspace::INSTALLED_PORT,
+            origin: workspace::RuntimeOrigin::Installed,
+            product_root: Some(PathBuf::from("/installed/Membrane")),
+            stable_current: Some(current.clone()),
+            version_root: Some(PathBuf::from("/installed/Membrane/versions/0.1.24")),
+            state_root: Some(PathBuf::from("/installed/Membrane/state")),
+        };
+        supervisor.set_workspace(&resolved);
+        assert_eq!(supervisor.daemon_path, resolved.daemon_path().unwrap());
+        assert_eq!(supervisor.workspace_root, resolved.root);
+        assert_eq!(supervisor.http_port, workspace::INSTALLED_PORT);
+        assert!(supervisor.is_installed_origin());
     }
 
     #[test]

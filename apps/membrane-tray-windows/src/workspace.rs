@@ -180,37 +180,38 @@ pub fn installed_tray_path() -> Option<PathBuf> {
 }
 
 pub fn resolve() -> Result<Workspace, &'static str> {
-    // Development is explicit. This branch is intentionally checked before
-    // installed discovery so a checkout can never accidentally take over the
-    // user's production state.
-    if std::env::var_os("MEMBRANE_RUNTIME_ORIGIN").as_deref()
-        == Some(std::ffi::OsStr::new("development"))
-    {
-        return resolve_development();
+    let executable = std::env::current_exe().ok();
+    let installed_root = product_root().ok();
+    let development_requested = std::env::var_os("MEMBRANE_RUNTIME_ORIGIN").as_deref()
+        == Some(std::ffi::OsStr::new("development"));
+    match select_origin(executable.as_deref(), installed_root.as_deref(), development_requested) {
+        RuntimeOrigin::Installed => installed_layout(),
+        RuntimeOrigin::Development => resolve_development(),
     }
-    // A process launched from the production projection must never fall back
-    // to a checkout when the pointer or installed state is damaged.
-    if std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        .is_some_and(|parent| {
-            product_root()
-                .ok()
-                .is_some_and(|root| parent == root.join("current"))
+}
+
+fn select_origin(executable: Option<&Path>, root: Option<&Path>, development_requested: bool) -> RuntimeOrigin {
+    // Installed executables remain installed even if a calling development
+    // shell leaks overrides. Account for Windows resolving `current` to its
+    // version directory; a broken pointer must never authorize dev fallback.
+    let installed_executable = executable.zip(root).is_some_and(|(exe, root)| {
+        fn normalized(path: &Path) -> PathBuf {
+            #[cfg(windows)]
+            { PathBuf::from(path.to_string_lossy().trim_start_matches(r"\\?\").to_ascii_lowercase()) }
+            #[cfg(not(windows))]
+            { path.to_path_buf() }
+        }
+        let exe = normalized(exe);
+        let root = normalized(root);
+        exe.parent().is_some_and(|parent| {
+            parent == root.join("current") || parent.parent() == Some(root.join("versions").as_path())
         })
-    {
-        return installed_layout();
+    });
+    if development_requested && !installed_executable {
+        RuntimeOrigin::Development
+    } else {
+        RuntimeOrigin::Installed
     }
-    if ["MEMBRANE_WORKSPACE_ROOT", "WORKSPACE_ROOT"]
-        .into_iter()
-        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
-    {
-        return resolve_development();
-    }
-    if let Ok(installed) = installed_layout() {
-        return Ok(installed);
-    }
-    resolve_development()
 }
 
 fn resolve_development() -> Result<Workspace, &'static str> {
@@ -343,6 +344,27 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_projection_and_version_reject_development_override() {
+        let root = Path::new("/installed/Membrane");
+        for relative in ["current/membrane-tray.exe", "versions/0.1.24/membrane-tray.exe"] {
+            assert_eq!(select_origin(Some(&root.join(relative)), Some(root), true), RuntimeOrigin::Installed);
+        }
+        let checkout = Path::new("/development/membrane-tray.exe");
+        assert_eq!(select_origin(Some(checkout), Some(root), false), RuntimeOrigin::Installed);
+        assert_eq!(select_origin(Some(checkout), Some(root), true), RuntimeOrigin::Development);
+        assert_eq!(select_origin(None, None, false), RuntimeOrigin::Installed);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn installed_origin_accepts_windows_canonical_path_spelling() {
+        assert_eq!(select_origin(
+            Some(Path::new(r"\\?\C:\Users\Test\Membrane\versions\0.1.24\membrane-tray.exe")),
+            Some(Path::new(r"C:\users\test\membrane")), true,
+        ), RuntimeOrigin::Installed);
+    }
 
     #[test]
     fn canonical_directory_rejects_relative_and_missing_roots() {

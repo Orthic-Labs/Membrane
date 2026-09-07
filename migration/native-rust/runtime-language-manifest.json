@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T21:55:45.222Z",
+ "generatedAt": "2026-09-07T22:34:52.565Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
@@ -523,7 +523,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "650d4365a5f648411ddec6390b4e9283e6c7ad6e52cbc3a5737bc189dbd4e259"
+   "content_digest": "6c5b7377c51a035c6494d5ca1cc9aa60ab18d68d194d7fbc8d4a3604ff07874b"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -888,7 +888,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "a19200f98c273c8ff25a9c5a442fccb883a19b1d230822391fb78445cdac87d1"
+   "content_digest": "bdce81bd3f0ea42016110bae62fd5b1445c6e7f463ccfffbd615fdd481f20319"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -2474,7 +2474,7 @@
     "apps/membrane-tray-windows/src/tray.rs",
     "apps/membrane-tray-windows/src/workspace.rs"
    ],
-   "content_digest": "2841d8a4859e1133ab0607f211e5c007c97c353c1f4fd43c641a197860d4a971"
+   "content_digest": "082d7ff0a509f4d8c18fa398efeff6cdf280f6724eb1d9cfc85d0072315ee5fc"
   }
  ]
 }
