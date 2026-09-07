@@ -51,7 +51,7 @@ impl CallOptions {
             cancellation,
         }
     }
-    fn check(&self) -> Result<(), ClientError> {
+    pub(crate) fn check(&self) -> Result<(), ClientError> {
         if self.cancellation.is_cancelled() {
             Err(ClientError::Cancelled)
         } else if Instant::now() >= self.deadline {
@@ -70,6 +70,7 @@ pub struct MemoryBackendClient<T: ?Sized = MemoryTransport> {
     options: CallOptions,
     identity: Option<ServiceIdentity>,
     bearer_token: Option<String>,
+    explicit: Option<std::sync::Arc<crate::explicit::InstalledExplicitClient>>,
 }
 
 /// One request-scoped typed view over a bound client.  It keeps transport and
@@ -78,6 +79,21 @@ pub struct MemoryBackendCall<'a, T: ?Sized> {
     client: &'a MemoryBackendClient<T>,
     options: CallOptions,
     marker: PhantomData<&'a T>,
+}
+
+impl MemoryBackendClient<MemoryTransport> {
+    /// Preserve typed memory methods while using a separately verified bounded owner.
+    /// `identity()` stays None: bounded execution has no resident ServiceIdentity.
+    /// Initial calls share a 30-second deadline; each later host request must supply
+    /// its own `with_call_options` view so composed reads retain one absolute budget.
+    pub fn from_explicit(client: std::sync::Arc<crate::explicit::InstalledExplicitClient>) -> Self {
+        let mut result = Self::new(Box::new(|_, _| Err(ClientError::Incompatible {
+            message: "resident transport is unavailable on an explicit client".into(),
+        })));
+        result.explicit = Some(client);
+        result.options = CallOptions::after(Duration::from_secs(30));
+        result
+    }
 }
 
 fn recall_entry<T>(
@@ -169,6 +185,7 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
             options: CallOptions::unbounded(CancellationToken::new()),
             identity: None,
             bearer_token: None,
+            explicit: None,
         }
     }
     pub fn with_options(mut self, options: CallOptions) -> Self {
@@ -186,6 +203,9 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
     pub fn identity(&self) -> Option<&ServiceIdentity> {
         self.identity.as_ref()
     }
+    pub fn explicit_binding(&self) -> Option<&crate::explicit::ExplicitOwnerBindingV1> {
+        self.explicit.as_ref().map(|client| client.binding())
+    }
     pub fn with_call_options(&self, options: CallOptions) -> MemoryBackendCall<'_, T> {
         MemoryBackendCall {
             client: self,
@@ -195,6 +215,7 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
     }
 
     pub fn bind(mut self, requirement: &CompatibilityRequirement) -> Result<Self, ClientError> {
+        if self.explicit.is_some() { return Err(ClientError::Incompatible { message: "explicit owner cannot bind resident health".into() }); }
         let response = self.call_raw(HANDSHAKE_OPERATION, handshake::request())?;
         self.identity = Some(handshake::verify(&response, requirement)?);
         Ok(self)
@@ -208,6 +229,7 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
         response: &Value,
         requirement: &CompatibilityRequirement,
     ) -> Result<Self, ClientError> {
+        if self.explicit.is_some() { return Err(ClientError::Incompatible { message: "explicit owner cannot bind resident health".into() }); }
         self.identity = Some(handshake::verify(response, requirement)?);
         Ok(self)
     }
@@ -222,6 +244,9 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
         operation: &str,
         request: Map<String, Value>,
     ) -> Result<Value, ClientError> {
+        if let Some(explicit) = &self.explicit {
+            return explicit.memory_call(operation, &request, options);
+        }
         if operation != HANDSHAKE_OPERATION && self.identity.is_none() {
             return Err(ClientError::Incompatible {
                 message: "resident client has not completed compatibility handshake".into(),
@@ -291,6 +316,7 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
         Ok(self.call_raw(METRICS, Map::new())?)
     }
     pub fn embedder_dim(&self) -> Result<usize, ClientError> {
+        if let Some(explicit) = &self.explicit { self.options.check()?; return Ok(explicit.binding().embedder_dim); }
         let row = self.object("/health", Map::new())?;
         row.get("embedder_dim")
             .or_else(|| row.get("embedderDim"))
@@ -635,6 +661,7 @@ impl<'a, T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError>
             .call_raw_with_options(&self.options, METRICS, Map::new())?)
     }
     pub fn embedder_dim(&self) -> Result<usize, ClientError> {
+        if let Some(explicit) = &self.client.explicit { self.options.check()?; return Ok(explicit.binding().embedder_dim); }
         let row = self
             .client
             .object_with_options(&self.options, "/health", Map::new())?;

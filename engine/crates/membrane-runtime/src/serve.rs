@@ -2881,6 +2881,31 @@ fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, Stri
     route_with_context_ingest_lease(store, None, method, url, body)
 }
 
+/// Closed SDK operation selection delegates to the same canonical handlers as HTTP.
+pub(crate) fn explicit_memory_response(store: &MemoryStore,
+    operation: membrane_protocol::explicit::ExplicitOperation,
+    request: &serde_json::Map<String, Value>) -> (u16, Value) {
+    use membrane_protocol::explicit::ExplicitOperation as Op;
+    if operation == Op::ActivityRead {
+        let limit = request.get("limit").and_then(Value::as_u64).unwrap_or(20).min(10_000) as usize;
+        return (200, store.activity_json(limit));
+    }
+    let (method, path) = match operation {
+        Op::Activity => ("POST", "/activity"), Op::Delete => ("POST", "/delete"),
+        Op::Federate => ("POST", "/federate"), Op::Get => ("POST", "/get"),
+        Op::List => ("POST", "/list"), Op::Metrics => ("GET", "/metrics"),
+        Op::Put => ("POST", "/put"), Op::Recall => ("POST", "/recall"),
+        Op::Remember => ("POST", "/remember"), Op::RememberConsolidated => ("POST", "/remember_consolidated"),
+        Op::Scopes => ("POST", "/scopes"), Op::Search => ("POST", "/search"), Op::Use => ("POST", "/use"),
+        _ => return (400, json!({"code":"invalid_request","error":"unsupported memory operation"})),
+    };
+    let (status, body) = route(store, method, path, &Value::Object(request.clone()).to_string());
+    match serde_json::from_str(&body) {
+        Ok(value) => (status, value),
+        Err(_) => (500, json!({"code":"commit_unknown","error":"owner response serialization failed"})),
+    }
+}
+
 fn claims_reserved_adapt_authority(item: &crate::store::MemoryBatchItem) -> bool {
     item.artifact_family == "adapt"
         || item.producer == "adapt_native"

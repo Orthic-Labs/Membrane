@@ -55,6 +55,8 @@ Separately verify that stopping Hub stops every watcher, scheduler & automatic p
 
 ## Enforced ownership sites
 
+- `engine/crates/membrane-runtime/src/explicit_client.rs` & `engine/crates/membrane-client/src/explicit.rs`: closed installed CLI requests & distinct bounded-owner SDK binding, with absolute request options & no replay of uncertain effects. No resident health response is synthesized.
+
 - `engine/crates/membrane-runtime/src/mcp_executor.rs`: request/session owner executes explicit operations when Hub is inactive; dispatched writes are never replayed after uncertain transport failure.
 - `engine/crates/membrane-runtime/src/freshness.rs`: Pull & diagnostics read Blueprint through resident-or-one-shot transport.
 - `engine/crates/membrane/src/activation.rs`: explicit agent bindings precede Hub startup; `tests/activation_hub_off.rs` checks startup failure preserves them.

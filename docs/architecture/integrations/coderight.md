@@ -58,6 +58,12 @@ There are distinct data classes and owners:
 - A failed response after dispatch must not silently replay a possibly completed write.
 - CodeRight consumes installed Membrane operations; it does not implement another backend.
 
+The additive SDK path is `membrane_client::explicit::InstalledExplicitClient`, with `MemoryBackendClient::from_explicit` preserving typed memory/federation methods. It binds `ExplicitOwnerBindingV1`, whose `bounded_explicit` mode identifies installation, Cortex store, release, installed startup epoch, compatibility & embedder dimension. It has no resident service identity or service generation. `identity()` remains empty on this client; `explicit_binding()` provides its distinct owner identity. Diagnostics use the same explicit client & identity, never a fabricated resident handshake.
+
+The SDK selects closed operations & frames one request for exact installed `current/membrane[.exe] cli explicit-call`. CodeRight injects its governed child transport: close stdin after the frame, cap output, honor supplied absolute `CallOptions`, terminate & reap the complete child tree, & report whether action input was dispatched. SDK owns response validation & `CommitUnknown` classification; unknown dispatched effects are never replayed. Each logical host request supplies one `with_call_options` view, including all follow-up record reads; construction defaults expire after 30 seconds. The installed owner rejects changed binding before dispatch & delegates to existing memory, federation & diagnostics handlers. Provider restart keeps its resident lifecycle gate.
+
+Source implementation & installed/consumer qualification are separate evidence states; current results are recorded in `audit/remediation/README.md`.
+
 ---
 
 # 1. Mandatory Membrane dependency

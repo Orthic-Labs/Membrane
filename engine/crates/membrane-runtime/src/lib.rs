@@ -59,6 +59,7 @@ pub mod store;
 pub mod team_policy;
 pub use cortex_store::db::{record_observable_event, StoreError};
 pub use cortex_store::{context_telemetry, installation_identity, memdb, scope, time};
+mod explicit_client;
 pub use provenance::{
     capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
     WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,

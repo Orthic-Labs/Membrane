@@ -515,6 +515,11 @@ fn execute_explicit(name: &str, arguments: &Value) -> Value {
     execute_explicit_with_owner(name, arguments, &Mutex::new(None))
 }
 
+pub(crate) fn execute_installed_diagnostic(name: &str, arguments: &Value) -> Value {
+    // Keep resident-only provider restart behind the same lifecycle gate as MCP.
+    ExplicitOperationExecutor::default().execute(name, arguments)
+}
+
 fn execute_explicit_with_owner(name: &str, arguments: &Value, owner: &Mutex<Option<RuntimeMcpExecutor>>) -> Value {
     if !name.starts_with("membrane_diagnostic_") {
         let (root, repository, scope) = match caller(arguments, name) {

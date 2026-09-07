@@ -110,7 +110,7 @@ pub fn ensure_action(outcome: &DiscoveryOutcome) -> EnsureAction {
     }
 }
 
-fn comparable_stable_root(root: &str) -> &str {
+pub(crate) fn comparable_stable_root(root: &str) -> &str {
     #[cfg(windows)]
     if let Some(path) = root.strip_prefix(r"\\?\") {
         let bytes = path.as_bytes();

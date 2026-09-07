@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 
 pub mod binding;
 pub mod error;
+pub mod explicit;
 pub mod handshake;
 pub mod memory_backend;
 pub mod records;

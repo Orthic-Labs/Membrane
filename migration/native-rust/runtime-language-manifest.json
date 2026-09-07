@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T21:44:37.698Z",
+ "generatedAt": "2026-09-07T21:55:45.222Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
-  "files": 1346,
+  "files": 1351,
   "rows": 58,
   "byRuntime": {
    "python": 8,
@@ -879,6 +879,7 @@
     "blueprint/tests/update-contract.test.mjs",
     "blueprint/tests/update-rollback.test.mjs",
     "blueprint/tests/watch-supervisor.test.mjs",
+    "blueprint/tests/watcher-publication.test.mjs",
     "blueprint/tests/watchman-phase2-completion.test.mjs",
     "blueprint/tests/watchman.test.mjs",
     "blueprint/tests/windows-entrypoint.test.mjs",
@@ -887,7 +888,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "9f23eb8c240cf089d868e648727b0df79583afba49ce874fa16ebc9ee3cb8fef"
+   "content_digest": "a19200f98c273c8ff25a9c5a442fccb883a19b1d230822391fb78445cdac87d1"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1106,14 +1107,16 @@
    "files": [
     "engine/crates/membrane-client/src/binding.rs",
     "engine/crates/membrane-client/src/error.rs",
+    "engine/crates/membrane-client/src/explicit.rs",
     "engine/crates/membrane-client/src/handshake.rs",
     "engine/crates/membrane-client/src/lib.rs",
     "engine/crates/membrane-client/src/memory_backend.rs",
     "engine/crates/membrane-client/src/records.rs",
     "engine/crates/membrane-client/tests/compat.rs",
+    "engine/crates/membrane-client/tests/explicit.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "fac3d6fa68b27b9ac7b76960cef033dba03346db7102cbe0caa0049d4d1f4b13"
+   "content_digest": "f3f087d0f143fbf14643a349467f6fadc27b6cb7886c91ea672195e4d05ba913"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1463,7 +1466,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "70b17eba7dcad8edd81cc57e0ae442b1dc89659a6ac9033e6582ef2d38d99386"
+   "content_digest": "c31211834f3bc742922f1bd8d572f1d859f811337318a7e525b9dfa252fce050"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1490,6 +1493,7 @@
     "engine/crates/membrane-protocol/src/compatibility_policy.rs",
     "engine/crates/membrane-protocol/src/compression.rs",
     "engine/crates/membrane-protocol/src/diagnostics.rs",
+    "engine/crates/membrane-protocol/src/explicit.rs",
     "engine/crates/membrane-protocol/src/federation.rs",
     "engine/crates/membrane-protocol/src/fusion.rs",
     "engine/crates/membrane-protocol/src/heartbeat.rs",
@@ -1515,7 +1519,7 @@
     "engine/crates/membrane-protocol/tests/operations_roundtrip.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "29d85b6248d83390ac6b38368944e37b7c235767fddf849f83a092fced2a87bb"
+   "content_digest": "e8188582843a1fba03350a2b0061f6ef55cec572b9d174fb9debf9d0204f6bae"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1590,6 +1594,7 @@
     "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
     "engine/crates/membrane-runtime/src/digest.rs",
     "engine/crates/membrane-runtime/src/doctor.rs",
+    "engine/crates/membrane-runtime/src/explicit_client.rs",
     "engine/crates/membrane-runtime/src/feedback.rs",
     "engine/crates/membrane-runtime/src/fleet.rs",
     "engine/crates/membrane-runtime/src/freshness.rs",
@@ -1718,7 +1723,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "ced0501ced00e9426e087e1136ca6097baa8ea7e4d4e9e79d511cf9cebe52cf7"
+   "content_digest": "3e4008f8acef9c930aa0b9b646b59382cbcebfaa9ef6b678d7534403d8da5aaa"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

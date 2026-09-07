@@ -726,6 +726,8 @@ pub(crate) enum AdaptCmd {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Execute one identity-fenced installed SDK request from stdin, independently of Hub.
+    ExplicitCall,
     /// Run an explicit Blueprint command from installed runtime, independently of Hub.
     Blueprint {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -2958,6 +2960,7 @@ fn command_requires_db(command: &Cmd) -> bool {
     !matches!(
         command,
         Cmd::BuildInfo
+            | Cmd::ExplicitCall
             | Cmd::Blueprint { .. }
             | Cmd::Installation { .. }
             | Cmd::Ledger { .. }
@@ -4035,6 +4038,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         apply_deployed_runtime_defaults(runtime);
     }
     let cli = Cli::parse_from(&argv);
+    if matches!(cli.cmd, Cmd::ExplicitCall) {
+        return crate::explicit_client::run();
+    }
     if let Cmd::Blueprint { args } = &cli.cmd {
         return crate::blueprint_one_shot::run_cli(args);
     }
@@ -4081,7 +4087,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo | Cmd::ExplicitCall | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {

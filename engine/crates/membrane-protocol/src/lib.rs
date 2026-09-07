@@ -286,6 +286,8 @@ pub const SHAPES: &[ContractShape] = &[
 ];
 
 /// Absolute path to the repository root (for tests that read from disk).
+pub mod explicit;
+
 pub fn repo_root() -> &'static str {
     ROOT
 }
