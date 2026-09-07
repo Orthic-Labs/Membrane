@@ -34,18 +34,20 @@ impl RuntimeMcpExecutor {
         let store = crate::service::open_installed_store()?;
         Ok(Self {
             ledger: Some(crate::ledger::service::open_explicit_owner()?),
-            store,
+            store: store.clone(),
             diagnostics: Mutex::new(DiagnosticsService::new().map_err(|error| error.to_string())?
-                .with_blueprint_client(Box::new(crate::providers::blueprint_findings::ExplicitFindingsClient))),
+                .with_blueprint_client(Box::new(crate::providers::blueprint_findings::ExplicitFindingsClient))
+                .with_persistent_store(store).map_err(|error| error.to_string())?),
         })
     }
     pub fn for_hub(store: MemoryStore) -> Result<Self, String> {
         crate::ledger::service::install_daemon_owner();
         Ok(Self {
             ledger: crate::ledger::service::active_owner().ok(),
-            store,
+            store: store.clone(),
             diagnostics: Mutex::new(
-                DiagnosticsService::production_service().map_err(|error| error.to_string())?,
+                DiagnosticsService::production_service().map_err(|error| error.to_string())?
+                    .with_persistent_store(store).map_err(|error| error.to_string())?,
             ),
         })
     }
@@ -536,7 +538,15 @@ fn execute_explicit_with_owner(name: &str, arguments: &Value, owner: &Mutex<Opti
                 Err(failure) => return error(name, "installed_runtime_unavailable", failure),
             }
         }
-        owner.as_ref().expect("initialized explicit owner").execute(name, arguments)
+        let executor = owner.as_ref().expect("initialized explicit owner");
+        let result = executor.execute(name, arguments);
+        match executor.diagnostics.lock() {
+            Ok(mut diagnostics) => if let Err(failure) = diagnostics.stop_explicit_providers() {
+                return error(name, "provider_shutdown_failed", failure.to_string());
+            },
+            Err(_) => return error(name, "provider_shutdown_failed", "diagnostics lock poisoned"),
+        }
+        result
     })();
     eprintln!("{}", json!({"event":"membrane_explicit_finished","operation":name,"elapsedMs":started.elapsed().as_millis(),"kind":result.pointer("/result/kind")}));
     result
@@ -558,8 +568,14 @@ impl NativeMcpExecutor for HubTransportExecutor {
 impl NativeMcpExecutor for ExplicitOperationExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
         if name == "membrane_blueprint" { return execute_blueprint(arguments); }
-        // Diagnostic workspaces & snapshots belong to this explicit session,
-        // including when Hub starts or stops between requests.
+        if name == "membrane_diagnostic_provider" && arguments.get("operation").and_then(Value::as_str) == Some("restart") {
+            return match HubTransportExecutor::active() {
+                Ok(active) => active.post(name, arguments).unwrap_or_else(|failure| error(name, "membrane_unavailable", failure)),
+                Err(_) => error(name, "hub_inactive", "resident provider control requires active Hub"),
+            };
+        }
+        // Logical diagnostics state is canonical across CLI, stdio & Hub;
+        // explicit acquisition providers stop when each request completes.
         if name.starts_with("membrane_diagnostic_") {
             return execute_explicit_with_owner(name, arguments, &self.owner);
         }

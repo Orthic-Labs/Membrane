@@ -79,6 +79,25 @@ fn installed_explicit_adapt_uses_canonical_store_with_hub_off() {
         "token_grant":{"generation":1,"issued_at":"2025-01-01T00:00:00Z"}
     }));
     write_json(&registry, &json!({"schema_version":2,"bindings":bindings}));
+    // Separate CLI invocations must share canonical logical workspace state.
+    for args in [
+        vec!["diagnostics", "workspace-open", "--repo", "repo-fixture", "--worktree", "wt-fixture", "--project-root", repo.to_str().unwrap()],
+        vec!["diagnostics", "mutation-begin", "--repo", "repo-fixture", "--worktree", "wt-fixture"],
+        vec!["diagnostics", "workspace-status", "--repo", "repo-fixture", "--worktree", "wt-fixture"],
+    ] {
+        let output = Command::new(current.join(filename)).args(&args)
+            .current_dir(&repo).env("HOME", temp.path()).env("USERPROFILE", temp.path())
+            .env("LOCALAPPDATA", temp.path().join("local")).env("APPDATA", temp.path().join("roaming"))
+            .env("MEMBRANE_CACHE_ROOT", temp.path().join("cache"))
+            .env("MEMBRANE_DATA_ROOT", temp.path().join("data"))
+            .env("MEMBRANE_CONFIG_ROOT", temp.path().join("config"))
+            .env("MEMBRANE_PROJECT_REGISTRY", &registry)
+            .env("MEMBRANE_PORT", "1").env_remove("MEMBRANE_API_TOKEN").env_remove("MEMBRANE_API_TOKEN_FILE")
+            .env_remove("WORKSPACE_ROOT").env_remove("CORTEX_DB").output().unwrap();
+        assert!(output.status.success(), "{args:?}: {}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+        if args[1] == "workspace-status" { assert_eq!(response["openMutation"], true); }
+    }
     let mut child = Command::new(current.join(filename)).arg("stdio-mcp")
         .current_dir(&repo).env("HOME", temp.path()).env("USERPROFILE", temp.path())
         .env("LOCALAPPDATA", temp.path().join("local")).env("APPDATA", temp.path().join("roaming"))

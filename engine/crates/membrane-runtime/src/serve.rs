@@ -2544,6 +2544,7 @@ fn build_router_inner(
         "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": ["memory", "diagnostics"],
     });
+    let diagnostics_store = state.store.as_ref().clone();
     let app = Router::new()
         .route("/livez", get(livez))
         .route("/health", get(detailed_health))
@@ -2558,6 +2559,7 @@ fn build_router_inner(
     let app = match crate::live_diagnostics_service::resident_diagnostics_routes(
         api_token,
         diagnostics_health_identity,
+        diagnostics_store,
     ) {
         Some(diagnostics) => app.merge(diagnostics),
         None => app,

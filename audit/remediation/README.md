@@ -16,7 +16,7 @@ Active scope: validate PR #30, reproduce & repair confirmed findings on main, qu
 | ID | Finding | State | Acceptance |
 |---|---|---|---|
 | SEM-001 | Installed Hub-off explicit execution unreachable | Blueprint Node graph/build/refresh tests pass; native installation pending | Every explicit subsystem operation remains available; only automatic work requires Hub |
-| SEM-002 | Unbound audit/decision providers claim complete-empty | Source-confirmed; repair staged in working tree | Missing owner becomes typed omission & required lane remains insufficient |
+| SEM-002 | Unbound audit/decision providers claim complete-empty | Repaired in `c28e4f72`; focused checks & independent source review pass | Missing owner becomes typed omission & required lane remains insufficient |
 | SEM-003 | Workspace child deadline resets & serial fanout | Source validation pending | One ingress deadline, bounded concurrency, healthy siblings retained |
 | SEM-004 | Push recovery lacks task/session binding | Source-confirmed; open | Same-task restore succeeds; wrong task/session denied |
 | SEM-005 | Diagnostics audit persistence silently fails | Source validation pending | Typed caller-visible persistence degradation |
@@ -25,7 +25,7 @@ Active scope: validate PR #30, reproduce & repair confirmed findings on main, qu
 | SEM-008 | Generated budget claims exceed evidence | Source-confirmed; open | Inventory distinguished from qualified behavior |
 | EVID-001 | Baseline substitution & independence chronology unproven | Open | Raw authoritative turns & freeze timeline |
 | EVID-002 | Dogfood test assertions do not cover frozen oracle | Source-confirmed; open | Every required observable asserted through correct boundary |
-| CI-001 | Runtime inventory drift blocks merged main | Reproduced in managed CI; repair in progress | Manifest/graph checks & managed CI pass |
+| CI-001 | Runtime inventory drift blocks merged main | Inventory regenerated & local checks pass; current native CI pending | Manifest/graph checks & managed CI pass |
 
 ## Process degradation
 
@@ -33,10 +33,10 @@ Installed stable Legion `contract seal --help` returns `status: incomplete`, `na
 
 ## Delivery state
 
-Resolved: 0. Open: 11 ledger items (including one unmeasured opportunity). No local Rust build/test, qualification, release, installation, commit, push, branch deletion, or successful completion claim has occurred. Counts will change only with evidence.
+SEM-002 source repair verified & independently reviewed. Main commits `c28e4f72`, `ae26527b`, `0da3b013` & `0fcc3091` pushed from Windows using configured GitHub keyring. No local Rust build/test, installed activation, branch deletion or overall completion claim. Native CI on `0da3b013` compiled but failed fixture junction creation; `0fcc3091` exposed misplaced MCP HTTP executor wiring, corrected in next candidate. Unsigned Windows installer run `34125993668` succeeded for earlier Blueprint-only candidate; broader boundary must pass before activating final build.
 
 ## Urgent internal installer scope correction
 
 Adrian requires latest installed Blueprint before CodeRight resumes; unsigned internal installer explicitly authorized. This task owns local activation & uses existing `unsigned-installer` managed workflow. Default native/retained discovery includes Blueprint for clients without custom tools/list metadata. MCP resource transport returns valid contents or JSON-RPC errors. Native compile/test & installer build remain managed CI work.
 
-User expanded lifecycle correction to all six Membrane subsystems: explicit operations work with Hub off; only automatic/resident processes require Hub. Canonical contract is `docs/architecture/execution-lifecycle-boundary.md`. Blueprint source tests cover initialization, traversal, edit/refresh, build, generation rejection & no watcher. Windows checkout CRLF broke hashed Python provider; LF byte preservation restores existing expected checksum without bypassing validation. Shared non-Blueprint executor gate remains pending.
+User expanded lifecycle correction to all six Membrane subsystems: explicit operations work with Hub off; only automatic/resident processes require Hub. Canonical contract is `docs/architecture/execution-lifecycle-boundary.md`. Blueprint source tests cover initialization, traversal, edit/refresh, build, generation rejection & no watcher. Windows checkout CRLF broke hashed Python provider; LF byte preservation restores existing expected checksum without bypassing validation. Shared explicit execution now covers Cortex, Pull, Ledger, Adapt & Push. Diagnostics cross-process state uses canonical event storage; provider children stop after explicit acquisition. Native CI & final installed acceptance remain tracked independently.

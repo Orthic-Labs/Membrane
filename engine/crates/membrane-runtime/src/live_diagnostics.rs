@@ -1182,6 +1182,8 @@ pub enum ReconcileClassification {
     UnknownConflict,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FenceClearance {
     epoch_number: u64,
     manifest_digest: String,
@@ -1203,6 +1205,58 @@ pub struct DiagnosticsSession {
     baseline: Option<Vec<DiagnosticIssueV1>>,
     latest_snapshot: Option<DiagnosticEvidenceSnapshotV1>,
     latest_decision: Option<DiagnosticGateDecisionV1>,
+}
+
+/// Versioned logical state only: no provider handles, timers or runtime authority.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DiagnosticsSessionStateV1 {
+    latest_sealed: Option<WorkspaceEpochV1>,
+    open_mutation: bool,
+    cleared: Option<FenceClearance>,
+    baseline: Option<Vec<DiagnosticIssueV1>>,
+    latest_snapshot: Option<DiagnosticEvidenceSnapshotV1>,
+    latest_decision: Option<DiagnosticGateDecisionV1>,
+}
+
+impl DiagnosticsSession {
+    pub(crate) fn export_state(&self) -> DiagnosticsSessionStateV1 {
+        DiagnosticsSessionStateV1 {
+            latest_sealed: self.latest_sealed.clone(), open_mutation: self.open_mutation,
+            cleared: self.cleared.clone(), baseline: self.baseline.clone(),
+            latest_snapshot: self.latest_snapshot.clone(), latest_decision: self.latest_decision.clone(),
+        }
+    }
+
+    pub(crate) fn restore_state(state: DiagnosticsSessionStateV1, repo: &str, worktree: &str,
+        open_mutation: bool, policy_current: bool) -> Result<Self, String> {
+        if state.open_mutation != open_mutation { return Err("diagnostic mutation state mismatch".into()); }
+        if state.latest_sealed.as_ref().is_some_and(|epoch| epoch.repo_id != repo || epoch.worktree_id != worktree) {
+            return Err("diagnostic epoch identity mismatch".into());
+        }
+        if state.latest_snapshot.as_ref().is_some_and(|snapshot| snapshot.repo_id != repo || snapshot.worktree_id != worktree
+            || snapshot.workspace_epoch.repo_id != repo || snapshot.workspace_epoch.worktree_id != worktree) {
+            return Err("diagnostic snapshot identity mismatch".into());
+        }
+        if state.latest_decision.as_ref().is_some_and(|decision|
+            state.latest_snapshot.as_ref().is_none_or(|snapshot| snapshot.snapshot_id != decision.snapshot_id)) {
+            return Err("diagnostic decision snapshot binding mismatch".into());
+        }
+        let mut restored = Self { latest_sealed: state.latest_sealed, open_mutation,
+            cleared: state.cleared, baseline: state.baseline, latest_snapshot: state.latest_snapshot,
+            latest_decision: state.latest_decision };
+        if let Some(clearance) = &restored.cleared {
+            let bound = clearance.decision.outcome == GateOutcome::CleanExact
+                && restored.latest_sealed.as_ref().is_some_and(|epoch| epoch.epoch == clearance.epoch_number
+                    && epoch.source_manifest_digest == clearance.manifest_digest
+                    && ordered(epoch_changed_hashes(epoch)) == ordered(clearance.changed_hashes.clone()))
+                && restored.latest_snapshot.as_ref().is_some_and(|snapshot| snapshot.snapshot_id == clearance.decision.snapshot_id)
+                && restored.latest_decision.as_ref() == Some(&clearance.decision);
+            if !bound { return Err("diagnostic clearance binding mismatch".into()); }
+            if !policy_current { restored.cleared = None; }
+        }
+        Ok(restored)
+    }
 }
 
 impl Default for DiagnosticsSession {

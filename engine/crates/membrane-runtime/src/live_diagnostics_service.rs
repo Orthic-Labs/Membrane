@@ -78,6 +78,10 @@ const DIAGNOSTICS_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 /// stable machine-readable codes.
 #[derive(Debug, thiserror::Error)]
 pub enum LiveDiagnosticsServiceError {
+    #[error("diagnostic state unavailable: {0}")]
+    StateUnavailable(String),
+    #[error("diagnostic state changed during operation; result was not committed")]
+    StateConflict,
     #[error("workspace {repo_id}/{worktree_id} is not open")]
     WorkspaceNotOpen {
         repo_id: String,
@@ -117,6 +121,8 @@ impl LiveDiagnosticsServiceError {
     /// Stable omission-envelope code for this failure.
     pub fn code(&self) -> &'static str {
         match self {
+            Self::StateUnavailable(_) => "diagnostic_state_unavailable",
+            Self::StateConflict => "diagnostic_state_conflict",
             Self::WorkspaceNotOpen { .. } => "workspace_not_open",
             Self::EpochNotMonotonic(_) => "epoch_not_monotonic",
             Self::MutationBoundary(_) => "mutation_boundary",
@@ -245,6 +251,8 @@ impl SessionEntry {
 /// `baseline.capture`/`baseline.update`). `DiagnosticGateDecisionV1` carries
 /// no standalone id, so the clearing snapshot id together with the policy
 /// digest is the stable reference recorded here and in the audit.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct NamedBaseline {
     name: String,
     decision_ref: String,
@@ -275,6 +283,8 @@ impl NamedBaseline {
 /// seeded planner policy map, named baselines, the Blueprint findings client,
 /// and the audit sink.
 pub struct DiagnosticsService {
+    persistent_store: Option<crate::MemoryStore>,
+    pending_audit: Vec<(&'static str, Value)>,
     supervisor: DiagnosticsSupervisor,
     sessions: HashMap<(String, String), SessionEntry>,
     policies: HashMap<String, GatePolicyProfileV1>,
@@ -286,7 +296,154 @@ pub struct DiagnosticsService {
     audit: AuditSink,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedDiagnosticsV1 {
+    schema_version: u32,
+    policy_digest: String,
+    sessions: Vec<PersistedWorkspaceV1>,
+    baselines: Vec<(String, String, Vec<NamedBaseline>)>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PersistedWorkspaceV1 {
+    repo_id: String,
+    worktree_id: String,
+    project_root: PathBuf,
+    open_mutation: bool,
+    session: crate::live_diagnostics::DiagnosticsSessionStateV1,
+}
+
 impl DiagnosticsService {
+    pub fn with_persistent_store(mut self, store: crate::MemoryStore) -> Result<Self, LiveDiagnosticsServiceError> {
+        self.persistent_store = Some(store);
+        let (_, state) = self.load_persistent_state()?;
+        if let Some(state) = state { self.restore_persistent_state(state)?; }
+        Ok(self)
+    }
+
+    fn state_error(error: impl std::fmt::Display) -> LiveDiagnosticsServiceError {
+        LiveDiagnosticsServiceError::StateUnavailable(error.to_string())
+    }
+
+    fn policy_state_digest(&self) -> String {
+        crate::digest::digest_str(&serde_json::to_value(&self.policies).expect("serializable policies").to_string())
+    }
+
+    fn load_persistent_state(&self) -> Result<(i64, Option<PersistedDiagnosticsV1>), LiveDiagnosticsServiceError> {
+        use rusqlite::OptionalExtension;
+        let store = self.persistent_store.as_ref().expect("persistent store bound");
+        let db = store.db().lock_events();
+        db.execute_batch("CREATE TABLE IF NOT EXISTS membrane_diagnostics_state(id INTEGER PRIMARY KEY CHECK(id=1), revision INTEGER NOT NULL, payload TEXT NOT NULL, digest TEXT NOT NULL) STRICT; CREATE TABLE IF NOT EXISTS membrane_diagnostics_event(id INTEGER PRIMARY KEY, revision INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL) STRICT;")
+            .map_err(Self::state_error)?;
+        let row: Option<(i64, String, String)> = db.query_row(
+            "SELECT revision,payload,digest FROM membrane_diagnostics_state WHERE id=1", [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).optional().map_err(Self::state_error)?;
+        let Some((revision, payload, digest)) = row else { return Ok((0, None)); };
+        if payload.len() > MAX_DIAGNOSTICS_BODY_BYTES || crate::digest::digest_str(&payload) != digest {
+            return Err(Self::state_error("stored diagnostic state size/hash mismatch"));
+        }
+        let state: PersistedDiagnosticsV1 = serde_json::from_str(&payload).map_err(Self::state_error)?;
+        if state.schema_version != 1 { return Err(Self::state_error("diagnostic state schema mismatch")); }
+        Ok((revision, Some(state)))
+    }
+
+    fn restore_persistent_state(&mut self, state: PersistedDiagnosticsV1) -> Result<(), LiveDiagnosticsServiceError> {
+        let policy_current = state.policy_digest == self.policy_state_digest();
+        let mut sessions = HashMap::new();
+        for entry in state.sessions {
+            if entry.repo_id.is_empty() || entry.worktree_id.is_empty() || !entry.project_root.is_absolute() {
+                return Err(Self::state_error("invalid diagnostic workspace identity"));
+            }
+            if std::fs::canonicalize(&entry.project_root).map_err(Self::state_error)? != entry.project_root {
+                return Err(Self::state_error("diagnostic workspace root changed"));
+            }
+            let key = (entry.repo_id.clone(), entry.worktree_id.clone());
+            let session = DiagnosticsSession::restore_state(entry.session, &entry.repo_id, &entry.worktree_id,
+                entry.open_mutation, policy_current).map_err(Self::state_error)?;
+            if let Some(epoch) = session.latest_sealed() { validate_epoch_paths_within_root(epoch, &entry.project_root)?; }
+            if let Some(snapshot) = session.latest_snapshot() { validate_epoch_paths_within_root(&snapshot.workspace_epoch, &entry.project_root)?; }
+            let providers_registered = self.sessions.get(&key).is_some_and(|prior|
+                prior.project_root == entry.project_root && prior.providers_registered);
+            if sessions.insert(key, SessionEntry { session, open_mutation: entry.open_mutation,
+                project_root: entry.project_root, providers_registered }).is_some() {
+                return Err(Self::state_error("duplicate diagnostic workspace"));
+            }
+        }
+        let mut baselines = HashMap::new();
+        for (repo, worktree, entries) in state.baselines {
+            let mut named = HashMap::new();
+            for baseline in entries {
+                if named.insert(baseline.name.clone(), baseline).is_some() {
+                    return Err(Self::state_error("duplicate diagnostic baseline"));
+                }
+            }
+            if baselines.insert((repo, worktree), named).is_some() {
+                return Err(Self::state_error("duplicate diagnostic baseline workspace"));
+            }
+        }
+        self.sessions = sessions;
+        self.baselines = baselines;
+        Ok(())
+    }
+
+    fn save_persistent_state(&self, revision: i64) -> Result<(), LiveDiagnosticsServiceError> {
+        let state = PersistedDiagnosticsV1 {
+            schema_version: 1, policy_digest: self.policy_state_digest(),
+            sessions: self.sessions.iter().map(|((repo, worktree), entry)| PersistedWorkspaceV1 {
+                repo_id: repo.clone(), worktree_id: worktree.clone(), project_root: entry.project_root.clone(),
+                open_mutation: entry.open_mutation, session: entry.session.export_state(),
+            }).collect(),
+            baselines: self.baselines.iter().map(|((repo, worktree), named)|
+                (repo.clone(), worktree.clone(), named.values().cloned().collect())).collect(),
+        };
+        let payload = serde_json::to_string(&state).map_err(Self::state_error)?;
+        if payload.len() > MAX_DIAGNOSTICS_BODY_BYTES { return Err(Self::state_error("diagnostic state exceeds 4 MiB")); }
+        let digest = crate::digest::digest_str(&payload);
+        let store = self.persistent_store.as_ref().expect("persistent store bound");
+        let mut db = store.db().lock_events();
+        let transaction = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(Self::state_error)?;
+        let changed = if revision == 0 {
+            transaction.execute("INSERT OR IGNORE INTO membrane_diagnostics_state(id,revision,payload,digest) VALUES(1,1,?1,?2)", rusqlite::params![payload,digest])
+        } else {
+            transaction.execute("UPDATE membrane_diagnostics_state SET revision=revision+1,payload=?1,digest=?2 WHERE id=1 AND revision=?3", rusqlite::params![payload,digest,revision])
+        }.map_err(Self::state_error)?;
+        if changed != 1 { return Err(LiveDiagnosticsServiceError::StateConflict); }
+        for (kind, payload) in &self.pending_audit {
+            transaction.execute("INSERT INTO membrane_diagnostics_event(revision,kind,payload) VALUES(?1,?2,?3)",
+                rusqlite::params![revision + 1, kind, payload.to_string()]).map_err(Self::state_error)?;
+        }
+        transaction.commit().map_err(Self::state_error)
+    }
+
+    fn record_audit(&mut self, kind: &'static str, payload: Value) {
+        if self.persistent_store.is_some() { self.pending_audit.push((kind, payload)); }
+        else { self.audit.record(kind, payload); }
+    }
+
+    fn state_transition<T>(&mut self, operation: impl FnOnce(&mut Self) -> Result<T, LiveDiagnosticsServiceError>) -> Result<T, LiveDiagnosticsServiceError> {
+        if self.persistent_store.is_none() { return operation(self); }
+        let (revision, state) = self.load_persistent_state()?;
+        self.pending_audit.clear();
+        if let Some(state) = state { self.restore_persistent_state(state)?; }
+        else { self.sessions.clear(); self.baselines.clear(); }
+        // Provider acquisition runs outside SQLite transaction. State & audit
+        // events commit together; losing revisions cannot publish gate success.
+        let result = operation(self)?;
+        self.save_persistent_state(revision)?;
+        for (kind, payload) in self.pending_audit.drain(..) { self.audit.record(kind, payload); }
+        Ok(result)
+    }
+
+    fn state_read<T>(&self, operation: impl FnOnce(&Self) -> Result<T, LiveDiagnosticsServiceError>) -> Result<T, LiveDiagnosticsServiceError> {
+        if self.persistent_store.is_none() { return operation(self); }
+        let (_, state) = self.load_persistent_state()?;
+        let mut view = Self::new()?;
+        if let Some(state) = state { view.restore_persistent_state(state)?; }
+        operation(&view)
+    }
+
     /// Build a service whose audit sink lives under the platform data root
     /// (`crate::paths::data_root()` + [`AUDIT_RELATIVE_PATH`]).
     pub fn new() -> Result<Self, LiveDiagnosticsServiceError> {
@@ -299,6 +456,8 @@ impl DiagnosticsService {
     pub fn with_data_root(data_root: PathBuf) -> Result<Self, LiveDiagnosticsServiceError> {
         let supervisor = DiagnosticsSupervisor::new(LiveDiagnosticsConfig::default())?;
         Ok(Self {
+            persistent_store: None,
+            pending_audit: Vec::new(),
             supervisor,
             sessions: HashMap::new(),
             policies: seeded_policies(),
@@ -310,6 +469,12 @@ impl DiagnosticsService {
 
     /// Install the production Blueprint findings client (daemon IPC). Called
     /// by `production_service`; tests inject fakes or leave `None`.
+    pub fn stop_explicit_providers(&mut self) -> Result<(), LiveDiagnosticsServiceError> {
+        let result = self.supervisor.shutdown_all().map_err(|error| LiveDiagnosticsServiceError::Provider(error.to_string()));
+        for entry in self.sessions.values_mut() { entry.providers_registered = false; }
+        result
+    }
+
     pub fn with_blueprint_client(mut self, client: Box<dyn BlueprintFindingsClient>) -> Self {
         self.blueprint_client = Some(client);
         self
@@ -341,6 +506,15 @@ impl DiagnosticsService {
         worktree_id: &str,
         project_root: Option<&str>,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.workspace_open_inner(repo_id, worktree_id, project_root))
+    }
+
+    fn workspace_open_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        project_root: Option<&str>,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         let key = session_key(repo_id, worktree_id);
         if let Some(entry) = self.sessions.get(&key) {
             // Already bound: enforce exact identity.
@@ -361,7 +535,7 @@ impl DiagnosticsService {
                     });
                 }
             }
-            let mut status = self.workspace_status(repo_id, worktree_id)?;
+            let mut status = self.workspace_status_inner(repo_id, worktree_id)?;
             if let Some(object) = status.as_object_mut() {
                 object.insert("created".to_string(), Value::Bool(false));
                 object.insert(
@@ -392,7 +566,7 @@ impl DiagnosticsService {
             ))
         })?;
         self.sessions.insert(key, SessionEntry::new(canonical));
-        let mut status = self.workspace_status(repo_id, worktree_id)?;
+        let mut status = self.workspace_status_inner(repo_id, worktree_id)?;
         if let Some(object) = status.as_object_mut() {
             object.insert("created".to_string(), Value::Bool(true));
             object.insert(
@@ -415,6 +589,14 @@ impl DiagnosticsService {
         repo_id: &str,
         worktree_id: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.workspace_close_inner(repo_id, worktree_id))
+    }
+
+    fn workspace_close_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         let key = session_key(repo_id, worktree_id);
         self.sessions
             .remove(&key)
@@ -433,6 +615,14 @@ impl DiagnosticsService {
         repo_id: &str,
         worktree_id: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_read(|service| service.workspace_status_inner(repo_id, worktree_id))
+    }
+
+    fn workspace_status_inner(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         let entry = self
             .sessions
             .get(&session_key(repo_id, worktree_id))
@@ -444,6 +634,14 @@ impl DiagnosticsService {
 
     /// Open one coherent mutation batch (design §4.1 transactional mode).
     pub fn mutation_begin(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.mutation_begin_inner(repo_id, worktree_id))
+    }
+
+    fn mutation_begin_inner(
         &mut self,
         repo_id: &str,
         worktree_id: &str,
@@ -469,13 +667,21 @@ impl DiagnosticsService {
         repo_id: &str,
         worktree_id: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.mutation_abort_inner(repo_id, worktree_id))
+    }
+
+    fn mutation_abort_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         let entry = self
             .sessions
             .get_mut(&session_key(repo_id, worktree_id))
             .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
         entry.session.abort_mutation()?;
         entry.open_mutation = false;
-        self.audit.record(
+        self.record_audit(
             "mutation_aborted",
             json!({"repoId":repo_id,"worktreeId":worktree_id}),
         );
@@ -498,6 +704,15 @@ impl DiagnosticsService {
         worktree_id: &str,
         epoch: WorkspaceEpochV1,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.mutation_seal_inner(repo_id, worktree_id, epoch))
+    }
+
+    fn mutation_seal_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        epoch: WorkspaceEpochV1,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         validate_epoch_identity(repo_id, worktree_id, &epoch)?;
         let entry = self
             .sessions
@@ -510,7 +725,7 @@ impl DiagnosticsService {
             .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
         entry.session.seal_mutation(epoch.clone())?;
         entry.open_mutation = false;
-        self.audit.record(
+        self.record_audit(
             "epoch_sealed",
             json!({
                 "repoId": repo_id,
@@ -538,6 +753,15 @@ impl DiagnosticsService {
         worktree_id: &str,
         epoch: WorkspaceEpochV1,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.mutation_register_observed_inner(repo_id, worktree_id, epoch))
+    }
+
+    fn mutation_register_observed_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        epoch: WorkspaceEpochV1,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         validate_epoch_identity(repo_id, worktree_id, &epoch)?;
         let entry = self
             .sessions
@@ -549,7 +773,7 @@ impl DiagnosticsService {
             .get_mut(&session_key(repo_id, worktree_id))
             .ok_or_else(|| workspace_not_open(repo_id, worktree_id))?;
         entry.session.register_observed(epoch.clone())?;
-        self.audit.record(
+        self.record_audit(
             "epoch_sealed",
             json!({
                 "repoId": repo_id,
@@ -580,6 +804,16 @@ impl DiagnosticsService {
         manifest_digest: &str,
         hashes: &[ChangedFileHashV1],
     ) -> Result<&'static str, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.workspace_reconcile_inner(repo_id, worktree_id, manifest_digest, hashes))
+    }
+
+    fn workspace_reconcile_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        manifest_digest: &str,
+        hashes: &[ChangedFileHashV1],
+    ) -> Result<&'static str, LiveDiagnosticsServiceError> {
         let entry = self
             .sessions
             .get(&session_key(repo_id, worktree_id))
@@ -603,7 +837,7 @@ impl DiagnosticsService {
             .collect();
         let classification = entry.session.reconcile(manifest_digest, &pairs);
         let label = classification_label(classification);
-        self.audit.record(
+        self.record_audit(
             "reconcile",
             json!({
                 "repoId": repo_id,
@@ -955,6 +1189,13 @@ impl DiagnosticsService {
         &mut self,
         request: &SnapshotAwaitRequest,
     ) -> Result<DiagnosticGateDecisionV1, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.snapshot_await_inner(request))
+    }
+
+    fn snapshot_await_inner(
+        &mut self,
+        request: &SnapshotAwaitRequest,
+    ) -> Result<DiagnosticGateDecisionV1, LiveDiagnosticsServiceError> {
         self.ensure_workspace_providers(&request.repo_id, &request.worktree_id);
         let deadline_ms = request
             .deadline_ms
@@ -1019,7 +1260,7 @@ impl DiagnosticsService {
             max_cost,
             deadline,
         )?;
-        self.audit.record(
+        self.record_audit(
             "gate_decision",
             json!({
                 "repoId": request.repo_id,
@@ -1052,12 +1293,30 @@ impl DiagnosticsService {
         worktree_id: &str,
         name: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.baseline_capture_inner(repo_id, worktree_id, name))
+    }
+
+    fn baseline_capture_inner(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        name: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         self.record_baseline(repo_id, worktree_id, name, "capture")
     }
 
     /// Refresh a named baseline to the current cleared decision (upsert) in
     /// memory and in the audit.
     pub fn baseline_update(
+        &mut self,
+        repo_id: &str,
+        worktree_id: &str,
+        name: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_transition(|service| service.baseline_update_inner(repo_id, worktree_id, name))
+    }
+
+    fn baseline_update_inner(
         &mut self,
         repo_id: &str,
         worktree_id: &str,
@@ -1101,7 +1360,7 @@ impl DiagnosticsService {
             .entry(session_key(repo_id, worktree_id))
             .or_default()
             .insert(name.to_string(), baseline);
-        self.audit.record("baseline", payload);
+        self.record_audit("baseline", payload);
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "repoId": repo_id,
@@ -1164,6 +1423,14 @@ impl DiagnosticsService {
         repo_id: &str,
         worktree_id: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_read(|service| service.snapshot_get_inner(repo_id, worktree_id))
+    }
+
+    fn snapshot_get_inner(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
         let entry = self
             .sessions
             .get(&session_key(repo_id, worktree_id))
@@ -1178,6 +1445,14 @@ impl DiagnosticsService {
     /// Explain the latest gate decision for the workspace: outcome, blocking
     /// issues, reason codes and the bound snapshot id.
     pub fn snapshot_explain(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_read(|service| service.snapshot_explain_inner(repo_id, worktree_id))
+    }
+
+    fn snapshot_explain_inner(
         &self,
         repo_id: &str,
         worktree_id: &str,
@@ -1210,6 +1485,14 @@ impl DiagnosticsService {
     /// Return the aggregate delta between the latest snapshot issues and the
     /// stored baseline, if any.
     pub fn snapshot_delta(
+        &self,
+        repo_id: &str,
+        worktree_id: &str,
+    ) -> Result<Value, LiveDiagnosticsServiceError> {
+        self.state_read(|service| service.snapshot_delta_inner(repo_id, worktree_id))
+    }
+
+    fn snapshot_delta_inner(
         &self,
         repo_id: &str,
         worktree_id: &str,
@@ -1299,6 +1582,10 @@ impl DiagnosticsService {
 
     /// Host fence query for enforcement: true if the session's fence is cleared (clean_exact).
     pub fn is_fence_cleared(&self, repo_id: &str, worktree_id: &str) -> bool {
+        self.state_read(|service| Ok(service.is_fence_cleared_inner(repo_id, worktree_id))).unwrap_or(false)
+    }
+
+    fn is_fence_cleared_inner(&self, repo_id: &str, worktree_id: &str) -> bool {
         self.sessions
             .get(&session_key(repo_id, worktree_id))
             .map(|entry| entry.session.cleared_decision().is_some())
@@ -1360,6 +1647,13 @@ impl DiagnosticsService {
     /// Operational status summary: latest sealed epoch number, per-session
     /// cleared outcomes, active acquisitions, and the configuration summary.
     pub fn status(&self) -> Value {
+        match self.state_read(|service| Ok(service.status_inner())) {
+            Ok(mut status) => { status["activeAcquires"] = json!(self.supervisor.active_acquire_count()); status },
+            Err(error) => json!({"error":{"code":error.code(),"detail":error.to_string()}}),
+        }
+    }
+
+    fn status_inner(&self) -> Value {
         let mut latest_sealed: Option<u64> = None;
         let mut sessions = Vec::new();
         for ((repo_id, worktree_id), entry) in &self.sessions {
@@ -1766,8 +2060,9 @@ pub fn diagnostics_router(service: Arc<Mutex<DiagnosticsService>>) -> Router {
 pub fn resident_diagnostics_routes(
     expected_bearer: Option<String>,
     health_identity: Value,
+    store: crate::MemoryStore,
 ) -> Option<Router> {
-    let service = DiagnosticsService::production_service().ok()?;
+    let service = DiagnosticsService::production_service().ok()?.with_persistent_store(store).ok()?;
     let service = Arc::new(Mutex::new(service));
     // Native-only host transport. It owns no policy or runtime: every frame
     // dispatches into this exact resident DiagnosticsService instance.
@@ -2140,6 +2435,44 @@ async fn get_subscribe(State(state): State<DiagnosticsRouteState>) -> Response {
 /// Dispatch one authenticated local named-pipe frame through the resident
 /// diagnostics authority. This deliberately mirrors every supported HTTP
 /// operation, but never constructs an HTTP client or permits a second service.
+pub fn diagnostics_explicit_dispatch(request: NativeDiagnosticsRequest) -> NativeDiagnosticsResponse {
+    let fail = |code: &str, detail: String| NativeDiagnosticsResponse {
+        schema_version: 1, id: request.id.clone(), status: 400,
+        body: json!({"error":{"code":code,"detail":detail}}),
+    };
+    if request.path == "/diagnostics/subscribe" || request.path == "/diagnostics/provider/restart" {
+        return fail("hub_inactive", "automatic subscriptions & resident provider control require active Hub".into());
+    }
+    let target = if request.method == "GET" { &request.query } else { &request.body };
+    if let Some(repo) = target.get("repoId").and_then(Value::as_str) {
+        if let Err(error) = crate::authorization::authorize_diagnostic_identity(
+            repo, target.get("projectRoot").and_then(Value::as_str), None,
+            if request.method == "GET" { "context" } else { "checkpoint" },
+        ) { return fail("authorization_denied", error.to_string()); }
+    } else if !matches!(request.path.as_str(), "/diagnostics/status" | "/diagnostics/capabilities" | "/diagnostics/provider/list" | "/diagnostics/provider/status" | "/diagnostics/fence/evaluate") {
+        return fail("invalid_request", "repoId is required".into());
+    }
+    let service = (|| {
+        let store = crate::service::open_installed_store()?;
+        DiagnosticsService::new().map_err(|error| error.to_string())?
+            .with_blueprint_client(Box::new(crate::providers::blueprint_findings::ExplicitFindingsClient))
+            .with_persistent_store(store).map_err(|error| error.to_string())
+    })();
+    let service = match service {
+        Ok(service) => Arc::new(Mutex::new(service)),
+        Err(error) => return fail("diagnostic_state_unavailable", error),
+    };
+    eprintln!("{}", json!({"event":"membrane_explicit_started","operation":request.path}));
+    let response = diagnostics_native_dispatch(&service, request);
+    if let Err(error) = lock_service(&service).stop_explicit_providers() {
+        eprintln!("{}", json!({"event":"membrane_explicit_cleanup_failed","detail":error.to_string()}));
+        return NativeDiagnosticsResponse { schema_version:1, id:response.id, status:503,
+            body:json!({"error":{"code":"provider_shutdown_failed","detail":error.to_string()}}) };
+    }
+    eprintln!("{}", json!({"event":"membrane_explicit_finished","id":response.id,"status":response.status}));
+    response
+}
+
 pub fn diagnostics_native_dispatch(
     service: &Arc<Mutex<DiagnosticsService>>,
     request: NativeDiagnosticsRequest,
@@ -2399,6 +2732,53 @@ mod tests {
 
     fn service_at(dir: &tempfile::TempDir) -> DiagnosticsService {
         DiagnosticsService::with_data_root(dir.path().to_path_buf()).unwrap()
+    }
+
+    fn persistent_service(dir: &tempfile::TempDir) -> DiagnosticsService {
+        let store = crate::MemoryStore::try_open(crate::MemDb::open(&dir.path().join("cortex.db")).unwrap()).unwrap();
+        service_at(dir).with_persistent_store(store).unwrap()
+    }
+
+    #[test]
+    fn explicit_diagnostics_state_survives_owners_and_rejects_stale_commits() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let mut first = persistent_service(&dir);
+        first.workspace_open("repo-1", "wt-1", Some(repo.path().to_str().unwrap())).unwrap();
+        first.mutation_begin("repo-1", "wt-1").unwrap();
+        drop(first);
+        let mut second = persistent_service(&dir);
+        assert_eq!(second.workspace_status("repo-1", "wt-1").unwrap()["openMutation"], true);
+        second.mutation_seal("repo-1", "wt-1", test_epoch(1)).unwrap();
+        let mut third = persistent_service(&dir);
+        assert_eq!(third.workspace_status("repo-1", "wt-1").unwrap()["latestSealedEpoch"], 1);
+        let (stale_revision, _) = third.load_persistent_state().unwrap();
+        second.mutation_begin("repo-1", "wt-1").unwrap();
+        assert!(matches!(third.save_persistent_state(stale_revision), Err(LiveDiagnosticsServiceError::StateConflict)));
+        assert_eq!(third.workspace_status("repo-1", "wt-1").unwrap()["openMutation"], true);
+        third.mutation_abort("repo-1", "wt-1").unwrap();
+        assert_eq!(second.workspace_status("repo-1", "wt-1").unwrap()["openMutation"], false);
+        third.workspace_close("repo-1", "wt-1").unwrap();
+        assert!(second.workspace_status("repo-1", "wt-1").is_err());
+        assert!(second.status()["sessions"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn persisted_diagnostics_corruption_and_schema_fail_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = tempfile::tempdir().unwrap();
+        let mut service = persistent_service(&dir);
+        service.workspace_open("repo-1", "wt-1", Some(repo.path().to_str().unwrap())).unwrap();
+        let store = service.persistent_store.as_ref().unwrap();
+        store.db().lock_events().execute("UPDATE membrane_diagnostics_state SET digest='corrupt'", []).unwrap();
+        assert_eq!(service.workspace_status("repo-1", "wt-1").unwrap_err().code(), "diagnostic_state_unavailable");
+        assert!(!service.fence_allows_build("repo-1", "wt-1"));
+        let payload: String = store.db().lock_events().query_row("SELECT payload FROM membrane_diagnostics_state", [], |row| row.get(0)).unwrap();
+        let mut invalid: Value = serde_json::from_str(&payload).unwrap();
+        invalid["schema_version"] = json!(999);
+        let payload = invalid.to_string();
+        store.db().lock_events().execute("UPDATE membrane_diagnostics_state SET payload=?1,digest=?2", rusqlite::params![payload, crate::digest::digest_str(&payload)]).unwrap();
+        assert_eq!(service.workspace_status("repo-1", "wt-1").unwrap_err().code(), "diagnostic_state_unavailable");
     }
 
     fn audit_len(dir: &tempfile::TempDir) -> u64 {

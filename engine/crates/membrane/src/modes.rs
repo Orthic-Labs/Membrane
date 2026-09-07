@@ -321,18 +321,18 @@ enum DiagnosticsCommand {
         #[arg(long)]
         file: Option<std::path::PathBuf>,
     },
-    /// Service-bound: print the resident diagnostics status snapshot.
+    /// Explicit (Hub optional): print canonical diagnostics status.
     Status {
         /// Resident loopback port override (default $MEMBRANE_PORT or 47851).
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound placeholder: prints the same status snapshot as `status`.
+    /// Resident-only telemetry subscription; requires active Hub.
     Subscribe {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: open the diagnostics workspace session.
+    /// Explicit (Hub optional): open the diagnostics workspace session.
     WorkspaceOpen {
         #[arg(long)]
         repo: String,
@@ -343,7 +343,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: close the diagnostics workspace session.
+    /// Explicit (Hub optional): close the diagnostics workspace session.
     WorkspaceClose {
         #[arg(long)]
         repo: String,
@@ -352,7 +352,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: report one workspace's fence state.
+    /// Explicit (Hub optional): report one workspace's fence state.
     WorkspaceStatus {
         #[arg(long)]
         repo: String,
@@ -361,7 +361,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: open one coherent mutation batch.
+    /// Explicit (Hub optional): open one coherent mutation batch.
     MutationBegin {
         #[arg(long)]
         repo: String,
@@ -370,7 +370,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: seal the batch with the resulting workspace epoch JSON supplied via --file or stdin (`-`).
+    /// Explicit (Hub optional): seal the batch with the resulting workspace epoch JSON supplied via --file or stdin (`-`).
     MutationSeal {
         #[arg(long)]
         repo: String,
@@ -381,7 +381,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: register observed resulting bytes; epoch JSON via --file or stdin (`-`).
+    /// Explicit (Hub optional): register observed resulting bytes; epoch JSON via --file or stdin (`-`).
     MutationRegisterObserved {
         #[arg(long)]
         repo: String,
@@ -392,7 +392,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: reconcile current bytes; {manifestDigest, hashes} JSON via --file or stdin (`-`).
+    /// Explicit (Hub optional): reconcile current bytes; {manifestDigest, hashes} JSON via --file or stdin (`-`).
     Reconcile {
         #[arg(long)]
         repo: String,
@@ -403,7 +403,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: acquire evidence and evaluate planner policy; optional request JSON via --file or stdin (`-`).
+    /// Explicit (Hub optional): acquire evidence and evaluate planner policy; optional request JSON via --file or stdin (`-`).
     SnapshotAwait {
         #[arg(long)]
         repo: String,
@@ -417,7 +417,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: record the cleared decision as a named baseline.
+    /// Explicit (Hub optional): record the cleared decision as a named baseline.
     BaselineCapture {
         #[arg(long)]
         repo: String,
@@ -428,7 +428,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: refresh a named baseline to the current cleared decision.
+    /// Explicit (Hub optional): refresh a named baseline to the current cleared decision.
     BaselineUpdate {
         #[arg(long)]
         repo: String,
@@ -439,7 +439,7 @@ enum DiagnosticsCommand {
         #[arg(long)]
         port: Option<u16>,
     },
-    /// Service-bound: targeted provider restart by workspace-engine-key digest.
+    /// Explicit (Hub optional): targeted provider restart by workspace-engine-key digest.
     ProviderRestart {
         #[arg(long = "key-digest")]
         key_digest: String,
@@ -483,7 +483,7 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 Err(outcome) => outcome,
             }
         }
-        DiagnosticsCommand::Status { port } | DiagnosticsCommand::Subscribe { port } => {
+        DiagnosticsCommand::Status { port } => {
             run_diagnostics_service_call(
                 diagnostics_loopback_port(port),
                 "GET",
@@ -491,6 +491,9 @@ fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
                 None,
             )
         }
+        DiagnosticsCommand::Subscribe { port } => run_diagnostics_service_call(
+            diagnostics_loopback_port(port), "GET", "/diagnostics/subscribe", None,
+        ),
         DiagnosticsCommand::WorkspaceOpen {
             repo,
             worktree,
@@ -819,7 +822,7 @@ fn run_diagnostics_service_call(
     body: Option<String>,
 ) -> DispatchOutcome {
     match diagnostics_http_request(port, method, path_and_query, body.as_deref()) {
-        Ok(None) => hub_inactive(),
+        Ok(None) => run_diagnostics_explicit_call(method, path_and_query, body.as_deref()),
         Ok(Some((status, response_body))) => {
             println!("{response_body}");
             if status == 200 {
@@ -831,6 +834,45 @@ fn run_diagnostics_service_call(
             }
         }
         Err(error) => DispatchOutcome::UserError(format!("diagnostics: {error}")),
+    }
+}
+
+fn run_diagnostics_explicit_call(method: &str, path_and_query: &str, body: Option<&str>) -> DispatchOutcome {
+    use membrane_runtime::live_diagnostics_service::{diagnostics_explicit_dispatch, NativeDiagnosticsRequest};
+    fn decode(value: &str) -> Result<String, String> {
+        let mut decoded = Vec::new();
+        let mut bytes = value.bytes();
+        while let Some(byte) = bytes.next() {
+            if byte == b'%' {
+                let high = bytes.next().and_then(|b| (b as char).to_digit(16)).ok_or("invalid query escape")?;
+                let low = bytes.next().and_then(|b| (b as char).to_digit(16)).ok_or("invalid query escape")?;
+                decoded.push((high * 16 + low) as u8);
+            } else { decoded.push(if byte == b'+' { b' ' } else { byte }); }
+        }
+        String::from_utf8(decoded).map_err(|error| error.to_string())
+    }
+    let (path, raw_query) = path_and_query.split_once('?').unwrap_or((path_and_query, ""));
+    let mut query = serde_json::Map::new();
+    for pair in raw_query.split('&').filter(|pair| !pair.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        match (decode(key), decode(value)) {
+            (Ok(key), Ok(value)) => { query.insert(key, serde_json::Value::String(value)); },
+            _ => return DispatchOutcome::UserError("diagnostics: invalid query".into()),
+        }
+    }
+    let body = match serde_json::from_str(body.unwrap_or("{}")) {
+        Ok(body) => body,
+        Err(error) => return DispatchOutcome::UserError(format!("diagnostics: {error}")),
+    };
+    let response = diagnostics_explicit_dispatch(NativeDiagnosticsRequest {
+        schema_version: 1, id: "cli".into(), method: method.into(), path: path.into(),
+        query: serde_json::Value::Object(query), body,
+        installation_id: String::new(), cortex_store_id: String::new(),
+        release_generation: String::new(), service_generation: String::new(),
+    });
+    let printed = print_diagnostics_json(&response.body);
+    if response.status == 200 { printed } else {
+        DispatchOutcome::UserError(format!("diagnostics: {}", response.body))
     }
 }
 
