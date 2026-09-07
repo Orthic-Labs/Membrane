@@ -2480,6 +2480,7 @@ dependencies = [
 name = "membrane-client"
 version = "0.1.0"
 dependencies = [
+ "membrane-protocol",
  "serde_json",
  "tokio-util",
 ]

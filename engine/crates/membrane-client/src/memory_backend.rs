@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 pub const ACTIVITY: &str = "/activity";
 pub const DELETE: &str = "/delete";
+pub const FEDERATE: &str = "/federate";
 pub const GET: &str = "/get";
 pub const LIST: &str = "/list";
 pub const METRICS: &str = "/metrics";
@@ -196,6 +197,18 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
     pub fn bind(mut self, requirement: &CompatibilityRequirement) -> Result<Self, ClientError> {
         let response = self.call_raw(HANDSHAKE_OPERATION, handshake::request())?;
         self.identity = Some(handshake::verify(&response, requirement)?);
+        Ok(self)
+    }
+
+    /// Bind from one health response already obtained over the authoritative
+    /// transport. This avoids a second handshake/restart race while preserving
+    /// the exact same public compatibility verification as `bind`.
+    pub fn bind_verified(
+        mut self,
+        response: &Value,
+        requirement: &CompatibilityRequirement,
+    ) -> Result<Self, ClientError> {
+        self.identity = Some(handshake::verify(response, requirement)?);
         Ok(self)
     }
 
@@ -609,6 +622,12 @@ impl<'a, T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError>
             ACTIVITY,
             map([("limit", Value::from(limit as u64))]),
         )?)
+    }
+    /// Send one already-authenticated context-federation request using this
+    /// request-scoped deadline/cancellation view.
+    pub fn federate_json(&self, request: Map<String, Value>) -> Result<Value, ClientError> {
+        self.client
+            .call_raw_with_options(&self.options, FEDERATE, request)
     }
     pub fn metrics_json(&self) -> Result<Value, ClientError> {
         Ok(self

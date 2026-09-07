@@ -7,18 +7,21 @@
 //! build that report. Declared/client capability levels have no real
 //! concept in the schema, so those fields stay `"unknown"` — the projector's
 //! own `Status::unknown()` fallback then reports capability honestly as
-//! unknown rather than fabricating a level comparison. Any DB-access or
-//! query failure returns `None`.
+//! unknown rather than fabricating a level comparison. A DB-access refusal is
+//! propagated with its typed reason (`schema_generation_mismatch`, …) so the
+//! Hub receipt records a degraded input distinctly from an absent one; a
+//! query that finds nothing reports `missing_input`.
 
 use serde_json::{json, Value};
 
-use crate::hub_readonly_db::open_readonly;
+use crate::hub_readonly_db::{open_readonly, REASON_MISSING_INPUT};
 
 const MAX_ADAPTERS: usize = 64;
 
-pub fn build_adapters_report() -> Option<Value> {
+/// `Err` carries the reason to publish in `HubReadV1::Unavailable`.
+pub fn build_adapters_report() -> Result<Value, &'static str> {
     let conn = open_readonly()?;
-    build_adapters_report_from(&conn)
+    build_adapters_report_from(&conn).ok_or(REASON_MISSING_INPUT)
 }
 
 pub(crate) fn build_adapters_report_from(conn: &rusqlite::Connection) -> Option<Value> {

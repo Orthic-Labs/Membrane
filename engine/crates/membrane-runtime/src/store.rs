@@ -477,6 +477,40 @@ pub struct LifecycleReviewDueV1 {
 /// CTX-010: subsystems permitted to originate a lifecycle review signal. A
 /// closed set, so an unknown origin string is refused rather than recorded as
 /// unattributed evidence.
+/// CTX-010 delivery identity, derived from the signal itself rather than
+/// supplied by the caller. Fields are length-prefixed before hashing so no
+/// value's own bytes can be read as a field boundary (`reason="a|b"` with one
+/// target must not collide with `reason="a"` and a `|b`-suffixed target).
+///
+/// Identity is deliberately (origin, memory target, scope target, reason,
+/// observed time): those are exactly the facts that make one observation the
+/// same observation. `recorded_at_ms` is excluded — it is when *we* wrote the
+/// row, so including it would make every redelivery a fresh key and defeat
+/// idempotency entirely.
+pub fn derive_lifecycle_review_signal_key(
+    origin: &str,
+    memory_id: Option<&str>,
+    scope_id: Option<&str>,
+    reason: &str,
+    observed_at_ms: i64,
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"membrane.cortex.lifecycle-review-signal.v1");
+    for field in [Some(origin), memory_id, scope_id, Some(reason)] {
+        match field {
+            Some(value) => {
+                hasher.update([1u8]);
+                hasher.update((value.len() as u64).to_le_bytes());
+                hasher.update(value.as_bytes());
+            }
+            None => hasher.update([0u8]),
+        }
+    }
+    hasher.update(observed_at_ms.to_le_bytes());
+    format!("ctx010.{}", hex::encode(hasher.finalize()))
+}
+
 pub const LIFECYCLE_REVIEW_SIGNAL_ORIGINS: &[&str] =
     &["ledger", "blueprint", "pull", "push", "adapt", "membrane"];
 
@@ -502,8 +536,18 @@ pub struct LifecycleReviewSignalV1 {
     pub reason: String,
     /// When the origin observed the change, in epoch milliseconds.
     pub observed_at_ms: i64,
-    /// Caller-supplied delivery identity. Redelivering the same key is a no-op,
-    /// so an at-least-once transport cannot enqueue the same review twice.
+    /// Optional delivery-identity override. Leave EMPTY in the normal case:
+    /// the key is then derived from the signal's own identity (origin, target,
+    /// reason, observed time) by
+    /// [`derive_lifecycle_review_signal_key`], so two semantically identical
+    /// signals collide into one enqueued review no matter what a transport
+    /// calls them, and two different signals can never collide.
+    ///
+    /// A non-empty value must equal the derived key. A mismatch is refused
+    /// with `lifecycle_review_signal_idempotency_conflict`; it is never
+    /// swallowed as a duplicate, so a key reused across two different signals
+    /// cannot suppress the second one.
+    #[serde(default)]
     pub idempotency_key: String,
 }
 
@@ -9366,7 +9410,7 @@ impl MemoryStore {
                         source_ids, artifact_family, producer, record_type, authority,
                         influence_class, lifecycle_state, effective_from_ms, effective_until_ms,
                         expires_at_ms, review_after_ms, superseded_by, priority_class,
-                        confidence, confidence_basis
+                        confidence, confidence_basis, sensitivity, derivation
                    FROM memories ORDER BY id",
             )
             .map_err(|e| format!("backup read failed: {e}"))?;
@@ -9391,7 +9435,7 @@ impl MemoryStore {
                         'memory' AS record_type, authority, influence_class, lifecycle_state,
                         effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms,
                         superseded_by, priority_class, confidence, confidence_basis,
-                        quarantined_at, reason
+                        sensitivity, derivation, quarantined_at, reason
                    FROM memory_quarantine ORDER BY id",
             )
             .map_err(|e| format!("backup quarantine read failed: {e}"))?;
@@ -9433,7 +9477,44 @@ impl MemoryStore {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("backup suppression read failed: {e}"))?;
         suppression.extend(rows);
-        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links, &suppression);
+        drop(statement);
+        // CTX-017: the evidence-relation table is Cortex-owned durable payload
+        // too. Backing up its endpoint rows while dropping its edges would have
+        // restore silently delete every supports/contradicts/supersedes/
+        // derived_from assertion.
+        let mut relations = Vec::new();
+        let mut statement = conn
+            .prepare(
+                "SELECT relation_id, source_id, target_id, relation, provenance_producer,
+                        provenance_ref, created_at
+                   FROM memory_relation ORDER BY relation_id",
+            )
+            .map_err(|e| format!("backup relations read failed: {e}"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok(CortexBackupRelationV1 {
+                    relation_id: row.get(0)?,
+                    source_id: row.get(1)?,
+                    target_id: row.get(2)?,
+                    relation: row.get(3)?,
+                    provenance_producer: row.get(4)?,
+                    provenance_ref: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })
+            .map_err(|e| format!("backup relations read failed: {e}"))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("backup relations read failed: {e}"))?;
+        relations.extend(rows);
+        drop(statement);
+        let payload_sha256 = cortex_backup_digest(
+            CORTEX_BACKUP_SCHEMA_VERSION,
+            &memories,
+            &quarantined,
+            &links,
+            &suppression,
+            &relations,
+        );
         Ok(CortexBackupV1 {
             schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
             created_at: crate::time::now_iso(),
@@ -9442,6 +9523,7 @@ impl MemoryStore {
             quarantined,
             links,
             suppression,
+            relations,
             payload_sha256,
         })
     }
@@ -9452,13 +9534,37 @@ impl MemoryStore {
     /// rebuilds the in-memory registry from the restored rows so public recall
     /// alone drives that proof.
     pub fn restore_cortex(&self, backup: &CortexBackupV1) -> Result<usize, String> {
-        if backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION {
+        // Two accepted formats. v2 is current; v1 is accepted because it was
+        // taken before `sensitivity`/`derivation`/`memory_relation` existed —
+        // refusing it would strand every backup made before this fix, while
+        // restoring it yields exactly what it recorded: the explicit
+        // `unavailable_legacy` marker (never a guessed `public`) and no
+        // relations. Each version is digest-verified with its own field set,
+        // so a v1 seal still validates and a v1 envelope can never be replayed
+        // as if it carried v2 fields.
+        if backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION
+            && backup.schema_version != CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1
+        {
             return Err(format!(
                 "unsupported backup schema {}",
                 backup.schema_version
             ));
         }
-        let expected = cortex_backup_digest(&backup.memories, &backup.quarantined, &backup.links, &backup.suppression);
+        if backup.schema_version == CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1
+            && !backup.relations.is_empty()
+        {
+            return Err(
+                "backup schema membrane.cortex-backup.v1 cannot carry relations".to_owned(),
+            );
+        }
+        let expected = cortex_backup_digest(
+            &backup.schema_version,
+            &backup.memories,
+            &backup.quarantined,
+            &backup.links,
+            &backup.suppression,
+            &backup.relations,
+        );
         if backup.payload_sha256 != expected {
             return Err("backup payload digest mismatch".into());
         }
@@ -9476,6 +9582,12 @@ impl MemoryStore {
             .map_err(|e| self.persist_error(format!("restore wipe failed: {e}")))?;
         tx.execute("DELETE FROM cortex_recall_suppression_v1", [])
             .map_err(|e| self.persist_error(format!("restore suppression wipe failed: {e}")))?;
+        // Relations are wiped with their endpoints and restored from the same
+        // envelope, so the post-restore store is exactly what was sealed. A v1
+        // envelope carries none, which is faithful: it was taken from a store
+        // whose schema had no `memory_relation` table at all.
+        tx.execute("DELETE FROM memory_relation", [])
+            .map_err(|e| self.persist_error(format!("restore relations wipe failed: {e}")))?;
         for row in &backup.memories {
             restore_backup_row(&tx, row, false)?;
         }
@@ -9495,6 +9607,37 @@ impl MemoryStore {
                 rusqlite::params![row.memory_id, row.scope_id, row.content_hash, row.suppressed as i64, row.decision_hash],
             )
             .map_err(|e| self.persist_error(format!("restore suppression failed: {e}")))?;
+        }
+        // CTX-017: relations are restored WHOLESALE, not filtered to surviving
+        // endpoints. The durable schema stores endpoints as plain text rather
+        // than foreign keys precisely so an edge whose endpoint is gone stays
+        // queryable as a diagnostic while `traversable_relations_from` keeps it
+        // out of traversal. Dropping such an edge here would silently destroy
+        // evidence that the doctrine says must remain visible; keeping it
+        // reproduces the sealed state exactly and leaves the existing traversal
+        // filter to contain it.
+        for relation in &backup.relations {
+            tx.execute(
+                "INSERT INTO memory_relation
+                    (relation_id, source_id, target_id, relation, provenance_producer,
+                     provenance_ref, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    relation.relation_id,
+                    relation.source_id,
+                    relation.target_id,
+                    relation.relation,
+                    relation.provenance_producer,
+                    relation.provenance_ref,
+                    relation.created_at,
+                ],
+            )
+            .map_err(|e| {
+                self.persist_error(format!(
+                    "restore relations failed for {}: {e}",
+                    relation.relation_id
+                ))
+            })?;
         }
         tx.commit()
             .map_err(|e| self.persist_error(format!("restore commit failed: {e}")))?;
@@ -9959,9 +10102,16 @@ impl MemoryStore {
     /// [`lifecycle_reviews_due`](Self::lifecycle_reviews_due), where a governed
     /// reviewer decides what (if anything) happens to the record.
     ///
-    /// Idempotent by `idempotency_key`: a redelivered signal returns
-    /// `Ok(false)` and leaves the stored row byte-identical, so an
-    /// at-least-once transport cannot enqueue the same review twice.
+    /// Idempotent by the signal's OWN identity, not by a name the caller
+    /// picked: the delivery key is derived from (origin, target record/scope,
+    /// reason, observed time) via [`derive_lifecycle_review_signal_key`]. Two
+    /// semantically identical signals therefore collide — the second returns
+    /// `Ok(false)` and leaves the stored row byte-identical — and two
+    /// different signals cannot collide, whatever a transport labels them.
+    /// `signal.idempotency_key` is an optional override that must equal the
+    /// derived key; a mismatch is a typed refusal
+    /// (`lifecycle_review_signal_idempotency_conflict`), never a silently
+    /// swallowed duplicate.
     /// A signal whose target record does not exist is still recorded — the
     /// signal is evidence about an observation, not an assertion about
     /// Cortex's current contents — but it surfaces nothing until a matching
@@ -9976,9 +10126,9 @@ impl MemoryStore {
                 "lifecycle review signal origin must be one of {LIFECYCLE_REVIEW_SIGNAL_ORIGINS:?}"
             ));
         }
-        let key = signal.idempotency_key.trim();
-        if key.is_empty() || key.len() > 256 {
-            return Err("lifecycle review signal idempotency key must be 1..=256 bytes".to_owned());
+        let supplied_key = signal.idempotency_key.trim();
+        if supplied_key.len() > 256 {
+            return Err("lifecycle review signal idempotency key must be 0..=256 bytes".to_owned());
         }
         let reason = signal.reason.trim();
         if reason.is_empty() || reason.len() > 512 {
@@ -10002,6 +10152,24 @@ impl MemoryStore {
         if signal.observed_at_ms < 0 {
             return Err("lifecycle review signal observed_at_ms must be non-negative".to_owned());
         }
+        // The key is a function of the signal, so identity — not a transport's
+        // labelling discipline — decides what counts as the same review.
+        let key = derive_lifecycle_review_signal_key(
+            origin,
+            memory_id,
+            scope_id,
+            reason,
+            signal.observed_at_ms,
+        );
+        if !supplied_key.is_empty() && supplied_key != key {
+            // Refuse rather than insert-or-ignore under the caller's key: that
+            // is exactly the path that let a second, DIFFERENT signal be
+            // reported as an already-recorded duplicate and never enqueued.
+            return Err(format!(
+                "lifecycle_review_signal_idempotency_conflict: supplied key {supplied_key} does not match the key derived from this signal ({key})"
+            ));
+        }
+        let key = key.as_str();
         let recorded_at_ms = crate::time::now_millis() as i64;
         let inserted = self
             .db
@@ -10810,7 +10978,21 @@ pub enum StoreError {
     Durable(String),
 }
 
-const CORTEX_BACKUP_SCHEMA_VERSION: &str = "membrane.cortex-backup.v1";
+/// Current §16.4 envelope format. v2 added the CTX-004 `sensitivity`/
+/// `derivation` columns and the CTX-017 `memory_relation` section, all of
+/// them *inside* the sealed digest.
+const CORTEX_BACKUP_SCHEMA_VERSION: &str = "membrane.cortex-backup.v2";
+/// Pre-CTX-004/CTX-017 envelope. Still restorable: a v1 backup was taken
+/// before those columns/tables existed, so restoring it with the explicit
+/// `unavailable_legacy` marker and no relations is the truthful reading of
+/// what it recorded — not a downgrade of anything it knew. Its digest is
+/// verified with the v1 field set, so old seals keep validating unchanged.
+const CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1: &str = "membrane.cortex-backup.v1";
+
+/// Serde default for the CTX-004 columns when deserializing a v1 envelope.
+fn backup_unavailable_legacy() -> String {
+    cortex_store::memdb::UNAVAILABLE_LEGACY.to_owned()
+}
 
 /// One durable payload row in a §16.4 backup envelope. Column shape mirrors
 /// `memories`/`memory_quarantine` exactly so restore is a faithful reinsert.
@@ -10845,6 +11027,15 @@ pub struct CortexBackupRowV1 {
     pub priority_class: String,
     pub confidence: Option<f64>,
     pub confidence_basis: Option<String>,
+    /// CTX-004 `sensitivity`. Security-relevant and therefore inside the
+    /// digest: losing it downgrades a `restricted` row to the
+    /// `unavailable_legacy` marker on restore. Defaults to that marker only
+    /// when a pre-v2 envelope genuinely never carried the column.
+    #[serde(default = "backup_unavailable_legacy")]
+    pub sensitivity: String,
+    /// CTX-004 `derivation`. Same digest/default treatment as `sensitivity`.
+    #[serde(default = "backup_unavailable_legacy")]
+    pub derivation: String,
     /// `memory_quarantine.quarantined_at` — `TEXT NOT NULL` with no default in
     /// the real DDL (see cortex-store `memdb.rs`). `None` here for `memories`
     /// rows, which have no such column; a quarantine row must carry `Some`,
@@ -10862,6 +11053,20 @@ pub struct CortexBackupRowV1 {
 pub struct CortexBackupLinkV1 {
     pub src_id: String,
     pub dst_slug: String,
+}
+
+/// One CTX-017 evidence relation edge, provenance included. Endpoints are
+/// plain text in the durable schema (not foreign keys), so this round-trips
+/// verbatim.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CortexBackupRelationV1 {
+    pub relation_id: String,
+    pub source_id: String,
+    pub target_id: String,
+    pub relation: String,
+    pub provenance_producer: String,
+    pub provenance_ref: String,
+    pub created_at: String,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -10884,6 +11089,10 @@ pub struct CortexBackupV1 {
     pub links: Vec<CortexBackupLinkV1>,
     #[serde(default)]
     pub suppression: Vec<CortexBackupSuppressionV1>,
+    /// CTX-017 evidence relations. Absent (empty) in a v1 envelope, which
+    /// predates the `memory_relation` table.
+    #[serde(default)]
+    pub relations: Vec<CortexBackupRelationV1>,
     pub payload_sha256: String,
 }
 
@@ -10918,6 +11127,8 @@ fn backup_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackup
         priority_class: row.get(26)?,
         confidence: row.get(27)?,
         confidence_basis: row.get(28)?,
+        sensitivity: row.get(29)?,
+        derivation: row.get(30)?,
         // `memories` has no `quarantined_at`/`reason` columns.
         quarantined_at: None,
         reason: None,
@@ -10929,8 +11140,8 @@ fn backup_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackup
 /// SELECT appends.
 fn backup_quarantine_row_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CortexBackupRowV1> {
     let mut backup_row = backup_row_from_row(row)?;
-    backup_row.quarantined_at = row.get(29)?;
-    backup_row.reason = row.get(30)?;
+    backup_row.quarantined_at = row.get(31)?;
+    backup_row.reason = row.get(32)?;
     Ok(backup_row)
 }
 
@@ -10965,13 +11176,21 @@ fn hash_opt_len_prefixed(hasher: &mut sha2::Sha256, bytes: Option<&[u8]>) {
 /// fields, presence-tagged) before hashing, so no field's own bytes can be
 /// misread as a delimiter belonging to an adjacent field — restore refuses
 /// any envelope that does not reproduce it.
+/// `envelope_version` selects the sealed field set: a v1 envelope is hashed
+/// exactly as it was when it was written (no `sensitivity`/`derivation`, no
+/// relation section), a v2 envelope seals the CTX-004 columns and the CTX-017
+/// relation table. The two digests are domain-separated, so a v1 envelope can
+/// never be re-labelled v2 (or vice versa) and still verify.
 fn cortex_backup_digest(
+    envelope_version: &str,
     memories: &[CortexBackupRowV1],
     quarantined: &[CortexBackupRowV1],
     links: &[CortexBackupLinkV1],
     suppression: &[CortexBackupSuppressionV1],
+    relations: &[CortexBackupRelationV1],
 ) -> String {
     use sha2::{Digest, Sha256};
+    let seals_v2_fields = envelope_version == CORTEX_BACKUP_SCHEMA_VERSION;
     let mut hasher = Sha256::new();
     // v2: length-prefixed, presence-tagged field encoding (see
     // `hash_len_prefixed`/`hash_opt_len_prefixed`). v1 hashed NUL-joined
@@ -11028,6 +11247,13 @@ fn cortex_backup_digest(
                 &mut hasher,
                 row.confidence.map(|v| v.to_bits().to_le_bytes()).as_ref().map(|b| b.as_slice()),
             );
+            // CTX-004: sealed, never appended outside the digest — a
+            // `sensitivity` an attacker could edit without breaking the seal
+            // would be worse than not backing it up at all.
+            if seals_v2_fields {
+                hash_len_prefixed(&mut hasher, row.sensitivity.as_bytes());
+                hash_len_prefixed(&mut hasher, row.derivation.as_bytes());
+            }
         }
         // Section terminator: an empty length-prefixed marker field so an
         // empty trailing section cannot be confused with one fewer row.
@@ -11053,6 +11279,26 @@ fn cortex_backup_digest(
             }
             hash_len_prefixed(&mut hasher, &[u8::from(row.suppressed)]);
         }
+    }
+    // CTX-017 relation section. Domain-separated and unconditionally tagged
+    // for v2 so an envelope with zero relations is still distinguishable from
+    // a v1 envelope that could not carry any.
+    if seals_v2_fields {
+        hash_len_prefixed(&mut hasher, b"\x01relations");
+        for relation in relations {
+            for field in [
+                relation.relation_id.as_str(),
+                relation.source_id.as_str(),
+                relation.target_id.as_str(),
+                relation.relation.as_str(),
+                relation.provenance_producer.as_str(),
+                relation.provenance_ref.as_str(),
+                relation.created_at.as_str(),
+            ] {
+                hash_len_prefixed(&mut hasher, field.as_bytes());
+            }
+        }
+        hash_len_prefixed(&mut hasher, b"\x01relations-end");
     }
     format!("sha256:{}", hex::encode(hasher.finalize()))
 }
@@ -11094,14 +11340,14 @@ fn restore_backup_row(
               source_ids, authority, influence_class,
               lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
               review_after_ms, superseded_by, priority_class, confidence, confidence_basis,
-              quarantined_at, reason)
+              sensitivity, derivation, quarantined_at, reason)
              VALUES
               (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
                :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
                :source_ids, :authority, :influence_class,
                :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
                :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis,
-               :quarantined_at, :reason)",
+               :sensitivity, :derivation, :quarantined_at, :reason)",
             rusqlite::named_params! {
                 ":id": row.id,
                 ":tier": row.tier,
@@ -11129,6 +11375,8 @@ fn restore_backup_row(
                 ":priority_class": row.priority_class,
                 ":confidence": row.confidence,
                 ":confidence_basis": row.confidence_basis,
+                ":sensitivity": row.sensitivity,
+                ":derivation": row.derivation,
                 ":quarantined_at": quarantined_at,
                 ":reason": reason,
             },
@@ -11141,13 +11389,15 @@ fn restore_backup_row(
               embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
               source_ids, artifact_family, producer, record_type, authority, influence_class,
               lifecycle_state, effective_from_ms, effective_until_ms, expires_at_ms,
-              review_after_ms, superseded_by, priority_class, confidence, confidence_basis)
+              review_after_ms, superseded_by, priority_class, confidence, confidence_basis,
+              sensitivity, derivation)
              VALUES
               (:id, :tier, :content, :keywords, :score, :created_at, :updated_at, :access_count,
                :embedding, :embedding_q, :scope_id, :inject_count, :content_hash, :embed_model,
                :source_ids, :artifact_family, :producer, :record_type, :authority, :influence_class,
                :lifecycle_state, :effective_from_ms, :effective_until_ms, :expires_at_ms,
-               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis)",
+               :review_after_ms, :superseded_by, :priority_class, :confidence, :confidence_basis,
+               :sensitivity, :derivation)",
             rusqlite::named_params! {
                 ":id": row.id,
                 ":tier": row.tier,
@@ -11178,6 +11428,8 @@ fn restore_backup_row(
                 ":priority_class": row.priority_class,
                 ":confidence": row.confidence,
                 ":confidence_basis": row.confidence_basis,
+                ":sensitivity": row.sensitivity,
+                ":derivation": row.derivation,
             },
         )
         .map_err(|error| format!("backup restore of {} failed: {error}", row.id))?;
@@ -12473,35 +12725,303 @@ mod tests {
             )
             .unwrap();
 
+        // A CTX-017 evidence edge between the two rows, with provenance.
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO memory_relation
+                    (relation_id, source_id, target_id, relation, provenance_producer,
+                     provenance_ref, created_at)
+                 VALUES ('rel.roundtrip', ?1, ?2, 'supports', 'roundtrip-producer',
+                         'roundtrip-ref', '2026-01-01T00:00:00Z')",
+                rusqlite::params![second, first],
+            )
+            .unwrap();
+
         let before = store.backup_cortex().unwrap();
+        assert_eq!(
+            before.schema_version, CORTEX_BACKUP_SCHEMA_VERSION,
+            "a fresh backup is written in the current envelope format"
+        );
+        assert_eq!(before.relations.len(), 1, "relations are inside the envelope");
         let restored = store.restore_cortex(&before).unwrap();
         assert_eq!(restored, before.memories.len() + before.quarantined.len());
+
+        // Read the ACTUAL DATABASE ROWS after restore. Comparing two
+        // `backup_cortex()` outputs cannot detect a field the backup does not
+        // read, so this asserts against the durable tables directly.
+        let conn = store.db.lock();
+        let payloads: Vec<(String, String)> = conn
+            .prepare("SELECT id, content FROM memories ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(payloads.len(), 2, "round-trip must drop no rows");
+        assert!(payloads
+            .iter()
+            .any(|(id, content)| id == &first && content.contains("ROUNDTRIP-FIRST-needle-aa1")));
+        assert!(payloads
+            .iter()
+            .any(|(id, content)| id == &second && content.contains("ROUNDTRIP-SECOND-needle-bb2")));
+        let links_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM links WHERE src_id = ?1 AND dst_slug = 'roundtrip-first'",
+                rusqlite::params![second],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(links_after, 1, "round-trip must preserve links");
+        let suppression_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM cortex_recall_suppression_v1 WHERE memory_id = ?1 AND suppressed = 1",
+                rusqlite::params![second],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(suppression_after, 1, "suppression survives in the database");
+        // CTX-017: the edge itself, with provenance, is back in the table.
+        let edge: (String, String, String, String, String, String) = conn
+            .query_row(
+                "SELECT source_id, target_id, relation, provenance_producer, provenance_ref,
+                        created_at
+                   FROM memory_relation WHERE relation_id = 'rel.roundtrip'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    ))
+                },
+            )
+            .expect("the evidence relation must survive restore, not be silently dropped");
+        assert_eq!(
+            edge,
+            (
+                second.clone(),
+                first.clone(),
+                "supports".to_owned(),
+                "roundtrip-producer".to_owned(),
+                "roundtrip-ref".to_owned(),
+                "2026-01-01T00:00:00Z".to_owned(),
+            )
+        );
+        drop(conn);
+
         let after = store.backup_cortex().unwrap();
         assert_eq!(
             before.payload_sha256, after.payload_sha256,
             "round-trip must be digest-stable"
         );
         assert_eq!(before.suppression, after.suppression);
-        assert_eq!(after.memories.len(), 2, "round-trip must drop no rows");
-        assert!(
-            after
-                .links
-                .iter()
-                .any(|link| link.src_id == second && link.dst_slug == "roundtrip-first"),
-            "round-trip must preserve links"
+        assert_eq!(before.relations, after.relations);
+    }
+
+    /// CTX-004 + CTX-026/036: `sensitivity` and `derivation` are durable,
+    /// security-relevant record state, so a backup/restore round trip must
+    /// return them EXACTLY — a restored `restricted` row that comes back
+    /// `unavailable_legacy` is a sensitivity downgrade through a production
+    /// CLI path. Asserted against the durable tables, not against
+    /// `backup_cortex()` output, so a field the backup fails to read cannot
+    /// hide the loss.
+    #[test]
+    fn backup_restore_preserves_sensitivity_and_derivation_in_the_database() {
+        let store = MemoryStore::new();
+        let kept = store
+            .try_put(
+                "sensitivity-kept",
+                "an active record whose classification must survive restore",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        // Produce a genuinely `restricted` quarantine row through the governed
+        // production path rather than by hand-inserting one.
+        store
+            .try_put("suspect", "a record about to be quarantined", "global", MemoryTier::Semantic)
+            .unwrap();
+        let actor = VerifiedMemoryActor::from_execution_context(
+            "reviewer",
+            "A1",
+            "loopback",
+            "session-backup-q",
+            "trace-backup-q",
+        )
+        .unwrap();
+        store
+            .execute_lifecycle_operation(
+                &MemoryLifecycleOperationV1 {
+                    operation: MemoryLifecycleOperation::Quarantine,
+                    memory_id: "global/suspect".into(),
+                    replacement_id: None,
+                    scope_id: Some("global".into()),
+                    expected_content_sha256: None,
+                    reason_ref: "review-backup-q".into(),
+                    content: None,
+                    tier: None,
+                },
+                &actor,
+            )
+            .unwrap();
+
+        let read_pair = |table: &str, id: &str| -> (String, String) {
+            store
+                .db
+                .lock()
+                .query_row(
+                    &format!("SELECT sensitivity, derivation FROM {table} WHERE id = ?1"),
+                    rusqlite::params![id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap()
+        };
+        let kept_before = read_pair("memories", &kept);
+        let quarantined_before = read_pair("memory_quarantine", "global/suspect");
+        assert_eq!(quarantined_before.0, SENSITIVITY_RESTRICTED);
+
+        let backup = store.backup_cortex().unwrap();
+        // The fields are actually carried by the envelope, not silently
+        // regenerated by the write path on reinsert.
+        assert!(backup
+            .quarantined
+            .iter()
+            .any(|row| row.id == "global/suspect" && row.sensitivity == SENSITIVITY_RESTRICTED));
+        store.restore_cortex(&backup).unwrap();
+
+        assert_eq!(read_pair("memories", &kept), kept_before);
+        let quarantined_after = read_pair("memory_quarantine", "global/suspect");
+        assert_eq!(quarantined_after, quarantined_before);
+        assert_eq!(
+            quarantined_after.0, SENSITIVITY_RESTRICTED,
+            "a restored quarantined row must still be restricted"
         );
-        assert!(
-            after
-                .memories
-                .iter()
-                .any(|row| row.id == first && row.content.contains("ROUNDTRIP-FIRST-needle-aa1"))
+        assert_ne!(
+            quarantined_after.0,
+            cortex_store::memdb::UNAVAILABLE_LEGACY,
+            "restore must never downgrade a classified row to the legacy marker"
         );
+    }
+
+    /// The CTX-004 columns are inside the seal: an envelope whose
+    /// `sensitivity` was edited after signing must be refused, exactly like
+    /// any other tampered payload field. A `sensitivity` carried outside the
+    /// digest would be worse than not carrying it at all.
+    #[test]
+    fn backup_digest_seals_sensitivity_and_relations() {
+        let store = MemoryStore::new();
+        store
+            .try_put("sealed", "a record whose classification is sealed", "global", MemoryTier::Semantic)
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "INSERT INTO memory_relation
+                    (relation_id, source_id, target_id, relation, provenance_producer,
+                     provenance_ref, created_at)
+                 VALUES ('rel.sealed', 'global/sealed', 'global/other', 'supports', 'p', 'r',
+                         '2026-01-01T00:00:00Z')",
+                [],
+            )
+            .unwrap();
+        let backup = store.backup_cortex().unwrap();
+
+        let mut tampered = backup.clone();
+        tampered.memories[0].sensitivity = SENSITIVITY_RESTRICTED.into();
         assert!(
-            after
-                .memories
-                .iter()
-                .any(|row| row.id == second && row.content.contains("ROUNDTRIP-SECOND-needle-bb2"))
+            store.restore_cortex(&tampered).is_err(),
+            "an edited sensitivity must break the seal"
         );
+        let mut tampered = backup.clone();
+        tampered.memories[0].derivation = "forged-lineage".into();
+        assert!(
+            store.restore_cortex(&tampered).is_err(),
+            "an edited derivation must break the seal"
+        );
+        let mut tampered = backup.clone();
+        tampered.relations[0].provenance_ref = "forged-ref".into();
+        assert!(
+            store.restore_cortex(&tampered).is_err(),
+            "an edited relation provenance must break the seal"
+        );
+        // A v2 envelope relabelled as v1 must not verify either: the two
+        // formats are domain-separated, so v1 cannot be used to smuggle a
+        // payload past the v2 field set.
+        let mut relabelled = backup.clone();
+        relabelled.schema_version = CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1.to_owned();
+        assert!(
+            store.restore_cortex(&relabelled).is_err(),
+            "a v2 envelope relabelled v1 must not verify"
+        );
+    }
+
+    /// A pre-version-bump (v1) envelope still restores, because it was taken
+    /// before these columns existed: its rows land on the explicit
+    /// `unavailable_legacy` marker, which is the truthful statement about a
+    /// backup that never recorded them. Its original digest still verifies,
+    /// so old backups are not stranded.
+    #[test]
+    fn legacy_v1_backup_envelope_restores_with_explicit_unavailable_legacy() {
+        let store = MemoryStore::new();
+        store
+            .try_put("legacy-row", "a payload captured by a pre-CTX-004 backup", "global", MemoryTier::Semantic)
+            .unwrap();
+        let mut legacy = store.backup_cortex().unwrap();
+        // Shape a genuine v1 envelope: no relations, no CTX-004 fields, and a
+        // digest computed over the v1 field set.
+        legacy.schema_version = CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1.to_owned();
+        legacy.relations.clear();
+        for row in legacy.memories.iter_mut().chain(legacy.quarantined.iter_mut()) {
+            row.sensitivity = backup_unavailable_legacy();
+            row.derivation = backup_unavailable_legacy();
+        }
+        legacy.payload_sha256 = cortex_backup_digest(
+            CORTEX_BACKUP_SCHEMA_VERSION_LEGACY_V1,
+            &legacy.memories,
+            &legacy.quarantined,
+            &legacy.links,
+            &legacy.suppression,
+            &legacy.relations,
+        );
+
+        store.restore_cortex(&legacy).expect("a v1 envelope must still restore");
+        let (sensitivity, derivation): (String, String) = store
+            .db
+            .lock()
+            .query_row(
+                "SELECT sensitivity, derivation FROM memories WHERE id = 'global/legacy-row'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
+        assert_eq!(derivation, cortex_store::memdb::UNAVAILABLE_LEGACY);
+
+        // A v1 envelope cannot claim relations it had no table for.
+        let mut impossible = legacy.clone();
+        impossible.relations.push(CortexBackupRelationV1 {
+            relation_id: "rel.smuggled".into(),
+            source_id: "global/legacy-row".into(),
+            target_id: "global/other".into(),
+            relation: "supports".into(),
+            provenance_producer: "p".into(),
+            provenance_ref: "r".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        });
+        assert!(
+            store.restore_cortex(&impossible).is_err(),
+            "a v1 envelope carrying relations must be refused"
+        );
+        // An unknown future version is still refused outright.
+        let mut unknown = legacy.clone();
+        unknown.schema_version = "membrane.cortex-backup.v99".into();
+        assert!(store.restore_cortex(&unknown).is_err());
     }
 
     /// CTX backup-fix: an admission-conflict quarantine row's `quarantined_at`
@@ -12668,6 +13188,8 @@ mod tests {
             priority_class: "normal".into(),
             confidence: None,
             confidence_basis: None,
+            sensitivity: SENSITIVITY_RESTRICTED.into(),
+            derivation: DERIVATION_ORIGINAL.into(),
             quarantined_at: None,
             reason: Some("admission_conflict:existing=global/x;similarity=0.900".into()),
         };
@@ -12675,7 +13197,15 @@ mod tests {
         let quarantined = vec![broken_row];
         let links = Vec::new();
         let suppression = Vec::new();
-        let payload_sha256 = cortex_backup_digest(&memories, &quarantined, &links, &suppression);
+        let relations = Vec::new();
+        let payload_sha256 = cortex_backup_digest(
+            CORTEX_BACKUP_SCHEMA_VERSION,
+            &memories,
+            &quarantined,
+            &links,
+            &suppression,
+            &relations,
+        );
         let backup = CortexBackupV1 {
             schema_version: CORTEX_BACKUP_SCHEMA_VERSION.to_owned(),
             created_at: crate::time::now_iso(),
@@ -12684,6 +13214,7 @@ mod tests {
             quarantined,
             links,
             suppression,
+            relations,
             payload_sha256,
         };
         let error = store
@@ -12733,6 +13264,8 @@ mod tests {
                 priority_class: "normal".into(),
                 confidence: None,
                 confidence_basis: None,
+                sensitivity: backup_unavailable_legacy(),
+                derivation: backup_unavailable_legacy(),
                 quarantined_at: None,
                 reason: None,
             }
@@ -12741,8 +13274,22 @@ mod tests {
         let rows_b = vec![row("alpha", "beta\0[]")];
         let empty_links = Vec::new();
         let empty_suppression = Vec::new();
-        let digest_a = cortex_backup_digest(&rows_a, &[], &empty_links, &empty_suppression);
-        let digest_b = cortex_backup_digest(&rows_b, &[], &empty_links, &empty_suppression);
+        let digest_a = cortex_backup_digest(
+            CORTEX_BACKUP_SCHEMA_VERSION,
+            &rows_a,
+            &[],
+            &empty_links,
+            &empty_suppression,
+            &[],
+        );
+        let digest_b = cortex_backup_digest(
+            CORTEX_BACKUP_SCHEMA_VERSION,
+            &rows_b,
+            &[],
+            &empty_links,
+            &empty_suppression,
+            &[],
+        );
         assert_ne!(
             digest_a, digest_b,
             "NUL-adjacent field content must not let one field forge another's boundary"
@@ -16058,15 +16605,111 @@ mod tests {
         assert_ne!(sensitivity, cortex_store::memdb::UNAVAILABLE_LEGACY);
     }
 
-    fn ctx010_signal(key: &str, memory_id: Option<&str>, scope: Option<&str>) -> LifecycleReviewSignalV1 {
+    /// `_label` names the signal in the test only. The delivery key is derived
+    /// from the signal's own identity, so tests never hand one in.
+    fn ctx010_signal(_label: &str, memory_id: Option<&str>, scope: Option<&str>) -> LifecycleReviewSignalV1 {
         LifecycleReviewSignalV1 {
             origin_subsystem: "ledger".into(),
             memory_id: memory_id.map(str::to_owned),
             scope_id: scope.map(str::to_owned),
             reason: "source document superseded".into(),
             observed_at_ms: 1_000,
-            idempotency_key: key.into(),
+            idempotency_key: String::new(),
         }
+    }
+
+    /// CTX-010: idempotency is a property of the SIGNAL, not of a name the
+    /// caller picked. Two semantically identical signals enqueue one review
+    /// even under different caller labels; two different signals never
+    /// collide; and a caller key that contradicts the signal's own identity is
+    /// refused with a typed error rather than swallowed as a duplicate.
+    #[test]
+    fn ctx010_signal_idempotency_is_derived_from_signal_identity() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put("derived-key", "a record with redelivered signals", "global", MemoryTier::Semantic)
+            .unwrap();
+        let signal = ctx010_signal("first-delivery", Some(&id), None);
+        let count = || -> i64 {
+            store
+                .db
+                .lock()
+                .query_row("SELECT COUNT(*) FROM cortex_lifecycle_review_signals_v1", [], |row| {
+                    row.get(0)
+                })
+                .unwrap()
+        };
+
+        // Identical signals recorded twice enqueue once.
+        assert!(store.record_lifecycle_review_signal(&signal).unwrap());
+        assert!(!store.record_lifecycle_review_signal(&signal).unwrap());
+        assert_eq!(count(), 1);
+        // The same is true for a redelivery the transport labelled differently:
+        // under a caller-supplied key this second copy enqueued a second review.
+        let mut relabelled = signal.clone();
+        relabelled.idempotency_key = derive_lifecycle_review_signal_key(
+            "ledger",
+            Some(&id),
+            None,
+            "source document superseded",
+            1_000,
+        );
+        assert!(!store.record_lifecycle_review_signal(&relabelled).unwrap());
+        assert_eq!(count(), 1);
+        assert_eq!(
+            store
+                .lifecycle_reviews_due(None, 10_000, 10)
+                .unwrap()
+                .items
+                .iter()
+                .filter(|item| item.memory_id == id)
+                .count(),
+            1
+        );
+
+        // Different signals must never collide, on any axis of identity.
+        let mut different_reason = signal.clone();
+        different_reason.reason = "source document deleted".into();
+        assert!(store.record_lifecycle_review_signal(&different_reason).unwrap());
+        let mut different_time = signal.clone();
+        different_time.observed_at_ms = 2_000;
+        assert!(store.record_lifecycle_review_signal(&different_time).unwrap());
+        let mut different_origin = signal.clone();
+        different_origin.origin_subsystem = "blueprint".into();
+        assert!(store.record_lifecycle_review_signal(&different_origin).unwrap());
+        let mut different_target = signal.clone();
+        different_target.memory_id = Some("global/somewhere-else".into());
+        assert!(store.record_lifecycle_review_signal(&different_target).unwrap());
+        let mut scope_target = signal.clone();
+        scope_target.memory_id = None;
+        scope_target.scope_id = Some("global".into());
+        assert!(store.record_lifecycle_review_signal(&scope_target).unwrap());
+        assert_eq!(count(), 6, "five distinct signals plus the first");
+
+        // A key reused across a DIFFERENT signal is refused, not reported as a
+        // duplicate and dropped on the floor.
+        let mut conflicting = signal.clone();
+        conflicting.reason = "an entirely different observation".into();
+        conflicting.idempotency_key = derive_lifecycle_review_signal_key(
+            "ledger",
+            Some(&id),
+            None,
+            "source document superseded",
+            1_000,
+        );
+        let error = store
+            .record_lifecycle_review_signal(&conflicting)
+            .expect_err("a key that contradicts the signal must be refused");
+        assert!(
+            error.starts_with("lifecycle_review_signal_idempotency_conflict"),
+            "refusal must be typed, got: {error}"
+        );
+        assert_eq!(count(), 6, "a refused signal writes nothing");
+        // Any arbitrary caller key is likewise refused rather than honoured.
+        let mut arbitrary = signal.clone();
+        arbitrary.idempotency_key = "ledger-delivery-42".into();
+        assert!(store.record_lifecycle_review_signal(&arbitrary).is_err());
+        assert_eq!(count(), 6);
     }
 
     /// CTX-010: an externally-originated signal enqueues a review and surfaces

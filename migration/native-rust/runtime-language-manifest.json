@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T07:30:04.832Z",
+ "generatedAt": "2026-09-07T08:05:35.352Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
-  "files": 1332,
+  "files": 1333,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -497,7 +497,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "0afa89ea6c20a78f8d52d209d1a3f6822660229324560052f4117b433a7803df"
+   "content_digest": "280b693adc46d97fcc29d58c70cb24421ccb270561c9db5ed87aee10b1657284"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -859,7 +859,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "3bd6160a30939b76cf24e9cf7c49e24f08c499c1baa848fd46af7bd9fdecfe73"
+   "content_digest": "aa41060ab15bb18c58a1183c6bd7f68a4369f72f4b7723375891745313c5f623"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1076,6 +1076,7 @@
    "seal_blocker_note": null,
    "notes": "CodeRight owns its installed native binding; this generic client remains release-excluded conformance source.",
    "files": [
+    "engine/crates/membrane-client/src/binding.rs",
     "engine/crates/membrane-client/src/error.rs",
     "engine/crates/membrane-client/src/handshake.rs",
     "engine/crates/membrane-client/src/lib.rs",
@@ -1084,7 +1085,7 @@
     "engine/crates/membrane-client/tests/compat.rs",
     "engine/crates/membrane-client/tests/memory_backend.rs"
    ],
-   "content_digest": "830ad546b69062f60359669bb3e59336259cd3ee996fb182a9b4827faf8f0e34"
+   "content_digest": "5b5ec58938a4aac1092480f4470bd1a4fe33e732dec9010dc8db20a8becf86ac"
   },
   {
    "id": "engine-membrane-updater-engine/crates/membrane-updater",
@@ -1686,7 +1687,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "c25b23d90b7abd3acc3ff7c55b28dd9d8ce7e91519c1e19e99e1eeaf5737e9d9"
+   "content_digest": "502610ca4fe7502e07b1c6bfba5f7354052836b72f6f325cffe3fa16ed9d514f"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

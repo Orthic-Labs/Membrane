@@ -300,3 +300,366 @@ pub fn resolve(db: &LedgerDb, repository_root: &Path, request: &ResolveRequest)
         node_id: node_id.map(str::to_owned), converter: source.converter,
         losses: source.losses, omissions: source.omissions, read })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ledger::db::LedgerDb;
+
+    const DOC: &str = "\
+# Root Title
+
+Intro prose under the root.
+
+## Alpha Section
+
+Alpha body with an identifier HTTPServer and a naïve café word.
+
+## Beta Section
+
+Beta body.
+";
+
+    /// Index a real document through the production sync path. Hand-inserting
+    /// rows would only prove the resolver agrees with a fixture I wrote; this
+    /// proves it agrees with what the indexer actually stores.
+    fn indexed() -> (tempfile::TempDir, LedgerDb, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join("docs/guide.md"), DOC).unwrap();
+        let db = LedgerDb::open_in_memory();
+        let report = super::super::doc_spine::sync(&db, &root).unwrap();
+        // Fail on the fixture, not twenty assertions later: if the walk or the
+        // source policy ever stops admitting this document, say so here.
+        let (doc_id, hash): (String, String) = db
+            .lock()
+            .query_row(
+                "SELECT doc_id, content_hash FROM ledger_doc_artifacts WHERE path='docs/guide.md'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap_or_else(|error| {
+                panic!("sync did not index docs/guide.md ({error}); report: {report:?}")
+            });
+        let nodes: i64 = db
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM ledger_nodes WHERE doc_id=?1",
+                rusqlite::params![doc_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            nodes >= 2,
+            "fixture must produce at least two nodes to qualify sibling and cursor binding; got {nodes}"
+        );
+        (dir, db, doc_id, hash)
+    }
+
+    fn any_node(db: &LedgerDb, doc_id: &str) -> String {
+        db.lock()
+            .query_row(
+                "SELECT node_id FROM ledger_nodes WHERE doc_id=?1 ORDER BY ordinal LIMIT 1",
+                rusqlite::params![doc_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    fn request(doc_id: &str, node_id: &str, hash: &str) -> ResolveRequest {
+        ResolveRequest {
+            doc_id: Some(doc_id.to_owned()),
+            node_id: Some(node_id.to_owned()),
+            source_ref: format!("ledger://doc/{doc_id}"),
+            anchor_id: node_id.to_owned(),
+            expected_content_hash: hash.to_owned(),
+            expected_revision: None,
+            expected_span_hash: None,
+            ledger_generation: None,
+            continuation_cursor: None,
+            max_bytes: MAX_READ_BYTES,
+        }
+    }
+
+    #[test]
+    fn resolves_a_node_that_the_indexer_actually_wrote() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let resolved = resolve(&db, dir.path(), &request(&doc_id, &node, &hash)).unwrap();
+        assert_eq!(resolved.doc_id, doc_id);
+        assert_eq!(resolved.node_id.as_deref(), Some(node.as_str()));
+        assert_eq!(resolved.raw_content_hash, hash);
+        assert!(!resolved.read.content.is_empty());
+        assert_eq!(resolved.read.span.span_hash.len(), 64);
+        // The span the resolver reports must be the bytes it returned.
+        assert!(resolved.read.span.end_byte > resolved.read.span.start_byte);
+    }
+
+    /// Hash-bound resolution (the locked Ledger invariant): every binding the
+    /// caller can assert must be able to refuse.
+    #[test]
+    fn each_stale_binding_refuses_independently() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let good = request(&doc_id, &node, &hash);
+        // Baseline: unmodified request resolves, so each refusal below is
+        // caused by the one field it changes and nothing else.
+        resolve(&db, dir.path(), &good).unwrap();
+
+        let other = digest(b"a different document entirely");
+
+        let mut wrong_content = request(&doc_id, &node, &other);
+        wrong_content.expected_span_hash = None;
+        assert!(matches!(
+            resolve(&db, dir.path(), &wrong_content),
+            Err(ResolveError::Stale)
+        ));
+
+        let mut wrong_revision = request(&doc_id, &node, &hash);
+        wrong_revision.expected_revision = Some("revision-that-never-existed".to_owned());
+        assert!(matches!(
+            resolve(&db, dir.path(), &wrong_revision),
+            Err(ResolveError::Stale)
+        ));
+
+        let mut wrong_span = request(&doc_id, &node, &hash);
+        wrong_span.expected_span_hash = Some(other.clone());
+        assert!(matches!(
+            resolve(&db, dir.path(), &wrong_span),
+            Err(ResolveError::Stale)
+        ));
+
+        let mut wrong_generation = request(&doc_id, &node, &hash);
+        wrong_generation.ledger_generation = Some(9_999);
+        assert!(matches!(
+            resolve(&db, dir.path(), &wrong_generation),
+            Err(ResolveError::Stale)
+        ));
+    }
+
+    /// A malformed or truncated hash must refuse rather than match loosely.
+    #[test]
+    fn a_hash_that_is_not_a_sha256_never_matches() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        for candidate in ["", "sha256:", &hash[..63], &format!("{hash}00"), "not-hex-at-all"] {
+            let request = request(&doc_id, &node, candidate);
+            assert!(
+                matches!(resolve(&db, dir.path(), &request), Err(ResolveError::Stale)),
+                "accepted {candidate:?} as a content hash"
+            );
+        }
+        // The `sha256:` prefix is accepted, and case does not matter.
+        let mut prefixed = request(&doc_id, &node, &format!("sha256:{}", hash.to_uppercase()));
+        prefixed.expected_span_hash = None;
+        resolve(&db, dir.path(), &prefixed).unwrap();
+    }
+
+    /// A span whose stored bytes no longer digest to the recorded span hash is
+    /// stale even when every caller-supplied binding still agrees. Without this
+    /// the resolver would serve bytes it cannot vouch for.
+    #[test]
+    fn a_tampered_span_hash_refuses_even_when_the_caller_asserts_nothing() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        resolve(&db, dir.path(), &request(&doc_id, &node, &hash)).unwrap();
+        db.lock()
+            .execute(
+                "UPDATE ledger_nodes SET source_end_byte = source_end_byte - 1
+                 WHERE doc_id=?1 AND node_id=?2",
+                rusqlite::params![doc_id, node],
+            )
+            .unwrap();
+        assert!(matches!(
+            resolve(&db, dir.path(), &request(&doc_id, &node, &hash)),
+            Err(ResolveError::Stale)
+        ));
+    }
+
+    /// A projection written by a different schema version must be refused as
+    /// unsupported, not read with this version's assumptions.
+    #[test]
+    fn a_foreign_projection_schema_version_is_unsupported() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        db.lock()
+            .execute(
+                "UPDATE ledger_nodes SET projection_schema_version='ledger.projection.v0'
+                 WHERE doc_id=?1 AND node_id=?2",
+                rusqlite::params![doc_id, node],
+            )
+            .unwrap();
+        assert!(matches!(
+            resolve(&db, dir.path(), &request(&doc_id, &node, &hash)),
+            Err(ResolveError::Unsupported)
+        ));
+    }
+
+    #[test]
+    fn a_source_ref_disagreeing_with_the_doc_id_is_denied() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let mut request = request(&doc_id, &node, &hash);
+        request.source_ref = "ledger://doc/ledger.doc:0000000000000000:1111111111111111".to_owned();
+        assert!(matches!(
+            resolve(&db, dir.path(), &request),
+            Err(ResolveError::Denied)
+        ));
+    }
+
+    #[test]
+    fn an_unparseable_source_ref_is_denied_before_any_lookup() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let mut request = request(&doc_id, &node, &hash);
+        request.source_ref = "https://example.invalid/guide.md".to_owned();
+        assert!(matches!(
+            resolve(&db, dir.path(), &request),
+            Err(ResolveError::Denied)
+        ));
+    }
+
+    #[test]
+    fn an_unknown_node_is_relocated_not_missing() {
+        let (dir, db, doc_id, hash) = indexed();
+        let request = request(&doc_id, "ledger.node:does-not-exist", &hash);
+        assert!(matches!(
+            resolve(&db, dir.path(), &request),
+            Err(ResolveError::Relocated)
+        ));
+    }
+
+    #[test]
+    fn an_unknown_document_is_missing() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let absent = "ledger.doc:0000000000000000:1111111111111111";
+        let mut request = request(absent, &node, &hash);
+        request.source_ref = format!("ledger://doc/{absent}");
+        assert!(matches!(
+            resolve(&db, dir.path(), &request),
+            Err(ResolveError::Missing)
+        ));
+    }
+
+    #[test]
+    fn a_zero_byte_budget_is_refused_rather_than_served_empty() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        let mut request = request(&doc_id, &node, &hash);
+        request.max_bytes = 0;
+        assert!(matches!(
+            resolve(&db, dir.path(), &request),
+            Err(ResolveError::BudgetExhausted)
+        ));
+    }
+
+    /// Paging must reconstruct the span exactly: no gap, no overlap, no byte
+    /// invented, and every page boundary on a character boundary even though
+    /// the document contains multi-byte text.
+    #[test]
+    fn paged_reads_reassemble_the_span_byte_for_byte() {
+        let (dir, db, doc_id, hash) = indexed();
+        let whole = {
+            let mut request = request(&doc_id, &any_node(&db, &doc_id), &hash);
+            request.max_bytes = MAX_READ_BYTES;
+            resolve(&db, dir.path(), &request).unwrap()
+        };
+        assert!(!whole.read.truncated);
+        assert!(whole.read.continuation_cursor.is_none());
+
+        let node = any_node(&db, &doc_id);
+        let mut assembled = String::new();
+        let mut cursor = None;
+        let mut pages = 0;
+        loop {
+            let mut request = request(&doc_id, &node, &hash);
+            request.max_bytes = 7;
+            request.continuation_cursor = cursor.clone();
+            let page = resolve(&db, dir.path(), &request).unwrap();
+            assert!(page.read.content.len() <= 7);
+            assembled.push_str(&page.read.content);
+            pages += 1;
+            assert!(pages < 10_000, "paging did not terminate");
+            match page.read.continuation_cursor {
+                Some(next) => {
+                    assert!(page.read.truncated);
+                    cursor = Some(next);
+                }
+                None => {
+                    assert!(!page.read.truncated);
+                    break;
+                }
+            }
+        }
+        assert!(pages > 1, "a 7-byte budget must page this span");
+        assert_eq!(assembled, whole.read.content);
+    }
+
+    /// A continuation cursor is bound to the exact span it was issued for. A
+    /// cursor from one node replayed against another must be refused, not
+    /// silently reinterpreted as an offset into different bytes.
+    #[test]
+    fn a_cursor_cannot_be_replayed_against_a_different_node() {
+        let (dir, db, doc_id, hash) = indexed();
+        let nodes: Vec<String> = db
+            .lock()
+            .prepare("SELECT node_id FROM ledger_nodes WHERE doc_id=?1 ORDER BY ordinal")
+            .unwrap()
+            .query_map(rusqlite::params![doc_id], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(nodes.len() >= 2, "fixture needs at least two nodes");
+
+        let issued = {
+            let mut request = request(&doc_id, &nodes[0], &hash);
+            request.max_bytes = 4;
+            resolve(&db, dir.path(), &request)
+                .unwrap()
+                .read
+                .continuation_cursor
+                .expect("a 4-byte budget truncates")
+        };
+
+        for node in &nodes[1..] {
+            let mut request = request(&doc_id, node, &hash);
+            request.max_bytes = 4;
+            request.continuation_cursor = Some(issued.clone());
+            assert!(
+                matches!(
+                    resolve(&db, dir.path(), &request),
+                    Err(ResolveError::InvalidCursor)
+                ),
+                "cursor issued for {} was accepted for {node}",
+                nodes[0]
+            );
+        }
+    }
+
+    #[test]
+    fn a_malformed_cursor_is_refused_rather_than_ignored() {
+        let (dir, db, doc_id, hash) = indexed();
+        let node = any_node(&db, &doc_id);
+        for candidate in [
+            "".to_owned(),
+            "ledger1:".to_owned(),
+            "ledger1:zzzz".to_owned(),
+            "ledger1:6e6f742d6a736f6e".to_owned(),
+            hex::encode(b"{}"),
+            format!("ledger1:{}", "00".repeat(5000)),
+        ] {
+            let mut request = request(&doc_id, &node, &hash);
+            request.max_bytes = 4;
+            request.continuation_cursor = Some(candidate.clone());
+            assert!(
+                matches!(
+                    resolve(&db, dir.path(), &request),
+                    Err(ResolveError::InvalidCursor)
+                ),
+                "accepted malformed cursor {candidate:?}"
+            );
+        }
+    }
+}
