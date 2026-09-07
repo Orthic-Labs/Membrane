@@ -250,7 +250,13 @@ mod fast {
                 output_key: Some(OutputKey::ByName("sentence_embedding")),
                 ..user_model
             };
-            TextEmbedding::try_new_from_user_defined(user_model, InitOptionsUserDefined::new())
+            // `InitOptionsUserDefined::new()` defaults max_length to fastembed's
+            // DEFAULT_MAX_LENGTH (512). Without this the bundled model truncates at 512
+            // while the download path and the pipeline fingerprint both declare 2048,
+            // so bundled vectors would silently disagree with their own fingerprint.
+            let opts =
+                InitOptionsUserDefined::new().with_max_length(EMBEDDING_MAX_SEQUENCE_TOKENS);
+            TextEmbedding::try_new_from_user_defined(user_model, opts)
                 .map_err(|e| format!("bundled fastembed init failed: {e}"))
         }
 
@@ -420,6 +426,24 @@ mod tests {
     #[test]
     fn max_sequence_tokens_constant_is_2048() {
         assert_eq!(EMBEDDING_MAX_SEQUENCE_TOKENS, 2048);
+    }
+
+    /// The bundled model is initialised through `InitOptionsUserDefined`, whose
+    /// `max_length` default is fastembed's DEFAULT_MAX_LENGTH (512) rather than the
+    /// pipeline we fingerprint. Assert the builder we hand it carries 2048, so a
+    /// bundled install cannot silently truncate at 512 while claiming 2048.
+    #[cfg(feature = "fastembed")]
+    #[test]
+    fn bundled_init_options_declare_the_fingerprinted_sequence_length() {
+        let defaulted = fastembed::InitOptionsUserDefined::new();
+        assert_ne!(
+            defaulted.max_length, EMBEDDING_MAX_SEQUENCE_TOKENS,
+            "fastembed default now matches; this guard can be simplified"
+        );
+
+        let configured = fastembed::InitOptionsUserDefined::new()
+            .with_max_length(EMBEDDING_MAX_SEQUENCE_TOKENS);
+        assert_eq!(configured.max_length, EMBEDDING_MAX_SEQUENCE_TOKENS);
     }
 
     #[test]
