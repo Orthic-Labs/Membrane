@@ -11,6 +11,7 @@ import test from "node:test";
 
 import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { readEnvelope } from "./_store-helpers.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -150,11 +151,10 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
     try {
       db.prepare("DELETE FROM symbols; DELETE FROM symbol_search; DELETE FROM symbol_terms;").run();
       const insert = db.prepare("INSERT INTO symbols (id, kind, labels, name, qualified_name, path, confidence, evidence, generation_id) VALUES (?, 'symbol', ?, ?, ?, ?, 1, '[]', ?)");
-      const generationId = "xxh128:ambig-seed";
+      const generationId = readEnvelope(repo).generationId;
       insert.run("symbol:a.ts:dup", JSON.stringify(["Function"]), "dup", "a.dup", "src/a.ts", generationId);
       insert.run("symbol:b.ts:dup", JSON.stringify(["Function"]), "dup", "b.dup", "src/b.ts", generationId);
       db.prepare("INSERT OR REPLACE INTO symbol_search (id, generation_id, name, qualified_name, path) VALUES ('symbol:a.ts:dup', ?, 'dup', 'a.dup', 'src/a.ts'), ('symbol:b.ts:dup', ?, 'dup', 'b.dup', 'src/b.ts')").run(generationId, generationId);
-      db.prepare("INSERT OR REPLACE INTO generation (key, value) VALUES ('manifest', ?)").run(JSON.stringify({ generationId, manifestDigest: "sha256:ambiguous", provider: "blueprint-static" }));
     } finally {
       closeStore(db);
     }

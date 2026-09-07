@@ -39,6 +39,8 @@ Ordinary Pull results need no protected block to be deliverable. An empty protec
 
 One-shot freshness completes deterministic document extraction after applying every source delta, while leaving judgment work explicitly pending. Cold builds & incremental repair use content identity for every indexed file. Replayed identical source events acknowledge journal clocks without reparsing repository symbols. Federation validates Blueprint graph identifiers independently of release artifact identifiers.
 
+Blueprint evidence, line coordinates & freshness leaves identify exact source bytes, including README content. Generated README pointers are excluded only from the semantic source signature. Bounded reconciliation repairs authoritative content differences missed by native snapshots or metadata, then rescans before clearing an event gap; legacy normalized README hashes require no store reset.
+
 ## Regression acceptance
 
 For each installed public operation, verify discovery & execution with Hub on & off. Compare semantic results & authorized effects against identical input state. Include first-use initialization, changed-source refresh, durable writes followed by reads, concurrent requests, cancellation & process exit. Retain negative tests for authorization, schema/generation mismatch & storage consistency.

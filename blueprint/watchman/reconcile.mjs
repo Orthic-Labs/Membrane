@@ -238,22 +238,21 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       await adapter.writeSnapshot(root, snapshot, ignore);
     }
     throwIfAborted(signal);
-    const authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
+    let authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
     let convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
-    // A ledger entry the scanner no longer yields cannot be repaired by an
-    // event: the file is often still on disk, so no delete is ever observed.
-    // The scanner skips a file whose bytes contain a NUL, and this repository
-    // has ten such documents — they were indexed by an earlier full build,
-    // and every incremental reconcile since reported them `removed`, so
-    // convergence was unreachable and `event_gap` stayed latched at 1
-    // forever. The scan is authoritative about what is indexable, so retire
-    // those entries here and settle, once, before judging convergence.
-    if (convergence.mismatches.removed.length > 0) {
+    // Native snapshots and metadata can miss a content mismatch, including
+    // legacy normalized README identities. Repair the authoritative diff
+    // once through normal journal processing, then rescan to detect races.
+    const repairs = [
+      ...convergence.mismatches.changed.map((path) => ({ eventKind: "modify", path })),
+      ...convergence.mismatches.added.map((path) => ({ eventKind: "create", path })),
+      ...convergence.mismatches.removed.map((path) => ({ eventKind: "delete", path })),
+    ];
+    if (repairs.length > 0) {
       appendWatchEvents(
         db,
-        convergence.mismatches.removed.map((path) => ({
-          eventKind: "delete",
-          path,
+        repairs.map((event) => ({
+          ...event,
           observedMs: Date.now(),
         })),
       );
@@ -267,6 +266,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     }
     if (options.completeDocuments) {
       completePendingDocDomain(db, root, { outDir });
+      authorityScan = scanSourcesPublic(root, 0, { ignoredPrefixes });
       convergence = evaluateConvergenceOracle(db, authorityScan.files ?? [], { ...authorityScan, eventGapOverride: false });
     }
     db.exec("BEGIN;");

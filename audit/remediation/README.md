@@ -13,6 +13,8 @@ Active scope: validate PR #30, reproduce & repair confirmed findings on main, qu
 
 ## Remediation ledger
 
+Latest installed candidate `101f341b` completed unsigned installation (exit 0), with stable build identity & Blueprint payload hashes verified. Hub-off refresh exposed persistent README convergence mismatch: full scans normalized generated pointers while incremental updates hashed raw bytes. Source repair binds exact bytes consistently & recovers authoritative differences missed by native snapshots. A copy of the failing installed fixture refreshed in 584 ms with `caught_up`, no event gap & no pending domains. Generated-output/reconciliation tests pass 18 cases; independent source review passes. Installed acceptance of this repair remains pending. CodeRight continues independently; older pause statements below record superseded sequencing.
+
 | ID | Finding | State | Acceptance |
 |---|---|---|---|
 | SEM-001 | Installed Hub-off explicit execution unreachable | Installed `011ed798` passes Hub-off fixture & six-subsystem probes; CodeRight search/source resolution passes after synchronization. CodeRight resumed independently. Hub-on explicit deadline repair & automatic watcher acceptance remain active | Every explicit subsystem operation remains available; only automatic work requires Hub |

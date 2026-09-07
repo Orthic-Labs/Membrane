@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { readEnvelope } from "./_store-helpers.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 
 import {
   DOC_PATHS,
@@ -55,6 +56,22 @@ function makeFixture(name = null) {
 }
 
 const it = (name, fn) => test(name, async () => fn());
+
+it("generated outputs settle through explicit refresh without a resident watcher", async () => {
+  const root = makeFixture();
+  try {
+    const { execFileSync } = await import("node:child_process");
+    execFileSync(process.execPath, [SCRIPT, "build", "--out", ".agent"], { cwd: root, stdio: "pipe" });
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true, freshnessOwnership: "one_shot" });
+    const first = await service.refresh({ repoRoot: root, timeoutMs: 5000 });
+    assert.equal(first.freshnessReceipt.barrierResult, "caught_up");
+    assert.equal(first.freshnessReceipt.eventGap, false);
+    const second = await service.refresh({ repoRoot: root, timeoutMs: 5000 });
+    assert.equal(second.freshnessReceipt.barrierResult, "caught_up");
+    assert.equal(second.generationId, first.generationId);
+    assert.equal(second.freshnessReceipt.sourceClock, first.freshnessReceipt.sourceClock);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 it("B6.5.4 fixture build emits both docs with generation headers + provenance", async () => {
   const root = makeFixture();

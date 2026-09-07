@@ -1578,9 +1578,12 @@ function scanSources(root, fileLimit = 0, walkOptions = {}) {
     files.push({
       absolutePath,
       path,
-      ...(isParsed ? { text: normalizedText } : {}),
-      lines: isParsed ? normalizedText.split(/\r?\n/) : [],
-      contentHash: xxh128(normalizedBytes),
+      ...(isParsed ? { text } : {}),
+      lines: isParsed ? text.split(/\r?\n/) : [],
+      // Evidence and incremental convergence identify exact on-disk bytes.
+      // Only the semantic source signature excludes our generated pointer.
+      contentHash: xxh128(bytes),
+      semanticContentHash: xxh128(normalizedBytes),
       size: bytes.length,
     });
     if (fileLimit > 0 && files.length >= fileLimit) {
@@ -1982,8 +1985,9 @@ function generationId(nodes, edges, files) {
 // This was latent for as long as `build` refused to run on a dirty tree; removing
 // that refusal (the graph is a local index now, not a committed artifact) made it
 // reachable on any repo where the generated docs are tracked. Excluding them here
-// applies the rule README.md already had — its generated pointer block is stripped
-// before hashing for exactly this reason.
+// excludes README's generated pointer from the semantic source signature too.
+// Exact file evidence and the freshness ledger still bind raw bytes; bounded
+// reconciliation ingests generated output changes before claiming freshness.
 //
 // Excluded from the HASH only: the docs remain scanned, remain graph nodes, and
 // still take part in doc↔code joins. A real source edit still moves the hash.
@@ -1997,7 +2001,7 @@ function sourceHash(files) {
   return `xxh128:${xxh128(
     files
       .filter((file) => !isGeneratedDoc(file))
-      .map((file) => `${file.path}:${file.contentHash}`)
+      .map((file) => `${file.path}:${file.semanticContentHash ?? file.contentHash}`)
       .join("\n"),
   )}`;
 }

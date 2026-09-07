@@ -7,6 +7,7 @@ import test from "node:test";
 import { finishEntityRenames, reconcile } from "../watchman/reconcile.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { contentDigest } from "../src/graph/generation-identity.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
@@ -18,6 +19,43 @@ function makeRepo() {
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
 }
+
+test("generated README pointers preserve exact identity through cold build and reconciliation", async () => {
+  const repo = makeRepo();
+  const readme = join(repo, "README.md");
+  try {
+    writeFileSync(readme, "# Fixture\n\n<!-- blueprint:docs:start -->\n## Repository truth docs\n<!-- blueprint:docs:end -->\n\nUser-authored tail.\n");
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try {
+      const assertIdentity = () => {
+        const digest = contentDigest(readFileSync(readme));
+        assert.equal(db.prepare("SELECT content_digest FROM file_state WHERE path='README.md'").get().content_digest, digest);
+        assert.equal(db.prepare("SELECT digest FROM generation_leaf WHERE path='README.md'").get().digest, digest);
+      };
+      assertIdentity();
+      assert.equal((await reconcile(db, repo, { completeDocuments: true })).convergence.converged, true);
+      // Existing installations may have a normalized leaf despite matching
+      // metadata and an empty native snapshot diff. Recover without reset.
+      db.prepare("UPDATE generation_leaf SET digest=? WHERE path='README.md'").run(contentDigest(Buffer.from("legacy normalized README")));
+      db.prepare("UPDATE file_state SET content_digest=? WHERE path='README.md'").run(contentDigest(Buffer.from("legacy normalized README")));
+      const snapshot = join(repo, ".agent/graph/watch.snapshot");
+      writeFileSync(snapshot, "fixture");
+      const recovered = await reconcile(db, repo, {
+        completeDocuments: true,
+        snapshotPath: snapshot,
+        adapter: { eventsSince: async () => [], writeSnapshot: async () => {} },
+      });
+      assert.equal(recovered.convergence.converged, true);
+      assertIdentity();
+      writeFileSync(readme, readFileSync(readme, "utf8").replace("User-authored tail.", "Updated user-authored tail."));
+      const updated = await reconcile(db, repo, { completeDocuments: true });
+      assert.equal(updated.convergence.converged, true);
+      assertIdentity();
+      assert.equal((await reconcile(db, repo, { completeDocuments: true })).convergence.converged, true);
+    } finally { closeStore(db); }
+  } finally { rmSync(repo, { recursive: true, force: true }); }
+});
 
 test("reconcile applies exactly changed files and leaves unrelated facts intact", async () => {
   const repo = makeRepo();
