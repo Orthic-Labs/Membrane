@@ -329,7 +329,7 @@ pub(crate) fn open_installed_store() -> Result<crate::MemoryStore, String> {
     crate::MemoryStore::try_open(crate::MemDb::open(&runtime.db).map_err(|error| error.to_string())?)
 }
 
-fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
+pub(crate) fn runtime_from_installed_exe(exe: &Path) -> Result<Runtime, String> {
     let executable_root = exe.parent().ok_or_else(|| "executable has no parent".to_string())?;
     let current = if executable_root.file_name().is_some_and(|name| name == "current") {
         executable_root.to_path_buf()
