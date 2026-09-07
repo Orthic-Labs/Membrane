@@ -1703,6 +1703,10 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
 /// Remove only the causal-learning v23 tables and feedback qualification marker.
 pub fn backout_v23_to_v22<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    // The chain must start at the current schema. Omitting this step left
+    // `backout_v26_to_v25` looking at a v27 marker, which it correctly refuses,
+    // so every rollback to v22 from a current database failed closed.
+    backout_v27_to_v26(path)?;
     backout_v26_to_v25(path)?;
     backout_v25_to_v24(path)?;
     backout_v24_to_v23(path)?;
@@ -3915,6 +3919,9 @@ mod tests {
         let path = directory.path().join("v26-backout.db");
         let db = MemDb::open(&path).unwrap();
         drop(db);
+        // A fresh database is at LATEST_SCHEMA_VERSION, so the single v26 step
+        // has to be reached through the step above it.
+        backout_v27_to_v26(&path).unwrap();
         backout_v26_to_v25(&path).unwrap();
         let conn = Connection::open(&path).unwrap();
         let version: i64 = conn

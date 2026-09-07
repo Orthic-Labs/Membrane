@@ -206,6 +206,17 @@ mod tests {
             let mut depth = 0usize;
             let mut opened = false;
             while index < bytes.len() {
+                // Braces inside literals and comments are text, not structure.
+                // This guard scans its own source, so a single `b'}'` written
+                // anywhere in this file would otherwise unbalance the walk and
+                // silently expose the rest of the test module as production.
+                index = match skip_opaque(bytes, index) {
+                    Some(next) => {
+                        index = next;
+                        continue;
+                    }
+                    None => index,
+                };
                 match bytes[index] {
                     b';' if !opened => {
                         index += 1;
@@ -215,9 +226,14 @@ mod tests {
                         depth += 1;
                         opened = true;
                     }
+                    // A `}` before any `{` closes the *enclosing* item, so the
+                    // attribute was on a field or variant rather than a block.
+                    // Stop without consuming it; the enclosing item is
+                    // production code and must survive into the scan.
+                    b'}' if !opened => break,
                     b'}' => {
                         depth -= 1;
-                        if depth == 0 && opened {
+                        if depth == 0 {
                             index += 1;
                             break;
                         }
@@ -233,6 +249,90 @@ mod tests {
         }
         out.push_str(&text[cursor..]);
         out
+    }
+
+    /// If `index` starts a string literal, char/byte literal, or comment,
+    /// return the index just past it. `None` means ordinary code.
+    fn skip_opaque(bytes: &[u8], index: usize) -> Option<usize> {
+        match bytes[index] {
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                let mut i = index + 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                Some(i)
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                let mut i = index + 2;
+                let mut nesting = 1usize;
+                while i + 1 < bytes.len() && nesting > 0 {
+                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                        nesting += 1;
+                        i += 2;
+                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                        nesting -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+                Some(i)
+            }
+            b'r' if matches!(bytes.get(index + 1), Some(&b'"') | Some(&b'#')) => {
+                let mut hashes = 0usize;
+                while bytes.get(index + 1 + hashes) == Some(&b'#') {
+                    hashes += 1;
+                }
+                if bytes.get(index + 1 + hashes) != Some(&b'"') {
+                    return None;
+                }
+                let mut i = index + 2 + hashes;
+                while i < bytes.len() {
+                    if bytes[i] == b'"'
+                        && bytes[i + 1..]
+                            .iter()
+                            .take(hashes)
+                            .filter(|byte| **byte == b'#')
+                            .count()
+                            == hashes
+                    {
+                        return Some(i + 1 + hashes);
+                    }
+                    i += 1;
+                }
+                Some(bytes.len())
+            }
+            b'"' => {
+                let mut i = index + 1;
+                while i < bytes.len() {
+                    match bytes[i] {
+                        b'\\' => i += 2,
+                        b'"' => return Some(i + 1),
+                        _ => i += 1,
+                    }
+                }
+                Some(bytes.len())
+            }
+            // `b'x'`, `'x'`, `'\n'` — but never a lifetime such as `'a`.
+            b'b' if bytes.get(index + 1) == Some(&b'\'') => close_quote(bytes, index + 2),
+            b'\'' => close_quote(bytes, index + 1),
+            _ => None,
+        }
+    }
+
+    /// End of a char literal body starting at `body`, or `None` for a lifetime.
+    fn close_quote(bytes: &[u8], body: usize) -> Option<usize> {
+        let mut i = body;
+        if bytes.get(i) == Some(&b'\\') {
+            i += 2;
+        } else {
+            i += 1;
+        }
+        if bytes.get(i) == Some(&b'\'') {
+            Some(i + 1)
+        } else {
+            None
+        }
     }
 
     /// `Connection` plus every alias introduced by
@@ -358,6 +458,63 @@ mod tests {
     /// `MemDb::open` (writes) or `open_readonly_sanctioned` (reads), or
     /// deliberately added here with a recorded reason. `tests/` and `benches/`
     /// trees are not scanned: they are test scaffolding by construction.
+    /// The guard reads its own source, so a brace inside a literal must not
+    /// move the walk. Before this was handled, adding a single `b'}'` to this
+    /// file ended the test-module strip early and silently reclassified the
+    /// rest of the module as production code.
+    #[test]
+    fn stripping_ignores_braces_inside_literals_and_comments() {
+        let source = concat!(
+            "fn production_before() { let _ = 1; }\n",
+            "#[cfg(test)]\n",
+            "mod tests {\n",
+            "    fn helper() {\n",
+            "        let _unbalanced_literal = b'}';\n",
+            "        let _also = '{';\n",
+            "        let _text = \"} } } {\";\n",
+            "        let _raw = r#\"}}}\"#;\n",
+            "        // }}} in a comment\n",
+            "        /* }}} in a block comment */\n",
+            "    }\n",
+            "}\n",
+            "fn production_after() { let _ = 2; }\n",
+        );
+        let stripped = strip_cfg_test(source);
+        assert!(stripped.contains("production_before"));
+        assert!(
+            stripped.contains("production_after"),
+            "code after the test module was consumed: {stripped}"
+        );
+        assert!(
+            !stripped.contains("helper"),
+            "test-module body survived the strip: {stripped}"
+        );
+        assert_eq!(
+            source.lines().count(),
+            stripped.lines().count(),
+            "line numbering must be preserved"
+        );
+    }
+
+    /// `#[cfg(test)]` on a struct field is not a block. The walk must stop at
+    /// the enclosing `}` without consuming it, and without underflowing.
+    #[test]
+    fn stripping_handles_a_cfg_test_field_without_underflow() {
+        let source = concat!(
+            "struct S {\n",
+            "    kept: u32,\n",
+            "    #[cfg(test)]\n",
+            "    only_in_tests: u32,\n",
+            "}\n",
+            "fn production_after() { let _ = Connection::open(\"x\"); }\n",
+        );
+        let stripped = strip_cfg_test(source);
+        assert!(!stripped.contains("only_in_tests"));
+        assert!(stripped.contains("kept"));
+        assert!(stripped.contains("production_after"));
+        assert_eq!(source.lines().count(), stripped.lines().count());
+    }
+
     #[test]
     fn sanctioned_sqlite_open_sites_are_frozen() {
         // (path relative to the engine crates root, enclosing fn, opens, reason)
