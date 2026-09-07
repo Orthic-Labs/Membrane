@@ -1,7 +1,11 @@
+import { readFileSync } from "node:fs";
+import { join, resolve as resolvePath, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { assertRegisteredRelationshipKinds } from "../graph/relationship-kinds.mjs";
 import { FACT_PROVENANCE, withFactProvenance } from "../graph/provenance.mjs";
 import { evaluateEvidence } from "../graph/evidence-authority.mjs";
-import { ProviderRegistry, runProvider } from "./index.mjs";
+import { ProviderRegistry, runProvider, runProviderSync } from "./index.mjs";
 import { pythonScipProvider } from "./compilers/python-scip.mjs";
 
 export const FIRST_PARTY_SEMANTIC_PROVIDERS = Object.freeze([pythonScipProvider]);
@@ -13,27 +17,73 @@ export const FIRST_PARTY_SEMANTIC_PROVIDERS = Object.freeze([pythonScipProvider]
  */
 export const ALLOWED_PROVIDER_LICENSES = Object.freeze(["SEE LICENSE IN LICENSE"]);
 
+/** Root of the blueprint package; provider manifest `entry` paths are relative to it. */
+const PACKAGE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+/** Directory holding one committed manifest per first-party provider. */
+export const PROVIDER_MANIFEST_DIR = join(PACKAGE_ROOT, "src", "providers", "manifests");
+
 /**
- * Manifest for a compiled-in first-party provider.
- *
- * BPT-010 requires provider registration to validate identity, checksum and
- * licence. Registration used to pass no manifest at all, so
- * `validateProviderManifest` — checksum and licence included — never ran on a
- * production path; it was exercised only by tests handing it a manifest by
- * hand. A compiled-in provider has no separately fetched artifact, so what its
- * integrity attests is the provider contract itself: `descriptorDigest` is a
- * sha256 over identity, kind, protocol range, capabilities and permissions, so
- * a silently altered capability or permission surface fails the identity and
- * integrity check at registration rather than at first use.
+ * Providers that MUST have a committed manifest. A first-party provider with
+ * no manifest is refused rather than silently registered unvalidated.
  */
-export function firstPartyProviderManifest(provider) {
-  return Object.freeze({
-    id: provider.id,
-    version: provider.version,
-    license: ALLOWED_PROVIDER_LICENSES[0],
-    integrity: provider.descriptorDigest,
-    entry: `providers/compilers/${provider.id}.mjs`,
-  });
+const MANIFEST_REQUIRED_PROVIDER_IDS = new Set(FIRST_PARTY_SEMANTIC_PROVIDERS.map((provider) => provider.id));
+
+function orchestratorError(code, message, details = undefined) {
+  const error = new Error(message);
+  error.code = code;
+  if (details !== undefined) error.details = details;
+  return error;
+}
+
+/**
+ * Load the committed manifest for a provider (BPT-010).
+ *
+ * The manifest is independent of the provider object: it is a file on disk
+ * declaring id, version, licence, entry and the sha256 of the provider's own
+ * module bytes. Registration compares the provider's declared identity against
+ * it and hashes the artifact at `entry`, so identity drift, an unlisted
+ * licence, or a tampered provider module all fail closed at build time.
+ * Previously the manifest was synthesized from the provider being validated,
+ * so every check compared a value to itself and could not fail.
+ *
+ * Returns null for a provider with no committed manifest, unless it is a
+ * first-party provider, in which case a missing manifest is an error.
+ */
+export function loadFirstPartyProviderManifest(provider) {
+  const path = join(PROVIDER_MANIFEST_DIR, `${provider.id}.json`);
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (error) {
+    if (MANIFEST_REQUIRED_PROVIDER_IDS.has(provider.id)) {
+      throw orchestratorError("semantic_provider_manifest_missing", `first-party provider ${provider.id} has no committed manifest at ${path}`, { path, cause: String(error?.message ?? error) });
+    }
+    return null;
+  }
+  try {
+    return Object.freeze(JSON.parse(raw));
+  } catch (error) {
+    throw orchestratorError("semantic_provider_manifest_unreadable", `provider manifest ${path} is not valid JSON`, { path, cause: String(error?.message ?? error) });
+  }
+}
+
+/**
+ * Read the provider module bytes the manifest attests. The manifest `entry` is
+ * package-relative and must stay inside the package; anything else is refused
+ * before the file is opened.
+ */
+export function readProviderArtifactBytes(manifest) {
+  const entry = String(manifest?.entry ?? "").replaceAll("\\", "/");
+  const absolute = resolvePath(PACKAGE_ROOT, entry);
+  if (!absolute.startsWith(PACKAGE_ROOT.endsWith(sep) ? PACKAGE_ROOT : `${PACKAGE_ROOT}${sep}`)) {
+    throw orchestratorError("semantic_provider_artifact_escapes_package", `provider entry ${entry} escapes the package root`);
+  }
+  try {
+    return readFileSync(absolute);
+  } catch (error) {
+    throw orchestratorError("semantic_provider_artifact_missing", `provider artifact ${entry} could not be read`, { entry, cause: String(error?.message ?? error) });
+  }
 }
 
 function typedDisposition(provider, disposition, detail = {}) {
@@ -95,21 +145,35 @@ function unavailableSemanticOutput(provider, probe) {
 export function createSemanticProviderRegistry({
   providers = FIRST_PARTY_SEMANTIC_PROVIDERS,
   allowedLicenses = ALLOWED_PROVIDER_LICENSES,
-  manifestFor = firstPartyProviderManifest,
+  manifestFor = loadFirstPartyProviderManifest,
 } = {}) {
   const registry = new ProviderRegistry({ allowedLicenses });
   for (const provider of providers) {
     if (provider.kind !== "compiler") {
-      const error = new Error(`semantic provider ${provider.id} must be kind=compiler`);
-      error.code = "semantic_provider_kind_invalid";
-      throw error;
+      throw orchestratorError("semantic_provider_kind_invalid", `semantic provider ${provider.id} must be kind=compiler`);
     }
-    // Registering WITH the manifest is what puts identity, checksum and licence
-    // validation on the production path; registering without one silently
-    // skips all three.
-    registry.register(provider, { manifest: manifestFor(provider) });
+    // Registering WITH a committed manifest AND the provider's real module
+    // bytes is what puts identity, licence and checksum validation on the
+    // production path. Registering without them silently skips all three.
+    const manifest = manifestFor(provider);
+    registry.register(provider, manifest
+      ? { manifest, artifactBytes: readProviderArtifactBytes(manifest) }
+      : {});
   }
   return registry;
+}
+
+/**
+ * Providers admitted for execution, resolved THROUGH the registry.
+ *
+ * Both lanes iterate this rather than the caller's array, so a provider that
+ * fails registration (identity drift, unlisted licence, tampered module bytes)
+ * never runs — registration is load-bearing, not advisory.
+ */
+function admittedProviders(providers) {
+  const registry = createSemanticProviderRegistry({ providers });
+  // Caller order is preserved; `registry.list()` sorts by id.
+  return providers.map((provider) => registry.get(provider.id).provider);
 }
 
 /**
@@ -120,19 +184,20 @@ export function createSemanticProviderRegistry({
  */
 export function collectSemanticEvidenceSync(context = {}, {
   providers = FIRST_PARTY_SEMANTIC_PROVIDERS,
+  signal = null,
+  allowProcess = false,
 } = {}) {
-  createSemanticProviderRegistry({ providers });
   const results = [];
-  for (const provider of providers) {
+  for (const provider of admittedProviders(providers)) {
     let probe;
     try {
-      probe = provider.probe(context);
+      probe = runProviderSync(provider, context, { signal, allowProcess, operation: "probe" });
     } catch (error) {
       results.push({
         provider,
         probe: null,
         output: { nodes: [], edges: [], reports: [] },
-        disposition: typedDisposition(provider, "failed", { code: "provider_probe_failed", reason: String(error?.message ?? error) }),
+        disposition: typedDisposition(provider, "failed", { code: error?.code ?? "provider_probe_failed", reason: String(error?.message ?? error) }),
       });
       continue;
     }
@@ -147,7 +212,7 @@ export function collectSemanticEvidenceSync(context = {}, {
       continue;
     }
     try {
-      const output = validateSemanticOutput(provider, provider.collect(context));
+      const output = validateSemanticOutput(provider, runProviderSync(provider, context, { signal, allowProcess, operation: "collect" }));
       results.push({
         provider,
         probe,
@@ -177,9 +242,8 @@ export async function collectSemanticEvidence(context = {}, {
   signal = null,
   allowProcess = false,
 } = {}) {
-  createSemanticProviderRegistry({ providers });
   const results = [];
-  for (const provider of providers) {
+  for (const provider of admittedProviders(providers)) {
     try {
       const probe = await runProvider(provider, context, { signal, timeoutMs, allowProcess, operation: "probe" });
       const probeDisposition = dispositionForProbe(probe);

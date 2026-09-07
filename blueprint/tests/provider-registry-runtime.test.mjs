@@ -7,6 +7,7 @@ import {
   defineProvider,
   providerDescriptorDigest,
   runProvider,
+  runProviderSync,
   validateProviderManifest,
 } from "../src/providers/index.mjs";
 
@@ -81,4 +82,34 @@ test("runtime types process authorization, crash, timeout and cancellation", asy
   } }), {}, { signal: controller.signal, timeoutMs: 100 });
   controller.abort();
   await assert.rejects(pending, { code: "provider_cancelled" });
+});
+
+// BPT-012: the synchronous lane the production build uses must apply the same
+// admission bounds. A frozen object carrying a `descriptorDigest` bypasses
+// `defineProvider`, so the permission guards must re-check rather than trust it.
+function forgedDefinedProvider(permissions, overrides = {}) {
+  return Object.freeze({
+    id: "forged.provider", version: "1.0.0", kind: "compiler", protocolRange: ">=1 <2",
+    capabilities: Object.freeze(["definitions"]),
+    permissions: Object.freeze(permissions),
+    descriptorDigest: `sha256:${"a".repeat(64)}`,
+    probe() { return { state: "available" }; },
+    collect() { return { nodes: [], edges: [], reports: [] }; },
+    ...overrides,
+  });
+}
+
+test("synchronous provider lane refuses network, invalid filesystem and unauthorized process", () => {
+  assert.throws(() => runProviderSync(forgedDefinedProvider({ filesystem: "repo-read", network: "fetch-only", process: "none" })), { code: "provider_network_forbidden" });
+  assert.throws(() => runProviderSync(forgedDefinedProvider({ filesystem: "anywhere", network: "none", process: "none" })), { code: "provider_filesystem_forbidden" });
+  assert.throws(() => runProviderSync(provider({ permissions: { filesystem: "repo-read", network: "none", process: "opt-in" }, collect() { return {}; } })), { code: "provider_process_not_authorized" });
+  assert.deepEqual(runProviderSync(provider({ permissions: { filesystem: "repo-read", network: "none", process: "opt-in" }, collect() { return { ok: true }; } }), {}, { allowProcess: true }), { ok: true });
+});
+
+test("synchronous provider lane types crashes, refuses async bodies and honours a pre-aborted signal", () => {
+  assert.throws(() => runProviderSync(provider({ collect() { throw new Error("boom"); } })), { code: "provider_crash" });
+  assert.throws(() => runProviderSync(provider({ async collect() { return {}; } })), { code: "provider_sync_required" });
+  const controller = new AbortController();
+  controller.abort();
+  assert.throws(() => runProviderSync(provider({ collect() { return {}; } }), {}, { signal: controller.signal }), { code: "provider_cancelled" });
 });

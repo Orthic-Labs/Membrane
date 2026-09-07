@@ -177,22 +177,83 @@ function cancellationError() {
   return providerError("provider_cancelled", "provider execution cancelled");
 }
 
-export async function runProvider(provider, context = {}, {
-  signal = null,
-  timeoutMs = 5000,
-  allowProcess = false,
-  operation = "collect",
-} = {}) {
+/**
+ * Admission bounds that do not depend on the call being asynchronous.
+ *
+ * Shared by `runProvider` and `runProviderSync` so there is exactly one place
+ * that decides whether a provider may run at all: contract definition (which
+ * rejects any permission value outside the declared enums), network refusal,
+ * filesystem permission enum, and process opt-in gating.
+ */
+function admitProviderForExecution(provider, { allowProcess = false, signal = null } = {}) {
   const defined = Object.isFrozen(provider) && provider.descriptorDigest ? provider : defineProvider(provider);
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) {
-    throw providerError("provider_timeout_invalid", "provider timeout must be an integer from 1 to 120000 ms");
-  }
   if (defined.permissions.network !== "none") throw providerError("provider_network_forbidden", "provider network access is forbidden");
   if (!PROVIDER_FILESYSTEM_PERMISSIONS.includes(defined.permissions.filesystem)) throw providerError("provider_filesystem_forbidden", "provider filesystem permission is invalid");
   if (defined.permissions.process === "opt-in" && !allowProcess) {
     throw providerError("provider_process_not_authorized", `provider ${defined.id} requires explicit process authorization`);
   }
   if (signal?.aborted) throw cancellationError();
+  return defined;
+}
+
+/**
+ * Synchronous bounded lane (BPT-012).
+ *
+ * The production build path (`buildGraphGeneration` -> ... ->
+ * `augmentGenerationWithFirstPartyProviders`) is synchronous and has many
+ * synchronous callers, so it cannot await `runProvider`. Without this, the
+ * isolation contract was reachable only from the async lane, which no
+ * production caller used: providers ran on real builds with none of the bounds
+ * applied.
+ *
+ * ENFORCED here, identically to `runProvider`:
+ *   - contract validation (permission values outside the declared enums are
+ *     refused before any provider code runs);
+ *   - network refusal (`permissions.network` must be "none");
+ *   - filesystem permission enum ("none" | "repo-read");
+ *   - process opt-in gating (`permissions.process === "opt-in"` needs an
+ *     explicit `allowProcess`);
+ *   - pre-flight cancellation (an already-aborted signal refuses the run);
+ *   - typed crash wrapping (an untyped throw becomes `provider_crash`).
+ *
+ * STRUCTURALLY IMPOSSIBLE in a synchronous call, and deliberately NOT claimed:
+ *   - timeout: a synchronous provider body holds the only thread; no timer can
+ *     interrupt it, so a hang is a hang;
+ *   - mid-flight cancellation: an abort raised while the provider body is
+ *     running cannot be observed until it returns.
+ * A provider that needs either bound must run in the async lane
+ * (`collectSemanticEvidence` / `runProvider`), which is why both lanes exist.
+ */
+export function runProviderSync(provider, context = {}, {
+  signal = null,
+  allowProcess = false,
+  operation = "collect",
+} = {}) {
+  const defined = admitProviderForExecution(provider, { allowProcess, signal });
+  const method = operation === "probe" ? defined.probe : defined.collect;
+  const safeContext = Object.freeze({ ...context, signal });
+  try {
+    const result = method(safeContext);
+    if (result && typeof result.then === "function") {
+      throw providerError("provider_sync_required", `provider ${defined.id} returned a promise on the synchronous lane`);
+    }
+    return result;
+  } catch (error) {
+    if (error?.code) throw error;
+    throw providerError("provider_crash", `provider ${defined.id} failed: ${String(error?.message ?? error)}`, { cause: String(error?.message ?? error) });
+  }
+}
+
+export async function runProvider(provider, context = {}, {
+  signal = null,
+  timeoutMs = 5000,
+  allowProcess = false,
+  operation = "collect",
+} = {}) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) {
+    throw providerError("provider_timeout_invalid", "provider timeout must be an integer from 1 to 120000 ms");
+  }
+  const defined = admitProviderForExecution(provider, { allowProcess, signal });
   const method = operation === "probe" ? defined.probe : defined.collect;
   const safeContext = Object.freeze({ ...context, signal });
   let timer = null;

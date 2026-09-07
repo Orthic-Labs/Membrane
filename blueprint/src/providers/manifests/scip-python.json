@@ -1,0 +1,7 @@
+{
+  "id": "scip-python",
+  "version": "normalized-portable-index-v2",
+  "license": "SEE LICENSE IN LICENSE",
+  "integrity": "sha256:44062d002f37fbd79f86b7498804d64cb96965486708598580a7ca3fe92b23a5",
+  "entry": "src/providers/compilers/python-scip.mjs"
+}

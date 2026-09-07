@@ -315,11 +315,21 @@ function addSchemaAndIacEvidence(generation, files) {
 
 function addScipEvidence(generation, files, root, options, selectedPaths = null, allowExternalTargets = false) {
   if (options.scip === false || process.env.BLUEPRINT_SCIP === "0") return { provider: pythonScipProvider.id, state: "disabled", nodes: 0, edges: 0 };
+  // BPT-010/BPT-012: the production build resolves semantic providers through
+  // the provider registry (identity/licence/checksum validated against a
+  // committed manifest) and runs them on the bounded synchronous lane, so the
+  // isolation contract is enforced on real builds, not only in the async lane.
+  // `options.semanticProviders` exists so the seam is exercisable end to end;
+  // the default is the first-party set.
+  const providers = Array.isArray(options.semanticProviders) && options.semanticProviders.length
+    ? options.semanticProviders
+    : [pythonScipProvider];
   const semantic = collectSemanticEvidenceSync(
     { repoRoot: root, scipIndexPath: options.scipIndexPath },
-    { providers: [pythonScipProvider] },
+    { providers, allowProcess: options.allowProviderProcess === true },
   );
   const lane = semantic.results[0] ?? null;
+  const primary = providers[0];
   const collected = lane?.output ?? { nodes: [], edges: [], reports: [], index: { state: "unavailable" } };
   const fileByPath = new Map(files.map((file) => [normalizePath(file.path), file]));
   const admittedNodeIds = new Set(generation.nodes.map((node) => node.id));
@@ -330,7 +340,7 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     if (selectedPaths && !selectedPaths.has(normalizePath(node.path))) continue;
     if (!file || node.kind === "file" || admittedNodeIds.has(node.id)) continue;
     node.evidence = (node.evidence ?? []).map((item) => ({ ...item, contentHash: file.contentHash ?? null }));
-    node.factProvider = { id: pythonScipProvider.id, version: pythonScipProvider.version };
+    node.factProvider = { id: primary.id, version: primary.version };
     generation.nodes.push(node);
     admittedNodeIds.add(node.id);
     nodesAdded += 1;
@@ -340,12 +350,12 @@ function addScipEvidence(generation, files, root, options, selectedPaths = null,
     if (selectedPaths && !selectedPaths.has(normalizePath(edge.evidence?.[0]?.path))) continue;
     if (!file || !admittedNodeIds.has(edge.source) || (!allowExternalTargets && edge.target && !admittedNodeIds.has(edge.target))) continue;
     edge.evidence = edge.evidence.map((item) => ({ ...item, contentHash: file.contentHash ?? null }));
-    edge.factProvider = { id: pythonScipProvider.id, version: pythonScipProvider.version };
+    edge.factProvider = { id: primary.id, version: primary.version };
     generation.edges.push(edge);
     edgesAdded += 1;
   }
   return {
-    provider: pythonScipProvider.id,
+    provider: primary.id,
     state: collected.index?.state ?? "unavailable",
     nodes: nodesAdded,
     edges: edgesAdded,
