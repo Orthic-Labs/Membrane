@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T14:19:58.571Z",
+ "generatedAt": "2026-09-07T14:22:44.701Z",
  "enforcementMode": "sealed",
  "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
@@ -1716,7 +1716,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "de77a37b255c168bcbb996b1749b50b0a95fee484b96268a46e2a346a14e0921"
+   "content_digest": "eb7f00ed1465051277faeb1ac21ee5d19a78c523cffd942c8549da6a23c10b76"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",

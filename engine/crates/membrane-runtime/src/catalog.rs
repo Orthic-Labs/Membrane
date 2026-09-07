@@ -119,6 +119,12 @@ pub fn resolve_catalog_path_from(
 
 /// Resolve one canonical catalog path without current-directory fallback.
 pub fn default_catalog_path() -> Result<PathBuf, CatalogPathError> {
+    // Installed CLI, MCP & Hub share this identity without Hub-populated env.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Ok(runtime) = crate::service::runtime_from_installed_exe(&exe) {
+            return Ok(runtime.db.parent().expect("installed database parent").join("catalog.db"));
+        }
+    }
     resolve_catalog_path_from(
         std::env::var_os("MEMBRANE_CATALOG"),
         std::env::var_os("CONTEXT_HOME"),
