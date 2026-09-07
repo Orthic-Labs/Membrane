@@ -386,8 +386,10 @@ fn inputs_from_health_with_blueprint(
 
     let repositories = blueprint_hub_read(blueprint);
 
+    // A refusal carries its own reason (`schema_generation_mismatch`,
+    // `readonly_open_failed`, …); `missing_input` means genuinely absent.
     let adapters = match crate::agent_adapter_producer::build_adapters_report() {
-        Some(report) => {
+        Ok(report) => {
             let projected = crate::agent_adapter_view::project(&report);
             HubReadV1::Available {
                 items: vec![serde_json::to_value(projected).unwrap_or(serde_json::Value::Null)],
@@ -398,8 +400,8 @@ fn inputs_from_health_with_blueprint(
                 ),
             }
         }
-        None => HubReadV1::Unavailable {
-            reason: "missing_input".into(),
+        Err(reason) => HubReadV1::Unavailable {
+            reason: reason.into(),
         },
     };
 
@@ -418,7 +420,7 @@ fn inputs_from_health_with_blueprint(
         // sqlite read. Startup masking remains separate from this runtime
         // data projection.
         sentinel: match crate::memory_sentinel_producer::build_sentinel_report() {
-            Some(report) => {
+            Ok(report) => {
                 let projected = crate::memory_sentinel_view::project(&report);
                 HubReadV1::Available {
                     items: vec![serde_json::to_value(projected).unwrap_or(serde_json::Value::Null)],
@@ -429,8 +431,8 @@ fn inputs_from_health_with_blueprint(
                     ),
                 }
             }
-            None => HubReadV1::Unavailable {
-                reason: "missing_input".into(),
+            Err(reason) => HubReadV1::Unavailable {
+                reason: reason.into(),
             },
         },
         // No general alert subsystem exists. Only narrow unrelated signals
@@ -1060,6 +1062,14 @@ mod tests {
                 );"#,
             )
             .unwrap();
+            // The sanctioned read-only accessor refuses any database whose
+            // generation is not the one this binary understands, so the
+            // fixture must carry it.
+            conn.execute_batch(&format!(
+                "PRAGMA user_version = {};",
+                cortex_store::memdb::LATEST_SCHEMA_VERSION
+            ))
+            .unwrap();
         }
         let prior = std::env::var_os("MEMBRANE_DB_PATH");
         unsafe {
@@ -1084,6 +1094,125 @@ mod tests {
         ));
         assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
         assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));
+    }
+
+    /// Build a scratch cortex-shaped database at `user_version` and run `f`
+    /// with `MEMBRANE_DB_PATH`/`MEMBRANE_CATALOG` pointed at it.
+    fn with_db_at_generation<R>(user_version: i64, f: impl FnOnce() -> R) -> R {
+        let _guard = lock_env();
+        let dir = std::env::temp_dir().join(format!(
+            "hub_inputs_generation_{}_{}",
+            std::process::id(),
+            now_unix_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("cortex-engine.db");
+        let catalog_path = dir.join("catalog.db");
+        for path in [&db_path, &catalog_path] {
+            let conn = rusqlite::Connection::open(path).unwrap();
+            conn.execute_batch(&format!(
+                "CREATE TABLE IF NOT EXISTS probe(id TEXT PRIMARY KEY);
+                 PRAGMA user_version = {user_version};"
+            ))
+            .unwrap();
+        }
+        let prior_db = std::env::var_os("MEMBRANE_DB_PATH");
+        let prior_catalog = std::env::var_os("MEMBRANE_CATALOG");
+        unsafe {
+            std::env::set_var("MEMBRANE_DB_PATH", &db_path);
+            std::env::set_var("MEMBRANE_CATALOG", &catalog_path);
+        }
+        let result = f();
+        unsafe {
+            match prior_db {
+                Some(v) => std::env::set_var("MEMBRANE_DB_PATH", v),
+                None => std::env::remove_var("MEMBRANE_DB_PATH"),
+            }
+            match prior_catalog {
+                Some(v) => std::env::set_var("MEMBRANE_CATALOG", v),
+                None => std::env::remove_var("MEMBRANE_CATALOG"),
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+        result
+    }
+
+    fn health_ok() -> serde_json::Value {
+        serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        )
+        .unwrap()
+    }
+
+    fn unavailable_reason(read: &HubReadV1) -> &str {
+        match read {
+            HubReadV1::Unavailable { reason } => reason.as_str(),
+            other => panic!("expected Unavailable, got {other:?}"),
+        }
+    }
+
+    /// A database at an unknown schema generation is a *degraded* input, not a
+    /// missing one. Reporting it as `missing_input` erases the degradation
+    /// from the receipt, which the locked invariants forbid.
+    #[test]
+    fn schema_generation_mismatch_is_reported_distinctly_from_a_missing_file() {
+        let health = health_ok();
+        let mismatched = with_db_at_generation(cortex_store::memdb::LATEST_SCHEMA_VERSION + 1, || {
+            inputs_from_health(&health, None)
+        });
+        assert_eq!(
+            unavailable_reason(&mismatched.adapters),
+            "schema_generation_mismatch"
+        );
+        assert_eq!(
+            unavailable_reason(&mismatched.sentinel),
+            "schema_generation_mismatch"
+        );
+
+        // An older generation is equally unknown, and equally not "missing".
+        let older = with_db_at_generation(1, || inputs_from_health(&health, None));
+        assert_eq!(
+            unavailable_reason(&older.adapters),
+            "schema_generation_mismatch"
+        );
+        assert_eq!(
+            unavailable_reason(&older.sentinel),
+            "schema_generation_mismatch"
+        );
+
+        // And the genuinely-absent case still reads `missing_input`, so the
+        // two outcomes are distinguishable in the published view.
+        let absent = with_missing_db(|| inputs_from_health(&health, None));
+        assert_eq!(unavailable_reason(&absent.adapters), "missing_input");
+        assert_eq!(unavailable_reason(&absent.sentinel), "missing_input");
+        assert_ne!(
+            unavailable_reason(&absent.adapters),
+            unavailable_reason(&mismatched.adapters)
+        );
+    }
+
+    /// A database at the right generation whose tables hold nothing is a real
+    /// missing input — the one case `missing_input` is truthful for.
+    #[test]
+    fn matching_generation_with_no_rows_reports_missing_input() {
+        let health = health_ok();
+        let inputs = with_db_at_generation(cortex_store::memdb::LATEST_SCHEMA_VERSION, || {
+            inputs_from_health(&health, None)
+        });
+        assert_eq!(unavailable_reason(&inputs.adapters), "missing_input");
+        assert_eq!(unavailable_reason(&inputs.sentinel), "missing_input");
+    }
+
+    /// The catalog-backed admission producer carries the same typed reason.
+    #[test]
+    fn admission_producer_surfaces_typed_catalog_refusal() {
+        let mismatch = with_db_at_generation(crate::catalog::CATALOG_SCHEMA_VERSION + 1, || {
+            crate::admission_producer::try_build_admission_report()
+        });
+        assert_eq!(mismatch.err(), Some("schema_generation_mismatch"));
+
+        let absent = with_missing_db(crate::admission_producer::try_build_admission_report);
+        assert_eq!(absent.err(), Some("missing_input"));
     }
 
     // --- Producer-path contract tests for frozen parent + subsystem mapping ---

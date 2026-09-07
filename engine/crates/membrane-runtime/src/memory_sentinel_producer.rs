@@ -28,13 +28,17 @@
 
 use serde_json::{json, Value};
 
-use crate::hub_readonly_db::{now_unix_ms, open_readonly};
+use crate::hub_readonly_db::{now_unix_ms, open_readonly, REASON_MISSING_INPUT};
 
 const MAX_ITEMS: usize = 64;
 
-pub fn build_sentinel_report() -> Option<Value> {
+/// `Err` carries the reason to publish in `HubReadV1::Unavailable`: a typed
+/// read-only refusal code (e.g. `schema_generation_mismatch`) when the
+/// database exists but cannot be trusted, `missing_input` only when the input
+/// is genuinely absent or empty.
+pub fn build_sentinel_report() -> Result<Value, &'static str> {
     let conn = open_readonly()?;
-    build_sentinel_report_from(&conn)
+    build_sentinel_report_from(&conn).ok_or(REASON_MISSING_INPUT)
 }
 
 pub(crate) fn build_sentinel_report_from(conn: &rusqlite::Connection) -> Option<Value> {
