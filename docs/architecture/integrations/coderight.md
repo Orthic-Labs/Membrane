@@ -49,6 +49,8 @@ There are distinct data classes and owners:
 
 ## Runtime lifecycle binding (normative)
 
+**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. CodeRight must retain installed Membrane operation access with Hub off through bounded explicit execution; only automatic background execution requires Hub.
+
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 

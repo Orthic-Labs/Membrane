@@ -118,7 +118,7 @@ const rows = await rpc([
   { jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "membrane://protocol/v1" } },
 ]);
 assert.match(rows[0].result.instructions, /federated context/i);
-const defaultTools = ["membrane_context", "membrane_source_read", "membrane_ledger", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load"];
+const defaultTools = ["membrane_context", "membrane_source_read", "membrane_ledger", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load"];
 const tools = rows[1].result.tools.map((tool) => tool.name).sort();
 assert.deepEqual(tools, [...defaultTools].sort());
 assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|filesystem|plan_context)(?:$|_)/.test(name)), []);
@@ -126,10 +126,10 @@ assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", nam
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
 const blueprintToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint"] } } }]);
-assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), [...defaultTools, "membrane_blueprint"].sort());
+assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), [...defaultTools].sort());
 const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint", "blueprint"] } } }]);
-assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), defaultTools);
-const readOnlyDefaultTools = new Set(["membrane_context", "membrane_source_read"]);
+assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name).sort(), [...defaultTools].sort());
+const readOnlyDefaultTools = new Set(["membrane_context", "membrane_source_read", "membrane_blueprint"]);
 for (const tool of rows[1].result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
   assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name} rejects unknown inputs`);

@@ -35,6 +35,8 @@ The final improvement plan is the execution companion. It records source finding
 
 ## Runtime lifecycle binding (normative)
 
+**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. Explicit Adapt inspection, feedback & authorized proposal operations remain available with Hub off. Only automatic background execution requires Hub.
+
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 

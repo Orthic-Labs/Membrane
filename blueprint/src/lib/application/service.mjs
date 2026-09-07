@@ -32,7 +32,7 @@ import { buildDisposableArchitectureProjection } from "../../graph/architecture-
 import { projectDocumentTruth } from "../../graph/doc-truth-projection.mjs";
 import { buildLivenessProjection } from "../../graph/liveness.mjs";
 import { recommendTestsForImpact } from "../../graph/test-recommendation.mjs";
-import { changesSinceReference } from "../../graph/snapshots.mjs";
+import { changesSinceReference, getSnapshot, listSnapshots } from "../../graph/snapshots.mjs";
 import { buildBm25CodeIndex } from "../../graph/bm25-code-index.mjs";
 import { searchAstStructure } from "../../graph/ast-structural-search.mjs";
 import { buildProcessProjection } from "../../graph/process-projection.mjs";
@@ -428,6 +428,34 @@ export function createBlueprintApplicationService({
       return resolveRoot(input);
     },
     openFreshnessSession,
+    async refresh(input = {}, options = {}) {
+      const service = freshnessOwnership === "one_shot" ? null : createBlueprintApplicationService({
+        outDir, rootRegistry, allowEmbeddedRoot, freshnessOwnership: "one_shot", buildSingleflight, liveVerifier,
+      });
+      if (service) return service.refresh(input, options);
+      return withCurrentDb(input, ({ meta, receipt }) => ({
+        schemaVersion: 1, kind: "refresh", generationId: meta.manifest.generationId, freshnessReceipt: receipt,
+      }), options);
+    },
+    async snapshot_get(input = {}, options = {}) {
+      return withCurrentDb(input, ({ db, meta, receipt }) => ({
+        schemaVersion: 1, generationId: meta.manifest.generationId,
+        snapshot: getSnapshot(db, input.snapshot ?? input.node), freshnessReceipt: receipt,
+      }), options);
+    },
+    async snapshot_list(input = {}, options = {}) {
+      return withCurrentDb(input, ({ db, meta, receipt }) => ({
+        schemaVersion: 1, generationId: meta.manifest.generationId,
+        snapshots: listSnapshots(db), freshnessReceipt: receipt,
+      }), options);
+    },
+    async changes(input = {}, options = {}) {
+      return withCurrentDb(input, ({ db, root, meta, receipt }) => ({
+        ...changesSinceReference(db, root, { snapshot: input.snapshot, generation: input.sinceGeneration,
+          treeish: input.treeish, head: input.head, limit: input.limit }),
+        generationId: meta.manifest.generationId, freshnessReceipt: receipt,
+      }), options);
+    },
     async status(input = {}, { signal } = {}) {
       throwIfAborted(signal);
       const root = resolveRoot(input);

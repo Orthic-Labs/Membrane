@@ -39,6 +39,8 @@ The store is Node's built-in `node:sqlite` — no database server, no native pac
 
 ## Asking it questions
 
+All explicit Blueprint operations work independently of Hub: graph inspection, builds, refreshes, queries, analysis, verification & export. Only auto-refresh watchers & automatic background processes require active Hub. See [execution lifecycle contract](../docs/architecture/execution-lifecycle-boundary.md).
+
 ```sh
 blueprint                       # recall current repo context
 blueprint "add rate limiting"   # recall around a task

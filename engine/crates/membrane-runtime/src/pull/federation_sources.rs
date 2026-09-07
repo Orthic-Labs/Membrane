@@ -29,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Runtime-owned source handles captured by one native federation
-/// composition. Empty owner state is represented by a typed empty response.
+/// composition. Unbound owners remain absent so providers report an omission.
 #[derive(Clone)]
 pub struct NativeSourceBindings {
     pub(crate) ledger: Option<Arc<crate::ledger::service::LedgerService>>,
@@ -95,8 +95,8 @@ impl NativeSourceBindings {
 
         Ok(Self {
             ledger: crate::ledger::service::active_owner().ok(),
-            audit: Some(Arc::new(EmptyAuditSource)),
-            decisions: Some(Arc::new(EmptyDecisionSource)),
+            audit: None,
+            decisions: None,
             skills: Some(Arc::new(RuntimeSkillsSource {
                 store: store.clone(),
             })),
@@ -175,54 +175,6 @@ impl ReleaseSource for RuntimeReleaseSource {
             "membrane-runtime.release_identity",
             Some("release_identity::release_generation".to_owned()),
         )
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct EmptyAuditSource;
-
-impl AuditFindingSource for EmptyAuditSource {
-    fn findings<'a, 'b, 'c>(
-        &'a self,
-        query: &'b SourceQuery,
-    ) -> BoxFuture<'c, SourceResult<Vec<membrane_provider_sdk::AuditFinding>>>
-    where
-        'a: 'c,
-        'b: 'c,
-        Self: 'c,
-    {
-        Box::pin(async {
-            Ok(SourceResponse {
-                value: Vec::new(),
-                generation: None,
-                complete: true,
-                warnings: Vec::new(),
-            })
-        })
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct EmptyDecisionSource;
-
-impl DecisionRecordSource for EmptyDecisionSource {
-    fn decisions<'a, 'b, 'c>(
-        &'a self,
-        _query: &'b SourceQuery,
-    ) -> BoxFuture<'c, SourceResult<Vec<membrane_provider_sdk::DecisionRecord>>>
-    where
-        'a: 'c,
-        'b: 'c,
-        Self: 'c,
-    {
-        Box::pin(async {
-            Ok(SourceResponse {
-                value: Vec::new(),
-                generation: None,
-                complete: true,
-                warnings: Vec::new(),
-            })
-        })
     }
 }
 

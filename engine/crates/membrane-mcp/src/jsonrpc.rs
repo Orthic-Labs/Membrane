@@ -15,6 +15,7 @@ impl McpServer {
                 json!({"tools": crate::tools::negotiated_definitions(request.get("params"))})
             }
             "resources/list" => crate::resources::list_payload(),
+            "resources/templates/list" => json!({"resourceTemplates": []}),
             "resources/read" => {
                 let uri = request
                     .pointer("/params/uri")
@@ -30,7 +31,19 @@ impl McpServer {
                             .collect::<Vec<&str>>()
                     })
                     .unwrap_or_default();
-                crate::resources::read_result_payload(crate::resources::read_payload(uri, &grants))
+                match crate::resources::read_payload(uri, &grants) {
+                    crate::resources::ReadOutcome::Ok(body) => json!({
+                        "contents": [{"uri": uri, "mimeType": "application/json", "text": body.to_string()}]
+                    }),
+                    outcome => {
+                        let payload = crate::resources::read_result_payload(outcome);
+                        let detail = &payload["error"];
+                        let code = if detail["code"] == "resource_not_found" { -32002 } else { -32001 };
+                        return Some(json!({"jsonrpc":"2.0","id":id,"error":{
+                            "code":code,"message":detail["message"],"data":detail
+                        }}));
+                    }
+                }
             }
             "prompts/list" => crate::prompts::list_payload(),
             "prompts/get" => {
@@ -59,6 +72,33 @@ impl McpServer {
             }
         };
         Some(json!({"jsonrpc":"2.0","id":id,"result":result}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_reads_use_mcp_contents_and_jsonrpc_errors() {
+        let server = McpServer;
+        let request = json!({"jsonrpc":"2.0","id":1,"method":"resources/read",
+            "params":{"uri":"membrane://resource/operation-registry/v1"}});
+        let denied = server.dispatch(&request).unwrap();
+        assert!(denied.get("result").is_none());
+        assert_eq!(denied["error"]["code"], -32001);
+        assert_eq!(denied["error"]["data"]["code"], "resource_access_denied");
+        let mut authorized = request.clone();
+        authorized["params"]["accessGrants"] = json!(["protocol.read"]);
+        let response = server.dispatch(&authorized).unwrap();
+        assert!(response.get("error").is_none());
+        assert_eq!(response["result"]["contents"][0]["uri"], request["params"]["uri"]);
+        let text = response["result"]["contents"][0]["text"].as_str().unwrap();
+        assert!(serde_json::from_str::<Value>(text).unwrap().get("body").is_some());
+        authorized["params"]["uri"] = json!("membrane://resource/unknown/v1");
+        assert_eq!(server.dispatch(&authorized).unwrap()["error"]["code"], -32002);
+        assert_eq!(server.dispatch(&json!({"id":2,"method":"resources/templates/list"})).unwrap()["result"],
+            json!({"resourceTemplates":[]}));
     }
 }
 

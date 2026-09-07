@@ -88,7 +88,9 @@ fn push_toolset_exposes_real_schemas_and_keeps_default_narrow() {
     let default = McpServer
         .dispatch(&json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}))
         .unwrap();
-    assert_eq!(default["result"]["tools"].as_array().unwrap().len(), 7);
+    assert_eq!(default["result"]["tools"].as_array().unwrap().len(), 8);
+    assert!(default["result"]["tools"].as_array().unwrap().iter()
+        .any(|tool| tool["name"] == "membrane_blueprint"));
 }
 
 #[test]

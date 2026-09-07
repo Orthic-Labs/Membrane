@@ -25,7 +25,7 @@ jobs:
         # Full validation stays on one declared runner; prefer configured
         # Windows when available, otherwise preserve first configured OS.
         os: ["windows-2025"]
-        node: ["22.13"]
+        node: ["22.22.3"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

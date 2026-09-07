@@ -25,6 +25,8 @@ The main decisions are:
 
 ## Runtime lifecycle binding (normative)
 
+**Superseded lifecycle restriction:** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) replaces daemon-only binding & blanket tray-off refusal below. Every explicit subsystem operation remains available with Hub off; only automatic background execution & resident processes require Hub.
+
 These decisions are canonical and take precedence over any wording later in this
 document that implies a different runtime topology:
 

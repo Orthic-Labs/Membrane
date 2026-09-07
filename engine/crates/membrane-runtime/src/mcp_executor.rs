@@ -501,6 +501,7 @@ pub(crate) fn active_hub_client() -> Result<Box<dyn NativeMcpExecutor>, String> 
 
 impl NativeMcpExecutor for HubTransportExecutor {
     fn execute(&self, name: &str, arguments: &Value) -> Value {
+        if name == "membrane_blueprint" { return execute_blueprint(arguments); }
         self.post(name, arguments).unwrap_or_else(|failure| {
             error(name, "membrane_unavailable", hub_inactive_message(failure))
         })
@@ -508,7 +509,8 @@ impl NativeMcpExecutor for HubTransportExecutor {
 }
 
 impl NativeMcpExecutor for UnavailableHubTransportExecutor {
-    fn execute(&self, name: &str, _arguments: &Value) -> Value {
+    fn execute(&self, name: &str, arguments: &Value) -> Value {
+        if name == "membrane_blueprint" { return execute_blueprint(arguments); }
         error(
             name,
             "membrane_unavailable",
@@ -528,6 +530,109 @@ fn parse<T: serde::de::DeserializeOwned>(
             serde_json::from_value(value)
                 .map_err(|_| error(operation, code, "operation payload is invalid"))
         })
+}
+
+fn execute_blueprint(arguments: &Value) -> Value {
+    let name = "membrane_blueprint";
+    let (root, repository, scope) = match caller(arguments, name) {
+        Ok(value) => value, Err(result) => return result,
+    };
+    if arguments.get("repository").and_then(Value::as_str) != Some(repository) {
+        return error(name, "blueprint_caller_scope_binding_denied", "repository must match caller repositoryId");
+    }
+    if let Err(denial) = authorize_native_request(arguments, name, root, repository, scope) {
+        return error(name, denial.code(), denial.to_string());
+    }
+    let operation = arguments
+        .get("operation")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let (method, mut input) = match operation {
+        "search" | "recall" => (operation, json!({"repoRoot":root,
+            "query":arguments.get("query").and_then(Value::as_str).unwrap_or(""),
+            "task":arguments.get("query").and_then(Value::as_str).unwrap_or(""),
+            "limit":arguments.get("limit").and_then(Value::as_u64).unwrap_or(20)})),
+        "status" | "documentTruth" | "build" | "refresh" => (operation, json!({"repoRoot":root})),
+        "path" => (operation, json!({"repoRoot":root,"from":arguments.get("from"),"to":arguments.get("to")})),
+        "architecture" => (
+            "architecture",
+            json!({"repoRoot":root,"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+        ),
+        "symbol" => (
+            "resolve",
+            json!({"repoRoot":root,"nodeId":arguments.get("node").and_then(Value::as_str).unwrap_or("")}),
+        ),
+        "reference" | "references" => (
+            "expand",
+            json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"direction":"both","depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(1),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+        ),
+        "impact" => (
+            "impact",
+            json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(3),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+        ),
+        "changes" | "snapshot_get" | "snapshot_list" | "changes_since" => {
+            (if operation == "changes_since" { "changes" } else { operation }, json!({"repoRoot":root,
+                "snapshot":arguments.get("snapshot"),"sinceGeneration":arguments.get("sinceGeneration"),
+                "treeish":arguments.get("treeish"),"limit":arguments.get("limit").and_then(Value::as_u64).unwrap_or(20)}))
+        }
+        _ => {
+            return error(
+                name,
+                "blueprint_envelope_invalid",
+                "unsupported Blueprint operation",
+            )
+        }
+    };
+    if let Some(items) = arguments.get("items") {
+        input["items"] = items.clone();
+    }
+    if let Some(node) = arguments.get("node") {
+        input["node"] = node.clone();
+    }
+    let endpoint = if method == "build" { None } else { blueprint_endpoint().ok() };
+    let expected_generation = match arguments.get("generationId") {
+        None => None,
+        Some(Value::String(value)) if !value.trim().is_empty() => {
+            Some(value.trim().to_owned())
+        }
+        Some(_) => {
+            return error(
+                name,
+                "blueprint_envelope_invalid",
+                "generationId must be a non-empty string",
+            )
+        }
+    };
+
+    let request_id = format!(
+        "mcp-blueprint-{}-{}",
+        std::process::id(),
+        crate::time::now_millis()
+    );
+    let deadline = Duration::from_millis(arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(30000).clamp(10, 30000));
+    let started = std::time::Instant::now();
+    let resident = endpoint.map(|endpoint| {
+        BlueprintClient::new(Arc::new(UnixBlueprintTransport::new(endpoint))).execute_wire(
+            &request_id, repository, method, input.clone(), expected_generation.as_deref(),
+            BlueprintBounds::default(), deadline.min(Duration::from_secs(2)))
+    }).unwrap_or_else(|| Err(BlueprintClientError::Unavailable("Blueprint endpoint unavailable".into())));
+    let result = match resident {
+        Err(BlueprintClientError::Unavailable(_)) => {
+            BlueprintClient::new(Arc::new(crate::blueprint_one_shot::OneShotTransport)).execute_wire(
+                &request_id, repository, method, input, expected_generation.as_deref(),
+                BlueprintBounds::default(), deadline.saturating_sub(started.elapsed()))
+        }
+        Err(BlueprintClientError::Remote { ref code, .. }) if code == "root_not_enrolled" => {
+            BlueprintClient::new(Arc::new(crate::blueprint_one_shot::OneShotTransport)).execute_wire(
+                &request_id, repository, method, input, expected_generation.as_deref(),
+                BlueprintBounds::default(), deadline.saturating_sub(started.elapsed()))
+        }
+        other => other,
+    };
+    match result {
+        Ok(payload) => success(name, payload),
+        Err(failure) => blueprint_failure(name, failure),
+    }
 }
 
 impl NativeMcpExecutor for RuntimeMcpExecutor {
@@ -1178,81 +1283,7 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     }
                 }
             }
-            "membrane_blueprint" => {
-                let operation = arguments
-                    .get("operation")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let (method, mut input) = match operation {
-                    "architecture" => (
-                        "architecture",
-                        json!({"repoRoot":root,"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
-                    ),
-                    "symbol" => (
-                        "resolve",
-                        json!({"repoRoot":root,"nodeId":arguments.get("node").and_then(Value::as_str).unwrap_or("")}),
-                    ),
-                    "reference" | "references" => (
-                        "expand",
-                        json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"direction":"both","depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(1),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
-                    ),
-                    "impact" => (
-                        "impact",
-                        json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(3),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
-                    ),
-                    "changes" | "snapshot_get" | "snapshot_list" | "changes_since" => {
-                        (operation, json!({"repoRoot":root}))
-                    }
-                    _ => {
-                        return error(
-                            name,
-                            "blueprint_envelope_invalid",
-                            "unsupported Blueprint operation",
-                        )
-                    }
-                };
-                if let Some(items) = arguments.get("items") {
-                    input["items"] = items.clone();
-                }
-                if let Some(node) = arguments.get("node") {
-                    input["node"] = node.clone();
-                }
-                let endpoint = match blueprint_endpoint() {
-                    Ok(value) => value,
-                    Err(message) => return error(name, "blueprint_unavailable", message),
-                };
-                let expected_generation = match arguments.get("generationId") {
-                    None => None,
-                    Some(Value::String(value)) if !value.trim().is_empty() => {
-                        Some(value.trim().to_owned())
-                    }
-                    Some(_) => {
-                        return error(
-                            name,
-                            "blueprint_envelope_invalid",
-                            "generationId must be a non-empty string",
-                        )
-                    }
-                };
-                let client = BlueprintClient::new(Arc::new(UnixBlueprintTransport::new(endpoint)));
-                let request_id = format!(
-                    "mcp-blueprint-{}-{}",
-                    std::process::id(),
-                    crate::time::now_millis()
-                );
-                match client.execute_wire(
-                    &request_id,
-                    repository,
-                    method,
-                    input,
-                    expected_generation.as_deref(),
-                    BlueprintBounds::default(),
-                    Duration::from_secs(2),
-                ) {
-                    Ok(payload) => success(name, payload),
-                    Err(failure) => blueprint_failure(name, failure),
-                }
-            }
+            "membrane_blueprint" => execute_blueprint(arguments),
             "membrane_knowledge_propose" => self.propose(name, arguments, repository, scope),
             "membrane_knowledge_review" => lifecycle_result(
                 name,
@@ -1922,7 +1953,7 @@ mod hub_transport_tests {
     }
 
     #[test]
-    fn hub_off_blueprint_is_membrane_unavailable_not_blueprint_unavailable() {
+    fn hub_off_blueprint_reaches_its_own_authorization_boundary() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("reserve port");
         let port = listener.local_addr().expect("reserved address").port();
         drop(listener);
@@ -1937,12 +1968,12 @@ mod hub_transport_tests {
         let response = executor.execute("membrane_blueprint", &json!({}));
         assert_eq!(
             response.pointer("/result/code").and_then(Value::as_str),
-            Some("membrane_unavailable")
+            Some("caller_required")
         );
-        assert!(response
-            .pointer("/result/message")
-            .and_then(Value::as_str)
-            .is_some_and(|message| message.contains("hub_inactive")));
+        let inactive = UnavailableHubTransportExecutor { failure: "hub_inactive".into() };
+        assert_eq!(inactive.execute("membrane_blueprint", &json!({}))["result"]["code"], "caller_required");
+        assert_eq!(inactive.execute("membrane_context", &json!({}))["result"]["code"], "membrane_unavailable");
+        assert_eq!(inactive.execute("membrane_ledger", &json!({}))["result"]["code"], "membrane_unavailable");
     }
 
     #[test]

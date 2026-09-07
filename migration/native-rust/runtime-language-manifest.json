@@ -1,21 +1,21 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T08:07:21.439Z",
+ "generatedAt": "2026-09-07T13:05:24.358Z",
  "enforcementMode": "sealed",
- "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
+ "policyDigest": "752bc130fb0d9d98718573db993655f5a43bab0487d281209aa468ffcfb6de25",
  "totals": {
-  "files": 1334,
-  "rows": 56,
+  "files": 1344,
+  "rows": 58,
   "byRuntime": {
-   "python": 7,
+   "python": 8,
+   "node": 26,
    "shell": 1,
-   "node": 25,
    "rust": 23
   },
   "byDisposition": {
    "migration-oracle": 5,
-   "dev-only": 32,
+   "dev-only": 34,
    "external-typed-service": 4,
    "native-port": 15
   },
@@ -211,6 +211,31 @@
    "content_digest": "0d029b34c0eb14acba802f28ccefdba72f988a01c3173e52ba5be1f02b35fae3"
   },
   {
+   "id": "audit-dogfood-artifacts-audit-dogfood-artifacts",
+   "rule": "audit-dogfood-artifacts",
+   "runtime": "node",
+   "kind": "test-suite",
+   "product_surface": "development audit evidence",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Repository audit tooling and fixtures; excluded from release payload roots. Package manifest and installed qualification verify exclusion.",
+   "seal_blocker_note": null,
+   "notes": "Evidence harness only; not production implementation or qualification.",
+   "files": [
+    "audit/session-b/fixtures/repo-alpha/src/distractor.ts",
+    "audit/session-b/fixtures/repo-alpha/src/reconnect.ts",
+    "audit/session-b/fixtures/repo-alpha/tests/reconnect.test.ts",
+    "audit/session-b/fixtures/repo-beta/src/reconnect.ts",
+    "audit/session-b/tests/native-public-boundary-dogfood.test.mjs",
+    "audit/session-b/tests/public-boundary-dogfood.test.mjs"
+   ],
+   "content_digest": "1a6416ded0bd0774d9ea2fa9a4747f6e29c43bc2d23c40a0e9816a6e2476a3ed"
+  },
+  {
    "id": "blueprint-bundled-launchers-blueprint/release",
    "rule": "blueprint-bundled-launchers",
    "runtime": "shell",
@@ -255,6 +280,7 @@
     "blueprint/scripts/blueprint-candidates.mjs",
     "blueprint/scripts/blueprint-install.mjs",
     "blueprint/scripts/blueprint-mcp.mjs",
+    "blueprint/scripts/blueprint-one-shot.mjs",
     "blueprint/scripts/blueprint-watch.mjs",
     "blueprint/scripts/blueprint.cmd",
     "blueprint/scripts/blueprint.mjs",
@@ -287,7 +313,7 @@
     "blueprint/scripts/test-package.mjs",
     "blueprint/scripts/test-random.mjs"
    ],
-   "content_digest": "5cc1108d08ebd02170374ecd3deb1057cb745debb2a57f84b3038607f09db427"
+   "content_digest": "ee70f4fe66b319d3dc7322cbbcf2d882b9eb97628d19af7e998d83ce5c08526f"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/src",
@@ -497,7 +523,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "280b693adc46d97fcc29d58c70cb24421ccb270561c9db5ed87aee10b1657284"
+   "content_digest": "30dedded9873aab063d2e4a6a1931b7cb71b2231b1aa026a3e2b3ab0fb7d5f50"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -762,6 +788,7 @@
     "blueprint/tests/module-resolution.test.mjs",
     "blueprint/tests/neighborhood.test.mjs",
     "blueprint/tests/onboarding.test.mjs",
+    "blueprint/tests/one-shot-transport.test.mjs",
     "blueprint/tests/orientation-evidence.test.mjs",
     "blueprint/tests/p0-portable-queue-regression.test.mjs",
     "blueprint/tests/p0-publish-identity.test.mjs",
@@ -859,7 +886,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "aa41060ab15bb18c58a1183c6bd7f68a4369f72f4b7723375891745313c5f623"
+   "content_digest": "65c7732e08a219c1793838ff4cbfd59d554b6a8cd774af5155457a5d46843d05"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1148,7 +1175,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "7e6aca5e33a51ef3c7de899ffc5aa43c954bbbce805fd939aed139d533f660db"
+   "content_digest": "b72f0778be7d580febc011ea24033898d366b259a30cb53b6d2423b7820836f3"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1434,7 +1461,7 @@
     "engine/crates/membrane-mcp/tests/prompts.rs",
     "engine/crates/membrane-mcp/tests/resources.rs"
    ],
-   "content_digest": "edd8d46e54ef2f5770c8c4fa9ef4dd2f1d8ad460ee6eb6cd6f0ea4620e4e9641"
+   "content_digest": "2243d50d73d70f85e14f7b6156eb90643ed2b328e2472b34e690e8eed58a196d"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-protocol",
@@ -1549,6 +1576,7 @@
     "engine/crates/membrane-runtime/src/background_review.rs",
     "engine/crates/membrane-runtime/src/background_review_input.rs",
     "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+    "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
     "engine/crates/membrane-runtime/src/cache_prefix.rs",
     "engine/crates/membrane-runtime/src/catalog.rs",
     "engine/crates/membrane-runtime/src/checkpoint.rs",
@@ -1688,7 +1716,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "4196298b1a9edc3c5e6f8bb5a34d13b4510df391232b424b24650290e6f1f7bd"
+   "content_digest": "5d2c40f14896943e7c78e7768bcc8d89fe7624a60ab362401e710a3b61a4dab0"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1888,7 +1916,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "3ed3b2052919e38252c727e6d9fb278bd078f426241892296a2cb9c3752b46c2"
+   "content_digest": "0ceb2c21e6525738edbcaebaf0b995a3558596941745de1f4adbab3c183f9aae"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2053,7 +2081,7 @@
     "mcp/working-context.mjs",
     "mcp/workspace-routing.mjs"
    ],
-   "content_digest": "12786843117aae12ab014b0e523d4f198c0d77905d462cde8b523d4a1380b218"
+   "content_digest": "e6934158de5ffa57ef39e4431ff1eb25e3b21737c3d3aa2c8ddc6054022a70f9"
   },
   {
    "id": "mcp-server-core-mcp/context-renderer-lib.cjs",
@@ -2156,7 +2184,7 @@
     "mcp/working-context.test.mjs",
     "mcp/workspace-routing.test.mjs"
    ],
-   "content_digest": "1d239f2c0961e8823208ee2c87699ed83ede0e61c06f1a42a32ed690c2c4dd26"
+   "content_digest": "2359d97d0d0c2ebd71cb74dccc451d07cad042d727e7e12975873bd63f23b9a6"
   },
   {
    "id": "membrane-testkit-engine/crates/membrane-testkit/src/lib.rs",
@@ -2286,7 +2314,27 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "87e9c124ad7d64506e5a4223a755c5ea0e2d57067fe438902ea2ffdc6b60a957"
+   "content_digest": "86737879714632aa3cefd5b18f7b501976df79839281497f4ad83e414c037455"
+  },
+  {
+   "id": "surface-extraction-tool-surface-extraction-tool",
+   "rule": "surface-extraction-tool",
+   "runtime": "python",
+   "kind": "repo-tooling",
+   "product_surface": "development audit evidence",
+   "production_reachable": false,
+   "packaged": false,
+   "target_disposition": "dev-only",
+   "owner": null,
+   "exception": null,
+   "parity_fixture": null,
+   "deletion_or_exclusion_proof": "Repository audit tooling and fixtures; excluded from release payload roots. Package manifest and installed qualification verify exclusion.",
+   "seal_blocker_note": null,
+   "notes": "Evidence harness only; not production implementation or qualification.",
+   "files": [
+    "_extract_surfaces.py"
+   ],
+   "content_digest": "f5a35dc46baf07e917516bdfc7db7aacb8c7bc5caaa5c6d5f74a6a3b2aa3ec6d"
   },
   {
    "id": "tests-root-tests-root",

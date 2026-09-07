@@ -16,3 +16,9 @@ Use it when a task needs repository-grounded context, a hash-bound source sectio
 Some installations may opt into additional capability groups. Those groups are not part of default callable surface.
 
 Context packets preserve source type, authority, & freshness. Their receipts record sources omitted because they were skipped, timed out, inaccessible, or outside budget.
+
+## Blueprint discovery
+
+All explicit Membrane operations must remain available independently of Hub across Pull, Blueprint, Cortex, Ledger, Adapt & Push. Hub owns automatic background processes only. Do not require agents to start Hub for explicit graph reads, builds, refreshes or other supported operations. Bounded execution retains authorization, freshness & generation/schema checks.
+
+`membrane_blueprint` is included in default native MCP discovery so clients without custom toolset metadata can use repository graph operations. Call `architecture` first with an authorized repository/caller binding; use returned node identities with `symbol`, `references`, or `impact`. Tool discovery alone does not prove provider readiness.

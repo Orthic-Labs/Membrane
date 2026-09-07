@@ -12,6 +12,8 @@
 
 ## Executive decision
 
+**Lifecycle correction:** [Explicit execution & resident lifecycle](../execution-lifecycle-boundary.md) supersedes prohibitions on bounded Hub-off execution throughout this document. Explicit registration, indexing, search & resolution remain available through Ledger-owned services with Hub off. Only watchers & automatic background indexing require Hub.
+
 Complete Ledger as a daemon-owned, source-bound document service reachable through the normal harness path. Retain its existing SQLite/FTS5 and structural mechanisms. Correct identity, lifecycle, complete-projection and resolver defects before enabling native document-provider delivery.
 
 The six named Membrane subsystems remain Pull, Push, Cortex, Blueprint, Ledger and Adapt. Ledger replaces Guide; it is not a seventh subsystem. Source bytes remain authoritative with their source owner. Ledger indexes are rebuildable projections, not repository truth or durable semantic memory.

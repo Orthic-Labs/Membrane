@@ -4,6 +4,7 @@
     "default": [
       "membrane_context",
       "membrane_source_read",
+      "membrane_blueprint",
       "membrane_ledger",
       "membrane_knowledge_propose",
       "membrane_memory",

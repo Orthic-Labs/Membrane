@@ -1,5 +1,7 @@
 # Resident watcher service
 
+**Superseded standalone-service instructions:** [Explicit execution & resident lifecycle](../../../docs/architecture/execution-lifecycle-boundary.md) is current authority. Only active Hub may own automatic watchers & resident processes. Every explicit Blueprint operation, including build, refresh & graph inspection, remains available with Hub off through bounded execution. Commands below describe historical standalone service management, not supported Membrane installation behavior.
+
 The resident watcher keeps freshness barriers warm across enrolled
 repositories. `blueprint service` installs it as a user-scoped operating-system
 service:

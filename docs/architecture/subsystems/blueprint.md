@@ -22,6 +22,8 @@ Implementation donor guidance is intentionally kept out of the normative archite
 
 # 2. Ownership boundary
 
+Every explicit Blueprint operation is independent of Hub: graph inspection, initial build, refresh, rebuild, queries, analysis, verification & export. Only auto-refresh watchers & automatic background execution require active Hub. Installed agent discovery & commands must expose bounded Hub-off execution with unchanged authorization, freshness & generation/schema checks. See [explicit execution & resident lifecycle](../execution-lifecycle-boundary.md).
+
 ## 2.1 Blueprint owns
 
 Blueprint owns repository **evidence and structural intelligence**, including:

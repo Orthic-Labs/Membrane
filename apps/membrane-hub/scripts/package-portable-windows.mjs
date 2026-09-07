@@ -90,6 +90,13 @@ for (const [source, name] of executables) {
 const runtime = inputRoot ? join(inputRoot, "runtime") : join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
+// Stable installed command uses Membrane's bounded process owner.
+writeFileSync(join(payload, "blueprint.cmd"), '@echo off\r\n"%~dp0membrane.exe" cli blueprint %*\r\nexit /b %ERRORLEVEL%\r\n');
+for (const entry of ["blueprint.mjs", "blueprint-one-shot.mjs"]) {
+  if (!existsSync(join(payload, "runtime", "blueprint", "app", "package", "scripts", entry))) {
+    throw new Error(`packaged Blueprint entry missing: ${entry}`);
+  }
+}
 const pluginContract = assemblePortableCore({
   outputDir: portableCore,
   pluginManifestPath: join(projectionRoot, "plugin.json"),

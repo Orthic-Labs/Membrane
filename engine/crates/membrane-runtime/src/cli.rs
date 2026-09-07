@@ -717,6 +717,11 @@ pub(crate) enum AdaptCmd {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Run an explicit Blueprint command from installed runtime, independently of Hub.
+    Blueprint {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Print immutable build/source identity as JSON.
     BuildInfo,
     /// Inspect or recover this installation's opaque machine identity.
@@ -2942,6 +2947,7 @@ fn command_requires_db(command: &Cmd) -> bool {
     !matches!(
         command,
         Cmd::BuildInfo
+            | Cmd::Blueprint { .. }
             | Cmd::Installation { .. }
             | Cmd::Ledger { .. }
             | Cmd::Adapt { .. }
@@ -4018,6 +4024,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         apply_deployed_runtime_defaults(runtime);
     }
     let cli = Cli::parse_from(&argv);
+    if let Cmd::Blueprint { args } = &cli.cmd {
+        return crate::blueprint_one_shot::run_cli(args);
+    }
     if let Cmd::Installation { command } = &cli.cmd {
         return run_installation(command);
     }
@@ -4061,7 +4070,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {

@@ -1,4 +1,5 @@
 docs/evidence/**/*.json -text
+blueprint/src/providers/compilers/python-scip.mjs text eol=lf
 engine/crates/membrane/src/generated_cli_subcommands.rs text eol=lf
 engine/crates/cortex/tests/fixtures/p2-frozen-corpus-v1.json text eol=lf
 engine/crates/cortex/tests/fixtures/p2-frozen-corpus-v1.manifest.json text eol=lf

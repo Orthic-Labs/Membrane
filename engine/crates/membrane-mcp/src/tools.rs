@@ -131,7 +131,7 @@ fn schema(name: &str) -> Value {
         ),
         "membrane_blueprint" => (
             vec!["repository", "caller", "operation"],
-            json!({"repository":{"type":"string"},"caller":caller(),"operation":{"type":"string","enum":["architecture","symbol","reference","references","impact","changes","snapshot_get","snapshot_list","changes_since"]},"node":{"type":"string"},"items":{"type":"array"},"generationId":{"type":"string","minLength":1}}),
+            json!({"repository":{"type":"string"},"caller":caller(),"operation":{"type":"string","enum":["architecture","search","recall","build","refresh","status","documentTruth","path","symbol","reference","references","impact","changes","snapshot_get","snapshot_list","changes_since"]},"node":{"type":"string"},"items":{"type":"array"},"generationId":{"type":"string","minLength":1},"snapshot":{"type":"string"},"sinceGeneration":{"type":"string"},"treeish":{"type":"string"},"query":{"type":"string","maxLength":8192},"from":{"type":"string"},"to":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":64},"budget":{"type":"integer","minimum":1,"maximum":4000},"depth":{"type":"integer","minimum":1,"maximum":5},"deadlineMs":{"type":"integer","minimum":10,"maximum":30000}}),
         ),
         "membrane_knowledge_propose" => (
             vec!["repository", "caller", "emission"],
@@ -289,7 +289,7 @@ pub(crate) fn definitions() -> Value {
 }
 pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
     let mut names = vec![
-        "membrane_context", "membrane_source_read", "membrane_ledger",
+        "membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger",
         "membrane_knowledge_propose", "membrane_memory",
         "membrane_checkpoint_save", "membrane_checkpoint_load",
     ];

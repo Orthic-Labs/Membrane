@@ -34,6 +34,7 @@ pub mod ledger;
 pub mod live_diagnostics;
 pub mod live_diagnostics_service;
 pub mod mcp_executor;
+mod blueprint_one_shot;
 pub mod mcp_http;
 pub mod memory_provider;
 pub mod memory_sentinel_producer;

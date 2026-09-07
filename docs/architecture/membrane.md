@@ -21,6 +21,8 @@
 
 ## 0. Executive decision
 
+**Lifecycle correction (2026-09-07):** [Explicit execution & resident lifecycle](execution-lifecycle-boundary.md) supersedes daemon-only & tray-off refusal statements throughout this document. All explicit Membrane operations remain available independently of Hub; only automatic background work & resident processes require Hub.
+
 Membrane does not need a larger architecture. It needs a sharper one.
 
 The repository already contains the differentiated spine:
