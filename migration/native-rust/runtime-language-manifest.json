@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-07T06:43:17.582Z",
+ "generatedAt": "2026-09-07T07:17:57.838Z",
  "enforcementMode": "sealed",
  "policyDigest": "40b25cc0c31c5d4a1e30ffc1d4c93b92f19411826f4deda87ab9caf46714be1b",
  "totals": {
@@ -497,7 +497,7 @@
     "blueprint/src/sources/rules-documents.mjs",
     "blueprint/src/sources/task-anchor.mjs"
    ],
-   "content_digest": "04eda7d984a717bc2d7f1f2718f88c1419723d5ed30a330579ebb0347b92b783"
+   "content_digest": "0afa89ea6c20a78f8d52d209d1a3f6822660229324560052f4117b433a7803df"
   },
   {
    "id": "blueprint-bundled-runtime-blueprint/watchman",
@@ -859,7 +859,7 @@
     "blueprint/tests/workspace/qualification.test.mjs",
     "blueprint/tests/workspace/sources-adapters.test.mjs"
    ],
-   "content_digest": "d88d99d863622b816bcbacf8e307e34a06b7f4205012c8294fa592cbbc08ed9d"
+   "content_digest": "3bd6160a30939b76cf24e9cf7c49e24f08c499c1baa848fd46af7bd9fdecfe73"
   },
   {
    "id": "continuity-runtime-continuity-runtime",
@@ -1203,7 +1203,7 @@
     "engine/crates/cortex-store/src/transcript.rs",
     "engine/crates/cortex-store/tests/temporal_validity.rs"
    ],
-   "content_digest": "f504c0101904afa6e5619fd27ba8c4a4a2df512f87b5e7e6e6c4f72475c781bf"
+   "content_digest": "5d9263e12e0d5f1df7a2191121ba4e6055a44112b68c671307093e4ddfd0b5b6"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane",
