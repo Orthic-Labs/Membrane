@@ -131,6 +131,20 @@ pub enum RemediationProposalKind {
     TasteCandidate,
 }
 
+/// Provenance of proposal kind.  Records produced by the pre-1.2 builder are
+/// retained, but explicitly marked so a derived kind is never confused with a
+/// caller-authored choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposalKindProvenance {
+    Explicit,
+    LegacyDerived,
+}
+
+fn legacy_kind_provenance() -> ProposalKindProvenance {
+    ProposalKindProvenance::LegacyDerived
+}
+
 impl RemediationProposalKind {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -174,6 +188,35 @@ impl InterventionTarget {
             Self::Guard => RemediationProposalKind::GuardProposal,
         }
     }
+}
+
+/// Validate the independently supplied proposal kind, effect, and target.
+/// The historical target-derived tuple remains compatible; explicit callers
+/// may select only a semantically compatible tuple.
+pub fn proposal_tuple_is_compatible(
+    kind: RemediationProposalKind,
+    effect: RemediationEffect,
+    target: InterventionTarget,
+) -> bool {
+    if effect == RemediationEffect::TasteCandidate {
+        return kind == RemediationProposalKind::TasteCandidate
+            && target == InterventionTarget::ModelBehaviorPolicy;
+    }
+    if kind == RemediationProposalKind::TasteCandidate {
+        return false;
+    }
+    if kind == target.proposal_kind() {
+        return true;
+    }
+    // Explicit kind is independent from effect/target, but additive effects
+    // may intentionally use a different review artifact class.
+    matches!(
+        (kind, effect, target),
+        (RemediationProposalKind::GuardProposal, RemediationEffect::GuardrailAddition, InterventionTarget::Evaluator)
+            | (RemediationProposalKind::EvaluatorProposal, RemediationEffect::GuardrailAddition, InterventionTarget::Evaluator)
+            | (RemediationProposalKind::ReviewWarning, RemediationEffect::ProcessChange, InterventionTarget::ToolDescription)
+            | (RemediationProposalKind::WorkflowChangeProposal, RemediationEffect::DocumentationUpdate, InterventionTarget::DocumentationPolicy)
+    )
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -225,8 +268,16 @@ pub struct RemediationUserEvidenceEnvelopeV1 {
 pub struct RemediationPayloadV1 {
     pub record_kind: String,
     pub proposal_kind: String,
+    #[serde(default = "legacy_kind_provenance")]
+    pub proposal_kind_provenance: ProposalKindProvenance,
     pub effect: String,
     pub intervention_target: String,
+    /// Live target version used when attribution was joined.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_surface_digest: Option<String>,
+    /// Optional sealed attribution carried with a host variant candidate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intervention_attribution: Option<crate::attribution::InterventionAttributionV1>,
     pub source_issue_ids: Vec<String>,
     pub canonical_proposal_text: String,
     pub authority_class: String,
@@ -278,6 +329,7 @@ pub enum RemediationSealError {
     InvalidAuthority,
     InvalidEffect,
     InvalidInterventionTarget,
+    InvalidSurfaceDigest,
     InvalidProposalKind,
     InvalidUserEvidence,
     UnexpectedUserEvidence,
@@ -294,6 +346,16 @@ pub fn proposal_kind_for(
     } else {
         target.proposal_kind()
     }
+}
+
+pub fn validate_proposal_tuple(
+    kind: RemediationProposalKind,
+    effect: RemediationEffect,
+    target: InterventionTarget,
+) -> Result<(), RemediationSealError> {
+    proposal_tuple_is_compatible(kind, effect, target)
+        .then_some(())
+        .ok_or(RemediationSealError::InvalidProposalKind)
 }
 
 /// Backwards-compatible default mapping for callers that only have an effect.
@@ -411,13 +473,16 @@ impl SealedRemediationProposalV1 {
         } else if !user_evidence.is_empty() {
             return Err(RemediationSealError::UnexpectedUserEvidence);
         }
+        let (kind, provenance) = proposal.resolved_kind();
+        validate_proposal_tuple(kind, proposal.effect, proposal.intervention_target)?;
         let payload = RemediationPayloadV1 {
             record_kind: "remediation_proposal".into(),
-            proposal_kind: proposal_kind_for(proposal.effect, proposal.intervention_target)
-                .as_str()
-                .into(),
+            proposal_kind: kind.as_str().into(),
+            proposal_kind_provenance: provenance,
             effect: proposal.effect.as_str().into(),
             intervention_target: proposal.intervention_target.as_str().into(),
+            target_surface_digest: None,
+            intervention_attribution: None,
             source_issue_ids: vec![proposal.issue_id.clone()],
             canonical_proposal_text: crate::canonical::normalize_text(&proposal.text),
             authority_class: "none".into(),
@@ -493,9 +558,7 @@ impl SealedRemediationProposalV1 {
             .ok_or(RemediationSealError::InvalidInterventionTarget)?;
         let kind = parse_proposal_kind(&self.payload.proposal_kind)
             .ok_or(RemediationSealError::InvalidProposalKind)?;
-        if proposal_kind_for(effect, target) != kind {
-            return Err(RemediationSealError::InvalidProposalKind);
-        }
+        validate_proposal_tuple(kind, effect, target)?;
         if self.payload.canonical_proposal_text.trim().is_empty()
             || self.payload.effect_boundary.trim().is_empty()
             || self.payload.honesty_limit.trim().is_empty()
@@ -507,6 +570,22 @@ impl SealedRemediationProposalV1 {
         if let Some(receipt) = &self.payload.semantic_validator_receipt_id {
             if !valid_receipt_id(receipt) {
                 return Err(RemediationSealError::InvalidValidatorReceipt);
+            }
+        }
+        if let Some(digest) = &self.payload.target_surface_digest {
+            if !valid_prefixed_digest(digest) {
+                return Err(RemediationSealError::InvalidSurfaceDigest);
+            }
+        }
+        if let Some(attribution) = &self.payload.intervention_attribution {
+            attribution
+                .verify()
+                .map_err(|_| RemediationSealError::InvalidProposalKind)?;
+            if attribution.source_issue_id != self.payload.source_issue_ids[0]
+                || attribution.candidate_target != target
+                || attribution.current_surface_digest != self.payload.target_surface_digest
+            {
+                return Err(RemediationSealError::InvalidProposalKind);
             }
         }
         match (kind, &self.payload.user_evidence) {
@@ -541,6 +620,38 @@ impl SealedRemediationProposalV1 {
         }
         Ok(())
     }
+
+    /// Join a sealed proposal with a sealed attribution and exact live target
+    /// digest. This remains proposal-only and refreshes payload integrity.
+    pub fn bind_attribution(
+        mut self,
+        attribution: crate::attribution::InterventionAttributionV1,
+        target_surface_digest: Option<&str>,
+    ) -> Result<Self, RemediationSealError> {
+        attribution
+            .verify()
+            .map_err(|_| RemediationSealError::InvalidProposalKind)?;
+        let target = parse_target(&self.payload.intervention_target)
+            .ok_or(RemediationSealError::InvalidInterventionTarget)?;
+        let digest = target_surface_digest.map(str::to_owned);
+        if attribution.source_issue_id.as_str() != self.payload.source_issue_ids[0]
+                || attribution.candidate_target != target
+                || attribution.current_surface_digest.as_deref() != digest.as_deref()
+        {
+            return Err(RemediationSealError::InvalidProposalKind);
+        }
+        if let Some(value) = &digest {
+            if !valid_prefixed_digest(value) {
+                return Err(RemediationSealError::InvalidSurfaceDigest);
+            }
+        }
+        self.payload.target_surface_digest = digest;
+        self.payload.intervention_attribution = Some(attribution);
+        self.payload_sha256 = crate::canonical::sha256_canonical(
+            &serde_json::to_value(&self.payload).expect("remediation payload serializes"),
+        );
+        Ok(self)
+    }
 }
 
 /// A remediation proposal bound to one insight issue.
@@ -549,6 +660,10 @@ pub struct RemediationProposalV1 {
     pub proposal_id: String,
     pub issue_id: String,
     pub effect: RemediationEffect,
+    /// Explicit kind for new callers. `None` is accepted only for legacy
+    /// builders and is sealed with `legacy_derived` provenance.
+    #[serde(default)]
+    pub proposal_kind: Option<RemediationProposalKind>,
     /// New callers should select this explicitly with `build_with_target`.
     /// Missing targets in legacy proposal JSON use the historical procedure
     /// surface so additive deserialization remains possible.
@@ -564,6 +679,17 @@ pub struct RemediationProposalV1 {
 }
 
 impl RemediationProposalV1 {
+    fn resolved_kind(&self) -> (RemediationProposalKind, ProposalKindProvenance) {
+        self.proposal_kind
+            .map(|kind| (kind, ProposalKindProvenance::Explicit))
+            .unwrap_or_else(|| {
+                (
+                    proposal_kind_for(self.effect, self.intervention_target),
+                    ProposalKindProvenance::LegacyDerived,
+                )
+            })
+    }
+
     pub fn build(
         issue_id: &str,
         origin_family: &str,
@@ -579,6 +705,7 @@ impl RemediationProposalV1 {
             proposal_id: format!("rem_{}", crate::canonical::sha256_hex(id_src.as_bytes())),
             issue_id: issue_id.to_string(),
             effect,
+            proposal_kind: None,
             intervention_target: effect.default_target(),
             text: text.to_string(),
             supporting_user_evidence_ids,
@@ -604,11 +731,94 @@ impl RemediationProposalV1 {
             proposal_id: id,
             issue_id: issue_id.to_string(),
             effect,
+            proposal_kind: None,
             intervention_target,
             text: text.to_string(),
             supporting_user_evidence_ids,
             origin_family: origin_family.to_string(),
         }
+    }
+
+    /// Build a proposal with an explicit, independently chosen kind.
+    pub fn build_with_kind(
+        issue_id: &str,
+        origin_family: &str,
+        kind: RemediationProposalKind,
+        effect: RemediationEffect,
+        intervention_target: InterventionTarget,
+        text: &str,
+        supporting_user_evidence_ids: Vec<String>,
+    ) -> Self {
+        let mut proposal = Self::build_with_target(
+            issue_id,
+            origin_family,
+            effect,
+            intervention_target,
+            text,
+            supporting_user_evidence_ids,
+        );
+        proposal.proposal_kind = Some(kind);
+        let id_src = format!(
+            "{issue_id}\u{0}{}\u{0}{}\u{0}{}\u{0}{text}",
+            kind.as_str(),
+            effect.as_str(),
+            intervention_target.as_str()
+        );
+        proposal.proposal_id = format!("rem_{}", crate::canonical::sha256_hex(id_src.as_bytes()));
+        proposal
+    }
+
+    /// Argument-order alias useful to adapters that append kind after target.
+    pub fn build_with_target_and_kind(
+        issue_id: &str,
+        origin_family: &str,
+        effect: RemediationEffect,
+        intervention_target: InterventionTarget,
+        kind: RemediationProposalKind,
+        text: &str,
+        supporting_user_evidence_ids: Vec<String>,
+    ) -> Self {
+        Self::build_with_kind(
+            issue_id,
+            origin_family,
+            kind,
+            effect,
+            intervention_target,
+            text,
+            supporting_user_evidence_ids,
+        )
+    }
+
+    pub fn build_with_explicit_kind(
+        issue_id: &str,
+        origin_family: &str,
+        effect: RemediationEffect,
+        intervention_target: InterventionTarget,
+        kind: RemediationProposalKind,
+        text: &str,
+        supporting_user_evidence_ids: Vec<String>,
+    ) -> Self {
+        Self::build_with_target_and_kind(
+            issue_id,
+            origin_family,
+            effect,
+            intervention_target,
+            kind,
+            text,
+            supporting_user_evidence_ids,
+        )
+    }
+
+    pub fn explicit_kind(&self) -> Option<RemediationProposalKind> {
+        self.proposal_kind
+    }
+
+    pub fn kind_provenance(&self) -> ProposalKindProvenance {
+        self.resolved_kind().1
+    }
+
+    pub fn resolved_proposal_kind(&self) -> RemediationProposalKind {
+        self.resolved_kind().0
     }
 
     /// Validate evidence requirements. `selected_user_evidence_ids` are
@@ -712,10 +922,19 @@ pub fn consumable_for_variant_generation(
     if !target.is_mutable_instruction_surface() {
         return Ok(());
     }
+    let attribution = attribution.or(proposal.payload.intervention_attribution.as_ref());
     let Some(attribution) = attribution else {
         return Err(AttributionGateError::AttributionRequired { target });
     };
     if attribution.candidate_target != target {
+        return Err(AttributionGateError::AttributionRequired { target });
+    }
+    if !proposal
+        .payload
+        .source_issue_ids
+        .iter()
+        .any(|issue_id| issue_id == &attribution.source_issue_id)
+    {
         return Err(AttributionGateError::AttributionRequired { target });
     }
     if examined_surface_digest.is_none() {
@@ -726,6 +945,13 @@ pub fn consumable_for_variant_generation(
             crate::attribution::MutationIneligibility::SurfaceDigestUnavailable,
         ));
     }
+    if let Some(bound) = proposal.payload.target_surface_digest.as_deref() {
+        if Some(bound) != examined_surface_digest {
+            return Err(AttributionGateError::NotMutationEligible(
+                crate::attribution::MutationIneligibility::StaleSurfaceDigest,
+            ));
+        }
+    }
     attribution
         .verify()
         .map_err(AttributionGateError::InvalidAttribution)?;
@@ -734,6 +960,53 @@ pub fn consumable_for_variant_generation(
     attribution
         .confirm_adoption(examined_surface_digest)
         .map_err(AttributionGateError::NotMutationEligible)
+}
+
+/// Convenience production boundary that seals, then atomically joins, a
+/// current-surface attribution. No approval or host execution is implied.
+pub fn seal_with_attribution(
+    proposal: &RemediationProposalV1,
+    attribution: crate::attribution::InterventionAttributionV1,
+    target_surface_digest: Option<&str>,
+    effect_boundary: &str,
+    honesty_limit: &str,
+    admission_policy_version: &str,
+    redaction_contract_version: &str,
+    actor: &str,
+    at: &str,
+) -> Result<SealedRemediationProposalV1, RemediationError> {
+    SealedRemediationProposalV1::seal(
+        proposal,
+        effect_boundary,
+        honesty_limit,
+        admission_policy_version,
+        redaction_contract_version,
+        None,
+        Vec::new(),
+        actor,
+        at,
+    )
+    .map_err(RemediationError::Seal)?
+    .bind_attribution(attribution, target_surface_digest)
+    .map_err(RemediationError::Seal)
+}
+
+/// Variant-generation gate with an optional expected owner binding. Keeping
+/// owner checking here ensures a stale or wrong-owner attribution cannot be
+/// accepted by a caller that only checked target kind.
+pub fn consumable_for_variant_generation_for_owner(
+    proposal: &SealedRemediationProposalV1,
+    attribution: Option<&crate::attribution::InterventionAttributionV1>,
+    examined_surface_digest: Option<&str>,
+    expected_surface_ref: Option<&str>,
+) -> Result<(), crate::attribution::AttributionGateError> {
+    consumable_for_variant_generation(proposal, attribution, examined_surface_digest)?;
+    if let Some(attribution) = attribution.or(proposal.payload.intervention_attribution.as_ref()) {
+        attribution
+            .confirm_owner(expected_surface_ref)
+            .map_err(crate::attribution::AttributionGateError::NotMutationEligible)?;
+    }
+    Ok(())
 }
 
 pub const REVIEW_REMEDIATION_EFFECT_BOUNDARY: &str = "requires_human_review";

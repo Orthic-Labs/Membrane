@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+  "sourceArtifact": "docs/pending/MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md",
+  "promptArtifact": "audit/remediation/adapt-cortex-committed-residuals.prompt.md",
+  "promptDigest": "sha256:47358dcd69194b3da169f636f546ecb4874a765f33f9643cd437b0ca6125016e",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Two disjoint edit-only Rust lanes close eligible committed source residuals while active runtime reservations remain with current owners."
+  },
+  "objective": "Close eligible ADP-041 and ADP-019/022/023/024/025 source residuals without duplicating native8, hook, ADP-011, Pull acknowledgement, installed qualification, or host-producer work; retain every other committed Adapt/Cortex obligation under named existing integration ownership.",
+  "authority": [
+    "AGENTS.md",
+    "audit/remediation/adapt-cortex-committed-residuals.prompt.md",
+    "docs/canon/adapt.md",
+    "docs/canon/cortex.md",
+    "docs/architecture/subsystems/adapt.md",
+    "docs/architecture/membrane.md",
+    "docs/pending/MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md",
+    "audit/remediation/native-closure-wave1.dispatch.json",
+    "audit/remediation/native-closure-remaining.dispatch.json"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "reservationSnapshot": {
+    "obtainedFrom": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "result": "No live Adapt/Cortex worker; frozen ADP-011 and active Pull/native/hook/runtime ownership retained. Packet excludes every reported reserved path.",
+    "excludedReservedPaths": [
+      "engine/crates/membrane-adapt/src/taste.rs",
+      "engine/crates/membrane-adapt/src/proposal.rs",
+      "engine/crates/membrane-adapt/src/manifest.rs",
+      "engine/crates/membrane-adapt/src/delivery.rs",
+      "engine/crates/membrane-adapt/tests/taste_contracts.rs",
+      "engine/crates/membrane-runtime/src/adapt_service.rs",
+      "engine/crates/membrane-runtime/src/store.rs",
+      "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs",
+      "engine/crates/membrane-runtime/src/adapt_observations.rs",
+      "engine/crates/membrane-runtime/src/serve.rs",
+      "engine/crates/membrane-runtime/src/catalog.rs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-runtime/src/cli.rs",
+      "engine/crates/membrane-mcp/src/tools.rs",
+      "docs/canon/adapt.md",
+      "docs/canon/cortex.md",
+      "docs/pending/README.md",
+      "scripts/qualification/issue-native-only-seal.mjs",
+      "engine/Cargo.lock"
+    ]
+  },
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-adapt/src/multiwriter.rs",
+      "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
+      "engine/crates/membrane-runtime/tests/adapt_multiwriter_convergence.rs",
+      "engine/crates/membrane-adapt/src/insights/recurrence.rs",
+      "engine/crates/membrane-adapt/src/remediation.rs",
+      "engine/crates/membrane-adapt/src/attribution.rs",
+      "engine/crates/membrane-adapt/tests/remediation_lifecycle_closure.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-adapt/src/multiwriter.rs","owner":"adapt-cortex-convergence","operation":"edit","lane":"adapt-cortex-convergence","finalCheck":"ADP-041 focused acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/cortex_lifecycle.rs","owner":"adapt-cortex-convergence","operation":"edit","lane":"adapt-cortex-convergence","finalCheck":"ADP-041 Cortex proposal/admission acceptance"},
+      {"path":"engine/crates/membrane-runtime/tests/adapt_multiwriter_convergence.rs","owner":"adapt-cortex-convergence","operation":"create","lane":"adapt-cortex-convergence","finalCheck":"ADP-041 crash/retry/conflict integration test"},
+      {"path":"engine/crates/membrane-adapt/src/insights/recurrence.rs","owner":"adapt-remediation-lifecycle","operation":"edit","lane":"adapt-remediation-lifecycle","finalCheck":"ADP-019/025 recurrence acceptance"},
+      {"path":"engine/crates/membrane-adapt/src/remediation.rs","owner":"adapt-remediation-lifecycle","operation":"edit","lane":"adapt-remediation-lifecycle","finalCheck":"ADP-022 explicit tuple acceptance"},
+      {"path":"engine/crates/membrane-adapt/src/attribution.rs","owner":"adapt-remediation-lifecycle","operation":"edit","lane":"adapt-remediation-lifecycle","finalCheck":"ADP-023/024 attribution acceptance"},
+      {"path":"engine/crates/membrane-adapt/tests/remediation_lifecycle_closure.rs","owner":"adapt-remediation-lifecycle","operation":"create","lane":"adapt-remediation-lifecycle","finalCheck":"ADP-019/022-025 end-to-end focused test"}
+    ]
+  },
+  "preexistingOwnedBytes": {
+    "engine/crates/membrane-adapt/src/multiwriter.rs": "sha256:2d4ec71ac506e937390847c54ba8236c7504a428a8334cc1e7aba409823e5acf",
+    "engine/crates/membrane-runtime/src/cortex_lifecycle.rs": "sha256:184ab5eb79b87878c4d04571ed1e9217c8b3b23f3a4419b38e668b0e04c03c04",
+    "engine/crates/membrane-adapt/src/insights/recurrence.rs": "sha256:a482e7ec700b42ee2cce4ebe84579b858061ddc167dc01ca5b58ddf953925ad4",
+    "engine/crates/membrane-adapt/src/remediation.rs": "sha256:34edc7002ec6fbf6d99a1bc5160b9dc42605705ce56386597874450088bba791",
+    "engine/crates/membrane-adapt/src/attribution.rs": "sha256:fe7a156294af6f16148b47dc9fbeaf55e93ebff98b3a26965d0323b3cf6f261d"
+  },
+  "sourcePortPolicy": {
+    "applicable": false,
+    "sourceImplementation": null,
+    "sourceInventory": [],
+    "directPortFirst": true,
+    "targetLanguage": "Rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo","tests","builds","generators","installs","commits","pushes","merges","expensive-checks"],
+    "intendedChecksRecordedFor": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return to owning Luna lane or redesign packet before execution"
+  },
+  "coverageLedger": {
+    "workerImplementation": {
+      "adapt-cortex-convergence": ["ADP-041"],
+      "adapt-remediation-lifecycle": ["ADP-019","ADP-022","ADP-023","ADP-024","ADP-025"]
+    },
+    "existingAdaptLead": {"owner":"adapt-lead via native-closure-wave1","atoms":["ADP-011"]},
+    "existingIntegrationImplementationOwner": {
+      "owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+      "atoms":["ADP-012","ADP-015","ADP-016","ADP-020","ADP-030","ADP-031","ADP-033","ADP-034","ADP-035","ADP-036","ADP-038","ADP-040","ADP-043","ADP-044","ADP-045","ADP-046","ADP-047","ADP-048","ADP-049","ADP-050","ADP-051","ADP-052","ADP-055","ADP-056","ADP-060","ADP-061","ADP-063","ADP-064","ADP-072","ADP-074","ADP-075","ADP-076","ADP-077"],
+      "reason":"Required files are reserved by current Adapt/Pull/native integration or require CodeRight-owned host facts; no duplicate worker edits."
+    },
+    "existingQualificationOwner": {
+      "owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+      "adaptAtoms":["ADP-001","ADP-002","ADP-003","ADP-004","ADP-005","ADP-006","ADP-007","ADP-008","ADP-009","ADP-010","ADP-011","ADP-012","ADP-013","ADP-014","ADP-015","ADP-016","ADP-017","ADP-018","ADP-019","ADP-020","ADP-021","ADP-022","ADP-023","ADP-024","ADP-025","ADP-026","ADP-027","ADP-028","ADP-029","ADP-030","ADP-031","ADP-032","ADP-033","ADP-034","ADP-035","ADP-036","ADP-038","ADP-040","ADP-041","ADP-042","ADP-043","ADP-044","ADP-045","ADP-046","ADP-047","ADP-048","ADP-049","ADP-050","ADP-051","ADP-052","ADP-053","ADP-054","ADP-055","ADP-056","ADP-057","ADP-058","ADP-059","ADP-060","ADP-061","ADP-062","ADP-063","ADP-064","ADP-072","ADP-073","ADP-074","ADP-075","ADP-076","ADP-077"],
+      "cortexQualification":["CTX-Q018","CTX-Q019","CTX-Q020","CTX-Q021","CTX-Q022"]
+    },
+    "externalFacts": {"owner":"CodeRight producer tasks assigned by coordinator 01a07b53-236f-73b0-a1c6-23679b5968e5","facts":["H4","H6","H9","H10"],"rule":"Missing producer facts remain typed unavailable; no fabricated ran/effectiveness state."},
+    "excludedExploratory": ["ADP-065","ADP-066","ADP-067","ADP-068","ADP-069","ADP-070","ADP-071"]
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": ["adapt-cortex-convergence","adapt-remediation-lifecycle"],
+      "completionChecks": ["all changed paths match disjoint allowlists","preexisting byte hashes match before edit","workers return content-addressed handoffs","integration owner runs named focused checks"]
+    }
+  ],
+  "workers": [
+    {
+      "id": "adapt-cortex-convergence",
+      "dispatch": "A",
+      "task": "Implement ADP-041 through existing Cortex proposal/admission authority. Replace in-memory-only production gap with durable proposal-first convergence for competing writer requests; preserve equal-precedence conflicts; bind repository/scope/record/version/writer/clock/payload identities; make exact retries, response loss, restart, and bounded crash recovery idempotent. Adapt writes no Cortex truth directly and creates no Adapt database. Add public integration coverage in the owned new test file.",
+      "executorRequirement": {"semanticRequirement":"required","capabilities":["rust-structured-edit","durable-convergence","cortex-admission"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"adp-041-source"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist": ["engine/crates/membrane-adapt/src/multiwriter.rs","engine/crates/membrane-runtime/src/cortex_lifecycle.rs","engine/crates/membrane-runtime/tests/adapt_multiwriter_convergence.rs"],
+      "read": ["docs/canon/adapt.md","docs/canon/cortex.md","docs/architecture/subsystems/adapt.md","engine/crates/membrane-adapt/src/proposal.rs","engine/crates/membrane-runtime/src/store.rs","engine/crates/membrane-runtime/tests/cortex_remaining_acceptance.rs"],
+      "forbidden": [".git","engine/Cargo.lock","engine/crates/membrane-runtime/src/adapt_service.rs","engine/crates/membrane-runtime/src/adapt_observations.rs","docs/canon","docs/pending","scripts/qualification"],
+      "checks": ["integration owner reads docs/rules/rightkit.md then runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test adapt_multiwriter_convergence","integration owner runs focused membrane-adapt multiwriter tests","expected: competing request permutations, retry, restart, response-loss, crash recovery and conflict retention converge once through pending/review/admission boundary"],
+      "dependencies": []
+    },
+    {
+      "id": "adapt-remediation-lifecycle",
+      "dispatch": "A",
+      "task": "Close ADP-019/022/023/024/025 core source gaps without rebuilding working seals. Accept explicit proposal kind independent from effect and target, validate allowed kind/effect/target tuples, mark legacy-derived kind provenance, bind current target digest and sealed attribution/alternatives into variant eligibility, classify applicable/not-applicable/insufficient evidence without denominator invention, and retain exposure-aware recurrence/reopen semantics under replay and out-of-order outcomes. Preserve proposal-only behavior and typed wrong-owner/already-correct/redundant/stale/unsupported refusal.",
+      "executorRequirement": {"semanticRequirement":"required","capabilities":["rust-structured-edit","sealed-lifecycle","outcome-attribution"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"adp-019-022-025-source"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist": ["engine/crates/membrane-adapt/src/insights/recurrence.rs","engine/crates/membrane-adapt/src/remediation.rs","engine/crates/membrane-adapt/src/attribution.rs","engine/crates/membrane-adapt/tests/remediation_lifecycle_closure.rs"],
+      "read": ["docs/canon/adapt.md","docs/architecture/subsystems/adapt.md","engine/crates/membrane-adapt/src/insights/mod.rs","engine/crates/membrane-adapt/src/insights/sealed_issue.rs","engine/crates/membrane-adapt/tests/remediation_current_contract.rs","engine/crates/membrane-adapt/tests/remediation_outcomes_cost.rs"],
+      "forbidden": [".git","engine/Cargo.lock","engine/crates/membrane-adapt/src/proposal.rs","engine/crates/membrane-adapt/src/manifest.rs","engine/crates/membrane-runtime","docs/canon","docs/pending","scripts/qualification"],
+      "checks": ["integration owner reads docs/rules/rightkit.md then runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-adapt --test remediation_lifecycle_closure","integration owner runs existing remediation_current_contract, remediation_outcomes_cost, insights_pipeline focused tests","expected: explicit compatible tuple plus legacy provenance, sealed attribution/current digest, applicability denominators and recurrence/reopen behavior pass positive and hard-negative cases"],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": ["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass","all-committed-row-ownership"]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": ["owned path is dirty or reserved","preexisting hash mismatch","required private input missing","second deterministic failure","unsafe or out-of-scope action"],
+    "failureMatrix": [
+      {"class":"path/input missing","primary":"rediscover exact path from current repository","secondary":"return exact missing path to integrator","degraded":"continue independent lane","stopAfter":1,"proceedWhen":"required input exists and hash is recorded"},
+      {"class":"tool/dependency missing","primary":"worker stops because tools are forbidden","secondary":"integrator runs workspace setup only under workspace rules","degraded":"preserve source handoff","stopAfter":1,"proceedWhen":"managed toolchain is healthy"},
+      {"class":"auth/permission failure","primary":"record raw denial without bypass","secondary":"integrator resolves existing authorized route","degraded":"continue non-auth lane","stopAfter":1,"proceedWhen":"authorized route succeeds"},
+      {"class":"transient external failure","primary":"retry once within same exact operation","secondary":"continue independent lane","degraded":"retain typed unavailable","stopAfter":2,"proceedWhen":"same request succeeds"},
+      {"class":"invalid input/schema","primary":"re-read canon and current schema","secondary":"smallest allowlisted correction","degraded":"continue unrelated acceptance","stopAfter":2,"proceedWhen":"schema parses and invariants hold"},
+      {"class":"integrity/hash mismatch","primary":"reject execution and rebind current bytes","secondary":"revalidate packet after explicit ownership redesign","degraded":"continue unaffected lane","stopAfter":1,"proceedWhen":"all owned hashes match"},
+      {"class":"deterministic command failure","primary":"integrator returns exact defect to owning lane","secondary":"one repair plus rerun","degraded":"continue other lane","stopAfter":2,"proceedWhen":"focused check passes"},
+      {"class":"dirty/conflicting state","primary":"do not edit conflicting path","secondary":"obtain explicit handoff or redesign packet","degraded":"continue disjoint lane","stopAfter":1,"proceedWhen":"one owner and clean baseline exist"},
+      {"class":"wrong producer/provenance","primary":"reject evidence","secondary":"request correct producer receipt","degraded":"report typed unavailable","stopAfter":1,"proceedWhen":"source identity and digest match"},
+      {"class":"resource/capacity failure","primary":"reduce to focused check","secondary":"integrator retries once after capacity recovery","degraded":"preserve patch","stopAfter":2,"proceedWhen":"focused check completes"},
+      {"class":"ambiguous requirement","primary":"read listed authority and current implementation","secondary":"escalate one exact decision to coordinator","degraded":"continue unambiguous lane work","stopAfter":1,"proceedWhen":"decision is explicit"},
+      {"class":"unsafe/out-of-scope action","primary":"refuse action","secondary":"return exact boundary to integrator","degraded":"complete safe work","stopAfter":1,"proceedWhen":"safe in-scope route exists"},
+      {"class":"unknown failure","primary":"capture raw error and smallest reproduction","secondary":"integrator classifies before retry","degraded":"continue independent lane","stopAfter":1,"proceedWhen":"failure is classified and bounded"}
+    ],
+    "trueBlockerRequirements": ["RECOVERY_EXHAUSTED","INDEPENDENT_WORK_COMPLETE","RAW_EVIDENCE","MISSING_INPUT","RESUME_COMMAND"],
+    "returnFields": ["STATUS","SUMMARY","ACCEPTANCE","ARTIFACTS","CHANGES","COMMANDS","RECOVERY","DEVIATIONS","BLOCKER","NEXT","baselineRevision","patchDigest"]
+  }
+}

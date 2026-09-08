@@ -186,6 +186,157 @@ pub fn record_post_mitigation_recurrence(
     transition_issue(&issue, IssueState::Reopened)
 }
 
+/// A host outcome joined to one exact mitigation/version.  Exposure is kept
+/// on each observation so a zero-opportunity window cannot look successful.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MitigationOutcomeV1 {
+    pub outcome_id: String,
+    pub issue_id: String,
+    pub mitigation_proposal_id: String,
+    pub mitigation_version: String,
+    pub baseline_version: String,
+    pub exposure: crate::outcomes::Exposure,
+    pub raw: crate::outcomes::RawOutcome,
+    pub applicability: crate::attribution::EvaluatorApplicability,
+    #[serde(default)]
+    pub observed_at: Option<String>,
+}
+
+impl MitigationOutcomeV1 {
+    pub fn is_usable_exposure(&self) -> bool {
+        self.exposure.opportunities > 0 && self.exposure.baseline > 0
+    }
+
+    pub fn is_reopen_signal(&self) -> bool {
+        self.applicability == crate::attribution::EvaluatorApplicability::Applicable
+            && self.raw == crate::outcomes::RawOutcome::RecurredSameSignature
+            && self.is_usable_exposure()
+    }
+}
+
+/// Idempotent, order-independent recurrence projection.  Replayed outcome
+/// IDs are no-ops; conflicting reuse of an ID is refused.  Latest outcome is
+/// selected by host timestamp then ID, not arrival order.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RecurrenceOutcomeLedgerV1 {
+    outcomes: BTreeMap<String, MitigationOutcomeV1>,
+}
+
+impl RecurrenceOutcomeLedgerV1 {
+    pub fn record(&mut self, outcome: MitigationOutcomeV1) -> Result<(), String> {
+        if outcome.outcome_id.trim().is_empty()
+            || outcome.issue_id.trim().is_empty()
+            || outcome.mitigation_proposal_id.trim().is_empty()
+            || outcome.mitigation_version.trim().is_empty()
+            || outcome.baseline_version.trim().is_empty()
+        {
+            return Err("mitigation outcome identity is incomplete".into());
+        }
+        if let Some(existing) = self.outcomes.get(&outcome.outcome_id) {
+            return if existing == &outcome {
+                Ok(())
+            } else {
+                Err("outcome replay conflicts with prior identity".into())
+            };
+        }
+        self.outcomes.insert(outcome.outcome_id.clone(), outcome);
+        Ok(())
+    }
+
+    pub fn replay<I>(&mut self, outcomes: I) -> Result<(), String>
+    where
+        I: IntoIterator<Item = MitigationOutcomeV1>,
+    {
+        for outcome in outcomes {
+            self.record(outcome)?;
+        }
+        Ok(())
+    }
+
+    pub fn outcomes_for(
+        &self,
+        issue_id: &str,
+        mitigation_version: &str,
+    ) -> Vec<&MitigationOutcomeV1> {
+        let mut result: Vec<_> = self
+            .outcomes
+            .values()
+            .filter(|outcome| {
+                outcome.issue_id == issue_id && outcome.mitigation_version == mitigation_version
+            })
+            .collect();
+        result.sort_by(|left, right| {
+            left.observed_at
+                .cmp(&right.observed_at)
+                .then_with(|| left.outcome_id.cmp(&right.outcome_id))
+        });
+        result
+    }
+
+    pub fn outcomes_for_baseline(
+        &self,
+        issue_id: &str,
+        mitigation_version: &str,
+        baseline_version: &str,
+    ) -> Vec<&MitigationOutcomeV1> {
+        self.outcomes_for(issue_id, mitigation_version)
+            .into_iter()
+            .filter(|outcome| outcome.baseline_version == baseline_version)
+            .collect()
+    }
+
+    /// Reopen iff the latest applicable, sufficiently exposed outcome for the
+    /// exact mitigation version is same-signature recurrence. Incomplete,
+    /// not-applicable, and insufficient observations never become failures.
+    pub fn should_reopen(&self, issue_id: &str, mitigation_version: &str) -> bool {
+        self.outcomes_for(issue_id, mitigation_version)
+            .into_iter()
+            .rev()
+            .next()
+            .is_some_and(|outcome| outcome.is_reopen_signal())
+    }
+
+    pub fn should_reopen_for_baseline(
+        &self,
+        issue_id: &str,
+        mitigation_version: &str,
+        baseline_version: &str,
+    ) -> bool {
+        self.outcomes_for_baseline(issue_id, mitigation_version, baseline_version)
+            .into_iter()
+            .rev()
+            .next()
+            .is_some_and(|outcome| outcome.is_reopen_signal())
+    }
+
+    pub fn recurrence_count(&self, issue_id: &str, mitigation_version: &str) -> u32 {
+        self.outcomes_for(issue_id, mitigation_version)
+            .into_iter()
+            .filter(|outcome| outcome.is_reopen_signal())
+            .count() as u32
+    }
+}
+
+/// Apply latest outcome semantics to an issue without mutating the ledger.
+pub fn apply_mitigation_outcome(
+    issue: InsightIssueV1,
+    ledger: &RecurrenceOutcomeLedgerV1,
+    mitigation_version: &str,
+) -> Result<InsightIssueV1, String> {
+    if !ledger.should_reopen(&issue.issue_id, mitigation_version) {
+        return Ok(issue);
+    }
+    if issue.state != IssueState::Mitigated {
+        return Err("recurrence outcome requires Mitigated state".into());
+    }
+    let mut next = issue;
+    next.recurrence_after_mitigation = ledger.recurrence_count(
+        &next.issue_id,
+        mitigation_version,
+    );
+    transition_issue(&next, IssueState::Reopened)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -110,11 +110,32 @@ pub struct EvaluatorOutcomeRefV1 {
     pub applicability: EvaluatorApplicability,
 }
 
+/// Exact applicability accounting for a joined host-outcome series. Only
+/// `applicable` contributes to denominator; unknown coverage is not zero.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvaluatorApplicabilityCounts {
+    pub applicable: u32,
+    pub not_applicable: u32,
+    pub insufficient_evidence: u32,
+}
+
+impl EvaluatorApplicabilityCounts {
+    pub const fn denominator(self) -> u32 {
+        self.applicable
+    }
+
+    pub const fn is_sufficient(self) -> bool {
+        self.applicable > 0
+    }
+}
+
 /// Typed ineligibility reasons, one per failed gate; also the error type of
 /// live eligibility checks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MutationIneligibility {
+    /// The attribution belongs to a different owner/surface than requested.
+    WrongOwner,
     /// The bound surface digest differs from the digest the caller examined;
     /// rebase and re-derive (pending doc §2.5, constraint 3).
     StaleSurfaceDigest,
@@ -141,6 +162,7 @@ pub enum MutationIneligibility {
 impl std::fmt::Display for MutationIneligibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::WrongOwner => write!(f, "attribution belongs to a different owner"),
             Self::StaleSurfaceDigest => {
                 write!(f, "surface digest changed since the attribution was bound")
             }
@@ -495,6 +517,40 @@ impl InterventionAttributionV1 {
         self.evaluator_outcome_refs
             .iter()
             .filter(|outcome| outcome.applicability == EvaluatorApplicability::Applicable)
+    }
+
+    /// Classify the joined outcomes without inventing a denominator for
+    /// not-applicable or insufficient-evidence observations.
+    pub fn evaluator_applicability_counts(&self) -> EvaluatorApplicabilityCounts {
+        self.evaluator_outcome_refs.iter().fold(
+            EvaluatorApplicabilityCounts::default(),
+            |mut counts, outcome| {
+                match outcome.applicability {
+                    EvaluatorApplicability::Applicable => counts.applicable += 1,
+                    EvaluatorApplicability::NotApplicable => counts.not_applicable += 1,
+                    EvaluatorApplicability::InsufficientEvidence => {
+                        counts.insufficient_evidence += 1
+                    }
+                }
+                counts
+            },
+        )
+    }
+
+    pub fn evaluator_outcome_counts(&self) -> EvaluatorApplicabilityCounts {
+        self.evaluator_applicability_counts()
+    }
+
+    pub fn applicable_denominator(&self) -> u32 {
+        self.evaluator_applicability_counts().denominator()
+    }
+
+    /// Confirm that a sealed attribution was produced for the expected owner.
+    pub fn confirm_owner(&self, expected_surface_ref: Option<&str>) -> Result<(), MutationIneligibility> {
+        if expected_surface_ref.is_some() && self.owning_surface_ref.as_deref() != expected_surface_ref {
+            return Err(MutationIneligibility::WrongOwner);
+        }
+        Ok(())
     }
 
     /// Verify seal integrity: structural validity, the eligibility/reason

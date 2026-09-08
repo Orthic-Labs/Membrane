@@ -15,6 +15,11 @@ use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{collections::BTreeSet, io::Read, path::PathBuf};
+use membrane_adapt::multiwriter::{
+    proposal_emission as multiwriter_proposal_emission,
+    validate_proposal_emission as validate_multiwriter_emission,
+    WriterRequestV1, MULTIWRITER_KIND,
+};
 
 pub const MAX_PAYLOAD_BYTES: usize = 65_536;
 pub const REVIEW_POLICY: &str = "cortex-reviewed-effect-v1";
@@ -260,6 +265,10 @@ fn dlp_hit(text: &str) -> Option<&'static str> {
 pub fn propose(store: &MemoryStore, repository: &str, scope: &str, emission: &Value) -> Result<Value> {
     let mut emission = emission.as_object().cloned()
         .ok_or_else(|| fail("proposal_emission_text_required", "emission must be an object"))?;
+    if emission.get("kind").and_then(Value::as_str) == Some(MULTIWRITER_KIND) {
+        validate_multiwriter_emission(repository, scope, &Value::Object(emission.clone()))
+            .map_err(|code| fail("multiwriter_emission_invalid", code))?;
+    }
     let text = emission.get("text").or_else(|| emission.get("content"))
         .and_then(Value::as_str).filter(|v| !v.trim().is_empty()).map(str::to_owned)
         .ok_or_else(|| fail("proposal_emission_text_required", "emission text is required"))?;
@@ -306,6 +315,29 @@ pub fn propose(store: &MemoryStore, repository: &str, scope: &str, emission: &Va
             params![id, repository, scope, emission_json, hash, crate::time::now_iso()]).map_err(storage)?;
     }
     proposal_status(store, repository, scope, &id)
+}
+
+/// Proposal-only Adapt multiwriter intake.  The merge is computed from a
+/// canonical, identity-bound request set, then handed to Cortex's ordinary
+/// proposal queue.  No Adapt-owned durable state or direct Cortex truth write
+/// is possible from this seam.
+pub fn propose_multiwriter(
+    store: &MemoryStore,
+    repository: &str,
+    scope: &str,
+    requests: &[WriterRequestV1],
+) -> Result<Value> {
+    let emission = multiwriter_proposal_emission(repository, scope, requests)
+        .map_err(|code| fail("multiwriter_request_invalid", code))?;
+    let mut receipt = propose(store, repository, scope, &emission)?;
+    receipt["multiwriter"] = json!({
+        "schemaVersion": 1,
+        "kind": MULTIWRITER_KIND,
+        "requestCount": requests.len(),
+        "convergence": emission["convergence"].clone(),
+        "proposalOnly": true,
+    });
+    Ok(receipt)
 }
 
 /// Temporal MCP record is proposal-only. Caller authority & veracity are
@@ -529,6 +561,13 @@ fn recover_one(store: &MemoryStore, id: &str) -> Result<()> {
             return Err(fail("cortex_review_binding_denied", "stored job does not match approved effect"));
         }
         let mut payload: Value = serde_json::from_str(&payload).map_err(storage)?;
+        if payload.get("kind").and_then(Value::as_str) == Some(MULTIWRITER_KIND) {
+            // Revalidate every repository/scope/record/version/writer/clock/
+            // payload binding on restart, before either replay lookup or the
+            // normal Cortex admission transaction.
+            validate_multiwriter_emission(&repository, &scope, &payload)
+                .map_err(|code| fail("multiwriter_emission_invalid", code))?;
+        }
         payload["scopeId"] = json!(scope);
         // A committed effect is an observed fact, not a new request to execute
         // an expired approval. Reconcile the acknowledgement before checking
