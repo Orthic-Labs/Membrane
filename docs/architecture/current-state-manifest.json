@@ -62,7 +62,7 @@
     "runtimeExecutionHost": "tray-owned-daemon",
     "dashboardResidency": "on-demand",
     "inactiveReasonCompatibilityToken": "hub_inactive",
-    "mcpToolCount": 23,
+    "mcpToolCount": 24,
     "mcpTools": [
       "membrane_adapt_inspect",
       "membrane_blueprint",
@@ -81,6 +81,7 @@
       "membrane_knowledge_review",
       "membrane_ledger",
       "membrane_memory",
+      "membrane_memory_read",
       "membrane_push_prepare",
       "membrane_push_resolve",
       "membrane_scratchpad",

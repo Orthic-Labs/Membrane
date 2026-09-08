@@ -24,6 +24,8 @@
 //! - CTX-038 exact/lower-bound envelopes (`try_list_bounded`,
 //!   `lifecycle_reviews_due`, `recall_scored_detailed_timed_cancellable`).
 //! - CTX-030 explain projection (real `cli::explain_memory` seam, now public).
+//! - CTX-041 suppression persistence across reopen/reindex/backup/restore and
+//!   signed resume reversal.
 //!
 //! Conventions mirror `tests/cortex_lifecycle_gaps.rs` (`store()` helper) and
 //! the `Sandbox` pattern in `src/cortex_lifecycle.rs`. Deterministic, no
@@ -535,6 +537,84 @@ fn ctx011_suppressed_and_quarantined_rows_excluded_from_recall_scored() {
         resolve_memory(&sandbox.store, "scope", &id, &hash, 0, 12_000)
             .expect("resumed rows resolve")["content"],
         json!(text)
+    );
+}
+
+#[test]
+fn ctx041_suppression_survives_reopen_reindex_backup_restore_and_signed_resume() {
+    let sandbox = Sandbox::new();
+    let text = "Suppression durability fixture: the eastbound signal relay calibration.";
+    let id = sandbox.admitted(text);
+    let hash = digest_str(text);
+    let suppression = review(
+        &sandbox.store,
+        "repo",
+        "scope",
+        &json!(sandbox.effect("suppress", &id, &hash, "suppress-durability")),
+    )
+    .expect("suppression review persists");
+    assert_eq!(suppression["suppressed"], json!(true));
+
+    // Re-open the file-backed store to prove suppression is canonical state,
+    // not an in-memory registry flag. Reindex must also leave suppressed rows
+    // out of every searchable projection while retaining canonical payload.
+    let db_path = sandbox._dir.path().join("cortex.db");
+    let reopened = MemoryStore::try_open(
+        MemDb::open(&db_path).expect("reopened memdb opens"),
+    )
+    .expect("reopened store opens");
+    assert!(
+        recall_ids(&reopened, "signal relay calibration", "scope").is_empty(),
+        "suppression survives restart"
+    );
+    let reindex = reopened.reindex().expect("reindex runs");
+    assert_eq!(reindex.0, 0, "suppressed rows are not re-embedded");
+    assert!(
+        recall_ids(&reopened, "signal relay calibration", "scope").is_empty(),
+        "reindex cannot resurrect suppressed rows"
+    );
+    assert!(
+        reopened
+            .entries(20)
+            .iter()
+            .any(|entry| entry.id == id && entry.content == text),
+        "suppression retains canonical payload"
+    );
+
+    // Backup/restore must carry suppression alongside payload, not restore a
+    // searchable copy. Wipe through the governed path before restoring.
+    let backup = reopened.backup_cortex().expect("suppressed backup runs");
+    assert_eq!(backup.suppression.len(), 1);
+    assert!(backup.suppression[0].suppressed);
+    assert!(reopened.hard_erase(&id).expect("governed wipe"));
+    assert_eq!(reopened.restore_cortex(&backup).expect("restore runs"), 1);
+    assert!(
+        recall_ids(&reopened, "signal relay calibration", "scope").is_empty(),
+        "restored suppression remains excluded from recall"
+    );
+    assert!(
+        reopened
+            .entries(20)
+            .iter()
+            .any(|entry| entry.id == id && entry.content == text),
+        "restored canonical payload remains retained"
+    );
+    assert_eq!(
+        resolve_memory(&reopened, "scope", &id, &hash, 0, 12_000)
+            .expect_err("suppressed row is not resolvable")
+            .code,
+        "memory_ineligible"
+    );
+
+    // Signed reversal is bound to the persisted suppression decision hash.
+    let mut resume = sandbox.effect("resume", &id, &hash, "resume-durability");
+    resume.expected_control_revision = suppression["decisionHash"].as_str().map(str::to_owned);
+    sandbox.sign(&mut resume);
+    review(&reopened, "repo", "scope", &json!(resume)).expect("signed resume reviews");
+    assert_eq!(
+        recall_ids(&reopened, "signal relay calibration", "scope"),
+        vec![id.clone()],
+        "signed reversal restores ordinary recall"
     );
 }
 

@@ -216,6 +216,10 @@ pub struct OmissionV1 {
     #[serde(default)]
     pub layer: Option<u8>,
     pub reason: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
 }
 
 /// ContextCandidateSetV1 — the federated set of candidates fed to admission.

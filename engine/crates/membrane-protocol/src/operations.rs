@@ -62,6 +62,7 @@ pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
         "membrane_blueprint" => Some(SubsystemAxis::Blueprint),
         "membrane_knowledge_propose"
         | "membrane_memory"
+        | "membrane_memory_read"
         | "membrane_knowledge_review"
         | "membrane_checkpoint_save"
         | "membrane_checkpoint_load"
@@ -220,7 +221,7 @@ fn entry(
 
 /// The canonical cross-operation registry, in stable order. The TS binding
 /// (`bindings/operations.mjs`) mirrors this list; both sides are required
-/// to expose the SAME 12 operations in the SAME order so the index-round-trip
+/// to expose the SAME operations in the SAME order so the index-round-trip
 /// test can pin a single digest.
 pub fn operations() -> Vec<OperationIndexEntry> {
     vec![
@@ -485,6 +486,29 @@ pub fn operations() -> Vec<OperationIndexEntry> {
             ],
         ),
         entry(
+            "membrane_memory_read",
+            1,
+            1,
+            "schemas/operations/membrane-memory-read.v1.schema.json",
+            "schemas/registry/operations/membrane-memory-read.v1.golden.json",
+            "schemas/registry/operations/membrane-memory-read.v1.error.golden.json",
+            &[
+                "caller_required",
+                "installation_grant_denied",
+                "repository_scope_chain_denied",
+                "caller_scope_binding_denied",
+                "caller_not_authorized",
+                "cross_root_binding_denied",
+                "authorization_revoked",
+                "context_unavailable",
+                "cortex_storage_unavailable",
+                "memory_unavailable",
+                "memory_version_conflict",
+                "memory_envelope_invalid",
+                "memory_ineligible",
+            ],
+        ),
+        entry(
             "membrane_knowledge_review",
             1,
             1,
@@ -599,6 +623,7 @@ pub static OPERATIONS: &[OperationSpec] = &[
         parameters: &[],
     },
     OperationSpec { id: "membrane_memory", help: "Resolve exact bounded memory or inspect and promote pending knowledge.", parameters: &[] },
+    OperationSpec { id: "membrane_memory_read", help: "Resolve exact bounded Cortex memory through the read-only compatibility operation.", parameters: &[] },
     OperationSpec { id: "membrane_knowledge_review", help: "Apply an independently signed, exact-target reviewed effect.", parameters: &[] },
     OperationSpec { id: "hub.capabilities", help: "Read-only Hub capability manifest.", parameters: &[] },
     OperationSpec { id: "hub.snapshot", help: "Read-only Hub status snapshot.", parameters: &[] },

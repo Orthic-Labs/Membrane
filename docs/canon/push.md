@@ -12,6 +12,8 @@ PSH-001, PSH-011, PSH-019 and PSH-023 are reclassified from `DELIVERED` to `PART
 
 Architecture and acceptance detail: `docs/architecture/subsystems/push.md`. Introduction authority and change rationale: `docs/provenance/foundation/2026-09-05-push-final-reconciliation/promotion.md`. New source-comparison receipt: `docs/provenance/foundation/2026-09-05-push-final-reconciliation/comparison.md`.
 
+Focused contract-prep coverage is staged in `engine/crates/membrane-runtime/tests/push_installed_contract_prep.rs` for PSH-002, PSH-005, PSH-025, PSH-028 and PSH-029. It exercises public recovery, delivery and egress owners for scope/session/store binding, opaque handle generations, terminal lifecycle, bounded resources, non-renewing reads/duplicate publication and single model-facing envelope measurement. This source addition is not executed evidence: verification remains `PENDING`, qualification remains `PENDING`, and no row is promoted to `FOCUSED_PASS` or `RELEASED` by its presence.
+
 ## Group register
 
 | ID | Parent | Owner | Scope | Derived rollup |

@@ -94,18 +94,20 @@ impl DiscoveryOutcome {
 pub enum EnsureAction {
     Adopt,
     ProvisionPackaged,
+    UpdateRepairKnown,
     Refuse(DiscoveryKind),
 }
 
 /// Decide what a host may do after discovery.
 ///
-/// Provisioning is legal only after a proven absence. A known candidate that
-/// is offline, denied, incompatible, corrupt/rotating, or timed out is never
-/// replaced by a second installation.
+/// Provisioning is legal only after proven absence. A known incompatible
+/// candidate is updated or repaired in place; other known failures never
+/// trigger replacement or mutation.
 pub fn ensure_action(outcome: &DiscoveryOutcome) -> EnsureAction {
     match outcome {
         DiscoveryOutcome::Compatible(_) => EnsureAction::Adopt,
         DiscoveryOutcome::NotFound => EnsureAction::ProvisionPackaged,
+        DiscoveryOutcome::Incompatible { .. } => EnsureAction::UpdateRepairKnown,
         other => EnsureAction::Refuse(other.kind().expect("non-compatible outcome")),
     }
 }
@@ -437,10 +439,6 @@ mod tests {
                 candidate: known.clone(),
                 message: "off".into(),
             },
-            DiscoveryOutcome::Incompatible {
-                candidate: known.clone(),
-                message: "bad".into(),
-            },
             DiscoveryOutcome::Denied {
                 candidate: known.clone(),
                 message: "no".into(),
@@ -459,6 +457,17 @@ mod tests {
                 EnsureAction::Refuse(_)
             ));
         }
+    }
+
+    #[test]
+    fn known_incompatible_installation_requires_in_place_update_or_repair() {
+        assert_eq!(
+            ensure_action(&DiscoveryOutcome::Incompatible {
+                candidate: candidate(),
+                message: "version mismatch".into(),
+            }),
+            EnsureAction::UpdateRepairKnown
+        );
     }
 
     #[test]

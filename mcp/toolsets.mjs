@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 
 const version = "membrane.toolsets.v1";
-const fallback = ["membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger", "membrane_knowledge_propose", "membrane_memory", "membrane_checkpoint_save", "membrane_checkpoint_load"];
+const fallback = ["membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_ledger", "membrane_knowledge_propose", "membrane_memory", "membrane_memory_read", "membrane_checkpoint_save", "membrane_checkpoint_load"];
 const names = new Set([
-  "membrane_push_prepare", "membrane_push_resolve", "membrane_memory", "membrane_knowledge_review", "membrane_adapt_inspect",
+  "membrane_push_prepare", "membrane_push_resolve", "membrane_memory", "membrane_memory_read", "membrane_knowledge_review", "membrane_adapt_inspect",
   "membrane_context", "membrane_source_read", "membrane_ledger", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save",
   "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback",
   "membrane_diagnostic_workspace", "membrane_diagnostic_mutation", "membrane_diagnostic_snapshot", "membrane_diagnostic_fence",

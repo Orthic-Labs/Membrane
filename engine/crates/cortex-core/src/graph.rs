@@ -157,9 +157,7 @@ impl MemoryGraph {
 
     /// Admit a provenance-bound evidence relation (CTX-017). The relation must
     /// be in the closed vocabulary, carry non-empty provenance, and have a
-    /// resolved source. A **dangling target is accepted and retained as a
-    /// diagnostic**, mirroring durable storage: it is visible through
-    /// [`MemoryGraph::relation_diagnostics`] but never traverses.
+    /// resolved source and target. Dangling or unknown endpoints are rejected.
     pub fn add_evidence_relation(
         &mut self,
         relation: EvidenceRelation,
@@ -170,7 +168,9 @@ impl MemoryGraph {
         if !relation.provenance.is_bound() {
             return Err(EdgeRejection::MissingProvenance);
         }
-        if !self.nodes.contains_key(&relation.edge.from) {
+        if !self.nodes.contains_key(&relation.edge.from)
+            || !self.nodes.contains_key(&relation.edge.to)
+        {
             return Err(EdgeRejection::DanglingEndpoint);
         }
         self.relations.retain(|existing| {
@@ -628,15 +628,15 @@ mod tests {
     }
 
     #[test]
-    fn dangling_evidence_relation_is_diagnostic_but_never_traversable() {
+    fn dangling_evidence_relation_is_rejected() {
         let mut graph = MemoryGraph::new();
         graph.add_node(make_node("a", "source"));
-        graph
-            .add_evidence_relation(evidence("a", "missing", "derived_from"))
-            .expect("retained as diagnostic");
+        assert_eq!(
+            graph.add_evidence_relation(evidence("a", "missing", "derived_from")),
+            Err(EdgeRejection::DanglingEndpoint)
+        );
         let diagnostics = graph.relation_diagnostics("a", NOW);
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].1, Some(RelationDiagnostic::DanglingTarget));
+        assert!(diagnostics.is_empty());
         assert!(graph.evidence_neighbors("a", NOW).is_empty());
     }
 

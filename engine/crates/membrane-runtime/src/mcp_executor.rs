@@ -14,6 +14,7 @@ use membrane_mcp::NativeMcpExecutor;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
 use std::{
+    cell::RefCell,
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddrV4, TcpStream},
     path::{Path, PathBuf},
@@ -22,6 +23,36 @@ use std::{
 };
 
 const MAX_OPERATION_BYTES: usize = 64 * 1024;
+
+thread_local! {
+    static INHERITED_PUSH_CONTROL: RefCell<Option<crate::serve::PushRequestControl>> =
+        const { RefCell::new(None) };
+}
+
+/// Run one synchronous MCP dispatch with transport-owned Push control.
+/// The dispatcher is synchronous, so this request-local binding cannot leak
+/// across tasks or survive beyond `dispatch`.
+pub fn with_inherited_push_control<T>(
+    control: crate::serve::PushRequestControl,
+    dispatch: impl FnOnce() -> T,
+) -> T {
+    struct Restore(Option<crate::serve::PushRequestControl>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            INHERITED_PUSH_CONTROL.with(|slot| {
+                *slot.borrow_mut() = self.0.take();
+            });
+        }
+    }
+
+    let previous = INHERITED_PUSH_CONTROL.with(|slot| slot.replace(Some(control)));
+    let _restore = Restore(previous);
+    dispatch()
+}
+
+fn inherited_push_control() -> Option<crate::serve::PushRequestControl> {
+    INHERITED_PUSH_CONTROL.with(|slot| slot.borrow().clone())
+}
 
 pub struct RuntimeMcpExecutor {
     ledger: Option<Arc<crate::ledger::service::LedgerService>>,
@@ -221,7 +252,7 @@ fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str
 fn native_action_for(name: &str, arguments: &Value) -> &'static str {
     match name {
         "membrane_context" | "membrane_blueprint" | "membrane_adapt_inspect" => "context",
-        "membrane_source_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
+        "membrane_source_read" | "membrane_memory_read" | "membrane_push_prepare" | "membrane_push_resolve" => "source_read",
         "membrane_ledger" => match arguments.get("operation").and_then(Value::as_str) {
             Some("erase" | "activate") => "checkpoint",
             Some("status") => "system_status",
@@ -895,7 +926,15 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 }
             }
             "membrane_push_prepare" | "membrane_push_resolve" => {
-                crate::push::api::execute(name, arguments)
+                match inherited_push_control() {
+                    Some(control) => crate::push::api::execute_with_control(
+                        name,
+                        arguments,
+                        control.deadline,
+                        &control.cancellation,
+                    ),
+                    None => crate::push::api::execute(name, arguments),
+                }
             }
             "membrane_context" => {
                 let task = arguments
@@ -956,6 +995,43 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         Ok(targets) => targets,
                         Err(denial) => return error(name, denial.code(), denial.to_string()),
                     };
+                    let scope_grant_id = arguments
+                        .get("scopeGrantId")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty());
+                    let _scope_grant = match scope_grant_id {
+                        Some(id) => {
+                            let path = match crate::catalog::default_catalog_path() {
+                                Ok(path) => path,
+                                Err(err) => return error(name, "context_scope_grant_invalid", err.to_string()),
+                            };
+                            let catalog = match crate::catalog::ContextCatalog::open(path) {
+                                Ok(catalog) => catalog,
+                                Err(err) => return error(name, "context_scope_grant_invalid", err.to_string()),
+                            };
+                            match crate::catalog::lookup_grant(&catalog, id) {
+                                Ok(Some(grant))
+                                    if grant.permits()
+                                        && grant.issuer == "membrane-gateway"
+                                        && grant.task_id == task_id
+                                        && grant.session_id == session_id
+                                        && grant.repository_ids.iter().any(|id| id == repository)
+                                        && grant.permitted_edge_types.iter().any(|edge| edge == "source_read")
+                                        && targets.iter().all(|target| grant.repository_ids.iter().any(|id| id == &target.repository_id)) =>
+                                {
+                                    Some(id.to_owned())
+                                }
+                                Ok(Some(_)) => return error(name, "context_scope_grant_invalid", "scope grant is not active, server-issued, source-read capable, or bound to caller, task, session, and every workspace target"),
+                                Ok(None) => return error(name, "context_scope_grant_invalid", "scope grant is missing"),
+                                Err(err) => return error(name, "context_scope_grant_invalid", err.to_string()),
+                            }
+                        }
+                        None if targets.iter().any(|target| target.repository_id != repository) => {
+                            return error(name, "context_scope_grant_invalid", "workspace child target requires an explicit scope grant")
+                        }
+                        None => None,
+                    };
                     let ceiling: membrane_protocol::host_observation::RemainingContextCeilingV1 =
                         match serde_json::from_value(arguments["remainingContextCeiling"].clone()) {
                             Ok(value) => value,
@@ -985,14 +1061,8 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             "refresh": arguments.get("refresh").and_then(Value::as_bool).unwrap_or(false),
                             "remainingContextCeiling": arguments["remainingContextCeiling"].clone(),
                         });
-                        if target.repository_id == repository {
-                            if let Some(scope_grant_id) = arguments
-                                .get("scopeGrantId")
-                                .and_then(Value::as_str)
-                                .filter(|value| !value.trim().is_empty())
-                            {
-                                body["scopeGrantId"] = Value::String(scope_grant_id.to_owned());
-                            }
+                        if let Some(scope_grant_id) = scope_grant_id.as_deref() {
+                            body["scopeGrantId"] = Value::String(scope_grant_id.to_owned());
                         }
                         if let Some(deadline_ms) = arguments.get("deadlineMs").and_then(Value::as_u64) {
                             body["maxWaitMs"] = Value::from(deadline_ms);
@@ -1406,6 +1476,11 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 ),
             ),
             "membrane_memory" => self.memory_operation(name, arguments, repository, scope),
+            "membrane_memory_read" => {
+                let mut request = arguments.clone();
+                request["operation"] = json!("get");
+                self.memory_operation(name, &request, repository, scope)
+            }
             "membrane_checkpoint_save" => {
                 let checkpoint: CheckpointV1 = match parse(
                     name,

@@ -1,8 +1,10 @@
 //! One disposable installed binding, real native dispatch and shared storage.
 //! This is transport/owner qualification, not an installed third-party host test.
 use membrane_runtime::push::recovery::{self, RecoveryScope, RecoveryStore, Selector};
+use membrane_federation::deadline::Deadline;
 use serde_json::{json, Value};
 use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
 
 struct Environment(Vec<(&'static str, Option<std::ffi::OsString>)>);
 impl Environment {
@@ -55,6 +57,32 @@ fn native_http_cli_restore_share_scope_integrity_lifetime_and_store() {
         assert!(listed["result"]["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == name));
     }
     let caller = json!({"root":root,"repositoryId":"repo-push","scopeId":"scope-push"});
+    let expired = membrane_runtime::mcp_executor::with_inherited_push_control(
+        membrane_runtime::serve::push_request_control(
+            Deadline::at(std::time::Instant::now()),
+            CancellationToken::new(),
+        ),
+        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"})),
+    );
+    assert_eq!(
+        expired.pointer("/result/structuredContent/result/code"),
+        Some(&json!("push_cancelled")),
+        "MCP Push must consume inherited request deadline: {expired}"
+    );
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+    let cancelled = membrane_runtime::mcp_executor::with_inherited_push_control(
+        membrane_runtime::serve::push_request_control(
+            Deadline::at(std::time::Instant::now() + std::time::Duration::from_secs(30)),
+            cancelled,
+        ),
+        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"})),
+    );
+    assert_eq!(
+        cancelled.pointer("/result/structuredContent/result/code"),
+        Some(&json!("push_cancelled")),
+        "MCP Push must consume inherited request cancellation: {cancelled}"
+    );
     let probe = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"}));
     let token = data(&probe)["resolverToken"].as_str().unwrap();
     let original = "same exact event\r\n".repeat(500);

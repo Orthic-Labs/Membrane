@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use membrane_federation::deadline::{Deadline, SystemClock};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -135,6 +137,12 @@ fn fold_log(source: &str) -> Result<String, RecoveryError> {
 }
 
 pub fn prepare(store: &RecoveryStore, scope: &RecoveryScope, request: PrepareRequest) -> Result<PreparedDelivery, RecoveryError> {
+    prepare_with_control(store, scope, request,
+        Deadline::after(&SystemClock, std::time::Duration::from_secs(120)), &CancellationToken::new())
+}
+pub fn prepare_with_control(store: &RecoveryStore, scope: &RecoveryScope, request: PrepareRequest,
+    deadline: Deadline, cancellation: &CancellationToken) -> Result<PreparedDelivery, RecoveryError> {
+    check_control(deadline, cancellation)?;
     if request.text.len() > recovery::MAX_ARTIFACT_BYTES || request.max_bytes == 0
         || request.max_bytes > recovery::MAX_ARTIFACT_BYTES || request.protected_spans.len() > 4096 {
         return Err(RecoveryError::Limit);
@@ -169,11 +177,13 @@ pub fn prepare(store: &RecoveryStore, scope: &RecoveryScope, request: PrepareReq
             (text, "protected_lines_v1", "source_projection", count)
         }
     };
+    check_control(deadline, cancellation)?;
     if text == request.text || text.len() >= request.text.len() {
         return if original_bytes <= request.max_bytes { Ok(exact) } else { Err(RecoveryError::Limit) };
     }
     // Commit verified original before a reduced result can escape this owner.
-    let reference = store.publish(scope, request.text.as_bytes(), 7*24*60*60*1000, recovery::now_ms())?;
+    let reference = store.publish_with_control(scope, request.text.as_bytes(), 7*24*60*60*1000,
+        recovery::now_ms(), deadline, cancellation)?;
     let mut reduced = exact.clone();
     reduced.text = text;
     reduced.representation_kind = transform;
@@ -185,11 +195,16 @@ pub fn prepare(store: &RecoveryStore, scope: &RecoveryScope, request: PrepareReq
     reduced.receipt.segment_count = segments;
     reduced.receipt.representation_digest = format!("sha256:{}", recovery::digest(reduced.text.as_bytes()));
     let measured = measure(&mut reduced, Some(original_bytes))?;
+    check_control(deadline, cancellation)?;
     if measured < original_bytes && measured <= request.max_bytes {
         super::telemetry::record("prepare", original_bytes, measured, Some("status=reduced;scope=serialized_delivery"), Some(&reduced.receipt.source_digest));
         return Ok(reduced);
     }
     if original_bytes <= request.max_bytes { Ok(exact) } else { Err(RecoveryError::Limit) }
+}
+
+fn check_control(deadline: Deadline, cancellation: &CancellationToken) -> Result<(), RecoveryError> {
+    if cancellation.is_cancelled() || deadline.is_exhausted(&SystemClock) { Err(RecoveryError::Cancelled) } else { Ok(()) }
 }
 use std::path::Path;
 

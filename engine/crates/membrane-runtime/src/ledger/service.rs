@@ -197,7 +197,10 @@ impl LedgerService {
                     let task_id = arguments.get("taskId").and_then(Value::as_str)
                         .filter(|value| !value.trim().is_empty())
                         .ok_or("ledger_task_id_required")?;
-                    validate_task_grant(Some(grant_id), &caller, Some(task_id), Some(&caller.scope_id))?;
+                    let session_id = arguments.get("sessionId").and_then(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .ok_or("ledger_session_id_required")?;
+                    validate_task_grant(Some(grant_id), &caller, Some(task_id), Some(session_id))?;
                     let grant = crate::catalog::lookup_grant(&self.catalog, grant_id)
                         .map_err(|e|e.to_string())?.ok_or("ledger_scope_grant_missing")?;
                     if grant.read_paths.is_empty() { return Err("ledger_scope_ranges_unavailable".into()); }
@@ -270,6 +273,7 @@ impl LedgerService {
 
     pub(crate) fn read(&self, arguments: &Value, budget: &WorkBudget) -> Result<Value, String> {
         let caller = Caller::from_arguments(arguments)?;
+        let session_id = optional_string(arguments,"sessionId");
         let request = ResolveRequest {
             doc_id: optional_string(arguments,"docId"), node_id: optional_string(arguments,"nodeId"),
             source_ref: required_string(arguments,"sourceRef")?, anchor_id: required_string(arguments,"anchorId")?,
@@ -282,7 +286,7 @@ impl LedgerService {
         self.run(&caller, "source_read", budget, |db| {
             let ticket = arguments.get("ledgerTicket").and_then(Value::as_str);
             if request.node_id.is_some() || request.anchor_id.starts_with("ledger.node:") || request.source_ref.starts_with("ledger://") {
-                validate_ticket(db, &caller, ticket.ok_or("ledger_ticket_required")?, &request)?;
+                validate_ticket(db, &caller, ticket.ok_or("ledger_ticket_required")?, &request, session_id.as_deref())?;
             }
             if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
                 let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
@@ -317,7 +321,7 @@ impl LedgerService {
                 }
                 Err(error) => return Err(error.to_string()),
             };
-            if let Some(ticket) = ticket { validate_ticket(db, &caller, ticket, &request)?; }
+            if let Some(ticket) = ticket { validate_ticket(db, &caller, ticket, &request, session_id.as_deref())?; }
             if let Some(doc)=request.doc_id.as_deref().or_else(||request.source_ref.strip_prefix("ledger://doc/")) {
                 let path:String=db.lock().query_row("SELECT path FROM ledger_doc_artifacts WHERE repository_root=?1 AND doc_id=?2",
                     params![caller.root,doc],|r|r.get(0)).map_err(|_|"ledger_source_missing")?;
@@ -374,7 +378,7 @@ fn issue_ticket(db: &LedgerDb, caller: &Caller, hit: &query::LedgerHit, grant_id
         .map_err(|e| e.to_string())?;
     Ok(ticket)
 }
-fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &ResolveRequest) -> Result<(), String> {
+fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &ResolveRequest, session_id: Option<&str>) -> Result<(), String> {
     if ticket.len() != 78 || !ticket.starts_with("ledger-ticket:") { return Err("ledger_ticket_invalid".into()); }
     let (request_json, grant): (String,Option<String>) = db.lock().query_row(
         "SELECT request_json,grant_id FROM ledger_resolution_tickets WHERE ticket_hash=?1 AND repository_root=?2
@@ -387,7 +391,11 @@ fn validate_ticket(db: &LedgerDb, caller: &Caller, ticket: &str, request: &Resol
         || expected.expected_revision != request.expected_revision || expected.expected_span_hash != request.expected_span_hash
         || expected.ledger_generation != request.ledger_generation
     { return Err("ledger_ticket_binding_mismatch".into()); }
-    validate_task_grant(grant.as_deref(),caller,None,Some(&caller.scope_id))
+    if grant.is_some() {
+        validate_task_grant(grant.as_deref(), caller, None, Some(session_id.ok_or("ledger_session_id_required")?))
+    } else {
+        validate_task_grant(None, caller, None, None)
+    }
 }
 
 fn erase(db: &LedgerDb, catalog: &crate::catalog::ContextCatalog, caller: &Caller, arguments: &Value) -> Result<Value, String> {

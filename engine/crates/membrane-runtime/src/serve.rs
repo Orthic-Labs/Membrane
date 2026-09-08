@@ -36,10 +36,24 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use membrane_federation::deadline::{Deadline, SystemClock};
+use tokio_util::sync::CancellationToken;
 use tower_http::timeout::TimeoutLayer;
 
 const MAX_BODY_BYTES: usize = 1 << 20;
 const MAX_PUSH_BODY_BYTES: usize = 8 << 20;
+
+/// Existing request-owned control passed into Push by the transport integrator.
+/// Serve owns request lifetime; Push only observes this control.
+#[derive(Clone)]
+pub struct PushRequestControl {
+    pub deadline: Deadline,
+    pub cancellation: CancellationToken,
+}
+
+pub fn push_request_control(deadline: Deadline, cancellation: CancellationToken) -> PushRequestControl {
+    PushRequestControl { deadline, cancellation }
+}
 
 fn body_limit_for_path(path: &str) -> usize {
     if path == "/push/prepare" { MAX_PUSH_BODY_BYTES } else { MAX_BODY_BYTES }
@@ -891,10 +905,12 @@ struct WorkerLifecycle {
 
 struct WorkerWaiterGuard {
     lifecycle: Arc<WorkerLifecycle>,
+    cancellation: CancellationToken,
 }
 
 impl Drop for WorkerWaiterGuard {
     fn drop(&mut self) {
+        self.cancellation.cancel();
         if self
             .lifecycle
             .phase
@@ -1903,6 +1919,13 @@ async fn dispatch(
         return reject(StatusCode::FORBIDDEN, "cross-origin request rejected");
     }
     let path = uri.path();
+    // Start request-owned Push control at dispatch entry, before body parsing
+    // or worker admission, so queue time consumes inherited request budget.
+    let cancellation = CancellationToken::new();
+    let push_control = PushRequestControl {
+        deadline: Deadline::after(&SystemClock, REQUEST_TIMEOUT),
+        cancellation: cancellation.clone(),
+    };
     if method == Method::GET && path == "/snapshot" {
         if !membrane_capability_authorized(&headers) {
             return reject(
@@ -2284,6 +2307,7 @@ async fn dispatch(
     });
     let _waiter_guard = WorkerWaiterGuard {
         lifecycle: Arc::clone(&lifecycle),
+        cancellation,
     };
     let accounting_store = Arc::clone(&state.store);
     let accounting_path = path.to_string();
@@ -2306,6 +2330,7 @@ async fn dispatch(
             &method,
             &url,
             &body,
+            Some(&push_control),
         );
         if let Some(lease) = idempotency_lease {
             lease.complete(result.0, &result.1);
@@ -2642,7 +2667,7 @@ pub fn route_for_tests_with_startup_claim(
     body: &str,
 ) -> (u16, String) {
     match crate::context_telemetry::ContextIngestLease::from_startup(identity, claim) {
-        Ok(lease) => route_with_context_ingest_lease(store, Some(&lease), method, url, body),
+        Ok(lease) => route_with_context_ingest_lease(store, Some(&lease), method, url, body, None),
         Err(_) => (
             503,
             serde_json::json!({ "error": "active telemetry lease unavailable" }).to_string(),
@@ -2671,6 +2696,7 @@ pub fn route_with_catalog_for_tests(
         method,
         url,
         body,
+        None,
     )
 }
 
@@ -2699,6 +2725,7 @@ pub fn route_with_catalog_and_metrics_for_tests(
         method,
         url,
         body,
+        None,
     )
 }
 
@@ -2878,7 +2905,7 @@ fn record_external_or_500(
 }
 
 fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, String) {
-    route_with_context_ingest_lease(store, None, method, url, body)
+    route_with_context_ingest_lease(store, None, method, url, body, None)
 }
 
 /// Closed SDK operation selection delegates to the same canonical handlers as HTTP.
@@ -3116,6 +3143,7 @@ fn route_with_context_ingest_lease(
     method: &str,
     url: &str,
     body: &str,
+    push_control: Option<&PushRequestControl>,
 ) -> (u16, String) {
     let path = route_path(url);
     if body.len() > MAX_BODY_BYTES {
@@ -3193,10 +3221,26 @@ fn route_with_context_ingest_lease(
         };
     }
     if method == "POST" && matches!(path, "/expand" | "/push/resolve") {
-        return crate::push::api::http_response("membrane_push_resolve", body);
+        return match push_control {
+            Some(control) => crate::push::api::http_response_with_control(
+                "membrane_push_resolve",
+                body,
+                control.deadline,
+                &control.cancellation,
+            ),
+            None => crate::push::api::http_response("membrane_push_resolve", body),
+        };
     }
     if method == "POST" && path == "/push/prepare" {
-        return crate::push::api::http_response("membrane_push_prepare", body);
+        return match push_control {
+            Some(control) => crate::push::api::http_response_with_control(
+                "membrane_push_prepare",
+                body,
+                control.deadline,
+                &control.cancellation,
+            ),
+            None => crate::push::api::http_response("membrane_push_prepare", body),
+        };
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(store, body);
@@ -5019,6 +5063,7 @@ fn route_full(
     method: &str,
     url: &str,
     body: &str,
+    push_control: Option<&PushRequestControl>,
 ) -> (u16, String) {
     let path = route_path(url);
     let body_limit = body_limit_for_path(path);
@@ -5051,7 +5096,7 @@ fn route_full(
             body,
         );
     }
-    route_with_context_ingest_lease(store, context_ingest_lease, method, url, body)
+    route_with_context_ingest_lease(store, context_ingest_lease, method, url, body, push_control)
 }
 
 fn health_response(

@@ -829,7 +829,7 @@ fn native_request_with_h8(
     request
 }
 
-fn native_response_to_ccs(
+pub fn native_response_to_ccs(
     response: &membrane_protocol::FederationResponseV1,
     request: &membrane_protocol::FederationRequestV1,
     freshness: &membrane_protocol::FreshnessSnapshotV1,
@@ -872,7 +872,7 @@ fn native_response_to_ccs(
         .iter()
         .enumerate()
         .map(|(index, omission)| {
-            serde_json::json!({
+            let mut value = serde_json::json!({
                 // A provider-level omission carries no candidate id, so this
                 // read `omission:0`, `omission:1` and so on — which says a
                 // provider was dropped but never which one. The provider is
@@ -882,7 +882,14 @@ fn native_response_to_ccs(
                 }),
                 "layer": Value::Null,
                 "reason": omission.reason.as_str(),
-            })
+            });
+            if let Some(detail_id) = omission.detail_id.as_ref() {
+                value["detailId"] = Value::String(detail_id.clone());
+            }
+            if let Some(stage) = omission.stage.as_ref() {
+                value["stage"] = Value::String(stage.clone());
+            }
+            value
         })
         .collect::<Vec<_>>();
     serde_json::json!({

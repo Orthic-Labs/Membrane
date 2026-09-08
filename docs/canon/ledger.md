@@ -2,7 +2,7 @@
 
 Normalized from pre-standardization worktree canon inventory based on `c6cfbca96e5be1d0f8de8cb9614d6158f57cc948`. Required delivery boundary: `RELEASED`.
 
-**Revision:** 2026-09-05 implementation reconciliation. Audit baseline `75c257ad711d19ffce69258d132a45dbffa9b4ac`; implementation branch `ledger-end-to-end` at `62243a9c099b53e5ef1694739aec8b9ca277b055`. **Adoption status:** source implementation and canon reconciliation are pushed on the branch; managed source/type checks pass, while release qualification, installed-host verification and `RELEASED` delivery remain pending.
+**Revision:** 2026-09-08 post-merge reconciliation. Audit baseline `75c257ad711d19ffce69258d132a45dbffa9b4ac`; merged main baseline `34a3c0ab2018bd5f95a28eeec8818466355828d8` (Ledger PR #15). **Adoption status:** source implementation and canon reconciliation are merged on main; managed source/type checks pass, while release qualification, installed-host verification and `RELEASED` delivery remain pending.
 
 Only committed capability rows count. Implementation, verification, qualification, delivery & evidence remain independent; closure is derived. COMMITTED in Scope means selected product scope in this proposed revision, not implemented code or a Git commit.
 

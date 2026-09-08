@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "2e8e57bbb1e368332b37466080f1e925f2f4726e",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptDigest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc",
+  "modelRouting": {
+    "modelTier": "MID",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Two bounded direct Rust ports with disjoint files; Blueprint lead retains cross-slice judgment and exports."
+  },
+  "objective": "Add Blueprint V1 contracts, repository/worktree identity, and schema-v20 SQLite foundation modules by direct port from existing JavaScript authority; this bounded additive slice does not replace the legacy supervisor or claim native Blueprint closure.",
+  "authority": [
+    "AGENTS.md",
+    "blueprint/AGENTS.md",
+    "docs/canon/blueprint.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+    "audit/remediation/reconciliation/parity-phase2-inventory.md",
+    "audit/remediation/reconciliation/native-seam-inventory.md",
+    "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+    "blueprint/schemas/catalog.json",
+    "blueprint/schemas/scope-grant-v1.schema.json",
+    "blueprint/schemas/repository-manifest-v1.schema.json",
+    "blueprint/schemas/freshness-receipt-v1.schema.json",
+    "blueprint/src/graph/store-sqlite.mjs",
+    "blueprint/src/graph/generation-identity.mjs"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-blueprint/src/contracts.rs",
+      "engine/crates/membrane-blueprint/src/identity.rs",
+      "engine/crates/membrane-blueprint/src/migrations.rs",
+      "engine/crates/membrane-blueprint/src/store.rs",
+      "engine/crates/membrane-blueprint/src/lib.rs",
+      "engine/crates/membrane-blueprint/tests/contracts.rs",
+      "engine/crates/membrane-blueprint/tests/identity.rs",
+      "engine/crates/membrane-blueprint/tests/schema_v20.rs",
+      "engine/crates/membrane-blueprint/tests/migrations.rs",
+      "engine/crates/membrane-blueprint/tests/foundations.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-blueprint/src/contracts.rs","owner":"contracts-identity","operation":"add","lane":"contracts-identity","finalCheck":"focused contracts test"},
+      {"path":"engine/crates/membrane-blueprint/src/identity.rs","owner":"contracts-identity","operation":"add","lane":"contracts-identity","finalCheck":"focused identity test"},
+      {"path":"engine/crates/membrane-blueprint/tests/contracts.rs","owner":"contracts-identity","operation":"add","lane":"contracts-identity","finalCheck":"focused contracts test"},
+      {"path":"engine/crates/membrane-blueprint/tests/identity.rs","owner":"contracts-identity","operation":"add","lane":"contracts-identity","finalCheck":"focused identity test"},
+      {"path":"engine/crates/membrane-blueprint/src/migrations.rs","owner":"store-migrations","operation":"add","lane":"store-migrations","finalCheck":"focused migrations/schema test"},
+      {"path":"engine/crates/membrane-blueprint/src/store.rs","owner":"store-migrations","operation":"add","lane":"store-migrations","finalCheck":"focused migrations/schema test"},
+      {"path":"engine/crates/membrane-blueprint/tests/schema_v20.rs","owner":"store-migrations","operation":"add","lane":"store-migrations","finalCheck":"focused schema-v20 test"},
+      {"path":"engine/crates/membrane-blueprint/tests/migrations.rs","owner":"store-migrations","operation":"add","lane":"store-migrations","finalCheck":"focused migration test"},
+      {"path":"engine/crates/membrane-blueprint/src/lib.rs","owner":"blueprint-domain-lead","operation":"edit-module-exports-only","lane":"lead-exports","finalCheck":"full membrane-blueprint crate test"},
+      {"path":"engine/crates/membrane-blueprint/tests/foundations.rs","owner":"blueprint-domain-lead","operation":"add","lane":"lead-exports","finalCheck":"public foundation composition test"}
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "Blueprint JavaScript contracts, identity, and blueprint/src/graph/store-sqlite.mjs schema-v20",
+    "sourceInventory": [
+      "blueprint/schemas/catalog.json",
+      "blueprint/schemas/*.schema.json",
+      "blueprint/src/graph/generation-identity.mjs",
+      "blueprint/src/graph/store-sqlite.mjs",
+      "blueprint/tests/store-migrations.test.mjs",
+      "blueprint/tests/store-sqlite.test.mjs",
+      "blueprint/tests/repo-identity.test.mjs",
+      "blueprint/fixtures/stores/build-stores.mjs"
+    ],
+    "directPortFirst": true,
+    "targetLanguage": "Rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo","tests","builds","generators","installs","commits","pushes","merges","expensive-checks"],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return to owning lane or redesign packet before execution"
+  },
+  "dispatches": [
+    {"id":"A","dependsOn":[],"lanes":["contracts-identity","store-migrations"],"completionChecks":["before dispatch, Blueprint lead verifies every worker-owned path is absent or clean", "before dispatch, Blueprint lead verifies integrator-owned Cargo.toml supplies serde, thiserror, and rusqlite 0.40.2 bundled", "workers report exact changed paths and patch digests; no worker commands beyond read-only inspection"]},
+    {"id":"B","dependsOn":["A"],"lanes":["lead-exports"],"completionChecks":["Blueprint lead source-reviews both lane APIs, exports only complete modules, and adds public composition test", "integration owner runs focused suites and full membrane-blueprint crate checkpoint"]}
+  ],
+  "workers": [
+    {
+      "id":"contracts-identity",
+      "dispatch":"A",
+      "executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","contract-preservation"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"contracts-identity-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/tests/contracts.rs","engine/crates/membrane-blueprint/tests/identity.rs"],
+      "read":["blueprint/schemas/catalog.json","blueprint/schemas/scope-grant-v1.schema.json","blueprint/schemas/repository-manifest-v1.schema.json","blueprint/schemas/repository-status-v1.schema.json","blueprint/schemas/freshness-receipt-v1.schema.json","blueprint/src/graph/generation-identity.mjs","blueprint/tests/repo-identity.test.mjs"],
+      "forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/Cargo.lock","engine/crates/membrane-blueprint/src/lib.rs"],
+      "checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test contracts --test identity; contracts suite includes RepositoryStatusV1 required fields and typed state behavior"],
+      "dependencies":[]
+    },
+    {
+      "id":"store-migrations",
+      "dispatch":"A",
+      "executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","sqlite-schema-migration"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"schema-v20-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist":["engine/crates/membrane-blueprint/src/migrations.rs","engine/crates/membrane-blueprint/src/store.rs","engine/crates/membrane-blueprint/tests/schema_v20.rs","engine/crates/membrane-blueprint/tests/migrations.rs"],
+      "read":["blueprint/src/graph/store-sqlite.mjs","blueprint/tests/store-migrations.test.mjs","blueprint/tests/store-sqlite.test.mjs","blueprint/fixtures/stores/build-stores.mjs","blueprint/schemas/document-claim-v1.schema.json","blueprint/schemas/claim-verdict-v1.schema.json"],
+      "forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/Cargo.lock","engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs"],
+      "checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test schema_v20 --test migrations"],
+      "dependencies":[]
+    },
+    {
+      "id":"lead-exports",
+      "dispatch":"B",
+      "executorRequirement":{"semanticRequirement":"required","capabilities":["rust-api-integration"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"module-export-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist":["engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/tests/foundations.rs"],
+      "read":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/src/migrations.rs","engine/crates/membrane-blueprint/src/store.rs"],
+      "forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/Cargo.lock"],
+      "checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test foundations, then full -p membrane-blueprint; foundations proves exported contracts + identity + schema/store composition using canonical fixture semantics without duplicating private suites"],
+      "dependencies":[]
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": ["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions":["worker-owned allowlist path is already dirty by another owner","existing authority is internally contradictory","integrator-owned Cargo.toml does not supply required serde, thiserror, and rusqlite dependencies"],
+    "returnFields":["changedPaths","checks","blockers","baselineRevision","patchDigest"]
+  }
+}

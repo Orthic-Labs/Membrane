@@ -80,6 +80,11 @@ pub struct OmissionV1 {
     #[serde(default)]
     pub layer: Option<u8>,
     pub reason: String,
+    /// Content-free provider attribution retained across native Pull conversion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -923,6 +928,8 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             id: candidate.id.clone(),
             layer: Some(candidate.layer),
             reason: reason.clone(),
+            detail_id: None,
+            stage: None,
         })
     }));
 

@@ -246,8 +246,7 @@ pub struct CanonicalRelationEdge {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelationAdmission {
     pub relation_id: String,
-    /// False when the edge was stored but its target does not resolve; such
-    /// an edge is diagnostic only and never traverses.
+    /// Retained for wire compatibility; canonical admissions always resolve.
     pub target_resolved: bool,
 }
 
@@ -260,6 +259,8 @@ pub enum RelationRejection {
     MissingProvenance,
     /// The source record does not resolve; an edge from nowhere is not evidence.
     UnresolvedSource,
+    /// The target record does not resolve; dangling edges are never durable evidence.
+    UnresolvedTarget,
     Storage(String),
 }
 
@@ -269,6 +270,7 @@ impl RelationRejection {
             Self::NonCanonicalRelation => "non_canonical_relation",
             Self::MissingProvenance => "missing_provenance",
             Self::UnresolvedSource => "unresolved_source",
+            Self::UnresolvedTarget => "unresolved_target",
             Self::Storage(_) => "relation_storage_error",
         }
     }
@@ -2382,11 +2384,8 @@ impl MemDb {
 
     /// CTX-017: admit one canonical evidence relation.
     ///
-    /// Admission requires a closed-vocabulary relation, a resolved *source*
-    /// (an edge from nowhere is meaningless) and non-empty provenance. The
-    /// **target is not required to resolve**: an edge to a forgotten,
-    /// quarantined or not-yet-ingested record is stored and reported as a
-    /// diagnostic, and traversal excludes it. Re-recording the same
+    /// Admission requires a closed-vocabulary relation, resolved endpoints,
+    /// and non-empty provenance. Re-recording the same
     /// (source, target, relation) refreshes provenance rather than duplicating.
     pub fn record_canonical_relation(
         &self,
@@ -2445,6 +2444,9 @@ impl MemDb {
                 |row| row.get(0),
             )
             .map_err(|error| RelationRejection::Storage(error.to_string()))?;
+        if !target_resolved {
+            return Err(RelationRejection::UnresolvedTarget);
+        }
         let relation_id = format!(
             "rel.{}",
             hex::encode(<sha2::Sha256 as sha2::Digest>::digest(
@@ -4770,20 +4772,16 @@ mod tests {
     }
 
     #[test]
-    fn dangling_target_is_diagnostic_and_never_traversable() {
+    fn dangling_target_is_rejected_before_durable_mutation() {
         let db = MemDb::open_in_memory();
         seed_memory(&db, "global/a", "active", None);
-        let admission = db
-            .record_canonical_relation(&edge("global/a", "global/missing", "derived_from"))
-            .expect("stored as diagnostic");
-        assert!(!admission.target_resolved);
+        assert_eq!(
+            db.record_canonical_relation(&edge("global/a", "global/missing", "derived_from")),
+            Err(RelationRejection::UnresolvedTarget)
+        );
 
         let diagnostic = db.canonical_relations_from("global/a").unwrap();
-        assert_eq!(diagnostic.len(), 1, "visible diagnostically");
-        assert_eq!(
-            diagnostic[0].diagnostic,
-            Some(RelationDiagnostic::DanglingTarget)
-        );
+        assert!(diagnostic.is_empty(), "rejected before durable mutation");
         assert!(db
             .traversable_relations_from("global/a")
             .unwrap()

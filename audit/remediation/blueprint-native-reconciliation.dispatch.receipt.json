@@ -1,0 +1,47 @@
+{
+  "schema_version": 4,
+  "sha256": "8ab6486fa2c3086e9ac9f49d69aa876af9710d2d0f4021b657b24a81f9f990ca",
+  "referenced_artifacts": [
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "blueprint/AGENTS.md",
+      "sha256": "sha256:4935eb7859f2df34bf903e25fb33166c7b88b17200155985819e8788c48b7097"
+    },
+    {
+      "path": "docs/architecture/membrane.md",
+      "sha256": "sha256:59c4b6232e916bef74d2031278e87866515fbcf6dd5ebf6986e9b3383b873c00"
+    },
+    {
+      "path": "docs/architecture/subsystems/blueprint.md",
+      "sha256": "sha256:598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656"
+    },
+    {
+      "path": "docs/architecture/execution-lifecycle-boundary.md",
+      "sha256": "sha256:5970c44b134681ce57dfb62d63d1b46f09f661091b0c4fd6b65b0476cf2d1033"
+    },
+    {
+      "path": "docs/architecture/integrations/coderight.md",
+      "sha256": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7"
+    },
+    {
+      "path": "audit/remediation/README.md",
+      "sha256": "sha256:c38a23403340c5eb29cd40b3c1b266b6d9cd738d356bf51fd8ea74118e8970fa"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "8ab6486fa2c3086e9ac9f49d69aa876af9710d2d0f4021b657b24a81f9f990ca",
+    "source_revision": "2e8e57bbb1e368332b37466080f1e925f2f4726e",
+    "prompt_digest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+  }
+}

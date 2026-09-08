@@ -519,7 +519,7 @@ function pendingMarkdown(parsed, inventory) {
     for (const row of rows) lines.push(`| [${row.ID}](../canon/${canon.file}) | ${row.Competitive} | ${safeCell(row.Action)} | ${safeCell(`implementation=${row.Implementation}; verification=${row.Verification}; qualification=${row.Qualification}; delivery=${row.Delivery}/${canon.boundary}; evidence=${row.Evidence}`)} |`);
     lines.push("");
   }
-  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
+  lines.push("## Preserved supporting specifications", "", "Supporting files retain detail; only this generated file indexes pending state.", "", "| Specification | Canon target |", "|---|---|", "| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All 340 committed rows across `MEM`, `PUL`, `PSH`, `CTX`, `BPT`, `LDG`, & `ADP`; lifecycle qualification tracked separately |", "| [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |", "| [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |", "| [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |", "| [Membrane brand identity](design/membrane-brand-identity.md) | `MEM-D004` |", "| [Hub visual reference](design/hub/hub-mockup.html) | `MEM-D005` |", "", "## Unclassified preserved work", "", inventory.unclassified.length ? `${inventory.unclassified.length} rows require classification.` : "None.", "");
   return lines.join("\n");
 }
 function atomReadmeMarkdown(parsed, inventory) {
@@ -537,7 +537,7 @@ function atomReadmeMarkdown(parsed, inventory) {
   return lines.join("\n");
 }
 function validatePendingSupport(markdown) {
-  const required = ["capabilities/adapt/harness-efficiency.md", "capabilities/blueprint/findings-lane.md", "experiments/semantic-context-advisor.md", "design/membrane-brand-identity.md", "design/hub/hub-mockup.html"];
+  const required = ["MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md", "capabilities/adapt/harness-efficiency.md", "capabilities/blueprint/findings-lane.md", "experiments/semantic-context-advisor.md", "design/membrane-brand-identity.md", "design/hub/hub-mockup.html"];
   for (const relative of required) {
     if (!existsSync(path.join(root, "docs", "pending", relative))) throw new Error(`missing supporting specification ${relative}`);
     if (!markdown.includes(`](${relative})`)) throw new Error(`pending index omits ${relative}`);

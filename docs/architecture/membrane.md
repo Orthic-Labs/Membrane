@@ -2042,7 +2042,8 @@ This map describes current implementation ownership. Python/Node production path
 | Area | Current / target ownership |
 |---|---|
 | `engine/crates/membrane-protocol/src/types.rs` | public V1 protocol source of truth; version only deliberately |
-| `blueprint/schemas/**` | Blueprint wire-contract source of truth; consumer bindings are generated/validated projections |
+| `schemas/context-candidate-set.v1.schema.json` | Membrane CCS wire-contract source; registry & Rust assets are generated/validated projections |
+| `blueprint/schemas/**` | legacy Blueprint-local contracts retained only for migration-input compatibility |
 | `blueprint/src/sdk/**` | Blueprint SDK projection; must stay schema-equivalent |
 | `engine/crates/cortex-core/src/planner.rs` | current admission control; converge toward final planner policy without parallel planner |
 | `engine/crates/membrane-core/` | global budget/reconciliation/final policy primitives |

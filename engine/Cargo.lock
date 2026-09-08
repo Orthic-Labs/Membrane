@@ -2471,9 +2471,12 @@ name = "membrane-blueprint"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "rusqlite",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -2482,6 +2485,7 @@ version = "0.1.0"
 dependencies = [
  "membrane-protocol",
  "serde_json",
+ "thiserror 2.0.20",
  "tokio-util",
 ]
 

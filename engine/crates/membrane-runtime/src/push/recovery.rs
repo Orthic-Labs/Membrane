@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
+use membrane_federation::deadline::{Deadline, SystemClock};
 
 pub const MAX_ARTIFACT_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_RESTORE_BYTES: usize = 256 * 1024;
@@ -282,13 +284,21 @@ impl RecoveryStore {
         Err(RecoveryError::Unavailable)
     }
     pub fn publish(&self, scope: &RecoveryScope, bytes: &[u8], ttl_ms: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
+        self.publish_with_control(scope, bytes, ttl_ms, now,
+            Deadline::after(&SystemClock, Duration::from_secs(120)), &CancellationToken::new())
+    }
+    pub fn publish_with_control(&self, scope: &RecoveryScope, bytes: &[u8], ttl_ms: u64, now: u64,
+        deadline: Deadline, cancellation: &CancellationToken) -> Result<RecoveryReference, RecoveryError> {
+        check_control(deadline, cancellation)?;
         if bytes.len() > MAX_ARTIFACT_BYTES || ttl_ms == 0 || ttl_ms > MAX_TTL_MS || now > i64::MAX as u64 - ttl_ms {
             return Err(RecoveryError::Limit);
         }
         let source_hash = digest(bytes);
         let mut connection = self.connection()?;
+        check_control(deadline, cancellation)?;
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         Self::compact(&tx, now)?;
+        check_control(deadline, cancellation)?;
         let existing: Option<(String, Vec<u8>, usize, u64)> = tx.query_row(
             "SELECT handle_digest,content,size,expires FROM push_originals WHERE scope=?1 AND digest=?2 AND invalidated=0",
             params![scope.id, source_hash], |r| Ok((r.get(0)?, r.get(1)?, sql_size(r,2)?, sql_u64(r,3)?)),
@@ -318,10 +328,17 @@ impl RecoveryStore {
         ).map_err(db_error)?;
         if retained != bytes || digest(&retained) != source_hash { return Err(RecoveryError::Corrupt); }
         let reference = Self::reference(&tx, &handle_hash, &source_hash, bytes.len(), expires, now)?;
+        check_control(deadline, cancellation)?;
         tx.commit().map_err(db_error)?;
         Ok(reference)
     }
     pub fn resolve(&self, scope: &RecoveryScope, handle: &str, selector: &Selector, max_bytes: usize, now: u64) -> Result<ResolvedArtifact, RecoveryError> {
+        self.resolve_with_control(scope, handle, selector, max_bytes, now,
+            Deadline::after(&SystemClock, Duration::from_secs(120)), &CancellationToken::new())
+    }
+    pub fn resolve_with_control(&self, scope: &RecoveryScope, handle: &str, selector: &Selector, max_bytes: usize, now: u64,
+        deadline: Deadline, cancellation: &CancellationToken) -> Result<ResolvedArtifact, RecoveryError> {
+        check_control(deadline, cancellation)?;
         let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
         if max_bytes == 0 || max_bytes > MAX_RESTORE_BYTES { return Err(RecoveryError::Limit); }
         let connection = self.connection()?;
@@ -339,8 +356,10 @@ impl RecoveryStore {
             "SELECT content FROM push_originals WHERE scope=?1 AND handle_digest=?2",
             params![scope.id, handle_hash], |r| r.get(0),
         ).map_err(db_error)?;
+        check_control(deadline, cancellation)?;
         if digest(&bytes) != source_hash { return Err(RecoveryError::Corrupt); }
         let (start, end) = select_bytes(&bytes, selector)?;
+        check_control(deadline, cancellation)?;
         if end - start > max_bytes { return Err(RecoveryError::Limit); }
         let selected = &bytes[start..end];
         let (content_encoding, content) = match std::str::from_utf8(selected) {
@@ -390,6 +409,10 @@ impl RecoveryStore {
         tx.commit().map_err(db_error)?;
         Ok(())
     }
+}
+
+fn check_control(deadline: Deadline, cancellation: &CancellationToken) -> Result<(), RecoveryError> {
+    if cancellation.is_cancelled() || deadline.is_exhausted(&SystemClock) { Err(RecoveryError::Cancelled) } else { Ok(()) }
 }
 
 pub fn select_bytes(bytes: &[u8], selector: &Selector) -> Result<(usize, usize), RecoveryError> {

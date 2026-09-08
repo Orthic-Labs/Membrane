@@ -11,7 +11,7 @@ narrative overview; this file carries the source-derived facts.
 
 ## Public surface
 
-- **MCP server** — 23 tools over stdio:
+- **MCP server** — 24 tools over stdio:
 
 | `membrane_adapt_inspect` |
 | `membrane_blueprint` |
@@ -30,6 +30,7 @@ narrative overview; this file carries the source-derived facts.
 | `membrane_knowledge_review` |
 | `membrane_ledger` |
 | `membrane_memory` |
+| `membrane_memory_read` |
 | `membrane_push_prepare` |
 | `membrane_push_resolve` |
 | `membrane_scratchpad` |

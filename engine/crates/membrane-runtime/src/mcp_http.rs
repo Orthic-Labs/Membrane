@@ -30,6 +30,9 @@ use membrane_mcp::McpServer;
 use serde_json::Value;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
+use membrane_federation::deadline::{Deadline, SystemClock};
+use tokio_util::sync::CancellationToken;
 
 /// The single route this transport exposes. Streamable HTTP MCP is one POST
 /// endpoint carrying line-oriented JSON-RPC, mirroring `serve_stdio`'s framing
@@ -200,9 +203,21 @@ async fn handle_mcp_request(
     // so it inherits no panic boundary of its own. Convert a panic into a
     // JSON-RPC internal error, and let the default hook print it to stderr
     // where the daemon log now keeps it.
+    let cancellation = CancellationToken::new();
+    let push_control = crate::serve::push_request_control(
+        Deadline::after(
+            &SystemClock,
+            Duration::from_millis(state.policy.max_deadline_ms),
+        ),
+        cancellation.clone(),
+    );
+    let cancellation_guard = cancellation.drop_guard();
     let dispatched = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        state.server.dispatch(&payload)
+        crate::mcp_executor::with_inherited_push_control(push_control, || {
+            state.server.dispatch(&payload)
+        })
     }));
+    drop(cancellation_guard);
     match dispatched {
         Ok(Some(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
         Ok(None) => StatusCode::ACCEPTED.into_response(),

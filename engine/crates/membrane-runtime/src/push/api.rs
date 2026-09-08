@@ -1,15 +1,45 @@
 //! Same operation owner for native MCP and authenticated resident HTTP.
 use serde_json::{json, Value};
 use super::{delivery, recovery::{self, RecoveryError, RecoveryScope, RecoveryStore, Selector}};
+use membrane_federation::deadline::{Deadline, SystemClock};
+use tokio_util::sync::CancellationToken;
+
+const MAX_PUSH_TEXT_BYTES: usize = 1 * 1024 * 1024;
 
 fn failure(operation: &str, code: &str) -> Value {
     json!({"schemaVersion":1,"operation":operation,"errorVersion":1,
         "result":{"kind":"error","code":code,"message":code,"retryable":false}})
 }
 pub fn execute(operation: &str, arguments: &Value) -> Value {
+    execute_with_control(operation, arguments,
+        Deadline::after(&SystemClock, std::time::Duration::from_secs(120)),
+        &CancellationToken::new())
+}
+
+pub fn execute_with_control(operation: &str, arguments: &Value,
+    deadline: Deadline, cancellation: &CancellationToken) -> Value {
+    let ceiling = if arguments.get("remainingContextCeiling").is_some() {
+        let request_session = arguments.pointer("/sessionId").and_then(Value::as_str).filter(|id| !id.trim().is_empty());
+        let task_id = arguments.pointer("/taskId").and_then(Value::as_str).filter(|id| !id.trim().is_empty());
+        match (request_session, task_id) {
+            (Some(request_session), Some(task_id)) => crate::push::selection::parse_request_time_h8(arguments, request_session, task_id).ok(),
+            _ => None,
+        }
+    } else { None };
     let result = (|| -> Result<Value, String> {
-        if serde_json::to_vec(arguments).map_err(|_| "push_invalid_request")?.len() > 1024 * 1024 {
+        if cancellation.is_cancelled() || deadline.is_exhausted(&SystemClock) {
+            return Err(RecoveryError::Cancelled.to_string());
+        }
+        if serde_json::to_vec(arguments).map_err(|_| "push_invalid_request")?.len()
+            > membrane_protocol::explicit::EXPLICIT_MAX_BYTES
+        {
             return Err("push_resource_limit".into());
+        }
+        if operation == "membrane_push_prepare"
+            && arguments.pointer("/request/text").and_then(Value::as_str)
+                .is_some_and(|text| text.len() > MAX_PUSH_TEXT_BYTES)
+        {
+            return Err("push_input_limit".into());
         }
         let caller = arguments.get("caller").ok_or("caller_required")?;
         let root = caller.get("root").and_then(Value::as_str).ok_or("caller_required")?;
@@ -18,6 +48,7 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
         if arguments.get("repository").and_then(Value::as_str) != Some(repository) {
             return Err("caller_scope_binding_denied".into());
         }
+        if arguments.get("remainingContextCeiling").is_some() && ceiling.is_none() { return Err("push_h8_invalid".into()); }
         crate::authorization::authorize(&crate::authorization::AuthorizationRequest {
             caller_root:root, caller_repository_id:repository, caller_scope_id:session,
             caller_scope_descriptor:caller.get("scopeDescriptor"), target_repository:repository,
@@ -29,10 +60,13 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
             "membrane_push_prepare" => {
                 let request = serde_json::from_value(arguments.get("request").cloned().ok_or("push_request_required")?)
                     .map_err(|_| "push_invalid_request")?;
-                serde_json::to_value(delivery::prepare(&store, &scope, request).map_err(|e| e.to_string())?).map_err(|_| "push_serialization_failed")?
+                serde_json::to_value(delivery::prepare_with_control(&store, &scope, request, deadline, cancellation).map_err(|e| e.to_string())?).map_err(|_| "push_serialization_failed")?
             }
             "membrane_push_resolve" => match arguments.get("operation").and_then(Value::as_str).unwrap_or("resolve") {
-                "probe" => delivery::resolver_probe(&store, &scope).map_err(|e| e.to_string())?,
+                "probe" => {
+                    if cancellation.is_cancelled() || deadline.is_exhausted(&SystemClock) { return Err(RecoveryError::Cancelled.to_string()); }
+                    delivery::resolver_probe(&store, &scope).map_err(|e| e.to_string())?
+                },
                 "resolve" => {
                     let handle = arguments.get("handle").or_else(|| arguments.get("anchor")).and_then(Value::as_str).ok_or("push_handle_required")?;
                     let selector: Selector = match arguments.get("selector") {
@@ -43,7 +77,7 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
                         Some(value) => value.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or("push_invalid_limit")?,
                         None => 16 * 1024,
                     };
-                    serde_json::to_value(store.resolve(&scope, handle, &selector, max, recovery::now_ms()).map_err(|e| e.to_string())?).map_err(|_| "push_serialization_failed")?
+                    serde_json::to_value(store.resolve_with_control(&scope, handle, &selector, max, recovery::now_ms(), deadline, cancellation).map_err(|e| e.to_string())?).map_err(|_| "push_serialization_failed")?
                 }
                 _ => return Err("push_invalid_operation".into()),
             },
@@ -59,7 +93,12 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
     match result {
         Ok(data) => {
             let envelope = json!({"schemaVersion":1,"operation":operation,"errorVersion":1,"result":{"kind":"success","data":data}});
-            if membrane_mcp::tool_result(envelope.clone()).to_string().len() > 120 * 1024 {
+            if let Some(ceiling) = ceiling {
+                match crate::push::egress::fit_native_response(envelope, &ceiling) {
+                    Ok(fitted) => fitted,
+                    Err(error) => failure(operation, &error.to_string()),
+                }
+            } else if membrane_mcp::tool_result(envelope.clone()).to_string().len() > 120 * 1024 {
                 failure(operation,"push_resource_limit")
             } else { envelope }
         },
@@ -67,10 +106,16 @@ pub fn execute(operation: &str, arguments: &Value) -> Value {
     }
 }
 pub fn http_response(operation: &str, body: &str) -> (u16, String) {
+    http_response_with_control(operation, body,
+        Deadline::after(&SystemClock, std::time::Duration::from_secs(120)),
+        &CancellationToken::new())
+}
+pub fn http_response_with_control(operation: &str, body: &str,
+    deadline: Deadline, cancellation: &CancellationToken) -> (u16, String) {
     let args: Value = match serde_json::from_str(body) {
         Ok(value) => value, Err(_) => return (400, json!({"error":"push_invalid_request"}).to_string()),
     };
-    let result = execute(operation, &args);
+    let result = execute_with_control(operation, &args, deadline, cancellation);
     let status = if result.pointer("/result/kind").and_then(Value::as_str) == Some("success") { 200 }
     else {
         match result.pointer("/result/code").and_then(Value::as_str).unwrap_or("") {

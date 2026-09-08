@@ -158,6 +158,9 @@
     "omission": {
       "additionalProperties": false,
       "properties": {
+        "detailId": {
+          "type": "string"
+        },
         "id": {
           "minLength": 1,
           "type": "string"
@@ -171,6 +174,9 @@
           ]
         },
         "reason": {
+          "type": "string"
+        },
+        "stage": {
           "type": "string"
         }
       },
@@ -210,7 +216,7 @@
   "$id": "https://membrane/schemas/context-candidate-set.v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Blueprint owns this repository-truth contract; Membrane root and Rust assets are generated projections consumed by cortex-core::planner.",
+  "description": "MBR-101: Membrane-owned federated candidate contract consumed by native Pull, cortex-core admission planning, and generated protocol projections.",
   "properties": {
     "candidates": {
       "items": {
@@ -269,7 +275,7 @@
   ],
   "title": "ContextCandidateSetV1",
   "type": "object",
-  "x-blueprint-source": "blueprint/schemas/context-candidate-set.v1.schema.json",
-  "x-blueprint-source-hash": "sha256:ba0144af538f52473210417c1e2eb307c78e1da94e70b6360e2aa7ba61efc0e4",
-  "x-blueprint-generator": "scripts/generate-host-contracts.mjs"
+  "x-membrane-source": "schemas/context-candidate-set.v1.schema.json",
+  "x-membrane-source-hash": "sha256:660096bac5c14e555440df44b2656126da9d6847cfac0a4f2cfd4b6fcec4dcdb",
+  "x-membrane-generator": "scripts/generate-host-contracts.mjs"
 }

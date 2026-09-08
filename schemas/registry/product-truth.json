@@ -61,7 +61,7 @@
   "residentServiceAuthority": "tray",
   "runtimeExecutionHost": "tray-owned-daemon",
   "schema": "membrane.product-truth.v1",
-  "toolCount": 23,
+  "toolCount": 24,
   "tools": [
     "membrane_adapt_inspect",
     "membrane_blueprint",
@@ -80,6 +80,7 @@
     "membrane_knowledge_review",
     "membrane_ledger",
     "membrane_memory",
+    "membrane_memory_read",
     "membrane_push_prepare",
     "membrane_push_resolve",
     "membrane_scratchpad",

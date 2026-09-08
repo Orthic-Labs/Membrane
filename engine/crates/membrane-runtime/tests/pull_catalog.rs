@@ -20,8 +20,12 @@ use membrane_runtime::serve::{
     route_with_catalog_and_metrics_for_tests, route_with_catalog_for_tests,
 };
 use membrane_runtime::store::MemoryStore;
+use membrane_protocol::host_observation::{
+    EstimatorBasisV1, HostObservationProvenanceV1, ObservedFieldV1,
+    RemainingContextCeilingV1, TokenEstimateV1, REMAINING_CONTEXT_CEILING_SCHEMA_VERSION,
+};
 use rusqlite::Connection;
-use serde_json::json;
+use serde_json::{json, Map};
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -707,6 +711,217 @@ fn scope_grant_lookup_returns_service_owned_binding() {
         .as_str()
         .unwrap()
         .starts_with("sha256:"));
+}
+
+fn remaining_ceiling(session: &str, task: &str) -> serde_json::Value {
+    serde_json::to_value(RemainingContextCeilingV1 {
+        schema_version: REMAINING_CONTEXT_CEILING_SCHEMA_VERSION,
+        ceiling_id: "workspace-ceiling".into(),
+        session_id: session.into(),
+        task_id: ObservedFieldV1::complete(task.into()),
+        requested_at_unix_ms: 1,
+        remaining_tokens: TokenEstimateV1::complete(
+            EstimatorBasisV1::new("o200k_base", "1"),
+            40_000,
+        ),
+        provenance_receipt: HostObservationProvenanceV1::new(
+            "workspace-ceiling-receipt",
+            "fixture",
+            1,
+            format!("sha256:{}", "a".repeat(64)),
+        ),
+    })
+    .unwrap()
+}
+
+#[test]
+fn memory_read_resolves_exact_hash_and_scope_through_public_mcp_owner() {
+    struct Environment(Vec<(&'static str, Option<std::ffi::OsString>)>);
+    impl Environment {
+        fn set(values: &[(&'static str, &std::path::Path)]) -> Self {
+            let mut previous = Vec::new();
+            for (key, value) in values {
+                previous.push((*key, std::env::var_os(key)));
+                std::env::set_var(key, value);
+            }
+            Self(previous)
+        }
+    }
+    impl Drop for Environment {
+        fn drop(&mut self) {
+            for (key, previous) in self.0.drain(..).rev() {
+                match previous {
+                    Some(value) => std::env::set_var(key, value),
+                    None => std::env::remove_var(key),
+                }
+            }
+        }
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("workspace");
+    let child = root.join("child");
+    std::fs::create_dir_all(root.join("tools/lib/memory")).unwrap();
+    std::fs::create_dir_all(&child).unwrap();
+    std::fs::write(
+        root.join("tools/lib/memory/runtime.json"),
+        json!({"port":47851,"serviceId":"membrane-local-v1","host":"127.0.0.1"}).to_string(),
+    )
+    .unwrap();
+    let root = root.canonicalize().unwrap();
+    let child = child.canonicalize().unwrap();
+    let registry = temp.path().join("registry.json");
+    let mut bindings = Map::new();
+    bindings.insert(
+        root.to_string_lossy().into_owned(),
+        json!({
+            "repository_id":"repo-memory-read","scope_id":"scope-memory-read",
+            "grant_policy":{"level":"read-only","child_repository_ids":["repo-child"]}
+        }),
+    );
+    bindings.insert(
+        child.to_string_lossy().into_owned(),
+        json!({
+            "repository_id":"repo-child","scope_id":"scope-child",
+            "grant_policy":{"level":"read-only"}
+        }),
+    );
+    std::fs::write(
+        &registry,
+        json!({"schema_version":2,"bindings":bindings}).to_string(),
+    )
+    .unwrap();
+    let catalog_path = temp.path().join("catalog.db");
+    let _environment = Environment::set(&[
+        ("MEMBRANE_PROJECT_REGISTRY", &registry),
+        ("MEMBRANE_CATALOG", &catalog_path),
+        ("WORKSPACE_ROOT", &root),
+    ]);
+    let store = new_store();
+    let content = "exact Cortex memory body";
+    let id = store.put(
+        "memory-read-exact",
+        content,
+        "scope-memory-read",
+        cortex_core::MemoryTier::Semantic,
+    );
+    let child_marker = "workspace-child-source-executed";
+    store.put(
+        "workspace-child-memory",
+        child_marker,
+        &membrane_runtime::path_to_scope(&child.to_string_lossy()),
+        cortex_core::MemoryTier::Semantic,
+    );
+    let executor = membrane_runtime::mcp_executor::RuntimeMcpExecutor::for_hub(store).unwrap();
+
+    let catalog = ContextCatalog::open(&catalog_path).unwrap();
+    let task = "workspace child source executed";
+    let task_id = "task-workspace";
+    let session_id = "session-workspace";
+    let repositories = vec!["repo-memory-read".to_owned(), "repo-child".to_owned()];
+    let issue = |id: &str, repository_ids: &[String]| {
+        membrane_runtime::catalog::issue_scope_grant(
+            &catalog,
+            id,
+            "claude-mm",
+            repository_ids,
+            &["source_read".to_owned()],
+            &[],
+            task_id,
+            session_id,
+            600,
+            "nonce-workspace",
+            &format!("sha256:{}", "1".repeat(64)),
+        )
+        .unwrap()
+    };
+    let grant = issue("sg-workspace-child", &repositories);
+    let caller = json!({"root":root,"repositoryId":"repo-memory-read","scopeId":"scope-memory-read"});
+    let context_arguments = |grant_id: Option<&str>, observed_task: &str, observed_session: &str| {
+        let mut arguments = json!({
+            "task":task,"taskId":observed_task,"sessionId":observed_session,
+            "repository":"repo-memory-read","caller":caller.clone(),
+            "scope":"workspace","workspaceTargets":["repo-memory-read","repo-child"],
+            "budgetTokens":4000,"deadlineMs":30000,
+            "remainingContextCeiling":remaining_ceiling(observed_session, observed_task),
+            "consumerCapabilities":{"resolvers":["membrane_memory_read"],"retainsDeliveredEvidence":false}
+        });
+        if let Some(grant_id) = grant_id {
+            arguments["scopeGrantId"] = json!(grant_id);
+        }
+        arguments
+    };
+    let execute_context = |arguments: serde_json::Value| {
+        membrane_mcp::NativeMcpExecutor::execute(&executor, "membrane_context", &arguments)
+    };
+    let assert_scope_refusal = |response: &serde_json::Value| {
+        assert_eq!(response["result"]["kind"], "error", "{response}");
+        assert_eq!(response["result"]["code"], "context_scope_grant_invalid", "{response}");
+        assert!(response.get("pullReceipt").is_none(), "refusal must precede fanout: {response}");
+    };
+
+    assert_scope_refusal(&execute_context(context_arguments(None, task_id, session_id)));
+    assert_scope_refusal(&execute_context(context_arguments(Some(&grant.id), "wrong-task", session_id)));
+    assert_scope_refusal(&execute_context(context_arguments(Some(&grant.id), task_id, "wrong-session")));
+    let parent_only = issue("sg-workspace-parent-only", &["repo-memory-read".to_owned()]);
+    assert_scope_refusal(&execute_context(context_arguments(Some(&parent_only.id), task_id, session_id)));
+
+    let before = membrane_runtime::catalog::lookup_grant(&catalog, &grant.id).unwrap().unwrap();
+    let count_before: i64 = catalog.lock().query_row("SELECT COUNT(*) FROM scope_grants", [], |row| row.get(0)).unwrap();
+    let workspace = execute_context(context_arguments(Some(&grant.id), task_id, session_id));
+    assert_eq!(workspace["result"]["kind"], "success", "{workspace}");
+    let workspace_data = &workspace["result"]["data"];
+    let targets = workspace_data.pointer("/pullReceipt/workspace/targets").and_then(serde_json::Value::as_array).unwrap();
+    assert_eq!(targets.len(), 2, "{workspace}");
+    assert!(targets.iter().any(|target| target["repositoryId"] == "repo-child"), "{workspace}");
+    assert!(workspace_data.to_string().contains(child_marker), "child Cortex source did not reach public workspace packet: {workspace}");
+    let after = membrane_runtime::catalog::lookup_grant(&catalog, &grant.id).unwrap().unwrap();
+    let count_after: i64 = catalog.lock().query_row("SELECT COUNT(*) FROM scope_grants", [], |row| row.get(0)).unwrap();
+    assert_eq!(after, before, "fanout must forward original grant without mutation");
+    assert_eq!(count_after, count_before, "fanout must not mint a child grant");
+
+    assert!(membrane_runtime::catalog::revoke_scope_grant(&catalog, &grant.id).unwrap());
+    assert_scope_refusal(&execute_context(context_arguments(Some(&grant.id), task_id, session_id)));
+    let expired = issue("sg-workspace-expired", &repositories);
+    catalog.lock().execute("UPDATE scope_grants SET expires_at_unix=0 WHERE id=?1", [&expired.id]).unwrap();
+    assert_scope_refusal(&execute_context(context_arguments(Some(&expired.id), task_id, session_id)));
+
+    let mismatched_caller = json!({
+        "task":task,"taskId":task_id,"sessionId":session_id,
+        "repository":"repo-memory-read",
+        "caller":{"root":child,"repositoryId":"repo-memory-read","scopeId":"scope-memory-read"},
+        "scope":"workspace","workspaceTargets":["repo-child"],"scopeGrantId":grant.id,
+        "budgetTokens":4000,"deadlineMs":30000,
+        "remainingContextCeiling":remaining_ceiling(session_id, task_id)
+    });
+    let mismatch = execute_context(mismatched_caller);
+    assert_eq!(mismatch["result"]["kind"], "error", "{mismatch}");
+    assert!(mismatch["result"]["code"].as_str().unwrap().contains("binding"), "{mismatch}");
+
+    assert!(membrane_mcp::install_executor(Arc::new(executor)).is_ok());
+    let call = |arguments: serde_json::Value| {
+        membrane_mcp::McpServer::default()
+            .dispatch(&json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"membrane_memory_read","arguments":arguments}}))
+            .unwrap()
+    };
+    let hash = membrane_runtime::digest::digest_str(content);
+    let resolved = call(json!({"repository":"repo-memory-read","caller":caller.clone(),"id":id,"expectedContentHash":hash}));
+    assert_eq!(resolved["result"]["isError"], false, "{resolved}");
+    assert_eq!(resolved["result"]["structuredContent"]["result"]["data"]["content"], content);
+
+    let wrong_hash = call(json!({"repository":"repo-memory-read","caller":caller.clone(),"id":id,"expectedContentHash":membrane_runtime::digest::digest_str("wrong")}));
+    assert_eq!(wrong_hash["result"]["isError"], true, "{wrong_hash}");
+    assert_eq!(wrong_hash["result"]["structuredContent"]["result"]["code"], "memory_version_conflict");
+    let wrong_scope = call(json!({"repository":"repo-memory-read","caller":{"root":root,"repositoryId":"repo-memory-read","scopeId":"other-scope"},"id":id,"expectedContentHash":hash}));
+    assert_eq!(wrong_scope["result"]["isError"], true, "wrong caller scope must reject");
+    assert!(wrong_scope["result"]["structuredContent"]["result"]["code"]
+        .as_str().unwrap().contains("scope"));
+
+    let listed = membrane_mcp::McpServer::default().dispatch(&json!({
+        "jsonrpc":"2.0","id":2,"method":"tools/list",
+        "params":{"_meta":{"membrane.toolsets.v1":["memory"]}}
+    })).unwrap();
+    assert!(listed["result"]["tools"].as_array().unwrap().iter().any(|tool| tool["name"] == "membrane_memory_read"));
 }
 
 // ---- 7. Frozen-fixture smoke: 100 warm-process runs, p95 within budget ---

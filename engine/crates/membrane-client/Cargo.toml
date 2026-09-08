@@ -12,4 +12,5 @@ path = "src/lib.rs"
 [dependencies]
 membrane-protocol = { path = "../membrane-protocol" }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio-util = { workspace = true }

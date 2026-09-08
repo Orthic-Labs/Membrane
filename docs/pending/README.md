@@ -146,9 +146,9 @@ Exploratory rows are discovered candidates, not committed product behavior.
 | [PUL-033](../canon/pull.md) | UNRESOLVED | RECONCILE_EVIDENCE | implementation=UNKNOWN; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
 | [PUL-035](../canon/pull.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: PUL-035; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08; Freshness: 2026-08-30 |
 | [PUL-036](../canon/pull.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=Acceptance: PUL-036; Revision: f42b6c96611cd98fa06eb21360e2b1389c67527a; Receipt: docs/provenance/migrations/2026-08-30-atomic-canons/source-consumer-reconciliation.md@efb0eb1bc08b3f0e11e74a2a44fb3db17d4a9e08; Freshness: 2026-08-30 |
-| [PUL-037](../canon/pull.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-039](../canon/pull.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
-| [PUL-040](../canon/pull.md) | CURRENT_INCOMPLETE | IMPLEMENT | implementation=MISSING; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=PENDING |
+| [PUL-037](../canon/pull.md) | CURRENT_INCOMPLETE | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=Source: `engine/crates/membrane-runtime/src/pull/delivery_state.rs`; limited focused acceptance passed 2026-09-08 in RightKit request `2f28789f-977b-45d4-83ae-76d8d0b1b20e`; restart, expiry, required-coverage, & released-host qualification remain pending. |
+| [PUL-039](../canon/pull.md) | CURRENT_INCOMPLETE | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=Source: `engine/crates/membrane-runtime/src/cache_prefix.rs`; limited focused acceptance passed 2026-09-08 in RightKit request `2f28789f-977b-45d4-83ae-76d8d0b1b20e`; real-host cache, prior-packet compatibility, & released-host qualification remain pending. |
+| [PUL-040](../canon/pull.md) | CURRENT_INCOMPLETE | VERIFY | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=LOCAL/RELEASED; evidence=Source: `engine/crates/membrane-runtime/src/pull/placement.rs`; limited focused acceptance passed 2026-09-08 in RightKit request `2f28789f-977b-45d4-83ae-76d8d0b1b20e`; full eligibility/atomic/cache/host composition remains pending. |
 | [PUL-041](../canon/pull.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=PENDING |
 | [PUL-042](../canon/pull.md) | CURRENT_INCOMPLETE | REPAIR_WIRE | implementation=PARTIAL; verification=PENDING; qualification=PENDING; delivery=PUSHED/RELEASED; evidence=PENDING |
 
@@ -371,6 +371,7 @@ Supporting files retain detail; only this generated file indexes pending state.
 
 | Specification | Canon target |
 |---|---|
+| [Unified implementation & closure plan](MEMBRANE-UNIFIED-IMPLEMENTATION-PLAN.md) | All 340 committed rows across `MEM`, `PUL`, `PSH`, `CTX`, `BPT`, `LDG`, & `ADP`; lifecycle qualification tracked separately |
 | [Adapt harness efficiency](capabilities/adapt/harness-efficiency.md) | `ADP-036`, `ADP-038`, `ADP-040`, `ADP-043`–`ADP-071` |
 | [Blueprint findings lane](capabilities/blueprint/findings-lane.md) | `BPT-049`, `BPT-050`, `BPT-051`, `BPT-052`, `BPT-065`, `BPT-066`, `BPT-067` |
 | [Semantic context advisor](experiments/semantic-context-advisor.md) | `MEM-D003` |

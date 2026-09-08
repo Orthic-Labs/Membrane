@@ -1,5 +1,8 @@
 use membrane_runtime::push::recovery::{self, RecoveryError, RecoveryScope, RecoveryStore, Selector};
+use membrane_runtime::push::delivery::{self, ContentKind, PrepareRequest};
+use membrane_federation::deadline::{Deadline, SystemClock};
 use rusqlite::{params, Connection};
+use tokio_util::sync::CancellationToken;
 
 #[test]
 fn legacy_content_addressed_store_migrates_without_breaking_old_handles() {
@@ -61,6 +64,70 @@ fn legacy_content_addressed_store_migrates_without_breaking_old_handles() {
             .unwrap(),
         bytes
     );
+}
+
+#[test]
+fn cancelled_push_publication_fails_before_creating_store_state() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = RecoveryStore::at(temp.path());
+    let scope = RecoveryScope::new(temp.path(), "cancelled").unwrap();
+    let cancellation = CancellationToken::new();
+    cancellation.cancel();
+    let result = store.publish_with_control(
+        &scope,
+        b"must not publish",
+        1_000,
+        1,
+        Deadline::after(&SystemClock, std::time::Duration::from_secs(30)),
+        &cancellation,
+    );
+    assert!(matches!(result, Err(RecoveryError::Cancelled)));
+    assert!(!temp.path().join("push-artifacts.sqlite").exists());
+}
+
+#[test]
+fn expired_push_control_refuses_delivery_before_reduction_or_publication() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = RecoveryStore::at(temp.path());
+    let scope = RecoveryScope::new(temp.path(), "expired").unwrap();
+    let request = PrepareRequest {
+        text: "repeat\n".repeat(1_000),
+        kind: ContentKind::Log,
+        source_path: None,
+        max_bytes: 2_048,
+        resolver_token: None,
+        exact: false,
+        optimize: true,
+        protected_spans: Vec::new(),
+    };
+    let result = delivery::prepare_with_control(
+        &store,
+        &scope,
+        request,
+        Deadline::at(std::time::Instant::now()),
+        &CancellationToken::new(),
+    );
+    assert!(matches!(result, Err(RecoveryError::Cancelled)));
+}
+
+#[test]
+fn cancelled_recovery_does_not_return_partial_bytes() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = RecoveryStore::at(temp.path());
+    let scope = RecoveryScope::new(temp.path(), "resolve-cancelled").unwrap();
+    let reference = store.publish(&scope, b"exact", 1_000, 1).unwrap();
+    let cancellation = CancellationToken::new();
+    cancellation.cancel();
+    let result = store.resolve_with_control(
+        &scope,
+        &reference.handle,
+        &Selector::Whole,
+        128,
+        2,
+        Deadline::after(&SystemClock, std::time::Duration::from_secs(30)),
+        &cancellation,
+    );
+    assert!(matches!(result, Err(RecoveryError::Cancelled)));
 }
 
 #[test]

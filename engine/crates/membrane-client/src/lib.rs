@@ -9,7 +9,9 @@ pub mod error;
 pub mod explicit;
 pub mod handshake;
 pub mod memory_backend;
+pub mod provisioning;
 pub mod records;
+pub mod residency;
 pub use binding::{
     bind_candidate, classify_known_candidate, default_stable_install_root, ensure_action,
     locate_installed_candidate, CanonicalBinding, DiscoveryKind, DiscoveryOutcome, EnsureAction,
@@ -19,6 +21,13 @@ pub use error::ClientError;
 pub use handshake::{CompatibilityRequirement, ServiceIdentity};
 pub use memory_backend::{
     CallOptions, CancellationToken, MemoryBackendCall, MemoryBackendClient, MemoryTransport,
+};
+pub use provisioning::{
+    ensure_installed_runtime, EnsureInstalledError, InstalledRuntimeEffects, UpdateContinuity,
+};
+pub use residency::{
+    AcquireDecision, AuthenticatedHolder, ControllerIdentity, HolderKind, ReleaseDecision,
+    ResidencyError, ResidencyRegistry, ResidencySnapshot,
 };
 pub use records::{FullRecord, MemoryEntry, MemoryListRow, MemoryTier};
 pub use membrane_protocol::ResidentEndpointV1;

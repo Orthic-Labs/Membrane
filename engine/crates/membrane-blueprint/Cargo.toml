@@ -5,8 +5,11 @@ edition = "2021"
 publish = false
 
 [dependencies]
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"
+thiserror = { workspace = true }
 hex = { workspace = true }
 
 [dev-dependencies]

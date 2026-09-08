@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "2e8e57bbb1e368332b37466080f1e925f2f4726e",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptDigest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Six bounded read-only inventories run independently; Sol integrator retains architecture judgment & every mutation/checkpoint."
+  },
+  "objective": "Produce source-grounded inventories needed to freeze exact native-Rust Blueprint implementation slices without editing files. Preserve full Blueprint semantics, schema-v20 SQLite compatibility, freshness/generations, grants/security, Phase2, CLI/MCP/federation, canonical installed provisioning/update-repair, additive Hub-or-CodeRight residency, Hub-off explicit operations, retired audit scope, & no-backend-interpreter closure.",
+  "authority": [
+    "AGENTS.md",
+    "blueprint/AGENTS.md",
+    "docs/architecture/membrane.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "docs/architecture/execution-lifecycle-boundary.md",
+    "docs/architecture/integrations/coderight.md",
+    "audit/remediation/README.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md"
+  ],
+  "integrationOwner": "Membrane executor task 01a07e9f-8f38-7463-b35e-f6b6013bb23e (Sol/medium)",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+      "audit/remediation/reconciliation/parity-phase2-inventory.md",
+      "audit/remediation/reconciliation/native-seam-inventory.md",
+      "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+      "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md",
+      "audit/remediation/reconciliation/audit-closure-inventory.md"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path": "audit/remediation/reconciliation/blueprint-semantic-inventory.md", "owner": "blueprint-semantic-inventory", "operation": "create", "lane": "blueprint-semantic-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"},
+      {"path": "audit/remediation/reconciliation/parity-phase2-inventory.md", "owner": "parity-phase2-inventory", "operation": "create", "lane": "parity-phase2-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"},
+      {"path": "audit/remediation/reconciliation/native-seam-inventory.md", "owner": "native-seam-inventory", "operation": "create", "lane": "native-seam-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"},
+      {"path": "audit/remediation/reconciliation/packaging-cleanup-inventory.md", "owner": "packaging-cleanup-inventory", "operation": "create", "lane": "packaging-cleanup-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"},
+      {"path": "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md", "owner": "lifecycle-provisioning-inventory", "operation": "create", "lane": "lifecycle-provisioning-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"},
+      {"path": "audit/remediation/reconciliation/audit-closure-inventory.md", "owner": "audit-closure-inventory", "operation": "create", "lane": "audit-closure-inventory", "finalCheck": "integration owner verifies exact citations & inventory completeness"}
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "blueprint/**/*.mjs plus existing Rust integration",
+    "sourceInventory": [
+      "blueprint/src",
+      "blueprint/scripts",
+      "blueprint/watchman",
+      "engine/crates/membrane-blueprint",
+      "engine/crates/membrane-runtime",
+      "engine/crates/membrane-mcp",
+      "engine/crates/membrane-federation"
+    ],
+    "directPortFirst": true,
+    "targetLanguage": "rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": [
+      "product-source-edits",
+      "cargo",
+      "tests",
+      "builds",
+      "generators",
+      "installs",
+      "commits",
+      "pushes",
+      "merges",
+      "expensive-checks",
+      "watcher-activation",
+      "graph-rebuild"
+    ],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "Membrane executor task 01a07e9f-8f38-7463-b35e-f6b6013bb23e (Sol/medium)",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "Workers own only their six report artifacts; product/source repair is out of scope. Return report corrections to owning lane; integration owner authors later exact edit packet."
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": [
+        "blueprint-semantic-inventory",
+        "parity-phase2-inventory",
+        "native-seam-inventory",
+        "packaging-cleanup-inventory",
+        "lifecycle-provisioning-inventory",
+        "audit-closure-inventory"
+      ],
+      "completionChecks": [
+        "Integration owner checks each report cites exact source paths/symbols, identifies state/contracts/tests, proposes exact later write files, & contains no mutations."
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "blueprint-semantic-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["source-analysis", "direct-port-mapping"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "semantic-surface-ledger"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/blueprint-semantic-inventory.md"],
+      "read": ["blueprint/README.md", "blueprint/docs/architecture.md", "blueprint/src", "blueprint/scripts/blueprint.mjs", "blueprint/scripts/blueprint-one-shot.mjs", "blueprint/watchman", "blueprint/schemas", "blueprint/tests"],
+      "forbidden": [".git", "apps", "engine", "migration", "audit/remediation/README.md"],
+      "checks": ["Return responsibility/module/state/contract/caller/test/Rust-destination ledger with exact paths; integration owner verifies citations."],
+      "dependencies": []
+    },
+    {
+      "id": "parity-phase2-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["test-analysis", "phase2-analysis"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "parity-fixture-ledger"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/parity-phase2-inventory.md"],
+      "read": ["blueprint/tests", "blueprint/fixtures", "blueprint/evals", "blueprint/src/lib", "blueprint/src/graph/store-sqlite.mjs", "blueprint/schemas", "docs/architecture/subsystems/blueprint.md"],
+      "forbidden": [".git", "apps", "engine", "migration", "audit/remediation/README.md"],
+      "checks": ["Return test classification A-E, parity fixtures, Phase2 behaviors, schema-v20 DB gates, & exact later Rust/test file proposals; integration owner verifies citations."],
+      "dependencies": []
+    },
+    {
+      "id": "native-seam-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-source-analysis", "interface-mapping"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "native-seam-map"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/native-seam-inventory.md"],
+      "read": ["engine/Cargo.toml", "engine/crates/membrane-blueprint", "engine/crates/membrane-runtime", "engine/crates/membrane-mcp", "engine/crates/membrane-federation", "engine/crates/membrane", "apps/membrane-tray-windows/src", "apps/membrane-hub/src-tauri/src"],
+      "forbidden": [".git", "blueprint/tests", "migration", "audit/remediation/README.md"],
+      "checks": ["Return current Node launch/CLI/MCP/federation/holder seams, typed contracts & exact later Rust file proposals; integration owner verifies citations."],
+      "dependencies": []
+    },
+    {
+      "id": "packaging-cleanup-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["release-manifest-analysis", "reachability-analysis"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "interpreter-cleanup-ledger"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/packaging-cleanup-inventory.md"],
+      "read": ["migration/native-rust", "scripts/release", "scripts/qualification", "scripts/ci", "apps/membrane-hub/src-tauri", "apps/membrane-hub/package.json", "blueprint/release", "blueprint/package.json", "package.json", "docs/reference/release"],
+      "forbidden": [".git", "engine/crates/membrane-runtime/src", "audit/remediation/README.md"],
+      "checks": ["Return package/invocation/policy/SBOM/gate delta & interpreter-file disposition inventory with exact later write/delete paths; integration owner verifies citations."],
+      "dependencies": []
+    },
+    {
+      "id": "lifecycle-provisioning-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["lifecycle-analysis", "state-machine-analysis"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "lifecycle-gap-map"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/lifecycle-provisioning-inventory.md"],
+      "read": ["docs/architecture/execution-lifecycle-boundary.md", "docs/architecture/integrations/coderight.md", "engine/crates/membrane-client", "engine/crates/membrane/src/activation.rs", "apps/membrane-tray-windows/src", "apps/membrane-hub/src-tauri/src", "apps/membrane-hub/src-tauri/windows/installer.nsi"],
+      "forbidden": [".git", "blueprint/src", "migration", "audit/remediation/README.md"],
+      "checks": ["Return discovery/provision/update-repair/transition-lock/identity-preservation/shared-holder gap map & exact later file proposals; integration owner verifies citations."],
+      "dependencies": []
+    },
+    {
+      "id": "audit-closure-inventory",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["audit-evidence-analysis", "acceptance-mapping"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind": "exact-check", "id": "remaining-audit-ledger"}],
+        "escalation": {"permittedOn": ["unreachable", "ambiguous"], "forbiddenOn": ["denied", "terminated"]}
+      },
+      "allowlist": ["audit/remediation/reconciliation/audit-closure-inventory.md"],
+      "read": ["audit", "docs/evidence", "engine/crates/membrane-runtime/src", "engine/crates/membrane-runtime/tests", "migration/native-rust"],
+      "forbidden": [".git", "blueprint/src", "apps"],
+      "checks": ["Return SEM/EVID/CI status, exact acceptance evidence still missing, overlap/dependencies with native Blueprint migration & exact later file proposals; integration owner verifies citations."],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "allowlist-completeness",
+      "lane-disjointness",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "direct-port-priority",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": [
+      "required authoritative file is genuinely absent after git-ls-files rediscovery",
+      "source revision changes during inventory",
+      "required private input is missing"
+    ],
+    "returnFields": ["status", "summary", "acceptance", "artifacts", "changes", "commands", "recovery", "deviations", "blocker", "next", "baselineRevision", "citations"]
+  }
+}

@@ -90,6 +90,7 @@ fn materialize(owner: &LedgerService, context: &ProviderContext, budget: &WorkBu
             arguments["repository"] = json!(caller.repository_id);
             arguments["caller"] = caller.envelope();
             arguments["ledgerTicket"] = json!(ticket);
+            arguments["sessionId"] = json!(context.session_id);
             let resolver = json!({"tool":"membrane_source_read","arguments":arguments}).to_string();
             let text = format!("Ledger evidence: {} ({}, {} bytes). Resolve the captured span.",
                 hit.source_ref,hit.node_kind,hit.end_byte-hit.start_byte);

@@ -51,3 +51,4 @@ pub mod taste;
 pub mod clarification;
 pub mod comparison;
 pub mod guard_rollout;
+pub mod candidate_pattern;

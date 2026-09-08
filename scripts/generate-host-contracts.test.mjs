@@ -11,13 +11,14 @@ test("host contract projections are deterministic and current", () => {
   assert.equal(result.valid, true, result.failures.join(", "));
 });
 
-test("Membrane schema projections declare Blueprint ownership", () => {
+test("CCS projections declare Membrane schema ownership", () => {
   const root = JSON.parse(readFileSync(ROOT_SCHEMA, "utf8"));
   const rust = JSON.parse(readFileSync(RUST_SCHEMA, "utf8"));
-  for (const schema of [root, rust]) {
-    assert.equal(schema["x-blueprint-source"], "blueprint/schemas/context-candidate-set.v1.schema.json");
-    assert.match(schema["x-blueprint-source-hash"], /^sha256:[a-f0-9]{64}$/);
-    assert.equal(schema["x-blueprint-generator"], "scripts/generate-host-contracts.mjs");
-  }
-  assert.equal(root["x-blueprint-source-hash"], rust["x-blueprint-source-hash"]);
+  assert.equal(root["x-membrane-source"], undefined);
+  assert.equal(root["x-blueprint-source"], undefined);
+  assert.equal(rust["x-membrane-source"], "schemas/context-candidate-set.v1.schema.json");
+  assert.match(rust["x-membrane-source-hash"], /^sha256:[a-f0-9]{64}$/);
+  assert.equal(rust["x-membrane-generator"], "scripts/generate-host-contracts.mjs");
+  assert.equal(rust.description, root.description);
+  assert.deepEqual(rust.$defs, root.$defs);
 });

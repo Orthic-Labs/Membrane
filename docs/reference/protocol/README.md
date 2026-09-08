@@ -8,7 +8,7 @@ The MCP server speaks MCP over stdio and serves both the 2025-03-26 and
 2026-07-28 MCP discovery eras. Caller authorization is bound to the exact
 repository, root, and scope of each request.
 
-## Tools (23)
+## Tools (24)
 
 | `membrane_adapt_inspect` |
 | `membrane_blueprint` |
@@ -27,6 +27,7 @@ repository, root, and scope of each request.
 | `membrane_knowledge_review` |
 | `membrane_ledger` |
 | `membrane_memory` |
+| `membrane_memory_read` |
 | `membrane_push_prepare` |
 | `membrane_push_resolve` |
 | `membrane_scratchpad` |

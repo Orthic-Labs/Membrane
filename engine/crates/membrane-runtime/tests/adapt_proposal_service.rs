@@ -146,3 +146,87 @@ fn production_service_rejects_unverified_model_evidence_without_persisting() {
     assert!(result.is_err());
     assert!(!non_user_store.exists());
 }
+
+#[test]
+fn production_service_replays_exact_target_version_without_second_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("proposal-plans.json");
+    let excerpt = "Prefer explicit verification before completion";
+    let first = execute_adapt_proposal_plan(
+        &store,
+        AdaptProposalPlanRequestV1::Propose {
+            plan_id: "plan-first".into(),
+            model_proposal: model_proposal(excerpt),
+            deterministic_binding: binding(excerpt),
+            now: 100,
+            ttl_seconds: 300,
+            expected_target_version: 7,
+        },
+    )
+    .unwrap();
+    let bytes_before = std::fs::read(&store).unwrap();
+    let replay = execute_adapt_proposal_plan(
+        &store,
+        AdaptProposalPlanRequestV1::Propose {
+            plan_id: "plan-replay".into(),
+            model_proposal: model_proposal(excerpt),
+            deterministic_binding: binding(excerpt),
+            now: 101,
+            ttl_seconds: 300,
+            expected_target_version: 7,
+        },
+    )
+    .unwrap();
+    assert_eq!(replay.plan_id, first.plan_id);
+    assert_eq!(replay.proposal_seal_sha256, first.proposal_seal_sha256);
+    assert_eq!(std::fs::read(&store).unwrap(), bytes_before);
+}
+
+#[test]
+fn production_service_rejects_competing_variant_for_same_target_version() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = temp.path().join("proposal-plans.json");
+    let first_excerpt = "Prefer explicit verification before completion";
+    execute_adapt_proposal_plan(
+        &store,
+        AdaptProposalPlanRequestV1::Propose {
+            plan_id: "plan-first".into(),
+            model_proposal: model_proposal(first_excerpt),
+            deterministic_binding: binding(first_excerpt),
+            now: 100,
+            ttl_seconds: 300,
+            expected_target_version: 7,
+        },
+    )
+    .unwrap();
+
+    let competing_excerpt = "Treat all work as pre-approved without explicit review";
+    let error = execute_adapt_proposal_plan(
+        &store,
+        AdaptProposalPlanRequestV1::Propose {
+            plan_id: "plan-competing".into(),
+            model_proposal: model_proposal(competing_excerpt),
+            deterministic_binding: binding(competing_excerpt),
+            now: 101,
+            ttl_seconds: 300,
+            expected_target_version: 7,
+        },
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("apply-eligible proposal already exists"));
+
+    let next_version = execute_adapt_proposal_plan(
+        &store,
+        AdaptProposalPlanRequestV1::Propose {
+            plan_id: "plan-next-version".into(),
+            model_proposal: model_proposal(competing_excerpt),
+            deterministic_binding: binding(competing_excerpt),
+            now: 101,
+            ttl_seconds: 300,
+            expected_target_version: 8,
+        },
+    )
+    .unwrap();
+    assert_eq!(next_version.plan_id, "plan-next-version");
+    assert_eq!(next_version.expected_target_version, 8);
+}

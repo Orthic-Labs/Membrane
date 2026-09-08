@@ -33,26 +33,32 @@ pub fn form_issues(
     }
     let mut out = Vec::new();
     for (_key, members) in groups {
+        let mut unique_by_id = BTreeMap::new();
+        for member in members {
+            unique_by_id
+                .entry(member.episode_id.as_str())
+                .or_insert(member);
+        }
+        let members: Vec<_> = unique_by_id.into_values().collect();
         let count = members.len() as u32;
         if count < min_recurrence.max(2) {
-            continue;
-        }
-        let mut ids: Vec<String> = members.iter().map(|m| m.episode_id.clone()).collect();
-        ids.sort();
-        ids.dedup();
-        if ids.len() < 2 {
             continue;
         }
         let first = members[0];
         let sessions: Vec<String> = {
             let mut s: Vec<String> = members
                 .iter()
-                .flat_map(|m| m.sessions.iter().cloned())
+                .flat_map(|m| m.sessions.iter().map(|session| session.trim().to_owned()))
+                .filter(|session| !session.is_empty())
                 .collect();
             s.sort();
             s.dedup();
             s
         };
+        if sessions.len() < 2 {
+            continue;
+        }
+        let ids: Vec<String> = members.iter().map(|m| m.episode_id.clone()).collect();
         let timestamps: Vec<String> = members.iter().filter_map(|m| m.timestamp.clone()).collect();
         out.push(InsightIssueV1 {
             schema_version: crate::insights::INSIGHT_ISSUE_SCHEMA.to_string(),
@@ -200,6 +206,64 @@ mod tests {
             occurrence: 0,
             evidence_eligible: true,
         }
+    }
+
+    fn episode(id: &str, session: &str) -> crate::insights::FailureEpisodeV1 {
+        let event = ev(id, session, "same observed failure");
+        let mut episode = crate::insights::FailureEpisodeV1::new(
+            "test_family",
+            crate::insights::Severity::Medium,
+            0.9,
+            "same_signature",
+            "same observed failure",
+            "same expectation",
+            &[&event],
+        );
+        episode.episode_id = id.into();
+        episode
+    }
+
+    #[test]
+    fn repeated_episodes_in_one_session_do_not_form_issue() {
+        let episodes = vec![episode("ep-1", "session-1"), episode("ep-2", "session-1")];
+        assert!(form_issues(&episodes, 2).is_empty());
+    }
+
+    #[test]
+    fn two_independent_sessions_form_issue() {
+        let episodes = vec![episode("ep-1", "session-1"), episode("ep-2", "session-2")];
+        let issues = form_issues(&episodes, 2);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].episode_ids, vec!["ep-1", "ep-2"]);
+        assert_eq!(issues[0].distinct_sessions, 2);
+    }
+
+    #[test]
+    fn duplicate_episode_ids_cannot_inflate_recurrence() {
+        let episodes = vec![episode("ep-1", "session-1"), episode("ep-1", "session-2")];
+        assert!(form_issues(&episodes, 2).is_empty());
+    }
+
+    #[test]
+    fn blank_session_cannot_establish_independence() {
+        let mut first = episode("ep-1", "session-1");
+        let mut second = episode("ep-2", "session-2");
+        first.sessions = vec!["  ".into()];
+        second.sessions = vec!["".into()];
+        assert!(form_issues(&[first, second], 2).is_empty());
+    }
+
+    #[test]
+    fn minimum_recurrence_counts_episodes_not_sessions() {
+        let episodes = vec![
+            episode("ep-1", "session-1"),
+            episode("ep-2", "session-1"),
+            episode("ep-3", "session-2"),
+        ];
+        let issues = form_issues(&episodes, 3);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].recurrence_count, 3);
+        assert_eq!(issues[0].distinct_sessions, 2);
     }
 
     #[test]

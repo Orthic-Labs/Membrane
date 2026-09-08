@@ -8,11 +8,14 @@
       "required": ["repository", "caller", "request"],
       "properties": {
         "repository": {"type": "string", "minLength": 1},
+        "sessionId": {"type": "string", "minLength": 1, "description": "Stable request session identity required when remainingContextCeiling is supplied."},
+        "taskId": {"type": "string", "minLength": 1, "description": "Stable task identity required when remainingContextCeiling is supplied."},
+        "remainingContextCeiling": {"type": "object", "description": "Optional canonical RemainingContextCeilingV1. When supplied, Push validates task/session identity and fits the final MCP envelope to observed capacity; omission retains fixed Push transport limits only."},
         "caller": {"type": "object", "additionalProperties": false, "required": ["root", "repositoryId", "scopeId"], "properties": {"root": {"type": "string", "minLength": 1}, "repositoryId": {"type": "string", "minLength": 1}, "scopeId": {"type": "string", "minLength": 1, "maxLength": 256}, "scopeDescriptor": {"type": "object"}}},
         "request": {
           "type": "object", "additionalProperties": false, "required": ["text", "maxBytes"],
           "properties": {
-            "text": {"type": "string", "maxLength": 1048576},
+            "text": {"type": "string", "maxLength": 1048576, "description": "At most 1,048,576 UTF-8 bytes after JSON parsing; maxLength is a coarse structural ceiling."},
             "kind": {"type": "string", "enum": ["text", "code", "json", "log"]},
             "sourcePath": {"type": "string", "maxLength": 4096, "description": "Classification only; this operation does not read the path."},
             "maxBytes": {"type": "integer", "minimum": 1, "maximum": 49152},
@@ -33,6 +36,9 @@
       "type": "object", "additionalProperties": false, "required": ["repository", "caller", "operation"],
       "properties": {
         "repository": {"type": "string", "minLength": 1},
+        "sessionId": {"type": "string", "minLength": 1, "description": "Stable request session identity required when remainingContextCeiling is supplied."},
+        "taskId": {"type": "string", "minLength": 1, "description": "Stable task identity required when remainingContextCeiling is supplied."},
+        "remainingContextCeiling": {"type": "object", "description": "Optional canonical RemainingContextCeilingV1. When supplied, Push validates task/session identity and fits the final MCP envelope to observed capacity; omission retains fixed Push transport limits only."},
         "caller": {"type": "object", "additionalProperties": false, "required": ["root", "repositoryId", "scopeId"], "properties": {"root": {"type": "string", "minLength": 1}, "repositoryId": {"type": "string", "minLength": 1}, "scopeId": {"type": "string", "minLength": 1, "maxLength": 256}, "scopeDescriptor": {"type": "object"}}},
         "operation": {"type": "string", "enum": ["probe", "resolve"]},
         "handle": {"type": "string", "pattern": "^mr://anchor/[0-9a-f]{64}$"},

@@ -1,0 +1,75 @@
+{
+  "schema_version": 4,
+  "sha256": "2d7fba12fc6dcdcfcc8c6b282aad508b345aa46b9237217e044a5fb5eaf69b8b",
+  "referenced_artifacts": [
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "blueprint/AGENTS.md",
+      "sha256": "sha256:4935eb7859f2df34bf903e25fb33166c7b88b17200155985819e8788c48b7097"
+    },
+    {
+      "path": "docs/canon/blueprint.md",
+      "sha256": "sha256:af827193fefdd55aeaf288cac81edaf3f628623428c0a770b8dca44594d21514"
+    },
+    {
+      "path": "docs/architecture/subsystems/blueprint.md",
+      "sha256": "sha256:598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+      "sha256": "sha256:0962c87b871106e3c3775e5889bc84d9c489e99a9ed081461c3662e7e13d7069"
+    },
+    {
+      "path": "audit/remediation/reconciliation/parity-phase2-inventory.md",
+      "sha256": "sha256:18f3ef166143bd07dbe71f114bea4ecf389ab0cf5d177831049d953a9022af20"
+    },
+    {
+      "path": "audit/remediation/reconciliation/native-seam-inventory.md",
+      "sha256": "sha256:df6d559faadd90904dc16aac75889ce8eb76ff6940c9fe1d348683e53c98f875"
+    },
+    {
+      "path": "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+      "sha256": "sha256:14c555274378be764a557372fa85244d43e4814dde1ad267ed70488573c190ae"
+    },
+    {
+      "path": "blueprint/schemas/catalog.json",
+      "sha256": "sha256:f70d779b224c6266fa885b11f2bf704ee51a24b83e26092fe7e8a9a4617596e8"
+    },
+    {
+      "path": "blueprint/schemas/scope-grant-v1.schema.json",
+      "sha256": "sha256:8c1bc5a44b0c5c74a41f47b97b660ae48940f7f962ce4a9c9df28b3ea832fa3f"
+    },
+    {
+      "path": "blueprint/schemas/repository-manifest-v1.schema.json",
+      "sha256": "sha256:48313e96c3e3056c04661914dced4753f189e15402289aafefc1a743c180eb2d"
+    },
+    {
+      "path": "blueprint/schemas/freshness-receipt-v1.schema.json",
+      "sha256": "sha256:6dc4dc9052a8fe3daf199c8392ac326beb249bd31112f1a4e244ae4a0f696a32"
+    },
+    {
+      "path": "blueprint/src/graph/store-sqlite.mjs",
+      "sha256": "sha256:e67ab9fcd5dcecf6f0514616ecb627d977eb28035a25a3d01b731c0edf1c5a31"
+    },
+    {
+      "path": "blueprint/src/graph/generation-identity.mjs",
+      "sha256": "sha256:664bd07894e97ceec4915a1a64103c60dae3c5c423430e06e6a86420c1fb6efe"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "2d7fba12fc6dcdcfcc8c6b282aad508b345aa46b9237217e044a5fb5eaf69b8b",
+    "source_revision": "2e8e57bbb1e368332b37466080f1e925f2f4726e",
+    "prompt_digest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+  }
+}
