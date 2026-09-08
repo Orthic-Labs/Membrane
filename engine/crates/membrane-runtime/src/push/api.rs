@@ -45,6 +45,19 @@ pub fn execute_with_control(operation: &str, arguments: &Value,
         let root = caller.get("root").and_then(Value::as_str).ok_or("caller_required")?;
         let repository = caller.get("repositoryId").and_then(Value::as_str).ok_or("caller_required")?;
         let session = caller.get("scopeId").and_then(Value::as_str).ok_or("caller_required")?;
+        let resolve_operation = arguments.get("operation").and_then(Value::as_str).unwrap_or("resolve");
+        let probe_identity_supplied = operation == "membrane_push_resolve"
+            && resolve_operation == "probe"
+            && (arguments.get("taskId").is_some() || arguments.get("sessionId").is_some());
+        let requires_identity = operation == "membrane_push_prepare"
+            || (operation == "membrane_push_resolve" && resolve_operation != "probe")
+            || probe_identity_supplied;
+        let task_id = if requires_identity {
+            let task_id = arguments.get("taskId").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or("push_task_required")?;
+            let request_session = arguments.get("sessionId").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or("push_session_required")?;
+            if request_session != session { return Err("push_session_binding_denied".into()); }
+            Some(task_id)
+        } else { None };
         if arguments.get("repository").and_then(Value::as_str) != Some(repository) {
             return Err("caller_scope_binding_denied".into());
         }
@@ -54,7 +67,10 @@ pub fn execute_with_control(operation: &str, arguments: &Value,
             caller_scope_descriptor:caller.get("scopeDescriptor"), target_repository:repository,
             task_grant_level:arguments.get("taskGrantLevel").and_then(Value::as_str), action:"source_read",
         }).map_err(|denial| denial.code().to_owned())?;
-        let scope = RecoveryScope::new(std::path::Path::new(root), session).map_err(|e| e.to_string())?;
+        let scope = match task_id {
+            Some(task_id) => RecoveryScope::new_for_task(std::path::Path::new(root), task_id, session),
+            None => RecoveryScope::new(std::path::Path::new(root), session),
+        }.map_err(|e| e.to_string())?;
         let store = RecoveryStore::configured();
         let data = match operation {
             "membrane_push_prepare" => {

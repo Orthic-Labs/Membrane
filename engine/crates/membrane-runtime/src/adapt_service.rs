@@ -277,12 +277,52 @@ pub fn operator_response(store: &MemoryStore, body: &str) -> (u16, String) {
     }
 }
 
+/// Native signed/local-reviewed Taste admission boundary.  Adapt callers do
+/// not route these records through generic Cortex proposal APIs: verification
+/// and canonical-pool CAS stay in `try_put_verified_adapt_taste_manifest`.
+pub fn admit_verified_taste_manifest(
+    store: &MemoryStore,
+    manifest: &membrane_adapt::manifest::PreferenceManifestV1,
+    trust: Option<&membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1>,
+) -> Result<crate::store::MemoryBatchReceipt, String> {
+    store
+        .try_put_verified_adapt_taste_manifest(manifest, trust)
+        .map_err(|error| error.to_string())
+}
+
 pub struct AdaptPacketSelection {
     pub inventory: TasteDeliveryInventoryV1,
     pub plan: PreferenceDeliveryPlanV1,
     pub scope: String,
     pub context: PreferenceDeliveryContextV1,
     pub representations: BTreeMap<String, String>,
+}
+
+/// Render one reviewed Taste preference with source-bound counterfactual
+/// context. The rejected alternative is evidence-only guidance, never a
+/// second preference or an authority-bearing instruction.
+pub fn render_taste_representation(
+    candidate: &membrane_adapt::delivery::PreferenceDeliveryCandidateV1,
+) -> String {
+    let mut text = format!(
+        "Taste preference (subordinate to current instructions and authored policy). Scope: {}; applicability: {}.\nPreferred rule: {}",
+        candidate.scope,
+        serde_json::to_string(&candidate.scope_dimensions).expect("scope dimensions serialize"),
+        candidate.rule
+    );
+    if let Some(counterfactual) = candidate.counterfactual.as_ref() {
+        if counterfactual.status == "recorded" {
+            if let Some(rejected) = counterfactual.rejected_alternative.as_deref() {
+                if !rejected.trim().is_empty() {
+                    text.push_str(
+                        "\nAvoided alternative (source-bound evidence only; not an instruction or failure claim): ",
+                    );
+                    text.push_str(rejected);
+                }
+            }
+        }
+    }
+    text
 }
 
 /// Add reviewed Taste before the planner, never as an unbudgeted suffix.
@@ -354,15 +394,16 @@ pub fn prepare_packet(
             .find(|c| c.record_id == delivered.record_id)
             .ok_or("Taste binding missing")?;
         let id = format!("adapt:taste:{}", delivered.record_id);
-        // The qualifier is indivisible from the rule, and hashes cover both.
-        let text = format!("Taste preference (subordinate to current instructions and authored policy). Scope: {}; applicability: {}.\n{}",
-            candidate.scope, serde_json::to_string(&candidate.scope_dimensions).map_err(|e| e.to_string())?, delivered.rule);
+        // The qualifier and source-bound counterfactual are indivisible from
+        // the reviewed rule, and hashes cover the complete representation.
+        let text = render_taste_representation(candidate);
         let hash = membrane_adapt::canonical::sha256_hex(text.as_bytes());
         candidates.push(json!({"id":id,"layer":7,"provider":"adapt","sourceKind":"taste_preference",
             "sourceRef":format!("adapt:{}",delivered.record_id),"sourceHash":hash,"trustClass":"user_reviewed",
             "instructionPolicy":"preference_under_authored_policy","providerScore":0.9,
             "scoreComponents":{"structural":1.0,"relevance":1.0},"estimatedTokens":(text.chars().count()+3)/4,
-            "protected":false,"exact":true,"recoverable":false,"resolver":"","text":text}));
+            "protected":false,"exact":true,"recoverable":false,"resolver":"","text":text,
+            "counterfactual":candidate.counterfactual}));
         representations.insert(id, text);
     }
     Ok(AdaptPacketSelection {
@@ -429,7 +470,7 @@ pub fn finalize_packet(
             receipt.rendered_chars = Some(expected.chars().count());
             loaded.push(json!({"record_id":record.record_id,"candidate_id":id,"representation_sha256":representation_sha256,
                 "record_sha256":selection.inventory.record_versions.get(&record.record_id),
-                "source_ref":format!("adapt:{}",record.record_id)}));
+                "source_ref":format!("adapt:{}",record.record_id),"counterfactual":record.counterfactual}));
         } else {
             receipt.selected = false;
             receipt.applicability_reason = "planner_or_push_omitted".into();

@@ -106,6 +106,12 @@ pub struct ContextEvent {
     pub event_id: String,
     pub kind: String,
     pub role: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub session_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub transcript_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub parser_digest: String,
     pub classification: String,
     pub flags: Vec<String>,
     pub byte_start: i64,
@@ -126,6 +132,18 @@ pub struct EvidenceContext {
     pub source_byte_end: i64,
     pub evidence_text: String,
     pub context_events: Vec<ContextEvent>,
+    /// Frozen transcript identity carried alongside correction-derived
+    /// counterfactuals. Empty defaults preserve legacy contexts, while any
+    /// counterfactual requires exact non-empty equality below.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_transcript_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_parser_digest: String,
+    /// Optional correction-derived counterfactual.  It lives inside the
+    /// evidence context so legacy manifest record literals remain compatible;
+    /// when present it is still part of the record payload and semantic seal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterfactual: Option<crate::taste::TasteCounterfactualV1>,
 }
 
 /// One candidate in the manifest. Immutable fields are hashed into
@@ -356,6 +374,89 @@ pub fn candidate_payload(rec: &ManifestRecord) -> Value {
     Value::Object(map)
 }
 
+fn validate_counterfactual(
+    rec: &ManifestRecord,
+    context: &EvidenceContext,
+    counterfactual: &crate::taste::TasteCounterfactualV1,
+) -> Result<(), ManifestError> {
+    let invalid = |reason: &str| ManifestError::EvidenceContextInvalid {
+        record_id: rec.id.clone(),
+        reason: format!("counterfactual {reason}"),
+    };
+    if counterfactual.schema_version != crate::taste::COUNTERFACTUAL_SCHEMA
+        || counterfactual.source_event_id != context.source_event_id
+        || counterfactual.source_session_id.trim().is_empty()
+        || counterfactual.source_transcript_id.trim().is_empty()
+        || counterfactual.source_parser_digest.trim().is_empty()
+        || context.source_transcript_id.trim().is_empty()
+        || context.source_parser_digest.trim().is_empty()
+        || counterfactual.source_transcript_id != context.source_transcript_id
+        || counterfactual.source_parser_digest != context.source_parser_digest
+        || counterfactual.source_transcript_sha256.len() != 64
+        || !counterfactual
+            .source_transcript_sha256
+            .chars()
+            .all(|value| value.is_ascii_hexdigit())
+        || counterfactual.source_evidence_text_sha256
+            != crate::canonical::sha256_hex(context.evidence_text.as_bytes())
+        || !rec
+            .source_ids
+            .iter()
+            .any(|source_id| source_id == &counterfactual.source_session_id)
+        || !rec.source_file_hashes.iter().any(|binding| {
+            binding.session_id == counterfactual.source_session_id
+                && binding
+                    .sha256
+                    .trim_start_matches("sha256:")
+                    .eq_ignore_ascii_case(&counterfactual.source_transcript_sha256)
+        })
+        || counterfactual.replacement != rec.rule
+        || counterfactual.reason != context.evidence_text
+        || counterfactual.failure_evidence
+            != crate::taste::COUNTERFACTUAL_NONE_RECORDED
+    {
+        return Err(invalid("source or replacement binding"));
+    }
+    let rejected = context.context_events.iter().find(|event| {
+        Some(event.event_id.as_str()) == counterfactual.rejected_alternative_event_id.as_deref()
+    });
+    match counterfactual.status.as_str() {
+        crate::taste::COUNTERFACTUAL_NONE_RECORDED => {
+            if counterfactual.rejected_alternative.is_some()
+                || counterfactual.rejected_alternative_event_id.is_some()
+                || counterfactual.rejected_alternative_byte_start.is_some()
+                || counterfactual.rejected_alternative_byte_end.is_some()
+                || counterfactual.rejected_alternative_text_sha256.is_some()
+            {
+                return Err(invalid("none_recorded contains rejected evidence"));
+            }
+        }
+        "recorded" => {
+            let Some(event) = rejected else {
+                return Err(invalid("rejected event is absent"));
+            };
+            if event.kind != "assistant_message"
+                || event.role != "assistant"
+                || event.provenance != "assistant_output"
+                || event.is_source
+                || event.session_id != counterfactual.source_session_id
+                || event.transcript_id != counterfactual.source_transcript_id
+                || event.parser_digest != counterfactual.source_parser_digest
+                || event.text.trim().is_empty()
+                || counterfactual.rejected_alternative.as_deref() != Some(event.text.as_str())
+                || counterfactual.rejected_alternative_byte_start != Some(event.byte_start as u64)
+                || counterfactual.rejected_alternative_byte_end != Some(event.byte_end as u64)
+                || counterfactual.rejected_alternative_text_sha256.as_deref()
+                    != Some(crate::canonical::sha256_hex(event.text.as_bytes()).as_str())
+            {
+                return Err(invalid("rejected event identity or digest"));
+            }
+        }
+        _ => return Err(invalid("unknown status")),
+    }
+    Ok(())
+}
+
 pub fn payload_sha256(rec: &ManifestRecord) -> String {
     sha256_canonical(&candidate_payload(rec))
 }
@@ -393,6 +494,15 @@ pub fn semantic_payload_for_record(
     evidence.push(crate::canonical::sha256_hex(
         rec.evidence_excerpt.as_bytes(),
     ));
+    for counterfactual in rec
+        .evidence_contexts
+        .iter()
+        .filter_map(|context| context.counterfactual.as_ref())
+    {
+        evidence.push(crate::canonical::sha256_canonical(
+            &serde_json::to_value(counterfactual).expect("counterfactual serializes"),
+        ));
+    }
     evidence.sort();
     evidence.dedup();
     let user_authoritative = rec.evidence_class == "user_authoritative";
@@ -632,6 +742,32 @@ fn validate_structure(manifest: &PreferenceManifestV1) -> Result<(), ManifestErr
                     record_id: rec.id.clone(),
                     reason: "context header disagrees with source event".into(),
                 });
+            }
+            let has_source_identity = !ctx.source_transcript_id.trim().is_empty()
+                || !ctx.source_parser_digest.trim().is_empty();
+            if has_source_identity
+                && (ctx.source_transcript_id.trim().is_empty()
+                    || ctx.source_parser_digest.trim().is_empty()
+                    || s.transcript_id != ctx.source_transcript_id
+                    || s.parser_digest != ctx.source_parser_digest)
+            {
+                return Err(ManifestError::EvidenceContextInvalid {
+                    record_id: rec.id.clone(),
+                    reason: "source event transcript/parser identity disagrees with context"
+                        .into(),
+                });
+            }
+            if let Some(counterfactual) = &ctx.counterfactual {
+                if s.session_id != counterfactual.source_session_id
+                    || s.transcript_id != counterfactual.source_transcript_id
+                    || s.parser_digest != counterfactual.source_parser_digest
+                {
+                    return Err(ManifestError::EvidenceContextInvalid {
+                        record_id: rec.id.clone(),
+                        reason: "source event identity disagrees with counterfactual".into(),
+                    });
+                }
+                validate_counterfactual(rec, ctx, counterfactual)?;
             }
         }
     }

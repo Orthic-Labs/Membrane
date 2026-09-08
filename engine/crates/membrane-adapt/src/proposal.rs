@@ -415,6 +415,9 @@ fn context_event(event: &crate::taste::TasteContextEventV1) -> ContextEvent {
         event_id: event.event_id.clone(),
         kind: event.kind.clone(),
         role: event.role.clone().unwrap_or_default(),
+        session_id: event.session_id.clone(),
+        transcript_id: event.transcript_id.clone(),
+        parser_digest: event.parser_digest.clone(),
         classification: event.classification.clone(),
         flags,
         byte_start: event.byte_start as i64,
@@ -454,6 +457,11 @@ pub fn build_pending_manifest(
     let candidates: Vec<&TasteCandidateV1> = candidates.iter().collect();
     let mut source_digests: BTreeMap<String, String> = BTreeMap::new();
     for candidate in &candidates {
+        if !candidate.needs_review {
+            return Err(ProposalError::InvalidCandidate(
+                candidate.candidate_id.clone(),
+            ));
+        }
         let digest = candidate
             .source_transcript_sha256
             .trim_start_matches("sha256:")
@@ -601,6 +609,9 @@ pub fn build_pending_manifest(
                 source_byte_end: candidate.source_byte_end as i64,
                 evidence_text: candidate.evidence_text.clone(),
                 context_events,
+                source_transcript_id: candidate.source_transcript_id.clone(),
+                source_parser_digest: candidate.source_parser_digest.clone(),
+                counterfactual: Some(crate::taste::counterfactual_for_candidate(candidate)),
             }],
         };
         record.payload_sha256 = manifest::payload_sha256(&record);
@@ -693,6 +704,7 @@ pub fn adjudicate_manifest(
             "rejected"
         }
         .into();
+        record.needs_review = false;
         record.human_note = decision.reason.clone();
         record.updated_at = validated_at.into();
         record.last_verified_at = validated_at.into();
@@ -778,6 +790,7 @@ fn reconstruct_pending_manifest(finalised: &PreferenceManifestV1) -> PreferenceM
     pending.duplicate_resolutions.clear();
     for record in &mut pending.records {
         record.status = "pending".into();
+        record.needs_review = true;
         record.human_note.clear();
         record.updated_at = record.created_at.clone();
         record.last_verified_at.clear();
@@ -837,16 +850,32 @@ fn verify_final_manifest_adjudication_with_verified(
     finalised: &PreferenceManifestV1,
     verified: &VerifiedSemanticAdjudication,
 ) -> Result<(), ProposalError> {
-    let expected: BTreeMap<&str, &str> = verified
-        .adjudication
-        .decisions
-        .iter()
-        .map(|decision| (decision.id.as_str(), decision.verdict.as_str()))
-        .collect();
-    if expected.len() != finalised.records.len() {
+    if verified.adjudication.decisions.len() != finalised.records.len() {
+        return Err(ProposalError::DecisionCoverageMismatch);
+    }
+    let mut expected = BTreeMap::new();
+    for decision in &verified.adjudication.decisions {
+        if expected
+            .insert(decision.id.as_str(), decision.verdict.as_str())
+            .is_some()
+        {
+            return Err(ProposalError::DecisionCoverageMismatch);
+        }
+    }
+    let mut final_ids = BTreeSet::new();
+    for record in &finalised.records {
+        if !final_ids.insert(record.id.as_str()) {
+            return Err(ProposalError::DecisionCoverageMismatch);
+        }
+    }
+    let expected_ids: BTreeSet<&str> = expected.keys().copied().collect();
+    if final_ids != expected_ids {
         return Err(ProposalError::DecisionCoverageMismatch);
     }
     for record in &finalised.records {
+        if record.needs_review {
+            return Err(ProposalError::InvalidValidatorReceipt);
+        }
         let verdict = expected
             .get(record.id.as_str())
             .ok_or(ProposalError::DecisionCoverageMismatch)?;
@@ -860,6 +889,7 @@ fn verify_final_manifest_adjudication_with_verified(
             "rejected"
         };
         if record.status != expected_status
+            || record.validator_receipt_id != verified.adjudication.validator_receipt_id
             || record.validator_receipt_sha256 != verified.receipt_sha256
         {
             return Err(ProposalError::InvalidValidatorReceipt);
@@ -1026,6 +1056,106 @@ mod tests {
     }
 
     #[test]
+    fn signed_final_rejects_duplicate_decision_ids_after_unique_count_collapse() {
+        let gate1 = gate1();
+        let pending = build_pending_manifest(
+            &[candidate("Always run focused tests", AuthorityEffect::Neutral)],
+            "installation-duplicate-final",
+            gate1.canonical_pool_sha256(),
+            "2026-08-26T00:00:00Z",
+            &gate1,
+        )
+        .unwrap();
+        let decision = SemanticDecisionV1 {
+            id: pending.records[0].id.clone(),
+            verdict: "valid".into(),
+            reason: "signed review".into(),
+        };
+        let verified = verified_adjudication(&pending, vec![decision.clone()]);
+        let mut finalised = adjudicate_manifest(&pending, &verified).unwrap();
+        let duplicated = verified_adjudication(&pending, vec![decision.clone(), decision]);
+        finalised.records[0].validator_receipt_sha256 = duplicated.receipt_sha256.clone();
+        let canonical_pool_sha256 = finalised.canonical_pool_sha256.clone();
+        manifest::seal_manifest_record(&mut finalised.records[0], &canonical_pool_sha256).unwrap();
+        finalised.records[0].payload_sha256 = manifest::payload_sha256(&finalised.records[0]);
+        finalised.manifest_sha256 = manifest::manifest_hash(&finalised);
+        assert!(matches!(
+            verify_final_manifest_adjudication_with_verified(&finalised, &duplicated),
+            Err(ProposalError::DecisionCoverageMismatch)
+        ));
+    }
+
+    #[test]
+    fn signed_final_rejects_resealed_validator_receipt_id_mismatch() {
+        let gate1 = gate1();
+        let pending = build_pending_manifest(
+            &[candidate("Always preserve source evidence", AuthorityEffect::Neutral)],
+            "installation-receipt-id",
+            gate1.canonical_pool_sha256(),
+            "2026-08-26T00:00:00Z",
+            &gate1,
+        )
+        .unwrap();
+        let verified = verified_adjudication(
+            &pending,
+            vec![SemanticDecisionV1 {
+                id: pending.records[0].id.clone(),
+                verdict: "valid".into(),
+                reason: "signed review".into(),
+            }],
+        );
+        let mut finalised = adjudicate_manifest(&pending, &verified).unwrap();
+        finalised.records[0].validator_receipt_id = "forged-receipt-id".into();
+        let canonical_pool_sha256 = finalised.canonical_pool_sha256.clone();
+        manifest::seal_manifest_record(&mut finalised.records[0], &canonical_pool_sha256).unwrap();
+        finalised.records[0].payload_sha256 = manifest::payload_sha256(&finalised.records[0]);
+        finalised.manifest_sha256 = manifest::manifest_hash(&finalised);
+        assert!(matches!(
+            verify_final_manifest_adjudication_with_verified(&finalised, &verified),
+            Err(ProposalError::InvalidValidatorReceipt)
+        ));
+    }
+
+    #[test]
+    fn signed_final_rejects_duplicate_final_record_ids() {
+        let mut first = candidate("Always preserve focused changes", AuthorityEffect::Neutral);
+        first.candidate_id = "final-a".into();
+        first.reseal_for_test();
+        let mut second = candidate("Always preserve exact source evidence", AuthorityEffect::Neutral);
+        second.candidate_id = "final-b".into();
+        second.reseal_for_test();
+        let gate1 = gate1();
+        let pending = build_pending_manifest(
+            &[first, second],
+            "installation-duplicate-record",
+            gate1.canonical_pool_sha256(),
+            "2026-08-26T00:00:00Z",
+            &gate1,
+        )
+        .unwrap();
+        let verified = verified_adjudication(
+            &pending,
+            pending
+                .records
+                .iter()
+                .map(|record| SemanticDecisionV1 {
+                    id: record.id.clone(),
+                    verdict: "valid".into(),
+                    reason: "signed review".into(),
+                })
+                .collect(),
+        );
+        let finalised = adjudicate_manifest(&pending, &verified).unwrap();
+        let mut duplicated = finalised.clone();
+        duplicated.records[1] = duplicated.records[0].clone();
+        duplicated.manifest_sha256 = manifest::manifest_hash(&duplicated);
+        assert!(matches!(
+            verify_final_manifest_adjudication_with_verified(&duplicated, &verified),
+            Err(ProposalError::DecisionCoverageMismatch)
+        ));
+    }
+
+    #[test]
     fn gate_one_refuses_security_weakening_before_adjudication() {
         let gate1 = gate1();
         let refused = build_pending_manifest(
@@ -1138,7 +1268,7 @@ mod tests {
 
         let mut influence = base.clone();
         influence.semantic_payload.influence_class =
-            crate::record::InfluenceClass::BehavioralDirective;
+            crate::record::InfluenceClass::Provisional;
         mutations.push(("influence_class", influence));
 
         let mut digest = base.clone();

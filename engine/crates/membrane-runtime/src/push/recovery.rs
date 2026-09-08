@@ -61,17 +61,28 @@ pub fn now_ms() -> u64 { crate::time::now_millis().min(u64::MAX as u128) as u64 
 /// Construct only after the transport's normal repository authorization gate.
 /// Canonical root and session are both part of the storage namespace.
 #[derive(Debug, Clone)]
-pub struct RecoveryScope { id: String }
+pub struct RecoveryScope { id: String, task_id: String, session_id: String }
 impl RecoveryScope {
     pub fn new(root: &Path, session: &str) -> Result<Self, RecoveryError> {
+        Self::new_bound(root, "", session)
+    }
+    /// Construct a recovery namespace bound to one exact task and session.
+    /// The legacy constructor retains its historical root/session namespace.
+    pub fn new_for_task(root: &Path, task: &str, session: &str) -> Result<Self, RecoveryError> {
+        if task.is_empty() || task.len() > 256 { return Err(RecoveryError::Denied); }
+        Self::new_bound(root, task, session)
+    }
+    fn new_bound(root: &Path, task: &str, session: &str) -> Result<Self, RecoveryError> {
         if session.is_empty() || session.len() > 256 { return Err(RecoveryError::Denied); }
         let root = root.canonicalize().map_err(|_| RecoveryError::Denied)?;
         if !root.is_dir() { return Err(RecoveryError::Denied); }
-        let identity = serde_json::to_vec(&(root.to_string_lossy(), session))
+        let identity = serde_json::to_vec(&(root.to_string_lossy(), task, session))
             .map_err(|_| RecoveryError::Denied)?;
-        Ok(Self { id: digest(&identity) })
+        Ok(Self { id: digest(&identity), task_id: task.into(), session_id: session.into() })
     }
     pub fn binding(&self) -> &str { &self.id }
+    pub fn task_id(&self) -> Option<&str> { (!self.task_id.is_empty()).then_some(self.task_id.as_str()) }
+    pub fn session_id(&self) -> &str { &self.session_id }
     pub fn local() -> Result<Self, RecoveryError> {
         let session = std::env::var("MEMBRANE_PUSH_SESSION").unwrap_or_else(|_| "local".into());
         Self::new(&workspace_root(), &session)

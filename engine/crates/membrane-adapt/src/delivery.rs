@@ -42,6 +42,10 @@ pub struct PreferenceDeliveryCandidateV1 {
     pub lifecycle_eligible: bool,
     pub influence_class: InfluenceClass,
     pub semantic_verified: bool,
+    /// Evidence metadata only; this never changes preference authority or
+    /// selection precedence.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterfactual: Option<crate::taste::TasteCounterfactualV1>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +69,8 @@ pub struct PreferenceDeliveryContextV1 {
 pub struct DeliveredPreferenceV1 {
     pub record_id: String,
     pub rule: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterfactual: Option<crate::taste::TasteCounterfactualV1>,
     pub receipt: PreferenceDeliveryReceiptV1,
 }
 
@@ -288,6 +294,7 @@ pub fn select_delivery_candidates(
             delivered.push(DeliveredPreferenceV1 {
                 record_id: candidate.record_id.clone(),
                 rule: candidate.rule.clone(),
+                counterfactual: candidate.counterfactual.clone(),
                 receipt: receipt.clone(),
             });
         }
@@ -332,6 +339,7 @@ pub fn select_preferences(
             lifecycle_eligible: true,
             influence_class: record.influence_class,
             semantic_verified: true,
+            counterfactual: None,
         })
         .collect::<Vec<_>>();
     let plan = select_delivery_candidates(
@@ -566,6 +574,7 @@ mod tests {
                 lifecycle_eligible: true,
                 influence_class: record.influence_class,
                 semantic_verified: true,
+                counterfactual: None,
             })
             .collect::<Vec<_>>();
         let context = PreferenceDeliveryContextV1 {
@@ -621,6 +630,7 @@ mod tests {
             lifecycle_eligible: true,
             influence_class: record.influence_class,
             semantic_verified: false,
+            counterfactual: None,
         };
         let context = PreferenceDeliveryContextV1 {
             allowed_scopes: vec!["repo".into()],
@@ -665,6 +675,7 @@ mod tests {
             lifecycle_eligible: true,
             influence_class: InfluenceClass::BehavioralDirective,
             semantic_verified: true,
+            counterfactual: None,
         };
         let context = PreferenceDeliveryContextV1 {
             allowed_scopes: vec!["global".into(), "D--Claude-repo".into()],
@@ -710,6 +721,7 @@ mod tests {
             lifecycle_eligible: true,
             influence_class: InfluenceClass::BehavioralDirective,
             semantic_verified: true,
+            counterfactual: None,
         };
         let context = PreferenceDeliveryContextV1 {
             allowed_scopes: vec!["global".into(), "D--Claude-repo".into()],
@@ -783,6 +795,7 @@ mod tests {
             lifecycle_eligible: true,
             influence_class: InfluenceClass::BehavioralDirective,
             semantic_verified: true,
+            counterfactual: None,
         };
         let duplicate = select_delivery_candidates(
             &[

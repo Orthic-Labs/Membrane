@@ -6835,9 +6835,14 @@ impl MemoryStore {
                 machine_binding,
                 authority_tier,
                 semantic_verified,
+                counterfactual,
             ) = match parsed {
                 Ok(record) => {
                     record_versions.insert(record.id.clone(), record.payload_sha256.clone());
+                    let counterfactual = record
+                        .evidence_contexts
+                        .iter()
+                        .find_map(|context| context.counterfactual.clone());
                     let class = RecordClass::parse(&record.record_type);
                     let dimensions = membrane_adapt::scope::ScopeDimensions::normalize(
                         &record.scope_dimensions.0,
@@ -6888,6 +6893,7 @@ impl MemoryStore {
                         machine_binding,
                         authority_tier,
                         verified,
+                        counterfactual,
                     )
                 }
                 Err(_) => (
@@ -6898,6 +6904,7 @@ impl MemoryStore {
                     None,
                     membrane_adapt::authority::PrecedenceTier::ProvisionalCandidate,
                     false,
+                    None,
                 ),
             };
             if bindings
@@ -6927,6 +6934,7 @@ impl MemoryStore {
                 lifecycle_eligible: eligible_ids.contains(&memory_id),
                 influence_class,
                 semantic_verified,
+                counterfactual,
             });
         }
         Ok(TasteDeliveryInventoryV1 {
@@ -7992,6 +8000,13 @@ impl MemoryStore {
         manifest: &membrane_adapt::manifest::PreferenceManifestV1,
         trust: Option<&membrane_adapt::proposal::SemanticAdjudicatorTrustStoreV1>,
     ) -> Result<MemoryBatchReceipt, MemoryBatchError> {
+        if manifest.installation_id != self.installation_id() {
+            return Err(MemoryBatchError::Invalid(format!(
+                "verified Adapt Taste installation mismatch: expected {}, got {}",
+                self.installation_id(),
+                manifest.installation_id
+            )));
+        }
         membrane_adapt::proposal::verify_final_manifest_adjudication_or_local(manifest, trust)
             .map_err(|error| {
                 MemoryBatchError::Invalid(format!(
@@ -8046,6 +8061,62 @@ impl MemoryStore {
                 })
             })
             .collect::<Result<Vec<_>, MemoryBatchError>>()?;
+        if items.is_empty() {
+            if !self.writes_enabled {
+                return Err(MemoryBatchError::Persist(
+                    self.embedder_issue.clone().unwrap_or_else(|| {
+                        "memory writes disabled because the configured embedder is unavailable".into()
+                    }),
+                ));
+            }
+            // All-rejected manifests still consume a durable batch identity. This
+            // keeps an identical replay idempotent, while binding any changed
+            // adjudication to a conflict even when no memory rows are written.
+            let request_sha256 = membrane_adapt::canonical::sha256_canonical(
+                &serde_json::json!({
+                    "batch_id": &manifest.batch_id,
+                    "manifest_sha256": &manifest.manifest_sha256,
+                    "canonical_pool_sha256": &manifest.canonical_pool_sha256,
+                }),
+            );
+            let updated_at = crate::time::now_iso();
+            let mut conn = self.db.lock();
+            let tx = conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|e| MemoryBatchError::Persist(e.to_string()))?;
+            if let Some(receipt) = Self::replay_memory_batch_on(
+                &tx,
+                &manifest.batch_id,
+                &request_sha256,
+            )? {
+                return Ok(receipt);
+            }
+            let current = self
+                .taste_gate1_review_context_excluding_on(&tx, &BTreeMap::new())
+                .map_err(MemoryBatchError::Persist)?;
+            if current.canonical_pool_sha256() != manifest.canonical_pool_sha256 {
+                return Err(MemoryBatchError::Invalid(format!(
+                    "Taste canonical pool changed since review: expected {}, current {}",
+                    manifest.canonical_pool_sha256,
+                    current.canonical_pool_sha256()
+                )));
+            }
+            tx.execute(
+                "INSERT INTO memory_batch_receipt (batch_id, request_sha256, item_count, created_at)
+                 VALUES (?1, ?2, 0, ?3)",
+                rusqlite::params![&manifest.batch_id, request_sha256, updated_at],
+            )
+            .map_err(|e| MemoryBatchError::Persist(e.to_string()))?;
+            tx.commit()
+                .map_err(|e| MemoryBatchError::Persist(e.to_string()))?;
+            return Ok(MemoryBatchReceipt {
+                batch_id: manifest.batch_id.clone(),
+                inserted: 0,
+                duplicates: 0,
+                complete: true,
+                receipts: Vec::new(),
+            });
+        }
         let excluded_record_payloads = manifest
             .records
             .iter()

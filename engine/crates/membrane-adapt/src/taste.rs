@@ -11,6 +11,8 @@ use crate::authority::{classify_authority_effect, AuthorityEffect};
 use crate::canonical::sha256_hex;
 
 pub const TASTE_CANDIDATE_SCHEMA: &str = "adapt.taste-candidate.v1";
+pub const COUNTERFACTUAL_SCHEMA: &str = "adapt.taste-counterfactual.v1";
+pub const COUNTERFACTUAL_NONE_RECORDED: &str = "none_recorded";
 const MAX_CONTEXT_EVENTS: usize = 4;
 const MAX_CONTEXT_CHARS: usize = 4_000;
 
@@ -19,6 +21,9 @@ pub struct TasteContextEventV1 {
     pub event_id: String,
     pub kind: String,
     pub role: Option<String>,
+    pub session_id: String,
+    pub transcript_id: String,
+    pub parser_digest: String,
     pub byte_start: u64,
     pub byte_end: u64,
     pub text: String,
@@ -28,6 +33,31 @@ pub struct TasteContextEventV1 {
     pub redacted: bool,
     pub is_source: bool,
     pub truncated: bool,
+}
+
+/// A correction-derived alternative is evidence, not authority.  The
+/// rejected text is retained only when it is present as an exact, visible
+/// assistant event in the mined context.  `failure_evidence` stays explicitly
+/// `none_recorded`: choosing a valid alternative does not prove a failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TasteCounterfactualV1 {
+    pub schema_version: String,
+    pub status: String,
+    pub rejected_alternative: Option<String>,
+    pub rejected_alternative_event_id: Option<String>,
+    pub rejected_alternative_byte_start: Option<u64>,
+    pub rejected_alternative_byte_end: Option<u64>,
+    pub rejected_alternative_text_sha256: Option<String>,
+    pub replacement: String,
+    pub reason: String,
+    pub reason_kind: String,
+    pub failure_evidence: String,
+    pub source_event_id: String,
+    pub source_session_id: String,
+    pub source_transcript_id: String,
+    pub source_transcript_sha256: String,
+    pub source_parser_digest: String,
+    pub source_evidence_text_sha256: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +112,61 @@ impl TasteCandidateV1 {
     #[cfg(test)]
     pub(crate) fn reseal_for_test(&mut self) {
         self.integrity_sha256 = sha256_hex(&serde_json::to_vec(self).unwrap());
+    }
+}
+
+/// Project a mined candidate into a source-bound counterfactual record.  The
+/// prior assistant event is accepted only when the candidate carries its
+/// exact visible context event; otherwise the honest representation is an
+/// explicit `none_recorded` value.
+pub fn counterfactual_for_candidate(candidate: &TasteCandidateV1) -> TasteCounterfactualV1 {
+    let rejected = candidate.avoided_alternative.as_ref().and_then(|text| {
+        candidate.context_events.iter().rev().find(|event| {
+            event.kind == "assistant_message"
+                && event.role.as_deref() == Some("assistant")
+                && !event.synthetic
+                && !event.meta
+                && !event.redacted
+                && !event.text.trim().is_empty()
+                && event.session_id == candidate.source_session_id
+                && event.transcript_id == candidate.source_transcript_id
+                && event.parser_digest == candidate.source_parser_digest
+                && &event.text == text
+        })
+    });
+    let status = rejected
+        .is_some()
+        .then_some("recorded")
+        .unwrap_or(COUNTERFACTUAL_NONE_RECORDED);
+    TasteCounterfactualV1 {
+        schema_version: COUNTERFACTUAL_SCHEMA.into(),
+        status: status.into(),
+        rejected_alternative: rejected.map(|event| event.text.clone()),
+        rejected_alternative_event_id: rejected.map(|event| event.event_id.clone()),
+        rejected_alternative_byte_start: rejected.map(|event| event.byte_start),
+        rejected_alternative_byte_end: rejected.map(|event| event.byte_end),
+        rejected_alternative_text_sha256: rejected
+            .map(|event| sha256_hex(event.text.as_bytes())),
+        replacement: candidate.rule.clone(),
+        reason: candidate.evidence_text.clone(),
+        reason_kind: if candidate.act_kind
+            == membrane_transcript::evidence::ActKind::Correction
+        {
+            "user_correction"
+        } else {
+            COUNTERFACTUAL_NONE_RECORDED
+        }
+        .into(),
+        failure_evidence: COUNTERFACTUAL_NONE_RECORDED.into(),
+        source_event_id: candidate.source_event_id.clone(),
+        source_session_id: candidate.source_session_id.clone(),
+        source_transcript_id: candidate.source_transcript_id.clone(),
+        source_transcript_sha256: candidate
+            .source_transcript_sha256
+            .trim_start_matches("sha256:")
+            .to_lowercase(),
+        source_parser_digest: candidate.source_parser_digest.clone(),
+        source_evidence_text_sha256: candidate.evidence_text_sha256.clone(),
     }
 }
 
@@ -253,12 +338,25 @@ fn context(
 ) -> Vec<TasteContextEventV1> {
     let start = source_index.saturating_sub(MAX_CONTEXT_EVENTS);
     let end = events.len().min(source_index + MAX_CONTEXT_EVENTS + 1);
+    let source_event_id = events
+        .get(source_index)
+        .map(|event| event.event_id.as_str());
     let mut remaining = MAX_CONTEXT_CHARS;
     events[start..end]
         .iter()
         .enumerate()
-        .filter_map(|(offset, event)| {
-            let is_source = start + offset == source_index;
+        .filter(|(_, event)| {
+            !event.synthetic
+                && !event.flags.synthetic
+                && !event.meta
+                && !event.flags.meta
+                && !event.private_reasoning_omitted
+                && !event.flags.private_reasoning_omitted
+                && !event.redacted
+                && !event.flags.redacted
+        })
+        .filter_map(|(_offset, event)| {
+            let is_source = source_event_id == Some(event.event_id.as_str());
             if remaining == 0 && !is_source {
                 return None;
             }
@@ -280,6 +378,9 @@ fn context(
                 event_id: event.event_id.clone(),
                 kind: event.kind.clone(),
                 role: event.role.clone(),
+                session_id: event.session_id.clone(),
+                transcript_id: event.transcript_id.clone(),
+                parser_digest: event.parser_digest.clone(),
                 byte_start: event.byte_start,
                 byte_end: event.byte_end,
                 text,
@@ -320,7 +421,21 @@ pub fn extract_candidates_with_source(
                     events[..index]
                         .iter()
                         .rev()
-                        .find(|candidate| candidate.kind == "assistant_message")
+                        .find(|candidate| {
+                            candidate.kind == "assistant_message"
+                                && !candidate.synthetic
+                                && !candidate.flags.synthetic
+                                && !candidate.meta
+                                && !candidate.flags.meta
+                                && !candidate.private_reasoning_omitted
+                                && !candidate.flags.private_reasoning_omitted
+                                && !candidate.redacted
+                                && !candidate.flags.redacted
+                                && !candidate.text.trim().is_empty()
+                                && candidate.session_id == event.session_id
+                                && candidate.transcript_id == event.transcript_id
+                                && candidate.parser_digest == event.parser_digest
+                        })
                         .map(|candidate| candidate.text.chars().take(800).collect::<String>())
                 })
                 .flatten();

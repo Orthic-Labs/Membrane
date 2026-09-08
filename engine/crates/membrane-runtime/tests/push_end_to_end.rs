@@ -62,7 +62,7 @@ fn native_http_cli_restore_share_scope_integrity_lifetime_and_store() {
             Deadline::at(std::time::Instant::now()),
             CancellationToken::new(),
         ),
-        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"})),
+        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push","operation":"probe"})),
     );
     assert_eq!(
         expired.pointer("/result/structuredContent/result/code"),
@@ -76,24 +76,25 @@ fn native_http_cli_restore_share_scope_integrity_lifetime_and_store() {
             Deadline::at(std::time::Instant::now() + std::time::Duration::from_secs(30)),
             cancelled,
         ),
-        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"})),
+        || call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push","operation":"probe"})),
     );
     assert_eq!(
         cancelled.pointer("/result/structuredContent/result/code"),
         Some(&json!("push_cancelled")),
         "MCP Push must consume inherited request cancellation: {cancelled}"
     );
-    let probe = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"probe"}));
+    let probe = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push","operation":"probe"}));
     let token = data(&probe)["resolverToken"].as_str().unwrap();
+    let task_scope = RecoveryScope::new_for_task(&root, "task-push", "scope-push").unwrap();
     let original = "same exact event\r\n".repeat(500);
-    let prepared = call(&server, "membrane_push_prepare", json!({"repository":"repo-push","caller":caller,
+    let prepared = call(&server, "membrane_push_prepare", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push",
         "request":{"text":original,"kind":"log","maxBytes":2500,"resolverToken":token,"optimize":true}}));
     let prepared = data(&prepared);
     assert_eq!(prepared["disposition"], "prepared");
     assert!(prepared["receipt"]["savedBytes"].as_u64().unwrap() > 0);
     let reference = prepared["recovery"].clone();
     let handle = reference["handle"].as_str().unwrap();
-    let request = json!({"repository":"repo-push","caller":caller,"operation":"resolve","handle":handle,"maxBytes":20000});
+    let request = json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push","operation":"resolve","handle":handle,"maxBytes":20000});
     let restored = call(&server, "membrane_push_resolve", request.clone());
     assert_eq!(data(&restored)["content"], original);
     assert_eq!(data(&restored)["disposition"], "exact");
@@ -101,28 +102,37 @@ fn native_http_cli_restore_share_scope_integrity_lifetime_and_store() {
     assert_eq!(status, 200, "{body}");
     let http: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(http["result"]["data"]["content"], original);
-    // CLI uses the same default directory and session namespace, not cwd/.cache.
-    membrane_runtime::cli::run_cli_from(&["membrane", "push", "restore", handle, "--max-bytes", "20000"]).unwrap();
     let reopened = RecoveryStore::at(&store_dir);
     let scope = RecoveryScope::new(&root, "scope-push").unwrap();
-    assert_eq!(reopened.resolve(&scope, handle, &Selector::Lines {start:2,end:2}, 100, recovery::now_ms()).unwrap().bytes().unwrap(), b"same exact event\r\n");
+    // CLI uses the same default directory and session namespace, not cwd/.cache.
+    let legacy_cli = reopened.publish(&scope, original.as_bytes(), 1_000, recovery::now_ms()).unwrap();
+    membrane_runtime::cli::run_cli_from(&["membrane", "push", "restore", &legacy_cli.handle, "--max-bytes", "20000"]).unwrap();
+    assert_eq!(reopened.resolve(&task_scope, handle, &Selector::Lines {start:2,end:2}, 100, recovery::now_ms()).unwrap().bytes().unwrap(), b"same exact event\r\n");
     // A guessed handle never grants another caller access.
-    let denied = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":{"root":root,"repositoryId":"repo-push","scopeId":"other-session"},"operation":"resolve","handle":handle}));
-    assert_eq!(denied.pointer("/result/isError"), Some(&json!(true)));
+    let denied = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"other-session","taskId":"task-push","operation":"resolve","handle":handle}));
+    assert_eq!(denied.pointer("/result/structuredContent/result/code"), Some(&json!("push_session_binding_denied")), "wrong session must be refused before recovery: {denied}");
+    let wrong_task = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"other-task","operation":"resolve","handle":handle}));
+    assert_eq!(wrong_task.pointer("/result/structuredContent/result/code"), Some(&json!("push_artifact_not_found")), "wrong task must not resolve task-bound recovery: {wrong_task}");
     // Binary exact bytes remain recoverable through the same API, not lossy UTF-8.
-    let binary = reopened.publish(&scope, &[0,255,128,10], 1000, recovery::now_ms()).unwrap();
-    let raw = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"operation":"resolve","handle":binary.handle}));
+    let binary = reopened.publish(&task_scope, &[0,255,128,10], 1000, recovery::now_ms()).unwrap();
+    let raw = call(&server, "membrane_push_resolve", json!({"repository":"repo-push","caller":caller,"sessionId":"scope-push","taskId":"task-push","operation":"resolve","handle":binary.handle}));
     assert_eq!(data(&raw)["contentEncoding"], "hex");
     assert_eq!(data(&raw)["content"], "00ff800a");
+    let task_reference = reopened.publish(&task_scope, b"task-bound", 1_000, recovery::now_ms()).unwrap();
+    let wrong_task_scope = RecoveryScope::new_for_task(&root, "other-task", "scope-push").unwrap();
+    let wrong_session_scope = RecoveryScope::new_for_task(&root, "task-push", "other-session").unwrap();
+    assert!(matches!(reopened.resolve(&wrong_task_scope, &task_reference.handle, &Selector::Whole, 128, recovery::now_ms()), Err(recovery::RecoveryError::NotFound)));
+    assert!(matches!(reopened.resolve(&wrong_session_scope, &task_reference.handle, &Selector::Whole, 128, recovery::now_ms()), Err(recovery::RecoveryError::NotFound)));
     // Tamper and expiry are tested at the live consumer, not only a helper.
     let db = rusqlite::Connection::open(store_dir.join("push-artifacts.sqlite")).unwrap();
     db.execute("UPDATE push_originals SET content=x'0000',size=2 WHERE handle_digest=?1", [&handle[12..]]).unwrap();
     let tampered = call(&server, "membrane_push_resolve", request.clone());
     assert_eq!(tampered.pointer("/result/structuredContent/result/code"), Some(&json!("push_artifact_corrupt")));
     db.execute("UPDATE push_originals SET expires=1 WHERE handle_digest=?1", [&handle[12..]]).unwrap();
+    db.execute("UPDATE push_originals SET expires=1 WHERE handle_digest=?1", [&legacy_cli.handle[12..]]).unwrap();
     let (status, _) = membrane_runtime::serve::route_for_tests(&memory, "POST", "/push/resolve", &request.to_string());
     assert_eq!(status, 410);
-    assert!(membrane_runtime::cli::run_cli_from(&["membrane", "push", "restore", handle]).unwrap_err().contains("expired"));
+    assert!(membrane_runtime::cli::run_cli_from(&["membrane", "push", "restore", &legacy_cli.handle]).unwrap_err().contains("expired"));
     // Registry revocation is re-observed on every operation.
     std::fs::write(&registry, json!({"schema_version":2,"bindings":{}}).to_string()).unwrap();
     let revoked = call(&server, "membrane_push_resolve", request);

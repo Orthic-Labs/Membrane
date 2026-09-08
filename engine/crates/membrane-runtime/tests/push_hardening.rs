@@ -67,6 +67,27 @@ fn legacy_content_addressed_store_migrates_without_breaking_old_handles() {
 }
 
 #[test]
+fn task_and_session_bound_recovery_rejects_wrong_identity() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = RecoveryStore::at(temp.path());
+    let owner = RecoveryScope::new_for_task(temp.path(), "task-a", "session-a").unwrap();
+    let wrong_task = RecoveryScope::new_for_task(temp.path(), "task-b", "session-a").unwrap();
+    let wrong_session = RecoveryScope::new_for_task(temp.path(), "task-a", "session-b").unwrap();
+    assert_eq!(owner.task_id(), Some("task-a"));
+    assert_eq!(owner.session_id(), "session-a");
+    let reference = store.publish(&owner, b"task-bound", 1_000, 100).unwrap();
+    assert!(matches!(
+        store.resolve(&wrong_task, &reference.handle, &Selector::Whole, 128, 101),
+        Err(RecoveryError::NotFound)
+    ));
+    assert!(matches!(
+        store.resolve(&wrong_session, &reference.handle, &Selector::Whole, 128, 101),
+        Err(RecoveryError::NotFound)
+    ));
+    assert_eq!(store.resolve(&owner, &reference.handle, &Selector::Whole, 128, 101).unwrap().bytes().unwrap(), b"task-bound");
+}
+
+#[test]
 fn cancelled_push_publication_fails_before_creating_store_state() {
     let temp = tempfile::tempdir().unwrap();
     let store = RecoveryStore::at(temp.path());

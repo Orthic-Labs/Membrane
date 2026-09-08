@@ -10,10 +10,21 @@ use membrane_adapt::proposal_state::{
 };
 use membrane_adapt::record::RecordClass;
 use membrane_adapt::scope::ScopeDimensions;
+use membrane_adapt::proposal::{
+    adjudicate_manifest, build_pending_manifest, verify_user_taste_review,
+    Gate1ReviewContextV1, SemanticAdjudicationV1, USER_TASTE_REVIEW_CONTRACT,
+};
+use membrane_adapt::taste::extract_candidates_with_source;
 use membrane_runtime::adapt::{
     execute_adapt_proposal_plan, AdaptProposalPlanRequestV1,
     ADAPT_PROPOSAL_SERVICE_CONTRACT,
 };
+use membrane_runtime::adapt_service::{
+    admit_verified_taste_manifest, finalize_packet, prepare_packet, render_taste_representation,
+    select,
+};
+use membrane_runtime::{MemDb, MemoryStore};
+use serde_json::json;
 
 fn model_proposal(excerpt: &str) -> ModelExtractionProposal {
     ModelExtractionProposal {
@@ -229,4 +240,320 @@ fn production_service_rejects_competing_variant_for_same_target_version() {
     .unwrap();
     assert_eq!(next_version.plan_id, "plan-next-version");
     assert_eq!(next_version.expected_target_version, 8);
+}
+
+fn transcript_event(kind: &str, role: &str, event_id: &str, text: &str) -> membrane_transcript::TranscriptEventV1 {
+    serde_json::from_value(json!({
+        "eventId":event_id,"rowIndex":1,"byteStart":0,"byteEnd":text.len(),
+        "blockIndex":0,"sequence":1,"kind":kind,"role":role,"text":text,
+        "classification":"successful_readonly","class":"successful_readonly",
+        "projection":"default","host":"pi","sessionId":"session-native",
+        "transcriptId":"transcript-native","parserDigest":"parser-native",
+        "synthetic":false,"meta":false,"privateReasoningOmitted":false,
+        "redacted":false,"flags":{}
+    }))
+    .unwrap()
+}
+
+fn reviewed_native_manifest_with_acceptance(
+    accept_recorded: bool,
+    installation_id: &str,
+    scope: &str,
+    review_tag: &str,
+) -> membrane_adapt::manifest::PreferenceManifestV1 {
+    let candidates = extract_candidates_with_source(
+        &[
+            transcript_event(
+                "assistant_message",
+                "assistant",
+                "assistant-native",
+                "I will rewrite the entire abstraction.",
+            ),
+            transcript_event(
+                "user_message",
+                "user",
+                "user-native-1",
+                "Correction: Prefer a focused local change.",
+            ),
+            transcript_event(
+                "user_message",
+                "user",
+                "user-native-2",
+                "Always preserve exact source evidence.",
+            ),
+        ],
+        scope,
+        &"c".repeat(64),
+    );
+    let gate1 = Gate1ReviewContextV1::from_verified_canonical_inventory(vec![]);
+    let pending = build_pending_manifest(
+        &candidates,
+        installation_id,
+        gate1.canonical_pool_sha256(),
+        "2026-09-08T00:00:00Z",
+        &gate1,
+    )
+    .unwrap();
+    let decisions = pending
+        .records
+        .iter()
+        .map(|record| membrane_adapt::proposal::SemanticDecisionV1 {
+            id: record.id.clone(),
+            verdict: if record
+                .evidence_contexts
+                .first()
+                .and_then(|context| context.counterfactual.as_ref())
+                .is_some_and(|value| accept_recorded && value.status == "recorded")
+            {
+                "valid"
+            } else {
+                "invalid"
+            }
+            .into(),
+            reason: if record
+                .evidence_contexts
+                .first()
+                .and_then(|context| context.counterfactual.as_ref())
+                .is_some_and(|value| accept_recorded && value.status == "recorded")
+            {
+                format!("independent review accepted source-bound preference ({review_tag})")
+            } else {
+                format!("independent review rejected candidate ({review_tag})")
+            },
+        })
+        .collect();
+    let review = SemanticAdjudicationV1 {
+        contract_version: USER_TASTE_REVIEW_CONTRACT.into(),
+        independent: true,
+        issuer_id: String::new(),
+        key_id: String::new(),
+        installation_id: pending.installation_id.clone(),
+        validator_receipt_id: "native-review-1".into(),
+        pending_manifest_sha256: pending.manifest_sha256.clone(),
+        canonical_pool_sha256: pending.canonical_pool_sha256.clone(),
+        validated_at: "2026-09-08T00:01:00Z".into(),
+        decisions,
+        signature_hex: String::new(),
+    };
+    let verified = verify_user_taste_review(&pending, review).unwrap();
+    adjudicate_manifest(&pending, &verified).unwrap()
+}
+
+fn reviewed_native_manifest(
+    installation_id: &str,
+    scope: &str,
+) -> membrane_adapt::manifest::PreferenceManifestV1 {
+    reviewed_native_manifest_with_acceptance(true, installation_id, scope, "native")
+}
+
+fn all_rejected_native_manifest(
+    installation_id: &str,
+    scope: &str,
+) -> membrane_adapt::manifest::PreferenceManifestV1 {
+    reviewed_native_manifest_with_acceptance(false, installation_id, scope, "native")
+}
+
+#[test]
+fn native_taste_manifest_admits_only_reviewed_records_replays_and_delivers_counterfactual() {
+    let store = MemoryStore::new();
+    let bound_root = std::env::current_dir().unwrap();
+    let scope = membrane_runtime::path_to_scope(&bound_root.to_string_lossy());
+    let manifest = reviewed_native_manifest(&store.installation_id(), &scope);
+    let accepted_id = manifest
+        .records
+        .iter()
+        .find(|record| record.status == "accepted")
+        .unwrap()
+        .id
+        .clone();
+    let rejected_id = manifest
+        .records
+        .iter()
+        .find(|record| record.status == "rejected")
+        .unwrap()
+        .id
+        .clone();
+    let first = admit_verified_taste_manifest(&store, &manifest, None).unwrap();
+    assert_eq!(first.inserted, 1);
+    assert!(first.receipts.iter().any(|receipt| receipt.item_id == accepted_id));
+    assert!(!first.receipts.iter().any(|receipt| receipt.item_id == rejected_id));
+
+    let inventory = store.taste_delivery_inventory().unwrap();
+    assert!(inventory.memory_ids.iter().any(|id| id.ends_with(&accepted_id)));
+    assert!(!inventory.memory_ids.iter().any(|id| id.ends_with(&rejected_id)));
+    let context = membrane_adapt::delivery::PreferenceDeliveryContextV1 {
+        allowed_scopes: vec![scope.clone()],
+        dimensions: ScopeDimensions::default(),
+        machine: None,
+        max_core_records: 4,
+        max_scoped_records: 4,
+        max_total_records: 4,
+        max_rendered_chars: 4096,
+        timestamp: "2026-09-08T00:02:00Z".into(),
+        session_id: "delivery-session".into(),
+        trace_id: "delivery-trace".into(),
+        request_id: "delivery-request".into(),
+        client: "test".into(),
+        model: None,
+    };
+    let (_, plan) = select(&store, &context).unwrap();
+    let delivered = plan
+        .delivered
+        .iter()
+        .find(|item| item.record_id == accepted_id)
+        .unwrap();
+    assert_eq!(
+        delivered
+            .counterfactual
+            .as_ref()
+            .map(|value| value.status.as_str()),
+        Some("recorded")
+    );
+    assert_eq!(delivered.receipt.applicability_reason, "applicable");
+
+    let mut ccs = json!({"traceId":"trace-render","candidates":[]});
+    let selection = prepare_packet(
+        &store,
+        &bound_root,
+        &json!({"hostContext":{},"session":"session-render"}),
+        &mut ccs,
+    )
+    .unwrap();
+    let rendered_candidate = selection
+        .inventory
+        .candidates
+        .iter()
+        .find(|candidate| candidate.record_id == accepted_id)
+        .unwrap();
+    let rendered = ccs["candidates"][0]["text"].as_str().unwrap();
+    assert!(rendered.contains(&format!("Preferred rule: {}", rendered_candidate.rule)));
+    let rejected = rendered_candidate
+        .counterfactual
+        .as_ref()
+        .and_then(|value| value.rejected_alternative.as_deref())
+        .unwrap();
+    assert!(rendered.contains("Avoided alternative (source-bound evidence only"));
+    assert!(rendered.contains(rejected));
+    let rendered_hash = sha256_hex(rendered.as_bytes());
+    assert_eq!(
+        ccs["candidates"][0]["sourceHash"].as_str(),
+        Some(rendered_hash.as_str())
+    );
+    let packet = json!({"blocks":ccs["candidates"].clone()});
+    let finalized = finalize_packet(&store, &selection, &packet, "render task").unwrap();
+    assert_eq!(
+        finalized["emission"]["records"][0]["representation_sha256"].as_str(),
+        Some(rendered_hash.as_str())
+    );
+    let mut none_candidate = rendered_candidate.clone();
+    let none_counterfactual = none_candidate.counterfactual.as_mut().unwrap();
+    none_counterfactual.status = "none_recorded".into();
+    none_counterfactual.rejected_alternative = None;
+    none_counterfactual.rejected_alternative_event_id = None;
+    none_counterfactual.rejected_alternative_byte_start = None;
+    none_counterfactual.rejected_alternative_byte_end = None;
+    none_counterfactual.rejected_alternative_text_sha256 = None;
+    let none_rendered = render_taste_representation(&none_candidate);
+    assert!(none_rendered.contains(&format!("Preferred rule: {}", none_candidate.rule)));
+    assert!(!none_rendered.contains("Avoided alternative"));
+
+    let replay = admit_verified_taste_manifest(&store, &manifest, None).unwrap();
+    assert_eq!(replay.inserted, 0);
+    assert_eq!(replay.duplicates, 1);
+
+    let mut conflict = manifest.clone();
+    let accepted = conflict
+        .records
+        .iter_mut()
+        .find(|record| record.status == "accepted")
+        .unwrap();
+    accepted.human_note = "different review receipt meaning".into();
+    conflict.manifest_sha256 = membrane_adapt::manifest::manifest_hash(&conflict);
+    let error = admit_verified_taste_manifest(&store, &conflict, None).unwrap_err();
+    assert!(error.contains("batch_id conflicts") || error.contains("identity conflict"));
+}
+
+#[test]
+fn all_rejected_native_taste_manifest_is_a_cas_checked_noop() {
+    let bound_root = std::env::current_dir().unwrap();
+    let manifest_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_root
+        .ancestors()
+        .find(|path| path.join("tools").is_dir())
+        .expect("workspace root with tools directory")
+        .to_path_buf();
+    let temp = tempfile::tempdir_in(workspace_root.join("tools")).unwrap();
+    let db_path = temp.path().join("all-rejected.db");
+    let scope = membrane_runtime::path_to_scope(&bound_root.to_string_lossy());
+    let store = MemoryStore::open(MemDb::open(&db_path).unwrap());
+    let manifest = all_rejected_native_manifest(&store.installation_id(), &scope);
+    assert!(manifest.records.iter().all(|record| record.status == "rejected"));
+
+    let first = admit_verified_taste_manifest(&store, &manifest, None).unwrap();
+    assert_eq!(first.batch_id, manifest.batch_id);
+    assert_eq!(first.inserted, 0);
+    assert_eq!(first.duplicates, 0);
+    assert!(first.complete);
+    assert!(first.receipts.is_empty());
+    drop(store);
+
+    let store = MemoryStore::open(MemDb::open(&db_path).unwrap());
+    let pool_change = reviewed_native_manifest(&store.installation_id(), "global");
+    assert_eq!(admit_verified_taste_manifest(&store, &pool_change, None).unwrap().inserted, 1);
+    let replay = admit_verified_taste_manifest(&store, &manifest, None).unwrap();
+    assert_eq!(replay.batch_id, first.batch_id);
+    assert_eq!(replay.inserted, 0);
+    assert_eq!(replay.duplicates, 0);
+    assert!(replay.complete);
+    assert!(replay.receipts.is_empty());
+    assert!(!store.taste_delivery_inventory().unwrap().memory_ids.iter().any(|id| {
+        manifest.records.iter().any(|record| id.ends_with(&record.id))
+    }));
+
+    let changed = reviewed_native_manifest_with_acceptance(
+        false,
+        &store.installation_id(),
+        &scope,
+        "changed-adjudication",
+    );
+    let error = admit_verified_taste_manifest(&store, &changed, None).unwrap_err();
+    assert!(error.contains("conflict") || error.contains("identity"));
+    assert!(!store.taste_delivery_inventory().unwrap().memory_ids.iter().any(|id| {
+        manifest.records.iter().any(|record| id.ends_with(&record.id))
+    }));
+}
+
+#[test]
+fn native_taste_manifest_rejects_resealed_record_still_needing_review() {
+    let store = MemoryStore::new();
+    let bound_root = std::env::current_dir().unwrap();
+    let scope = membrane_runtime::path_to_scope(&bound_root.to_string_lossy());
+    let mut forged = reviewed_native_manifest(&store.installation_id(), &scope);
+    let canonical_pool_sha256 = forged.canonical_pool_sha256.clone();
+    let record = forged
+        .records
+        .iter_mut()
+        .find(|record| record.status == "accepted")
+        .unwrap();
+    record.needs_review = true;
+    membrane_adapt::manifest::seal_manifest_record(record, &canonical_pool_sha256).unwrap();
+    record.payload_sha256 = membrane_adapt::manifest::payload_sha256(record);
+    forged.manifest_sha256 = membrane_adapt::manifest::manifest_hash(&forged);
+
+    let error = admit_verified_taste_manifest(&store, &forged, None).unwrap_err();
+    assert!(error.contains("invalid") || error.contains("receipt"));
+    assert!(store.taste_delivery_inventory().unwrap().memory_ids.is_empty());
+}
+
+#[test]
+fn native_taste_manifest_refuses_cross_installation_without_write() {
+    let store = MemoryStore::new();
+    let bound_root = std::env::current_dir().unwrap();
+    let scope = membrane_runtime::path_to_scope(&bound_root.to_string_lossy());
+    let mut foreign = reviewed_native_manifest(&store.installation_id(), &scope);
+    foreign.installation_id = "foreign-installation".into();
+
+    let error = admit_verified_taste_manifest(&store, &foreign, None).unwrap_err();
+    assert!(error.contains("installation mismatch"));
+    assert!(store.taste_delivery_inventory().unwrap().memory_ids.is_empty());
 }
