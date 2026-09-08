@@ -15,6 +15,7 @@ use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
 use std::{
     cell::RefCell,
+    collections::{HashMap, VecDeque},
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddrV4, TcpStream},
     path::{Path, PathBuf},
@@ -23,6 +24,10 @@ use std::{
 };
 
 const MAX_OPERATION_BYTES: usize = 64 * 1024;
+const CHECKPOINT_SAVE_WINDOW_MS: u64 = 60_000;
+const CHECKPOINT_SAVE_LIMIT: usize = 24;
+
+static CHECKPOINT_SAVE_RATE: OnceLock<Mutex<HashMap<String, VecDeque<u64>>>> = OnceLock::new();
 
 thread_local! {
     static INHERITED_PUSH_CONTROL: RefCell<Option<crate::serve::PushRequestControl>> =
@@ -583,6 +588,114 @@ pub(crate) fn native_operation_client() -> Box<dyn NativeMcpExecutor> {
 
 fn execute_explicit(name: &str, arguments: &Value) -> Value {
     execute_explicit_with_owner(name, arguments, &Mutex::new(None))
+}
+
+fn checkpoint_payload_bound(operation: &str, value: Option<&Value>) -> Result<(), Value> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let bytes = serde_json::to_vec(value).map_err(|_| {
+        error(
+            operation,
+            "checkpoint_envelope_invalid",
+            "checkpoint payload is not serializable",
+        )
+    })?;
+    if bytes.len() > crate::checkpoint::MAX_CHECKPOINT_BYTES {
+        return Err(error(
+            operation,
+            "checkpoint_payload_too_large",
+            format!(
+                "payload exceeds {} bytes",
+                crate::checkpoint::MAX_CHECKPOINT_BYTES
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn error_retryable(operation: &str, code: &str, message: impl AsRef<str>) -> Value {
+    let (schema_version, error_version) = membrane_protocol::operations::operation_versions(operation);
+    json!({"schemaVersion":schema_version,"operation":operation,"errorVersion":error_version,
+        "result":{"kind":"error","code":code,"message":message.as_ref(),"retryable":true}})
+}
+
+/// Consume one save token only after the caller, payload, lineage, and scope
+/// have all been verified. The key deliberately excludes checkpoint id so a
+/// caller cannot evade the cap by rotating ids.
+fn consume_checkpoint_save_token(root: &str, scope: &str, action: &str, now_ms: u64) -> bool {
+    let rates = CHECKPOINT_SAVE_RATE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut rates = rates.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let key = format!("{root}\u{1f}{scope}\u{1f}{action}");
+    let window = rates.entry(key).or_default();
+    while window
+        .front()
+        .is_some_and(|timestamp| now_ms.saturating_sub(*timestamp) >= CHECKPOINT_SAVE_WINDOW_MS)
+    {
+        window.pop_front();
+    }
+    if window.len() >= CHECKPOINT_SAVE_LIMIT {
+        return false;
+    }
+    window.push_back(now_ms);
+    true
+}
+
+fn checkpoint_error(name: &str, failure: crate::checkpoint::CheckpointError, phase: &str) -> Value {
+    use crate::checkpoint::CheckpointError;
+    match failure {
+        CheckpointError::Missing(id) => error(name, "checkpoint_not_found", id),
+        CheckpointError::Expired(id) => error(name, "checkpoint_expired", id),
+        CheckpointError::ScopeDenied(id) => error(name, "checkpoint_scope_denied", id),
+        CheckpointError::IdCollision(id) if phase == "save" => error(
+            name,
+            "checkpoint_save_unavailable",
+            format!("checkpoint id collision: {id}"),
+        ),
+        CheckpointError::Invalid(detail) => error(name, "checkpoint_envelope_invalid", detail),
+        CheckpointError::PayloadTooLarge => error(
+            name,
+            "checkpoint_payload_too_large",
+            format!(
+                "payload exceeds {} bytes",
+                crate::checkpoint::MAX_CHECKPOINT_BYTES
+            ),
+        ),
+        CheckpointError::IdCollision(id) => error(
+            name,
+            if phase == "save" {
+                "checkpoint_save_unavailable"
+            } else {
+                "checkpoint_load_unavailable"
+            },
+            id,
+        ),
+        CheckpointError::Corrupt(detail) => error(
+            name,
+            if phase == "save" {
+                "checkpoint_save_unavailable"
+            } else {
+                "checkpoint_load_unavailable"
+            },
+            detail,
+        ),
+        CheckpointError::Persist(detail) => {
+            let code = if phase == "save" {
+                "checkpoint_save_unavailable"
+            } else {
+                "checkpoint_load_unavailable"
+            };
+            error(name, code, detail.to_string())
+        }
+        CheckpointError::Encode(detail) => {
+            let code = if phase == "save" {
+                "checkpoint_save_unavailable"
+            } else {
+                "checkpoint_load_unavailable"
+            };
+            error(name, code, detail.to_string())
+        }
+    }
 }
 
 pub(crate) fn execute_installed_diagnostic(name: &str, arguments: &Value) -> Value {
@@ -1482,14 +1595,23 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                 self.memory_operation(name, &request, repository, scope)
             }
             "membrane_checkpoint_save" => {
+                if let Err(result) = checkpoint_payload_bound(
+                    name,
+                    arguments.get("checkpoint"),
+                ) {
+                    return result;
+                }
                 let checkpoint: CheckpointV1 = match parse(
                     name,
                     arguments.get("checkpoint"),
                     "checkpoint_envelope_invalid",
                 ) {
                     Ok(value) => value,
-                    Err(result) => return result,
+                        Err(result) => return result,
                 };
+                if let Err(validation) = checkpoint.canonical_bytes() {
+                    return checkpoint_error(name, validation, "save");
+                }
                 if checkpoint.repository_id != repository || checkpoint.scope_id != scope {
                     return error(
                         name,
@@ -1497,12 +1619,31 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                         "checkpoint identity must match caller",
                     );
                 }
+                if checkpoint.installation_id != self.store.installation_id() {
+                    return error(
+                        name,
+                        "checkpoint_scope_denied",
+                        "checkpoint installation identity must match store binding",
+                    );
+                }
+                if !consume_checkpoint_save_token(
+                    root,
+                    scope,
+                    native_action_for(name, arguments),
+                    crate::time::now_millis() as u64,
+                ) {
+                    return error_retryable(
+                        name,
+                        "checkpoint_rate_limited",
+                        "checkpoint save rate limit exceeded; retry after 60 seconds",
+                    );
+                }
                 match self.store.save_checkpoint(&checkpoint) {
                     Ok(()) => success(
                         name,
                         json!({"id":checkpoint.checkpoint_id,"status":"saved"}),
                     ),
-                    Err(e) => error(name, "checkpoint_unavailable", e.to_string()),
+                    Err(e) => checkpoint_error(name, e, "save"),
                 }
             }
             "membrane_checkpoint_load" => {
@@ -1517,19 +1658,15 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                     .get("asOfMs")
                     .and_then(Value::as_i64)
                     .unwrap_or_else(|| crate::time::now_millis() as i64);
-                match self.store.load_checkpoint(id, as_of) {
-                    Ok(checkpoint)
-                        if checkpoint.repository_id == repository
-                            && checkpoint.scope_id == scope =>
-                    {
-                        success(name, json!({"checkpoint":checkpoint}))
-                    }
-                    Ok(_) => error(
-                        name,
-                        "checkpoint_scope_denied",
-                        "checkpoint is outside caller scope",
-                    ),
-                    Err(e) => error(name, "checkpoint_unavailable", e.to_string()),
+                match self.store.load_checkpoint_bound(
+                    id,
+                    as_of,
+                    repository,
+                    scope,
+                    self.store.installation_id(),
+                ) {
+                    Ok(checkpoint) => success(name, json!({"status":"loaded","checkpoint":checkpoint})),
+                    Err(e) => checkpoint_error(name, e, "load"),
                 }
             }
             "membrane_working_context" => self.working_context(name, arguments, repository, scope),

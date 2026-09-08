@@ -144,3 +144,74 @@ fn checkpoints_cannot_promote_their_summary_into_durable_memory() {
         "checkpoint save must never promote summary"
     );
 }
+
+#[test]
+fn checkpoint_save_allows_only_exact_replay_and_preserves_collisions() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let checkpoint = checkpoint();
+    store.save_checkpoint(&checkpoint).unwrap();
+    store.save_checkpoint(&checkpoint).unwrap();
+
+    let mut changed = checkpoint.clone();
+    changed.summary.push_str(" changed");
+    assert!(matches!(
+        store.save_checkpoint(&changed),
+        Err(CheckpointError::IdCollision(_))
+    ));
+    assert_eq!(
+        store
+            .load_checkpoint(&checkpoint.checkpoint_id, 150)
+            .unwrap()
+            .summary,
+        checkpoint.summary
+    );
+
+    let ordinary = MemoryStore::open(MemDb::open_in_memory());
+    ordinary
+        .db()
+        .lock()
+        .execute(
+            "INSERT INTO memories
+             (id,tier,content,keywords,score,created_at,updated_at,access_count,scope_id)
+             VALUES (?1,'\"Semantic\"','ordinary','[]',0.0,'1','1',0,'repo-1')",
+            [&checkpoint.checkpoint_id],
+        )
+        .unwrap();
+    assert!(matches!(
+        ordinary.save_checkpoint(&checkpoint),
+        Err(CheckpointError::IdCollision(_))
+    ));
+    let ordinary_content: String = ordinary
+        .db()
+        .lock()
+        .query_row(
+            "SELECT content FROM memories WHERE id=?1",
+            [&checkpoint.checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(ordinary_content, "ordinary");
+}
+
+#[test]
+fn checkpoint_payload_limit_accepts_exact_boundary_and_rejects_one_byte_over() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let mut exact = checkpoint();
+    let base_len = serde_json::to_vec(&exact).unwrap().len();
+    exact.summary = "x".repeat(
+        exact.summary.len() + membrane_runtime::checkpoint::MAX_CHECKPOINT_BYTES - base_len,
+    );
+    assert_eq!(
+        serde_json::to_vec(&exact).unwrap().len(),
+        membrane_runtime::checkpoint::MAX_CHECKPOINT_BYTES
+    );
+    store.save_checkpoint(&exact).unwrap();
+
+    let mut oversized = exact;
+    oversized.checkpoint_id.push_str("-over");
+    oversized.summary.push('x');
+    assert!(matches!(
+        store.save_checkpoint(&oversized),
+        Err(CheckpointError::PayloadTooLarge)
+    ));
+}

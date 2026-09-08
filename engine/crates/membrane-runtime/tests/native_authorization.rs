@@ -502,6 +502,186 @@ fn result_code(response: &Value) -> &str {
         .unwrap_or("")
 }
 
+fn native_checkpoint(store: &MemoryStore, id: &str, expires_at_ms: i64) -> Value {
+    j!({
+        "checkpointId": id,
+        "installationId": store.installation_id(),
+        "client": "codex",
+        "sessionId": "native-session",
+        "repositoryId": "repo-caller",
+        "worktreeRev": "rev-native",
+        "scopeId": "D--membrane-test-caller",
+        "summary": "native checkpoint",
+        "createdAtMs": 100,
+        "expiresAtMs": expires_at_ms,
+        "sourceRefs": []
+    })
+}
+
+#[test]
+fn native_checkpoint_roundtrip_binds_installation_and_types_load_states() {
+    let sandbox = ExecutorSandbox::new();
+    let store = sandbox.store();
+    let executor = RuntimeMcpExecutor::for_hub(store.clone()).expect("executor constructs");
+    let caller = sandbox.caller_envelope();
+    let checkpoint = native_checkpoint(&store, "native-checkpoint", 200);
+
+    let saved = execute(
+        &executor,
+        "membrane_checkpoint_save",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": caller,
+            "checkpoint": checkpoint.clone()
+        }),
+    );
+    assert_eq!(saved.pointer("/result/data/status"), Some(&j!("saved")), "{saved}");
+
+    let mut changed = checkpoint.clone();
+    changed["summary"] = j!("changed");
+    let collision = execute(
+        &executor,
+        "membrane_checkpoint_save",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "checkpoint": changed
+        }),
+    );
+    assert_eq!(result_code(&collision), "checkpoint_save_unavailable", "{collision}");
+
+    let loaded = execute(
+        &executor,
+        "membrane_checkpoint_load",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "id": "native-checkpoint",
+            "asOfMs": 150
+        }),
+    );
+    assert_eq!(loaded.pointer("/result/data/status"), Some(&j!("loaded")), "{loaded}");
+    assert_eq!(
+        loaded.pointer("/result/data/checkpoint/checkpointId"),
+        Some(&j!("native-checkpoint")),
+        "{loaded}"
+    );
+
+    let missing = execute(
+        &executor,
+        "membrane_checkpoint_load",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "id": "native-missing",
+            "asOfMs": 150
+        }),
+    );
+    assert_eq!(result_code(&missing), "checkpoint_not_found", "{missing}");
+
+    let expired_checkpoint = native_checkpoint(&store, "native-expired", 200);
+    let expired_save = execute(
+        &executor,
+        "membrane_checkpoint_save",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "checkpoint": expired_checkpoint
+        }),
+    );
+    assert_eq!(expired_save.pointer("/result/data/status"), Some(&j!("saved")), "{expired_save}");
+    let expired = execute(
+        &executor,
+        "membrane_checkpoint_load",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "id": "native-expired",
+            "asOfMs": 200
+        }),
+    );
+    assert_eq!(result_code(&expired), "checkpoint_expired", "{expired}");
+
+    let mut oversized_checkpoint = native_checkpoint(&store, "native-oversized", 200);
+    oversized_checkpoint["summary"] = j!("x".repeat(17_000));
+    let oversized = execute(
+        &executor,
+        "membrane_checkpoint_save",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "checkpoint": oversized_checkpoint
+        }),
+    );
+    assert_eq!(
+        result_code(&oversized),
+        "checkpoint_payload_too_large",
+        "{oversized}"
+    );
+
+    let forged = j!({
+        "repository": sandbox.installation.caller_repository_id,
+        "caller": sandbox.caller_envelope(),
+        "checkpoint": {
+            "checkpointId": "forged-installation",
+            "installationId": "forged-installation",
+            "client": "codex",
+            "sessionId": "native-session",
+            "repositoryId": sandbox.installation.caller_repository_id,
+            "worktreeRev": "rev-native",
+            "scopeId": sandbox.installation.caller_scope_id,
+            "summary": "must not persist",
+            "createdAtMs": 100,
+            "expiresAtMs": 200,
+            "sourceRefs": []
+        }
+    });
+    let forged_response = execute(&executor, "membrane_checkpoint_save", &forged);
+    assert_eq!(result_code(&forged_response), "checkpoint_scope_denied", "{forged_response}");
+    assert_eq!(
+        store
+            .db()
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id='forged-installation'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn native_checkpoint_save_rate_is_shared_across_ids_and_retryable() {
+    let sandbox = ExecutorSandbox::new();
+    let store = sandbox.store();
+    let executor = RuntimeMcpExecutor::for_hub(store.clone()).expect("executor constructs");
+    for index in 0..24 {
+        let response = execute(
+            &executor,
+            "membrane_checkpoint_save",
+            &j!({
+                "repository": sandbox.installation.caller_repository_id,
+                "caller": sandbox.caller_envelope(),
+                "checkpoint": native_checkpoint(&store, &format!("rate-{index}"), 200)
+            }),
+        );
+        assert_eq!(response.pointer("/result/data/status"), Some(&j!("saved")), "{response}");
+    }
+    let limited = execute(
+        &executor,
+        "membrane_checkpoint_save",
+        &j!({
+            "repository": sandbox.installation.caller_repository_id,
+            "caller": sandbox.caller_envelope(),
+            "checkpoint": native_checkpoint(&store, "rate-24", 200)
+        }),
+    );
+    assert_eq!(result_code(&limited), "checkpoint_rate_limited", "{limited}");
+    assert_eq!(limited.pointer("/result/retryable"), Some(&j!(true)), "{limited}");
+}
+
 #[test]
 fn approved_proposal_reaches_cortex_admission_via_the_executor_review_path() {
     let sandbox = ExecutorSandbox::new();

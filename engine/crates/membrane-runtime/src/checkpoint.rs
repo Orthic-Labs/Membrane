@@ -4,6 +4,10 @@
 use crate::store::MemoryStore;
 use rusqlite::{OptionalExtension, TransactionBehavior};
 
+/// Checkpoint payloads are intentionally small: they are session continuity
+/// state, never an unbounded carrier for durable content.
+pub const MAX_CHECKPOINT_BYTES: usize = 16 * 1024;
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CheckpointV1 {
@@ -162,10 +166,18 @@ pub enum CheckpointError {
     Persist(#[from] rusqlite::Error),
     #[error("checkpoint encoding failed: {0}")]
     Encode(#[from] serde_json::Error),
+    #[error("checkpoint payload is corrupt: {0}")]
+    Corrupt(String),
+    #[error("checkpoint binding denied: {0}")]
+    ScopeDenied(String),
+    #[error("checkpoint id collision: {0}")]
+    IdCollision(String),
+    #[error("checkpoint payload exceeds {MAX_CHECKPOINT_BYTES} bytes")]
+    PayloadTooLarge,
 }
 
 impl CheckpointV1 {
-    fn validate(&self) -> Result<(), CheckpointError> {
+    pub(crate) fn validate(&self) -> Result<(), CheckpointError> {
         for (name, value) in [
             ("checkpoint_id", &self.checkpoint_id),
             ("installation_id", &self.installation_id),
@@ -186,26 +198,140 @@ impl CheckpointV1 {
         }
         Ok(())
     }
+
+    pub(crate) fn canonical_bytes(&self) -> Result<Vec<u8>, CheckpointError> {
+        self.validate()?;
+        let bytes = serde_json::to_vec(self)?;
+        if bytes.len() > MAX_CHECKPOINT_BYTES {
+            return Err(CheckpointError::PayloadTooLarge);
+        }
+        Ok(bytes)
+    }
 }
 
 impl MemoryStore {
     pub fn save_checkpoint(&self, checkpoint: &CheckpointV1) -> Result<(), CheckpointError> {
-        checkpoint.validate()?;
-        let content = serde_json::to_string(checkpoint)?;
+        let content = String::from_utf8(checkpoint.canonical_bytes()?)
+            .map_err(|error| CheckpointError::Corrupt(error.to_string()))?;
         let mut conn = self.db().lock();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let existing: Option<(
+            String,
+            String,
+            String,
+            f64,
+            String,
+            String,
+            i64,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            String,
+            i64,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            Option<i64>,
+        )> = tx
+            .query_row(
+                "SELECT tier, content, keywords, score, created_at, updated_at, access_count,
+                        embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
+                        source_ids, artifact_family, producer, record_type, authority,
+                        influence_class, lifecycle_state, expires_at_ms
+                 FROM memories WHERE id=?1",
+                [&checkpoint.checkpoint_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                        row.get(9)?,
+                        row.get(10)?,
+                        row.get(11)?,
+                        row.get(12)?,
+                        row.get(13)?,
+                        row.get(14)?,
+                        row.get(15)?,
+                        row.get(16)?,
+                        row.get(17)?,
+                        row.get(18)?,
+                        row.get(19)?,
+                        row.get(20)?,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some((
+            tier,
+            existing_content,
+            keywords,
+            score,
+            created_at,
+            updated_at,
+            access_count,
+            embedding,
+            embedding_q,
+            scope_id,
+            inject_count,
+            content_hash,
+            embed_model,
+            source_ids,
+            artifact_family,
+            producer,
+            record_type,
+            authority,
+            influence_class,
+            lifecycle_state,
+            expires_at_ms,
+        )) = existing
+        {
+            let exact_replay = tier == "\"Episodic\""
+                && existing_content == content
+                && keywords == "[]"
+                && score == 0.0
+                && created_at == checkpoint.created_at_ms.to_string()
+                && updated_at == checkpoint.created_at_ms.to_string()
+                && access_count == 0
+                && embedding.is_none()
+                && embedding_q.is_none()
+                && scope_id == checkpoint.scope_id
+                && inject_count == 0
+                && content_hash.is_none()
+                && embed_model.is_none()
+                && source_ids == "[]"
+                && artifact_family == "session"
+                && producer == "checkpoint"
+                && record_type == "checkpoint"
+                && authority == "A0"
+                && influence_class == "orientation"
+                && lifecycle_state == "active"
+                && expires_at_ms == Some(checkpoint.expires_at_ms);
+            if exact_replay {
+                tx.commit()?;
+                return Ok(());
+            }
+            return Err(CheckpointError::IdCollision(
+                checkpoint.checkpoint_id.clone(),
+            ));
+        }
         tx.execute(
             "INSERT INTO memories
              (id, tier, content, keywords, score, created_at, updated_at, access_count, scope_id,
               artifact_family, producer, record_type, authority, influence_class, lifecycle_state,
               expires_at_ms)
              VALUES (?1, '\"Episodic\"', ?2, '[]', 0.0, ?3, ?3, 0, ?4,
-                     'session', 'checkpoint', 'checkpoint', 'A0', 'orientation', 'active', ?5)
-             ON CONFLICT(id) DO UPDATE SET
-               content=excluded.content, updated_at=excluded.updated_at, scope_id=excluded.scope_id,
-               artifact_family='session', producer='checkpoint', record_type='checkpoint',
-               authority='A0', influence_class='orientation', lifecycle_state='active',
-               expires_at_ms=excluded.expires_at_ms",
+                     'session', 'checkpoint', 'checkpoint', 'A0', 'orientation', 'active', ?5)",
             rusqlite::params![
                 &checkpoint.checkpoint_id,
                 content,
@@ -224,19 +350,82 @@ impl MemoryStore {
         as_of_ms: i64,
     ) -> Result<CheckpointV1, CheckpointError> {
         let conn = self.db().lock();
-        let row: Option<(String, i64, String)> = conn.query_row(
-            "SELECT content, expires_at_ms, lifecycle_state FROM memories
+        let row: Option<(String, i64, String, String)> = conn.query_row(
+            "SELECT content, expires_at_ms, lifecycle_state, scope_id FROM memories
              WHERE id=?1 AND artifact_family='session' AND record_type='checkpoint' AND authority='A0'",
             [checkpoint_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         ).optional()?;
-        let Some((content, expires_at_ms, state)) = row else {
+        let Some((content, expires_at_ms, state, _scope_id)) = row else {
             return Err(CheckpointError::Missing(checkpoint_id.into()));
         };
         if state != "active" || expires_at_ms <= as_of_ms {
             return Err(CheckpointError::Expired(checkpoint_id.into()));
         }
-        Ok(serde_json::from_str(&content)?)
+        serde_json::from_str(&content)
+            .map_err(|error| CheckpointError::Corrupt(error.to_string()))
+    }
+
+    /// Load only after row-level scope and lineage binding has been checked.
+    /// The content is parsed after those checks so an out-of-scope row cannot
+    /// be projected to a caller, even when its payload is malformed.
+    pub fn load_checkpoint_bound(
+        &self,
+        checkpoint_id: &str,
+        as_of_ms: i64,
+        repository_id: &str,
+        scope_id: &str,
+        installation_id: &str,
+    ) -> Result<CheckpointV1, CheckpointError> {
+        let conn = self.db().lock();
+        let row: Option<(String, Option<i64>, String, String, String, String, String)> = conn
+            .query_row(
+                "SELECT content, expires_at_ms, lifecycle_state, scope_id,
+                        artifact_family, record_type, authority
+                 FROM memories WHERE id=?1",
+                [checkpoint_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((content, expires_at_ms, state, row_scope, family, record_type, authority)) = row
+        else {
+            return Err(CheckpointError::Missing(checkpoint_id.into()));
+        };
+        if row_scope != scope_id {
+            return Err(CheckpointError::ScopeDenied(checkpoint_id.into()));
+        }
+        if family != "session" || record_type != "checkpoint" || authority != "A0" {
+            return Err(CheckpointError::Missing(checkpoint_id.into()));
+        }
+        let Some(expires_at_ms) = expires_at_ms else {
+            return Err(CheckpointError::Corrupt("missing expires_at_ms".into()));
+        };
+        if state != "active" || expires_at_ms <= as_of_ms {
+            return Err(CheckpointError::Expired(checkpoint_id.into()));
+        }
+        let checkpoint: CheckpointV1 = serde_json::from_str(&content)
+            .map_err(|error| CheckpointError::Corrupt(error.to_string()))?;
+        if let Err(error) = checkpoint.validate() {
+            return Err(CheckpointError::Corrupt(error.to_string()));
+        }
+        if checkpoint.checkpoint_id != checkpoint_id
+            || checkpoint.repository_id != repository_id
+            || checkpoint.scope_id != scope_id
+            || checkpoint.installation_id != installation_id
+        {
+            return Err(CheckpointError::ScopeDenied(checkpoint_id.into()));
+        }
+        Ok(checkpoint)
     }
 
     pub fn close_checkpoint(&self, checkpoint_id: &str) -> Result<(), CheckpointError> {
