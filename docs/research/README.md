@@ -7,6 +7,8 @@ current architecture, capability canons, or pending-work authority.
   academic material, prior synthesis, & benchmark reference documents.
 - [`rightcontext-history/`](rightcontext-history/README.md) — recovered RightContext
   lineage with source-verification records.
+- [`2026-09-08-coderight-membrane-assessment/`](2026-09-08-coderight-membrane-assessment/README.md) —
+  independent CodeRight+Membrane engineering assessment with reproducible retrieval probes.
 
 Current authority lives in [`../architecture/`](../architecture/README.md),
 [`../canon/`](../canon/README.md), & [`../pending/`](../pending/README.md).
