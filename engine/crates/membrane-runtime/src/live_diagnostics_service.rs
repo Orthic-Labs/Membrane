@@ -78,6 +78,8 @@ const DIAGNOSTICS_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 /// stable machine-readable codes.
 #[derive(Debug, thiserror::Error)]
 pub enum LiveDiagnosticsServiceError {
+    #[error("diagnostic audit persistence unavailable: {0}")]
+    AuditPersistenceUnavailable(String),
     #[error("diagnostic state unavailable: {0}")]
     StateUnavailable(String),
     #[error("diagnostic state changed during operation; result was not committed")]
@@ -121,6 +123,7 @@ impl LiveDiagnosticsServiceError {
     /// Stable omission-envelope code for this failure.
     pub fn code(&self) -> &'static str {
         match self {
+            Self::AuditPersistenceUnavailable(_) => "audit_persistence_unavailable",
             Self::StateUnavailable(_) => "diagnostic_state_unavailable",
             Self::StateConflict => "diagnostic_state_conflict",
             Self::WorkspaceNotOpen { .. } => "workspace_not_open",
@@ -172,8 +175,8 @@ fn workspace_not_open(repo_id: &str, worktree_id: &str) -> LiveDiagnosticsServic
 
 /// Append-only JSON Lines audit sink. Persisted records: sealed workspace
 /// epochs, gate decisions, reconciliation results, and named baselines. Every
-/// write failure is skipped silently — auditing degrades before the service
-/// ever panics or fails a request because the audit file is unavailable.
+/// write failure is surfaced as typed caller-visible degradation while the
+/// already-applied state transition remains intact.
 struct AuditSink {
     path: PathBuf,
 }
@@ -185,31 +188,24 @@ impl AuditSink {
         }
     }
 
-    fn record(&self, kind: &str, payload: Value) {
+    fn record(&self, kind: &str, payload: Value) -> Result<(), String> {
         let entry = json!({
             "schemaVersion": DIAGNOSTICS_AUDIT_SCHEMA_VERSION,
             "kind": kind,
             "recordedAtUnixMs": now_unix_ms(),
             "record": payload,
         });
-        let Ok(mut line) = serde_json::to_string(&entry) else {
-            return;
-        };
+        let mut line = serde_json::to_string(&entry).map_err(|error| error.to_string())?;
         line.push('\n');
-        let Some(parent) = self.path.parent() else {
-            return;
-        };
-        if std::fs::create_dir_all(parent).is_err() {
-            return;
-        }
-        if let Ok(mut file) = std::fs::OpenOptions::new()
+        let parent = self.path.parent().ok_or_else(|| "audit sink has no parent".to_owned())?;
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
-        {
-            use std::io::Write as _;
-            let _ = file.write_all(line.as_bytes());
-        }
+            .map_err(|error| error.to_string())?;
+        use std::io::Write as _;
+        file.write_all(line.as_bytes()).map_err(|error| error.to_string())
     }
 }
 
@@ -294,6 +290,7 @@ pub struct DiagnosticsService {
     /// typed `blueprint_unavailable` — never fabricated evidence.
     blueprint_client: Option<Box<dyn BlueprintFindingsClient>>,
     audit: AuditSink,
+    audit_degradation: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -417,12 +414,16 @@ impl DiagnosticsService {
         transaction.commit().map_err(Self::state_error)
     }
 
-    fn record_audit(&mut self, kind: &'static str, payload: Value) {
+    fn record_audit(&mut self, kind: &'static str, payload: Value) -> Result<(), LiveDiagnosticsServiceError> {
         if self.persistent_store.is_some() { self.pending_audit.push((kind, payload)); }
-        else { self.audit.record(kind, payload); }
+        else if let Err(error) = self.audit.record(kind, payload) {
+            self.audit_degradation = Some(error);
+        }
+        Ok(())
     }
 
     fn state_transition<T>(&mut self, operation: impl FnOnce(&mut Self) -> Result<T, LiveDiagnosticsServiceError>) -> Result<T, LiveDiagnosticsServiceError> {
+        self.audit_degradation = None;
         if self.persistent_store.is_none() { return operation(self); }
         let (revision, state) = self.load_persistent_state()?;
         self.pending_audit.clear();
@@ -432,7 +433,13 @@ impl DiagnosticsService {
         // events commit together; losing revisions cannot publish gate success.
         let result = operation(self)?;
         self.save_persistent_state(revision)?;
-        for (kind, payload) in self.pending_audit.drain(..) { self.audit.record(kind, payload); }
+        for (kind, payload) in &self.pending_audit {
+            if let Err(error) = self.audit.record(kind, payload.clone()) {
+                self.audit_degradation = Some(error);
+                break;
+            }
+        }
+        self.pending_audit.clear();
         Ok(result)
     }
 
@@ -464,6 +471,7 @@ impl DiagnosticsService {
             baselines: HashMap::new(),
             blueprint_client: None,
             audit: AuditSink::under_data_root(&data_root),
+            audit_degradation: None,
         })
     }
 
@@ -667,7 +675,16 @@ impl DiagnosticsService {
         repo_id: &str,
         worktree_id: &str,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
-        self.state_transition(|service| service.mutation_abort_inner(repo_id, worktree_id))
+        let result = self.state_transition(|service| service.mutation_abort_inner(repo_id, worktree_id))?;
+        if let Some(detail) = self.audit_degradation.take() {
+            let mut result = result;
+            result["degradations"] = json!([{
+                "code": "audit_persistence_unavailable",
+                "detail": detail,
+            }]);
+            return Ok(result);
+        }
+        Ok(result)
     }
 
     fn mutation_abort_inner(
@@ -684,7 +701,7 @@ impl DiagnosticsService {
         self.record_audit(
             "mutation_aborted",
             json!({"repoId":repo_id,"worktreeId":worktree_id}),
-        );
+        )?;
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "repoId": repo_id,
@@ -704,7 +721,16 @@ impl DiagnosticsService {
         worktree_id: &str,
         epoch: WorkspaceEpochV1,
     ) -> Result<Value, LiveDiagnosticsServiceError> {
-        self.state_transition(|service| service.mutation_seal_inner(repo_id, worktree_id, epoch))
+        let result = self.state_transition(|service| service.mutation_seal_inner(repo_id, worktree_id, epoch))?;
+        if let Some(detail) = self.audit_degradation.take() {
+            let mut result = result;
+            result["degradations"] = json!([{
+                "code": "audit_persistence_unavailable",
+                "detail": detail,
+            }]);
+            return Ok(result);
+        }
+        Ok(result)
     }
 
     fn mutation_seal_inner(
@@ -733,7 +759,7 @@ impl DiagnosticsService {
                 "mode": origin_label(&epoch),
                 "epoch": serde_json::to_value(&epoch).unwrap_or(Value::Null),
             }),
-        );
+        )?;
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "repoId": repo_id,
@@ -781,7 +807,7 @@ impl DiagnosticsService {
                 "mode": origin_label(&epoch),
                 "epoch": serde_json::to_value(&epoch).unwrap_or(Value::Null),
             }),
-        );
+        )?;
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "repoId": repo_id,
@@ -845,7 +871,7 @@ impl DiagnosticsService {
                 "classification": label,
                 "manifestDigest": manifest_digest,
             }),
-        );
+        )?;
         Ok(label)
     }
 
@@ -1270,7 +1296,7 @@ impl DiagnosticsService {
                 "manifestDigest": sealed.source_manifest_digest,
                 "decision": serde_json::to_value(&decision).unwrap_or(Value::Null),
             }),
-        );
+        )?;
         Ok(decision)
     }
 
@@ -1360,7 +1386,7 @@ impl DiagnosticsService {
             .entry(session_key(repo_id, worktree_id))
             .or_default()
             .insert(name.to_string(), baseline);
-        self.record_audit("baseline", payload);
+        self.record_audit("baseline", payload)?;
         Ok(json!({
             "schemaVersion": DIAGNOSTICS_SERVICE_SCHEMA_VERSION,
             "repoId": repo_id,
