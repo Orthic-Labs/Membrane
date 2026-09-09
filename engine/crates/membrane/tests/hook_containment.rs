@@ -24,8 +24,14 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
     let root = std::env::temp_dir().join(format!("membrane-hook-containment-{unique}"));
     let bin = root.join("bin"); let late = root.join("late-write.txt"); let early_late = root.join("early-root-late-write.txt");
     fs::create_dir_all(&bin).unwrap();
-    let script = format!("@echo off\r\nif \"%MEMBRANE_HOOK_EARLY_EXIT%\"==\"1\" goto early\r\nstart \"\" /b cmd /c \"%SystemRoot%\\System32\\ping.exe -n 5 127.0.0.1 ^>nul ^& echo late>{}\"\r\n%SystemRoot%\\System32\\ping.exe -n 11 127.0.0.1 >nul\r\nexit /b 0\r\n:early\r\nstart \"\" /b cmd /c \"%SystemRoot%\\System32\\ping.exe -n 5 127.0.0.1 ^>nul ^& echo late>{}\"\r\nexit /b 0\r\n", late.display(), early_late.display());
-    fs::write(bin.join("git.cmd"), script).unwrap();
+    // Windows resolves a bare `Command::new("git")` (see hook_diagnostics.rs
+    // bounded_git) through CreateProcess, which only appends `.exe` - never
+    // `.cmd`/`.bat`. A `.cmd` shim is therefore never reached; only a real
+    // git.exe on PATH can intercept the call. Copy the test-support binary
+    // (never a shipped product binary - see its own doc comment) into place
+    // as `bin/git.exe` instead.
+    let fake_git = env!("CARGO_BIN_EXE_hook_containment_fake_git");
+    fs::copy(fake_git, bin.join("git.exe")).unwrap();
 
     // Minimal resident-status HTTP stub: `fence()` first calls
     // `GET /diagnostics/workspace/status` and only reaches
@@ -52,6 +58,8 @@ fn hook_timeout_reaps_delayed_descendant_before_next_module() {
         command.env("WORKSPACE_ROOT", &root)
             .env("MEMBRANE_DIAGNOSTICS_ENFORCE", "1")
             .env("MEMBRANE_PORT", port.to_string())
+            .env("MEMBRANE_FAKE_GIT_LATE_MARKER", &late)
+            .env("MEMBRANE_FAKE_GIT_EARLY_LATE_MARKER", &early_late)
             .env("PATH", format!("{};{}", bin.display(), std::env::var("PATH").unwrap_or_default()));
     };
     let started = std::time::Instant::now();

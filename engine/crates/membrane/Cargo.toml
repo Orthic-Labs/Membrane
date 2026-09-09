@@ -17,6 +17,10 @@ path = "src/main.rs"
 name = "cli-parity"
 path = "src/bin/cli-parity.rs"
 
+[[bin]]
+name = "hook_containment_fake_git"
+path = "src/bin/hook_containment_fake_git.rs"
+
 [dependencies]
 membrane-mcp = { path = "../membrane-mcp" }
 membrane-runtime = { path = "../membrane-runtime" }
