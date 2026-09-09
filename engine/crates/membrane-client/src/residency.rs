@@ -356,10 +356,24 @@ impl ResidencyRegistry {
         if expires_at_ms <= now_ms {
             return Err(ResidencyError::InvalidExpiry);
         }
-        self.reconcile_expired(now_ms);
         if self.controller.as_ref().is_some_and(|active| active != &controller) {
             return Err(ResidencyError::ControllerMismatch);
         }
+        // Do not let an acquire race the expiry worker after the final lease
+        // has already expired.  Keeping the expired holder in place leaves
+        // the controller visible to `reconcile_expired`, which records the
+        // loss and closes lifecycle admission.  Purging it here would make
+        // this acquire look like a fresh first holder and resurrect a
+        // controller whose final holder was lost.
+        if !self.holders.is_empty()
+            && self
+                .holders
+                .values()
+                .all(|lease| lease.expires_at_ms <= now_ms)
+        {
+            return Err(ResidencyError::HolderExpired);
+        }
+        self.reconcile_expired(now_ms);
 
         let key = (holder.kind, holder.holder_id);
         if self
@@ -476,7 +490,7 @@ fn validate_controller(controller: &ControllerIdentity) -> Result<(), ResidencyE
 // ---------------------------------------------------------------------------
 
 use hmac::{Hmac, KeyInit, Mac};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -653,6 +667,176 @@ pub fn validate_loopback_header_profile(
     Ok(())
 }
 
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn hex_decode<const N: usize>(value: &str, label: &str) -> Result<[u8; N], ClientError> {
+    if value.len() != N * 2 || !value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+        return Err(ClientError::InvalidRequest {
+            message: format!("loopback-auth {label} must be {N}-byte lowercase hex"),
+        });
+    }
+    let mut out = [0u8; N];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        let high = (pair[0] as char).to_digit(16).unwrap() as u8;
+        let low = (pair[1] as char).to_digit(16).unwrap() as u8;
+        out[index] = (high << 4) | low;
+    }
+    Ok(out)
+}
+
+fn header_value<'a>(headers: &'a [(String, String)], name: &str) -> Result<&'a str, ClientError> {
+    headers.iter().find_map(|(key, value)| {
+        key.eq_ignore_ascii_case(name).then_some(value.as_str())
+    }).ok_or_else(|| ClientError::InvalidRequest {
+        message: format!("loopback-auth missing header {name}"),
+    })
+}
+
+fn body_digest(body: &[u8]) -> [u8; 32] {
+    Sha256::digest(body).into()
+}
+
+fn canonical_host(host: &str) -> Result<String, ClientError> {
+    let normalized = host.trim().to_ascii_lowercase();
+    if normalized.is_empty() || !normalized.is_ascii() || normalized.chars().any(char::is_whitespace)
+    {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth host is not normalized ASCII".into() });
+    }
+    Ok(normalized)
+}
+
+fn validate_request_shape(method: &str, target: &str, content_type: &str, body: &[u8]) -> Result<(), ClientError> {
+    if !method.is_ascii() || !target.is_ascii() || !content_type.is_ascii()
+        || target.contains('?') || target.contains('#') {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth request has invalid method, target, or content type".into() });
+    }
+    if !loopback_routes::is_authorized(method, target) {
+        return Err(ClientError::Denied { message: format!("loopback-auth route is not authorized: {method} {target}") });
+    }
+    if method == "POST" && content_type != "application/json" {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth POST requires application/json".into() });
+    }
+    if method == "GET" && !content_type.is_empty() {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth GET content type must be empty".into() });
+    }
+    if method == "GET" && !body.is_empty() {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth GET body must be empty".into() });
+    }
+    if method == "POST" && serde_json::from_slice::<Value>(body).is_err() {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth body must be valid JSON".into() });
+    }
+    Ok(())
+}
+
+/// Construct the complete canonical request header set. `body` is the exact
+/// bytes sent on wire; callers must preserve it unchanged.
+pub fn build_loopback_request_headers(
+    signer: &LoopbackAuthSigner,
+    identity: &LoopbackIdentityFields,
+    method: &str,
+    target: &str,
+    host: &str,
+    content_type: &str,
+    body: &[u8],
+    nonce: [u8; LOOPBACK_NONCE_OCTETS],
+    expiry_unix_secs: u64,
+) -> Result<Vec<(String, String)>, ClientError> {
+    let host = canonical_host(host)?;
+    validate_request_shape(method, target, content_type, body)?;
+    if expiry_unix_secs == 0 || identity.installation_id.is_empty() || identity.cortex_store_id.is_empty()
+        || identity.release_generation.is_empty() || identity.stable_install_root.is_empty()
+    {
+        return Err(ClientError::InvalidRequest { message: "loopback-auth identity or expiry is empty".into() });
+    }
+    let fields = LoopbackRequestFields {
+        method: method.into(), target: target.into(), host: host.clone(), content_type: content_type.into(),
+        body_sha256: body_digest(body), identity: identity.clone(), nonce, expiry_unix_secs,
+    };
+    let proof = signer.sign_request(&fields)?;
+    let mut headers = vec![
+        (LOOPBACK_HEADER_VERSION.into(), "1".into()),
+        (LOOPBACK_HEADER_NONCE.into(), hex_encode(&nonce)),
+        (LOOPBACK_HEADER_EXPIRY.into(), expiry_unix_secs.to_string()),
+        (LOOPBACK_HEADER_INSTALLATION_ID.into(), identity.installation_id.clone()),
+        (LOOPBACK_HEADER_CORTEX_STORE_ID.into(), identity.cortex_store_id.clone()),
+        (LOOPBACK_HEADER_RELEASE_GENERATION.into(), identity.release_generation.clone()),
+        (LOOPBACK_HEADER_STARTUP_GENERATION.into(), identity.startup_generation.to_string()),
+        (LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(), identity.stable_install_root.clone()),
+        (LOOPBACK_HEADER_PROOF.into(), hex_encode(&proof)),
+        ("host".into(), host),
+        ("content-length".into(), body.len().to_string()),
+        ("connection".into(), "close".into()),
+    ];
+    if !content_type.is_empty() { headers.push(("content-type".into(), content_type.into())); }
+    Ok(headers)
+}
+
+/// Verify request headers against method, exact target, normalized host, and
+/// exact raw body, returning parsed fields only after HMAC verification.
+pub fn verify_loopback_request_headers(
+    signer: &LoopbackAuthSigner,
+    headers: &[(String, String)], method: &str, target: &str, host: &str,
+    content_type: &str, body: &[u8], expected_identity: &LoopbackIdentityFields,
+    now_unix_secs: u64,
+) -> Result<LoopbackRequestFields, ClientError> {
+    validate_loopback_header_profile(headers)?;
+    let normalized_host = canonical_host(host)?;
+    validate_request_shape(method, target, content_type, body)?;
+    if header_value(headers, "host")? != normalized_host { return Err(ClientError::Denied { message: "loopback-auth host mismatch".into() }); }
+    if header_value(headers, "connection")? != "close" { return Err(ClientError::InvalidRequest { message: "loopback-auth connection must be close".into() }); }
+    if method == "POST" && header_value(headers, "content-type")? != "application/json" { return Err(ClientError::InvalidRequest { message: "loopback-auth content type mismatch".into() }); }
+    if method == "GET" && headers.iter().any(|(name, _)| name.eq_ignore_ascii_case("content-type")) { return Err(ClientError::InvalidRequest { message: "loopback-auth GET cannot carry content type".into() }); }
+    if let Ok(length) = header_value(headers, "content-length")?.parse::<usize>() {
+        if length != body.len() { return Err(ClientError::InvalidRequest { message: "loopback-auth content length mismatch".into() }); }
+    } else { return Err(ClientError::InvalidRequest { message: "loopback-auth invalid content length".into() }); }
+    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1" { return Err(ClientError::Denied { message: "loopback-auth unsupported profile version".into() }); }
+    let expiry = header_value(headers, LOOPBACK_HEADER_EXPIRY)?.parse::<u64>().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid expiry".into() })?;
+    if expiry <= now_unix_secs || expiry.saturating_sub(now_unix_secs) > LOOPBACK_MAX_EXPIRY_SECS { return Err(ClientError::Denied { message: "loopback-auth expired or overlong expiry".into() }); }
+    let startup_generation = header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?.parse::<u64>().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid startup generation".into() })?;
+    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(header_value(headers, LOOPBACK_HEADER_NONCE)?, "nonce")?;
+    let fields = LoopbackRequestFields { method: method.into(), target: target.into(), host: normalized_host, content_type: content_type.into(), body_sha256: body_digest(body), identity: LoopbackIdentityFields { installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(), cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(), release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(), startup_generation, stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into() }, nonce, expiry_unix_secs: expiry };
+    if &fields.identity != expected_identity { return Err(ClientError::Denied { message: "loopback-auth identity mismatch".into() }); }
+    signer.verify_request(&fields, &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?)?;
+    Ok(fields)
+}
+
+/// Construct response headers bound to request nonce, status, raw response,
+/// identity, and request expiry.
+pub fn build_loopback_response_headers(
+    signer: &LoopbackAuthSigner, identity: &LoopbackIdentityFields,
+    nonce: [u8; LOOPBACK_NONCE_OCTETS], status: u16, body: &[u8], expiry_unix_secs: u64,
+) -> Result<Vec<(String, String)>, ClientError> {
+    let fields = LoopbackResponseFields { nonce, status, body_sha256: body_digest(body), identity: identity.clone() };
+    let proof = signer.sign_response(&fields)?;
+    Ok(vec![(LOOPBACK_HEADER_VERSION.into(), "1".into()), (LOOPBACK_HEADER_NONCE.into(), hex_encode(&nonce)), (LOOPBACK_HEADER_EXPIRY.into(), expiry_unix_secs.to_string()), (LOOPBACK_HEADER_INSTALLATION_ID.into(), identity.installation_id.clone()), (LOOPBACK_HEADER_CORTEX_STORE_ID.into(), identity.cortex_store_id.clone()), (LOOPBACK_HEADER_RELEASE_GENERATION.into(), identity.release_generation.clone()), (LOOPBACK_HEADER_STARTUP_GENERATION.into(), identity.startup_generation.to_string()), (LOOPBACK_HEADER_STABLE_INSTALL_ROOT.into(), identity.stable_install_root.clone()), (LOOPBACK_HEADER_PROOF.into(), hex_encode(&proof)), ("connection".into(), "close".into()), ("content-length".into(), body.len().to_string())])
+}
+
+/// Verify response proof and binding to request nonce, status, raw body,
+/// identity, and request expiry.
+pub fn verify_loopback_response_headers(
+    signer: &LoopbackAuthSigner, headers: &[(String, String)], request: &LoopbackRequestFields,
+    status: u16, body: &[u8], expected_identity: &LoopbackIdentityFields, now_unix_secs: u64,
+) -> Result<(), ClientError> {
+    validate_loopback_header_profile(headers)?;
+    if header_value(headers, "connection")? != "close" { return Err(ClientError::InvalidRequest { message: "loopback-auth response connection must be close".into() }); }
+    if header_value(headers, LOOPBACK_HEADER_VERSION)? != "1" || header_value(headers, LOOPBACK_HEADER_EXPIRY)? != request.expiry_unix_secs.to_string() || request.expiry_unix_secs <= now_unix_secs { return Err(ClientError::Denied { message: "loopback-auth response expiry mismatch".into() }); }
+    if header_value(headers, "content-length")?.parse::<usize>().ok() != Some(body.len()) { return Err(ClientError::InvalidRequest { message: "loopback-auth response content length mismatch".into() }); }
+    let nonce = hex_decode::<LOOPBACK_NONCE_OCTETS>(header_value(headers, LOOPBACK_HEADER_NONCE)?, "nonce")?;
+    if nonce != request.nonce { return Err(ClientError::Denied { message: "loopback-auth response nonce mismatch".into() }); }
+    let identity = LoopbackIdentityFields { installation_id: header_value(headers, LOOPBACK_HEADER_INSTALLATION_ID)?.into(), cortex_store_id: header_value(headers, LOOPBACK_HEADER_CORTEX_STORE_ID)?.into(), release_generation: header_value(headers, LOOPBACK_HEADER_RELEASE_GENERATION)?.into(), startup_generation: header_value(headers, LOOPBACK_HEADER_STARTUP_GENERATION)?.parse().map_err(|_| ClientError::InvalidRequest { message: "loopback-auth invalid startup generation".into() })?, stable_install_root: header_value(headers, LOOPBACK_HEADER_STABLE_INSTALL_ROOT)?.into() };
+    if &identity != expected_identity { return Err(ClientError::Denied { message: "loopback-auth response identity mismatch".into() }); }
+    let fields = LoopbackResponseFields { nonce, status, body_sha256: body_digest(body), identity };
+    signer.verify_response(&fields, &hex_decode::<32>(header_value(headers, LOOPBACK_HEADER_PROOF)?, "proof")?)
+}
+
 /// Canonical route authority. Derived only from `memory_backend.rs` route
 /// constants plus the CodeRight `native.rs` holder/dashboard routes; no
 /// third route list is valid.
@@ -701,6 +885,10 @@ impl LoopbackAuthSigner {
         Self { key }
     }
 
+    /// Decode the installed credential's canonical 64 lowercase hex form.
+    pub fn from_hex_token(token: &str) -> Result<Self, ClientError> {
+        Ok(Self::new(hex_decode::<32>(token, "api token")?.to_vec()))
+    }
     fn mac(&self) -> Result<HmacSha256, ClientError> {
         HmacSha256::new_from_slice(&self.key).map_err(|_| ClientError::Internal {
             message: "loopback-auth signer key is invalid length".into(),
@@ -732,6 +920,14 @@ impl LoopbackAuthSigner {
 
     pub fn sign_response(&self, fields: &LoopbackResponseFields) -> Result<[u8; 32], ClientError> {
         self.sign(&encode_loopback_response(fields))
+    }
+
+    pub fn verify_request(&self, fields: &LoopbackRequestFields, tag: &[u8]) -> Result<(), ClientError> {
+        self.verify(&encode_loopback_request(fields), tag)
+    }
+
+    pub fn verify_response(&self, fields: &LoopbackResponseFields, tag: &[u8]) -> Result<(), ClientError> {
+        self.verify(&encode_loopback_response(fields), tag)
     }
 
     /// Generate a fresh 32-octet nonce via `getrandom`. Never reused; the
@@ -796,15 +992,19 @@ impl LoopbackReplayCache {
         now_unix_secs: u64,
     ) -> Result<(), ClientError> {
         self.reconcile(now_unix_secs);
+        if self.general.contains_key(&nonce) || self.reserved.contains_key(&nonce) {
+            return Err(ClientError::Protocol {
+                code: "replay_nonce_seen".into(),
+                message: "loopback-auth nonce was already admitted".into(),
+                details: Map::new(),
+            });
+        }
         let (table, limit) = match partition {
             LoopbackReplayPartition::General => (&mut self.general, LOOPBACK_REPLAY_GENERAL_MAX),
             LoopbackReplayPartition::Reserved => (&mut self.reserved, LOOPBACK_REPLAY_RESERVED),
         };
-        if table.contains_key(&nonce) {
-            return Ok(());
-        }
         if table.len() >= limit {
-            let retry_after_ms = expiry_unix_secs
+            let retry_after_ms = table.values().copied().min().unwrap_or(expiry_unix_secs)
                 .saturating_sub(now_unix_secs)
                 .saturating_mul(1000);
             let mut details = Map::new();
@@ -830,10 +1030,51 @@ impl LoopbackReplayCache {
     pub fn reserved_len(&self) -> usize {
         self.reserved.len()
     }
+    pub fn snapshot(&mut self, now_unix_secs: u64) -> LoopbackReplaySnapshot {
+        self.reconcile(now_unix_secs);
+        LoopbackReplaySnapshot {
+            general: LoopbackReplayPartitionSnapshot::new(self.general.len(), LOOPBACK_REPLAY_GENERAL_MAX, &self.general),
+            reserved: LoopbackReplayPartitionSnapshot::new(self.reserved.len(), LOOPBACK_REPLAY_RESERVED, &self.reserved),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoopbackReplaySnapshot { pub general: LoopbackReplayPartitionSnapshot, pub reserved: LoopbackReplayPartitionSnapshot }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoopbackReplayPartitionSnapshot { pub active: usize, pub limit: usize, pub expiring_entries: usize, pub earliest_expiry_unix_secs: Option<u64> }
+impl LoopbackReplayPartitionSnapshot {
+    fn new(active: usize, limit: usize, entries: &BTreeMap<[u8; LOOPBACK_NONCE_OCTETS], u64>) -> Self {
+        Self { active, limit, expiring_entries: entries.len(), earliest_expiry_unix_secs: entries.values().copied().min() }
+    }
 }
 
 #[cfg(test)]
 mod loopback_auth_tests {
+    #[test]
+    fn replay_snapshot_recovers_protected_capacity_at_expiry() {
+        let mut cache = super::LoopbackReplayCache::new();
+        for index in 0..super::LOOPBACK_REPLAY_RESERVED {
+            let mut nonce = [0; 32];
+            nonce[..8].copy_from_slice(&(index as u64).to_be_bytes());
+            cache.admit(super::LoopbackReplayPartition::Reserved, nonce, 20, 10).unwrap();
+        }
+        let full = cache.snapshot(19);
+        assert_eq!(full.reserved.active, full.reserved.limit);
+        assert_eq!(full.reserved.earliest_expiry_unix_secs, Some(20));
+        let recovered = cache.snapshot(20);
+        assert_eq!(recovered.reserved.active, 0);
+        assert_eq!(recovered.reserved.earliest_expiry_unix_secs, None);
+    }
+    #[test]
+    fn duplicate_nonce_refused_in_both_partitions_until_expiry() {
+        let mut cache = super::LoopbackReplayCache::new();
+        let nonce = [9; 32];
+        cache.admit(super::LoopbackReplayPartition::General, nonce, 20, 10).unwrap();
+        for partition in [super::LoopbackReplayPartition::General, super::LoopbackReplayPartition::Reserved] {
+            assert!(matches!(cache.admit(partition, nonce, 20, 10), Err(super::ClientError::Protocol { code, .. }) if code == "replay_nonce_seen"));
+        }
+        cache.admit(super::LoopbackReplayPartition::Reserved, nonce, 30, 20).unwrap();
+    }
     use super::*;
 
     fn identity() -> LoopbackIdentityFields {
@@ -918,6 +1159,41 @@ mod loopback_auth_tests {
         assert!(cache
             .admit(LoopbackReplayPartition::Reserved, overflow, 1_000, 0)
             .is_ok());
+    }
+
+    #[test]
+    fn request_header_builder_and_verifier_bind_exact_raw_body_identity_and_route() {
+        let signer = LoopbackAuthSigner::new(vec![9u8; 32]);
+        let identity = identity();
+        let body = br#"{"key":"value"}"#;
+        let headers = build_loopback_request_headers(
+            &signer, &identity, "POST", "/remember", "127.0.0.1", "application/json", body,
+            [2u8; LOOPBACK_NONCE_OCTETS], 120,
+        ).unwrap();
+        let request = verify_loopback_request_headers(
+            &signer, &headers, "POST", "/remember", "127.0.0.1", "application/json", body,
+            &identity, 100,
+        ).unwrap();
+        assert_eq!(request.nonce, [2u8; LOOPBACK_NONCE_OCTETS]);
+        assert!(verify_loopback_request_headers(
+            &signer, &headers, "POST", "/remember", "127.0.0.1", "application/json", br#"{"key":"tampered"}"#,
+            &identity, 100,
+        ).is_err());
+    }
+
+    #[test]
+    fn response_header_builder_and_verifier_bind_nonce_status_body_and_identity() {
+        let signer = LoopbackAuthSigner::new(vec![9u8; 32]);
+        let identity = identity();
+        let body = br#"{"ok":true}"#;
+        let request = LoopbackRequestFields {
+            method: "POST".into(), target: "/remember".into(), host: "127.0.0.1".into(),
+            content_type: "application/json".into(), body_sha256: body_digest(br#"{"key":"value"}"#),
+            identity: identity.clone(), nonce: [2u8; LOOPBACK_NONCE_OCTETS], expiry_unix_secs: 120,
+        };
+        let headers = build_loopback_response_headers(&signer, &identity, request.nonce, 200, body, 120).unwrap();
+        assert!(verify_loopback_response_headers(&signer, &headers, &request, 200, body, &identity, 100).is_ok());
+        assert!(verify_loopback_response_headers(&signer, &headers, &request, 500, body, &identity, 100).is_err());
     }
 
     #[test]

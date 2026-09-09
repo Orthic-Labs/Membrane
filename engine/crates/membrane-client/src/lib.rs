@@ -31,7 +31,9 @@ pub use residency::{
     ResidencyRegistry, ResidencySnapshot,
 };
 pub use residency::{
-    encode_loopback_request, encode_loopback_response, loopback_routes, LoopbackAuthSigner,
+    build_loopback_request_headers, build_loopback_response_headers, encode_loopback_request,
+    encode_loopback_response, loopback_routes, verify_loopback_request_headers,
+    verify_loopback_response_headers, LoopbackAuthSigner,
     LoopbackIdentityFields, LoopbackReplayCache, LoopbackReplayPartition, LoopbackRequestFields,
     LoopbackResponseFields, LOOPBACK_ALLOWED_TRANSPORT_HEADERS, LOOPBACK_AUTH_DOMAIN,
     LOOPBACK_AUTH_DOMAIN_LEN, LOOPBACK_AUTH_REQUEST_KIND, LOOPBACK_AUTH_RESPONSE_KIND,
