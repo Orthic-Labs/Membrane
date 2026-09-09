@@ -9,7 +9,6 @@ tauri = { version = "2", features = ["image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 membrane-updater = { path = "../../../engine/crates/membrane-updater" }
 membrane-protocol = { path = "../../../engine/crates/membrane-protocol" }
-membrane-runtime = { path = "../../../engine/crates/membrane-runtime" }
 [dev-dependencies]
 tempfile = "3"
 [build-dependencies]

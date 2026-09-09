@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { addInstalledBlueprintInventory, RUNTIME_SPECS, runtimeInventory, runtimeTarget, verifyStagedInventory, verifyUnpackedArtifact, writeRuntimeInventory } from "../scripts/runtime-inventory.mjs";
+import { RUNTIME_SPECS, runtimeInventory, runtimeTarget, verifyStagedInventory, verifyUnpackedArtifact, writeRuntimeInventory } from "../scripts/runtime-inventory.mjs";
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "membrane-hub-runtime-"));
@@ -24,15 +24,6 @@ function specs() {
     { id: "ledger-contract", component: "ledger", axis: "ledger", delivery: "resource", path: "ledger.txt" },
     { id: "adapt-contract", component: "adapt", axis: "adapt", delivery: "resource", path: "adapt.txt", invocation: "daemon-native" },
   ];
-}
-
-function installBlueprint(runtime, make) {
-  make(join(runtime, "blueprint", "lib", "node.exe"));
-  make(join(runtime, "blueprint", "bin", "blueprint.cmd"));
-  make(join(runtime, "blueprint", "app", "package", "package.json"), '{"name":"@membrane/blueprint","version":"0.2.0"}\n');
-  make(join(runtime, "blueprint", "app", "package", "scripts", "blueprint.mjs"));
-  make(join(runtime, "blueprint", "app", "package", "scripts", "blueprint-watch.mjs"));
-  addInstalledBlueprintInventory({ runtimeDir: runtime });
 }
 
 test("runtime closure records native sidecars, installed Blueprint & six axes", () => {
@@ -83,8 +74,9 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.doesNotMatch(probes, /CORTEX_(?:PORT|API_TOKEN_FILE|INSTALLATION_ID|SERVICE_INSTANCE_ID)/);
   assert.match(probes, /WINDOWS_TARGET/);
   assert.match(probes, /blueprintInstalled/);
-  assert.match(probes, /blueprint.*lib.*node\.exe/s);
-  assert.doesNotMatch(probes, /externalContract|preStagedResource/);
+  assert.match(probes, /component === "blueprint-contract"/);
+  assert.match(probes, /contract\.transport !== "named-pipe"/);
+  assert.doesNotMatch(probes, /externalContract|preStagedResource|blueprint\/lib\/node|addInstalledBlueprintInventory/);
   const frontendBuild = readFileSync(new URL("../scripts/build-frontend.mjs", import.meta.url), "utf8");
   assert.match(frontendBuild, /dist\/release-identity\.json/);
   assert.match(frontendBuild, /x86_64-pc-windows-msvc/);
@@ -95,12 +87,11 @@ test("runtime closure records native sidecars, installed Blueprint & six axes", 
   assert.doesNotMatch(frontendBuild, /CORTEX_SOURCE_(?:COMMIT|TREE_SHA256)/);
   const stager = readFileSync(new URL("../scripts/stage-runtime.mjs", import.meta.url), "utf8");
   assert.match(stager, /writeRuntimeInventory/);
-  assert.match(stager, /blueprint.*stage-runtime\.mjs/s);
-  assert.match(stager, /addInstalledBlueprintInventory/);
-  assert.doesNotMatch(stager, /profile-b|external-blueprint/);
+  assert.doesNotMatch(stager, /profile-b|external-blueprint|addInstalledBlueprintInventory|blueprint\/lib\/node/);
   const releaseConfig = readFileSync(new URL("../right-release.config.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(releaseConfig, /src-tauri\/runtime\/\*\*/);
-  assert.match(releaseConfig, /\.\.\/\.\.\/blueprint\/scripts\/\*\*/);
+  assert.doesNotMatch(releaseConfig, /\.\.\/\.\.\/blueprint\//);
+  assert.match(releaseConfig, /\.\.\/\.\.\/schemas\/\*\*/);
 });
 
 test("runtime inventory accepts Windows x64 & macOS arm64 targets, rejecting mismatches", () => {
@@ -126,14 +117,14 @@ test("runtime inventory hashes native runtime & rejects missing/extra/retired", 
   const { root, make, runtime } = fixture();
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
-    installBlueprint(runtime, make);
     const manifest = verifyStagedInventory({ runtimeDir: runtime });
     assert.equal(manifest.schemaVersion, 3); assert.ok(manifest.axes.every(({ entries }) => entries === 1));
-    assert.equal(manifest.components.blueprint.version, "0.2.0"); assert.match(manifest.components.blueprint.treeSha256, /^[a-f0-9]{64}$/); assert.ok(manifest.components.blueprint.fileCount > 0);
+    const blueprintEntry = manifest.entries.find((entry) => entry.component === "blueprint-contract");
+    assert.equal(blueprintEntry.delivery, "resource"); assert.equal(blueprintEntry.transport, "named-pipe"); assert.match(blueprintEntry.sha256, /^[a-f0-9]{64}$/);
     assert.ok(!manifest.entries.some((entry) => entry.source.endsWith(".py") || entry.source.includes("mcp/host")));
     writeFileSync(join(runtime, "resources", "blueprint-contract", "blueprint-contract.json"), "mutated");
     assert.throws(() => verifyStagedInventory({ runtimeDir: runtime }), /hash mismatch/);
-    make(join(runtime, "resources", "blueprint-contract", "blueprint-contract.json")); rmSync(join(runtime, "blueprint"), { recursive: true, force: true }); writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" }); installBlueprint(runtime, make);
+    make(join(runtime, "resources", "blueprint-contract", "blueprint-contract.json")); writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
     make(join(runtime, "resources", "extra.txt")); assert.throws(() => verifyStagedInventory({ runtimeDir: runtime }), /unexpected staged/);
     assert.throws(() => runtimeInventory({ hubDir: root, specs: [...specs(), { id: "retired", axis: "pull", component: "retired", delivery: "resource", path: "orthic/crypt-service" }] }), /retired runtime asset/);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -143,7 +134,6 @@ test("unpacked artifact requires native bootstrap, on-demand dashboard, installe
   const { root, make, runtime } = fixture(); const sidecars = join(root, "sidecars");
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
-    installBlueprint(runtime, make);
     make(join(sidecars, "membrane.exe"), readFileSync(join(root, "membrane-x86_64-pc-windows-msvc.exe")));
     make(join(sidecars, "cortex.exe"), readFileSync(join(root, "cortex-x86_64-pc-windows-msvc.exe")));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
@@ -167,16 +157,13 @@ test("runtime inventory validates every digest & external source binding", () =>
   const { root, make, runtime } = fixture();
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
-    installBlueprint(runtime, make);
     const manifestPath = join(runtime, "runtime-inventory.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     manifest.entries.find((entry) => entry.delivery === "externalBin").sha256 = "BAD";
     writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
     assert.throws(() => verifyStagedInventory({ runtimeDir: runtime }), /lowercase SHA-256/);
 
-    rmSync(join(runtime, "blueprint"), { recursive: true, force: true });
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
-    installBlueprint(runtime, make);
     make(join(root, "membrane-x86_64-pc-windows-msvc.exe"), "changed at source");
     assert.throws(() => verifyStagedInventory({ runtimeDir: runtime, sourceRoot: root }), /external source hash mismatch/);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -186,7 +173,6 @@ test("runtime inventory rejects delivery and ownership tuple tampering", () => {
   const { root, make, runtime } = fixture();
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "x86_64-pc-windows-msvc" });
-    installBlueprint(runtime, make);
     const manifestPath = join(runtime, "runtime-inventory.json");
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
     const resource = manifest.entries.find((entry) => entry.component === "pull-contract");

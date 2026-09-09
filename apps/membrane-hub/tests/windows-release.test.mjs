@@ -162,5 +162,8 @@ test("installed Windows qualification binds package evidence & exercises native 
   for (const term of ["Get-AuthenticodeSignature", "ReleaseManifest", "Sbom", "Get-FileHash", "PreviousInstaller", "uninstall.exe", "/health", "tools/list", "msedgewebview2", "membrane native host", "cortex native host", "native-only steady-state", "WINDIR\\System32"]) assert.ok(qualification.toLowerCase().includes(term.toLowerCase()), term);
   assert.match(qualification, /Invoke-Installer \$installerPath[\s\S]*Invoke-Installer \$previousPath[\s\S]*Invoke-Installer \$installerPath/);
   assert.doesNotMatch(qualification, /Invoke-WebRequest|curl|upload/i);
-  assert.match(JSON.stringify(config.buildInputs), /\.\.\/\.\.\/blueprint\/release\/\*\*/);
+  const buildInputsJson = JSON.stringify(config.buildInputs);
+  assert.doesNotMatch(buildInputsJson, /\.\.\/\.\.\/blueprint\//);
+  assert.match(buildInputsJson, /\.\.\/\.\.\/schemas\/\*\*/);
+  assert.match(buildInputsJson, /src-tauri\/binaries\/\*\*/);
 });
