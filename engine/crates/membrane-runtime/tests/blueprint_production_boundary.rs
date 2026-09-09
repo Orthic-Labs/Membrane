@@ -45,9 +45,17 @@ fn fixture_root() -> (TempDir, PathBuf) {
     (dir, canonical)
 }
 
+/// The setup build, not the behaviour under test. `BlueprintRequest::new` stamps
+/// `DEFAULT_DEADLINE_MS` (2s), which a real graph build of even this tiny fixture can exceed on
+/// a cold, shared CI runner -- the build then returns `deadline_exceeded` and the generation
+/// assertions never run. Blueprint's own build ceiling is `MAX_BUILD_DEADLINE_MS` (120s), so
+/// asking for 60s here stays well inside the product's contract while removing the timing
+/// flake. The recall requests below deliberately keep the default deadline: their outcome is
+/// the fails-closed behaviour this test exists to prove.
 fn build_request(root: &str, id: &str) -> BlueprintRequest {
     let mut request = BlueprintRequest::new(id.to_owned(), Operation::Build, root.to_owned());
     request.input["repoRoot"] = Value::String(root.to_owned());
+    request.deadline_ms = 60_000;
     request
 }
 

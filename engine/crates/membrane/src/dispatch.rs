@@ -285,7 +285,10 @@ pub fn cli_parser_snapshot(name: &str) -> Option<Vec<(String, String)>> {
 
 /// Standard clap behavior: `--help`/`--version` (at any subcommand depth) report success —
 /// print to stdout, exit 0 — never a parse failure. clap reports those as an `Err(Error)` whose
-/// `ErrorKind` is one of the three below; `Error::exit()` already renders to the correct stream
+/// `ErrorKind` is one of the two below. `DisplayHelpOnMissingArgumentOrSubcommand` is
+/// deliberately excluded: bare `membrane` with no subcommand is a usage error, not a help
+/// request, and `no_mode_is_rejected` requires `parse_mode` to return `Err` for it rather than
+/// terminate the process (which also killed the lib test harness mid-run); `Error::exit()` already renders to the correct stream
 /// (stdout for help/version, stderr otherwise) and terminates with the correct code, so it is
 /// used verbatim here rather than hand-rolled. Real parse errors fall through untouched: this
 /// only ever terminates the process for the display kinds, never returns for them, and returns
@@ -295,9 +298,7 @@ fn exit_if_clap_display_error(err: &clap::error::Error) {
     use clap::error::ErrorKind;
     if matches!(
         err.kind(),
-        ErrorKind::DisplayHelp
-            | ErrorKind::DisplayVersion
-            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
     ) {
         err.exit();
     }

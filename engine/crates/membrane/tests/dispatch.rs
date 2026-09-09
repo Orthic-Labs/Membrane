@@ -125,6 +125,22 @@ fn installed_cli_cannot_start_a_resident() {
 fn explicit_cli_status_succeeds_with_no_holder_and_no_interpreter_on_path() {
     use std::process::{Command, Stdio};
 
+    // With `WORKSPACE_ROOT` and `CORTEX_DB` both stripped (as this contract requires), db
+    // resolution lands on `cli.rs::dev_workspace_db_path`, which only fires when the canonical
+    // `tools/.cache/memory/` directory already exists in this checkout — it then creates and
+    // migrates the db itself, with no Hub, holder, or interpreter involved. That directory is
+    // gitignored (`.gitignore:17` `.cache/`), so it is present on a developer machine and
+    // absent on a fresh CI checkout; creating it here makes the test depend on the product's
+    // own fallback rather than on untracked local state. It does not weaken the negative
+    // control: `PATH` stays stripped of every interpreter and the holder variables stay removed.
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .expect("engine/crates/membrane resolves to the repository root");
+    std::fs::create_dir_all(workspace_root.join("tools/.cache/memory"))
+        .expect("canonical dev workspace cache directory");
+
     let output = Command::new(env!("CARGO_BIN_EXE_membrane"))
         .args(["cli", "doctor"])
         .env("PATH", "/__membrane_no_interpreters__")

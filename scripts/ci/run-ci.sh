@@ -12,6 +12,16 @@ if [[ -n "$untracked_scripts" ]]; then
   echo "$untracked_scripts" >&2
   exit 1
 fi
+# Bake the release identity before compiling. Without
+# apps/membrane-hub/dist/release-identity.json, membrane-runtime/build.rs leaves
+# SOURCE_TREE_SHA256 unset, release_identity::release_generation() returns the literal
+# "sha256:unknown", and membrane-federation's release::validate_generation rejects it as
+# release_malformed — so every federated Pull target reports unavailable and every packet
+# ships empty (see the header comment in apps/membrane-hub/scripts/release-identity.mjs).
+# That made pull_catalog's workspace fanout pass on developer machines, which have this file
+# from a local installer build, and fail only here. The script is git-only and offline.
+pnpm --dir apps/membrane-hub run release:identity
+
 if [[ "${RIGHT_GIT_RUST_CHANGED:-true}" != "false" ]]; then
   # Fail on a compile error before spending the test phase on it. A missing
   # dependency or a type mismatch used to surface only after the full suite,
