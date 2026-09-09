@@ -335,6 +335,15 @@ Section Install
     StrCpy $R0 1
     Goto install_failed
   ${EndIf}
+  ; Native package must not carry the retired Blueprint Node tree or launchers.
+  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\lib\node.exe"
+    StrCpy $R0 1
+    Goto install_failed
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\versions\${VERSION}\runtime\blueprint\bin\blueprint.cmd"
+    StrCpy $R0 1
+    Goto install_failed
+  ${EndIf}
   ${Log} "verify-version-tree ok"
 
   ; 2. Point the stable junction atomically. The new junction is built beside

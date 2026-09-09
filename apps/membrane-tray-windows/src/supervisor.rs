@@ -19,6 +19,7 @@ use membrane_protocol::{
     DaemonCommandKind, DaemonCommandV1, DaemonEventKind, DaemonLaunchKind, DaemonLaunchV1,
     DAEMON_IPC_SCHEMA_VERSION,
 };
+use membrane_runtime::residency::{Holder, Identity, ResidentController};
 
 use crate::{
     ipc::EventDecoder,
@@ -32,6 +33,11 @@ pub const CRASH_LOOP_WINDOW_MS: u64 = 60_000;
 pub const RESTART_BACKOFF_MS: u64 = 1_000;
 pub const HANDSHAKE_TIMEOUT_MS: u64 = 35_000;
 pub const DRAIN_TIMEOUT_MS: u64 = 7_000;
+/// Bounded window a freshly launched daemon is kept alive without any valid
+/// holder yet acquired. After this grace expires, only a valid holder keeps
+/// the daemon running; a still-holderless daemon is drained as bounded
+/// startup cleanup, never left resident indefinitely.
+pub const PRE_HOLDER_GRACE_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum State {
@@ -78,6 +84,8 @@ pub enum Reason {
     DaemonHandshakeTimeout,
     DaemonReadyFailed,
     DaemonDrainTimeout,
+    DaemonPreHolderGraceExpired,
+    DaemonJobEscapeDenied,
 }
 
 impl Reason {
@@ -94,6 +102,8 @@ impl Reason {
             Self::DaemonHandshakeTimeout => "daemon_handshake_timeout",
             Self::DaemonReadyFailed => "daemon_ready_failed",
             Self::DaemonDrainTimeout => "daemon_drain_timeout",
+            Self::DaemonPreHolderGraceExpired => "daemon_pre_holder_grace_expired",
+            Self::DaemonJobEscapeDenied => "daemon_job_escape_denied",
         }
     }
 }
@@ -121,6 +131,11 @@ pub struct Observation {
     pub withheld: String,
     pub budget: String,
     pub snapshot_observed: String,
+    /// (pid, creation_time_ticks) fingerprint of the current daemon process.
+    /// Combined with `generation`, this lets a caller that persisted the
+    /// triple across an abrupt tray relaunch tell a survived daemon apart
+    /// from an unrelated process that happens to reuse the same PID.
+    pub process_identity: Option<(u32, u64)>,
 }
 
 impl Default for Observation {
@@ -137,6 +152,7 @@ impl Default for Observation {
             withheld: "Unknown · snapshot_unavailable".into(),
             budget: "Unknown · snapshot_unavailable".into(),
             snapshot_observed: "Unknown · snapshot_unavailable".into(),
+            process_identity: None,
         }
     }
 }
@@ -164,6 +180,21 @@ pub struct Supervisor {
     http_port: u16,
     bearer_token: Option<String>,
     installed_origin: bool,
+    residency: ResidentController,
+    /// Launch mode selected before the next spawn. Never mutated after a
+    /// process has been acquired for the current generation — a change here
+    /// only takes effect on the *next* `launch_process` call, so there is no
+    /// retrofit of containment/escape onto an already-running daemon.
+    pending_launch_mode: process::LaunchMode,
+    /// Set when a process is launched with no valid holder acquired yet.
+    /// Cleared the moment a holder is acquired. If it elapses first, the
+    /// still-holderless daemon is bounded startup cleanup, not indefinite
+    /// residency.
+    pre_holder_deadline: Option<u64>,
+    /// True once at least one valid holder has been acquired for the current
+    /// process. After this, the daemon detaches from the pre-holder grace
+    /// entirely and only holder bookkeeping governs its lifetime.
+    holder_established: bool,
 }
 
 impl Default for Supervisor {
@@ -200,6 +231,10 @@ impl Supervisor {
             http_port,
             bearer_token: None,
             installed_origin: false,
+            residency: ResidentController::new(),
+            pending_launch_mode: process::LaunchMode::Contained,
+            pre_holder_deadline: None,
+            holder_established: false,
         }
     }
 
@@ -245,6 +280,93 @@ impl Supervisor {
         self.http_port = workspace.http_port;
         self.set_origin(workspace.origin);
         self.daemon_path = workspace.daemon_path().unwrap_or_else(default_daemon_path);
+    }
+
+    /// Acquire this tray's controller lease from a stable-current identity.
+    /// A non-start decision denotes peer ownership; callers must then adopt
+    /// that installed controller rather than launch a duplicate daemon.
+    pub fn acquire_holder(
+        &mut self,
+        workspace: &workspace::Workspace,
+        identity: Identity,
+        holder: Holder,
+        now_ms: u64,
+        expires_at_ms: u64,
+    ) -> Result<Transition, &'static str> {
+        workspace.validate_controller_identity(&identity)?;
+        let decision = self
+            .residency
+            .acquire(identity, holder, now_ms, expires_at_ms)
+            .map_err(|_| "resident_controller_lease_rejected")?;
+        // A valid holder is now established: the pre-holder startup grace no
+        // longer governs this process, and it can no longer be reclaimed as
+        // holderless startup cleanup. This must be recorded before any spawn
+        // decision below, never retrofitted afterward.
+        self.holder_established = true;
+        self.pre_holder_deadline = None;
+        // Select the launch mode from the *pre-spawn* residency snapshot —
+        // before `start_process` runs — so the choice between an ordinary
+        // contained launch and an escaping shared launch is made once, ahead
+        // of spawn, and never adjusted after the process is acquired.
+        let snapshot = decision.snapshot;
+        self.pending_launch_mode = if snapshot.hub_holders > 0 && snapshot.coderight_daemon_holders > 0 {
+            process::LaunchMode::Shared
+        } else {
+            process::LaunchMode::Contained
+        };
+        if decision.start_controller {
+            Ok(self.start_process(now_ms))
+        } else {
+            Ok(self.transition(
+                State::Running,
+                "resident_controller_adopted",
+                now_ms,
+                self.observation.pid,
+                None,
+            ))
+        }
+    }
+
+    pub fn renew_holder(
+        &mut self,
+        holder: &Holder,
+        now_ms: u64,
+        expires_at_ms: u64,
+    ) -> Result<(), &'static str> {
+        self.residency
+            .renew(holder, now_ms, expires_at_ms)
+            .map(|_| ())
+            .map_err(|_| "resident_controller_renew_rejected")
+    }
+
+    /// Only final holder release drains tray-managed automatic work.
+    pub fn release_holder(
+        &mut self,
+        holder: &Holder,
+        now_ms: u64,
+    ) -> Result<Transition, &'static str> {
+        let release = self
+            .residency
+            .release(holder)
+            .map_err(|_| "resident_controller_release_rejected")?;
+        if release.drain_controller {
+            Ok(self.begin_drain(now_ms))
+        } else {
+            Ok(self.transition(
+                self.observation.state,
+                "resident_controller_peer_retained",
+                now_ms,
+                self.observation.pid,
+                None,
+            ))
+        }
+    }
+
+    pub fn reconcile_expired_holders(&mut self, now_ms: u64) -> Option<Transition> {
+        self.residency
+            .reconcile_expired(now_ms)
+            .drain_controller
+            .then(|| self.begin_drain(now_ms))
     }
 
     pub fn block_startup(&mut self, reason: &str, now_ms: u64) -> Transition {
@@ -306,6 +428,12 @@ impl Supervisor {
         self.handshake_deadline = Some(now_ms.saturating_add(HANDSHAKE_TIMEOUT_MS));
         self.terminal_event = false;
         self.process_exited = false;
+        // Grant a bounded pre-holder grace only while no valid holder has
+        // been established yet. Once a holder exists this stays cleared, so
+        // a later restart of the same controller never re-arms a grace
+        // window a peer holder is already relying on.
+        self.pre_holder_deadline = (!self.holder_established)
+            .then(|| now_ms.saturating_add(PRE_HOLDER_GRACE_MS));
         let transition = self.transition(
             State::Starting,
             Reason::DaemonStarting.as_str(),
@@ -317,6 +445,12 @@ impl Supervisor {
     }
 
     pub fn begin_drain(&mut self, now_ms: u64) -> Transition {
+        // Final-holder drain (or explicit quit) ends this generation's
+        // residency entirely; the next `start_process` must be free to arm a
+        // fresh pre-holder grace rather than inherit a stale established flag
+        // from a controller that no longer has any holder.
+        self.holder_established = false;
+        self.pre_holder_deadline = None;
         self.quit_requested = true;
         self.drain_complete = self.process.is_none();
         self.drain_deadline = Some(now_ms.saturating_add(DRAIN_TIMEOUT_MS));
@@ -484,6 +618,24 @@ impl Supervisor {
             self.fail_process(now_ms, Reason::DaemonHandshakeTimeout.as_str(), pid, None);
         }
 
+        // Pre-holder grace: a daemon started with no valid holder yet is kept
+        // alive only for a bounded window. Once a holder is established
+        // (`acquire_holder` clears this deadline) the daemon detaches from
+        // this check entirely; a receiver-gone/EOF loss before that point
+        // still routes through the ordinary process-exit/protocol-invalid
+        // paths above, so this only catches a daemon that is still running
+        // but has outlived its holderless startup allowance.
+        if matches!(self.observation.state, State::Starting | State::Running)
+            && !self.holder_established
+            && self
+                .pre_holder_deadline
+                .is_some_and(|deadline| now_ms >= deadline)
+        {
+            self.pre_holder_deadline = None;
+            let pid = self.observation.pid;
+            self.fail_process(now_ms, Reason::DaemonPreHolderGraceExpired.as_str(), pid, None);
+        }
+
         if self.observation.state == State::Draining
             && self
                 .drain_deadline
@@ -618,9 +770,31 @@ impl Supervisor {
     fn launch_process(&mut self, now_ms: u64) -> Option<Transition> {
         self.close_process();
         self.process_exited = false;
-        let process = match process::launch(&self.daemon_path) {
+        // The mode selected in `acquire_holder` (before this spawn, from the
+        // pre-spawn residency snapshot) governs this launch. It is read, not
+        // recomputed, here — there is no retrofit of containment/escape
+        // after the process already exists.
+        let launch_result = match self.pending_launch_mode {
+            process::LaunchMode::Contained => process::launch(&self.daemon_path)
+                .map_err(process::LaunchError::from),
+            process::LaunchMode::Shared => process::launch_shared(&self.daemon_path),
+        };
+        let process = match launch_result {
             Ok(process) => process,
-            Err(error) => {
+            Err(process::LaunchError::JobEscapeDenied) => {
+                // Typed failure: a shared launch must not silently fall back
+                // to a contained spawn, because that would retrofit
+                // containment onto a process the caller already decided
+                // must escape. Ordinary contained containment paths are
+                // unaffected by this branch.
+                return Some(self.fail_process(
+                    now_ms,
+                    Reason::DaemonJobEscapeDenied.as_str(),
+                    None,
+                    None,
+                ));
+            }
+            Err(process::LaunchError::Io(error)) => {
                 let reason = error
                     .raw_os_error()
                     .map(|code| format!("daemon_spawn_failed_windows_{code}"))
@@ -672,7 +846,11 @@ impl Supervisor {
         self.event_decoder = EventDecoder::default();
         self.control_sequence = 1;
         self.bearer_token = Some(token);
-        self.observation.pid = Some(process.process_id());
+        let pid = process.process_id();
+        self.observation.pid = Some(pid);
+        self.observation.process_identity = process
+            .creation_time_ticks()
+            .map(|creation_ticks| (pid, creation_ticks));
         self.process = Some(process);
         None
     }
@@ -691,6 +869,7 @@ impl Supervisor {
         self.observation.withheld = unknown.withheld;
         self.observation.budget = unknown.budget;
         self.observation.snapshot_observed = unknown.observed;
+        self.observation.process_identity = None;
         self.process.take(); // Drop closes job, coupling daemon lifetime.
     }
 
@@ -718,6 +897,8 @@ fn reason_from_str(value: &str) -> Reason {
         "daemon_handshake_timeout" => Reason::DaemonHandshakeTimeout,
         "daemon_ready_failed" => Reason::DaemonReadyFailed,
         "daemon_drain_timeout" => Reason::DaemonDrainTimeout,
+        "daemon_pre_holder_grace_expired" => Reason::DaemonPreHolderGraceExpired,
+        "daemon_job_escape_denied" => Reason::DaemonJobEscapeDenied,
         _ => Reason::DaemonReadyFailed,
     }
 }

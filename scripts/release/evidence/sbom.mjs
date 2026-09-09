@@ -8,8 +8,8 @@
 // plausible-looking placeholder.
 //
 // These are the exact resolved dependency graphs for the portable Membrane
-// add-on: root JS checks, the pinned Blueprint runtime package, plus its locked
-// engine workspace. Fixture lockfiles do not participate in a shipped add-on.
+// add-on: release metadata plus the locked native engine workspace. Blueprint's
+// retired interpreter package is never a shipped SBOM input.
 //
 // This module never runs cargo, pnpm, or any other command: it only reads
 // and parses text files already on disk.
@@ -24,7 +24,6 @@ const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 
 export const DEFAULT_LOCKFILES = [
   { ecosystem: "npm", path: "pnpm-lock.yaml" },
-  { ecosystem: "npm", path: "blueprint/pnpm-lock.yaml" },
   { ecosystem: "cargo", path: "engine/Cargo.lock" },
 ];
 
@@ -196,7 +195,7 @@ function usage() {
   console.log(
     "usage: sbom.mjs --artifact INSTALLER [--repo-root PATH] [--out FILE]\n\n" +
     "Prints (or, with --out, also writes) the real SBOM derived from\n" +
-    "pnpm-lock.yaml, blueprint/pnpm-lock.yaml, and engine/Cargo.lock, bound to exact installer bytes.\n" +
+    "pnpm-lock.yaml and engine/Cargo.lock, bound to exact installer bytes.\n" +
     "Never runs cargo, pnpm, or any other command; reads committed lockfiles only.",
   );
 }

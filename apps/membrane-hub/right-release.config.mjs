@@ -20,11 +20,11 @@ const macReleaseRoot = join(cargoTargetRoot, macCargoTriple, "release");
 const buildInputs = {
   include: [
     "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
-    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/tauri.windows.conf.json", "src-tauri/windows/**", "src-tauri/src/**",
+    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/tauri.windows.conf.json", "src-tauri/windows/**", "src-tauri/src/**", "src-tauri/binaries/**",
     "../membrane-tray-windows/Cargo.toml", "../membrane-tray-windows/Cargo.lock", "../membrane-tray-windows/build.rs", "../membrane-tray-windows/src/**", "../membrane-tray-windows/ui/**",
     "../../engine/Cargo.toml", "../../engine/Cargo.lock", "../../engine/crates/**",
-    // Blueprint runtime is staged into Tauri resources before packaging.
-    "../../schemas/**", "../../blueprint/package.json", "../../blueprint/pnpm-lock.yaml", "../../blueprint/scripts/**", "../../blueprint/src/**", "../../blueprint/release/**", "../../blueprint/LICENSE",
+    // Blueprint is native; only typed contracts are packaged as resources.
+    "../../schemas/**",
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };

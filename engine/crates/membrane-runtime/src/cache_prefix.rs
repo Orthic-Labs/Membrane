@@ -55,8 +55,11 @@ pub struct CacheBreakAttributionV1 {
 }
 
 /// Deterministically describe this packet's reusable prefix, optionally
-/// attributing its first difference from a prior finalized packet.
-pub fn diagnose_cache_prefix(packet: &Value, previous: Option<&Value>) -> CachePrefixDiagnosticV1 {
+/// attributing its first difference from an exact acknowledged prior packet.
+///
+/// This diagnostic grants no reuse: callers must supply `previous` only from
+/// delivery state's persisted-H10/current-H9 guarded lookup.
+pub fn diagnose_cache_prefix(packet: &Value, acknowledged_previous: Option<&Value>) -> CachePrefixDiagnosticV1 {
     let blocks = packet
         .get("blocks")
         .and_then(Value::as_array)
@@ -84,7 +87,7 @@ pub fn diagnose_cache_prefix(packet: &Value, previous: Option<&Value>) -> CacheP
         "budget": packet.get("budget"), "allocations": packet.get("allocations"),
         "providerAccounting": packet.get("providerAccounting"), "blocks": blocks,
     });
-    let cache_break = previous.and_then(|prior| first_break(packet, prior));
+    let cache_break = acknowledged_previous.and_then(|prior| first_break(packet, prior));
     let volatility_source = match &cache_break {
         Some(breakage) if breakage.kind == "block" => {
             format!("block:{}", breakage.block_id.as_deref().unwrap_or("order"))
@@ -93,8 +96,8 @@ pub fn diagnose_cache_prefix(packet: &Value, previous: Option<&Value>) -> CacheP
             "metadata:{}",
             breakage.metadata_field.as_deref().unwrap_or("unknown")
         ),
-        None if previous.is_some()
-            && packet.get("traceId") != previous.and_then(|prior| prior.get("traceId")) =>
+        None if acknowledged_previous.is_some()
+            && packet.get("traceId") != acknowledged_previous.and_then(|prior| prior.get("traceId")) =>
         {
             "traceId_excluded".to_string()
         }

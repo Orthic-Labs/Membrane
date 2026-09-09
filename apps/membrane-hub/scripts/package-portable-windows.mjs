@@ -90,13 +90,8 @@ for (const [source, name] of executables) {
 const runtime = inputRoot ? join(inputRoot, "runtime") : join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`staged runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
-// Stable installed command uses Membrane's bounded process owner.
+// Stable installed command uses Membrane's bounded native process owner.
 writeFileSync(join(payload, "blueprint.cmd"), '@echo off\r\n"%~dp0membrane.exe" cli blueprint %*\r\nexit /b %ERRORLEVEL%\r\n');
-for (const entry of ["blueprint.mjs", "blueprint-one-shot.mjs"]) {
-  if (!existsSync(join(payload, "runtime", "blueprint", "app", "package", "scripts", entry))) {
-    throw new Error(`packaged Blueprint entry missing: ${entry}`);
-  }
-}
 const pluginContract = assemblePortableCore({
   outputDir: portableCore,
   pluginManifestPath: join(projectionRoot, "plugin.json"),
@@ -121,35 +116,20 @@ cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".agents", "ski
 cpSync(join(descriptorRoot, ".antigravity-plugin"), join(payload, ".antigravity-plugin"), { recursive: true });
 mkdirSync(join(payload, ".antigravity-plugin", "skills"), { recursive: true });
 cpSync(join(descriptorRoot, "skills", "membrane"), join(payload, ".antigravity-plugin", "skills", "membrane"), { recursive: true });
-// Claude hooks are product code, not a development-only source reference.
-// Carry their complete, dependency-closed projection in the candidate so
-// protected finalization consumes exactly what CI produced.
-const hookFiles = [
-  ["mcp/hooks/membrane-hook-entrypoint.mjs", "mcp/hooks/membrane-hook-entrypoint.mjs"],
-  ["mcp/hooks/membrane-hook-runtime.mjs", "mcp/hooks/membrane-hook-runtime.mjs"],
-  ["mcp/hooks/membrane-workspace-operations.mjs", "mcp/hooks/membrane-workspace-operations.mjs"],
-  ["mcp/lib/verification-command.mjs", "mcp/lib/verification-command.mjs"],
-  ["mcp/lib/diagnostics-client.mjs", "mcp/lib/diagnostics-client.mjs"],
-  ["mcp/host/context-adapter.cjs", "mcp/host/context-adapter.cjs"],
-  ["mcp/host/continuity.mjs", "mcp/host/continuity.mjs"],
-  ["mcp/host/delivery-ledger-store.cjs", "mcp/host/delivery-ledger-store.cjs"],
-  ["mcp/host/observable-event.cjs", "mcp/host/observable-event.cjs"],
-  ["mcp/host/observable-ingress.cjs", "mcp/host/observable-ingress.cjs"],
-  ["mcp/context-renderer-lib.cjs", "mcp/context-renderer-lib.cjs"],
-  // Enrollment. Without these the installed product can register no
-  // repository at all, so every membrane_context call is denied at
-  // RepositoryScopeChain and the one entry tool serves nobody.
-  ["mcp/install.mjs", "mcp/install.mjs"],
-  ["mcp/project-registry.mjs", "mcp/project-registry.mjs"],
-  ["mcp/installation-binding.mjs", "mcp/installation-binding.mjs"],
-  ["mcp/repository-catalog.mjs", "mcp/repository-catalog.mjs"],
-  ["mcp/blueprint-readiness.mjs", "mcp/blueprint-readiness.mjs"],
+// Enrollment remains product authority; only obsolete JS hook execution moved
+// into membrane.exe. These files let installed clients register repositories.
+const enrollmentFiles = [
+  "mcp/install.mjs",
+  "mcp/project-registry.mjs",
+  "mcp/installation-binding.mjs",
+  "mcp/repository-catalog.mjs",
+  "mcp/blueprint-readiness.mjs",
 ];
-for (const [source, destination] of hookFiles) {
-  const from = join(projectionRoot, source);
-  if (!existsSync(from)) throw new Error(`installed hook projection file missing: ${from}`);
-  mkdirSync(join(payload, destination, ".."), { recursive: true });
-  cpSync(from, join(payload, destination));
+for (const file of enrollmentFiles) {
+  const source = join(projectionRoot, file);
+  if (!existsSync(source)) throw new Error(`installed enrollment projection file missing: ${source}`);
+  mkdirSync(join(payload, file, ".."), { recursive: true });
+  cpSync(source, join(payload, file));
 }
 // A prepared candidate root carries these beside the payload; the repository
 // root carries LICENSE and the canonical notices under docs/product/legal.
@@ -176,6 +156,13 @@ const membraneInfo = spawnSync(join(payload, "membrane.exe"), ["cli", "build-inf
 });
 if (membraneInfo.error || membraneInfo.status !== 0) throw new Error("membrane build-info failed");
 const buildInfo = JSON.parse(membraneInfo.stdout);
+const hookAuthority = spawnSync(join(payload, "membrane.exe"), ["hook", "--help"], {
+  encoding: "utf8",
+  windowsHide: true,
+  timeout: 3_000,
+});
+if (hookAuthority.error || hookAuthority.status !== 0) throw new Error("membrane native hook authority unavailable");
+if (existsSync(join(payload, "mcp", "hooks"))) throw new Error("obsolete mcp/hooks payload is forbidden");
 // The binary bakes its release generation at compile time from
 // dist/release-identity.json. A cached compile made before that file existed
 // produces a binary reporting "sha256:unknown", and the manifest, /health and
@@ -244,4 +231,17 @@ materializeInTotoSlsaProvenance({
   startedAt: process.argv[startedArg + 1],
 });
 cpSync(join(repo, "docs", "product", "legal", "THIRD-PARTY-NOTICES.txt"), join(output, "THIRD_PARTY_NOTICES.md"));
-console.log(JSON.stringify({ archive, sha256: archived.sha256, provenancePath, sbomPath }));
+// scripts/qualification/install-release.ps1 -Profile internal-unsigned locates
+// artifacts by this stdout payload (never by re-deriving signing status
+// itself). Surface the unsigned/signed disposition this packaging pass
+// actually produced so that route, and any caller building its
+// windows-amendment-acceptance.json PKG-02 command line, can bind to the
+// exact artifact this pass built without re-inspecting Authenticode state.
+console.log(JSON.stringify({
+  archive,
+  sha256: archived.sha256,
+  provenancePath,
+  sbomPath,
+  unsigned: process.env.MEMBRANE_UNSIGNED_INSTALLER === "1",
+  profile: process.env.MEMBRANE_UNSIGNED_INSTALLER === "1" ? "internal-unsigned" : "signed-release",
+}));

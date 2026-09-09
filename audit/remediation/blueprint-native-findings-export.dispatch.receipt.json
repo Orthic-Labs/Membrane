@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch-receipt",
+  "packetPath": "audit/remediation/blueprint-native-findings-export.dispatch.json",
+  "packetSha256": "9010d14955e6a5120b786f918771098811faf71ca6496b8285fec1af83902a45",
+  "sourceRevision": "abeec00c1b8705e7905c92bba73f867f0cea871a",
+  "artifactHashes": [
+    {"path":"AGENTS.md","sha256":"845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"},
+    {"path":"D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md","sha256":"030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"},
+    {"path":"docs/canon/blueprint.md","sha256":"af827193fefdd55aeaf288cac81edaf3f628623428c0a770b8dca44594d21514"},
+    {"path":"blueprint/src/lib/findings/registry.mjs","sha256":"b8f5791184b5d4d7f2e25f0d8aa5210e9bff759a680d27b7fb553d25d1fbe35d"},
+    {"path":"blueprint/src/lib/findings/specifier.mjs","sha256":"3f2f63ecd06e6b2ca3055a0cad253c914a76898a76b4b9c7a3a3a52b6b012c58"},
+    {"path":"blueprint/src/lib/findings/detect.mjs","sha256":"bdb1da68b374a6efe426cd52f3ea480b8cc7526d3bff94d2c0bdcb8577735254"},
+    {"path":"blueprint/src/lib/findings/service.mjs","sha256":"6367855c4b2f036aba25a0f289023cefe4b41495b19dc95610e4217dc9a52988"},
+    {"path":"blueprint/src/lib/evidence-pack.mjs","sha256":"91d3ab7c59e05fbf264bd088d36d60c5074fd7d51aa4c5e76574fa88706d6958"},
+    {"path":"blueprint/src/lib/sarif.mjs","sha256":"4112de6e11b700249abc32933068f7c9029511fdf6a61def93eb2f1f4395756f"},
+    {"path":"blueprint/src/graph/module-surface.mjs","sha256":"8242e3163fafd05511aca746e9435c75395c56792eb2d44a76278b33c5b93b80"},
+    {"path":"blueprint/src/graph/static-provider.mjs","sha256":"25032783d1cb37c52d7b32b1a0098bffc6e4d3b38ebd99d3286a31e845860409"},
+    {"path":"blueprint/src/service/protocol.mjs","sha256":"31f6b7eb6de07af5050a084510ee7d29f22263a40f832f85a2af531b22776684"},
+    {"path":"blueprint/src/service/server.mjs","sha256":"fb821e8403a0606d5c9f6c3c89106027c2789ba1f771f63e26cf2af47b85c61b"},
+    {"path":"blueprint/tests/findings-detect.test.mjs","sha256":"da15696a5fb68a7a303d070f13f8e921770ceaf2b23310922e7b8e593ac4c813"},
+    {"path":"blueprint/tests/findings-service.test.mjs","sha256":"0fc78d5911da0caa0dc79c141b5059e4218e46aeca1e9d3d426599b8f96a84e7"},
+    {"path":"blueprint/tests/findings-explain-pack.test.mjs","sha256":"4b165680a2bc29331794ca75adc5c8f5d386793d32cbdd1c0bc5424f8d713d60"},
+    {"path":"blueprint/tests/baseline-named.test.mjs","sha256":"3ce2a512a2fae5202851b99c757d6653460587d125f1d8f40352c0f506dc2984"},
+    {"path":"blueprint/tests/sarif.test.mjs","sha256":"af80a65224263a565840c19fa2f361d81f69b33b6647ea9e5030fabe95819e74"},
+    {"path":"blueprint/tests/export.test.mjs","sha256":"323dd84dddbd053f2057b3a8d955fb62d413f40e821e4c5fe9c79dd7d3f401e6"},
+    {"path":"blueprint/tests/evidence-pack.test.mjs","sha256":"c0d25e0775923e8eb3b60380c0d3dfbd43d7ba1e8c906427fc672ca8850bc872"},
+    {"path":"engine/crates/membrane-blueprint/src/graph.rs","sha256":"5c24bf5bbde14cd558dbd19821cdbe1ac7f8134e57323db692722f325e7d71ab"},
+    {"path":"engine/crates/membrane-blueprint/tests/graph.rs","sha256":"3e36b62758f8bb90d177fb7b539e61e73cd48c0c549f7721f796ddafe9ee2bf0"},
+    {"path":"engine/crates/membrane-blueprint/src/store.rs","sha256":"fd2395de12675a040aa69c85de72dea972d31f5678b47d07241b1e777f88217c"},
+    {"path":"engine/crates/membrane-blueprint/src/phase2.rs","sha256":"9fb3ac5d28313ad42be9d4170ce9e80f10bc391f9bd07f7a0cfaa68460db2ceb"},
+    {"path":"engine/crates/membrane-blueprint/src/doc_truth.rs","sha256":"8d980635083d132f8f1b20923eeb0c8ac0022d683bff318f42cb43f26278dae9"},
+    {"path":"engine/crates/membrane-blueprint/src/api.rs","sha256":"5baeda9e22783287c7e7a94d8d9f0923ab778c04c28f0563c76f665bf28884b3"},
+    {"path":"engine/crates/membrane-blueprint/src/model.rs","sha256":"44abf15afe6d14339e46028e9aa2548d733f95d1ce4942d80d59861ff1731757"},
+    {"path":"engine/crates/membrane-blueprint/src/lib.rs","sha256":"a5c722d1c37adb48c55507c63ff6450e95a7792129c8e75c0049dd5f60940af5"}
+  ],
+  "plannedFilesAbsent": [
+    "engine/crates/membrane-blueprint/src/findings.rs",
+    "engine/crates/membrane-blueprint/tests/findings.rs",
+    "engine/crates/membrane-blueprint/src/export.rs",
+    "engine/crates/membrane-blueprint/tests/export.rs"
+  ],
+  "ownedExistingFiles": [
+    "engine/crates/membrane-blueprint/src/graph.rs",
+    "engine/crates/membrane-blueprint/tests/graph.rs"
+  ],
+  "workerPolicy": "edit-only; no Cargo/tests/builds/install/format/commit/push",
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "machineryDegradation": "legion run open --help returned top-level help without an open grammar; existing receipt-bound dispatch path used"
+}

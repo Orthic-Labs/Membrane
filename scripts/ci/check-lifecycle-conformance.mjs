@@ -23,6 +23,16 @@ function check(label, condition) {
   if (!condition) failures.push(label);
 }
 
+// Installed qualification must prove native Blueprint operations across both
+// resident & Hub-off paths; these names are intentionally stable evidence keys.
+const qualificationEvidence = [
+  "migration/native-rust/native-only-seal.json",
+  "migration/native-rust/runtime-language-manifest.json",
+];
+for (const path of qualificationEvidence) {
+  check(`${path} must be present for installed lifecycle qualification`, existsSync(join(root, path)));
+}
+
 // 1. The Hub dashboard app carries no resident runtime dependency. It is an
 // on-demand client (see apps/membrane-hub/src-tauri/src/main.rs), not a
 // second Membrane planner/runtime host.
@@ -133,6 +143,20 @@ for (const path of ["README.md", "docs/architecture/membrane.md", "docs/canon/me
   "docs/architecture/security/mcp-threat-model.md"]) {
   check(`${path} must retain explicit Hub-off availability doctrine`,
     /explicit[^.\n]{0,240}Hub(?: on or)? off/i.test(read(path)));
+}
+
+// Native closure policy: no packaged Blueprint interpreter, launcher, or
+// bounded external interpreter allowance may survive sealed qualification.
+try {
+  const policy = JSON.parse(read("migration/native-rust/runtime-policy.json"));
+  check("sealed runtime policy must allow zero bounded external interpreter rows",
+    policy.enforcementMode === "sealed" && (policy.sealedExternalInterpreterRows ?? []).length === 0);
+  check("sealed runtime policy must have no Blueprint interpreter exception",
+    !(policy.exceptions ?? []).some((entry) => /blueprint/i.test(JSON.stringify(entry))));
+  check("sealed runtime policy must reject retired Blueprint interpreter selectors",
+    (policy.deletedSelectors ?? []).some((entry) => String(entry).startsWith("blueprint/")));
+} catch (error) {
+  failures.push(`runtime policy could not be read: ${error.message}`);
 }
 
 if (failures.length) {

@@ -27,7 +27,7 @@ mod windows_impl {
     use windows_sys::Win32::{
         Foundation::{
             CloseHandle, DuplicateHandle, GetLastError, SetHandleInformation,
-            DUPLICATE_SAME_ACCESS, HANDLE, HANDLE_FLAG_INHERIT,
+            DUPLICATE_SAME_ACCESS, FILETIME, HANDLE, HANDLE_FLAG_INHERIT,
         },
         Security::SECURITY_ATTRIBUTES,
         Storage::FileSystem::{ReadFile, WriteFile},
@@ -39,15 +39,18 @@ mod windows_impl {
             Pipes::CreatePipe,
             Threading::{
                 CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess,
-                GetExitCodeProcess, InitializeProcThreadAttributeList, UpdateProcThreadAttribute,
-                WaitForSingleObject, CREATE_NO_WINDOW, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
-                PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                PROC_THREAD_ATTRIBUTE_JOB_LIST, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+                GetExitCodeProcess, GetProcessTimes, InitializeProcThreadAttributeList,
+                UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
+                EXTENDED_STARTUPINFO_PRESENT, INFINITE, PROCESS_INFORMATION,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                STARTF_USESTDHANDLES, STARTUPINFOEXW,
             },
         },
     };
 
     const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_millis(500);
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
 
     /// Events emitted by process readers. Event contains only decoded stdout
     /// protocol frames; stderr is consumed separately and never enters channel.
@@ -56,6 +59,66 @@ mod windows_impl {
         Event(Vec<u8>),
         ProtocolInvalid,
         Exited { code: u32 },
+    }
+
+    /// How a launched daemon relates to this tray's containment job.
+    ///
+    /// `Contained` is the ordinary path: the daemon is placed in the tray's
+    /// kill-on-close job at spawn time via `PROC_THREAD_ATTRIBUTE_JOB_LIST`,
+    /// so closing the tray's job handle kills every daemon descendant.
+    /// `Shared` is selected by the supervisor *before* spawn — never
+    /// retrofitted onto an already-acquired process — when a peer holder
+    /// already owns the daemon's lifetime; the child explicitly escapes (does
+    /// not get assigned to) the tray's kill-on-close job so a later tray exit
+    /// cannot kill a daemon a peer controller still depends on.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LaunchMode {
+        Contained,
+        Shared,
+    }
+
+    /// Typed launch failure. `JobEscapeDenied` is distinct from an ordinary
+    /// spawn I/O failure: it means `CREATE_BREAKAWAY_FROM_JOB` was refused by
+    /// the OS because the tray's own parent job forbids breakaway, so a
+    /// `Shared` launch could not avoid inheriting containment it must not
+    /// have. Callers must not silently fall back to a contained launch in
+    /// that case — that would retrofit containment after acquire, which is
+    /// exactly what this type exists to prevent.
+    #[derive(Debug)]
+    pub enum LaunchError {
+        Io(std::io::Error),
+        JobEscapeDenied,
+    }
+
+    impl std::fmt::Display for LaunchError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                LaunchError::Io(error) => write!(formatter, "{error}"),
+                LaunchError::JobEscapeDenied => {
+                    write!(formatter, "daemon launch denied breakaway from parent job")
+                }
+            }
+        }
+    }
+
+    impl std::error::Error for LaunchError {}
+
+    impl From<std::io::Error> for LaunchError {
+        fn from(value: std::io::Error) -> Self {
+            LaunchError::Io(value)
+        }
+    }
+
+    impl From<LaunchError> for std::io::Error {
+        fn from(value: LaunchError) -> Self {
+            match value {
+                LaunchError::Io(error) => error,
+                LaunchError::JobEscapeDenied => std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "daemon launch denied breakaway from parent job",
+                ),
+            }
+        }
     }
 
     #[derive(Debug)]
@@ -114,11 +177,26 @@ mod windows_impl {
         }
     }
 
+    /// Launch executable with three inherited anonymous pipes, contained in
+    /// the tray's kill-on-close job. This is the ordinary containment path.
+    pub fn launch(executable: &Path) -> std::io::Result<DaemonProcess> {
+        launch_with_mode(executable, LaunchMode::Contained).map_err(Into::into)
+    }
+
+    /// Launch executable that must not be assigned to (must escape) the
+    /// tray's kill-on-close job, because a peer holder already owns its
+    /// lifetime. The mode is chosen by the caller before this call — there is
+    /// no path that retrofits escape or containment onto a process already
+    /// returned by this function.
+    pub fn launch_shared(executable: &Path) -> Result<DaemonProcess, LaunchError> {
+        launch_with_mode(executable, LaunchMode::Shared)
+    }
+
     /// Launch executable with three inherited anonymous pipes.
     ///
     /// Bearer token is not part of command line or environment. Caller sends
     /// it through [`DaemonProcess::send_launch`] after process creation.
-    pub fn launch(executable: &Path) -> std::io::Result<DaemonProcess> {
+    fn launch_with_mode(executable: &Path, mode: LaunchMode) -> Result<DaemonProcess, LaunchError> {
         unsafe {
             let mut security = make_security_attributes();
             let (
@@ -160,7 +238,7 @@ mod windows_impl {
                     if !job.is_null() {
                         CloseHandle(job);
                     }
-                    return Err($error);
+                    return Err(LaunchError::from($error));
                 }};
             }
 
@@ -182,47 +260,64 @@ mod windows_impl {
                 }
             }
 
-            job = CreateJobObjectW(null(), null());
-            if job.is_null() {
-                fail!(failed());
-            }
-            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            if SetInformationJobObject(
-                job,
-                JobObjectExtendedLimitInformation,
-                &limits as *const _ as *const _,
-                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
-            ) == 0
-            {
-                fail!(failed());
-            }
+            // `Contained` places the daemon in the tray's kill-on-close job
+            // at spawn time (below), before any handle escapes to a caller —
+            // there is no later retrofit step. `Shared` never creates or
+            // assigns a job at all: the child must explicitly escape any job
+            // this tray process is itself part of via `CREATE_BREAKAWAY_FROM_JOB`
+            // on `CreateProcessW`, so `job` stays null and the daemon is never
+            // put under kill-on-close containment it must outlive.
+            let attribute_count: u32 = match mode {
+                LaunchMode::Contained => {
+                    job = CreateJobObjectW(null(), null());
+                    if job.is_null() {
+                        fail!(failed());
+                    }
+                    let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    if SetInformationJobObject(
+                        job,
+                        JobObjectExtendedLimitInformation,
+                        &limits as *const _ as *const _,
+                        size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                    ) == 0
+                    {
+                        fail!(failed());
+                    }
+                    2
+                }
+                LaunchMode::Shared => 1,
+            };
 
             // First call asks for required attribute-list bytes.
             let mut attribute_bytes = 0_usize;
-            InitializeProcThreadAttributeList(null_mut(), 2, 0, &mut attribute_bytes);
+            InitializeProcThreadAttributeList(null_mut(), attribute_count, 0, &mut attribute_bytes);
             if attribute_bytes == 0 {
                 fail!(failed());
             }
             let mut attribute_storage = vec![0_u8; attribute_bytes];
             attribute_list = attribute_storage.as_mut_ptr() as _;
-            if InitializeProcThreadAttributeList(attribute_list, 2, 0, &mut attribute_bytes) == 0 {
+            if InitializeProcThreadAttributeList(attribute_list, attribute_count, 0, &mut attribute_bytes)
+                == 0
+            {
                 fail!(failed());
             }
             attributes_initialized = true;
 
-            let job_list = [job];
-            if UpdateProcThreadAttribute(
-                attribute_list,
-                0,
-                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-                job_list.as_ptr() as *const _,
-                size_of::<HANDLE>(),
-                null_mut(),
-                null(),
-            ) == 0
-            {
-                fail!(failed());
+            if matches!(mode, LaunchMode::Contained) {
+                let job_list = [job];
+                if UpdateProcThreadAttribute(
+                    attribute_list,
+                    0,
+                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                    job_list.as_ptr() as *const _,
+                    size_of::<HANDLE>(),
+                    null_mut(),
+                    null(),
+                ) == 0
+                {
+                    fail!(failed());
+                }
             }
             let inherited = [child_stdin, child_stdout, child_stderr];
             if UpdateProcThreadAttribute(
@@ -251,13 +346,23 @@ mod windows_impl {
             startup.StartupInfo.hStdError = child_stderr;
             startup.lpAttributeList = attribute_list;
 
+            let mut creation_flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW;
+            if matches!(mode, LaunchMode::Shared) {
+                // Explicitly escape any job this tray process is itself part
+                // of. Without this flag a `Shared` launch could silently
+                // inherit containment from an ambient parent job even though
+                // no job is assigned here — the escape must be requested, not
+                // assumed.
+                creation_flags |= CREATE_BREAKAWAY_FROM_JOB;
+            }
+
             let created = CreateProcessW(
                 application.as_ptr(),
                 command_line.as_mut_ptr(),
                 null(),
                 null(),
                 1,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
+                creation_flags,
                 null(),
                 null(),
                 &startup.StartupInfo,
@@ -272,14 +377,24 @@ mod windows_impl {
             DeleteProcThreadAttributeList(attribute_list);
 
             if created == 0 {
-                let error = failed();
+                let os_error = unsafe { GetLastError() } as i32;
+                let error = std::io::Error::from_raw_os_error(os_error);
                 close_if_valid(process_info.hProcess);
                 close_if_valid(process_info.hThread);
                 for handle in [stdin_write, stdout_read, stderr_read] {
                     close_if_valid(handle);
                 }
                 close_if_valid(job);
-                return Err(error);
+                // A `Shared` launch that is denied breakaway from the parent
+                // job fails typed rather than silently falling back to a
+                // contained spawn — that fallback would retrofit containment
+                // after the caller already committed to a shared, escaping
+                // launch. Ordinary containment paths (`Contained`) are
+                // unaffected and keep reporting plain I/O failures.
+                if matches!(mode, LaunchMode::Shared) && os_error == ERROR_ACCESS_DENIED {
+                    return Err(LaunchError::JobEscapeDenied);
+                }
+                return Err(LaunchError::Io(error));
             }
 
             close_if_valid(process_info.hThread);
@@ -296,6 +411,28 @@ mod windows_impl {
     impl DaemonProcess {
         pub fn process_id(&self) -> u32 {
             unsafe { windows_sys::Win32::System::Threading::GetProcessId(self.process) }
+        }
+
+        /// Windows FILETIME (100ns ticks since 1601-01-01 UTC) at which this
+        /// daemon process started. Paired with `process_id()` and the
+        /// supervisor's startup generation, this gives an abrupt-launcher
+        /// continuity fingerprint: a recycled PID from an unrelated process
+        /// will not share this creation time, so a caller that persisted
+        /// (pid, creation_time, generation) across an abrupt tray relaunch
+        /// can tell a survived daemon apart from a coincidentally-numbered
+        /// new one.
+        pub fn creation_time_ticks(&self) -> Option<u64> {
+            let mut creation: FILETIME = unsafe { std::mem::zeroed() };
+            let mut exit: FILETIME = unsafe { std::mem::zeroed() };
+            let mut kernel: FILETIME = unsafe { std::mem::zeroed() };
+            let mut user: FILETIME = unsafe { std::mem::zeroed() };
+            let ok = unsafe {
+                GetProcessTimes(self.process, &mut creation, &mut exit, &mut kernel, &mut user)
+            };
+            if ok == 0 {
+                return None;
+            }
+            Some(((creation.dwHighDateTime as u64) << 32) | creation.dwLowDateTime as u64)
         }
 
         pub fn send_launch(&self, launch: &DaemonLaunchV1) -> std::io::Result<()> {
@@ -506,7 +643,7 @@ mod windows_impl {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{launch, DaemonProcess, ProcessEvent};
+pub use windows_impl::{launch, launch_shared, DaemonProcess, LaunchError, LaunchMode, ProcessEvent};
 
 #[cfg(all(test, windows))]
 mod native_tests {
@@ -534,6 +671,36 @@ mod non_windows_impl {
     #[derive(Debug)]
     pub struct DaemonProcess;
 
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum LaunchMode {
+        Contained,
+        Shared,
+    }
+
+    #[derive(Debug)]
+    pub enum LaunchError {
+        Io(std::io::Error),
+        JobEscapeDenied,
+    }
+
+    impl From<std::io::Error> for LaunchError {
+        fn from(value: std::io::Error) -> Self {
+            LaunchError::Io(value)
+        }
+    }
+
+    impl From<LaunchError> for std::io::Error {
+        fn from(value: LaunchError) -> Self {
+            match value {
+                LaunchError::Io(error) => error,
+                LaunchError::JobEscapeDenied => std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "daemon launch denied breakaway from parent job",
+                ),
+            }
+        }
+    }
+
     pub fn launch(_executable: &Path) -> std::io::Result<DaemonProcess> {
         Err(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
@@ -541,9 +708,19 @@ mod non_windows_impl {
         ))
     }
 
+    pub fn launch_shared(_executable: &Path) -> Result<DaemonProcess, LaunchError> {
+        Err(LaunchError::Io(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Windows tray is only supported on Windows",
+        )))
+    }
+
     impl DaemonProcess {
         pub fn process_id(&self) -> u32 {
             0
+        }
+        pub fn creation_time_ticks(&self) -> Option<u64> {
+            None
         }
         pub fn send_launch(&self, _launch: &DaemonLaunchV1) -> std::io::Result<()> {
             Err(std::io::Error::new(
@@ -562,4 +739,4 @@ mod non_windows_impl {
 }
 
 #[cfg(not(windows))]
-pub use non_windows_impl::{launch, DaemonProcess, ProcessEvent};
+pub use non_windows_impl::{launch, launch_shared, DaemonProcess, LaunchError, LaunchMode, ProcessEvent};

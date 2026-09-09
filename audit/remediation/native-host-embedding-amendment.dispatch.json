@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+  "sourceArtifact": "docs/architecture/integrations/coderight.md",
+  "promptArtifact": "docs/architecture/integrations/coderight.md",
+  "promptDigest": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "One existing runtime owner composes frozen native Blueprint lifecycle through four exact host files after its ACK serve bytes freeze."
+  },
+  "objective": "Embed one native BlueprintService inside installed membrane.exe. First authenticated resident holder starts and supervises it; service readiness reflects watcher plus store and catalog health; final release or expiry drains it under the serialized resident lifecycle transition. Preserve Hub-off headless operation, optional Hub UI, exact installed identity, and existing one-shot semantics. Do not create or package a separate Blueprint binary and do not resume stopped Blueprint query or engine semantic work.",
+  "authority": [
+    "AGENTS.md",
+    "docs/architecture/membrane.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "docs/architecture/integrations/coderight.md",
+    "engine/crates/membrane-blueprint/src/service.rs",
+    "engine/crates/membrane-blueprint/src/engine.rs",
+    "audit/remediation/native-closure-remaining.dispatch.json",
+    "audit/remediation/pull-final-publication-integration.dispatch.json"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "ownershipTransfers": [
+    {"path":"engine/crates/membrane-runtime/src/serve.rs","from":"pull-ack-bridge-owner","to":"native-host-embedding-owner","state":"source-complete-handoff","frozenHash":"sha256:6667c5de7f5c8b49074ac9b94b13cab02a59592d95d4def98c236bcf4ce9c03c"},
+    {"path":"engine/crates/membrane-runtime/src/residency.rs","from":"resident-holder-lifecycle","to":"native-host-embedding-owner","state":"source-complete-handoff","frozenHash":"sha256:6122df9f5f3c33707f3c9fd046f5433352281df118d1ebb8c80ca7a849f5f6e3"},
+    {"path":"engine/crates/membrane-runtime/tests/residency_holders.rs","from":"resident-holder-lifecycle","to":"native-host-embedding-owner","state":"source-complete-handoff","frozenHash":"sha256:53fb095ffcb1bf5095e26cafde8fcc0b1aa65ef47fea24ba6ecbc02692e91756"},
+    {"path":"engine/crates/membrane/src/dispatch.rs","from":"hook-native-cutover","to":"native-host-embedding-owner","state":"source-complete-handoff","frozenHash":"sha256:a8af0aaee8cc8f4ba9aa393071c3ad89d6dfc3e030a165926f61d28e8b00a987"},
+    {"path":"engine/crates/membrane/src/modes.rs","from":"hook-native-cutover","to":"native-host-embedding-owner","state":"source-complete-handoff","frozenHash":"sha256:b34bfd9355e6ef86b80771c26a3d2dc087d4397a8752a7977beb8c2bfe19e8cc"}
+  ],
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/src/service.rs",
+      "engine/crates/membrane-runtime/src/serve.rs",
+      "engine/crates/membrane-runtime/src/residency.rs",
+      "engine/crates/membrane-runtime/tests/residency_holders.rs",
+      "engine/crates/membrane/src/serve.rs",
+      "engine/crates/membrane/src/dispatch.rs",
+      "engine/crates/membrane/src/modes.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-runtime/src/service.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"run_runtime owns one Arc BlueprintService for installed and Hub-off hosts"},
+      {"path":"engine/crates/membrane-runtime/src/serve.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"AppState carries native readiness and serialized holder transitions start/drain service"},
+      {"path":"engine/crates/membrane-runtime/src/residency.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"resident decisions identify first-start and final-drain transitions without weakening admission"},
+      {"path":"engine/crates/membrane-runtime/tests/residency_holders.rs","owner":"native-host-embedding-owner","operation":"edit-test","lane":"native-host-embedding-owner","finalCheck":"first holder start, ready gate, concurrent transition and final release/expiry drain acceptance"},
+      {"path":"engine/crates/membrane/src/serve.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"installed headless entrypoint starts same runtime host"},
+      {"path":"engine/crates/membrane/src/dispatch.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"authenticated internal resident mode parses without restoring retired public supervisor modes"},
+      {"path":"engine/crates/membrane/src/modes.rs","owner":"native-host-embedding-owner","operation":"edit","lane":"native-host-embedding-owner","finalCheck":"installed dispatcher routes headless controller startup to runtime service"}
+    ]
+  },
+  "sourcePortPolicy": {"applicable":false,"sourceImplementation":null,"sourceInventory":[],"directPortFirst":true,"targetLanguage":"Rust","rustTargetRequiresRustPort":true,"handRollReplacementWhileSourceExists":false},
+  "workerPolicy": {"mode":"edit-only","mayInspectReadPaths":true,"mayEditAllowlistOnly":true,"forbiddenActions":["cargo","tests","builds","generators","installs","commits","pushes","merges"],"intendedChecksRecordedFor":"integration owner"},
+  "integrationPolicy": {"owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","soleMerger":true,"runsCheckpoints":true,"mayRepairLaneOwnedFiles":false,"repairAction":"return exact defect to native-host-embedding-owner"},
+  "dispatches": [
+    {"id":"A","dependsOn":[],"lanes":["native-host-embedding-owner"],"completionChecks":["one embedded service instance","first-holder start and supervision","watcher/store/catalog readiness","final release and expiry drain","Hub-off headless continuity","no separate Blueprint process"]}
+  ],
+  "workers": [
+    {
+      "id": "native-host-embedding-owner",
+      "dispatch": "A",
+      "task": "Compose one Arc<membrane_blueprint::BlueprintService> in runtime service startup using existing native_blueprint_operation and enrolled workspace configuration. Inject it into serve AppState. Under the resident-controller mutex, first authenticated holder starts/supervises service; subsequent holders reuse it; final release or expiry requests drain and stops admission without TOCTOU. services_ready is true only when controller active, Blueprint readiness.ready, store usable and catalog present/usable; surface typed unavailable state otherwise. Expose one installed internal headless membrane.exe startup mode so CodeRight can start the same controller before holder HTTP acquisition when Hub is absent; do not restore retired public supervisor/Node modes. Keep Hub optional. Do not edit Blueprint crate, Cargo manifests, client SDK, Hub/tray/package, Pull logic beyond preserving frozen serve bytes, or stopped query/engine semantics.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-runtime/src/service.rs":"sha256:1bc66310f0f6cd758f4be4d1c0b52ca69144c58a847db5affcc0179c89630267",
+        "engine/crates/membrane-runtime/src/serve.rs":"sha256:6667c5de7f5c8b49074ac9b94b13cab02a59592d95d4def98c236bcf4ce9c03c",
+        "engine/crates/membrane-runtime/src/residency.rs":"sha256:6122df9f5f3c33707f3c9fd046f5433352281df118d1ebb8c80ca7a849f5f6e3",
+        "engine/crates/membrane-runtime/tests/residency_holders.rs":"sha256:53fb095ffcb1bf5095e26cafde8fcc0b1aa65ef47fea24ba6ecbc02692e91756",
+        "engine/crates/membrane/src/serve.rs":"sha256:63480ee2f731f6e0d0990c4fc02236022a49e71c62e5d9788f185485ef7c1941",
+        "engine/crates/membrane/src/dispatch.rs":"sha256:a8af0aaee8cc8f4ba9aa393071c3ad89d6dfc3e030a165926f61d28e8b00a987",
+        "engine/crates/membrane/src/modes.rs":"sha256:b34bfd9355e6ef86b80771c26a3d2dc087d4397a8752a7977beb8c2bfe19e8cc"
+      },
+      "executorRequirement": {"semanticRequirement":"required","capabilities":["rust-structured-edit","resident-lifecycle","native-service-composition"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"native-host-embedding-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist": ["engine/crates/membrane-runtime/src/service.rs","engine/crates/membrane-runtime/src/serve.rs","engine/crates/membrane-runtime/src/residency.rs","engine/crates/membrane-runtime/tests/residency_holders.rs","engine/crates/membrane/src/serve.rs","engine/crates/membrane/src/dispatch.rs","engine/crates/membrane/src/modes.rs"],
+      "read": ["docs/architecture/membrane.md","docs/architecture/subsystems/blueprint.md","docs/architecture/integrations/coderight.md","engine/crates/membrane-blueprint/src/service.rs","engine/crates/membrane-blueprint/src/engine.rs","engine/crates/membrane-runtime/src/blueprint_one_shot.rs","engine/crates/membrane-runtime/src/catalog.rs","audit/remediation/pull-final-publication-integration.dispatch.json"],
+      "forbidden": [".git","engine/Cargo.lock","engine/crates/membrane-runtime/Cargo.toml","engine/crates/membrane-blueprint","engine/crates/membrane-client","apps","scripts","migration"],
+      "checks": ["integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test residency_holders","integration owner runs focused membrane dispatcher tests for installed headless mode and retired public mode refusal","integration owner reruns pull_acknowledgement after serve composition","integration owner verifies installed Hub-off holder starts embedded watcher and final loss drains it"],
+      "dependencies": []
+    }
+  ],
+  "externalConsumer": {"repository":"D:/Claude/coderight","owner":"task 01a07e9f-1f88-7861-90a8-fc8ef04cb4b4 worker /root/daemon_composition_context_lane","validatedDispatch":"D:/Claude/coderight/.audit/daemon-complete-v5.dispatch.json","validatedDispatchSha256":"sha256:1e5c47785a25c9be109150b393759f5b9eda66cde08768324efad82ac8a3f28c","requiredContract":"When Hub is absent, start installed current membrane.exe through its internal headless mode, wait for verified canonical binding, then acquire authenticated resident holder; reconnect without spawning a second controller.","requiredAcceptance":["Hub-off first holder starts controller","canonical installed identity verified before acquire","second holder reuses process","final release or expiry drains","process replacement reconnects without duplicate runtime"]},
+  "oracleAudit": {"required":true,"mode":"adversarial","status":"required-before-execution","checks":["allowlist-completeness","lane-disjointness","active-owner-conflicts","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","no-separate-blueprint-process","serialized-start-drain","typed-readiness","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]},
+  "integrationClosure": {"owner":"integrationOwner","afterWorkers":["reconcile exact allowlist and preexisting hashes","run named managed tests","verify Pull ACK serve behavior remains intact","verify no Blueprint sidecar process or package entry exists","obtain Oracle PASS","stage exact bytes, commit and push"]},
+  "recovery": {"maxRetries":2,"stopConditions":["unplanned changed path","preexisting hash mismatch","second Oracle block","required Cargo or Blueprint-core edit"],"returnFields":["STATUS","SUMMARY","ACCEPTANCE","ARTIFACTS","CHANGES","COMMANDS","BLOCKER","NEXT","baselineRevision","patchDigest"]}
+}

@@ -16,7 +16,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use membrane_protocol::{HubSnapshotV1, HUB_ADMISSION_SCHEMA_VERSION, HUB_SCHEMA_VERSION};
+use membrane_protocol::{
+    HubSnapshotV1, ResidentHolderRequestV1, ResidentHolderResponseV1,
+    HUB_ADMISSION_SCHEMA_VERSION, HUB_SCHEMA_VERSION,
+};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_millis(500);
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -198,6 +201,78 @@ fn fetch_snapshot(endpoint: &str, bearer_token: &str) -> Result<SnapshotValues, 
         budget: admission.budget_pressure_total.to_string(),
         observed: format_observed(admission.window_hours, snapshot.observed_at_unix_ms),
     })
+}
+
+/// Dispatch one typed lifecycle request through tray's existing authenticated
+/// loopback channel. This function does not create credentials, spawn a
+/// daemon, or fall back to a local registry.
+pub fn dispatch_resident_holder(
+    endpoint: &str,
+    bearer_token: &str,
+    request: &ResidentHolderRequestV1,
+) -> Result<ResidentHolderResponseV1, &'static str> {
+    let address = parse_loopback_endpoint(endpoint)?;
+    if bearer_token.len() != 64
+        || !bearer_token
+            .as_bytes()
+            .iter()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err("snapshot_auth_invalid");
+    }
+    let body = serde_json::to_vec(request).map_err(|_| "resident_holder_invalid")?;
+    let deadline = Instant::now()
+        .checked_add(REQUEST_TIMEOUT)
+        .unwrap_or_else(Instant::now);
+    let mut stream = TcpStream::connect_timeout(&address, remaining_timeout(deadline)?)
+        .map_err(snapshot_io_reason)?;
+    let head = format!(
+        "POST /resident-holder HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {bearer_token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    for bytes in [head.as_bytes(), body.as_slice()] {
+        let mut written = 0;
+        while written < bytes.len() {
+            stream
+                .set_write_timeout(Some(remaining_timeout(deadline)?))
+                .map_err(|_| "snapshot_unavailable")?;
+            match stream.write(&bytes[written..]) {
+                Ok(0) => return Err("snapshot_unavailable"),
+                Ok(count) => written += count,
+                Err(error) => return Err(snapshot_io_reason(error)),
+            }
+        }
+    }
+    let mut raw = Vec::new();
+    let mut chunk = [0_u8; 8 * 1024];
+    loop {
+        stream
+            .set_read_timeout(Some(remaining_timeout(deadline)?))
+            .map_err(|_| "snapshot_unavailable")?;
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                raw.extend_from_slice(&chunk[..read]);
+                if raw.len() > MAX_RESPONSE_BYTES {
+                    return Err("snapshot_too_large");
+                }
+            }
+            Err(error) => return Err(snapshot_io_reason(error)),
+        }
+    }
+    let split = raw
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .ok_or("snapshot_invalid_http")?;
+    let head = std::str::from_utf8(&raw[..split]).map_err(|_| "snapshot_invalid_http")?;
+    if !head.starts_with("HTTP/1.1 200 ") && !head.starts_with("HTTP/1.0 200 ") {
+        return Err("resident_holder_rejected");
+    }
+    let length = content_length(head)?;
+    let body = raw
+        .get(split + 4..split + 4 + length)
+        .ok_or("snapshot_invalid_http")?;
+    serde_json::from_slice(body).map_err(|_| "resident_holder_invalid")
 }
 
 fn content_length(head: &str) -> Result<usize, &'static str> {

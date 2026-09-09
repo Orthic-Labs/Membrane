@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "936804e4ac60cba31c04d1dfd93476b0d790f827",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "audit/remediation/native-closure-resume.prompt.md",
+  "promptDigest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d",
+  "modelRouting": {
+    "modelTier": "MID",
+    "workerProfile": "domain-lead",
+    "routingRationale": "Three disjoint Rust/source correctness lanes can progress concurrently while integration owner retains every mutable checkpoint."
+  },
+  "objective": "Wave 1: implement native Blueprint core/runtime seams, close ADP-011 source-index/rendered-counterfactual defects, & close bounded Pull/Push/Ledger correctness gaps without touching generated/release/install state.",
+  "authority": [
+    "AGENTS.md",
+    "blueprint/AGENTS.md",
+    "audit/remediation/native-closure-resume.prompt.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "docs/architecture/membrane.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "docs/architecture/subsystems/adapt.md",
+    "docs/architecture/subsystems/ledger.md",
+    "docs/canon/blueprint.md",
+    "docs/canon/adapt.md",
+    "docs/canon/pull.md",
+    "docs/canon/push.md",
+    "docs/canon/ledger.md",
+    "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+    "audit/remediation/reconciliation/parity-phase2-inventory.md",
+    "audit/remediation/reconciliation/audit-closure-inventory.md"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-blueprint/src/lib.rs",
+      "engine/crates/membrane-blueprint/src/contracts.rs",
+      "engine/crates/membrane-blueprint/src/identity.rs",
+      "engine/crates/membrane-blueprint/src/migrations.rs",
+      "engine/crates/membrane-blueprint/src/store.rs",
+      "engine/crates/membrane-blueprint/src/graph.rs",
+      "engine/crates/membrane-blueprint/src/freshness.rs",
+      "engine/crates/membrane-blueprint/src/watcher.rs",
+      "engine/crates/membrane-blueprint/src/phase2.rs",
+      "engine/crates/membrane-blueprint/src/grants.rs",
+      "engine/crates/membrane-blueprint/src/service.rs",
+      "engine/crates/membrane-blueprint/src/cli.rs",
+      "engine/crates/membrane-blueprint/tests/contracts.rs",
+      "engine/crates/membrane-blueprint/tests/schema_v20.rs",
+      "engine/crates/membrane-blueprint/tests/phase2.rs",
+      "engine/crates/membrane-blueprint/tests/watcher.rs",
+      "engine/crates/membrane-blueprint/tests/native_service.rs",
+      "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-federation/src/blueprint_client.rs",
+      "engine/crates/membrane-federation/src/providers/blueprint.rs",
+      "engine/crates/membrane-adapt/src/taste.rs",
+      "engine/crates/membrane-adapt/src/proposal.rs",
+      "engine/crates/membrane-adapt/src/manifest.rs",
+      "engine/crates/membrane-adapt/src/delivery.rs",
+      "engine/crates/membrane-adapt/tests/taste_contracts.rs",
+      "engine/crates/membrane-runtime/src/adapt_service.rs",
+      "engine/crates/membrane-runtime/src/store.rs",
+      "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs",
+      "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
+      "engine/crates/membrane-runtime/src/cache_prefix.rs",
+      "engine/crates/membrane-runtime/src/pull/placement.rs",
+      "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs",
+      "engine/crates/membrane-runtime/src/push/recovery.rs",
+      "engine/crates/membrane-runtime/tests/push_hardening.rs",
+      "engine/crates/membrane-runtime/tests/push_end_to_end.rs",
+      "engine/crates/membrane-runtime/src/ledger/diagnostics.rs",
+      "engine/crates/membrane-runtime/src/ledger/service.rs",
+      "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs",
+      "engine/crates/membrane-runtime/tests/ledger_integrity.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-blueprint/src/lib.rs","owner":"blueprint-lead","operation":"edit","lane":"blueprint-lead","finalCheck":"native supervisor absent of Node launch"},
+      {"path":"engine/crates/membrane-blueprint/src/contracts.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"contracts test"},
+      {"path":"engine/crates/membrane-blueprint/src/identity.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"contracts test"},
+      {"path":"engine/crates/membrane-blueprint/src/migrations.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"schema-v20 test"},
+      {"path":"engine/crates/membrane-blueprint/src/store.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"schema-v20 test"},
+      {"path":"engine/crates/membrane-blueprint/src/graph.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"native service test"},
+      {"path":"engine/crates/membrane-blueprint/src/freshness.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"native service test"},
+      {"path":"engine/crates/membrane-blueprint/src/watcher.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"watcher test"},
+      {"path":"engine/crates/membrane-blueprint/src/phase2.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"phase2 test"},
+      {"path":"engine/crates/membrane-blueprint/src/grants.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"contracts test"},
+      {"path":"engine/crates/membrane-blueprint/src/service.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"native service test"},
+      {"path":"engine/crates/membrane-blueprint/src/cli.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"native service test"},
+      {"path":"engine/crates/membrane-blueprint/tests/contracts.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"contracts test"},
+      {"path":"engine/crates/membrane-blueprint/tests/schema_v20.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"schema-v20 test"},
+      {"path":"engine/crates/membrane-blueprint/tests/phase2.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"phase2 test"},
+      {"path":"engine/crates/membrane-blueprint/tests/watcher.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"watcher test"},
+      {"path":"engine/crates/membrane-blueprint/tests/native_service.rs","owner":"blueprint-lead","operation":"add","lane":"blueprint-lead","finalCheck":"native service test"},
+      {"path":"engine/crates/membrane-runtime/src/blueprint_one_shot.rs","owner":"blueprint-lead","operation":"edit","lane":"blueprint-lead","finalCheck":"runtime Blueprint one-shot test"},
+      {"path":"engine/crates/membrane-runtime/src/mcp_executor.rs","owner":"blueprint-lead","operation":"edit","lane":"blueprint-lead","finalCheck":"native authorization + MCP tests"},
+      {"path":"engine/crates/membrane-federation/src/blueprint_client.rs","owner":"blueprint-lead","operation":"edit","lane":"blueprint-lead","finalCheck":"federation Blueprint provider test"},
+      {"path":"engine/crates/membrane-federation/src/providers/blueprint.rs","owner":"blueprint-lead","operation":"edit","lane":"blueprint-lead","finalCheck":"federation Blueprint provider test"},
+      {"path":"engine/crates/membrane-adapt/src/taste.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"taste contracts"},
+      {"path":"engine/crates/membrane-adapt/src/proposal.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"proposal service"},
+      {"path":"engine/crates/membrane-adapt/src/manifest.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"taste contracts"},
+      {"path":"engine/crates/membrane-adapt/src/delivery.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"proposal service"},
+      {"path":"engine/crates/membrane-adapt/tests/taste_contracts.rs","owner":"adapt-lead","operation":"repair-test","lane":"adapt-lead","finalCheck":"taste contracts"},
+      {"path":"engine/crates/membrane-runtime/src/adapt_service.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"proposal service"},
+      {"path":"engine/crates/membrane-runtime/src/store.rs","owner":"adapt-lead","operation":"repair","lane":"adapt-lead","finalCheck":"proposal service"},
+      {"path":"engine/crates/membrane-runtime/tests/adapt_proposal_service.rs","owner":"adapt-lead","operation":"repair-test","lane":"adapt-lead","finalCheck":"proposal service"},
+      {"path":"engine/crates/membrane-runtime/src/pull/delivery_state.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Pull post-merge acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/cache_prefix.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Pull post-merge acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/pull/placement.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Pull post-merge acceptance"},
+      {"path":"engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Pull post-merge acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/push/recovery.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Push hardening"},
+      {"path":"engine/crates/membrane-runtime/tests/push_hardening.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Push hardening"},
+      {"path":"engine/crates/membrane-runtime/tests/push_end_to_end.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Push end-to-end"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/diagnostics.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Ledger owner acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/service.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Ledger owner acceptance"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Ledger owner acceptance"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_integrity.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Ledger integrity"}
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "Existing Blueprint JavaScript backend and frozen parity fixtures",
+    "sourceInventory": [
+      "blueprint/src/graph/store-sqlite.mjs",
+      "blueprint/src/graph/static-provider.mjs",
+      "blueprint/src/graph/generation-identity.mjs",
+      "blueprint/src/lib/incremental-phase2.mjs",
+      "blueprint/src/lib/phase2-completion.mjs",
+      "blueprint/src/lib/path-confinement.mjs",
+      "blueprint/watchman/repo-actor.mjs",
+      "blueprint/schemas/catalog.json",
+      "blueprint/evals/equivalence/recovery-corpus-v1.json",
+      "blueprint/evals/equivalence/ghost-edge-corpus-v1.json",
+      "blueprint/evals/equivalence/retrieval-corpus-v1.json"
+    ],
+    "directPortFirst": true,
+    "targetLanguage": "Rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo","tests","builds","generators","installs","commits","pushes","merges","expensive-checks"],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return exact defect to owning lead; regenerate packet only if ownership changes"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": ["blueprint-lead","adapt-lead","ppl-lead"],
+      "completionChecks": [
+        "all changed paths reconcile exactly to lane allowlists",
+        "workers return content-addressed patch digests and source review",
+        "integration owner runs every named RightKit suite after all bytes stabilize"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "blueprint-lead",
+      "dispatch": "A",
+      "task": "Adopt listed preexisting foundation bytes, direct-port native Rust Blueprint V1 contracts/identity/schema-v20 store plus graph/freshness/watcher/Phase2/grants/service/CLI seams, replace runtime/federation Node launch dependencies inside allowlist, preserve supported observable semantics, & leave packaging/deletion/install for integration owner after focused proof.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-blueprint/src/contracts.rs": "sha256:f1fed4f2d3f512eee13393a24da6138ff629b7190c7c926c21e900ebc1be7cc0",
+        "engine/crates/membrane-blueprint/tests/contracts.rs": "sha256:8460f92800676b82e2d815f7778f75c5ee34eb470e6c64726beacfec793c7594"
+      },
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-direct-port","sqlite-schema-migration","native-service-lifecycle"],
+        "effects": ["source-read","artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"blueprint-wave1-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": [
+        "engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/src/migrations.rs","engine/crates/membrane-blueprint/src/store.rs","engine/crates/membrane-blueprint/src/graph.rs","engine/crates/membrane-blueprint/src/freshness.rs","engine/crates/membrane-blueprint/src/watcher.rs","engine/crates/membrane-blueprint/src/phase2.rs","engine/crates/membrane-blueprint/src/grants.rs","engine/crates/membrane-blueprint/src/service.rs","engine/crates/membrane-blueprint/src/cli.rs","engine/crates/membrane-blueprint/tests/contracts.rs","engine/crates/membrane-blueprint/tests/schema_v20.rs","engine/crates/membrane-blueprint/tests/phase2.rs","engine/crates/membrane-blueprint/tests/watcher.rs","engine/crates/membrane-blueprint/tests/native_service.rs","engine/crates/membrane-runtime/src/blueprint_one_shot.rs","engine/crates/membrane-runtime/src/mcp_executor.rs","engine/crates/membrane-federation/src/blueprint_client.rs","engine/crates/membrane-federation/src/providers/blueprint.rs"
+      ],
+      "read": ["blueprint/src","blueprint/tests","blueprint/watchman","blueprint/schemas","blueprint/evals","docs/architecture/subsystems/blueprint.md","docs/canon/blueprint.md","audit/remediation/reconciliation"],
+      "forbidden": [".git","engine/Cargo.lock","engine/crates/membrane-blueprint/Cargo.toml","apps/membrane-tray-windows/Cargo.lock","engine/crates/membrane-runtime/src/serve.rs","engine/crates/membrane-runtime/src/store.rs","docs/pending/README.md","migration/native-rust","apps/membrane-hub/src-tauri/runtime"],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-blueprint",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-federation --test provider_blueprint",
+        "integration owner runs native MCP/one-shot focused runtime tests"
+      ],
+      "executionPrerequisites": ["audit/remediation/blueprint-native-foundations-corrections.dispatch.json must be terminal with content-addressed handoffs before this worker executes"],
+      "dependencies": []
+    },
+    {
+      "id": "adapt-lead",
+      "dispatch": "A",
+      "task": "Resume ADP-011 after prior second Oracle block. Repair source-index preservation when private context events are filtered, ensure exact correction event remains source, preserve privacy-safe rejected alternative/replacement/reason/evidence through manifest review/storage/render/hash delivery, never fabricate failure evidence, & replace invalid hand-typed repo-x runtime test scope with canonical path-derived scope.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-adapt/src/taste.rs": "sha256:4dc9a200453c614dbc4c753fee7ebc41f29075280dfe4ef900e9ba36d45b514e",
+        "engine/crates/membrane-adapt/src/proposal.rs": "sha256:7bd064889c81d07b12d5ed46956ef2b5740451ad2a0aafd3099aff9987379a0e",
+        "engine/crates/membrane-adapt/src/manifest.rs": "sha256:b558bf96a867f14845720b6d125b9c9628f55383540ea21d6d5c12bc9fabe23b",
+        "engine/crates/membrane-adapt/src/delivery.rs": "sha256:996c8abc6e9860e5be7a7ffaecd99766c8f299d5ef419a00fe30ad4400cec198",
+        "engine/crates/membrane-adapt/tests/taste_contracts.rs": "sha256:65e737305f2eea1f228e6224ff67bebcffe7a94855a0ab9dc0f640dc88535825",
+        "engine/crates/membrane-runtime/src/adapt_service.rs": "sha256:2d17fb409e3eaf45f7858e851677595c16c5297f3c1387646636a2d2d2c7fc31",
+        "engine/crates/membrane-runtime/src/store.rs": "sha256:18fa5e43137ee6d9aed607ab3f5920fed2798543cd4ad7f03ae40298ed64ef39",
+        "engine/crates/membrane-runtime/tests/adapt_proposal_service.rs": "sha256:aef583663fa22783eecf14719da79e797f0babea441dcf1fd46b692a579de5f8"
+      },
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-correction","privacy-boundary","evidence-lineage"],
+        "effects": ["source-read","artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"adp011-source-index-repair"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": ["engine/crates/membrane-adapt/src/taste.rs","engine/crates/membrane-adapt/src/proposal.rs","engine/crates/membrane-adapt/src/manifest.rs","engine/crates/membrane-adapt/src/delivery.rs","engine/crates/membrane-adapt/tests/taste_contracts.rs","engine/crates/membrane-runtime/src/adapt_service.rs","engine/crates/membrane-runtime/src/store.rs","engine/crates/membrane-runtime/tests/adapt_proposal_service.rs"],
+      "read": ["docs/architecture/subsystems/adapt.md","docs/canon/adapt.md","docs/provenance/foundation/2026-08-31-master-atom-intake/adapt-review.md","engine/crates/membrane-transcript"],
+      "forbidden": [".git","engine/Cargo.lock","apps/membrane-tray-windows/Cargo.lock","engine/crates/membrane-runtime/src/serve.rs","docs/pending/README.md","migration/native-rust"],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --lib --locked --target x86_64-pc-windows-msvc",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-adapt --test taste_contracts --locked --target x86_64-pc-windows-msvc",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-runtime --test adapt_proposal_service --locked --target x86_64-pc-windows-msvc"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ppl-lead",
+      "dispatch": "A",
+      "task": "Close bounded open correctness: Pull restart/expiry/required-coverage suppression, byte-stable prefix compatibility, & eligibility-before-placement; Push task+session-bound recovery with wrong-identity denial; Ledger diagnostics persistence failures as typed unavailable plus owner/integrity tests. Do not edit canon/generated status; return evidence for integration owner reconciliation.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["pull-admission","push-recovery","ledger-integrity"],
+        "effects": ["source-read","artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"ppl-wave1-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": ["engine/crates/membrane-runtime/src/pull/delivery_state.rs","engine/crates/membrane-runtime/src/cache_prefix.rs","engine/crates/membrane-runtime/src/pull/placement.rs","engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs","engine/crates/membrane-runtime/src/push/recovery.rs","engine/crates/membrane-runtime/tests/push_hardening.rs","engine/crates/membrane-runtime/tests/push_end_to_end.rs","engine/crates/membrane-runtime/src/ledger/diagnostics.rs","engine/crates/membrane-runtime/src/ledger/service.rs","engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs","engine/crates/membrane-runtime/tests/ledger_integrity.rs"],
+      "read": ["docs/canon/pull.md","docs/canon/push.md","docs/canon/ledger.md","docs/architecture/subsystems/ledger.md","audit/remediation/reconciliation/audit-closure-inventory.md","engine/crates/membrane-runtime/src/pull","engine/crates/membrane-runtime/src/push","engine/crates/membrane-runtime/src/ledger"],
+      "forbidden": [".git","engine/Cargo.lock","apps/membrane-tray-windows/Cargo.lock","engine/crates/membrane-runtime/src/serve.rs","engine/crates/membrane-runtime/src/store.rs","engine/crates/membrane-runtime/src/mcp_executor.rs","docs/canon","docs/pending/README.md","migration/native-rust"],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test pull_post_merge_acceptance",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test push_hardening --test push_end_to_end",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test ledger_owner_acceptance --test ledger_integrity"
+      ],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": ["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": ["unplanned changed path","cross-lane overlap","private input required","second Oracle block"],
+    "failureMatrix": [
+      {"class":"path/input missing","primary":"re-read exact path and live inventory","secondary":"use nearest authoritative existing source","degraded":"continue independent lanes","stopAfter":2,"proceedWhen":"exact authority path exists"},
+      {"class":"tool/dependency missing","primary":"run workspace setup command required by AGENTS.md","secondary":"workspace-doctor","degraded":"continue edit-only source review","stopAfter":2,"proceedWhen":"managed tool is healthy"},
+      {"class":"auth/permission failure","primary":"preserve bytes and report exact denial","secondary":"continue non-remote lanes","degraded":"no remote effect","stopAfter":1,"proceedWhen":"authority is explicit"},
+      {"class":"transient external failure","primary":"retry once","secondary":"continue local lanes","degraded":"record unavailable external evidence","stopAfter":2,"proceedWhen":"service responds"},
+      {"class":"invalid input/schema","primary":"compare against canonical schema","secondary":"return defect to owning lane","degraded":"continue unrelated lanes","stopAfter":2,"proceedWhen":"schema validation passes"},
+      {"class":"integrity/hash mismatch","primary":"recompute source and packet hashes","secondary":"invalidate handoff and request fresh bytes","degraded":"do not integrate mismatched lane","stopAfter":1,"proceedWhen":"hashes match"},
+      {"class":"deterministic command failure","primary":"capture exact failure and return to owning lane","secondary":"one repair plus rerun","degraded":"continue passing lanes","stopAfter":2,"proceedWhen":"focused check passes"},
+      {"class":"dirty/conflicting state","primary":"preserve user bytes and compare exact ownership","secondary":"redesign packet before edit","degraded":"continue disjoint lanes","stopAfter":1,"proceedWhen":"one owner is established"},
+      {"class":"wrong producer/provenance","primary":"reject output","secondary":"request content-addressed worker handoff","degraded":"keep evidence-only","stopAfter":1,"proceedWhen":"producer and digest bind"},
+      {"class":"resource/capacity failure","primary":"reduce lane concurrency","secondary":"run smallest focused checkpoint","degraded":"defer expensive qualification","stopAfter":2,"proceedWhen":"managed capacity is available"},
+      {"class":"ambiguous requirement","primary":"read canonical architecture and closure brief","secondary":"escalate one exact decision to coordinator","degraded":"continue unambiguous lanes","stopAfter":1,"proceedWhen":"decision is explicit"},
+      {"class":"unsafe/out-of-scope action","primary":"stop effect","secondary":"return exact scope conflict","degraded":"continue safe work","stopAfter":1,"proceedWhen":"scope explicitly includes action"},
+      {"class":"unknown failure","primary":"capture raw evidence and smallest reproduction","secondary":"return to owner","degraded":"continue independent lanes","stopAfter":2,"proceedWhen":"cause is bounded"}
+    ],
+    "trueBlocker": {"requires":["RECOVERY_EXHAUSTED","INDEPENDENT_WORK_COMPLETE","RAW_EVIDENCE","MISSING_INPUT","RESUME_COMMAND"]},
+    "returnFields": ["STATUS","SUMMARY","ACCEPTANCE","ARTIFACTS","CHANGES","COMMANDS","RECOVERY","DEVIATIONS","BLOCKER","NEXT","baselineRevision","patchDigest"]
+  }
+}

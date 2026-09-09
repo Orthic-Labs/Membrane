@@ -27,6 +27,25 @@ use membrane_protocol::host_observation::{
 use rusqlite::Connection;
 use serde_json::{json, Map};
 use std::collections::BTreeMap;
+
+fn build_blueprint(repo: &std::path::Path) {
+    use membrane_blueprint::{BlueprintOperation, BlueprintRequest, Bounds, NativeBlueprintOperation, Operation};
+
+    let mut request = BlueprintRequest::new("pull-catalog-fixture", Operation::Build, repo.to_string_lossy());
+    request.deadline_ms = 120_000;
+    let context = request.validate(Bounds::one_shot()).unwrap();
+    NativeBlueprintOperation.execute(&request, &context).unwrap();
+}
+
+fn git(repo: &std::path::Path, args: &[&str]) {
+    let mut command = std::process::Command::new("git");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    assert!(command.arg("-C").arg(repo).args(args).status().unwrap().success());
+}
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
@@ -768,6 +787,11 @@ fn memory_read_resolves_exact_hash_and_scope_through_public_mcp_owner() {
         json!({"port":47851,"serviceId":"membrane-local-v1","host":"127.0.0.1"}).to_string(),
     )
     .unwrap();
+    git(&root, &["init", "-q"]);
+    git(&root, &["add", "."]);
+    git(&root, &["-c", "user.name=Membrane Test", "-c", "user.email=test@invalid", "commit", "-qm", "fixture"]);
+    build_blueprint(&child);
+    build_blueprint(&root);
     let root = root.canonicalize().unwrap();
     let child = child.canonicalize().unwrap();
     let registry = temp.path().join("registry.json");
@@ -818,7 +842,12 @@ fn memory_read_resolves_exact_hash_and_scope_through_public_mcp_owner() {
     let task = "workspace child source executed";
     let task_id = "task-workspace";
     let session_id = "session-workspace";
-    let repositories = vec!["repo-memory-read".to_owned(), "repo-child".to_owned()];
+    let child_repository_id = membrane_federation::root::canonical_repository_id(&child);
+    let repositories = vec![
+        "repo-memory-read".to_owned(),
+        "repo-child".to_owned(),
+        child_repository_id,
+    ];
     let issue = |id: &str, repository_ids: &[String]| {
         membrane_runtime::catalog::issue_scope_grant(
             &catalog,

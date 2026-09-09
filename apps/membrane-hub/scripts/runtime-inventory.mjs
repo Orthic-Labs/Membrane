@@ -1,6 +1,5 @@
-// Membrane Hub packages native Windows sidecars, typed subsystem contracts, &
-// installed Blueprint runtime. Blueprint remains its own subsystem boundary;
-// installer makes Blueprint available without separate provisioning.
+// Membrane Hub packages native Windows sidecars & typed subsystem contracts.
+// Blueprint remains an installed native sidecar under stable-current.
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -135,16 +134,6 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
   assertNoSymlinks(runtimeDir, "runtime directory");
   const inventory = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (inventory.schemaVersion !== 3 || inventory.app !== "membrane-hub") throw new Error("runtime inventory schema invalid");
-  const blueprint = inventory.components?.blueprint;
-  if (blueprint) {
-    const blueprintRoot = join(runtimeDir, "blueprint");
-    const packagePath = join(blueprintRoot, "app", "package", "package.json");
-    if (!existsSync(packagePath)) throw new Error("installed Blueprint package manifest missing");
-    const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-    const tree = treeDigest(blueprintRoot);
-    if (typeof blueprint.version !== "string" || blueprint.version !== packageJson.version) throw new Error("installed Blueprint version metadata mismatch");
-    if (blueprint.treeSha256 !== tree.sha256 || blueprint.fileCount !== tree.fileCount) throw new Error("installed Blueprint tree digest mismatch");
-  }
   if (!Array.isArray(inventory.entries) || inventory.entries.length === 0) throw new Error("runtime inventory entries missing");
   const expected = new Set(["runtime-inventory.json"]);
   const seen = new Set();
@@ -152,8 +141,8 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
     if (!entry || typeof entry !== "object") throw new Error("runtime inventory entry invalid");
     if (typeof entry.component !== "string" || typeof entry.source !== "string" || typeof entry.installerPath !== "string") throw new Error("runtime inventory entry fields invalid");
     const spec = RUNTIME_SPECS.find((candidate) => candidate.id === entry.component);
-    if (!spec && entry.component !== "blueprint-runtime") throw new Error("runtime inventory component invalid: " + entry.component);
-    const expectedDelivery = spec?.delivery ?? "installedComponent";
+    if (!spec) throw new Error("runtime inventory component invalid: " + entry.component);
+    const expectedDelivery = spec.delivery;
     if (entry.delivery !== expectedDelivery) throw new Error("runtime inventory delivery invalid: " + entry.component);
     if (spec?.axis ? entry.axis !== spec.axis : entry.axis !== undefined) throw new Error("runtime inventory axis invalid: " + entry.component);
     if (spec?.transport ? entry.transport !== spec.transport : entry.transport !== undefined) throw new Error("runtime inventory transport invalid: " + entry.component);
@@ -176,8 +165,6 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
       if (entry.installerPath !== entry.stagePath || !entry.stagePath.startsWith("resources/" + entry.component + "/")) throw new Error("runtime resource mapping invalid: " + entry.component);
     } else if (entry.delivery === "tauriBundle") {
       if (entry.installerPath !== entry.stagePath || entry.component !== "hub-icons" || !entry.stagePath.startsWith("tauri-assets/hub-icons/")) throw new Error("runtime bundle mapping invalid: " + entry.component);
-    } else if (entry.delivery === "installedComponent") {
-      if (entry.component !== "blueprint-runtime" || entry.source !== entry.stagePath || entry.installerPath !== entry.stagePath || !entry.stagePath.startsWith("blueprint/")) throw new Error("runtime installed component mapping invalid: " + entry.component);
     }
     if (sourceRoot && entry.delivery === "externalBin") {
       if (typeof entry.source !== "string" || !entry.source || entry.source.startsWith("/") || /^[A-Za-z]:[\\/]/.test(entry.source)) throw new Error(`runtime source path invalid: ${entry.source}`);
@@ -195,27 +182,6 @@ export function verifyStagedInventory({ runtimeDir = runtime, sourceRoot } = {})
     if (retired.test(path)) throw new Error(`retired staged runtime asset rejected: ${path}`);
   }
   return inventory;
-}
-
-export function addInstalledBlueprintInventory({ runtimeDir = runtime } = {}) {
-  const manifestPath = join(runtimeDir, "runtime-inventory.json");
-  const blueprintRoot = join(runtimeDir, "blueprint");
-  if (!existsSync(manifestPath) || !existsSync(blueprintRoot)) throw new Error("installed Blueprint staging missing");
-  const inventory = JSON.parse(readFileSync(manifestPath, "utf8"));
-  inventory.entries = inventory.entries.filter((entry) => entry.component !== "blueprint-runtime");
-  for (const source of filesAt(blueprintRoot, undefined, { includeIgnored: true })) {
-    const local = relative(blueprintRoot, source).replaceAll("\\", "/");
-    const staged = `blueprint/${local}`;
-    inventory.entries.push({ component: "blueprint-runtime", delivery: "installedComponent", source: staged, stagePath: staged, installerPath: staged, sha256: digest(source) });
-  }
-  const packagePath = join(blueprintRoot, "app", "package", "package.json");
-  if (!existsSync(packagePath)) throw new Error("installed Blueprint package manifest missing");
-  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-  const tree = treeDigest(blueprintRoot);
-  inventory.components = { ...(inventory.components ?? {}), blueprint: { version: packageJson.version, treeSha256: tree.sha256, fileCount: tree.fileCount } };
-  inventory.entries.sort((left, right) => left.stagePath.localeCompare(right.stagePath));
-  writeFileSync(manifestPath, `${JSON.stringify(inventory, null, 2)}\n`);
-  return verifyStagedInventory({ runtimeDir });
 }
 
 function run(command, args, { cwd, env, timeout = 12_000 } = {}) {
@@ -266,11 +232,9 @@ function nativeUnpackedProbes() {
       if (!main.includes("DashboardConnectionState::from_stdin()") || !main.includes("startup_owned_by_tray") || main.includes("run_hub_runtime") || main.includes("std::thread::spawn") || main.includes("mod supervisor;")) throw new Error("on-demand dashboard topology invalid");
       return true;
     },
-    async blueprintInstalled({ runtimeDir, inventory }) {
+    async blueprintInstalled({ runtimeDir, sidecarDir, inventory }) {
       const contract = inventory.entries.find((entry) => entry.component === "blueprint-contract");
-      const files = inventory.entries.filter((entry) => entry.component === "blueprint-runtime");
       if (!contract || contract.delivery !== "resource" || contract.transport !== "named-pipe") throw new Error("installed Blueprint contract missing");
-      if (!files.length || !existsSync(join(runtimeDir, "blueprint", "lib", "node.exe")) || !existsSync(join(runtimeDir, "blueprint", "bin", "blueprint.cmd"))) throw new Error("installed Blueprint runtime missing");
       return true;
     },
     async hubInactive({ sidecarDir }) { return expectHubInactive(sidecarDir); },
@@ -307,8 +271,6 @@ export async function verifyUnpackedArtifact({ runtimeDir = runtime, sidecarDir,
   const inventory = verifyStagedInventory({ runtimeDir });
   if (JSON.stringify(inventory.composition) !== JSON.stringify(composition)) throw new Error("runtime composition invalid");
   if (inventory.axes?.length !== axes.length || inventory.axes.some(({ axis, entries }, index) => axis !== axes[index] || !Number.isInteger(entries) || entries !== 1)) throw new Error("six-axis unpacked runtime invalid");
-  if (!inventory.entries.some((entry) => entry.component === "blueprint-runtime" && entry.delivery === "installedComponent")) throw new Error("installed Blueprint runtime missing");
-  if (!inventory.components?.blueprint?.treeSha256 || !Number.isInteger(inventory.components.blueprint.fileCount)) throw new Error("installed Blueprint inventory metadata missing");
   if (!inventory.entries.some((entry) => entry.component === "blueprint-contract" && entry.delivery === "resource")) throw new Error("installed Blueprint contract missing");
   if (!inventory.entries.some((entry) => entry.component === "adapt-contract" && entry.invocation === "daemon-native")) throw new Error("Adapt invocation seam invalid");
   if (!sidecarDir) throw new Error("unpacked sidecar directory required");

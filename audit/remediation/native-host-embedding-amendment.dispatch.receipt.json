@@ -1,0 +1,47 @@
+{
+  "schema_version": 4,
+  "sha256": "cd1bdc04f01928d76bfd074482b6194df61c70b40ff551ea9bbdccaf4b6c7cb8",
+  "referenced_artifacts": [
+    {
+      "path": "docs/architecture/integrations/coderight.md",
+      "sha256": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "docs/architecture/membrane.md",
+      "sha256": "sha256:c69d55241ea0635f6a2629cefbb8b18dd441d46d836021325c273e0376b07be8"
+    },
+    {
+      "path": "docs/architecture/subsystems/blueprint.md",
+      "sha256": "sha256:598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656"
+    },
+    {
+      "path": "docs/architecture/integrations/coderight.md",
+      "sha256": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7"
+    },
+    {
+      "path": "engine/crates/membrane-blueprint/src/service.rs",
+      "sha256": "sha256:24789f703d1fe2114ab237cadda88df7a57e40bde1ef9ddbfc04b39923550941"
+    },
+    {
+      "path": "engine/crates/membrane-blueprint/src/engine.rs",
+      "sha256": "sha256:0b755095f3073fd183f962c5a3f6b7572b9361833835883d79baf91a7fddcc9d"
+    },
+    {
+      "path": "audit/remediation/native-closure-remaining.dispatch.json",
+      "sha256": "sha256:ca709b7d8922651edd54f48d8dbd8ff510b8113694bda69dc5ddc749bb30a555"
+    },
+    {
+      "path": "audit/remediation/pull-final-publication-integration.dispatch.json",
+      "sha256": "sha256:ad5fa50996adf99c6537e82023dc2a9cf738b0f5b6be6a17dea4e0ff90a15a62"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "cd1bdc04f01928d76bfd074482b6194df61c70b40ff551ea9bbdccaf4b6c7cb8",
+    "source_revision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+    "prompt_digest": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7"
+  }
+}

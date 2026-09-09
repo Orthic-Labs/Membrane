@@ -4133,6 +4133,90 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// BM07: admit a durable `supports`/`contradicts`/`derived_from` edge
+    /// between two already-persisted memories, in one transaction opened and
+    /// committed here.
+    ///
+    /// This finishes the CTX-017 residual: `supersedes` already had a
+    /// same-transaction durable path (`apply_lifecycle_input_on` below, which
+    /// records the `supersedes` edge alongside the supersession it
+    /// describes); `supports`/`contradicts`/`derived_from` were structurally
+    /// admissible in `cortex_store::memdb` — the schema, admission gate and
+    /// traversal filter all already existed — but no production caller ever
+    /// durably ingested one, so they were convergence-ready but not durably
+    /// traversable. `relation` must be one of those three (use
+    /// `apply_lifecycle_input_on`'s `supersedes` path to retire a fact — this
+    /// method never changes `memories.lifecycle_state`). Both endpoints must
+    /// already exist in the same scope, so an edge to a target this write
+    /// cannot see is refused rather than silently dropped, and self-reference
+    /// is refused so an edge can never assert a relation to itself.
+    pub fn record_evidence_relation(
+        &self,
+        source_id: &str,
+        target_id: &str,
+        relation: &str,
+        provenance_producer: &str,
+    ) -> Result<(), String> {
+        if !matches!(relation, "supports" | "contradicts" | "derived_from") {
+            return Err(format!(
+                "record_evidence_relation only admits supports/contradicts/derived_from, not {relation}"
+            ));
+        }
+        if source_id == target_id {
+            return Err(format!("{relation} cannot reference self"));
+        }
+        let mut conn = self.db.lock();
+        let tx = conn
+            .transaction()
+            .map_err(|error| self.persist_error(format!("evidence relation transaction failed: {error}")))?;
+        let source_scope: Option<String> = tx
+            .query_row(
+                "SELECT scope_id FROM memories WHERE id=?1",
+                rusqlite::params![source_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        let Some(source_scope) = source_scope else {
+            return Err(format!("{relation} source is missing"));
+        };
+        let target_scope: Option<String> = tx
+            .query_row(
+                "SELECT scope_id FROM memories WHERE id=?1",
+                rusqlite::params![target_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        let Some(target_scope) = target_scope else {
+            return Err(format!("{relation} target is missing"));
+        };
+        if source_scope != target_scope {
+            return Err(format!("{relation} must remain in one scope"));
+        }
+        let provenance_ref = format!(
+            "evidence-relation-{}",
+            &content_hash(&format!("{source_id}:{relation}:{target_id}"))[..32]
+        );
+        cortex_store::memdb::MemDb::record_canonical_relation_on(
+            &tx,
+            &cortex_store::memdb::CanonicalRelationEdge {
+                source_id: source_id.to_string(),
+                target_id: target_id.to_string(),
+                relation: relation.to_string(),
+                provenance_producer: provenance_producer.to_string(),
+                provenance_ref,
+                created_at: crate::time::now_iso(),
+            },
+        )
+        .map_err(|rejection| format!("{relation} relation rejected: {}", rejection.code()))?;
+        tx.commit()
+            .map_err(|error| self.persist_error(format!("evidence relation commit failed: {error}")))?;
+        drop(conn);
+        self.clear_last_persist_error();
+        Ok(())
+    }
+
     fn apply_lifecycle_input_on(
         &self,
         tx: &rusqlite::Transaction<'_>,
@@ -5080,6 +5164,32 @@ impl MemoryStore {
                     .map(|dimensions| (memory_id.clone(), dimensions))
             })
             .collect()
+    }
+
+    /// BM07: durable traversal of every canonical evidence relation
+    /// (`supports`/`contradicts`/`supersedes`/`derived_from`) sourced at
+    /// `id`, classified by `cortex_core::relation_category` into
+    /// `Replacement`/`Enrichment`/`Derivation`/`Observation`. Returns only
+    /// relations traversable as live evidence — a resolved target that is
+    /// lifecycle-eligible at read time — so a `derived_from` edge is never
+    /// handed back mixed in with direct `supports`/`contradicts`
+    /// observations, and a stale/dangling edge never leaks in as live
+    /// evidence. Reads through the durable store directly, so this survives
+    /// process restart and reflects exactly what is on disk.
+    pub fn evidence_relations_from(
+        &self,
+        id: &str,
+    ) -> Result<Vec<(cortex_core::RelationCategory, cortex_store::memdb::StoredRelation)>, String>
+    {
+        Ok(self
+            .db
+            .traversable_relations_from(id)?
+            .into_iter()
+            .filter_map(|stored| {
+                cortex_core::relation_category(&stored.edge.relation)
+                    .map(|category| (category, stored))
+            })
+            .collect())
     }
 
     /// CTX-017 convergence: canonical `supersedes` evidence edges among `ids`, validated through

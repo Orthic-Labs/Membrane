@@ -26,6 +26,19 @@ pub(crate) enum LedgerCmd {
         #[arg(long,default_value_t=12000)] max_bytes: usize,
     },
     Sync { #[arg(long)] repo: PathBuf },
+    Ingest {
+        #[arg(long)] repo: PathBuf,
+        #[arg(long)] path: String,
+        #[arg(long)] source_ref: String,
+        #[arg(long)] format: String,
+        #[arg(long)] raw_input: String,
+        #[arg(long)] title: Option<String>,
+        #[arg(long)] source_revision: Option<String>,
+        #[arg(long, default_value_t = 8 * 1024 * 1024)] max_raw_bytes: usize,
+        #[arg(long)] scope_grant_id: String,
+        #[arg(long)] task_id: String,
+        #[arg(long)] session_id: String,
+    },
     Recall {
         #[arg(long)] repo: PathBuf,
         query: String,
@@ -102,6 +115,17 @@ pub(crate) fn run(command:&LedgerCmd)->Result<(),String> {
             ("membrane_source_read",args)
         },
         LedgerCmd::Sync{repo} => ("membrane_ledger",arguments(repo,"sync")?),
+        LedgerCmd::Ingest{repo,path,source_ref,format,raw_input,title,source_revision,max_raw_bytes,scope_grant_id,task_id,session_id} => {
+            let mut args=arguments(repo,"ingest")?;
+            args["path"]=json!(path); args["sourceRef"]=json!(source_ref);
+            args["format"]=json!(format);
+            args["rawInput"]=serde_json::from_str::<Value>(raw_input)
+                .ok().filter(Value::is_array).unwrap_or_else(|| json!(raw_input));
+            args["maxRawBytes"]=json!(max_raw_bytes); args["scopeGrantId"]=json!(scope_grant_id);
+            args["taskId"]=json!(task_id); args["sessionId"]=json!(session_id);
+            optional(&mut args,"title",title); optional(&mut args,"sourceRevision",source_revision);
+            ("membrane_ledger",args)
+        },
         LedgerCmd::Status{repo} => ("membrane_ledger",arguments(repo,"status")?),
         LedgerCmd::Recall{repo,query,k}|LedgerCmd::Literal{repo,query,k} => {
             let mut args=arguments(repo,if matches!(command,LedgerCmd::Literal{..}){"literal"}else{"recall"})?;

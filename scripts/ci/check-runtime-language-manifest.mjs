@@ -207,6 +207,9 @@ export function validateManifest({
   if (policyDigestActual && manifest.policyDigest !== policyDigestActual) {
     add("STALE_POLICY_DIGEST", "runtime-policy.json changed since manifest generation; rerun --update");
   }
+  if (policy.enforcementMode === "sealed" && manifest.totals?.boundedExternalInterpreterRows !== 0) {
+    add("BOUNDED_EXTERNAL_INTERPRETER_ROWS", "sealed mode requires zero bounded external interpreter rows");
+  }
 
   const covered = new Map();
   for (const row of manifest.rows ?? []) {

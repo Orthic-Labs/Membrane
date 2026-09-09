@@ -82,6 +82,275 @@ pub enum ResultKind {
     Error,
 }
 
+/// Installed resident-controller lease protocol.  It is intentionally not an
+/// MCP operation: it binds a local authenticated controller lifetime, while
+/// ordinary MCP/CLI requests retain their bounded explicit identity.
+pub const RESIDENT_HOLDER_SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidentHolderOperationV1 {
+    Acquire,
+    Renew,
+    Release,
+    Status,
+    SubscribeLoss,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentControllerIdentityV1 {
+    pub installation_id: String,
+    pub cortex_store_id: String,
+    pub release_generation: String,
+    pub startup_generation: u64,
+    pub stable_current: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentHolderCredentialV1 {
+    pub holder_kind: String,
+    pub holder_id: String,
+    pub credential_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentHolderRequestV1 {
+    pub schema_version: u32,
+    pub operation: ResidentHolderOperationV1,
+    pub controller: ResidentControllerIdentityV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holder: Option<ResidentHolderCredentialV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_ms: Option<u64>,
+    pub observed_at_unix_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loss_cursor: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentHolderStatusV1 {
+    pub controller_active: bool,
+    /// True only after controller's full resident service set is healthy.
+    pub services_ready: bool,
+    /// Typed reason when a holder exists but resident work must stay withheld.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub services_unavailable_reason: Option<ResidentServicesUnavailableV1>,
+    pub hub_holders: u32,
+    pub coderight_daemon_holders: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidentServicesUnavailableV1 {
+    BlueprintWatcherUnavailable,
+    CatalogUnavailable,
+    StoreUnavailable,
+    Draining,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidentHolderLossKindV1 {
+    FinalRelease,
+    LeaseExpired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentHolderLossV1 {
+    pub sequence: u64,
+    pub kind: ResidentHolderLossKindV1,
+    pub controller: ResidentControllerIdentityV1,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResidentHolderResponseV1 {
+    pub schema_version: u32,
+    pub operation: ResidentHolderOperationV1,
+    pub controller: ResidentControllerIdentityV1,
+    pub status: ResidentHolderStatusV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loss: Option<ResidentHolderLossV1>,
+}
+
+// ---------------------------------------------------------------------------
+// Lease protocol v2
+// ---------------------------------------------------------------------------
+//
+// v2 is additive alongside the v1 resident-holder shapes above: it never
+// replaces `ResidentHolderRequestV1` / `ResidentHolderResponseV1` /
+// `ResidentControllerIdentityV1` / `ResidentHolderStatusV1` /
+// `ResidentHolderLossV1` (the five preserved public V1 shapes). v2 introduces
+// a server-MACed acquire permit plus a 128-bit-incarnation lease handle with
+// idempotent replay and tombstoned closure.
+pub const LEASE_PROTOCOL_SCHEMA_VERSION_V2: u32 = 2;
+
+/// Maximum lifetime of an acquire permit, in milliseconds. A permit is a
+/// server-MACed capability binding `generation` + `holder` + `incarnation`
+/// that the caller redeems exactly once to open a lease incarnation.
+pub const ACQUIRE_PERMIT_MAX_TTL_MS: u64 = 10_000;
+
+/// Maximum server-computed lease TTL, in milliseconds. Every renew re-derives
+/// a fresh TTL bounded by this ceiling; expiry is monotonic and never moves
+/// backward relative to a prior grant for the same incarnation.
+pub const LEASE_MAX_TTL_MS: u64 = 60_000;
+
+/// Same ceiling applied to the idempotent logical-operation deadline and to
+/// closed-incarnation tombstone retention.
+pub const LOGICAL_OPERATION_MAX_DEADLINE_MS: u64 = 60_000;
+
+/// Global cap on concurrently open (non-tombstoned) lease incarnations. A new
+/// `acquire` at capacity is rejected outright; an in-flight acquire reserves
+/// a tombstone slot up front so a subsequent `release` can never fail for
+/// capacity reasons.
+pub const LEASE_GLOBAL_CAPACITY: u32 = 64;
+
+/// A 128-bit incarnation identifier. Serialized as lowercase hex (32 chars)
+/// so it round-trips byte-identically across the wire and through JSON
+/// fixtures; compared for equality as the raw `u128`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LeaseIncarnationIdV2(pub u128);
+
+impl LeaseIncarnationIdV2 {
+    pub fn to_hex(self) -> String {
+        format!("{:032x}", self.0)
+    }
+
+    pub fn from_hex(value: &str) -> Option<Self> {
+        u128::from_str_radix(value, 16).ok().map(Self)
+    }
+}
+
+impl Serialize for LeaseIncarnationIdV2 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+impl<'de> Deserialize<'de> for LeaseIncarnationIdV2 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::from_hex(&raw).ok_or_else(|| {
+            serde::de::Error::custom("lease incarnation id must be 32 lowercase hex chars")
+        })
+    }
+}
+
+/// Server-MACed acquire permit. Valid for at most
+/// [`ACQUIRE_PERMIT_MAX_TTL_MS`] from `issued_at_unix_ms`; redemption binds
+/// exactly the `generation` + `holder` + `incarnation` triple the server
+/// signed. A delayed (post-expiry) or already-redeemed permit is rejected as
+/// stale and cannot mint a second incarnation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcquirePermitV2 {
+    pub schema_version: u32,
+    pub generation: u64,
+    pub holder: ResidentHolderCredentialV1,
+    pub incarnation: LeaseIncarnationIdV2,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    /// Base64 server MAC over `(generation, holder, incarnation, issued_at,
+    /// expires_at)`; opaque to the client.
+    pub mac: String,
+}
+
+/// A held lease incarnation. `sequence` is monotonic per incarnation and
+/// strictly increases on every accepted renew; `expiry_unix_ms` is monotonic
+/// non-decreasing and `authoritative_wall_time_unix_ms` is server time that
+/// never rewinds relative to a prior response for the same incarnation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LeaseHandleV2 {
+    pub schema_version: u32,
+    pub incarnation: LeaseIncarnationIdV2,
+    pub operation_id: String,
+    pub sequence: u64,
+    pub ttl_ms: u64,
+    pub expiry_unix_ms: u64,
+    pub authoritative_wall_time_unix_ms: u64,
+}
+
+/// Outcome recorded for the first accepted logical operation under a given
+/// `operation_id`. A fresh nonce carrying an identical canonical body before
+/// `deadline_unix_ms` retransmits this same record; a changed body against a
+/// live record is a conflict; a record observed after its deadline returns
+/// `LeaseOperationRecordStateV2::OutcomeUnknown` and requires reconcile plus
+/// a new permit/incarnation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LeaseOperationRecordV2 {
+    pub operation_id: String,
+    pub incarnation: LeaseIncarnationIdV2,
+    /// Digest of the canonical request body (e.g. lowercase hex sha256),
+    /// bounded in length by the caller's canonicalization layer.
+    pub canonical_body_digest: String,
+    pub outcome: OperationResult,
+    pub deadline_unix_ms: u64,
+}
+
+/// State returned when a caller replays or probes a logical operation
+/// record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaseOperationRecordStateV2 {
+    /// Identical canonical body observed before the stored deadline: return
+    /// the stored outcome unchanged.
+    Retransmit,
+    /// A different canonical body was submitted for the same `operation_id`
+    /// while the prior record is still live.
+    Conflict,
+    /// The record's deadline has passed; the outcome is unknown and the
+    /// caller must reconcile and acquire a new permit/incarnation.
+    OutcomeUnknown,
+}
+
+/// Tombstone retained for a closed incarnation through the lesser of the
+/// permit deadline and the logical-operation deadline, capped at
+/// [`LOGICAL_OPERATION_MAX_DEADLINE_MS`]. While the tombstone is live, no
+/// acquire, renew, or release may resurrect or otherwise touch the closed
+/// incarnation; an unexpired tombstone for incarnation A is never overwritten
+/// by a later incarnation B's tombstone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LeaseTombstoneV2 {
+    pub incarnation: LeaseIncarnationIdV2,
+    pub generation: u64,
+    pub closed_at_unix_ms: u64,
+    pub retain_until_unix_ms: u64,
+}
+
+/// Typed reasons a v2 lease request is rejected as stale/expired rather than
+/// applied. Distinguishes ordinary busy/backoff cases from replay-safety
+/// rejections so callers never mistake a fenced retry for progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaseRejectionV2 {
+    /// Global capacity ([`LEASE_GLOBAL_CAPACITY`]) reached; only new
+    /// `acquire` is rejected for capacity, never `release`.
+    CapacityExceeded,
+    /// The permit or lease has passed its own TTL/expiry.
+    Expired,
+    /// The request targets a tombstoned (already-closed) incarnation.
+    Tombstoned,
+    /// The request's generation/sequence is behind the authoritative state
+    /// (a delayed duplicate of an earlier acquire/renew/release).
+    Stale,
+    /// The permit's MAC does not verify against the claimed fields.
+    PermitInvalid,
+}
+
 /// The success output of a Membrane MCP operation.
 ///
 /// We intentionally do not model the per-operation data shape here — the

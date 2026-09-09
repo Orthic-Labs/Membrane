@@ -150,25 +150,16 @@ export function deriveReachability(graph) {
 
 export function rowAgreement(manifestRow, reachableSet) {
   // External typed services are validated by boundary presence, not by
-  // Membrane-side file execution (spec section 1.3): their files belong to the
-  // external product's own inventory.
+  // Membrane-side file execution. No Blueprint interpreter is an external
+  // production service after native closure.
   if (manifestRow.runtime === "external") return { agrees: true, external: true };
   const expected = (manifestRow.files ?? []).some((f) => reachableSet.has(f));
   return { agrees: expected === !!manifestRow.production_reachable, expected };
 }
 
 export function productionUnresolvedReferences(graph, reachableSet, manifest = undefined) {
-  // Blueprint remains an independently packaged external typed service. Its
-  // bounded Node graph can legitimately reference host tools or dynamic module
-  // specifiers outside Membrane's source graph; keep those observations in the
-  // inventory while gating unresolved Membrane-owned production references.
-  const externalFiles = new Set(
-    (manifest?.rows ?? [])
-      .filter((row) => row.production_reachable && row.target_disposition === "external-typed-service")
-      .flatMap((row) => row.files ?? []),
-  );
   return (graph.unresolvedReferences ?? []).filter(
-    (reference) => reachableSet.has(reference.from) && !externalFiles.has(reference.from),
+    (reference) => reachableSet.has(reference.from),
   );
 }
 
@@ -256,7 +247,8 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
       );
     }
   }
-  // External boundary sanity: blueprint consumed only via typed daemon boundary.
+  // External boundaries must be explicit typed nodes; Blueprint interpreter
+  // source/launchers are never exempted from reachability accounting.
   const externalNodes = new Set((graph.nodes ?? []).filter((n) => n.kind.startsWith("external")).map((n) => n.id));
   for (const row of manifest?.rows ?? []) {
     if (row.runtime === "external" && row.production_reachable) {
@@ -295,7 +287,7 @@ export function validateInvocationGraph({ root, graph, manifest, reconciliation,
     for (const row of manifest?.rows ?? []) {
       if (row.production_reachable
           && ["python", "node"].includes(row.runtime)
-          && row.target_disposition !== "external-typed-service") prodInterpreters++;
+          ) prodInterpreters++;
     }
     const unresolved = productionUnresolvedReferences(graph, reachableSet, manifest).length;
     if (prodInterpreters > 0 || unresolved > 0) {

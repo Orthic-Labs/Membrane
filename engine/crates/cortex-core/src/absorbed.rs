@@ -19,6 +19,46 @@ pub struct ProvenanceRef {
     pub producer: Option<String>,
 }
 
+/// Production provenance classification for a [`ProvenanceRef::producer`] value.
+///
+/// This is a read-only classifier over the already-recorded `producer` string; it
+/// never invents a producer for a record that omitted one, and it never widens
+/// `producer` beyond the plain string the caller supplied. `Unavailable` is the
+/// explicit, typed outcome when the field is absent — callers must not substitute
+/// a guessed producer for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProducerClass {
+    /// `semantic-producer`: derived by the analyzer pipeline, not a direct observation.
+    Analyzer,
+    /// `coderight-v7`: a real host-observed signal.
+    Observed,
+    /// A non-empty producer string that is not one of the known canonical producers.
+    /// Recorded as-is; classification stays unresolved rather than guessed.
+    Unclassified,
+    /// No `producer` was recorded on this reference. Distinct from `Unclassified`
+    /// so an absent input is never conflated with an unrecognized one.
+    Unavailable,
+}
+
+/// The producer identifiers Cortex currently recognizes as classified sources.
+/// `semantic-producer` is the analyzer path; `coderight-v7` is the real host
+/// telemetry/observation path (CTX031). Any other non-empty value is recorded
+/// verbatim but classified `Unclassified` rather than guessed into one of these.
+pub const KNOWN_PRODUCERS: &[&str] = &["semantic-producer", "coderight-v7"];
+
+/// Classify a [`ProvenanceRef`] by its `producer` field. Pure and total: every
+/// input, including `None`, maps to a typed outcome — there is no panic or
+/// default-guess path.
+pub fn classify_producer(reference: &ProvenanceRef) -> ProducerClass {
+    match reference.producer.as_deref().map(str::trim) {
+        None => ProducerClass::Unavailable,
+        Some("") => ProducerClass::Unavailable,
+        Some(value) if value == KNOWN_PRODUCERS[0] => ProducerClass::Analyzer,
+        Some(value) if value == KNOWN_PRODUCERS[1] => ProducerClass::Observed,
+        Some(_) => ProducerClass::Unclassified,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecordGovernance {
@@ -173,6 +213,16 @@ pub fn validate_governance(value: &RecordGovernance) -> Result<(), AbsorbedValid
     {
         return Err(AbsorbedValidationError::EmptyGovernance);
     }
+    // A `producer` field that is present but blank is worse than an absent one: it
+    // reads as classified while carrying no real identity. Reject it here rather
+    // than let a downstream classifier silently treat it as `Unavailable`.
+    if value
+        .provenance
+        .iter()
+        .any(|item| matches!(item.producer.as_deref(), Some(p) if p.trim().is_empty()))
+    {
+        return Err(AbsorbedValidationError::EmptyGovernance);
+    }
     Ok(())
 }
 
@@ -272,4 +322,84 @@ pub fn event_range(events: &[SessionEvent], start_seq: u64, end_seq: u64) -> Vec
         .filter(|event| event.seq >= start_seq && event.seq < end_seq)
         .cloned()
         .collect()
+}
+
+#[cfg(test)]
+mod provenance_classification_tests {
+    use super::*;
+
+    fn governance_with_producer(producer: Option<&str>) -> RecordGovernance {
+        RecordGovernance {
+            scope_id: "scope-1".to_string(),
+            authority: "authority-1".to_string(),
+            influence_class: "advisory".to_string(),
+            lifecycle: "active".to_string(),
+            retention: "standard".to_string(),
+            provenance: vec![ProvenanceRef {
+                source: "source-1".to_string(),
+                source_event_ids: vec![],
+                producer: producer.map(str::to_string),
+            }],
+        }
+    }
+
+    #[test]
+    fn classifies_semantic_producer_as_analyzer() {
+        let reference = ProvenanceRef {
+            source: "s".to_string(),
+            source_event_ids: vec![],
+            producer: Some("semantic-producer".to_string()),
+        };
+        assert_eq!(classify_producer(&reference), ProducerClass::Analyzer);
+    }
+
+    #[test]
+    fn classifies_coderight_v7_as_observed() {
+        let reference = ProvenanceRef {
+            source: "s".to_string(),
+            source_event_ids: vec![],
+            producer: Some("coderight-v7".to_string()),
+        };
+        assert_eq!(classify_producer(&reference), ProducerClass::Observed);
+    }
+
+    #[test]
+    fn classifies_unknown_producer_as_unclassified_not_guessed() {
+        let reference = ProvenanceRef {
+            source: "s".to_string(),
+            source_event_ids: vec![],
+            producer: Some("some-other-tool".to_string()),
+        };
+        assert_eq!(classify_producer(&reference), ProducerClass::Unclassified);
+    }
+
+    #[test]
+    fn classifies_absent_producer_as_unavailable() {
+        let reference = ProvenanceRef {
+            source: "s".to_string(),
+            source_event_ids: vec![],
+            producer: None,
+        };
+        assert_eq!(classify_producer(&reference), ProducerClass::Unavailable);
+    }
+
+    /// Negative control: a blank-but-present producer must NOT silently classify as
+    /// `Unavailable` via governance validation — it must fail validation outright,
+    /// because a present-but-empty producer is a guessed/corrupt input, not a typed
+    /// absence. If this passes validation, the injected fault (blank producer) goes
+    /// undetected.
+    #[test]
+    fn negative_control_blank_producer_fails_governance_validation() {
+        let governance = governance_with_producer(Some("   "));
+        assert_eq!(
+            validate_governance(&governance),
+            Err(AbsorbedValidationError::EmptyGovernance)
+        );
+    }
+
+    #[test]
+    fn absent_producer_passes_governance_validation() {
+        let governance = governance_with_producer(None);
+        assert!(validate_governance(&governance).is_ok());
+    }
 }

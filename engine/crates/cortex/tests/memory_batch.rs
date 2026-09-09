@@ -776,3 +776,142 @@ fn http_list_provider_failure_is_not_reported_as_an_empty_result() {
         0
     );
 }
+
+// --- BM06: arbitrary memory text cannot become authoritative preference ---
+//
+// `try_put_batch` gates any item that claims reserved Adapt/Taste standing-
+// preference authority (record_type "taste_preference", artifact_family
+// "adapt", producer "adapt_native", client "membrane_adapt", or the A2 +
+// behavioral_directive lifecycle pair) behind a verified native admission
+// path (see `claims_reserved_adapt_authority` / `try_put_batch` in
+// membrane-runtime/src/store.rs). An ordinary consumer batch submission must
+// be refused, not silently downgraded and admitted as an unprivileged row.
+#[test]
+fn arbitrary_batch_text_claiming_standing_preference_authority_is_refused() {
+    let store = MemoryStore::new();
+    let mut claim = item(
+        "impostor-preference-1",
+        "not-a-real-preference",
+        "arbitrary free text asserting itself as a standing user preference",
+    );
+    claim
+        .as_object_mut()
+        .unwrap()
+        .insert("record_type".into(), json!("taste_preference"));
+    let body = request("bm06-impostor-batch", vec![claim]);
+
+    let (status, payload) = membrane_runtime::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/memories:batch",
+        &body,
+    );
+    assert_eq!(
+        status, 400,
+        "an ordinary batch item cannot mint itself a standing preference: got {payload}"
+    );
+
+    let stored: i64 = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM memories WHERE record_type='taste_preference'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored, 0,
+        "the impostor preference must not land in durable storage under any admitted row"
+    );
+}
+
+#[test]
+fn arbitrary_batch_text_claiming_adapt_artifact_family_is_refused() {
+    // Same gate, different claimed field (Z11/Z12 style bypass attempt): a
+    // batch item cannot borrow Adapt's `artifact_family` to acquire standing
+    // authority it was not verified through the native admission path for.
+    let store = MemoryStore::new();
+    let mut claim = item(
+        "impostor-preference-2",
+        "borrowed-artifact-family",
+        "text that borrows the adapt artifact_family to look authoritative",
+    );
+    claim
+        .as_object_mut()
+        .unwrap()
+        .insert("artifact_family".into(), json!("adapt"));
+    let body = request("bm06-impostor-batch-2", vec![claim]);
+
+    let (status, _) = membrane_runtime::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/memories:batch",
+        &body,
+    );
+    assert_eq!(status, 400, "borrowing the adapt artifact_family must not bypass admission");
+}
+
+#[test]
+fn ordinary_batch_text_without_reserved_claims_is_admitted_as_unprivileged() {
+    // Positive control paired with the two negatives above: an ordinary item
+    // making no standing-preference claim is admitted normally, proving the
+    // gate targets the specific reserved-authority claim, not batch admission
+    // in general.
+    let store = MemoryStore::new();
+    let body = request(
+        "bm06-ordinary-batch",
+        vec![item("ordinary-1", "plain-note", "an ordinary observation with no preference claim")],
+    );
+    let (status, payload) = membrane_runtime::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/memories:batch",
+        &body,
+    );
+    assert_eq!(status, 200, "an unprivileged batch item must still be admitted: {payload}");
+}
+
+// --- BM07: bounded coherent episode proposals must not promote scratch
+//     choices into final facts ---
+//
+// A `Working`-tier item (the pre-consolidation / scratch tier per
+// `cortex_core::MemoryTier`) submitted through the ordinary batch path must
+// stay at `Working` and at non-authoritative influence; only a governed
+// lifecycle/consolidation path is entitled to promote it toward `Semantic`.
+#[test]
+fn working_tier_scratch_item_is_not_promoted_to_semantic_by_plain_admission() {
+    let store = MemoryStore::new();
+    let mut scratch = item(
+        "episode-scratch-1",
+        "scratch-choice",
+        "an intermediate candidate considered during an episode, not yet a final fact",
+    );
+    scratch
+        .as_object_mut()
+        .unwrap()
+        .insert("tier".into(), json!("Working"));
+    let body = request("bm07-episode-batch", vec![scratch]);
+    let (status, payload) = membrane_runtime::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/memories:batch",
+        &body,
+    );
+    assert_eq!(status, 200, "plain admission of a scratch item should still succeed: {payload}");
+
+    let tier: String = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT tier FROM memories WHERE id LIKE '%episode-scratch-1%' OR content LIKE '%intermediate candidate%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        tier, "\"Working\"",
+        "a scratch/episode candidate admitted through the plain batch path must not be \
+         silently promoted to Semantic; promotion requires the governed consolidation path (Z08)"
+    );
+}

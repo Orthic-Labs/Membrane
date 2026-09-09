@@ -21,6 +21,7 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         // mirror of install and shares its ownership contract.
         MembraneMode::Cli => membrane_runtime::Plane::Application,
         MembraneMode::StdioMcp => membrane_runtime::Plane::Application,
+        MembraneMode::Hook => membrane_runtime::Plane::Application,
         MembraneMode::Install => membrane_runtime::Plane::Application,
         MembraneMode::Uninstall => membrane_runtime::Plane::Application,
         MembraneMode::Activate => membrane_runtime::Plane::Application,
@@ -56,6 +57,7 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
     match invocation.mode {
         MembraneMode::Cli => dispatch_cli(&invocation.cli_tail),
         MembraneMode::StdioMcp => dispatch_stdio_mcp(),
+        MembraneMode::Hook => if invocation.cli_tail.is_empty() { dispatch_hook() } else { dispatch_hook_module(&invocation.cli_tail[0]) },
         MembraneMode::Install => match invocation.install.as_ref() {
             Some(invocation) => dispatch_install(invocation),
             // The parser refuses to construct a `ParsedInvocation` whose
@@ -156,9 +158,6 @@ fn dispatch_activation(invocation: &ActivationInvocation) -> DispatchOutcome {
 }
 
 fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
-    if invocation.bindings_only {
-        return DispatchOutcome::UserError("--bindings-only applies to activate only".into());
-    }
     let install_root = match invocation
         .install_root
         .clone()
@@ -193,7 +192,12 @@ fn dispatch_deactivation(invocation: &ActivationInvocation) -> DispatchOutcome {
         timeout: std::time::Duration::from_millis(invocation.timeout_ms.clamp(1_000, 120_000)),
         dry_run: invocation.dry_run,
     };
-    match crate::activation::deactivate(options) {
+    let result = if invocation.bindings_only {
+        crate::activation::deactivate_bindings(options)
+    } else {
+        crate::activation::deactivate(options)
+    };
+    match result {
         Ok(receipt) => match serde_json::to_string_pretty(&receipt) {
             Ok(json) => {
                 println!("{json}");
@@ -1004,6 +1008,66 @@ fn dispatch_stdio_mcp() -> DispatchOutcome {
     }
 }
 
+/// Run exactly one native HookHost envelope. HookHost launches this binary once
+/// per event, so stdin is bounded by process lifetime & stdout contains only its
+/// single JSON response. Malformed input stays in-band: the runtime converts it
+/// to a deterministic safe-degradation response rather than granting a fence.
+fn dispatch_hook() -> DispatchOutcome {
+    use std::io::Write;
+
+    let payload = read_hook_payload();
+    let response = membrane_runtime::hook::run_hook_payload(payload);
+    let encoded = match serde_json::to_string(&response) {
+        Ok(encoded) => encoded,
+        Err(error) => return DispatchOutcome::InternalError(format!("hook response serialize: {error}")),
+    };
+    match writeln!(std::io::stdout(), "{encoded}") {
+        Ok(()) => DispatchOutcome::Ok,
+        Err(error) => DispatchOutcome::InternalError(format!("hook response write: {error}")),
+    }
+}
+
+/// Private one-module worker. Its parent owns deadline, kill, and reaping;
+/// this path never calls the public hook dispatcher, so recursion is impossible.
+fn dispatch_hook_module(id: &str) -> DispatchOutcome {
+    use std::io::Write;
+
+    let payload = read_hook_payload();
+    let result = membrane_runtime::hook::run_hook_module_payload(id, payload);
+    let Ok(encoded) = serde_json::to_string(&result) else { return DispatchOutcome::InternalError("hook module serialize".to_owned()); };
+    writeln!(std::io::stdout(), "{encoded}").map(|_| DispatchOutcome::Ok).unwrap_or_else(|error| DispatchOutcome::InternalError(error.to_string()))
+}
+
+/// HookHost input has a strict transport cap. Read at most one sentinel byte
+/// past it, then stop immediately: hostile stdin can never grow this process
+/// or keep it draining. Null enters the runtime's content-free typed invalid
+/// payload path, with no source bytes reflected into output or diagnostics.
+const MAX_HOOK_STDIN_BYTES: usize = 2 * 1024 * 1024;
+
+fn read_hook_payload() -> serde_json::Value {
+    let stdin = std::io::stdin();
+    parse_bounded_hook_payload(stdin.lock())
+}
+
+fn parse_bounded_hook_payload(mut reader: impl std::io::Read) -> serde_json::Value {
+    let mut bytes = Vec::with_capacity(MAX_HOOK_STDIN_BYTES.saturating_add(1));
+    let mut chunk = [0_u8; 8 * 1024];
+    while bytes.len() <= MAX_HOOK_STDIN_BYTES {
+        let remaining = MAX_HOOK_STDIN_BYTES + 1 - bytes.len();
+        let take = remaining.min(chunk.len());
+        let count = match reader.read(&mut chunk[..take]) {
+            Ok(0) => break,
+            Ok(count) => count,
+            Err(_) => return serde_json::Value::Null,
+        };
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+    if bytes.len() > MAX_HOOK_STDIN_BYTES {
+        return serde_json::Value::Null;
+    }
+    serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+}
+
 /// MBR-203: install handler. Loads the plan (or builds a default), runs
 /// `execute_plan` against the scratch root, and only calls `commit` when
 /// `--dry-run` is not set. The receipt is printed to stdout on success.
@@ -1290,6 +1354,21 @@ mod tests {
             plane_of(&MembraneMode::StdioMcp),
             membrane_runtime::Plane::Application
         );
+    }
+
+    #[test]
+    fn hook_stdin_stops_at_one_byte_past_transport_cap() {
+        let payload = parse_bounded_hook_payload(std::io::Cursor::new(vec![
+            b'x';
+            MAX_HOOK_STDIN_BYTES + 1
+        ]));
+        assert_eq!(payload, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn hook_stdin_accepts_bounded_json() {
+        let payload = parse_bounded_hook_payload(std::io::Cursor::new(br#"{"event":"Stop"}"#));
+        assert_eq!(payload["event"], "Stop");
     }
 
     #[test]

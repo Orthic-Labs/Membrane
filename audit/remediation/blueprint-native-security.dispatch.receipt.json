@@ -1,0 +1,31 @@
+{
+  "schemaVersion":1,
+  "kind":"legion-authority-dispatch-receipt",
+  "packetPath":"audit/remediation/blueprint-native-security.dispatch.json",
+  "packetSha256":"b4ac76cf608e073b51e9206f33981cf8dd0ead925c59c7817e583fed00de2b57",
+  "sourceRevision":"abeec00c1b8705e7905c92bba73f867f0cea871a",
+  "artifactHashes":[
+    {"path":"AGENTS.md","sha256":"845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"},
+    {"path":"D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md","sha256":"030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"},
+    {"path":"D:/Claude/coderight/.audit/final-packet-2026-09-08/02_MEMBRANE_FINAL_SHAPE.md","sha256":"3b2900005eccb042524793e4b7d6dfb151dd965ebe20fa43c2c5acf411ac8bb9"},
+    {"path":"docs/canon/blueprint.md","sha256":"af827193fefdd55aeaf288cac81edaf3f628623428c0a770b8dca44594d21514"},
+    {"path":"audit/remediation/reconciliation/blueprint-semantic-inventory.md","sha256":"0962c87b871106e3c3775e5889bc84d9c489e99a9ed081461c3662e7e13d7069"},
+    {"path":"blueprint/src/lib/path-confinement.mjs","sha256":"aa34e1420455c4b24790cd6701fe5adac365defc2482a18bcb4d3b781053debb"},
+    {"path":"blueprint/src/lib/receipt-store.mjs","sha256":"8a2767604af673ccdc2787276c17cf3e7547faeff9f3bb3cf25779557b7aee29"},
+    {"path":"blueprint/src/lib/session-token.mjs","sha256":"7a76a650b48cd259d4a49812d109088743d6e315cc1660834c50b1349a4d73c2"},
+    {"path":"blueprint/src/lib/redaction.mjs","sha256":"46dc50bd58117eb60fde258d974bb8cb4f17aec01a60bde05875d76de3565250"},
+    {"path":"blueprint/tests/scope-grant.test.mjs","sha256":"586a800a6a0cae38ee1c84a267d2e8426da14b1f1b7ac12ba15b0c80b84bddd4"},
+    {"path":"blueprint/tests/root-confinement.test.mjs","sha256":"c3d048c39aad3576a47fbd7253613aaa12e49d5710900fb1595821ff6f963adc"},
+    {"path":"blueprint/tests/cross-platform-paths.test.mjs","sha256":"a5248fa2ee6b0e756a74f49fbe02b5190661c6c27d1fa1637fbcc6d3677da588"},
+    {"path":"blueprint/tests/security/hostile-indexing.test.mjs","sha256":"0cb0d0824d223dc33bdedcf2d6ec247ca5f3bd6fafb34e8a18a1418de95161bf"},
+    {"path":"blueprint/tests/security/secret-egress.test.mjs","sha256":"e6f26ceeebef0c0e296da0ac8357b5be47c41d9b9afc885451601939b11cf819"},
+    {"path":"engine/crates/membrane-runtime/Cargo.toml","sha256":"39642bf1505bc3e6899a1b0167b2306d99d86cd3a47455993c461630a35603ab"},
+    {"path":"engine/crates/membrane-blueprint/src/contracts.rs","sha256":"84f4a8cc6c1fbb22510576e579ea8c364ac10955bc327c20701ce18050df8c94"},
+    {"path":"engine/crates/membrane-blueprint/src/model.rs","sha256":"44abf15afe6d14339e46028e9aa2548d733f95d1ce4942d80d59861ff1731757"},
+    {"path":"engine/crates/membrane-blueprint/Cargo.toml","sha256":"809faff3a532b83eff9f1942bb71d457cb5999a5dcb1672771714f18a6025934"},
+    {"path":"engine/Cargo.lock","sha256":"1d47a9dd1f5dbf949b1d0fc336baf692856f978762e1c4139750c828b2412224"}
+  ],
+  "workerPolicy":"edit-only; no Cargo/tests/builds/install/format/commit/push",
+  "integrationOwner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "machineryDegradation":"legion run open --help returned top-level help without an open grammar; existing receipt-bound dispatch path used"
+}

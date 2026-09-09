@@ -12,6 +12,7 @@ use crate::{
     ledger::LedgerDb,
 };
 use sha2::{Digest, Sha256};
+use rusqlite::OptionalExtension;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -31,11 +32,14 @@ pub fn ingest_granted_document(
     grant: &super::document_conversion::DocumentConversionGrantV1,
     input: GrantedDocumentIngestV1,
 ) -> Result<DocArtifactV1, String> {
-    if Path::new(&input.path)
-        .components()
-        .any(|component| matches!(component, std::path::Component::ParentDir))
+    let source_path = Path::new(&input.path);
+    if !source_path.is_relative()
+        || source_path.components().any(|component| {
+            !matches!(component, std::path::Component::Normal(_))
+        })
+        || input.path.chars().any(char::is_control)
     {
-        return Err("document_ingest_path_escape".to_owned());
+        return Err("document_ingest_path_denied".to_owned());
     }
     let converted = super::document_conversion::convert_granted_document(grant, input.document)
         .map_err(|error| error.to_string())?;
@@ -50,6 +54,28 @@ pub fn ingest_granted_document(
     );
     let mut conn = db.lock();
     let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let existing: Option<(String, Option<String>, Option<String>)> = tx
+        .query_row(
+            "SELECT a.doc_id,c.source_ref,c.raw_sha256 FROM ledger_doc_artifacts a
+             LEFT JOIN ledger_document_conversions c ON c.doc_id=a.doc_id
+             WHERE a.repository_root=?1 AND a.path=?2",
+            rusqlite::params![input.repository_root, input.path],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some((_, existing_source, existing_hash)) = existing {
+        match (existing_source, existing_hash) {
+            (Some(source), Some(_hash)) if source != converted.source_ref => {
+                return Err("document_snapshot_immutable".to_owned());
+            }
+            (Some(_), Some(hash)) if hash != converted.raw_sha256 => {
+                return Err("document_snapshot_drift".to_owned());
+            }
+            (None, None) => return Err("document_snapshot_path_conflicts_live".to_owned()),
+            _ => {}
+        }
+    }
     let generation: i64 = tx
         .query_row(
             "SELECT COALESCE(MAX(index_generation),0)+1 FROM ledger_doc_artifacts",

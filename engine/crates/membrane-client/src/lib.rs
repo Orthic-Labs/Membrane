@@ -27,10 +27,36 @@ pub use provisioning::{
 };
 pub use residency::{
     AcquireDecision, AuthenticatedHolder, ControllerIdentity, HolderKind, ReleaseDecision,
-    ResidencyError, ResidencyRegistry, ResidencySnapshot,
+    InstalledResidentController, ResidentControllerBinding, ResidentHolderCall, ResidentHolderTransport, ResidencyError,
+    ResidencyRegistry, ResidencySnapshot,
+};
+pub use residency::{
+    encode_loopback_request, encode_loopback_response, loopback_routes, LoopbackAuthSigner,
+    LoopbackIdentityFields, LoopbackReplayCache, LoopbackReplayPartition, LoopbackRequestFields,
+    LoopbackResponseFields, LOOPBACK_ALLOWED_TRANSPORT_HEADERS, LOOPBACK_AUTH_DOMAIN,
+    LOOPBACK_AUTH_DOMAIN_LEN, LOOPBACK_AUTH_REQUEST_KIND, LOOPBACK_AUTH_RESPONSE_KIND,
+    LOOPBACK_HEADER_CORTEX_STORE_ID, LOOPBACK_HEADER_EXPIRY, LOOPBACK_HEADER_INSTALLATION_ID,
+    LOOPBACK_HEADER_NONCE, LOOPBACK_HEADER_PROOF, LOOPBACK_HEADER_RELEASE_GENERATION,
+    LOOPBACK_HEADER_STABLE_INSTALL_ROOT, LOOPBACK_HEADER_STARTUP_GENERATION,
+    LOOPBACK_HEADER_VERSION, LOOPBACK_MAX_EXPIRY_SECS, LOOPBACK_NONCE_OCTETS,
+    LOOPBACK_REPLAY_CAPACITY, LOOPBACK_REPLAY_GENERAL_MAX, LOOPBACK_REPLAY_RESERVED,
+    LOOPBACK_REQUIRED_HEADERS, validate_loopback_header_profile,
 };
 pub use records::{FullRecord, MemoryEntry, MemoryListRow, MemoryTier};
 pub use membrane_protocol::ResidentEndpointV1;
+pub use membrane_protocol::host_observation::{
+    HostObservationProvenanceV1, LoadedContextIdentitiesV1, LoadedContextIdentityV1,
+    ObservationCoverageV1, ObservationUnavailableReasonV1, ObservedFieldV1,
+    PacketDeliveryAcknowledgementStatusV1, PacketDeliveryAcknowledgementV1,
+    HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION, LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION,
+    PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION,
+};
+pub use membrane_protocol::{
+    ResidentControllerIdentityV1, ResidentHolderCredentialV1, ResidentHolderLossKindV1,
+    ResidentHolderLossV1, ResidentHolderOperationV1, ResidentHolderRequestV1,
+    ResidentHolderResponseV1, ResidentHolderStatusV1, ResidentServicesUnavailableV1,
+    RESIDENT_HOLDER_SCHEMA_VERSION,
+};
 
 pub const ENVELOPE_VERSION: u64 = 1;
 pub const ERROR_VERSION: u64 = 1;

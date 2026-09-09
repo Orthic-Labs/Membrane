@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,22 +24,13 @@ test("candidate handoff accepts exact archive & rejects changed bytes", { skip: 
     mkdirSync(payload);
     const bytes = Buffer.from("unsigned-native-candidate\n");
     for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) writeFileSync(join(payload, name), bytes);
+    // Node is only a deterministic test double for native `hook --help`;
+    // production candidates must contain the compiled membrane.exe authority.
+    copyFileSync(process.execPath, join(payload, "membrane.exe"));
+    writeFileSync(join(payload, "hook"), "process.exit(0);\n");
     mkdirSync(join(payload, "runtime"));
     writeFileSync(join(payload, "runtime", "runtime.json"), bytes);
-    const hookFiles = [
-      "mcp/hooks/membrane-hook-entrypoint.mjs",
-      "mcp/hooks/membrane-hook-runtime.mjs",
-      "mcp/hooks/membrane-workspace-operations.mjs",
-      "mcp/lib/verification-command.mjs",
-      "mcp/lib/diagnostics-client.mjs",
-      "mcp/host/context-adapter.cjs",
-      "mcp/host/continuity.mjs",
-      "mcp/host/delivery-ledger-store.cjs",
-      "mcp/host/observable-event.cjs",
-      "mcp/host/observable-ingress.cjs",
-      "mcp/context-renderer-lib.cjs",
-    ];
-    for (const name of hookFiles) {
+    for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
       mkdirSync(dirname(join(payload, name)), { recursive: true });
       writeFileSync(join(payload, name), bytes);
     }

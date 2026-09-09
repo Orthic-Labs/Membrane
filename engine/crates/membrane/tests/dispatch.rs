@@ -114,6 +114,97 @@ fn installed_cli_cannot_start_a_resident() {
     }
 }
 
+/// LC-04 + NCL-05: explicit CLI operations must succeed with Hub off and no
+/// CodeRight holder, and must execute through the native binary only — never
+/// falling back to an interpreter shim. Stripping `PATH` to a directory that
+/// contains no `python`/`node`/`sh` and removing every Hub/runtime-origin
+/// discovery variable proves both the no-holder path and the native-only
+/// contract in one run; a shim fallback would fail to spawn at all once the
+/// interpreter is unreachable.
+#[test]
+fn explicit_cli_status_succeeds_with_no_holder_and_no_interpreter_on_path() {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new(env!("CARGO_BIN_EXE_membrane"))
+        .args(["cli", "doctor"])
+        .env("PATH", "/__membrane_no_interpreters__")
+        .env_remove("PYTHONPATH")
+        .env_remove("MEMBRANE_PORT")
+        .env_remove("MEMBRANE_API_TOKEN")
+        .env_remove("MEMBRANE_API_TOKEN_FILE")
+        .env_remove("WORKSPACE_ROOT")
+        .env_remove("CORTEX_DB")
+        .stdin(Stdio::null())
+        .output()
+        .expect("native membrane binary starts without any interpreter on PATH");
+    assert!(
+        output.status.success(),
+        "explicit `cli doctor` must succeed with Hub off and no interpreter reachable: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// Packaging's runtime gate (`apps/membrane-hub/scripts/package-portable-windows.mjs`) spawns
+/// `membrane hook --help` and requires exit status 0 as proof the shipped binary carries native
+/// hook authority. clap reports `--help`/`--version` as an `Err` internally; `parse_mode` must
+/// route those to stdout + exit 0 like any well-behaved CLI, not surface them as a parse
+/// failure. This pins that contract at every level clap can produce a help/version display, plus
+/// the real parse-error path staying on stderr with a non-zero, non-zero-but-not-0 exit code.
+#[test]
+fn help_and_version_exit_zero_on_stdout_at_every_level() {
+    use std::process::{Command, Stdio};
+
+    for args in [
+        ["--help"].as_slice(),
+        ["--version"].as_slice(),
+        ["hook", "--help"].as_slice(),
+        ["cli", "--help"].as_slice(),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_membrane"))
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap_or_else(|error| panic!("spawn `membrane {}`: {error}", args.join(" ")));
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "`membrane {}` must exit 0: stdout={} stderr={}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "`membrane {}` must print help/version text to stdout",
+            args.join(" ")
+        );
+    }
+}
+
+/// The other half of the same contract: a genuine parse error (not `--help`/`--version`) must
+/// still land on stderr with the non-zero user-error exit code, unaffected by routing help and
+/// version to a successful exit.
+#[test]
+fn genuine_parse_errors_still_fail_with_nonzero_exit_on_stderr() {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new(env!("CARGO_BIN_EXE_membrane"))
+        .args(["wat"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("spawn `membrane wat`");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "`membrane wat` must fail as an unrecognized subcommand: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout.is_empty(), "no help text belongs on stdout for a real parse error");
+    assert!(!output.stderr.is_empty(), "the parse error must be reported on stderr");
+}
+
 #[test]
 fn shipped_supervisor_config_is_schema_v2_without_watcher_policy() {
     let config = include_str!("../../../../dist/install/config.example.json");

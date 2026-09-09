@@ -83,25 +83,18 @@ const runtime = join(hub, "src-tauri", "runtime");
 if (!existsSync(runtime)) throw new Error(`candidate runtime missing: ${runtime}`);
 cpSync(runtime, join(payload, "runtime"), { recursive: true });
 
-// The candidate owns the complete installed hook projection. Protected
-// finalization may sign/package these bytes, but never rebuilds or substitutes
-// hook sources from a checkout.
-const hookFiles = [
-  "mcp/hooks/membrane-hook-entrypoint.mjs",
-  "mcp/hooks/membrane-hook-runtime.mjs",
-  "mcp/hooks/membrane-workspace-operations.mjs",
-  "mcp/lib/verification-command.mjs",
-  "mcp/lib/diagnostics-client.mjs",
-  "mcp/host/context-adapter.cjs",
-  "mcp/host/continuity.mjs",
-  "mcp/host/delivery-ledger-store.cjs",
-  "mcp/host/observable-event.cjs",
-  "mcp/host/observable-ingress.cjs",
-  "mcp/context-renderer-lib.cjs",
+// Protected finalization packages this candidate with --input-root, so retain
+// the non-hook enrollment projection it must copy into stable current.
+const enrollmentFiles = [
+  "mcp/install.mjs",
+  "mcp/project-registry.mjs",
+  "mcp/installation-binding.mjs",
+  "mcp/repository-catalog.mjs",
+  "mcp/blueprint-readiness.mjs",
 ];
-for (const file of hookFiles) {
+for (const file of enrollmentFiles) {
   const source = join(repo, file);
-  if (!existsSync(source)) throw new Error(`candidate hook projection file missing: ${source}`);
+  if (!existsSync(source)) throw new Error(`candidate enrollment projection file missing: ${source}`);
   mkdirSync(join(payload, file, ".."), { recursive: true });
   cpSync(source, join(payload, file));
 }

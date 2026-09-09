@@ -1,0 +1,31 @@
+{
+  "schema_version": 4,
+  "sha256": "ad5fa50996adf99c6537e82023dc2a9cf738b0f5b6be6a17dea4e0ff90a15a62",
+  "referenced_artifacts": [
+    {
+      "path": "docs/canon/pull.md",
+      "sha256": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "docs/canon/pull.md",
+      "sha256": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a"
+    },
+    {
+      "path": "engine/crates/membrane-protocol/src/host_observation.rs",
+      "sha256": "sha256:bf48cf4e9c7b7b0ff35efcaf4177dabf950b07406170415a40ff3d7dea5336d5"
+    },
+    {
+      "path": "audit/remediation/pull-final-requirements.dispatch.json",
+      "sha256": "sha256:608dc9af94a275c8b33359053f7b6d1006a58cc81bd1d5611601651af60fcf8d"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "ad5fa50996adf99c6537e82023dc2a9cf738b0f5b6be6a17dea4e0ff90a15a62",
+    "source_revision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+    "prompt_digest": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a"
+  }
+}

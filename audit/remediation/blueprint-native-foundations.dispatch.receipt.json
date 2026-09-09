@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "sha256": "2d7fba12fc6dcdcfcc8c6b282aad508b345aa46b9237217e044a5fb5eaf69b8b",
+  "sha256": "b0172d0c5f7af3e856356363e0ce3c4f0c778fdb9fc35e86046857fbd03cdab9",
   "referenced_artifacts": [
     {
       "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
@@ -65,10 +65,18 @@
     {
       "path": "blueprint/src/graph/generation-identity.mjs",
       "sha256": "sha256:664bd07894e97ceec4915a1a64103c60dae3c5c423430e06e6a86420c1fb6efe"
+    },
+    {
+      "path": "blueprint/src/graph/static-provider.mjs",
+      "sha256": "sha256:25032783d1cb37c52d7b32b1a0098bffc6e4d3b38ebd99d3286a31e845860409"
+    },
+    {
+      "path": "blueprint/src/graph/git-source-observation.mjs",
+      "sha256": "sha256:a33369fa0fd88b7edd833b904b155c5829289d63abf04aeb37cfdccd0cc7d45a"
     }
   ],
   "authority_binding": {
-    "packet_sha256": "2d7fba12fc6dcdcfcc8c6b282aad508b345aa46b9237217e044a5fb5eaf69b8b",
+    "packet_sha256": "b0172d0c5f7af3e856356363e0ce3c4f0c778fdb9fc35e86046857fbd03cdab9",
     "source_revision": "2e8e57bbb1e368332b37466080f1e925f2f4726e",
     "prompt_digest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
   }

@@ -1,4 +1,5 @@
 use membrane_adapt::comparison::*;
+use membrane_adapt::delivery::select_preferences;
 use membrane_adapt::guard_rollout::*;
 
 fn h(c: char) -> String {
@@ -225,4 +226,71 @@ fn no_exposure_is_not_effectiveness() {
         "",
     );
     assert_eq!(e.adjusted, AdjustedOutcome::Indeterminate);
+}
+
+// BM06/BM07 collaboration: Cortex owns the durable projection and traversal
+// (blueprint-membrane-amendment.md), Pull owns final admission; Adapt's own
+// role is query-independent standing/scoped selection over already-admitted
+// preference records via `delivery::select_preferences`. These tests exercise
+// only the Adapt-side collaborator contract with existing public APIs.
+#[test]
+fn standing_preference_is_delivered_regardless_of_query_shape() {
+    use membrane_adapt::record::{InfluenceClass, LifecycleState, PreferenceRecordV1, RecordClass};
+    use membrane_adapt::scope::ScopeDimensions;
+
+    let mut standing = PreferenceRecordV1::new_candidate(
+        "Always run focused tests before claiming done",
+        "verification",
+        RecordClass::StandingPreference,
+        "repo",
+        ScopeDimensions::default(),
+        1.0,
+        vec!["ev-1".into()],
+        "2026-09-09T00:00:00Z",
+    )
+    .unwrap();
+    standing.lifecycle_state = LifecycleState::Active;
+    standing.influence_class = InfluenceClass::BehavioralDirective;
+
+    // An unrelated query context (distinct, unrelated scope dimensions) must
+    // still receive the applicable standing preference: standing selection is
+    // query-independent, not keyed to the caller's specific ask.
+    let unrelated_query_context =
+        ScopeDimensions::normalize(&[("task".into(), "unrelated-topic".into())].into()).unwrap();
+    let result = select_preferences(&[standing.clone()], &unrelated_query_context, 8, "t");
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].id, standing.id);
+    assert!(result.receipts.iter().any(|r| r.selected));
+}
+
+#[test]
+fn arbitrary_memory_text_cannot_become_authoritative_preference() {
+    use membrane_adapt::authority::AuthorityEffect;
+    use membrane_adapt::record::{PreferenceRecordV1, RecordClass};
+    use membrane_adapt::scope::ScopeDimensions;
+
+    // Plain scratch/durable-memory text with no protective/restrictive shape
+    // classifies as Neutral: it cannot be laundered into a security-weakening
+    // or permission-expanding authority effect merely by being stored.
+    let arbitrary_text = "the sky looked nice during the deploy window";
+    assert_eq!(
+        membrane_adapt::authority::classify_authority_effect(arbitrary_text),
+        AuthorityEffect::Neutral
+    );
+
+    // Constructing a candidate record from that text still requires an
+    // explicit RecordClass and passes through the same deterministic
+    // classification; it never gains authority beyond what the text implies.
+    let record = PreferenceRecordV1::new_candidate(
+        arbitrary_text,
+        "verification",
+        RecordClass::ScopedPreference,
+        "repo",
+        ScopeDimensions::default(),
+        1.0,
+        vec!["ev-2".into()],
+        "2026-09-09T00:00:00Z",
+    )
+    .unwrap();
+    assert_eq!(record.authority_effect, AuthorityEffect::Neutral);
 }

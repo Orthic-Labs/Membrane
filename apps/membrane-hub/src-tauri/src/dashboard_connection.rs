@@ -5,6 +5,7 @@
 //! is retained only in this native state; no command returns it to the
 //! webview, and no environment or filesystem fallback is accepted.
 
+use membrane_protocol::{HubSnapshotV1, ResidentHolderRequestV1, ResidentHolderResponseV1};
 use serde::Deserialize;
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
@@ -14,6 +15,11 @@ use std::{
 
 pub const BOOTSTRAP_MAX_FRAME_BYTES: usize = 16 * 1024;
 pub const HTTP_MAX_RESPONSE_BYTES: usize = 1024 * 1024 + 4096;
+
+/// Default per-call deadline. Callers construct a fresh `Duration` for each
+/// call site rather than storing a timeout on `DashboardConnection`; the
+/// connection itself carries no construction-time deadline.
+pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -40,7 +46,48 @@ impl DashboardConnection {
 
     /// Issue one bounded authenticated GET against resident loopback HTTP.
     pub fn get(&self, path: &str, timeout: Duration) -> Result<HttpResponse, String> {
+        self.request("GET", path, None, timeout)
+    }
+
+    /// Forward a typed holder request over same authenticated loopback
+    /// connection. Credentials remain in caller-owned request state; bearer
+    /// never leaves this native connection.
+    pub fn dispatch_resident_holder(
+        &self,
+        request: &ResidentHolderRequestV1,
+        timeout: Duration,
+    ) -> Result<ResidentHolderResponseV1, String> {
+        let body = serde_json::to_vec(request).map_err(|_| "dashboard_request_invalid")?;
+        let response = self.request("POST", "/resident-holder", Some(&body), timeout)?;
+        if response.status != 200 {
+            return Err("dashboard_resident_holder_rejected".into());
+        }
+        serde_json::from_slice(&response.body).map_err(|_| "dashboard_resident_holder_invalid".into())
+    }
+
+    /// Read the resident's published hub snapshot over the same authenticated
+    /// loopback connection. This is an audited read of resident-published
+    /// state: the Hub never composes or republishes its own snapshot, it only
+    /// forwards the resident's `GET /hub/snapshot` response to the webview.
+    pub fn fetch_hub_snapshot(&self, timeout: Duration) -> Result<HubSnapshotV1, String> {
+        let response = self.get("/hub/snapshot", timeout)?;
+        if response.status != 200 {
+            return Err("dashboard_hub_snapshot_unavailable".into());
+        }
+        serde_json::from_slice(&response.body).map_err(|_| "dashboard_hub_snapshot_invalid".into())
+    }
+
+    fn request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        timeout: Duration,
+    ) -> Result<HttpResponse, String> {
         if !path.starts_with('/') || path.bytes().any(|byte| matches!(byte, b'\r' | b'\n')) {
+            return Err("dashboard_request_invalid".into());
+        }
+        if !matches!(method, "GET" | "POST") {
             return Err("dashboard_request_invalid".into());
         }
         let mut stream = TcpStream::connect_timeout(&self.endpoint, timeout)
@@ -51,13 +98,25 @@ impl DashboardConnection {
         stream
             .set_write_timeout(Some(timeout))
             .map_err(|_| "dashboard_request_timeout")?;
-        let request = format!(
-            "GET {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n",
-            self.endpoint, self.bearer_token
-        );
+        let request = if let Some(body) = body {
+            format!(
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                self.endpoint, self.bearer_token, body.len()
+            )
+        } else {
+            format!(
+                "{method} {path} HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n",
+                self.endpoint, self.bearer_token
+            )
+        };
         stream
             .write_all(request.as_bytes())
             .map_err(|_| "dashboard_request_write_failed")?;
+        if let Some(body) = body {
+            stream
+                .write_all(body)
+                .map_err(|_| "dashboard_request_write_failed")?;
+        }
         let raw = read_http_response(&mut stream)?;
         parse_http_response(&raw)
     }
@@ -464,5 +523,74 @@ mod tests {
             .unwrap();
         assert_eq!(response.body, b"ok");
         server.join().unwrap();
+    }
+
+    #[test]
+    fn hub_snapshot_reads_resident_published_state_only() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap();
+        let body =
+            br#"{"schemaVersion":1,"productId":"membrane-hub","observedAtUnixMs":0,"sections":{}}"#;
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&chunk[..read]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(request.starts_with("GET /hub/snapshot HTTP/1.1\r\n"));
+            stream
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            stream.write_all(body).unwrap();
+        });
+        let connection = DashboardConnection {
+            endpoint,
+            bearer_token: "a".repeat(64),
+        };
+        let snapshot = connection
+            .fetch_hub_snapshot(DEFAULT_REQUEST_TIMEOUT)
+            .expect("snapshot deserializes from resident response only");
+        server.join().unwrap();
+        assert_eq!(snapshot.sections.len(), 0);
+    }
+
+    #[test]
+    fn hub_snapshot_rejects_non_200_resident_response() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&chunk[..read]);
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        let connection = DashboardConnection {
+            endpoint,
+            bearer_token: "a".repeat(64),
+        };
+        let error = connection
+            .fetch_hub_snapshot(DEFAULT_REQUEST_TIMEOUT)
+            .unwrap_err();
+        server.join().unwrap();
+        assert_eq!(error, "dashboard_hub_snapshot_unavailable");
     }
 }

@@ -5,12 +5,15 @@
 //! private implementation logic into fixtures.
 
 use membrane_runtime::cache_prefix::diagnose_cache_prefix;
-use membrane_runtime::pull::delivery_state::{record_selected_packet, suppress_packet};
+use membrane_runtime::catalog::ContextCatalog;
+use membrane_runtime::pull::delivery_state::suppress_packet;
 use membrane_runtime::pull::federation::{envelope_from_ccs, EnvelopeInput};
 use membrane_runtime::pull::placement::place;
+use cortex_core::planner::ContextPacketV1;
 use membrane_protocol::{
     FederationRequestV1, FederationResponseV1, FederationStatus, FreshnessSnapshotV1,
-    ProviderId, ProviderOmissionV1, ReasonCode,
+    HostObservationProvenanceV1, LoadedContextIdentitiesV1, ObservedFieldV1, ProviderId,
+    ProviderOmissionV1, ReasonCode, LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -34,27 +37,37 @@ fn packet(blocks: Vec<Value>, trace: &str) -> Value {
     })
 }
 
+fn unknown_loaded(session: &str) -> LoadedContextIdentitiesV1 {
+    LoadedContextIdentitiesV1 {
+        schema_version: LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION,
+        snapshot_id: "suppression-unknown".into(),
+        session_id: session.into(),
+        compaction_generation: ObservedFieldV1::complete(0),
+        identities: ObservedFieldV1::complete(Vec::new()),
+        observed_at_unix_ms: 1,
+        provenance_receipt: HostObservationProvenanceV1::new(
+            "suppression-unknown", "test", 1,
+            format!("sha256:{}", "0".repeat(64)),
+        ),
+    }
+}
+
 #[test]
-fn same_session_suppression_requires_retention_and_refresh_restores_evidence() {
-    let repository = "post-merge-suppression-repo";
-    let session = "post-merge-suppression-session";
+fn unknown_restart_compaction_response_loss_and_budget_drop_keep_evidence_eligible() {
+    let catalog = ContextCatalog::open_in_memory();
+    let repository = "post-merge-eligible-repo";
+    let session = "post-merge-eligible-session";
     let source_hash = format!("sha256:{}", "1".repeat(64));
     let selected = packet(vec![block("unchanged", "blueprint", "repo_code", &source_hash)], "first");
-    record_selected_packet(&selected, repository, session);
 
-    let mut retained = serde_json::from_value(selected.clone()).unwrap();
-    let receipts = suppress_packet(&mut retained, repository, session, true, false);
-    assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].reason, "unchanged_in_horizon");
-    assert!(retained.blocks.is_empty());
-
-    let mut refreshed = serde_json::from_value(selected).unwrap();
-    assert!(suppress_packet(&mut refreshed, repository, session, true, true).is_empty());
-    assert_eq!(refreshed.blocks.len(), 1);
-
-    let mut unknown = refreshed.clone();
-    assert!(suppress_packet(&mut unknown, repository, session, false, false).is_empty());
-    assert_eq!(unknown.blocks.len(), 1);
+    for explicit_refresh in [false, true] {
+        let mut current: ContextPacketV1 = serde_json::from_value(selected.clone()).unwrap();
+        let receipts = suppress_packet(
+            &mut current, &catalog, repository, session, &unknown_loaded(session), explicit_refresh,
+        );
+        assert!(receipts.is_empty());
+        assert_eq!(current.blocks.len(), 1);
+    }
 }
 
 #[test]
@@ -261,6 +274,11 @@ fn resolver_only_evidence_requires_runtime_owned_negotiation_while_inline_fallba
     assert!(without_blocks[0]["text"] == "faithful inline");
     let without_receipts = without["receipts"].as_array().unwrap();
     assert!(without_receipts.iter().any(|receipt| receipt["id"] == "handle" && receipt["reason"] == "consumer_resolver_unavailable"));
+
+    let mut placed_without = serde_json::from_value(without["packet"].clone()).unwrap();
+    let placement_receipt = place(&mut placed_without);
+    assert!(placed_without.blocks.iter().all(|entry| entry.id != "handle"));
+    assert!(placement_receipt.rows.iter().all(|row| row.id != "handle"));
 
     let with = envelope_from_ccs(
         &ccs(vec![resolver_only, inline]).to_string(),

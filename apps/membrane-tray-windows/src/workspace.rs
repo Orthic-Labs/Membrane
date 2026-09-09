@@ -4,11 +4,9 @@
 //! environment. Resolve the same durable v3 config previously consumed by
 //! the Hub so the tray can launch its daemon against the canonical store.
 
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
+
+use membrane_runtime::residency::Identity;
 
 const WORKSPACE_SCHEMA_VERSION: u64 = 3;
 pub const INSTALLED_PORT: u16 = 47_851;
@@ -68,6 +66,26 @@ impl Workspace {
                 "membrane-hub"
             })
         })
+    }
+
+    /// Holder transitions require independently verified installed identity.
+    /// This helper refuses development workspace values rather than deriving
+    /// authority from a checkout path or tray process environment.
+    pub fn validate_controller_identity(&self, identity: &Identity) -> Result<(), &'static str> {
+        if self.origin != RuntimeOrigin::Installed {
+            return Err("resident_controller_requires_installed_origin");
+        }
+        if self.stable_current.is_none() || self.version_root.is_none() || self.state_root.is_none() {
+            return Err("resident_controller_layout_invalid");
+        }
+        if identity.installation_id.trim().is_empty()
+            || identity.cortex_store_id.trim().is_empty()
+            || identity.release_generation.trim().is_empty()
+            || identity.startup_generation == 0
+        {
+            return Err("resident_controller_identity_invalid");
+        }
+        Ok(())
     }
 }
 
@@ -245,7 +263,33 @@ fn resolve_development() -> Result<Workspace, &'static str> {
     from_root(root)
 }
 
+/// Outcome of resolving the daemon's bearer credential. `workspace.rs` is a
+/// resolver only: it reads the credential `serve.rs` publishes and never
+/// writes, generates, or replaces it. `serve.rs` (owned by a sibling lane)
+/// is the sole protected 64-hex credential authority and migration lock —
+/// this module reports what it observed so a caller can wait on or trigger
+/// that authority, never so it can act as a second publisher.
+///
+/// Resolve the workspace daemon bearer credential.
+///
+/// This is a read-only resolver: it never generates, writes, or replaces the
+/// credential file. `serve.rs` is the sole protected credential authority and
+/// migration lock. A missing file, a noncanonical shape, or an
+/// environment-installed override (`MEMBRANE_API_TOKEN`/`MEMBRANE_API_TOKEN_FILE`)
+/// each return a distinct typed outcome so the caller can wait for or trigger
+/// that authority's migration rather than the resolver silently accepting or
+/// fabricating a value.
 pub fn api_token(root: &Path) -> Result<String, &'static str> {
+    // The resolver only ever trusts the canonical published file for this
+    // workspace. An environment-installed credential is `serve.rs`'s
+    // migration concern, not something this resolver adopts directly —
+    // surfacing a typed outcome here keeps the two paths from silently
+    // diverging on which credential is authoritative.
+    if std::env::var_os("MEMBRANE_API_TOKEN").is_some()
+        || std::env::var_os("MEMBRANE_API_TOKEN_FILE").is_some()
+    {
+        return Err("workspace_api_token_env_migration_required");
+    }
     let path = root.join("tools/.cache/memory/api-token");
     match std::fs::symlink_metadata(&path) {
         Ok(metadata) => {
@@ -258,16 +302,21 @@ pub fn api_token(root: &Path) -> Result<String, &'static str> {
             if is_canonical_token(token) {
                 return Ok(token.to_owned());
             }
-            if token.is_empty() || token.contains('\r') || token.contains('\n') {
-                return Err("workspace_api_token_invalid");
-            }
+            // Present but not the canonical 64-hex shape: this resolver never
+            // rewrites or replaces the file (that is `serve.rs`'s exclusive
+            // authority/migration lock). Report a typed migration outcome so
+            // the caller waits for or triggers that authority's
+            // fingerprint/recheck/compare-replace cycle instead.
+            Err("workspace_api_token_migration_required")
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(_) => return Err("workspace_api_token_unreadable"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Bounded startup cleanup territory: nothing has been published
+            // yet. The resolver never fabricates a credential to fill the
+            // gap; the caller retries after the authority publishes one.
+            Err("workspace_api_token_pending_publication")
+        }
+        Err(_) => Err("workspace_api_token_unreadable"),
     }
-    let token = generate_canonical_token()?;
-    publish_token(&path, &token)?;
-    Ok(token)
 }
 
 fn is_canonical_token(token: &str) -> bool {
@@ -275,70 +324,6 @@ fn is_canonical_token(token: &str) -> bool {
         && token
             .bytes()
             .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-}
-
-fn generate_canonical_token() -> Result<String, &'static str> {
-    let mut bytes = [0_u8; 32];
-    getrandom::fill(&mut bytes).map_err(|_| "workspace_api_token_generation_failed")?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
-fn publish_token(path: &Path, token: &str) -> Result<(), &'static str> {
-    let parent = path.parent().ok_or("workspace_api_token_write_failed")?;
-    std::fs::create_dir_all(parent).map_err(|_| "workspace_api_token_write_failed")?;
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("api-token");
-    let temp = path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()));
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true);
-    let mut file = options
-        .open(&temp)
-        .map_err(|_| "workspace_api_token_write_failed")?;
-    let write_result = file
-        .write_all(token.as_bytes())
-        .and_then(|_| file.write_all(b"\n"))
-        .and_then(|_| file.sync_all());
-    drop(file);
-    if write_result.is_err() {
-        let _ = std::fs::remove_file(&temp);
-        return Err("workspace_api_token_write_failed");
-    }
-    let replace_result = replace_file(&temp, path);
-    if replace_result.is_err() {
-        let _ = std::fs::remove_file(&temp);
-    }
-    replace_result
-}
-
-#[cfg(windows)]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), &'static str> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Storage::FileSystem::{
-        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    };
-    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-    let destination: Vec<u16> = destination
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
-    let result = unsafe {
-        MoveFileExW(
-            source.as_ptr(),
-            destination.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    (result != 0)
-        .then_some(())
-        .ok_or("workspace_api_token_write_failed")
-}
-
-#[cfg(not(windows))]
-fn replace_file(source: &Path, destination: &Path) -> Result<(), &'static str> {
-    std::fs::rename(source, destination).map_err(|_| "workspace_api_token_write_failed")
 }
 
 #[cfg(test)]

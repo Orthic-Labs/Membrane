@@ -1,0 +1,3452 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "audit/remediation/native-closure-resume.prompt.md",
+  "promptDigest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Disjoint edit-only lanes close installed SDK/lifecycle, three native Blueprint consumer surfaces, package cleanup & zero-interpreter qualification while Blueprint and hook owners retain active bytes."
+  },
+  "objective": "Close all remaining Membrane-owned native/canon/installed work outside already-active Blueprint-core, hook, Adapt and PPL lanes: publish usable installed controller transport SDK, cut every Blueprint consumer to native API, remove packaged Node assumptions, and enforce zero Blueprint Node/Python production closure.",
+  "authority": [
+    "AGENTS.md",
+    "audit/remediation/native-closure-resume.prompt.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "docs/architecture/execution-lifecycle-boundary.md",
+    "docs/architecture/integrations/coderight.md",
+    "audit/remediation/reconciliation/native-seam-inventory.md",
+    "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md",
+    "audit/remediation/reconciliation/packaging-cleanup-inventory.md"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "activeLaneReservations": [
+    {
+      "owner": "blueprint-native-cutover",
+      "paths": [
+        "engine/crates/membrane-blueprint/**",
+        "engine/Cargo.lock"
+      ]
+    },
+    {
+      "owner": "hook-native-cutover",
+      "paths": [
+        "engine/crates/membrane-protocol/src/hook.rs",
+        "engine/crates/membrane-protocol/src/lib.rs",
+        "engine/crates/membrane-runtime/src/hook.rs",
+        "engine/crates/membrane-runtime/src/hook_diagnostics.rs",
+        "engine/crates/membrane-runtime/src/hook_memory.rs",
+        "engine/crates/membrane-runtime/src/lib.rs",
+        "engine/crates/membrane/src/activation.rs",
+        "engine/crates/membrane/src/dispatch.rs",
+        "engine/crates/membrane/src/modes.rs",
+        "engine/crates/membrane/tests/activation_hub_off.rs",
+        ".claude-plugin/plugin.json",
+        "tests/onboarding/getting-started-consistency.test.mjs",
+        "apps/membrane-hub/scripts/package-portable-windows.mjs",
+        "apps/membrane-hub/scripts/release-build-candidate-windows.mjs",
+        "apps/membrane-hub/scripts/release-check-candidate-windows.mjs",
+        "apps/membrane-hub/tests/candidate-handoff.test.mjs",
+        "apps/membrane-hub/tests/portable-windows.test.mjs"
+      ]
+    },
+    {
+      "owner": "pull-semantic-design",
+      "paths": [
+        "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "engine/crates/membrane-federation/src/corrective.rs",
+        "engine/crates/membrane-protocol/src/operations.rs",
+        "docs/canon/pull.md",
+        "docs/architecture/membrane.md"
+      ]
+    }
+  ],
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-client/Cargo.toml",
+      "engine/crates/membrane-client/src/lib.rs",
+      "engine/crates/membrane-client/src/binding.rs",
+      "engine/crates/membrane-client/src/explicit.rs",
+      "engine/crates/membrane-client/src/memory_backend.rs",
+      "engine/crates/membrane-client/src/provisioning.rs",
+      "engine/crates/membrane-client/src/residency.rs",
+      "engine/crates/membrane-client/src/installed_transport.rs",
+      "engine/crates/membrane-client/tests/explicit.rs",
+      "engine/crates/membrane-client/tests/memory_backend.rs",
+      "engine/crates/membrane-client/tests/installed_transport.rs",
+      "engine/crates/membrane-client/tests/installed_lifecycle.rs",
+      "engine/crates/membrane-runtime/Cargo.toml",
+      "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
+      "engine/crates/membrane-runtime/src/cli.rs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-runtime/src/sources_explorer.rs",
+      "engine/crates/membrane-runtime/src/freshness.rs",
+      "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
+      "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
+      "engine/crates/membrane-runtime/tests/native_authorization.rs",
+      "engine/crates/membrane-federation/src/blueprint_client.rs",
+      "engine/crates/membrane-federation/src/providers/blueprint.rs",
+      "engine/crates/membrane-federation/tests/provider_blueprint.rs",
+      "engine/crates/membrane-runtime/src/residency.rs",
+      "engine/crates/membrane-runtime/tests/residency_holders.rs",
+      "apps/membrane-hub/src-tauri/Cargo.toml",
+      "apps/membrane-hub/src-tauri/src/supervisor.rs",
+      "apps/membrane-hub/scripts/stage-runtime.mjs",
+      "apps/membrane-hub/scripts/runtime-inventory.mjs",
+      "apps/membrane-hub/src-tauri/tauri.conf.json",
+      "apps/membrane-hub/src-tauri/tauri.windows.conf.json",
+      "apps/membrane-hub/src-tauri/windows/installer.nsi",
+      "apps/membrane-tray-windows/Cargo.toml",
+      "apps/membrane-tray-windows/src/main.rs",
+      "apps/membrane-tray-windows/src/supervisor.rs",
+      "apps/membrane-tray-windows/src/workspace.rs",
+      "blueprint/package.json",
+      "blueprint/pnpm-lock.yaml",
+      "blueprint/watchman/supervisor.mjs",
+      "blueprint/watchman/repo-actor.mjs",
+      "blueprint/watchman/reconcile.mjs",
+      "blueprint/watchman/adapter.mjs",
+      "blueprint/src/sources/_shared.mjs",
+      "blueprint/src/sources/task-anchor.mjs",
+      "blueprint/scripts/benchmark-storage.mjs",
+      "blueprint/src/sources/rules-documents.mjs",
+      "blueprint/src/sources/git-metadata.mjs",
+      "blueprint/src/sources/live-overlay.mjs",
+      "blueprint/scripts/benchmark-retrieval.mjs",
+      "blueprint/src/sources/index.mjs",
+      "blueprint/scripts/benchmark-parsers.mjs",
+      "blueprint/src/sources/freshness-observation.mjs",
+      "blueprint/src/sources/graph-resolve.mjs",
+      "blueprint/scripts/blueprint-install.mjs",
+      "blueprint/src/sources/dirty-files.mjs",
+      "blueprint/scripts/benchmark-contract.mjs",
+      "blueprint/scripts/blueprint-candidates.mjs",
+      "blueprint/scripts/benchmark-canonical-core.mjs",
+      "blueprint/scripts/blueprint-mcp.mjs",
+      "blueprint/scripts/blueprint-watch.mjs",
+      "blueprint/scripts/blueprint-one-shot.mjs",
+      "blueprint/scripts/test-random.mjs",
+      "blueprint/scripts/test-package.mjs",
+      "blueprint/scripts/run-soak.mjs",
+      "blueprint/src/mcp/resources.mjs",
+      "blueprint/src/mcp/prompts.mjs",
+      "blueprint/src/mcp/effects.mjs",
+      "blueprint/src/mcp/compatibility.mjs",
+      "blueprint/scripts/fault-inject.mjs",
+      "blueprint/scripts/cli/render.mjs",
+      "blueprint/scripts/cli/commands.mjs",
+      "blueprint/scripts/cli/args.mjs",
+      "blueprint/scripts/generate-benchmark-fixture.mjs",
+      "blueprint/src/sdk/types.d.ts",
+      "blueprint/src/sdk/providers.mjs",
+      "blueprint/src/sdk/index.mjs",
+      "blueprint/src/sdk/embedded.mjs",
+      "blueprint/src/sdk/client.mjs",
+      "blueprint/scripts/ci/check-seam-conformance.mjs",
+      "blueprint/scripts/ci/check-network-boundary.mjs",
+      "blueprint/scripts/ci/check-generated.mjs",
+      "blueprint/scripts/blueprint.cmd",
+      "blueprint/scripts/blueprint.mjs",
+      "blueprint/src/graph/ignored-prefixes.mjs",
+      "blueprint/src/graph/git-source-observation.mjs",
+      "blueprint/src/graph/generic-ast-walker.mjs",
+      "blueprint/src/graph/generation-identity.mjs",
+      "blueprint/src/graph/freshness-receipt.mjs",
+      "blueprint/src/graph/framework-intelligence.mjs",
+      "blueprint/src/graph/evidence-authority.mjs",
+      "blueprint/src/graph/entry-points.mjs",
+      "blueprint/src/graph/doc-truth-projection.mjs",
+      "blueprint/src/graph/dependency-dag.mjs",
+      "blueprint/src/graph/delta-store.mjs",
+      "blueprint/src/graph/conventions.mjs",
+      "blueprint/src/graph/contract-registry.mjs",
+      "blueprint/src/graph/conformance-verifier.mjs",
+      "blueprint/src/graph/confidence-tiers.mjs",
+      "blueprint/src/graph/confidence-migration.mjs",
+      "blueprint/src/graph/bootstrap.mjs",
+      "blueprint/src/graph/bm25-code-index.mjs",
+      "blueprint/src/graph/barrier.mjs",
+      "blueprint/src/graph/atomic-store-adoption.mjs",
+      "blueprint/src/graph/ast-structural-search.mjs",
+      "blueprint/src/graph/architecture-model.mjs",
+      "blueprint/scripts/grammars/verify.mjs",
+      "blueprint/scripts/grammars/inventory.mjs",
+      "blueprint/src/graph/watchman.mjs",
+      "blueprint/src/graph/treesitter-provider.mjs",
+      "blueprint/src/graph/traverse-store.mjs",
+      "blueprint/src/graph/traversal-policy.mjs",
+      "blueprint/src/graph/traversal-cursor.mjs",
+      "blueprint/src/graph/test-recommendation.mjs",
+      "blueprint/src/graph/symbol-authority-order.mjs",
+      "blueprint/src/graph/structural-intelligence.mjs",
+      "blueprint/src/graph/store-sqlite.mjs",
+      "blueprint/src/graph/store-lease.mjs",
+      "blueprint/src/graph/static-provider.mjs",
+      "blueprint/src/graph/stable-read.mjs",
+      "blueprint/src/graph/snapshots.mjs",
+      "blueprint/src/graph/signature-projection.mjs",
+      "blueprint/src/graph/seed-resolver.mjs",
+      "blueprint/src/graph/scip-provider.mjs",
+      "blueprint/src/graph/schema-extractors.mjs",
+      "blueprint/src/providers/source-disposition.mjs",
+      "blueprint/src/providers/semantic-orchestrator.mjs",
+      "blueprint/src/service/uninstall.mjs",
+      "blueprint/src/service/status.mjs",
+      "blueprint/src/service/server.mjs",
+      "blueprint/src/service/readiness.mjs",
+      "blueprint/src/service/protocol.mjs",
+      "blueprint/src/service/paths.mjs",
+      "blueprint/src/service/install.mjs",
+      "blueprint/src/service/client.mjs",
+      "blueprint/src/service/build-singleflight.mjs",
+      "blueprint/src/lib/languages/custom-config.mjs",
+      "blueprint/src/graph/resolution/index.mjs",
+      "blueprint/src/graph/relationship-kinds.mjs",
+      "blueprint/src/graph/recall-circuit.mjs",
+      "blueprint/src/graph/reanchor.mjs",
+      "blueprint/src/graph/publication-policy.mjs",
+      "blueprint/src/graph/provider-identity.mjs",
+      "blueprint/src/graph/provenance.mjs",
+      "blueprint/src/graph/process-projection.mjs",
+      "blueprint/src/graph/precision-tiers.mjs",
+      "blueprint/src/graph/portable-manifest.mjs",
+      "blueprint/src/graph/portable-identity.mjs",
+      "blueprint/src/graph/path-order.mjs",
+      "blueprint/src/graph/parse-cache.mjs",
+      "blueprint/src/graph/orientation.mjs",
+      "blueprint/src/graph/neighborhood.mjs",
+      "blueprint/src/graph/module-surface.mjs",
+      "blueprint/src/graph/merkle-ledger.mjs",
+      "blueprint/src/graph/liveness.mjs",
+      "blueprint/src/lib/update/trusted-update-keys.json",
+      "blueprint/src/lib/update/rollback.mjs",
+      "blueprint/src/lib/update/manifest.mjs",
+      "blueprint/src/lib/update/channel.mjs",
+      "blueprint/src/lib/update/apply.mjs",
+      "blueprint/src/lib/token-budget.mjs",
+      "blueprint/src/lib/telemetry.mjs",
+      "blueprint/src/lib/snapshot.mjs",
+      "blueprint/src/lib/session-token.mjs",
+      "blueprint/src/lib/sarif.mjs",
+      "blueprint/src/lib/runtime-capabilities.mjs",
+      "blueprint/src/lib/run-ledger.mjs",
+      "blueprint/scripts/release/verify-release.mjs",
+      "blueprint/scripts/release/verify-native-receipt.mjs",
+      "blueprint/scripts/release/verify-hub-installer.mjs",
+      "blueprint/scripts/release/stage-runtime.mjs",
+      "blueprint/scripts/release/sign-update-manifest.mjs",
+      "blueprint/scripts/release/sbom.mjs",
+      "blueprint/scripts/release/npm-cli.mjs",
+      "blueprint/scripts/release/mcp-client-smoke.mjs",
+      "blueprint/src/providers/schemas/sql.mjs",
+      "blueprint/src/graph/analytics/index.mjs",
+      "blueprint/src/graph/analytics/change-impact.mjs",
+      "blueprint/src/lib/comment-claims.mjs",
+      "blueprint/src/providers/iac/terraform.mjs",
+      "blueprint/src/lib/init/state-integrity.mjs",
+      "blueprint/src/providers/ranking/types.mjs",
+      "blueprint/src/lib/init/plan.mjs",
+      "blueprint/src/lib/init/host-configs.mjs",
+      "blueprint/src/lib/init/detect-hosts.mjs",
+      "blueprint/src/lib/init/apply.mjs",
+      "blueprint/src/providers/plugin-loader.mjs",
+      "blueprint/src/lib/admission.mjs",
+      "blueprint/src/lib/incremental-phase2.mjs",
+      "blueprint/src/lib/evidence-pack.mjs",
+      "blueprint/src/lib/http-server.mjs",
+      "blueprint/src/lib/application/service.mjs",
+      "blueprint/src/lib/application/root-registry.mjs",
+      "blueprint/src/lib/application/normalize.mjs",
+      "blueprint/src/lib/application/errors.mjs",
+      "blueprint/src/lib/hooks/blueprint-graph-index.mjs",
+      "blueprint/src/lib/generated-docs.mjs",
+      "blueprint/src/lib/contracts/validate.mjs",
+      "blueprint/src/lib/contracts/catalog.mjs",
+      "blueprint/src/graph/language-tables/lua.mjs",
+      "blueprint/src/graph/language-tables/kotlin.mjs",
+      "blueprint/src/graph/language-tables/json.mjs",
+      "blueprint/src/graph/language-tables/javascript.mjs",
+      "blueprint/src/graph/language-tables/java.mjs",
+      "blueprint/src/graph/language-tables/html.mjs",
+      "blueprint/src/graph/language-tables/go.mjs",
+      "blueprint/src/graph/language-tables/embedded_template.mjs",
+      "blueprint/src/graph/language-tables/elm.mjs",
+      "blueprint/src/graph/language-tables/elixir.mjs",
+      "blueprint/src/graph/language-tables/elisp.mjs",
+      "blueprint/src/graph/language-tables/dart.mjs",
+      "blueprint/src/graph/language-tables/c_sharp.mjs",
+      "blueprint/src/graph/language-tables/css.mjs",
+      "blueprint/src/graph/language-tables/cpp.mjs",
+      "blueprint/src/graph/language-tables/c.mjs",
+      "blueprint/src/graph/language-tables/bash.mjs",
+      "blueprint/src/graph/language-table.mjs",
+      "blueprint/src/graph/language-registry.mjs",
+      "blueprint/src/graph/language-extractors.mjs",
+      "blueprint/src/lib/explorer/index.mjs",
+      "blueprint/src/graph/language-tables/solidity.mjs",
+      "blueprint/src/graph/language-tables/scala.mjs",
+      "blueprint/src/graph/language-tables/rust.mjs",
+      "blueprint/src/graph/language-tables/ruby.mjs",
+      "blueprint/src/graph/language-tables/rescript.mjs",
+      "blueprint/src/graph/language-tables/ql.mjs",
+      "blueprint/src/graph/language-tables/python.mjs",
+      "blueprint/src/graph/language-tables/php.mjs",
+      "blueprint/src/graph/language-tables/ocaml.mjs",
+      "blueprint/src/graph/language-tables/objc.mjs",
+      "blueprint/src/graph/language-tables/tsx.mjs",
+      "blueprint/src/graph/language-tables/toml.mjs",
+      "blueprint/src/graph/language-tables/tlaplus.mjs",
+      "blueprint/src/graph/language-tables/systemrdl.mjs",
+      "blueprint/src/graph/language-tables/swift.mjs",
+      "blueprint/src/graph/language-tables/yaml.mjs",
+      "blueprint/src/graph/language-tables/vue.mjs",
+      "blueprint/src/graph/language-tables/typescript.mjs",
+      "blueprint/src/graph/language-tables/zig.mjs",
+      "blueprint/src/graph/language-tables/_factory.mjs",
+      "blueprint/src/lib/path-confinement.mjs",
+      "blueprint/src/lib/orientation-evidence.mjs",
+      "blueprint/src/lib/explorer/static.mjs",
+      "blueprint/src/lib/explorer/layout.mjs",
+      "blueprint/src/lib/receipt-store.mjs",
+      "blueprint/src/lib/phase2-completion.mjs",
+      "blueprint/src/lib/redaction.mjs",
+      "blueprint/src/lib/rules/baseline.mjs",
+      "blueprint/src/providers/build.mjs",
+      "blueprint/scripts/release/macos/sign-and-package.sh",
+      "blueprint/scripts/release/generate-update-keys.mjs",
+      "blueprint/scripts/release/clean-host-smoke.mjs",
+      "blueprint/scripts/release/checksums.mjs",
+      "blueprint/scripts/release/check-release.mjs",
+      "blueprint/scripts/release/build-runtime-bundle.mjs",
+      "blueprint/scripts/release/build-candidate.mjs",
+      "blueprint/src/lib/federation/index.mjs",
+      "blueprint/src/lib/rules/exceptions.mjs",
+      "blueprint/src/lib/rules/evaluate.mjs",
+      "blueprint/src/lib/rules/parser.mjs",
+      "blueprint/src/providers/index.mjs",
+      "blueprint/src/providers/frameworks/index.mjs",
+      "blueprint/src/providers/manifests/scip-python.json",
+      "blueprint/src/providers/modules/javascript.mjs",
+      "blueprint/src/providers/bridges/seams.mjs",
+      "blueprint/src/providers/modules/python-resolver.mjs",
+      "blueprint/src/lib/operations/doctor.mjs",
+      "blueprint/src/lib/operations/repair.mjs",
+      "blueprint/src/lib/operations/support-bundle.mjs",
+      "blueprint/src/lib/findings/specifier.mjs",
+      "blueprint/src/lib/findings/service.mjs",
+      "blueprint/src/lib/findings/registry.mjs",
+      "blueprint/src/lib/findings/detect.mjs",
+      "blueprint/src/providers/compilers/scip-normalize.mjs",
+      "blueprint/src/providers/compilers/python-scip.mjs",
+      "blueprint/src/providers/frameworks/http/index.mjs",
+      "blueprint/release/launchers/blueprint",
+      "blueprint/release/launchers/blueprint.cmd",
+      "blueprint/release/launchers/blueprint-mcp",
+      "blueprint/release/launchers/blueprint-mcp.cmd",
+      "blueprint/release/linux/blueprint-archive.json",
+      "blueprint/release/macos/distribution.xml",
+      "blueprint/release/macos/postinstall",
+      "blueprint/release/macos/uninstall.sh",
+      "blueprint/release/README.txt",
+      "blueprint/release/catalog.template.json",
+      "blueprint/release/compatibility.template.json",
+      "blueprint/release/update-manifest.template.json",
+      "scripts/release/evidence/sbom.mjs",
+      "scripts/qualification/issue-native-only-seal.mjs",
+      "scripts/ci/check-runtime-language-manifest.mjs",
+      "scripts/ci/check-invocation-graph.mjs",
+      "scripts/ci/check-lifecycle-conformance.mjs",
+      "migration/native-rust/runtime-policy.json"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {
+        "path": "engine/crates/membrane-client/Cargo.toml",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "concrete transport dependencies"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/lib.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "public export"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/installed_transport.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "add",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "usable resident transport"
+      },
+      {
+        "path": "engine/crates/membrane-client/tests/installed_transport.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "add-test",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "resident transport acceptance"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/binding.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "discover/adopt/provision/update/refuse state machine"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/explicit.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "installed transport constructor and mutation replay fence"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/memory_backend.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "installed transport constructor"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/provisioning.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "canonical installer/update orchestration"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/residency.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "holder client contract"
+      },
+      {
+        "path": "engine/crates/membrane-client/tests/explicit.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit-test",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "public installed explicit path"
+      },
+      {
+        "path": "engine/crates/membrane-client/tests/memory_backend.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "edit-test",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "public installed memory path"
+      },
+      {
+        "path": "engine/crates/membrane-client/tests/installed_lifecycle.rs",
+        "owner": "installed-controller-sdk",
+        "operation": "add-test",
+        "lane": "installed-controller-sdk",
+        "finalCheck": "discovery/provision/update/refusal/rediscovery"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/Cargo.toml",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native dependency"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "replace-node-launch",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "Hub-off one-shot"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/cli.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native CLI"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native MCP"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/sources_explorer.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native Explorer"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/freshness.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native freshness"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native Pull federation"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native findings"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/native_authorization.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit-test",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "authorization"
+      },
+      {
+        "path": "engine/crates/membrane-federation/src/blueprint_client.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "native transport"
+      },
+      {
+        "path": "engine/crates/membrane-federation/src/providers/blueprint.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "provider semantics"
+      },
+      {
+        "path": "engine/crates/membrane-federation/tests/provider_blueprint.rs",
+        "owner": "native-consumer-cutover",
+        "operation": "edit-test",
+        "lane": "native-consumer-cutover",
+        "finalCheck": "provider parity"
+      },
+      {
+        "path": "apps/membrane-hub/scripts/stage-runtime.mjs",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "native staging"
+      },
+      {
+        "path": "apps/membrane-hub/scripts/runtime-inventory.mjs",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "no Node tree"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/tauri.conf.json",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "native resources"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/tauri.windows.conf.json",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "native sidecars"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/windows/installer.nsi",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "stable-current install"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/main.rs",
+        "owner": "hub-native-package",
+        "operation": "edit",
+        "lane": "hub-native-package",
+        "finalCheck": "shared residency"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/residency.rs",
+        "owner": "resident-holder-lifecycle",
+        "operation": "add",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "authenticated Hub/CodeRight holder leases and final-holder drain"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/residency_holders.rs",
+        "owner": "resident-holder-lifecycle",
+        "operation": "add-test",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "neither/Hub/CodeRight/both holder matrix"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/Cargo.toml",
+        "owner": "resident-holder-lifecycle",
+        "operation": "edit",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "holder client dependency"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/src/supervisor.rs",
+        "owner": "resident-holder-lifecycle",
+        "operation": "edit",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "Hub lease acquire/release"
+      },
+      {
+        "path": "apps/membrane-tray-windows/Cargo.toml",
+        "owner": "resident-holder-lifecycle",
+        "operation": "edit",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "holder client dependency"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/supervisor.rs",
+        "owner": "resident-holder-lifecycle",
+        "operation": "edit",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "peer-preserving shared controller"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/workspace.rs",
+        "owner": "resident-holder-lifecycle",
+        "operation": "edit",
+        "lane": "resident-holder-lifecycle",
+        "finalCheck": "stable-current holder identity"
+      },
+      {
+        "path": "blueprint/package.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "rewrite-or-delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no backend bins or Node runtime"
+      },
+      {
+        "path": "blueprint/pnpm-lock.yaml",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no shipped Node dependency graph"
+      },
+      {
+        "path": "blueprint/watchman/supervisor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/watchman/repo-actor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/watchman/adapter.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/watchman/reconcile.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/test-random.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/test-package.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/run-soak.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/_shared.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/task-anchor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/rules-documents.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/live-overlay.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/graph-resolve.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/git-metadata.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/freshness-observation.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sources/dirty-files.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint-one-shot.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint-mcp.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint-install.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint-candidates.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/benchmark-storage.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/benchmark-retrieval.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/benchmark-parsers.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/benchmark-contract.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/benchmark-canonical-core.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint.cmd",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint-watch.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/blueprint.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/fault-inject.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/check-release.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/build-candidate.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/generate-update-keys.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/clean-host-smoke.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/checksums.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/build-runtime-bundle.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/mcp-client-smoke.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/npm-cli.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/sbom.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/uninstall.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/status.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/server.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/readiness.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/protocol.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/paths.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/install.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/client.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/service/build-singleflight.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/stage-runtime.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/sign-update-manifest.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/verify-hub-installer.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/verify-release.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/verify-native-receipt.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/generate-benchmark-fixture.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/release/macos/sign-and-package.sh",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/grammars/inventory.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/grammars/verify.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/generated-docs.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/ci/check-seam-conformance.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/findings/specifier.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/ci/check-network-boundary.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/findings/service.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/findings/registry.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/findings/detect.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/ci/check-generated.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/cli/render.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/cli/commands.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/scripts/cli/args.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/source-disposition.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/semantic-orchestrator.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/run-ledger.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sdk/types.d.ts",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sdk/providers.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sdk/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sdk/embedded.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/sdk/client.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/federation/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/path-confinement.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/orientation-evidence.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/languages/custom-config.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/mcp/resources.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/analytics/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/mcp/prompts.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/analytics/change-impact.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/mcp/effects.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/mcp/compatibility.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/build.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/confidence-tiers.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/confidence-migration.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/bootstrap.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/bm25-code-index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/barrier.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/atomic-store-adoption.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/ast-structural-search.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/architecture-model.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/delta-store.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/conventions.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/contract-registry.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/conformance-verifier.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/doc-truth-projection.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/dependency-dag.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/entry-points.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/explorer/static.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/explorer/layout.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/explorer/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/evidence-pack.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/compilers/scip-normalize.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/compilers/python-scip.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-table.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-registry.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-extractors.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/ignored-prefixes.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/git-source-observation.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/generic-ast-walker.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/generation-identity.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/freshness-receipt.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/framework-intelligence.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/evidence-authority.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/neighborhood.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/module-surface.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/merkle-ledger.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/liveness.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/rules/parser.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/rules/exceptions.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/rules/evaluate.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/rules/baseline.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/redaction.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/receipt-store.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/phase2-completion.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/session-token.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/sarif.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/runtime-capabilities.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/telemetry.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/snapshot.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/token-budget.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/iac/terraform.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/contracts/validate.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/contracts/catalog.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/comment-claims.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/portable-identity.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/path-order.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/parse-cache.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/orientation.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/precision-tiers.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/portable-manifest.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/process-projection.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/provenance.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/operations/support-bundle.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/operations/repair.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/operations/doctor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/plugin-loader.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/admission.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/reanchor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/publication-policy.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/provider-identity.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/relationship-kinds.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/recall-circuit.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/init/state-integrity.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/init/plan.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/init/host-configs.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/init/detect-hosts.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/init/apply.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/incremental-phase2.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/http-server.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/bridges/seams.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/schemas/sql.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/seed-resolver.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/scip-provider.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/schema-extractors.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/snapshots.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/signature-projection.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/stable-read.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/static-provider.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/store-lease.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/resolution/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/manifests/scip-python.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/application/errors.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/bash.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/application/normalize.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/c.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/traversal-cursor.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/test-recommendation.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/structural-intelligence.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/symbol-authority-order.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/store-sqlite.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/treesitter-provider.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/traverse-store.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/watchman.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/traversal-policy.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/modules/javascript.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/modules/python-resolver.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/application/root-registry.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/application/service.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/css.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/cpp.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/c_sharp.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/dart.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/update/apply.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/elisp.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/frameworks/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/update/trusted-update-keys.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/update/rollback.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/update/manifest.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/update/channel.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/javascript.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/java.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/html.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/go.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/embedded_template.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/elm.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/elixir.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/objc.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/lua.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/kotlin.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/json.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/php.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/ocaml.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/python.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/lib/hooks/blueprint-graph-index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/ql.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/ranking/types.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/scala.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/rust.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/ruby.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/rescript.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/systemrdl.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/swift.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/solidity.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/tlaplus.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/toml.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/_factory.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/zig.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/yaml.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/vue.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/typescript.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/graph/language-tables/tsx.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/src/providers/frameworks/http/index.mjs",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-after-parity",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no packaged Blueprint Node backend"
+      },
+      {
+        "path": "blueprint/release/launchers/blueprint",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no shell launcher"
+      },
+      {
+        "path": "blueprint/release/launchers/blueprint.cmd",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no cmd launcher"
+      },
+      {
+        "path": "blueprint/release/launchers/blueprint-mcp",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no MCP shell launcher"
+      },
+      {
+        "path": "blueprint/release/launchers/blueprint-mcp.cmd",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "no MCP cmd launcher"
+      },
+      {
+        "path": "blueprint/release/linux/blueprint-archive.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-or-rewrite",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native-only archive"
+      },
+      {
+        "path": "blueprint/release/macos/distribution.xml",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-or-rewrite",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native-only distribution"
+      },
+      {
+        "path": "blueprint/release/macos/postinstall",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-or-rewrite",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native-only lifecycle"
+      },
+      {
+        "path": "blueprint/release/macos/uninstall.sh",
+        "owner": "blueprint-node-cleanup",
+        "operation": "delete-or-rewrite",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native-only lifecycle"
+      },
+      {
+        "path": "blueprint/release/README.txt",
+        "owner": "blueprint-node-cleanup",
+        "operation": "edit-or-delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native product truth"
+      },
+      {
+        "path": "blueprint/release/catalog.template.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "edit-or-delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native catalog"
+      },
+      {
+        "path": "blueprint/release/compatibility.template.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "edit-or-delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native compatibility"
+      },
+      {
+        "path": "blueprint/release/update-manifest.template.json",
+        "owner": "blueprint-node-cleanup",
+        "operation": "edit-or-delete",
+        "lane": "blueprint-node-cleanup",
+        "finalCheck": "native update manifest"
+      },
+      {
+        "path": "scripts/release/evidence/sbom.mjs",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "native SBOM"
+      },
+      {
+        "path": "scripts/qualification/issue-native-only-seal.mjs",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "zero bounded rows"
+      },
+      {
+        "path": "scripts/ci/check-runtime-language-manifest.mjs",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "zero interpreter rows"
+      },
+      {
+        "path": "scripts/ci/check-invocation-graph.mjs",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "no Node invocation"
+      },
+      {
+        "path": "scripts/ci/check-lifecycle-conformance.mjs",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "installed lifecycle"
+      },
+      {
+        "path": "migration/native-rust/runtime-policy.json",
+        "owner": "zero-node-qualification",
+        "operation": "edit",
+        "lane": "zero-node-qualification",
+        "finalCheck": "no Blueprint exception"
+      }
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "Existing installed loopback service, Blueprint JS consumers, Hub Blueprint staging & native-only gates",
+    "sourceInventory": [
+      "engine/crates/membrane-runtime/src/serve.rs",
+      "blueprint/src",
+      "apps/membrane-hub/scripts",
+      "migration/native-rust",
+      "scripts/qualification",
+      "scripts/ci"
+    ],
+    "directPortFirst": true,
+    "targetLanguage": "Rust plus declarative/build tooling",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": [
+      "cargo",
+      "tests",
+      "builds",
+      "generators",
+      "installs",
+      "commits",
+      "pushes",
+      "merges",
+      "expensive-checks"
+    ],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return exact defect to lane owner"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": [
+        "installed-controller-sdk",
+        "resident-holder-lifecycle",
+        "hub-native-package",
+        "zero-node-qualification",
+        "native-consumer-runtime-entrypoints",
+        "native-consumer-runtime-freshness",
+        "native-consumer-federation",
+        "blueprint-node-cleanup"
+      ],
+      "completionChecks": [
+        "changed paths match disjoint allowlists",
+        "workers return content-addressed handoffs",
+        "integration owner runs named checks",
+        "Blueprint api.rs/model.rs/service.rs repaired interfaces have fresh Oracle PASS and frozen hashes",
+        "all Node consumer paths are removed",
+        "integration owner regenerates engine/Cargo.lock and runs focused runtime/federation checks",
+        "native graph/store/query/watcher parity passed",
+        "Node backend/launchers/archive/package paths removed or rewritten",
+        "integration owner regenerates and validates closure artifacts"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "installed-controller-sdk",
+      "dispatch": "A",
+      "task": "Publish one concrete installed-controller client path, not a parallel helper. Wire verified stable-current discovery into public InstalledExplicitClient and MemoryBackendClient constructors through CodeRight-governed child transport using exact installer-owned `current/membrane.exe cli explicit-call` JSON framing required by docs/architecture/integrations/coderight.md; never substitute loopback HTTP. Enforce absolute deadlines/cancellation/input-output bounds, stable-current/binding identity, child containment and content-free typed failures; classify failure before dispatch separately from uncertain post-dispatch failure; never replay mutations. Extend existing provisioning/residency state machines so only NotFound provisions, Incompatible uses canonical update/repair, all known offline/denied/corrupt/rotation/timeout states refuse, and every effect is followed by stable-current rediscovery with installation/Cortex-store identity continuity. Expose holder acquire/renew/release contract without launching Hub or reading development roots. Tests use deterministic child fixtures.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-client/Cargo.toml": "sha256:9bc91f02081652e3c219a98eb78173fdaacc401beb1c588757c872b2a69cc293",
+        "engine/crates/membrane-client/src/lib.rs": "sha256:fd485b2bb5b0d6048ac5915c1c1f87d88a5d6bd482fa550b4296280404bfdc43"
+      },
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-sdk",
+          "installed-loopback-transport",
+          "identity-fencing"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "installed-controller-sdk"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-client/Cargo.toml",
+        "engine/crates/membrane-client/src/lib.rs",
+        "engine/crates/membrane-client/src/binding.rs",
+        "engine/crates/membrane-client/src/explicit.rs",
+        "engine/crates/membrane-client/src/memory_backend.rs",
+        "engine/crates/membrane-client/src/provisioning.rs",
+        "engine/crates/membrane-client/src/residency.rs",
+        "engine/crates/membrane-client/src/installed_transport.rs",
+        "engine/crates/membrane-client/tests/explicit.rs",
+        "engine/crates/membrane-client/tests/memory_backend.rs",
+        "engine/crates/membrane-client/tests/installed_transport.rs",
+        "engine/crates/membrane-client/tests/installed_lifecycle.rs"
+      ],
+      "read": [
+        "engine/crates/membrane-client",
+        "engine/crates/membrane-protocol",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "docs/architecture/integrations/coderight.md",
+        "docs/architecture/execution-lifecycle-boundary.md",
+        "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-runtime",
+        "engine/crates/membrane-blueprint",
+        "apps",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner regenerates engine/Cargo.lock after dependency edits",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-client --test installed_transport --test installed_lifecycle --test explicit --test memory_backend",
+        "integration owner runs full membrane-client crate"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "native-consumer-runtime-entrypoints",
+      "dispatch": "A",
+      "task": "After repaired Blueprint api/model/service interfaces receive fresh Oracle PASS and hashes freeze, replace runtime one-shot, CLI, MCP and Explorer Blueprint Node adapters with direct native API calls. Preserve protocol v1, bounds, cancellation, absolute deadlines, repository/generation authorization, typed errors, Hub-off independence & no Node fallback.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-runtime/Cargo.toml": "sha256:39642bf1505bc3e6899a1b0167b2306d99d86cd3a47455993c461630a35603ab",
+        "engine/crates/membrane-runtime/src/blueprint_one_shot.rs": "sha256:eca0f2f049165c779a4dab304da13288065a8c6cc497784774a1c692d52d423a",
+        "engine/crates/membrane-runtime/src/cli.rs": "sha256:84a664740b8ca117b0bd7aaf5b8377fa0cf3f8a03496ba92b757f73fb556a450",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs": "sha256:56c7db363ca0ca5dd3e5b35f561749e4236ba0c3251c23befd37e283374ab966",
+        "engine/crates/membrane-runtime/src/sources_explorer.rs": "sha256:70c2157509b44d35ad8471aec19d16685e46635da3f16cb7af61aa00155bb3ab",
+        "engine/crates/membrane-runtime/src/freshness.rs": "sha256:c65d88b707e68e5bdeb869755dae6183889d651807c692b5d0a0448f80c674e6",
+        "engine/crates/membrane-runtime/src/pull/federation_sources.rs": "sha256:8a7bf17bec5022a8224a8d5275b16c1e3fafdabc3fdea5cc6a91476cf2fd7086",
+        "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs": "sha256:483841184d69b8327ec23d3a768d3c68686766e0646db2466247f1f026dd9a07",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs": "sha256:2766d7a63e82d8fe5546918d8eba049b1035eac561eb6d2c120ec4bd7bd0cdc8",
+        "engine/crates/membrane-federation/src/blueprint_client.rs": "sha256:4d3708299753d8be4348f8c441d6f576f25fba707bad014d53d6b4b7607decaf",
+        "engine/crates/membrane-federation/src/providers/blueprint.rs": "sha256:547e83c7d800bbeee01459c30ba3c7faf5d049c081c2921b3123df7608fec84a",
+        "engine/crates/membrane-federation/tests/provider_blueprint.rs": "sha256:0307af331913f2b4b8bf7a59024e33c01282293374fce4c5fdda775832ff1cd7"
+      },
+      "executionPrerequisites": [
+        "Blueprint cutover-A second BLOCK is resolved by user/coordinator-authorized repair; fresh Oracle PASS freezes api.rs/model.rs/service.rs hashes",
+        "integration owner regenerates engine/Cargo.lock after runtime dependency edit"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-native-api",
+          "runtime-cli",
+          "mcp",
+          "explorer"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "native-blueprint-runtime-entrypoints"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-runtime/Cargo.toml",
+        "engine/crates/membrane-runtime/src/blueprint_one_shot.rs",
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "engine/crates/membrane-runtime/src/sources_explorer.rs",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs"
+      ],
+      "read": [
+        "engine/crates/membrane-blueprint/src/api.rs",
+        "engine/crates/membrane-blueprint/src/model.rs",
+        "engine/crates/membrane-blueprint/src/service.rs",
+        "blueprint/src",
+        "audit/remediation/reconciliation/native-seam-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-blueprint",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "apps",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test native_authorization",
+        "integration owner runs focused membrane-runtime Blueprint/CLI/MCP/Explorer tests"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "native-consumer-runtime-freshness",
+      "dispatch": "A",
+      "task": "After repaired Blueprint interface freeze, replace freshness, Pull federation-source and Blueprint findings Node adapters with direct native API calls. Preserve per-dimension freshness, absolute deadlines/cancellation, typed stale/ambiguous/provider failures, repository/generation authorization & no Node fallback.",
+      "executionPrerequisites": [
+        "same frozen Blueprint interface hashes as runtime-entrypoints"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-native-api",
+          "freshness",
+          "pull-provider"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "native-blueprint-runtime-freshness"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/freshness.rs",
+        "engine/crates/membrane-runtime/src/pull/federation_sources.rs",
+        "engine/crates/membrane-runtime/src/providers/blueprint_findings.rs"
+      ],
+      "read": [
+        "engine/crates/membrane-blueprint/src/api.rs",
+        "engine/crates/membrane-blueprint/src/model.rs",
+        "engine/crates/membrane-blueprint/src/service.rs",
+        "blueprint/src",
+        "audit/remediation/reconciliation/native-seam-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-blueprint",
+        "engine/crates/membrane-runtime/Cargo.toml",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "apps",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test request_time_h8 --test pull_freshness"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "native-consumer-federation",
+      "dispatch": "A",
+      "task": "After repaired Blueprint interface freeze, replace federation Blueprint client/provider Node transport with direct native API calls while preserving provider semantics, bounds, cancellation, typed errors, authorization & no Node fallback.",
+      "executionPrerequisites": [
+        "same frozen Blueprint interface hashes as runtime-entrypoints"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-native-api",
+          "federation-provider"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "native-blueprint-federation"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-federation/src/blueprint_client.rs",
+        "engine/crates/membrane-federation/src/providers/blueprint.rs",
+        "engine/crates/membrane-federation/tests/provider_blueprint.rs"
+      ],
+      "read": [
+        "engine/crates/membrane-blueprint/src/api.rs",
+        "engine/crates/membrane-blueprint/src/model.rs",
+        "engine/crates/membrane-blueprint/src/service.rs",
+        "blueprint/src",
+        "audit/remediation/reconciliation/native-seam-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-blueprint",
+        "engine/crates/membrane-runtime",
+        "apps",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-federation --test provider_blueprint"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "hub-native-package",
+      "dispatch": "A",
+      "task": "Remove Blueprint Node runtime tree/stager/inventory and tray child-launch assumptions. Stage native sidecars/contracts only, reject runtime/blueprint and lib/node, preserve stable-current identity, Hub-off explicit operation & additive shared residency. Do not generate runtime artifacts or touch hook-owned portable/release scripts.",
+      "preexistingOwnedBytes": {
+        "apps/membrane-hub/scripts/stage-runtime.mjs": "sha256:d8b6ee196b7f4c5e5c7ed96f9372abcc2b8edbc171b33abc91e24ef399da89fa",
+        "apps/membrane-hub/scripts/runtime-inventory.mjs": "sha256:458a837cb24a11b5f76e052d6dfd9efaeaebc963a48dd5ef6678211a3201e51c",
+        "apps/membrane-hub/src-tauri/tauri.conf.json": "sha256:736b48b91876d205262fe5f8bfbde086aab9f83ae9f313e6bf986d6c87a173e3",
+        "apps/membrane-hub/src-tauri/tauri.windows.conf.json": "sha256:2e2115c5ba222fa5c7e4dcd9c5f20b95d54d4581244f76bbe08ea967d111e270",
+        "apps/membrane-hub/src-tauri/windows/installer.nsi": "sha256:55297161c7755db7f7dac25382bc3bdfc911ed5f9771296f9a237af0d6029081",
+        "apps/membrane-tray-windows/src/main.rs": "sha256:8d2702c1b47343653639b28ac48e0f0d9964fe0f6bda5bed8853a03cc8188d0a"
+      },
+      "executionPrerequisites": [
+        "native Blueprint service exists before integration checks"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "hub-packaging",
+          "windows-installer",
+          "runtime-inventory"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "hub-native-package"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "apps/membrane-hub/scripts/stage-runtime.mjs",
+        "apps/membrane-hub/scripts/runtime-inventory.mjs",
+        "apps/membrane-hub/src-tauri/tauri.conf.json",
+        "apps/membrane-hub/src-tauri/tauri.windows.conf.json",
+        "apps/membrane-hub/src-tauri/windows/installer.nsi",
+        "apps/membrane-tray-windows/src/main.rs"
+      ],
+      "read": [
+        "apps/membrane-hub",
+        "apps/membrane-tray-windows",
+        "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+        "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine",
+        "apps/membrane-hub/src-tauri/runtime",
+        "apps/membrane-hub/scripts/package-portable-windows.mjs",
+        "apps/membrane-hub/scripts/release-build-candidate-windows.mjs",
+        "apps/membrane-hub/scripts/release-check-candidate-windows.mjs",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner runs Hub stage-runtime and runtime-inventory checks, unsigned installer build and installed process-tree acceptance"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "resident-holder-lifecycle",
+      "dispatch": "A",
+      "task": "Implement one installed Membrane controller holder registry. Hub alone or running CodeRight daemon activates all background services including Blueprint watchers; Hub UI is optional under CodeRight. Authenticate stable-current holder leases; support acquire/renew/release; deduplicate concurrent Hub+CodeRight acquisition; preserve installation/generation/Cortex-store identity; drain only after final holder releases. Explicit operations remain available with neither holder. Hub and tray supervisors adopt shared controller instead of exclusive ownership; one holder exit cannot stop peer-required services.",
+      "executionPrerequisites": [
+        "installed-controller-sdk holder contract shape agreed",
+        "external producer-consumer dependency: CodeRight V2 binding/composition owner task 01a07e9f-1f88-7861-90a8-fc8ef04cb4b4 owns CodeRight daemon cold-start/acquire/renew/release/readiness edits and returns separate repository acceptance; this Membrane lane owns server/Hub/tray half only"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-lifecycle",
+          "holder-leases",
+          "hub-supervisor",
+          "tray-supervisor"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "resident-holder-lifecycle"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/residency.rs",
+        "engine/crates/membrane-runtime/tests/residency_holders.rs",
+        "apps/membrane-hub/src-tauri/Cargo.toml",
+        "apps/membrane-hub/src-tauri/src/supervisor.rs",
+        "apps/membrane-tray-windows/Cargo.toml",
+        "apps/membrane-tray-windows/src/supervisor.rs",
+        "apps/membrane-tray-windows/src/workspace.rs"
+      ],
+      "read": [
+        "engine/crates/membrane-client/src/residency.rs",
+        "engine/crates/membrane/src/activation.rs",
+        "apps/membrane-hub/src-tauri/src/main.rs",
+        "apps/membrane-tray-windows/src/main.rs",
+        "docs/architecture/execution-lifecycle-boundary.md",
+        "docs/architecture/integrations/coderight.md",
+        "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-runtime/src/lib.rs",
+        "apps/membrane-hub/scripts",
+        "apps/membrane-hub/src-tauri/windows/installer.nsi",
+        "apps/membrane-tray-windows/Cargo.lock",
+        "migration",
+        "mcp/hooks",
+        ".claude-plugin"
+      ],
+      "checks": [
+        "integration owner wires module export/dependency lock edges after handoff",
+        "integration owner runs holder matrix for neither/Hub/CodeRight/both/final release",
+        "integration owner runs Hub/tray focused supervisor checks"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "blueprint-node-cleanup",
+      "dispatch": "A",
+      "task": "After native consumer, graph/store/query/watcher and package parity pass, delete obsolete Blueprint Node backend, scripts, watchman and four launchers; delete pnpm lock; rewrite or delete Node-specific archive/distribution metadata and package manifest. Preserve only explicitly justified neutral schemas/fixtures/docs by moving them through integration-owner-approved exact paths; do not leave compatibility launch fallback. Use packaging cleanup inventory as deletion ledger.",
+      "executionPrerequisites": [
+        "all native Blueprint consumers pass with no Node fallback",
+        "native automatic watcher and Hub-off operations pass",
+        "hub-native-package no longer stages runtime/blueprint"
+      ],
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "node-runtime-removal",
+          "package-cleanup"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-delete",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "blueprint-node-cleanup"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "blueprint/package.json",
+        "blueprint/pnpm-lock.yaml",
+        "blueprint/watchman/supervisor.mjs",
+        "blueprint/watchman/repo-actor.mjs",
+        "blueprint/watchman/reconcile.mjs",
+        "blueprint/watchman/adapter.mjs",
+        "blueprint/src/sources/_shared.mjs",
+        "blueprint/src/sources/task-anchor.mjs",
+        "blueprint/src/sources/rules-documents.mjs",
+        "blueprint/src/sources/live-overlay.mjs",
+        "blueprint/src/sources/index.mjs",
+        "blueprint/src/sources/graph-resolve.mjs",
+        "blueprint/src/sources/git-metadata.mjs",
+        "blueprint/src/sources/freshness-observation.mjs",
+        "blueprint/src/sources/dirty-files.mjs",
+        "blueprint/src/service/uninstall.mjs",
+        "blueprint/src/service/status.mjs",
+        "blueprint/src/service/server.mjs",
+        "blueprint/src/service/readiness.mjs",
+        "blueprint/src/service/protocol.mjs",
+        "blueprint/src/service/paths.mjs",
+        "blueprint/src/service/install.mjs",
+        "blueprint/src/service/client.mjs",
+        "blueprint/src/service/build-singleflight.mjs",
+        "blueprint/scripts/test-random.mjs",
+        "blueprint/scripts/test-package.mjs",
+        "blueprint/scripts/run-soak.mjs",
+        "blueprint/src/lib/path-confinement.mjs",
+        "blueprint/src/lib/orientation-evidence.mjs",
+        "blueprint/src/lib/receipt-store.mjs",
+        "blueprint/src/lib/phase2-completion.mjs",
+        "blueprint/src/lib/redaction.mjs",
+        "blueprint/src/lib/sarif.mjs",
+        "blueprint/src/lib/runtime-capabilities.mjs",
+        "blueprint/src/lib/run-ledger.mjs",
+        "blueprint/src/lib/session-token.mjs",
+        "blueprint/scripts/blueprint-one-shot.mjs",
+        "blueprint/scripts/blueprint-mcp.mjs",
+        "blueprint/scripts/blueprint-install.mjs",
+        "blueprint/scripts/blueprint-candidates.mjs",
+        "blueprint/scripts/benchmark-storage.mjs",
+        "blueprint/scripts/benchmark-retrieval.mjs",
+        "blueprint/scripts/benchmark-parsers.mjs",
+        "blueprint/scripts/benchmark-contract.mjs",
+        "blueprint/scripts/benchmark-canonical-core.mjs",
+        "blueprint/scripts/fault-inject.mjs",
+        "blueprint/scripts/generate-benchmark-fixture.mjs",
+        "blueprint/src/lib/token-budget.mjs",
+        "blueprint/src/lib/telemetry.mjs",
+        "blueprint/src/lib/snapshot.mjs",
+        "blueprint/src/sdk/client.mjs",
+        "blueprint/src/sdk/types.d.ts",
+        "blueprint/src/sdk/providers.mjs",
+        "blueprint/src/sdk/index.mjs",
+        "blueprint/src/sdk/embedded.mjs",
+        "blueprint/scripts/ci/check-seam-conformance.mjs",
+        "blueprint/scripts/ci/check-network-boundary.mjs",
+        "blueprint/scripts/ci/check-generated.mjs",
+        "blueprint/scripts/blueprint.mjs",
+        "blueprint/scripts/blueprint.cmd",
+        "blueprint/scripts/blueprint-watch.mjs",
+        "blueprint/src/lib/rules/parser.mjs",
+        "blueprint/src/lib/rules/exceptions.mjs",
+        "blueprint/src/lib/rules/evaluate.mjs",
+        "blueprint/src/lib/rules/baseline.mjs",
+        "blueprint/src/lib/hooks/blueprint-graph-index.mjs",
+        "blueprint/src/lib/generated-docs.mjs",
+        "blueprint/src/lib/incremental-phase2.mjs",
+        "blueprint/src/lib/http-server.mjs",
+        "blueprint/scripts/cli/render.mjs",
+        "blueprint/scripts/cli/commands.mjs",
+        "blueprint/scripts/cli/args.mjs",
+        "blueprint/src/mcp/effects.mjs",
+        "blueprint/src/mcp/compatibility.mjs",
+        "blueprint/src/mcp/prompts.mjs",
+        "blueprint/src/mcp/resources.mjs",
+        "blueprint/scripts/release/check-release.mjs",
+        "blueprint/scripts/release/build-runtime-bundle.mjs",
+        "blueprint/scripts/release/build-candidate.mjs",
+        "blueprint/scripts/release/checksums.mjs",
+        "blueprint/scripts/release/clean-host-smoke.mjs",
+        "blueprint/src/lib/admission.mjs",
+        "blueprint/scripts/release/generate-update-keys.mjs",
+        "blueprint/src/lib/application/service.mjs",
+        "blueprint/src/lib/application/root-registry.mjs",
+        "blueprint/src/lib/application/normalize.mjs",
+        "blueprint/src/lib/application/errors.mjs",
+        "blueprint/src/lib/languages/custom-config.mjs",
+        "blueprint/src/lib/comment-claims.mjs",
+        "blueprint/src/lib/evidence-pack.mjs",
+        "blueprint/src/lib/operations/support-bundle.mjs",
+        "blueprint/src/lib/operations/repair.mjs",
+        "blueprint/src/lib/operations/doctor.mjs",
+        "blueprint/scripts/grammars/inventory.mjs",
+        "blueprint/src/lib/findings/detect.mjs",
+        "blueprint/scripts/grammars/verify.mjs",
+        "blueprint/src/lib/findings/registry.mjs",
+        "blueprint/src/lib/findings/service.mjs",
+        "blueprint/scripts/release/sign-update-manifest.mjs",
+        "blueprint/scripts/release/sbom.mjs",
+        "blueprint/scripts/release/npm-cli.mjs",
+        "blueprint/scripts/release/mcp-client-smoke.mjs",
+        "blueprint/scripts/release/verify-hub-installer.mjs",
+        "blueprint/scripts/release/stage-runtime.mjs",
+        "blueprint/scripts/release/verify-native-receipt.mjs",
+        "blueprint/scripts/release/verify-release.mjs",
+        "blueprint/src/lib/init/detect-hosts.mjs",
+        "blueprint/src/lib/init/apply.mjs",
+        "blueprint/src/lib/init/host-configs.mjs",
+        "blueprint/src/lib/init/plan.mjs",
+        "blueprint/src/lib/init/state-integrity.mjs",
+        "blueprint/src/lib/explorer/index.mjs",
+        "blueprint/src/lib/findings/specifier.mjs",
+        "blueprint/src/lib/explorer/layout.mjs",
+        "blueprint/src/providers/build.mjs",
+        "blueprint/src/lib/contracts/validate.mjs",
+        "blueprint/src/lib/contracts/catalog.mjs",
+        "blueprint/src/lib/explorer/static.mjs",
+        "blueprint/scripts/release/macos/sign-and-package.sh",
+        "blueprint/src/lib/update/trusted-update-keys.json",
+        "blueprint/src/providers/source-disposition.mjs",
+        "blueprint/src/providers/semantic-orchestrator.mjs",
+        "blueprint/src/lib/update/rollback.mjs",
+        "blueprint/src/providers/compilers/scip-normalize.mjs",
+        "blueprint/src/providers/frameworks/index.mjs",
+        "blueprint/src/lib/update/manifest.mjs",
+        "blueprint/src/lib/update/channel.mjs",
+        "blueprint/src/lib/update/apply.mjs",
+        "blueprint/src/lib/federation/index.mjs",
+        "blueprint/src/providers/compilers/python-scip.mjs",
+        "blueprint/src/providers/plugin-loader.mjs",
+        "blueprint/src/graph/freshness-receipt.mjs",
+        "blueprint/src/graph/framework-intelligence.mjs",
+        "blueprint/src/graph/evidence-authority.mjs",
+        "blueprint/src/graph/entry-points.mjs",
+        "blueprint/src/graph/doc-truth-projection.mjs",
+        "blueprint/src/graph/dependency-dag.mjs",
+        "blueprint/src/graph/delta-store.mjs",
+        "blueprint/src/graph/conventions.mjs",
+        "blueprint/src/graph/contract-registry.mjs",
+        "blueprint/src/graph/conformance-verifier.mjs",
+        "blueprint/src/graph/confidence-tiers.mjs",
+        "blueprint/src/graph/confidence-migration.mjs",
+        "blueprint/src/graph/bootstrap.mjs",
+        "blueprint/src/graph/bm25-code-index.mjs",
+        "blueprint/src/graph/barrier.mjs",
+        "blueprint/src/graph/atomic-store-adoption.mjs",
+        "blueprint/src/graph/ast-structural-search.mjs",
+        "blueprint/src/graph/architecture-model.mjs",
+        "blueprint/src/graph/analytics/change-impact.mjs",
+        "blueprint/src/graph/merkle-ledger.mjs",
+        "blueprint/src/graph/liveness.mjs",
+        "blueprint/src/graph/analytics/index.mjs",
+        "blueprint/src/providers/bridges/seams.mjs",
+        "blueprint/src/providers/iac/terraform.mjs",
+        "blueprint/src/graph/portable-manifest.mjs",
+        "blueprint/src/graph/portable-identity.mjs",
+        "blueprint/src/graph/ignored-prefixes.mjs",
+        "blueprint/src/graph/path-order.mjs",
+        "blueprint/src/graph/git-source-observation.mjs",
+        "blueprint/src/graph/parse-cache.mjs",
+        "blueprint/src/graph/generic-ast-walker.mjs",
+        "blueprint/src/graph/orientation.mjs",
+        "blueprint/src/graph/generation-identity.mjs",
+        "blueprint/src/graph/neighborhood.mjs",
+        "blueprint/src/graph/language-registry.mjs",
+        "blueprint/src/graph/module-surface.mjs",
+        "blueprint/src/graph/language-extractors.mjs",
+        "blueprint/src/graph/language-table.mjs",
+        "blueprint/src/graph/provider-identity.mjs",
+        "blueprint/src/graph/provenance.mjs",
+        "blueprint/src/graph/process-projection.mjs",
+        "blueprint/src/graph/precision-tiers.mjs",
+        "blueprint/src/graph/reanchor.mjs",
+        "blueprint/src/graph/publication-policy.mjs",
+        "blueprint/src/graph/recall-circuit.mjs",
+        "blueprint/src/graph/relationship-kinds.mjs",
+        "blueprint/src/providers/frameworks/http/index.mjs",
+        "blueprint/src/providers/index.mjs",
+        "blueprint/src/graph/schema-extractors.mjs",
+        "blueprint/src/graph/seed-resolver.mjs",
+        "blueprint/src/graph/scip-provider.mjs",
+        "blueprint/src/graph/signature-projection.mjs",
+        "blueprint/src/graph/snapshots.mjs",
+        "blueprint/src/providers/modules/python-resolver.mjs",
+        "blueprint/src/providers/modules/javascript.mjs",
+        "blueprint/src/graph/symbol-authority-order.mjs",
+        "blueprint/src/graph/structural-intelligence.mjs",
+        "blueprint/src/graph/watchman.mjs",
+        "blueprint/src/graph/treesitter-provider.mjs",
+        "blueprint/src/graph/traverse-store.mjs",
+        "blueprint/src/graph/traversal-policy.mjs",
+        "blueprint/src/graph/traversal-cursor.mjs",
+        "blueprint/src/graph/test-recommendation.mjs",
+        "blueprint/src/graph/store-sqlite.mjs",
+        "blueprint/src/graph/static-provider.mjs",
+        "blueprint/src/graph/stable-read.mjs",
+        "blueprint/src/graph/store-lease.mjs",
+        "blueprint/src/providers/schemas/sql.mjs",
+        "blueprint/src/graph/resolution/index.mjs",
+        "blueprint/src/providers/ranking/types.mjs",
+        "blueprint/src/graph/language-tables/bash.mjs",
+        "blueprint/src/providers/manifests/scip-python.json",
+        "blueprint/src/graph/language-tables/elm.mjs",
+        "blueprint/src/graph/language-tables/elixir.mjs",
+        "blueprint/src/graph/language-tables/elisp.mjs",
+        "blueprint/src/graph/language-tables/dart.mjs",
+        "blueprint/src/graph/language-tables/c_sharp.mjs",
+        "blueprint/src/graph/language-tables/css.mjs",
+        "blueprint/src/graph/language-tables/cpp.mjs",
+        "blueprint/src/graph/language-tables/c.mjs",
+        "blueprint/src/graph/language-tables/javascript.mjs",
+        "blueprint/src/graph/language-tables/java.mjs",
+        "blueprint/src/graph/language-tables/html.mjs",
+        "blueprint/src/graph/language-tables/go.mjs",
+        "blueprint/src/graph/language-tables/embedded_template.mjs",
+        "blueprint/src/graph/language-tables/kotlin.mjs",
+        "blueprint/src/graph/language-tables/json.mjs",
+        "blueprint/src/graph/language-tables/lua.mjs",
+        "blueprint/src/graph/language-tables/ocaml.mjs",
+        "blueprint/src/graph/language-tables/objc.mjs",
+        "blueprint/src/graph/language-tables/php.mjs",
+        "blueprint/src/graph/language-tables/_factory.mjs",
+        "blueprint/src/graph/language-tables/zig.mjs",
+        "blueprint/src/graph/language-tables/yaml.mjs",
+        "blueprint/src/graph/language-tables/vue.mjs",
+        "blueprint/src/graph/language-tables/typescript.mjs",
+        "blueprint/src/graph/language-tables/tsx.mjs",
+        "blueprint/src/graph/language-tables/toml.mjs",
+        "blueprint/src/graph/language-tables/tlaplus.mjs",
+        "blueprint/src/graph/language-tables/systemrdl.mjs",
+        "blueprint/src/graph/language-tables/swift.mjs",
+        "blueprint/src/graph/language-tables/solidity.mjs",
+        "blueprint/src/graph/language-tables/scala.mjs",
+        "blueprint/src/graph/language-tables/rust.mjs",
+        "blueprint/src/graph/language-tables/ruby.mjs",
+        "blueprint/src/graph/language-tables/rescript.mjs",
+        "blueprint/src/graph/language-tables/ql.mjs",
+        "blueprint/src/graph/language-tables/python.mjs",
+        "blueprint/release/launchers/blueprint",
+        "blueprint/release/launchers/blueprint.cmd",
+        "blueprint/release/launchers/blueprint-mcp",
+        "blueprint/release/launchers/blueprint-mcp.cmd",
+        "blueprint/release/linux/blueprint-archive.json",
+        "blueprint/release/macos/distribution.xml",
+        "blueprint/release/macos/postinstall",
+        "blueprint/release/macos/uninstall.sh",
+        "blueprint/release/README.txt",
+        "blueprint/release/catalog.template.json",
+        "blueprint/release/compatibility.template.json",
+        "blueprint/release/update-manifest.template.json"
+      ],
+      "read": [
+        "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+        "migration/native-rust/runtime-policy.json",
+        "apps/membrane-hub/scripts/stage-runtime.mjs",
+        "apps/membrane-hub/scripts/runtime-inventory.mjs"
+      ],
+      "forbidden": [
+        ".git",
+        "engine",
+        "mcp/hooks",
+        ".claude-plugin",
+        "blueprint/docs",
+        "blueprint/tests",
+        "blueprint/fixtures",
+        "blueprint/schemas"
+      ],
+      "checks": [
+        "integration owner verifies every deletion against tracked file list and native parity",
+        "integration owner regenerates runtime language/invocation/executable ledgers and SBOM"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "zero-node-qualification",
+      "dispatch": "A",
+      "task": "Rewrite SBOM, native-only seal, runtime-language, invocation-graph & lifecycle gates so installed product requires zero Blueprint Node/Python production or bounded-external rows, rejects Node payload/launchers, & proves current-root activation/doctor, Hub-off manual build/status, resident file-change refresh and zero interpreter process tree. Do not generate manifests or seals.",
+      "preexistingOwnedBytes": {
+        "scripts/release/evidence/sbom.mjs": "sha256:578ceac1839b57a3a731e4cd0c9ae9de895f4774b560d48b6c9198a02421dcc4",
+        "scripts/qualification/issue-native-only-seal.mjs": "sha256:0aa97999c1becaf4b5bc13d9499efcbcea1bdfdad2979ab6228b37aa18f2a315",
+        "scripts/ci/check-runtime-language-manifest.mjs": "sha256:d724c6f876c04d45c5de917c115f72a242fe9e13f044b0bdb002d77650f3fd91",
+        "scripts/ci/check-invocation-graph.mjs": "sha256:e7fcd4bc4daf2d904ad51fe673bdf29691b11bbe911035ccdf6f12d0670352f1",
+        "scripts/ci/check-lifecycle-conformance.mjs": "sha256:33ace3906bb6d84360c7871602f90b45efc5dc79d7c2a87a039ba8f2b05d8ef7",
+        "migration/native-rust/runtime-policy.json": "sha256:d6930ce2fa85f6a1dfa31e79f47c51d7f7cd63095106ab21566dbd1d1190aaef"
+      },
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "release-gates",
+          "sbom",
+          "installed-qualification"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "zero-node-qualification"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "scripts/release/evidence/sbom.mjs",
+        "scripts/qualification/issue-native-only-seal.mjs",
+        "scripts/ci/check-runtime-language-manifest.mjs",
+        "scripts/ci/check-invocation-graph.mjs",
+        "scripts/ci/check-lifecycle-conformance.mjs",
+        "migration/native-rust/runtime-policy.json"
+      ],
+      "read": [
+        "migration/native-rust",
+        "scripts/release",
+        "scripts/qualification",
+        "scripts/ci",
+        "audit/remediation/reconciliation/packaging-cleanup-inventory.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine",
+        "apps",
+        "mcp/hooks",
+        ".claude-plugin",
+        "migration/native-rust/runtime-language-manifest.json",
+        "migration/native-rust/native-only-seal.json"
+      ],
+      "checks": [
+        "integration owner runs runtime-language, invocation-graph, lifecycle and native-only seal gates against built installed package"
+      ],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "allowlist-completeness",
+      "lane-disjointness",
+      "active-owner-conflicts",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "usable-installed-transport-not-traits-only",
+      "direct-port-priority",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "integrationClosure": {
+    "owner": "integrationOwner",
+    "externalDependencies": [
+      {
+        "producer": "CodeRight V2 binding/composition owner task 01a07e9f-1f88-7861-90a8-fc8ef04cb4b4",
+        "consumer": "resident-holder-lifecycle",
+        "contract": "CodeRight daemon uses installed child SDK plus holder acquire/renew/release/readiness without Hub UI",
+        "acceptanceOwner": "CodeRight integration owner",
+        "requiredBefore": "cross-repository holder qualification"
+      }
+    ],
+    "generatedFileOwnership": [
+      {
+        "path": "engine/Cargo.lock",
+        "timing": "after dependency edits",
+        "workerMayEdit": false
+      },
+      {
+        "path": "migration/native-rust/runtime-language-manifest.json",
+        "timing": "after source freeze",
+        "workerMayEdit": false
+      },
+      {
+        "path": "migration/native-rust/invocation-graph.json",
+        "timing": "after source freeze",
+        "workerMayEdit": false
+      },
+      {
+        "path": "migration/native-rust/native-only-seal.json",
+        "timing": "after installed qualification",
+        "workerMayEdit": false
+      },
+      {
+        "path": "migration/native-rust/executable-ledger.json",
+        "timing": "after source freeze",
+        "workerMayEdit": false
+      },
+      {
+        "path": "migration/native-rust/legacy-ledger-reconciliation.json",
+        "timing": "after source freeze",
+        "workerMayEdit": false
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/runtime/runtime-inventory.json",
+        "timing": "during package generation",
+        "workerMayEdit": false
+      }
+    ],
+    "afterWorkers": [
+      "run all named RightKit checks",
+      "join CodeRight owner holder acceptance without adding CodeRight files to Membrane commit",
+      "remove obsolete Blueprint Node backend/launchers only after native parity",
+      "regenerate runtime inventory/language manifest/invocation graph/SBOM/native-only seal",
+      "build unsigned installed candidate through RightKit",
+      "install current root",
+      "run activate and doctor",
+      "prove Hub-off manual Blueprint build/status",
+      "prove resident file-change refresh",
+      "prove zero Blueprint Node/Python process tree",
+      "obtain final Oracle PASS",
+      "stage exact lane bytes",
+      "commit and push"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": [
+      "unplanned changed path",
+      "preexisting hash mismatch",
+      "second Oracle block"
+    ],
+    "failureMatrix": [
+      {
+        "class": "integrity/hash/hash mismatch",
+        "primary": "reject output and rebind bytes",
+        "secondary": "request fresh handoff",
+        "degraded": "continue independent lanes",
+        "stopAfter": 1,
+        "proceedWhen": "hashes match"
+      },
+      {
+        "class": "deterministic command failure",
+        "primary": "return exact defect to owner",
+        "secondary": "one repair and rerun",
+        "degraded": "continue independent lanes",
+        "stopAfter": 2,
+        "proceedWhen": "focused checks pass"
+      },
+      {
+        "class": "dirty/conflicting state",
+        "primary": "preserve unrelated bytes and redesign ownership",
+        "secondary": "defer overlap",
+        "degraded": "continue independent lanes",
+        "stopAfter": 1,
+        "proceedWhen": "one owner established"
+      },
+      {
+        "class": "ambiguous requirement",
+        "primary": "read authority and native interfaces",
+        "secondary": "escalate exact decision to coordinator",
+        "degraded": "continue unambiguous work",
+        "stopAfter": 1,
+        "proceedWhen": "decision explicit"
+      }
+    ],
+    "returnFields": [
+      "STATUS",
+      "SUMMARY",
+      "ACCEPTANCE",
+      "ARTIFACTS",
+      "CHANGES",
+      "COMMANDS",
+      "RECOVERY",
+      "DEVIATIONS",
+      "BLOCKER",
+      "NEXT",
+      "baselineRevision",
+      "patchDigest"
+    ]
+  }
+}

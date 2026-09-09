@@ -34,7 +34,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Schema-version of the catalog. Migrations are additive (`ALTER TABLE ADD` /
 /// `CREATE INDEX`) — never re-shape the Cortex DB, never delete a previously
 /// persisted column.
-pub const CATALOG_SCHEMA_VERSION: i64 = 3;
+pub const CATALOG_SCHEMA_VERSION: i64 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -297,6 +297,39 @@ CREATE TABLE IF NOT EXISTS receipts (
 );
 CREATE INDEX IF NOT EXISTS idx_receipts_trace
     ON receipts(trace_id);
+CREATE TABLE IF NOT EXISTS delivery_acknowledgements (
+    installation_id       TEXT NOT NULL,
+    repository_id         TEXT NOT NULL,
+    request_id            TEXT NOT NULL,
+    trace_id              TEXT NOT NULL,
+    task_id               TEXT NOT NULL DEFAULT '',
+    session_id            TEXT NOT NULL DEFAULT '',
+    context_epoch         TEXT NOT NULL,
+    publication_id        TEXT NOT NULL,
+    representation_digest TEXT NOT NULL,
+    packet_digest         TEXT NOT NULL,
+    acknowledged_at_unix  INTEGER NOT NULL,
+    PRIMARY KEY (installation_id, repository_id, request_id, trace_id,
+                 context_epoch, publication_id, representation_digest, packet_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_delivery_acknowledgements_lookup
+    ON delivery_acknowledgements (installation_id, repository_id, request_id, trace_id);
+CREATE TABLE IF NOT EXISTS pending_pull_publications (
+    installation_id       TEXT NOT NULL,
+    repository_id         TEXT NOT NULL,
+    request_id            TEXT NOT NULL,
+    trace_id              TEXT NOT NULL,
+    task_id               TEXT NOT NULL,
+    session_id            TEXT NOT NULL,
+    context_epoch         INTEGER NOT NULL,
+    publication_id        TEXT NOT NULL,
+    representation_identity TEXT NOT NULL,
+    source_ref            TEXT NOT NULL,
+    representation_digest TEXT NOT NULL,
+    packet_digest         TEXT NOT NULL,
+    PRIMARY KEY (installation_id, repository_id, request_id, trace_id,
+                 task_id, session_id, context_epoch, publication_id)
+);
 ";
 
 const CATALOG_METADATA_SCHEMA: &str = "
@@ -372,6 +405,37 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                 // Older rows migrate to an explicit empty set, which means no
                 // range authority rather than unrestricted access.
                 add_column(&tx, "scope_grants", "read_paths_json", "TEXT NOT NULL DEFAULT '[]'")?;
+            }
+            4 => {
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS delivery_acknowledgements (
+                        installation_id TEXT NOT NULL, repository_id TEXT NOT NULL,
+                        request_id TEXT NOT NULL, trace_id TEXT NOT NULL,
+                        context_epoch TEXT NOT NULL, publication_id TEXT NOT NULL,
+                        representation_digest TEXT NOT NULL, packet_digest TEXT NOT NULL,
+                        acknowledged_at_unix INTEGER NOT NULL,
+                        PRIMARY KEY (installation_id, repository_id, request_id, trace_id,
+                                     context_epoch, publication_id, representation_digest, packet_digest)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_delivery_acknowledgements_lookup
+                        ON delivery_acknowledgements (installation_id, repository_id, request_id, trace_id);",
+                )?;
+            }
+            5 => {
+                add_column(&tx, "delivery_acknowledgements", "task_id", "TEXT NOT NULL DEFAULT ''")?;
+                add_column(&tx, "delivery_acknowledgements", "session_id", "TEXT NOT NULL DEFAULT ''")?;
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS pending_pull_publications (
+                        installation_id TEXT NOT NULL, repository_id TEXT NOT NULL,
+                        request_id TEXT NOT NULL, trace_id TEXT NOT NULL, task_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL, context_epoch INTEGER NOT NULL,
+                        publication_id TEXT NOT NULL, representation_identity TEXT NOT NULL,
+                        source_ref TEXT NOT NULL, representation_digest TEXT NOT NULL,
+                        packet_digest TEXT NOT NULL,
+                        PRIMARY KEY (installation_id, repository_id, request_id, trace_id,
+                                     task_id, session_id, context_epoch, publication_id)
+                    );",
+                )?;
             }
             _ => unreachable!(),
         }
@@ -776,6 +840,18 @@ mod deadline_read_tests {
             "federation deadline exhausted during owner binding");
         assert!(!path.exists());
     }
+
+    #[test]
+    fn read_only_lookup_rejects_unknown_schema_without_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unknown-schema.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "user_version", CATALOG_SCHEMA_VERSION + 1).unwrap();
+        drop(conn);
+        let deadline = membrane_federation::deadline::Deadline::at(
+            std::time::Instant::now() + std::time::Duration::from_secs(1));
+        assert!(lookup_grant_until(&path, "missing", deadline).is_err());
+    }
 }
 
 /// Request-scoped read avoids waiting on another caller's catalog mutex or
@@ -795,6 +871,12 @@ pub(crate) fn lookup_grant_until(
     let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| error.to_string())?;
     conn.busy_timeout(remaining()?).map_err(|error| error.to_string())?;
+    conn.pragma_update(None, "query_only", "ON").map_err(|error| error.to_string())?;
+    let schema_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if schema_version != CATALOG_SCHEMA_VERSION {
+        return Err("catalog schema version unavailable for read-only grant lookup".to_owned());
+    }
     let mut stmt = conn.prepare("SELECT * FROM scope_grants WHERE id = ?1")
         .map_err(|error| error.to_string())?;
     conn.busy_timeout(remaining()?).map_err(|error| error.to_string())?;
@@ -930,6 +1012,195 @@ pub fn count_events(catalog: &ContextCatalog) -> rusqlite::Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM retrieval_events", [], |row| {
         row.get(0)
     })
+}
+
+/// Content-free acknowledgement binding for one delivered Pull publication.
+/// Every identity is exact: partial or process-local acknowledgement state is
+/// intentionally insufficient for suppression.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryAcknowledgementRecordV1 {
+    pub repository_id: String,
+    pub request_id: String,
+    pub trace_id: String,
+    pub task_id: String,
+    pub session_id: String,
+    pub context_epoch: String,
+    pub publication_id: String,
+    pub representation_digest: String,
+    pub packet_digest: String,
+}
+
+impl DeliveryAcknowledgementRecordV1 {
+    pub fn is_complete(&self) -> bool {
+        [
+            &self.repository_id, &self.request_id, &self.trace_id, &self.task_id, &self.session_id,
+            &self.context_epoch, &self.publication_id,
+            &self.representation_digest, &self.packet_digest,
+        ].iter().all(|value| !value.trim().is_empty())
+    }
+}
+
+/// Pull-owned pending-publication evidence. This records publication identity
+/// before a host acknowledgement; it is not an acknowledgement authority.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingPullPublicationV1 {
+    pub repository_id: String,
+    pub request_id: String,
+    pub trace_id: String,
+    pub task_id: String,
+    pub session_id: String,
+    pub context_epoch: u64,
+    pub publication_id: String,
+    pub representation_identity: String,
+    pub source_ref: String,
+    pub representation_digest: String,
+    pub packet_digest: String,
+}
+
+impl PendingPullPublicationV1 {
+    pub fn is_complete(&self) -> bool {
+        [
+            &self.repository_id, &self.request_id, &self.trace_id, &self.task_id,
+            &self.session_id, &self.publication_id, &self.representation_identity,
+            &self.source_ref, &self.representation_digest, &self.packet_digest,
+        ].iter().all(|value| !value.trim().is_empty())
+    }
+}
+
+pub fn record_pending_pull_publication(
+    catalog: &ContextCatalog,
+    publication: &PendingPullPublicationV1,
+) -> rusqlite::Result<bool> {
+    if !publication.is_complete() { return Err(rusqlite::Error::InvalidQuery); }
+    let installation_id = &catalog.startup_report.catalog_installation_id;
+    let conn = catalog.lock();
+    Ok(conn.execute(
+        "INSERT OR IGNORE INTO pending_pull_publications
+          (installation_id, repository_id, request_id, trace_id, task_id, session_id,
+           context_epoch, publication_id, representation_identity, source_ref,
+           representation_digest, packet_digest)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![installation_id, publication.repository_id.as_str(), publication.request_id.as_str(),
+            publication.trace_id.as_str(), publication.task_id.as_str(), publication.session_id.as_str(),
+            publication.context_epoch as i64, publication.publication_id.as_str(),
+            publication.representation_identity.as_str(), publication.source_ref.as_str(),
+            publication.representation_digest.as_str(), publication.packet_digest.as_str()],
+    )? > 0)
+}
+
+pub fn has_pending_pull_publication(
+    catalog: &ContextCatalog,
+    publication: &PendingPullPublicationV1,
+) -> rusqlite::Result<bool> {
+    if !publication.is_complete() { return Ok(false); }
+    let installation_id = &catalog.startup_report.catalog_installation_id;
+    let conn = catalog.lock();
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pending_pull_publications
+          WHERE installation_id=?1 AND repository_id=?2 AND request_id=?3 AND trace_id=?4
+            AND task_id=?5 AND session_id=?6 AND context_epoch=?7 AND publication_id=?8
+            AND representation_identity=?9 AND source_ref=?10 AND representation_digest=?11
+            AND packet_digest=?12)",
+        params![installation_id, publication.repository_id.as_str(), publication.request_id.as_str(),
+            publication.trace_id.as_str(), publication.task_id.as_str(), publication.session_id.as_str(),
+            publication.context_epoch as i64, publication.publication_id.as_str(),
+            publication.representation_identity.as_str(), publication.source_ref.as_str(),
+            publication.representation_digest.as_str(), publication.packet_digest.as_str()],
+        |row| row.get::<_, bool>(0),
+    )
+}
+
+/// Resolve one server-issued pending-publication id within this installation.
+/// This is content-free bridge lookup only; it neither accepts an
+/// acknowledgement nor changes suppression eligibility.
+pub(crate) fn pending_pull_publication(
+    catalog: &ContextCatalog,
+    publication_id: &str,
+) -> rusqlite::Result<Option<PendingPullPublicationV1>> {
+    if publication_id.trim().is_empty() {
+        return Ok(None);
+    }
+    let installation_id = &catalog.startup_report.catalog_installation_id;
+    let conn = catalog.lock();
+    conn.query_row(
+        "SELECT repository_id, request_id, trace_id, task_id, session_id, context_epoch,
+                publication_id, representation_identity, source_ref, representation_digest,
+                packet_digest
+         FROM pending_pull_publications
+         WHERE installation_id = ?1 AND publication_id = ?2",
+        params![installation_id, publication_id],
+        |row| {
+            let epoch: i64 = row.get("context_epoch")?;
+            let context_epoch = u64::try_from(epoch)
+                .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(5, epoch))?;
+            Ok(PendingPullPublicationV1 {
+                repository_id: row.get("repository_id")?,
+                request_id: row.get("request_id")?,
+                trace_id: row.get("trace_id")?,
+                task_id: row.get("task_id")?,
+                session_id: row.get("session_id")?,
+                context_epoch,
+                publication_id: row.get("publication_id")?,
+                representation_identity: row.get("representation_identity")?,
+                source_ref: row.get("source_ref")?,
+                representation_digest: row.get("representation_digest")?,
+                packet_digest: row.get("packet_digest")?,
+            })
+        },
+    ).optional()
+}
+
+/// Internal persistence primitive. Public Pull callers must enter through
+/// `pull::delivery_acknowledgement::acknowledge_delivery`, which validates
+/// H10, pending-publication identity, & H9 retention before this write.
+pub(crate) fn record_delivery_acknowledgement(
+    catalog: &ContextCatalog,
+    acknowledgement: &DeliveryAcknowledgementRecordV1,
+) -> rusqlite::Result<bool> {
+    if !acknowledgement.is_complete() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let installation_id = &catalog.startup_report.catalog_installation_id;
+    let conn = catalog.lock();
+    let changed = conn.execute(
+        "INSERT OR IGNORE INTO delivery_acknowledgements
+            (installation_id, repository_id, request_id, trace_id, task_id, session_id, context_epoch,
+             publication_id, representation_digest, packet_digest, acknowledged_at_unix)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            installation_id, acknowledgement.repository_id.as_str(), acknowledgement.request_id.as_str(),
+            acknowledgement.trace_id.as_str(), acknowledgement.task_id.as_str(), acknowledgement.session_id.as_str(),
+            acknowledgement.context_epoch.as_str(), acknowledgement.publication_id.as_str(), acknowledgement.representation_digest.as_str(),
+            acknowledgement.packet_digest.as_str(), ContextCatalog::now_unix(),
+        ],
+    )?;
+    Ok(changed > 0)
+}
+
+pub fn has_delivery_acknowledgement(
+    catalog: &ContextCatalog,
+    acknowledgement: &DeliveryAcknowledgementRecordV1,
+) -> rusqlite::Result<bool> {
+    if !acknowledgement.is_complete() {
+        return Ok(false);
+    }
+    let installation_id = &catalog.startup_report.catalog_installation_id;
+    let conn = catalog.lock();
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM delivery_acknowledgements
+          WHERE installation_id = ?1 AND repository_id = ?2 AND request_id = ?3
+            AND trace_id = ?4 AND task_id = ?5 AND session_id = ?6 AND context_epoch = ?7 AND publication_id = ?8
+            AND representation_digest = ?9 AND packet_digest = ?10)",
+        params![
+            installation_id, acknowledgement.repository_id.as_str(), acknowledgement.request_id.as_str(),
+            acknowledgement.trace_id.as_str(), acknowledgement.task_id.as_str(), acknowledgement.session_id.as_str(),
+            acknowledgement.context_epoch.as_str(), acknowledgement.publication_id.as_str(), acknowledgement.representation_digest.as_str(),
+            acknowledgement.packet_digest.as_str(),
+        ],
+        |row| row.get::<_, bool>(0),
+    )
 }
 
 // ---- Health snapshot -----------------------------------------------------

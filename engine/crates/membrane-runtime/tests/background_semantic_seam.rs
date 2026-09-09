@@ -11,8 +11,9 @@ use membrane_protocol::background_review::{
 use membrane_protocol::HostObservationProvenanceV1;
 use membrane_runtime::background_review::{
     execute_background_semantic_review, BackgroundReviewCompletion, BackgroundReviewCursorStore,
-    BackgroundReviewScheduler, BackgroundSemanticReviewInputV1,
+    BackgroundReviewProposalAdmission, BackgroundReviewScheduler, BackgroundSemanticReviewInputV1,
     BackgroundSemanticReviewProvider, BackgroundSemanticReviewProviderError,
+    DeterministicFirstPartySemanticReviewProvider, JsonlBackgroundReviewProposalAdmission,
 };
 use membrane_runtime::{
     MemoryLifecycleOperation, MemoryLifecycleOperationV1, MemoryStore, VerifiedMemoryActor,
@@ -356,6 +357,156 @@ fn aggregate_budget_exhaustion_is_observable() {
     assert!(scheduler.drain_observations().iter().any(|observation| {
         observation.reason == BackgroundReviewReasonV1::AggregateBudgetExceeded
     }));
+}
+
+/// r5 semantic-producer: qualify the existing deterministic first-party
+/// Cortex Stage-1 analyzer end-to-end (scheduler admission through the
+/// governed proposal sink), not just in isolation, over the standard
+/// contradiction/near-duplicate/supersession corpus. If the seam ever
+/// stopped forwarding proposals to the sink, this fails even though the
+/// analyzer itself (qualified separately in `background_review.rs`) would
+/// still look correct in isolation.
+#[test]
+fn deterministic_provider_end_to_end_qualifies_corpus_and_persists_through_governed_sink() {
+    let scheduler = scheduler(1_000_000, 1_000_000);
+    scheduler.set_hub_active(true, 1);
+    scheduler.record_activity(1);
+    let job = semantic_job("stage1-corpus", "turn", 1);
+    assert!(scheduler.start(job.clone(), 1).is_started());
+
+    let corpus = vec![
+        event(
+            "session",
+            2,
+            "e1",
+            "The release pipeline uses the windows signing runner.",
+        ),
+        event(
+            "session",
+            3,
+            "e2",
+            "the release pipeline uses the Windows signing runner",
+        ),
+        event(
+            "session",
+            4,
+            "e3",
+            "The release pipeline does not use the windows signing runner.",
+        ),
+        event(
+            "session",
+            5,
+            "e4",
+            "The staging index is stale after four hours.",
+        ),
+        event(
+            "session",
+            6,
+            "e5",
+            "The staging index is stale after two hours.",
+        ),
+    ];
+    let input = BackgroundSemanticReviewInputV1 {
+        task_id: None,
+        cursor: cursor(),
+        events: corpus,
+        reviewed_baseline: vec![],
+        foreground_memory_state: ForegroundMemoryStateV1::AvailableNoEmission,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let sink_path = dir.path().join("proposals.jsonl");
+    let sink = JsonlBackgroundReviewProposalAdmission::new(sink_path.clone());
+    let provider = DeterministicFirstPartySemanticReviewProvider::new().with_now_unix_ms(1_000);
+
+    let execution = execute_background_semantic_review(
+        &scheduler,
+        &job,
+        &input,
+        &provider,
+        Some(&sink as &dyn BackgroundReviewProposalAdmission),
+        &BackgroundReviewCursorStore::default(),
+        1_000_000,
+        1,
+    );
+
+    assert_eq!(
+        execution.status,
+        membrane_protocol::BackgroundReviewExecutionStatusV1::Proposals
+    );
+    assert!(
+        !execution.proposals.is_empty(),
+        "the standard qualification corpus must yield curation proposals"
+    );
+    let written = std::fs::read_to_string(&sink_path).expect("governed sink was written");
+    assert!(
+        !written.trim().is_empty(),
+        "proposals must land in the governed sink, not be dropped"
+    );
+    assert!(written.contains("semantic_curation"));
+}
+
+/// r5 semantic-producer repair: `AdaptBehavioralReview` must refuse through
+/// the *entire* seam — scheduler admission, provider execution, and the
+/// governed sink — never partially. A prior defect that turned this refusal
+/// into a silent `Completed` no-op, or that let a refusal leak into the
+/// proposal sink, would only be caught here, not in the provider-only unit
+/// tests in `background_review.rs`.
+#[test]
+fn deterministic_provider_end_to_end_refuses_adapt_behavioral_review_without_writing_proposals() {
+    let scheduler = scheduler(1_000_000, 1_000_000);
+    scheduler.set_hub_active(true, 1);
+    scheduler.record_activity(1);
+    let job = BackgroundReviewJobV1 {
+        schema_version: 1,
+        job_id: "adapt-refusal".into(),
+        kind: BackgroundReviewJobKindV1::AdaptBehavioralReview,
+        turn_id: "turn".into(),
+        input_tokens: 1,
+        requested_at_unix_ms: 1,
+    };
+    assert!(scheduler.start(job.clone(), 1).is_started());
+
+    let input = BackgroundSemanticReviewInputV1 {
+        task_id: None,
+        cursor: cursor(),
+        events: vec![event(
+            "session",
+            2,
+            "novel",
+            "a genuinely new observation about the deployment pipeline",
+        )],
+        reviewed_baseline: vec![],
+        foreground_memory_state: ForegroundMemoryStateV1::AvailableNoEmission,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let sink_path = dir.path().join("proposals.jsonl");
+    let sink = JsonlBackgroundReviewProposalAdmission::new(sink_path.clone());
+    let provider = DeterministicFirstPartySemanticReviewProvider::new().with_now_unix_ms(1_000);
+
+    let execution = execute_background_semantic_review(
+        &scheduler,
+        &job,
+        &input,
+        &provider,
+        Some(&sink as &dyn BackgroundReviewProposalAdmission),
+        &BackgroundReviewCursorStore::default(),
+        1_000_000,
+        1,
+    );
+
+    assert_eq!(
+        execution.status,
+        membrane_protocol::BackgroundReviewExecutionStatusV1::Blocked
+    );
+    assert_eq!(
+        execution.reason,
+        Some(BackgroundReviewReasonV1::SemanticProviderNotWired)
+    );
+    assert!(execution.proposals.is_empty());
+    assert!(
+        !sink_path.exists(),
+        "a refusal must never write to the governed proposal sink"
+    );
 }
 
 trait StartedDecision {

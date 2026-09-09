@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "936804e4ac60cba31c04d1dfd93476b0d790f827",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptDigest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc",
+  "modelRouting": {"modelTier":"MID","workerProfile":"gpt-5.6-luna","routingRationale":"Fresh owners correct failed direct-port lanes with disjoint source/test files."},
+  "objective": "Correct inherited Blueprint Rust foundation drafts to exact JavaScript/schema parity, then expose only source-reviewed modules with a public composition gate.",
+  "authority": [
+    "AGENTS.md",
+    "blueprint/AGENTS.md",
+    "docs/canon/blueprint.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "audit/remediation/blueprint-native-foundations.dispatch.json",
+    "audit/remediation/blueprint-native-foundations.dispatch.receipt.json",
+    "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+    "audit/remediation/reconciliation/parity-phase2-inventory.md",
+    "blueprint/src/graph/generation-identity.mjs",
+    "blueprint/src/graph/static-provider.mjs",
+    "blueprint/src/graph/git-source-observation.mjs",
+    "blueprint/src/graph/store-sqlite.mjs",
+    "blueprint/src/graph/confidence-migration.mjs",
+    "blueprint/src/graph/provider-identity.mjs",
+    "blueprint/src/graph/path-order.mjs",
+    "blueprint/tests/store-migrations.test.mjs",
+    "blueprint/tests/store-sqlite.test.mjs"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "preexistingOwnedBytes": [
+    {"path":"engine/crates/membrane-blueprint/src/contracts.rs","sha256":"f1fed4f2d3f512eee13393a24da6138ff629b7190c7c926c21e900ebc1be7cc0","sourceTask":"/root/contracts_identity","handoffDigest":"44dbfa2d145737c5b78350a3c4dec1cb0e28afea825b97fdf00f4dc5af5eef0d","disposition":"read-only accepted draft"},
+    {"path":"engine/crates/membrane-blueprint/tests/contracts.rs","sha256":"8460f92800676b82e2d815f7778f75c5ee34eb470e6c64726beacfec793c7594","sourceTask":"/root/contracts_identity","handoffDigest":"44dbfa2d145737c5b78350a3c4dec1cb0e28afea825b97fdf00f4dc5af5eef0d","disposition":"read-only accepted draft"},
+    {"path":"engine/crates/membrane-blueprint/src/identity.rs","sha256":"70e7991b5d77fb416da5b322aee5748550b477148ff6a60ef1ee1385ed0895b9","sourceTask":"/root/contracts_identity","handoffDigest":"44dbfa2d145737c5b78350a3c4dec1cb0e28afea825b97fdf00f4dc5af5eef0d","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/tests/identity.rs","sha256":"efec8a95013c3e2d7928ee6a2c89e42ffad24c179339576cc0588df3c01a3806","sourceTask":"/root/contracts_identity","handoffDigest":"44dbfa2d145737c5b78350a3c4dec1cb0e28afea825b97fdf00f4dc5af5eef0d","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/src/migrations.rs","sha256":"1f13f9415bd0f9b5d489292f92366800872afd416b9cc0e67d820902e013ccff","sourceTask":"/root/store_migrations","handoffDigest":"77856f9747a1b1be93440e7b1715c6955f4ad04419c9a9a07671786c549d061e","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/tests/migrations.rs","sha256":"1000e38cf2c1a80ea780996b98a5eae113b544e96eb82d98f05054fee844838f","sourceTask":"/root/store_migrations","handoffDigest":"77856f9747a1b1be93440e7b1715c6955f4ad04419c9a9a07671786c549d061e","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/src/store.rs","sha256":"610b8fbbb815a4cb03825e9235a2375ce71b59f41d2c345f5c5a1594ebaaa8d4","sourceTask":"/root/store_migrations","handoffDigest":"77856f9747a1b1be93440e7b1715c6955f4ad04419c9a9a07671786c549d061e","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/tests/schema_v20.rs","sha256":"3f758ca9fdf7e65d9126dd6ab4207d9ff74cf81508e59ad280dd600ca9cc2b39","sourceTask":"/root/store_migrations","handoffDigest":"77856f9747a1b1be93440e7b1715c6955f4ad04419c9a9a07671786c549d061e","disposition":"correction owner may overwrite"},
+    {"path":"engine/crates/membrane-blueprint/Cargo.toml","sha256":"809faff3a532b83eff9f1942bb71d457cb5999a5dcb1672771714f18a6025934","sourceTask":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","disposition":"integrator-owned dependency delta; workers read-only"},
+    {"path":"engine/Cargo.lock","sha256":"1d47a9dd1f5dbf949b1d0fc336baf692856f978762e1c4139750c828b2412224","sourceTask":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","disposition":"integrator-owned dependency lock; workers read-only"}
+  ],
+  "fileTouchPolicy": {
+    "mode":"once-end-to-end",
+    "plannedFiles":[
+      "engine/crates/membrane-blueprint/src/identity.rs",
+      "engine/crates/membrane-blueprint/tests/identity.rs",
+      "engine/crates/membrane-blueprint/src/migrations.rs",
+      "engine/crates/membrane-blueprint/tests/migrations.rs",
+      "engine/crates/membrane-blueprint/src/store.rs",
+      "engine/crates/membrane-blueprint/tests/schema_v20.rs",
+      "engine/crates/membrane-blueprint/src/lib.rs",
+      "engine/crates/membrane-blueprint/tests/foundations.rs"
+    ],
+    "allowUnplannedFiles":false,
+    "ledger":[
+      {"path":"engine/crates/membrane-blueprint/src/identity.rs","owner":"identity-correction","operation":"edit","lane":"identity-correction","finalCheck":"exact JS digest vectors"},
+      {"path":"engine/crates/membrane-blueprint/tests/identity.rs","owner":"identity-correction","operation":"edit","lane":"identity-correction","finalCheck":"identity focused test"},
+      {"path":"engine/crates/membrane-blueprint/src/migrations.rs","owner":"migration-correction","operation":"edit","lane":"migration-correction","finalCheck":"v15/v16/v20 migration gates"},
+      {"path":"engine/crates/membrane-blueprint/tests/migrations.rs","owner":"migration-correction","operation":"edit","lane":"migration-correction","finalCheck":"migration focused test"},
+      {"path":"engine/crates/membrane-blueprint/src/store.rs","owner":"store-correction","operation":"edit","lane":"store-correction","finalCheck":"backup/read-only/open gates"},
+      {"path":"engine/crates/membrane-blueprint/tests/schema_v20.rs","owner":"store-correction","operation":"edit","lane":"store-correction","finalCheck":"schema-v20 relational gate"},
+      {"path":"engine/crates/membrane-blueprint/src/lib.rs","owner":"blueprint-domain-lead","operation":"edit-module-exports-only","lane":"lead-exports","finalCheck":"full crate"},
+      {"path":"engine/crates/membrane-blueprint/tests/foundations.rs","owner":"blueprint-domain-lead","operation":"add","lane":"lead-exports","finalCheck":"public composition gate"}
+    ]
+  },
+  "sourcePortPolicy": {"applicable":true,"sourceImplementation":"Existing Blueprint JavaScript identity and SQLite schema-v20 authorities","sourceInventory":["blueprint/src/graph/generation-identity.mjs","blueprint/src/graph/static-provider.mjs","blueprint/src/graph/git-source-observation.mjs","blueprint/src/graph/store-sqlite.mjs","blueprint/src/graph/confidence-migration.mjs","blueprint/src/graph/provider-identity.mjs","blueprint/src/graph/path-order.mjs","blueprint/tests/store-migrations.test.mjs","blueprint/tests/store-sqlite.test.mjs"],"directPortFirst":true,"targetLanguage":"Rust","rustTargetRequiresRustPort":true,"handRollReplacementWhileSourceExists":false},
+  "workerPolicy": {"mode":"edit-only","mayInspectReadPaths":true,"mayEditAllowlistOnly":true,"forbiddenActions":["cargo","tests","builds","generators","installs","commits","pushes","merges","expensive-checks"],"intendedChecksRecordedFor":"integration owner"},
+  "integrationPolicy": {"owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","soleMerger":true,"runsCheckpoints":true,"mayRepairLaneOwnedFiles":false,"repairAction":"return to owning correction lane or redesign packet before execution"},
+  "dispatches":[
+    {"id":"A","dependsOn":[],"lanes":["identity-correction","migration-correction"],"completionChecks":["both owners source-review exact JS authority and change only assigned files", "Cargo dependencies xxhash-rust xxh3 and unicode-normalization are present before dispatch"]},
+    {"id":"B","dependsOn":["A"],"lanes":["store-correction"],"completionChecks":["store owner consumes stabilized migration API and changes only assigned files"]},
+    {"id":"C","dependsOn":["B"],"lanes":["lead-exports"],"completionChecks":["lead verifies exact goldens and no known semantic shortcuts before module exports", "integration owner runs focused then full crate tests"]}
+  ],
+  "workers":[
+    {"id":"identity-correction","dispatch":"A","executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","cross-language-goldens"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"identity-parity-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"allowlist":["engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/tests/identity.rs"],"read":["engine/crates/membrane-blueprint/src/contracts.rs","blueprint/src/graph/generation-identity.mjs","blueprint/src/graph/static-provider.mjs","blueprint/src/graph/git-source-observation.mjs"],"forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/crates/membrane-blueprint/src/lib.rs"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test identity"],"dependencies":[]},
+    {"id":"migration-correction","dispatch":"A","executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","sqlite-migration"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"migration-parity-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"allowlist":["engine/crates/membrane-blueprint/src/migrations.rs","engine/crates/membrane-blueprint/tests/migrations.rs"],"read":["blueprint/src/graph/store-sqlite.mjs","blueprint/src/graph/confidence-migration.mjs","blueprint/src/graph/provider-identity.mjs","blueprint/src/graph/path-order.mjs","blueprint/tests/store-migrations.test.mjs"],"forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/src/store.rs"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test migrations"],"dependencies":[]},
+    {"id":"store-correction","dispatch":"B","executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","sqlite-store"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"store-schema-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"allowlist":["engine/crates/membrane-blueprint/src/store.rs","engine/crates/membrane-blueprint/tests/schema_v20.rs"],"read":["engine/crates/membrane-blueprint/src/migrations.rs","blueprint/src/graph/store-sqlite.mjs","blueprint/tests/store-migrations.test.mjs","blueprint/tests/store-sqlite.test.mjs"],"forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/crates/membrane-blueprint/src/lib.rs"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test schema_v20"],"dependencies":[]},
+    {"id":"lead-exports","dispatch":"C","executorRequirement":{"semanticRequirement":"required","capabilities":["rust-api-integration"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"foundation-composition-review"}],"escalation":{"permittedOn":["verification_failed"],"forbiddenOn":["denied"]}},"allowlist":["engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/tests/foundations.rs"],"read":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/src/migrations.rs","engine/crates/membrane-blueprint/src/store.rs"],"forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test contracts --test identity --test migrations --test schema_v20 --test foundations, then full -p membrane-blueprint"],"dependencies":[]}
+  ],
+  "oracleAudit": {"required":true,"mode":"adversarial","status":"required-before-execution","checks":["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]},
+  "recovery": {"maxRetries":1,"stopConditions":["new unowned changes overlap an allowlist","required Cargo dependencies disappear","source authority proves packet scope incomplete"],"returnFields":["changedPaths","checks","blockers","baselineRevision","patchDigest"]}
+}

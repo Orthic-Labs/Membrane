@@ -1,6 +1,7 @@
 //! Strict federation ingress validation and immutable request normalization.
 
 use crate::root::{normalize_anchor_path, resolve_canonical_root, RootError, RootPathSource};
+use crate::requirements::{compile_requirement_set, EvidenceRequirementSetV1, RequirementFactV1};
 use membrane_protocol::{DeadlineBudget, FederationRequestV1, FEDERATION_REQUEST_SCHEMA_VERSION};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -23,6 +24,8 @@ pub enum ValidationCode {
     InvalidBudget,
     #[error("manifest digest is invalid")]
     InvalidManifestDigest,
+    #[error("requirement facts are invalid")]
+    InvalidRequirements,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
@@ -78,6 +81,9 @@ pub struct NormalizedFederationRequest {
     pub release_generation: Option<String>,
     pub blueprint_generation: Option<String>,
     pub skills_generation: Option<String>,
+    /// Additive retrieval needs compiled from bounded task signals and typed
+    /// caller facts. This has no authority-bearing fields.
+    pub requirements: EvidenceRequirementSetV1,
     pub extensions: BTreeMap<String, Value>,
 }
 
@@ -117,7 +123,7 @@ pub fn normalize_request<S: RootPathSource>(
     let task = required("task", &request.task)?;
     let task_id = optional_string(&request.extensions, "taskId")?
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| task.clone());
+        .unwrap_or_else(|| request_id.clone());
     let requested_root = required("repositoryRoot", &request.repository_root)?;
     let client = required("client", &request.client)?;
     let session_id = required("sessionId", &request.session_id)?;
@@ -177,6 +183,12 @@ pub fn normalize_request<S: RootPathSource>(
             ValidationCode::InvalidManifestDigest,
         ));
     }
+    let caller_facts = request.extensions.get("requirementFacts")
+        .map(|value| serde_json::from_value::<Vec<RequirementFactV1>>(value.clone())
+            .map_err(|_| RequestValidationError::new("requirementFacts", ValidationCode::InvalidRequirements)))
+        .transpose()?
+        .unwrap_or_default();
+    let requirements = compile_requirement_set(task_id.clone(), &task, &caller_facts);
 
     Ok(NormalizedFederationRequest {
         schema_version: request.schema_version,
@@ -219,6 +231,7 @@ pub fn normalize_request<S: RootPathSource>(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(str::to_owned),
+        requirements,
         extensions: request.extensions.clone(),
     })
 }

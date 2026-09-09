@@ -200,6 +200,73 @@ pub fn decode_event_frame(
     Ok(event)
 }
 
+// ---------------------------------------------------------------------------
+// v2: advisory launcher detach
+// ---------------------------------------------------------------------------
+//
+// v2 is additive alongside `DaemonLaunchV1` / `DaemonCommandV1` /
+// `DaemonEventV1` (preserved V1 shapes, unchanged). Historically the parent
+// pipe's closure/EOF was the tray's hard command tying daemon lifetime to
+// the parent process. v2 replaces that command with an explicit, typed
+// *advisory* launcher-detach signal: before ready (or first holder), an
+// EOF/invalid pipe still triggers bounded startup cleanup exactly as today;
+// after ready, `AdvisoryDetach` (like an ordinary pipe EOF) only detaches the
+// dead signal receiver — the daemon keeps polling its background cadence
+// independently, treats stdout receiver loss as best-effort detached output,
+// and never uses this signal to drain or fail a peer-held controller.
+pub const DAEMON_IPC_SCHEMA_VERSION_V2: u32 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DaemonCommandKindV2 {
+    Drain,
+    /// Advisory-only: the launcher (tray/parent) is detaching. This is
+    /// never a kill-on-close job command — it carries no authority to
+    /// terminate the daemon or to drain a controller that another holder
+    /// still needs.
+    AdvisoryDetach,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DaemonCommandV2 {
+    pub schema_version: u32,
+    pub sequence: u64,
+    pub kind: DaemonCommandKindV2,
+}
+
+impl DaemonCommandV2 {
+    pub fn validate(&self, last_sequence: Option<u64>) -> Result<(), DaemonProtocolError> {
+        if self.schema_version != DAEMON_IPC_SCHEMA_VERSION_V2 {
+            return Err(DaemonProtocolError::UnsupportedSchemaVersion(
+                self.schema_version,
+            ));
+        }
+        if self.sequence == 0 {
+            return Err(DaemonProtocolError::ZeroSequence);
+        }
+        validate_sequence(self.sequence, last_sequence)
+    }
+
+    /// True once the parent pipe's role has become advisory-only, i.e. this
+    /// command can never itself be treated as a forced-kill instruction.
+    pub fn is_advisory(&self) -> bool {
+        matches!(
+            self.kind,
+            DaemonCommandKindV2::AdvisoryDetach | DaemonCommandKindV2::Drain
+        )
+    }
+}
+
+pub fn decode_command_frame_v2(
+    frame: &[u8],
+    last_sequence: Option<u64>,
+) -> Result<DaemonCommandV2, DaemonProtocolError> {
+    let command: DaemonCommandV2 = decode_frame(frame)?;
+    command.validate(last_sequence)?;
+    Ok(command)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

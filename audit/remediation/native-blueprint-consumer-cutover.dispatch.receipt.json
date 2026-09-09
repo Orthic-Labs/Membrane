@@ -1,0 +1,35 @@
+{
+  "schema_version": 4,
+  "sha256": "149a8f8f5eea72f7fd3466c4cc6b04b8b0e14b6051055fe3dc5a1f4916aeca52",
+  "referenced_artifacts": [
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "docs/architecture/subsystems/blueprint.md",
+      "sha256": "sha256:598180a81371e989c0edeb0c352e70e2da9283155c4d1077f36f37d993a73656"
+    },
+    {
+      "path": "audit/remediation/reconciliation/native-seam-inventory.md",
+      "sha256": "sha256:df6d559faadd90904dc16aac75889ce8eb76ff6940c9fe1d348683e53c98f875"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "149a8f8f5eea72f7fd3466c4cc6b04b8b0e14b6051055fe3dc5a1f4916aeca52",
+    "source_revision": "abeec00c1b8705e7905c92bba73f867f0cea871a",
+    "prompt_digest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+  }
+}

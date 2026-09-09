@@ -33,21 +33,22 @@ test("Claude projection is installed-path bound & ships hooks", () => {
     const command = hooks[0].hooks?.[0]?.command;
     assert.equal(
       command,
-      '"${CLAUDE_PLUGIN_ROOT}/runtime/blueprint/lib/node.exe" "${CLAUDE_PLUGIN_ROOT}/mcp/hooks/membrane-hook-entrypoint.mjs"',
+      '"${CLAUDE_PLUGIN_ROOT}/membrane.exe" hook',
       event,
     );
-    assert.doesNotMatch(command, /D:[\\/]Claude|node_modules|(?:^|[\\/])(?:dist|target)(?:[\\/]|$)|python(?:\.exe)?/i);
+    assert.doesNotMatch(command, /D:[\\/]Claude|node(?:\.exe)?|node_modules|\.mjs|(?:^|[\\/])(?:dist|target)(?:[\\/]|$)|python(?:\.exe)?/i);
   }
 });
 
 test("quickstart states native Windows runtime authority", () => {
   assert.match(product, /Current supported target is \*\*Windows\*\*/);
   assert.match(product, /visible native \*\*tray\*\* owns resident lifecycle/);
-  assert.match(doc, /signed Windows install/);
-  assert.match(doc, /Visible native tray owns resident/);
-  assert.match(doc, /headless child daemon hosts runtime/);
+  assert.match(doc, /installed Windows package/);
+  assert.match(doc, /Visible native tray owns (?:full )?resident/);
+  assert.match(doc, /full resident lifecycle through its daemon/);
   assert.match(doc, /Hub dashboard is on demand/);
-  assert.match(doc, /Node & Python are development\/test tooling/);
+  assert.match(doc, /no agent-supplied Node or Python is required/);
+  assert.match(doc, /Node 20\+ & pnpm 11 for development tooling only/);
 });
 
 test("membrane_context example matches native schema", () => {
@@ -55,24 +56,24 @@ test("membrane_context example matches native schema", () => {
   assert.match(doc, /"repositoryId":"demo-repo"/);
   assert.match(doc, /"scopeId":"demo-scope"/);
   assert.match(tools, /"membrane_context" =>/);
-  assert.match(tools, /vec!\["task", "repository", "caller"\]/);
+  assert.match(tools, /vec!\[\s*"task",\s*"taskId",\s*"sessionId",\s*"repository",\s*"caller",\s*"remainingContextCeiling"/s);
   assert.match(tools, /required":\["root","repositoryId","scopeId"\]/);
 });
 
-test("Hub-off expectation matches native typed contract", () => {
-  assert.match(doc, /"kind":"membrane_unavailable","reason":"hub_inactive","retryable":true/);
-  assert.match(hub, /kind: "membrane_unavailable"/);
-  assert.match(hub, /reason: MembraneUnavailableReasonV1::HubInactive/);
-  assert.match(hub, /retryable: true/);
+test("Hub-off expectation matches native explicit-operation contract", () => {
+  assert.match(doc, /execute through installed subsystem owners/);
+  assert.match(doc, /No watcher, scheduler or Hub process should start/);
+  assert.match(hub, /pub struct MembraneUnavailableV1/);
+  assert.match(hub, /HubInactive/);
 });
 
-test("Blueprint lifecycle language preserves installed runtime contract", () => {
-  assert.match(doc, /runtime\s+shipped by Membrane installer/);
-  assert.match(doc, /Watcher freshness is daemon-coupled/);
+test("Blueprint lifecycle language preserves native installed contract", () => {
+  assert.match(doc, /Blueprint is a native installed service/);
+  assert.match(doc, /automatic watcher refresh requires active tray-owned daemon/);
   assert.match(doc, /`not_configured`/);
   assert.match(doc, /`degraded`/);
   assert.match(doc, /`blueprint_unavailable`/);
-  assert.match(doc, /bounded one-shot/);
+  assert.match(doc, /bounded (?:one-shot|work with Hub off)/);
 });
 
 test("offline fixture remains explicitly synthetic", () => {

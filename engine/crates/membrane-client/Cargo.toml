@@ -14,3 +14,6 @@ membrane-protocol = { path = "../membrane-protocol" }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio-util = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+getrandom = { workspace = true }

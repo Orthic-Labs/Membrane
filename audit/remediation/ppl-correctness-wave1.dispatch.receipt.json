@@ -1,0 +1,47 @@
+{
+  "schema_version": 4,
+  "sha256": "a88a9e1ec7d8d996356cb33cf663ec0835d1091e240adf81c56f873a4680ddcc",
+  "referenced_artifacts": [
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "docs/canon/pull.md",
+      "sha256": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a"
+    },
+    {
+      "path": "docs/canon/push.md",
+      "sha256": "sha256:97566d4e2710105095dcf2165b9208ae20bd07d3e3b23c8c76ca16627aba4afc"
+    },
+    {
+      "path": "docs/canon/ledger.md",
+      "sha256": "sha256:1095bbd043177dd03263f178a0715adc7923955aa879d00d2586b9dd1c7b2700"
+    },
+    {
+      "path": "docs/architecture/subsystems/ledger.md",
+      "sha256": "sha256:642cd02a961ed5689a0a9e297d5faf70fd7c8fea9a0910e58870d2fbbcfcd6c0"
+    },
+    {
+      "path": "audit/remediation/reconciliation/audit-closure-inventory.md",
+      "sha256": "sha256:4b2b1c83f44be7161f7f03285f0c105a30dff1b260ef12965de932e347ad463b"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "a88a9e1ec7d8d996356cb33cf663ec0835d1091e240adf81c56f873a4680ddcc",
+    "source_revision": "936804e4ac60cba31c04d1dfd93476b0d790f827",
+    "prompt_digest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+  }
+}

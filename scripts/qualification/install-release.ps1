@@ -7,7 +7,17 @@ param(
   [Parameter(Mandatory = $true)][string]$EvidencePath,
   [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'Orthic Labs\Membrane\current'),
   [int]$TimeoutSeconds = 45,
-  [int]$SteadyStateSamples = 4
+  [int]$SteadyStateSamples = 4,
+  # Default stays the production route: a signed installer is mandatory and
+  # every result is a signed-release PASS. 'internal-unsigned' is an explicit,
+  # separate route for this-machine internal candidates that are not
+  # Authenticode-signed; it verifies exact artifact/installer/source/
+  # installation hashes and the internal stable `current` layout, but every
+  # result it can produce is labeled unsigned-functional. It never disables
+  # production signing verification -- it simply never runs it, because an
+  # internal-unsigned candidate is not expected to carry a valid signature.
+  # This parameter never flips the signed-release branch's own behavior.
+  [ValidateSet('signed-release', 'internal-unsigned')][string]$Profile = 'signed-release'
 )
 
 # Installed Windows qualification is deliberately a runner, never a builder.
@@ -1402,8 +1412,17 @@ $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
 Require ($InstallRoot -match '(?i)\\Orthic Labs\\Membrane\\current$') "install root must be stable Membrane current path: $InstallRoot"
 $script:InitialInstallRoot = $InstallRoot
 
-$installerPublisher = Assert-SignedFile $installerPath 'current installer'
-if ($previousPath) { [void](Assert-SignedFile $previousPath 'previous installer' $installerPublisher) }
+$installerPublisher = $null
+if ($Profile -eq 'signed-release') {
+  # Production route: unconditional, never bypassed by any parameter.
+  $installerPublisher = Assert-SignedFile $installerPath 'current installer'
+  if ($previousPath) { [void](Assert-SignedFile $previousPath 'previous installer' $installerPublisher) }
+} else {
+  # internal-unsigned route: signature verification is not run (the candidate
+  # is not expected to carry one). Exact hash binding below still applies in
+  # full, and this branch can never mark the run as a signed-release PASS.
+  Write-Host "[qualification] profile=internal-unsigned: Authenticode verification skipped by design; hash-bound identity checks below still apply"
+}
 Assert-BoundEvidence $installerPath $manifestPath $sbomPath
 $releaseManifestValue = Read-JsonFile $manifestPath 'release manifest'
 $currentVersion = Normalize-Version $releaseManifestValue.release.tag 'release manifest version'
@@ -1502,6 +1521,10 @@ try {
   Require ($uninstall.ExitCode -eq 0) "uninstaller failed with exit code $($uninstall.ExitCode)"
   Start-Sleep -Seconds 1
   $uninstallEvidence = Assert-UninstallResidue $InstallRoot $doctor $dataMarker $dataHash
+  # Authenticode status is captured for the record on both routes; only the
+  # signed-release route (above) ever REQUIREs it to be Valid. Recording it
+  # here never re-derives or asserts a signed-release PASS for the
+  # internal-unsigned route.
   $installerSignature = Get-AuthenticodeSignature -LiteralPath $installerPath
   $previousArtifactEvidence = $null
   if ($previousPath) {
@@ -1517,11 +1540,16 @@ try {
       timestampThumbprint = [string]$previousSignature.TimeStamperCertificate.Thumbprint
     }
   }
+  $certification = if ($Profile -eq 'signed-release') { 'signed-release' } else { 'unsigned-functional' }
+  $installedContentEvidence = Get-InstalledContentEvidence $InstallRoot
   $receipt = [ordered]@{
     schema = 'membrane.windows-installed-qualification.v1'
     generatedAt = [DateTime]::UtcNow.ToString('o')
     platform = 'windows-x86_64'
-    profile = 'installed-local'
+    profile = if ($Profile -eq 'signed-release') { 'installed-local' } else { 'internal-unsigned' }
+    # Explicit, separate label from `profile`/`lifecycle` so no consumer can
+    # mistake an internal-unsigned run's result for a signed-release PASS.
+    certification = $certification
     artifact = [ordered]@{
       path = $installerPath
       version = $currentVersion
@@ -1531,6 +1559,13 @@ try {
       signerThumbprint = [string]$installerSignature.SignerCertificate.Thumbprint
       timestampSubject = [string]$installerSignature.TimeStamperCertificate.Subject
       timestampThumbprint = [string]$installerSignature.TimeStamperCertificate.Thumbprint
+    }
+    # Exact installation content hashes for the internal stable `current`
+    # layout under test; present on both routes, required reading for the
+    # internal-unsigned route's own hash-bound identity claim.
+    installedCurrent = [ordered]@{
+      root = $InstallRoot
+      files = $installedContentEvidence
     }
     previousArtifact = $previousArtifactEvidence
     activationDryRun = $script:ActivationDryRun
@@ -1561,30 +1596,35 @@ try {
     upgrade = $script:UpgradeEvidence
     uninstallEvidence = $uninstallEvidence
     lifecycle = [ordered]@{
-      install = 'pass'
-      startup = 'pass'
-      hubHealth = 'pass'
-      tray = 'pass'
-      popup = 'pass'
-      renderer = 'pass'
-      mcp17 = 'pass'
-      nativeHostCutover = 'pass'
-      blueprintHubHosted = 'pass'
-      blueprintHubOffOneShot = 'pass'
-      downgrade = if ($previousPath) { 'pass' } else { 'not_applicable' }
-      repair = if ($previousPath) { 'not_applicable' } else { 'pass' }
-      upgrade = 'pass'
-      stateContinuity = 'pass'
-      uninstall = 'pass'
-      residue = 'pass'
-      nativeOnlyProcessTree = 'pass'
-      runtimeInventory = 'pass'
-      adapt = 'pass'
-      workspaceConfigMigration = 'pass'
+      install = $certification
+      startup = $certification
+      hubHealth = $certification
+      tray = $certification
+      popup = $certification
+      renderer = $certification
+      mcp17 = $certification
+      nativeHostCutover = $certification
+      blueprintHubHosted = $certification
+      blueprintHubOffOneShot = $certification
+      downgrade = if ($previousPath) { $certification } else { 'not_applicable' }
+      repair = if ($previousPath) { 'not_applicable' } else { $certification }
+      upgrade = $certification
+      stateContinuity = $certification
+      uninstall = $certification
+      residue = $certification
+      nativeOnlyProcessTree = $certification
+      runtimeInventory = $certification
+      adapt = $certification
+      workspaceConfigMigration = $certification
     }
   }
   Write-JsonAtomic $EvidencePath $receipt
-  Write-Output "Windows installed qualification passed: $(Hash-File $installerPath)"
+  if ($Profile -eq 'signed-release') {
+    Write-Output "Windows installed qualification passed (signed-release): $(Hash-File $installerPath)"
+  } else {
+    # Never phrase this as a signed-release PASS.
+    Write-Output "Windows installed qualification passed (unsigned-functional, internal profile only): $(Hash-File $installerPath)"
+  }
 } finally {
   Stop-QualificationHub
   if ($dataMarker -and (Test-Path -LiteralPath $dataMarker)) { Remove-Item -LiteralPath $dataMarker -Force -ErrorAction SilentlyContinue }

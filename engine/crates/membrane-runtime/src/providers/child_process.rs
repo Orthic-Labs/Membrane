@@ -228,7 +228,7 @@ pub fn spawn_contained_command(mut command: Command) -> std::io::Result<Sanitize
         // remains, matching the historical containment floor.
         match &job {
             Some(job) => {
-                job.assign(child.as_raw_handle());
+                let _ = job.assign(child.as_raw_handle());
             }
             None => {}
         }
@@ -239,6 +239,28 @@ pub fn spawn_contained_command(mut command: Command) -> std::io::Result<Sanitize
         #[cfg(windows)]
         job,
     })
+}
+
+/// Strict containment for authority-bearing callers. Unlike the provider
+/// helper above, Windows Job creation and assignment are mandatory: returning
+/// an ungoverned child would make a timeout claim unsound.
+pub fn spawn_strictly_contained_command(mut command: Command) -> std::io::Result<SanitizedProcess> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle as _;
+        let mut child = command.spawn()?;
+        let Some(job) = windows_job::WindowsJob::create() else {
+            let _ = child.kill(); let _ = child.wait();
+            return Err(std::io::Error::other("strict Windows Job creation failed"));
+        };
+        if !job.assign(child.as_raw_handle()) {
+            let _ = child.kill(); let _ = child.wait();
+            return Err(std::io::Error::other("strict Windows Job assignment failed"));
+        }
+        return Ok(SanitizedProcess { child, job: Some(job) });
+    }
+    #[cfg(not(windows))]
+    { spawn_contained_command(command) }
 }
 
 // ---------------------------------------------------------------------------
@@ -371,14 +393,14 @@ mod windows_job {
         }
 
         /// Place one live process into the job tree.
-        pub fn assign(&self, process: RawHandle) {
+        pub fn assign(&self, process: RawHandle) -> bool {
             if process.is_null() {
-                return;
+                return false;
             }
             // SAFETY: both handles are valid kernel handles owned by this
             // call; assignment has no aliasing preconditions.
             unsafe {
-                AssignProcessToJobObject(self.handle, process);
+                AssignProcessToJobObject(self.handle, process) != 0
             }
         }
 

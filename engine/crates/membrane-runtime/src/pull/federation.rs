@@ -17,7 +17,10 @@
 use super::federation_sources::RuntimeReleaseSource;
 use super::{federation_sources, native_federation};
 use crate::pull::planner::{plan, ContextCandidateSetV1, PlannerInput};
-use membrane_protocol::{PublicationFenceChangeV1, PublicationFenceStatusV1, PublicationFenceV1};
+use membrane_protocol::{
+    LoadedContextIdentitiesV1, ObservationCoverageV1, PublicationFenceChangeV1,
+    PublicationFenceStatusV1, PublicationFenceV1,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -254,6 +257,7 @@ pub(crate) fn native_route_response_with_deadline(
             ))
         }
     };
+    let loaded_context = current_loaded_context(&value, &session);
     let result = (|| -> Result<Value, NativeRouteError> {
         if deadline.is_exhausted_at(Instant::now()) {
             return Err("federation deadline exhausted during owner binding".to_owned().into());
@@ -434,9 +438,22 @@ pub(crate) fn native_route_response_with_deadline(
         payload["packet"] = serde_json::to_value(&packet).map_err(|error| format!("serialize placed packet: {error}"))?;
         payload["placementReceipt"] = serde_json::to_value(&placement_receipt).map_err(|error| format!("serialize placement receipt: {error}"))?;
         let repository_id = membrane_federation::root::canonical_repository_id(&root);
-        let host_retains_delivered_evidence = value.pointer("/consumerCapabilities/retainsDeliveredEvidence").and_then(Value::as_bool).unwrap_or(false);
         let explicit_refresh = value.get("refresh").and_then(Value::as_bool).unwrap_or(false);
-        let suppression_receipts = crate::pull::delivery_state::suppress_packet(&mut packet, &repository_id, &session, host_retains_delivered_evidence, explicit_refresh);
+        let suppression_catalog = loaded_context
+            .as_ref()
+            .map(|_| publication_catalog())
+            .transpose()?;
+        let suppression_receipts = match (loaded_context.as_ref(), suppression_catalog.as_ref()) {
+            (Some(loaded), Some(catalog)) => crate::pull::delivery_state::suppress_packet(
+                &mut packet,
+                catalog,
+                &repository_id,
+                &session,
+                loaded,
+                explicit_refresh,
+            ),
+            _ => Vec::new(),
+        };
         if !suppression_receipts.is_empty() {
             payload["packet"] = serde_json::to_value(&packet).map_err(|error| format!("serialize suppressed packet: {error}"))?;
             payload["suppressionReceipts"] = serde_json::to_value(&suppression_receipts).map_err(|error| format!("serialize suppression receipts: {error}"))?;
@@ -459,7 +476,14 @@ pub(crate) fn native_route_response_with_deadline(
         )
         .map_err(NativeRouteError::RequestTime)?;
         let selected_content = selection.selected_representation.content.clone();
-        let previous_packet = crate::pull::delivery_state::previous_packet(&repository_id, &session);
+        let previous_packet = loaded_context.as_ref().zip(suppression_catalog.as_ref()).and_then(|(loaded, catalog)| {
+            crate::pull::delivery_state::previous_packet(
+                catalog,
+                &repository_id,
+                &session,
+                loaded,
+            )
+        });
         let cache_prefix_diagnostic = crate::cache_prefix::diagnose_cache_prefix(
             &selected_content,
             previous_packet.as_ref(),
@@ -476,7 +500,7 @@ pub(crate) fn native_route_response_with_deadline(
         merge_native_receipts(fields, native_receipts);
         fields.insert(
             "packetReduction".to_owned(),
-            serde_json::to_value(selection)
+            serde_json::to_value(&selection)
                 .map_err(|error| format!("serialize packet reduction selection: {error}"))?,
         );
         fields.insert(
@@ -487,14 +511,52 @@ pub(crate) fn native_route_response_with_deadline(
         if deadline.is_exhausted_at(Instant::now()) {
             return Err("federation deadline exhausted during owner binding".to_owned().into());
         }
-        if let Err(error) = fence_packet_emission(post_fusion_publication_fence_until(&admitted_grant, Some(deadline))?) {
-            return Err(NativeRouteError::PolicyChanged(error));
-        }
-        crate::pull::delivery_state::record_selected_packet(
-            &selected_content,
-            &repository_id,
-            &session,
+        let final_fence = fence_packet_emission(
+            post_fusion_publication_fence_until(&admitted_grant, Some(deadline))?,
+        ).map_err(NativeRouteError::PolicyChanged)?;
+        let provisional_coverage = fields.get("requirementEvidenceMap").cloned();
+        fields.insert(
+            "requirementEvidenceMap".to_owned(),
+            final_requirement_evidence_map(
+                provisional_coverage,
+                &selected_content,
+                final_fence.as_ref(),
+            ),
         );
+        if let Some(context_epoch) = loaded_context.as_ref().and_then(current_context_epoch) {
+            let representation_digest = sha256_digest(&selected_content)?;
+            let packet_digest = sha256_digest(&selected_content)?;
+            let publication_id = crate::store::opaque_correlation_token(
+                &format!(
+                    "{}:{}:{}:{}:{}",
+                    request.request_id, request.trace_id, session, representation_digest, packet_digest,
+                ),
+                "pull-publication",
+            );
+            let publication = crate::catalog::PendingPullPublicationV1 {
+                repository_id: repository_id.clone(),
+                request_id: request.request_id.clone(),
+                trace_id: request.trace_id.clone(),
+                task_id: task_id.clone(),
+                session_id: session.clone(),
+                context_epoch,
+                publication_id: publication_id.clone(),
+                representation_identity: format!("pull-publication:{representation_digest}"),
+                source_ref: format!("packet://{}", request.trace_id),
+                representation_digest,
+                packet_digest,
+            };
+            let catalog = suppression_catalog.as_ref().ok_or_else(|| {
+                "final Pull publication has no current H9 catalog binding".to_owned()
+            })?;
+            crate::catalog::record_pending_pull_publication(catalog, &publication)
+                .map_err(|error| format!("persist final pending Pull publication: {error}"))?;
+            fields.insert(
+                "pullPublication".to_owned(),
+                serde_json::json!({"schemaVersion": 1, "publicationId": publication_id}),
+            );
+            crate::pull::delivery_state::record_selected_packet(&selected_content, publication);
+        }
         Ok(payload)
     })();
     match result {
@@ -688,6 +750,68 @@ fn push_policy_for_request(body: &Value, task: &str) -> crate::push::prep::PushP
     }
 }
 
+/// H9 is a host observation, never a client retention assertion.  Pull can
+/// bind a pending publication to an epoch only when that observation is exact
+/// for this session; otherwise later delivery stays eligible by construction.
+fn current_loaded_context(body: &Value, session: &str) -> Option<LoadedContextIdentitiesV1> {
+    let loaded = serde_json::from_value::<LoadedContextIdentitiesV1>(
+        body.get("loadedContextIdentities")?.clone(),
+    )
+    .ok()?;
+    (loaded.validate().is_ok()
+        && loaded.session_id == session
+        && matches!(loaded.compaction_generation.coverage, ObservationCoverageV1::Complete))
+        .then_some(loaded)
+}
+
+fn current_context_epoch(loaded: &LoadedContextIdentitiesV1) -> Option<u64> {
+    loaded.compaction_generation.value
+}
+
+fn sha256_digest(value: &Value) -> Result<String, String> {
+    let canonical = serde_json::to_string(value)
+        .map_err(|error| format!("serialize final Pull representation for digest: {error}"))?;
+    Ok(format!("sha256:{}", membrane_adapt::canonical::sha256_hex(canonical.as_bytes())))
+}
+
+/// Recompute Pull's existing requirement journeys from final selected bytes.
+/// Admission is not delivery: any candidate absent from this representation is
+/// a dropped, non-emitted journey, so its required dimension stays unsatisfied.
+fn final_requirement_evidence_map(
+    provisional: Option<Value>,
+    selected: &Value,
+    fence: Option<&PublicationFenceV1>,
+) -> Value {
+    let Some(provisional) = provisional else { return Value::Null; };
+    let Ok(mut coverage) = serde_json::from_value::<membrane_federation::RequirementEvidenceMapV1>(provisional) else {
+        return Value::Null;
+    };
+    let fence_held = fence.map_or(true, |fence| matches!(fence.status, PublicationFenceStatusV1::Held));
+    let blocks = selected.get("blocks").and_then(Value::as_array).cloned().unwrap_or_default();
+    for journey in &mut coverage.journeys {
+        let selected_block = blocks.iter().find(|block| {
+            block.get("id").and_then(Value::as_str) == Some(journey.evidence_id.as_str())
+                && block.get("sourceHash").and_then(Value::as_str) == Some(journey.source_hash.as_str())
+        });
+        journey.represented = selected_block.is_some();
+        journey.fenced = journey.represented && fence_held;
+        journey.emitted = journey.fenced;
+        journey.retained = false;
+        journey.dropped = !journey.emitted;
+        if let Some(block) = selected_block {
+            journey.representation_digest = sha256_digest(block).unwrap_or_default();
+            journey.target_ref = block.get("sourceRef").and_then(Value::as_str).map(str::to_owned);
+        }
+    }
+    let satisfied_dimensions = coverage.journeys.iter().filter(|journey| {
+        journey.acquired && journey.eligible && journey.admitted
+            && journey.represented && journey.fenced && journey.emitted
+            && !journey.dropped
+    }).map(|journey| journey.dimension.clone()).collect::<Vec<_>>();
+    coverage.unsatisfied.retain(|dimension| !satisfied_dimensions.contains(dimension));
+    serde_json::to_value(coverage).unwrap_or(Value::Null)
+}
+
 fn request_time_refusal(
     error: crate::push::selection::PacketReductionRequestError,
 ) -> (u16, String) {
@@ -729,6 +853,7 @@ fn collect_native_receipts(response: &membrane_protocol::FederationResponseV1) -
         "correctiveRetrieval",
         "publicationFence",
         "insufficientConfidence",
+        "requirementEvidenceMap",
     ] {
         if let Some(value) = response.extensions.get(key) {
             receipts.insert(key.to_owned(), value.clone());

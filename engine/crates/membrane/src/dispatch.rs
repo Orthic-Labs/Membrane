@@ -47,6 +47,9 @@ pub enum MembraneMode {
     Cli,
     /// JSON-RPC over stdio. Used by Claude/Codex/Cursor/Windsurf MCP clients.
     StdioMcp,
+    /// One native HookHost event over stdin/stdout. This path is deliberately
+    /// process-local so installed hook bindings never need Node or Python.
+    Hook,
     /// MBR-203: transactional install. Runs an install plan against a scratch
     /// `MEMBRANE_ROOT` and only on `commit` renames the scratch root to the
     /// target root. See `crate::install_tx` for the contract.
@@ -70,6 +73,7 @@ impl MembraneMode {
         match self {
             MembraneMode::Cli => "cli",
             MembraneMode::StdioMcp => "stdio-mcp",
+            MembraneMode::Hook => "hook",
             MembraneMode::Install => "install",
             MembraneMode::Uninstall => "uninstall",
             MembraneMode::Activate => "activate",
@@ -98,6 +102,11 @@ enum Command {
     Cli(CliArgs),
     /// JSON-RPC over stdio for MCP clients.
     StdioMcp(StdioArgs),
+    /// Run one HookHost event from stdin & emit one HookHost response on stdout.
+    Hook,
+    /// Private process-containment worker; never installed as a host binding.
+    #[command(hide = true)]
+    HookModule(HookModuleArgs),
     /// MBR-203: transactional install against a scratch `MEMBRANE_ROOT`.
     Install(InstallArgs),
     /// MBR-205: ownership-safe uninstall. The default plan is to refuse
@@ -128,6 +137,12 @@ struct StdioArgs {
     /// JSON-RPC, which is what every MCP client expects today.
     #[arg(long, default_value = "jsonl")]
     framing: String,
+}
+
+#[derive(Debug, clap::Args)]
+struct HookModuleArgs {
+    #[arg(long)]
+    id: String,
 }
 
 /// MBR-203: install subcommand arguments. The binary accepts an optional
@@ -268,6 +283,26 @@ pub fn cli_parser_snapshot(name: &str) -> Option<Vec<(String, String)>> {
     include!("generated_cli_subcommands.rs")
 }
 
+/// Standard clap behavior: `--help`/`--version` (at any subcommand depth) report success —
+/// print to stdout, exit 0 — never a parse failure. clap reports those as an `Err(Error)` whose
+/// `ErrorKind` is one of the three below; `Error::exit()` already renders to the correct stream
+/// (stdout for help/version, stderr otherwise) and terminates with the correct code, so it is
+/// used verbatim here rather than hand-rolled. Real parse errors fall through untouched: this
+/// only ever terminates the process for the display kinds, never returns for them, and returns
+/// normally (doing nothing) for every other error so the caller can convert it to `Err(String)`
+/// exactly as before.
+fn exit_if_clap_display_error(err: &clap::error::Error) {
+    use clap::error::ErrorKind;
+    if matches!(
+        err.kind(),
+        ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+    ) {
+        err.exit();
+    }
+}
+
 fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation, String>> {
     let requested = args.get(1)?.to_str()?;
     let spec = membrane_protocol::operations::OPERATIONS
@@ -289,25 +324,29 @@ fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation
         .disable_help_subcommand(true)
         .subcommand_required(true)
         .subcommand(operation);
-    Some(
-        parser
-            .try_get_matches_from(args.iter())
-            .map(|_| ParsedInvocation {
-                mode: MembraneMode::Cli,
-                cli_tail: args
-                    .iter()
-                    .skip(1)
-                    .map(|arg| arg.to_string_lossy().into_owned())
-                    .collect(),
-                framing: String::new(),
-                port: 0,
-                install: None,
-                uninstall: None,
-                activation: None,
-                migration: None,
-            })
-            .map_err(|error| error.to_string()),
-    )
+    Some(match parser.try_get_matches_from(args.iter()) {
+        Ok(_) => Ok(ParsedInvocation {
+            mode: MembraneMode::Cli,
+            cli_tail: args
+                .iter()
+                .skip(1)
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: None,
+            migration: None,
+        }),
+        Err(error) => {
+            // `--help`/`--version` on a registry-derived operation (e.g. `membrane doctor
+            // --help`) must exit 0 on stdout like any other clap invocation, not be reported as
+            // a parse failure.
+            exit_if_clap_display_error(&error);
+            Err(error.to_string())
+        }
+    })
 }
 
 pub fn parse_mode<I, T>(args: I) -> Result<ParsedInvocation, String>
@@ -343,7 +382,15 @@ where
     if let Some(operation) = parse_registry_operation(&collected) {
         return operation;
     }
-    let parsed = Cli::try_parse_from(collected.iter()).map_err(|err| err.to_string())?;
+    let parsed = match Cli::try_parse_from(collected.iter()) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            // Bare `membrane --help`, `membrane hook --help`, `membrane --version`, etc. must
+            // exit 0 on stdout — only a genuine parse error becomes `Err(String)` here.
+            exit_if_clap_display_error(&err);
+            return Err(err.to_string());
+        }
+    };
     let invocation = match parsed.command {
         Command::Cli(args) => ParsedInvocation {
             mode: MembraneMode::Cli,
@@ -373,6 +420,22 @@ where
                 migration: None,
             }
         }
+        Command::Hook => ParsedInvocation {
+            mode: MembraneMode::Hook,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            activation: None,
+            migration: None,
+        },
+        Command::HookModule(args) => ParsedInvocation {
+            mode: MembraneMode::Hook,
+            cli_tail: vec![args.id],
+            framing: String::new(), port: 0, install: None, uninstall: None,
+            activation: None, migration: None,
+        },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,
             cli_tail: Vec::new(),

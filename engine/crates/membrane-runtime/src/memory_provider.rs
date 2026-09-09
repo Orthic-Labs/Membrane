@@ -26,7 +26,7 @@
 //! trimmed and bounded so a single fat entry cannot swallow the planner
 //! budget.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -101,6 +101,20 @@ pub struct ContextCandidate {
     /// on the receipt path.
     #[serde(rename = "provenance")]
     pub provenance: CandidateProvenance,
+    /// BM06 baseline-projection metadata. `None` for ordinary query-driven
+    /// candidates from `produce_candidate_set`; populated only on rows
+    /// returned by `produce_baseline_projection`, which sources them
+    /// verbatim from Adapt/Taste's own admission machinery
+    /// (`MemoryStore::taste_delivery_inventory`) rather than re-deriving or
+    /// guessing them here.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recordId: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recordClass: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub influenceClass: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub precedenceTier: Option<String>,
 }
 
 /// Cortex-specific provenance. `superseded_ids` is non-empty when this
@@ -445,9 +459,239 @@ fn build_candidates(
                 scope_id: entry.scope_id.clone(),
                 superseded_ids,
             },
+            recordId: None,
+            recordClass: None,
+            influenceClass: None,
+            precedenceTier: None,
         });
     }
     candidates
+}
+
+/// Serialize any Adapt enum (`RecordClass`, `InfluenceClass`, `PrecedenceTier`,
+/// ...) to its canonical snake_case string via its own `Serialize` impl,
+/// rather than re-deriving a parallel string form here. Returns `None` only
+/// if the type's own serializer fails, never a guessed label.
+fn serde_tag<T: serde::Serialize>(value: &T) -> Option<String> {
+    match serde_json::to_value(value).ok()? {
+        serde_json::Value::String(s) => Some(s),
+        other => Some(other.to_string()),
+    }
+}
+
+/// Deterministic, bounded score derived from Adapt's own fixed precedence
+/// ordinal (canon §5.5, `PrecedenceTier`) — lower ordinal is higher
+/// authority. This never overrides Adapt's precedence resolution; it only
+/// gives the planner a stable ranking key inside this provider's candidate
+/// list.
+fn precedence_score(tier: membrane_adapt::authority::PrecedenceTier) -> f64 {
+    let ordinal = tier as i32; // 1 (highest authority) ..= 9 (lowest)
+    (1.0 - (ordinal.saturating_sub(1) as f64 / 8.0)).clamp(0.0, 1.0)
+}
+
+/// Fixed, non-task marker fed to `trace_id_for` for the baseline projection
+/// so its trace id is stable and never derived from — or leaks — a query.
+const BASELINE_TASK_MARKER: &str = "__cortex_baseline_projection__";
+
+/// `resolver` tag on every baseline-projection candidate, distinct from
+/// `PROVIDER_NAME` so the planner and receipts can tell a query-independent
+/// standing candidate apart from an ordinary recall hit.
+const BASELINE_RESOLVER: &str = "memory::baseline";
+
+/// Omission reason codes specific to `produce_baseline_projection`.
+pub mod baseline_reasons {
+    pub const OUT_OF_SCOPE: &str = "out_of_scope";
+    pub const LIFECYCLE_INELIGIBLE: &str = "lifecycle_ineligible";
+    pub const UNVERIFIED: &str = "semantic_unverified";
+    pub const CONTENT_UNAVAILABLE: &str = "content_unavailable";
+    /// Adapt/Taste's own inventory could not be loaded. Typed and reported
+    /// rather than silently returning an empty-but-successful baseline —
+    /// an unavailable producer must never look like "no preferences exist".
+    pub const ADAPT_INVENTORY_UNAVAILABLE: &str = "adapt_inventory_unavailable";
+}
+
+/// BM06 — bounded, query-independent stable/current/constraints/preferences
+/// projection over admitted Cortex records.
+///
+/// Unlike `produce_candidate_set`, this projection never depends on any
+/// task/query text: an unrelated query must still receive the applicable
+/// standing preference. Eligibility, semantic kind, qualifiers and
+/// precedence come verbatim from Adapt/Taste's own query-independent
+/// standing/scoped selection (`MemoryStore::taste_delivery_inventory`) —
+/// this function only re-shapes already-admitted Adapt records into the
+/// planner's `ContextCandidateSet` v1 envelope; it never re-derives
+/// eligibility or precedence itself. Only rows Adapt itself wrote as
+/// `artifact_family='adapt' record_type='taste_preference'` can appear
+/// here, so arbitrary memory text can never masquerade as an authoritative
+/// preference. Pull still owns final admission — this is a provider-side
+/// candidate set, not an admitted context block.
+pub fn produce_baseline_projection(
+    store: &crate::store::MemoryStore,
+    scope: &str,
+    max_candidates: usize,
+) -> ContextCandidateSet {
+    let trace_id = trace_id_for(BASELINE_TASK_MARKER, scope);
+    let chain = scope_chain_for(store, scope);
+    let allowed: BTreeSet<&str> = chain.iter().map(String::as_str).collect();
+    let indexed_at = crate::time::now_iso();
+
+    let inventory = match store.taste_delivery_inventory() {
+        Ok(inventory) => inventory,
+        Err(_) => {
+            // Typed unavailable: never fabricate a standing preference in
+            // place of a producer that failed to load.
+            return ContextCandidateSet {
+                schemaVersion: 1,
+                traceId: trace_id,
+                indexedAt: indexed_at.clone(),
+                task: BASELINE_TASK_MARKER.into(),
+                mode: "baseline".into(),
+                provider: PROVIDER_NAME.into(),
+                freshness: Freshness {
+                    revision: "memory-baseline-v1".into(),
+                    indexedAt: indexed_at,
+                    stale: true,
+                },
+                providerCeiling: ProviderCeiling {
+                    maxCandidates: max_candidates as u32,
+                    maxEstimatedTokens: 0,
+                },
+                candidates: Vec::new(),
+                omissions: vec![Omission {
+                    id: "adapt::taste_delivery_inventory".into(),
+                    layer: LAYER,
+                    reason: baseline_reasons::ADAPT_INVENTORY_UNAVAILABLE.into(),
+                }],
+            };
+        }
+    };
+
+    // Pull entry content through the same public `entries()` API every
+    // other projection in this module uses — no second store, no direct
+    // SQL from this lane.
+    let content_by_id: HashMap<String, MemoryEntry> = store
+        .entries(usize::MAX)
+        .into_iter()
+        .filter(|entry| inventory.memory_ids.contains(&entry.id))
+        .map(|entry| (entry.id.clone(), entry))
+        .collect();
+
+    let mut ranked: Vec<(ContextCandidate, f64)> = Vec::new();
+    let mut omissions: Vec<Omission> = Vec::new();
+
+    for candidate in &inventory.candidates {
+        let Some(memory_id) = inventory
+            .memory_id_for_record(&candidate.record_id)
+            .map(str::to_string)
+        else {
+            // No binding to a durable memory row at all — nothing to
+            // report an omission id against; skip rather than guess one.
+            continue;
+        };
+        let record_scope = inventory
+            .scope_for_record(&candidate.record_id)
+            .unwrap_or(candidate.scope.as_str());
+        if !allowed.contains(record_scope) {
+            omissions.push(Omission {
+                id: memory_id,
+                layer: LAYER,
+                reason: baseline_reasons::OUT_OF_SCOPE.into(),
+            });
+            continue;
+        }
+        if !candidate.lifecycle_eligible {
+            omissions.push(Omission {
+                id: memory_id,
+                layer: LAYER,
+                reason: baseline_reasons::LIFECYCLE_INELIGIBLE.into(),
+            });
+            continue;
+        }
+        if !candidate.semantic_verified {
+            omissions.push(Omission {
+                id: memory_id,
+                layer: LAYER,
+                reason: baseline_reasons::UNVERIFIED.into(),
+            });
+            continue;
+        }
+        let Some(entry) = content_by_id.get(&memory_id) else {
+            omissions.push(Omission {
+                id: memory_id,
+                layer: LAYER,
+                reason: baseline_reasons::CONTENT_UNAVAILABLE.into(),
+            });
+            continue;
+        };
+        let text = trimmed_text(&entry.content);
+        let estimated_tokens = estimate_tokens(text.chars().count());
+        let score = precedence_score(candidate.authority_tier);
+        ranked.push((
+            ContextCandidate {
+                id: format!("memory::baseline::{}", entry.id),
+                layer: LAYER,
+                sourceKind: SOURCE_KIND.into(),
+                sourceRef: format!("{}::baseline::{}", PROVIDER_NAME, entry.id),
+                sourceHash: sha256_hex(text.as_bytes()),
+                trustClass: TRUST_CLASS.into(),
+                instructionPolicy: INSTRUCTION_POLICY.into(),
+                providerScore: score,
+                estimatedTokens: estimated_tokens,
+                protected: true,
+                exact: false,
+                recoverable: true,
+                resolver: BASELINE_RESOLVER.into(),
+                text,
+                artifactFamily: Some("adapt".into()),
+                producer: None,
+                provenance: CandidateProvenance {
+                    memory_id: entry.id.clone(),
+                    access_count: entry.access_count,
+                    last_seen: entry.created_at.clone(),
+                    tier: format!("{:?}", entry.tier),
+                    scope_id: record_scope.to_string(),
+                    superseded_ids: Vec::new(),
+                },
+                recordId: Some(candidate.record_id.clone()),
+                recordClass: serde_tag(&candidate.class),
+                influenceClass: serde_tag(&candidate.influence_class),
+                precedenceTier: serde_tag(&candidate.authority_tier),
+            },
+            score,
+        ));
+    }
+
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.id.cmp(&b.0.id))
+    });
+    ranked.truncate(max_candidates);
+    let candidates: Vec<ContextCandidate> = ranked.into_iter().map(|(candidate, _)| candidate).collect();
+    let total_tokens: u64 = candidates
+        .iter()
+        .map(|c| c.estimatedTokens)
+        .fold(0u64, |acc, t| acc.saturating_add(t));
+
+    ContextCandidateSet {
+        schemaVersion: 1,
+        traceId: trace_id,
+        indexedAt: indexed_at.clone(),
+        task: BASELINE_TASK_MARKER.into(),
+        mode: "baseline".into(),
+        provider: PROVIDER_NAME.into(),
+        freshness: Freshness {
+            revision: "memory-baseline-v1".into(),
+            indexedAt: indexed_at,
+            stale: false,
+        },
+        providerCeiling: ProviderCeiling {
+            maxCandidates: max_candidates as u32,
+            maxEstimatedTokens: total_tokens.min(u32::MAX as u64) as u32,
+        },
+        candidates,
+        omissions,
+    }
 }
 
 /// Produce a v1 `ContextCandidateSet` from `MemoryStore` for the planner.
@@ -648,5 +892,57 @@ mod tests {
         let s = store();
         let set = produce_candidate_set(&s, "anything", "global", 5, None);
         assert!(set.freshness.stale);
+    }
+
+    /// BM06 — an empty store has no standing preferences to project. This must be a
+    /// typed-empty success (mode "baseline", zero candidates, zero omissions), never an
+    /// error and never a fabricated candidate.
+    #[test]
+    fn baseline_projection_runs_on_empty_store() {
+        let s = store();
+        let set = produce_baseline_projection(&s, "global", 5);
+        assert_eq!(set.schemaVersion, 1);
+        assert_eq!(set.mode, "baseline");
+        assert_eq!(set.candidates.len(), 0);
+        assert_eq!(set.omissions.len(), 0);
+        assert!(!set.freshness.stale);
+    }
+
+    /// BM06 negative control — the baseline projection is query-independent: its trace id
+    /// must be identical across two calls for the same scope regardless of any caller-side
+    /// "query" concept (the function does not even accept one). An implementation that
+    /// silently threaded a query into the baseline trace would fail this by drifting.
+    #[test]
+    fn baseline_projection_trace_id_is_stable_for_a_scope() {
+        let s = store();
+        let a = produce_baseline_projection(&s, "D--Claude", 5);
+        let b = produce_baseline_projection(&s, "D--Claude", 5);
+        assert_eq!(a.traceId, b.traceId);
+        let c = produce_baseline_projection(&s, "D--Claude-other", 5);
+        assert_ne!(a.traceId, c.traceId);
+    }
+
+    /// BM06 — precedence must come from Adapt's own fixed tier ordinal, never a guessed
+    /// weight: a higher-authority tier (lower ordinal) must score strictly higher than a
+    /// lower-authority one.
+    #[test]
+    fn precedence_score_respects_adapt_authority_ordering() {
+        use membrane_adapt::authority::PrecedenceTier;
+        let highest = precedence_score(PrecedenceTier::CurrentExplicitUserInstruction);
+        let lowest = precedence_score(PrecedenceTier::ProvisionalCandidate);
+        assert!(highest > lowest);
+        assert!((0.0..=1.0).contains(&highest));
+        assert!((0.0..=1.0).contains(&lowest));
+    }
+
+    /// BM06 — semantic kind must round-trip through Adapt's own serialization, never a
+    /// hand-guessed label invented in this provider.
+    #[test]
+    fn serde_tag_reuses_adapts_own_snake_case_form() {
+        use membrane_adapt::record::RecordClass;
+        assert_eq!(
+            serde_tag(&RecordClass::StandingPreference).as_deref(),
+            Some("standing_preference")
+        );
     }
 }

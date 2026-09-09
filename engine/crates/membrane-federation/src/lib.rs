@@ -18,6 +18,7 @@ pub mod omission;
 pub mod registry;
 pub mod release;
 pub mod request;
+pub mod requirements;
 pub mod root;
 pub mod scheduler;
 pub mod scope;
@@ -40,3 +41,7 @@ pub use engine::FederationEngine;
 pub use error::{ConfigError, RegistryError};
 pub use merge::FusionStrategy;
 pub use registry::ProviderRegistry;
+pub use requirements::{
+    AcquisitionPlanV1, CandidateJourneyV1, EvidenceRequirementSetV1,
+    RequirementEvidenceMapV1, RequirementFactV1,
+};

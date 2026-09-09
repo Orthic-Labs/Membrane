@@ -246,9 +246,193 @@ export async function runInstalledPathHarness(options = {}) {
   return { schema: "membrane.installed-path-harness.v1", task, platform, status: receipt.status, receiptPath, receipt };
 }
 
+// ---------------------------------------------------------------------------
+// Windows registry-runner contract (PKG-01, windows-amendment-acceptance.json).
+//
+// This is a second, independent qualification mode alongside the macOS-only
+// MBR-801 installed-path harness above. It never widens resolvePlatform: the
+// macOS-only gate on the MBR-801 path is untouched, and this mode is reached
+// only through an explicit --case-registry invocation with --platform
+// windows. It runs any acceptance registry (windows-acceptance.json,
+// blueprint-membrane-acceptance.json, windows-amendment-acceptance.json)
+// that shares this contract: select every case in one --group, execute each
+// case's declared caseFile/caseExport, and require discovered == executed ==
+// terminal id sets with zero, missing, duplicate, or skipped selections
+// rejected outright. --profile internal-unsigned is the only implemented
+// profile: it never reports a signed-release PASS and never disables
+// production signing verification (see docs/architecture/execution-lifecycle-boundary.md).
+export const EVIDENCE_KINDS = new Set(["source", "component", "integration", "installed", "host", "task-outcome"]);
+
+export function deriveCaseGroup(row) {
+  if (nonEmptyString(row?.group)) return row.group;
+  const id = String(row?.id ?? "");
+  const dash = id.indexOf("-");
+  return dash > 0 ? id.slice(0, dash) : id;
+}
+
+// Parses one case registry and rejects duplicate or missing ids up front, so
+// a corrupt registry never silently drops a case instead of failing loudly.
+export function loadCaseRegistry(caseRegistryPath) {
+  if (!nonEmptyString(caseRegistryPath) || !existsSync(caseRegistryPath)) {
+    throw new Error(`case registry not found: ${caseRegistryPath}`);
+  }
+  const registry = JSON.parse(readFileSync(caseRegistryPath, "utf8"));
+  const cases = Array.isArray(registry.cases) ? registry.cases : [];
+  const seen = new Set();
+  const duplicateIds = [];
+  for (const row of cases) {
+    if (!nonEmptyString(row?.id)) throw new Error(`case registry ${caseRegistryPath} has a row with no id`);
+    if (seen.has(row.id)) duplicateIds.push(row.id);
+    seen.add(row.id);
+  }
+  if (duplicateIds.length > 0) {
+    throw new Error(`case registry ${caseRegistryPath} has duplicate case ids: ${[...new Set(duplicateIds)].join(", ")}`);
+  }
+  return { registry, cases };
+}
+
+// A zero-case selection is a hard failure, never a silent no-op pass.
+export function selectGroupCases(cases, group) {
+  if (!nonEmptyString(group)) throw new Error("--group is required for registry qualification");
+  const selected = cases.filter((row) => deriveCaseGroup(row) === group);
+  if (selected.length === 0) throw new Error(`case registry has zero cases in group ${group}; refusing a zero-selection run`);
+  return selected;
+}
+
+const defaultImportCaseModule = (workspaceRoot) => (specifier) => import(pathToFileURL(resolve(workspaceRoot, specifier)).href);
+
+// Runs exactly one registry case to a terminal (never skipped) result: a case
+// missing its declared module or export fails instead of being silently
+// dropped, and a case that does not record a recognized evidenceKind fails
+// instead of being counted as passed.
+export async function runOneRegistryCase(row, context) {
+  const { workspaceRoot, profile, platform, evidencePath, importCaseModule = defaultImportCaseModule(workspaceRoot) } = context;
+  if (!nonEmptyString(row?.caseFile) || !nonEmptyString(row?.caseExport)) {
+    return { id: row?.id ?? null, status: "failed", evidenceKind: null, reason: "case registry row is missing caseFile or caseExport" };
+  }
+  let moduleExports;
+  try {
+    moduleExports = await importCaseModule(row.caseFile);
+  } catch (error) {
+    return { id: row.id, status: "failed", evidenceKind: null, reason: `case module ${row.caseFile} failed to load: ${error.message}` };
+  }
+  const caseFunction = moduleExports?.[row.caseExport];
+  if (typeof caseFunction !== "function") {
+    return { id: row.id, status: "failed", evidenceKind: null, reason: `case module ${row.caseFile} has no export ${row.caseExport}` };
+  }
+  let outcome;
+  try {
+    outcome = await caseFunction({ row, workspaceRoot, profile, platform, evidencePath });
+  } catch (error) {
+    return { id: row.id, status: "failed", evidenceKind: null, reason: `case ${row.id} threw: ${error.message}` };
+  }
+  if (!outcome || typeof outcome !== "object") {
+    return { id: row.id, status: "failed", evidenceKind: null, reason: `case ${row.id} returned no result` };
+  }
+  if (!EVIDENCE_KINDS.has(outcome.evidenceKind)) {
+    return { id: row.id, status: "failed", evidenceKind: outcome.evidenceKind ?? null, reason: `case ${row.id} did not record a recognized evidenceKind` };
+  }
+  return {
+    id: row.id,
+    status: outcome.status === "passed" ? "passed" : "failed",
+    evidenceKind: outcome.evidenceKind,
+    detail: outcome.detail ?? null,
+    reason: outcome.reason ?? null,
+  };
+}
+
+// Orchestrates one --group of one case registry under the internal-unsigned
+// Windows profile. Requires discovered == executed == terminal id sets;
+// throws (never a soft pass) on zero selection, a duplicate id, an
+// unsupported platform/profile, or a missing --evidence path.
+export async function runRegistryQualification(options = {}) {
+  const {
+    platform,
+    profile,
+    caseRegistryPath,
+    group,
+    evidencePath,
+    workspaceRoot = resolve(HERE, "../.."),
+    now = () => new Date().toISOString(),
+    importCaseModule,
+  } = options;
+
+  if (platform !== "windows") {
+    throw new Error("registry qualification requires an explicit --platform windows; macOS registry qualification is deferred and never a Windows prerequisite");
+  }
+  if (profile !== "internal-unsigned") {
+    throw new Error(`unsupported --profile ${profile}; the registry runner implements internal-unsigned only and never reports a signed-release PASS`);
+  }
+  if (!nonEmptyString(evidencePath)) throw new Error("--evidence is required");
+
+  const { cases } = loadCaseRegistry(caseRegistryPath);
+  const discovered = selectGroupCases(cases, group).map((row) => row.id);
+  const byId = new Map(cases.map((row) => [row.id, row]));
+
+  const executed = [];
+  const terminal = [];
+  const results = [];
+  for (const id of discovered) {
+    const result = await runOneRegistryCase(byId.get(id), { workspaceRoot, profile, platform, evidencePath, importCaseModule });
+    executed.push(result.id);
+    terminal.push(result.id);
+    results.push(result);
+  }
+
+  const setsEqual = (a, b) => a.size === b.size && [...a].every((entry) => b.has(entry));
+  const discoveredSet = new Set(discovered);
+  if (!setsEqual(discoveredSet, new Set(executed)) || !setsEqual(discoveredSet, new Set(terminal))) {
+    throw new Error("required/discovered/executed/terminal case-set equality violated");
+  }
+
+  const evidenceKindCounts = {};
+  for (const result of results) {
+    if (result.evidenceKind) evidenceKindCounts[result.evidenceKind] = (evidenceKindCounts[result.evidenceKind] ?? 0) + 1;
+  }
+  const failed = results.filter((result) => result.status !== "passed");
+
+  const summary = {
+    schema: "membrane.registry-qualification.v1",
+    platform,
+    profile,
+    group,
+    caseRegistryPath,
+    evidencePath,
+    generatedAt: now(),
+    requiredIds: discovered,
+    executedIds: executed,
+    terminalIds: terminal,
+    results,
+    evidenceKindCounts,
+    status: failed.length === 0 ? "passed" : "failed",
+    unsignedFunctional: true,
+    signedReleasePass: false,
+  };
+  atomicJson(evidencePath, summary);
+  return summary;
+}
+
 function cli() {
   const args = process.argv.slice(2);
   const value = (name) => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
+  const caseRegistryPath = value("--case-registry") ? resolve(value("--case-registry")) : undefined;
+  if (caseRegistryPath) {
+    const platform = value("--platform");
+    const profile = value("--profile");
+    const group = value("--group");
+    const evidencePath = value("--evidence") ? resolve(value("--evidence")) : undefined;
+    runRegistryQualification({ platform, profile, caseRegistryPath, group, evidencePath })
+      .then((summary) => {
+        process.stdout.write(`${JSON.stringify({ status: summary.status, group: summary.group, evidencePath, requiredCount: summary.requiredIds.length })}\n`);
+        process.exitCode = summary.status === "passed" ? 0 : 2;
+      })
+      .catch((error) => {
+        process.stderr.write(`${error.message}\n`);
+        process.exitCode = 1;
+      });
+    return;
+  }
+
   const task = value("--task");
   const workspaceRoot = resolve(value("--workspace-root") || resolve(HERE, "../.."));
   const evidenceRoot = resolve(value("--evidence-root") || join(workspaceRoot, "docs", "evidence", "qualification", "mbr801"));

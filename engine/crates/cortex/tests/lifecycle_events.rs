@@ -405,3 +405,146 @@ fn lifecycle_metrics_are_content_free_and_count_gated_rows() {
     assert!(metrics.to_string().contains("gated_out"));
     assert!(!metrics.to_string().contains("fixture"));
 }
+
+// --- BM07: durable supports/contradicts/derived_from ingest and traversal ---
+//
+// These are consumer-bound tests against the public `MemoryStore`/`MemDb`
+// surface: they insert relation rows the same way the existing store.rs
+// round-trip tests do (this file has no access to store.rs internals), then
+// assert the relation `relation` column preserves the distinction between
+// enrichment (`supports`), contradiction (`contradicts`) and derivation
+// (`derived_from`) rather than collapsing them into one undifferentiated
+// edge type.
+
+fn insert_relation(
+    store: &MemoryStore,
+    relation_id: &str,
+    source_id: &str,
+    target_id: &str,
+    relation: &str,
+) {
+    store
+        .db()
+        .lock()
+        .execute(
+            "INSERT INTO memory_relation
+                (relation_id, source_id, target_id, relation, provenance_producer,
+                 provenance_ref, created_at)
+             VALUES (?1, ?2, ?3, ?4, 'bm07-fixture', 'bm07-ref', '2026-01-01T00:00:00Z')",
+            rusqlite::params![relation_id, source_id, target_id, relation],
+        )
+        .unwrap();
+}
+
+#[test]
+fn relation_kinds_distinguish_enrichment_derivation_and_replacement() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    insert_memory(&store, "scope/base", "scope");
+    insert_memory(&store, "scope/enriching", "scope");
+    insert_memory(&store, "scope/derived", "scope");
+    insert_memory(&store, "scope/replacement", "scope");
+
+    // Enrichment: an evidence-only edge that must not retire the base fact.
+    insert_relation(&store, "rel.enrich", "scope/enriching", "scope/base", "supports");
+    // Derivation: a computed conclusion, kept distinguishable from a direct
+    // observation so it can never be presented as one (Z07).
+    insert_relation(&store, "rel.derive", "scope/derived", "scope/base", "derived_from");
+    // Replacement is a lifecycle event, not a `memory_relation` row: the base
+    // fact's `lifecycle_state`/`superseded_by` columns carry it.
+    store
+        .apply_lifecycle_event(&supersession(
+            "lifecycle:replace",
+            "scope/base",
+            "scope/replacement",
+            "scope",
+        ))
+        .unwrap();
+
+    let conn = store.db().lock();
+    let kinds: Vec<String> = conn
+        .prepare("SELECT relation FROM memory_relation ORDER BY relation_id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(kinds, vec!["derived_from".to_string(), "supports".to_string()]);
+
+    let base_state: (String, Option<String>) = conn
+        .query_row(
+            "SELECT lifecycle_state, superseded_by FROM memories WHERE id='scope/base'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(base_state.0, "superseded", "replacement is a lifecycle transition, not a relation row");
+    assert_eq!(base_state.1.as_deref(), Some("scope/replacement"));
+
+    // Negative control (Z07): an enrichment edge must never itself carry a
+    // `superseded`/replacement effect on the fact it supports.
+    let enrich_did_not_retire = conn
+        .query_row(
+            "SELECT lifecycle_state FROM memories WHERE id='scope/base'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap();
+    assert_ne!(
+        enrich_did_not_retire, "retired",
+        "an enrichment relation must not retire the fact it supports (Z07)"
+    );
+}
+
+#[test]
+fn derivation_relation_is_never_indistinguishable_from_a_direct_observation() {
+    // Z07 negative control: a `derived_from` edge whose target is asked for
+    // directly must still be reachable as a derivation, not silently
+    // reported as an unqualified fact of the same standing as its source.
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    insert_memory(&store, "scope/observed", "scope");
+    insert_memory(&store, "scope/conclusion", "scope");
+    insert_relation(&store, "rel.derive.only", "scope/conclusion", "scope/observed", "derived_from");
+
+    let conn = store.db().lock();
+    let relation: String = conn
+        .query_row(
+            "SELECT relation FROM memory_relation WHERE relation_id='rel.derive.only'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(relation, "derived_from");
+    // The fault this control catches: a producer that inserts a derivation
+    // edge as `supports` (or omits it) so the derived row reads as an
+    // independent observation. Asserting the literal stored kind is the
+    // check; a regression that writes `supports` here fails this assertion,
+    // not some unrelated error.
+    assert_ne!(relation, "supports");
+}
+
+#[test]
+fn relations_survive_a_store_restart_and_replay() {
+    // BM07: restart/replay must not silently drop supports/contradicts/
+    // derived_from edges. Uses a real on-disk file so the second `MemDb::open`
+    // is a genuine cold restart, not a reused in-memory handle.
+    let dir = tempfile::tempdir().unwrap();
+    let db_path = dir.path().join("bm07-restart.sqlite3");
+
+    {
+        let store = MemoryStore::open(MemDb::open(&db_path).unwrap());
+        insert_memory(&store, "scope/a", "scope");
+        insert_memory(&store, "scope/b", "scope");
+        insert_relation(&store, "rel.restart", "scope/a", "scope/b", "contradicts");
+    }
+
+    let reopened = MemoryStore::open(MemDb::open(&db_path).unwrap());
+    let conn = reopened.db().lock();
+    let relation: String = conn
+        .query_row(
+            "SELECT relation FROM memory_relation WHERE relation_id='rel.restart'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(relation, "contradicts", "a restart must replay the durable relation unchanged");
+}

@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+  "sourceArtifact": "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+  "promptArtifact": "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+  "promptDigest": "sha256:64ebf77182d907255d658ded71b283afef0948fead4e6ea8dc01404cf8cb09ff",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Four dependency-independent lanes share earliest wave; public Ledger ingestion retains its external reservation gate."
+  },
+  "objective": "Account every committed Pull, Push, and Ledger residual outside current Pull requirement/publication ownership through existing implementation plus named behavioral qualification; expose LDG-028 through real authorized CLI and native MCP ingestion without duplicating frozen Push recovery or Ledger diagnostics work.",
+  "authority": [
+    "AGENTS.md",
+    "docs/canon/pull.md",
+    "docs/canon/push.md",
+    "docs/canon/ledger.md",
+    "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/tests/pull_residual_qualification.rs",
+      "engine/crates/membrane-runtime/tests/push_residual_qualification.rs",
+      "engine/crates/membrane-runtime/tests/ledger_residual_qualification.rs",
+      "engine/crates/membrane-mcp/src/tools.rs",
+      "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs",
+      "mcp/server.mjs",
+      "mcp/server.test.mjs",
+      "engine/crates/membrane-runtime/src/mcp_executor.rs",
+      "engine/crates/membrane-runtime/src/ledger/cli.rs",
+      "engine/crates/membrane-runtime/src/ledger/service.rs",
+      "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+      "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+      "engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-runtime/tests/pull_residual_qualification.rs","owner":"pull-residual-qualification","operation":"create","lane":"pull-residual-qualification","finalCheck":"integration owner runs focused Pull residual qualification"},
+      {"path":"engine/crates/membrane-runtime/tests/push_residual_qualification.rs","owner":"push-residual-qualification","operation":"create","lane":"push-residual-qualification","finalCheck":"integration owner runs focused Push residual qualification"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_residual_qualification.rs","owner":"ledger-residual-qualification","operation":"create","lane":"ledger-residual-qualification","finalCheck":"integration owner runs focused Ledger residual qualification"},
+      {"path":"engine/crates/membrane-mcp/src/tools.rs","owner":"ledger-public-format-ingestion","operation":"edit","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies native MCP schema advertises bounded ingest"},
+      {"path":"engine/crates/membrane-mcp/tests/discovery_roundtrip.rs","owner":"ledger-public-format-ingestion","operation":"edit-test","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies native discovery schema roundtrip"},
+      {"path":"mcp/server.mjs","owner":"ledger-public-format-ingestion","operation":"edit","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies public JavaScript MCP bridge forwards ingest without authority expansion"},
+      {"path":"mcp/server.test.mjs","owner":"ledger-public-format-ingestion","operation":"edit-test","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies public MCP schema and dispatch"},
+      {"path":"engine/crates/membrane-runtime/src/mcp_executor.rs","owner":"ledger-public-format-ingestion","operation":"edit-after-owner-release","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies native membrane_ledger ingestion"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/cli.rs","owner":"ledger-public-format-ingestion","operation":"edit","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies CLI/native parity"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/service.rs","owner":"ledger-public-format-ingestion","operation":"edit-after-owner-release","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies enrollment, grant, bounds, and reauthorization"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/doc_spine.rs","owner":"ledger-public-format-ingestion","operation":"edit","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies persistence, search, and exact resolve"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/document_conversion.rs","owner":"ledger-public-format-ingestion","operation":"edit","lane":"ledger-public-format-ingestion","finalCheck":"integration owner verifies provenance, loss, omission, and deterministic conversion"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs","owner":"ledger-public-format-ingestion","operation":"create","lane":"ledger-public-format-ingestion","finalCheck":"integration owner runs LDG-028 public format matrix"}
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": false,
+    "sourceImplementation": null,
+    "sourceInventory": [],
+    "directPortFirst": true,
+    "targetLanguage": "Rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo", "tests", "builds", "generators", "installs", "commits", "pushes", "merges", "expensive-checks"],
+    "intendedChecksRecordedFor": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return exact defect to owning lane or redesign and revalidate packet before execution"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": ["pull-residual-qualification", "push-residual-qualification", "ledger-residual-qualification", "ledger-public-format-ingestion"],
+      "completionChecks": [
+        "three exact new test files only",
+        "all positive committed residual semantics pass behavioral public-path assertions; typed denial or unavailability is accepted only for genuine negative contracts",
+        "missing positive behavior returns an exact unclosed source defect",
+        "integration owner explicitly released mcp_executor.rs and ledger/service.rs and refreshed all source hashes before dispatch",
+        "CLI native MCP schema and JavaScript MCP bridge expose one authorized bounded Ledger ingestion operation",
+        "PlainText JSON HTML PDF and DOCX preserve raw and normalized hashes converter version config typed structure loss and omission",
+        "repeated conversion and converter/config drift are explicit and deterministic",
+        "normal search returns exact resolvable source while immutable snapshot and live source remain distinct",
+        "media Other malformed oversized revoked stale and cross-root inputs fail typed",
+        "integration owner runs focused then relevant full checks"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "pull-residual-qualification",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-test-authoring", "pull-qualification"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"pull-residual-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": ["engine/crates/membrane-runtime/tests/pull_residual_qualification.rs"],
+      "read": [
+        "docs/canon/pull.md",
+        "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+        "engine/crates/membrane-federation/src/scheduler.rs",
+        "engine/crates/membrane-federation/src/deadline.rs",
+        "engine/crates/membrane-federation/src/merge.rs",
+        "engine/crates/membrane-federation/src/normalize.rs",
+        "engine/crates/membrane-runtime/src/pull/admission.rs",
+        "engine/crates/membrane-runtime/src/pull/placement.rs",
+        "engine/crates/membrane-runtime/tests/pull_planner_conformance_scope.rs",
+        "engine/crates/membrane-runtime/tests/pull_freshness.rs"
+      ],
+      "forbidden": [".git", "engine/Cargo.lock", "engine/crates/membrane-federation/src", "engine/crates/membrane-runtime/src", "engine/crates/membrane-runtime/tests/pull_catalog.rs", "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],
+      "checks": [
+        "integration owner verifies PUL-004 through PUL-018, PUL-020 through PUL-023, PUL-025 through PUL-030, PUL-033, PUL-035 through PUL-036, and PUL-040 through PUL-042 mapping",
+        "integration owner runs focused test; worker runs no command"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "push-residual-qualification",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-test-authoring", "push-qualification"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"push-residual-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": ["engine/crates/membrane-runtime/tests/push_residual_qualification.rs"],
+      "read": [
+        "docs/canon/push.md",
+        "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+        "engine/crates/membrane-runtime/src/push/prep.rs",
+        "engine/crates/membrane-runtime/src/push/selection.rs",
+        "engine/crates/membrane-runtime/src/push/delivery.rs",
+        "engine/crates/membrane-runtime/src/push/telemetry.rs",
+        "engine/crates/membrane-runtime/src/push/fidelity.rs",
+        "engine/crates/membrane-runtime/src/push/egress.rs",
+        "engine/crates/membrane-runtime/tests/push_qualification.rs",
+        "engine/crates/membrane-runtime/tests/push_installed_contract_prep.rs"
+      ],
+      "forbidden": [".git", "engine/Cargo.lock", "engine/crates/membrane-runtime/src", "engine/crates/membrane-runtime/tests/push_hardening.rs", "engine/crates/membrane-runtime/tests/push_end_to_end.rs"],
+      "checks": [
+        "integration owner verifies PSH-001 through PSH-029 mapping with protected fidelity refusal typed measurement governed adapter and recovery negotiation outcomes",
+        "integration owner runs focused test; worker runs no command"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ledger-residual-qualification",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-test-authoring", "ledger-qualification"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"ledger-residual-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": ["engine/crates/membrane-runtime/tests/ledger_residual_qualification.rs"],
+      "read": [
+        "docs/canon/ledger.md",
+        "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+        "engine/crates/membrane-runtime/src/ledger/index.rs",
+        "engine/crates/membrane-runtime/src/ledger/query.rs",
+        "engine/crates/membrane-runtime/src/ledger/resolve.rs",
+        "engine/crates/membrane-runtime/src/ledger/provider.rs",
+        "engine/crates/membrane-runtime/src/ledger/session_projection.rs",
+        "engine/crates/membrane-runtime/tests/ledger_exact_resolution.rs",
+        "engine/crates/membrane-runtime/tests/ledger_recall_index_contract.rs"
+      ],
+      "forbidden": [".git", "engine/Cargo.lock", "engine/crates/membrane-runtime/src", "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs", "engine/crates/membrane-runtime/tests/ledger_integrity.rs", "engine/crates/membrane-runtime/tests/live_diagnostics_audit_persistence.rs"],
+      "checks": [
+        "integration owner verifies all committed Ledger atoms except LDG-028 and frozen LDG-014 LDG-029 LDG-031 map to public source reconciliation identity index search-to-resolve graph lifecycle erasure literal projection and provider authority assertions",
+        "integration owner runs focused test; worker runs no command"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ledger-public-format-ingestion",
+      "dispatch": "A",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["rust-structured-edit", "ledger-public-ingestion"],
+        "effects": ["source-read", "artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"ledger-public-ingestion-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": [
+        "engine/crates/membrane-mcp/src/tools.rs",
+        "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs",
+        "mcp/server.mjs",
+        "mcp/server.test.mjs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "engine/crates/membrane-runtime/src/ledger/cli.rs",
+        "engine/crates/membrane-runtime/src/ledger/service.rs",
+        "engine/crates/membrane-runtime/src/ledger/doc_spine.rs",
+        "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+        "engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs"
+      ],
+      "read": [
+        "docs/canon/ledger.md",
+        "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+        "engine/crates/membrane-runtime/src/authorization.rs",
+        "engine/crates/membrane-runtime/src/ledger/query.rs",
+        "engine/crates/membrane-runtime/src/ledger/resolve.rs",
+        "engine/crates/membrane-runtime/tests/ledger_donor_mechanisms.rs",
+        "engine/crates/membrane-runtime/tests/ledger_exact_resolution.rs"
+      ],
+      "forbidden": [".git", "engine/Cargo.lock", "engine/crates/membrane-runtime/src/ledger/diagnostics.rs", "engine/crates/membrane-runtime/src/live_diagnostics_service.rs", "engine/crates/membrane-runtime/src/diagnostic_bundle.rs", "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs", "engine/crates/membrane-runtime/tests/ledger_integrity.rs"],
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-mcp/src/tools.rs": "sha256:965f4d3c0080c96a14b9b759de0a827574754e95a0041f4026675b510fd47d09",
+        "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs": "sha256:1003918919eb98ef0242daf09f4358f7d23482261afc2336dd2fa7c394f84728",
+        "mcp/server.mjs": "sha256:73e1f3601a3bff37a39a6c02d866c72ab60785ada28743a77ec99767592885ad",
+        "mcp/server.test.mjs": "sha256:be13a5f7e54cc18df2f13e6dda3a2f16bde9224b2beff3e46b67bd452d38059e",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs": "sha256:714238506be458804bc60ada22347d8d122364a6c48077be88132652593576e8",
+        "engine/crates/membrane-runtime/src/ledger/cli.rs": "sha256:7cca3616c7373d8db39c30b575c33b6c49c0a265ec07fd6bbf390db9760cb9dc",
+        "engine/crates/membrane-runtime/src/ledger/service.rs": "sha256:13237016a5f5021cbc26a154e81eb48e4c0e2745b91aa31a08540b0db265f30d",
+        "engine/crates/membrane-runtime/src/ledger/doc_spine.rs": "sha256:d0b73e64a6113d7f65a729aeb3b582824ea47cc172e73e85bc3a589b6c0ed554",
+        "engine/crates/membrane-runtime/src/ledger/document_conversion.rs": "sha256:c31780001700dfbb8d1a886ce92a47e41686ca6641771c002766707df7e37ba3"
+      },
+      "checks": [
+        "before dispatch integration owner explicitly releases mcp_executor.rs and ledger/service.rs and refreshes every owned source hash",
+        "integration owner verifies CLI native schema JavaScript MCP bridge parity five supported formats provenance typed loss deterministic repeat and drift search-to-resolve snapshot/live distinction and all authority/resource negatives",
+        "integration owner runs focused then relevant full tests; worker runs no command"
+      ],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "complete-committed-residual-accounting",
+      "allowlist-completeness",
+      "lane-disjointness",
+      "active-owner-conflicts-and-transfer-gate",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "no-push-recovery-or-ledger-diagnostics-duplication",
+      "ldg028-real-public-path-completeness",
+      "behavioral-not-tautological-qualification",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": ["unplanned changed path", "second Oracle block", "reservation release missing", "owned path hash mismatch", "required private input missing"],
+    "returnFields": ["changedPaths", "checks", "blockers", "baselineRevision", "patchDigest"]
+  }
+}

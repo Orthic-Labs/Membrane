@@ -31,6 +31,7 @@ pub mod diagnostics;
 pub mod federation;
 pub mod fusion;
 pub mod heartbeat;
+pub mod hook;
 pub mod host_observation;
 pub mod hub;
 pub mod installation;
@@ -96,6 +97,13 @@ pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };
+pub use hook::{
+    aggregate_hook_status, normalize_hook_payload, project_hook_host_response,
+    HookDispatchMetadataV1, HookDispatchResultV1, HookEvent, HookExecutionMode,
+    HookHostDecision, HookHostResponseV1, HookInputEnvelopeV1, HookModuleId,
+    HookInvocationStatus, HookModuleOutputV1, HookModuleResultV1, HookModuleState, HookNormalizationError,
+    HookPermissionDecision, HookSpecificOutputV1, HOOK_MODULE_DEADLINE_MS, HOOK_SCHEMA_VERSION,
+};
 pub use host_observation::{
     compare_token_estimates, ensure_same_estimator_basis, sum_token_estimates,
     CodeRightEvaluationOutcomeV1, CodeRightExecutionObservationV1, CompletionEmissionStatusV1,
@@ -135,6 +143,10 @@ pub use observable_event::{
 pub use operations::{
     operations, operations_slice, ErrorResult, OperationEnvelope, OperationIndexEntry,
     OperationParameter, OperationResult, OperationSpec, OperationsIndex, ResultKind, SuccessResult,
+    ResidentControllerIdentityV1, ResidentHolderCredentialV1, ResidentHolderLossKindV1,
+    ResidentHolderLossV1, ResidentHolderOperationV1, ResidentHolderRequestV1,
+    ResidentHolderResponseV1, ResidentHolderStatusV1, ResidentServicesUnavailableV1,
+    RESIDENT_HOLDER_SCHEMA_VERSION,
     OPERATIONS,
 };
 pub use portable_pack::{PortableContextPackV1, PortablePackError, PortablePackSignatureV1};

@@ -170,6 +170,25 @@ fn ledger_schemas_advertise_request_session_identity() {
 }
 
 #[test]
+fn ledger_schema_advertises_bounded_public_ingestion() {
+    let response = discovery_response();
+    let tool = response["tools"]
+        .as_array().unwrap().iter()
+        .find(|tool| tool["name"] == "membrane_ledger").unwrap();
+    assert!(tool["inputSchema"]["properties"]["operation"]["enum"]
+        .as_array().unwrap().contains(&json!("ingest")));
+    assert_eq!(tool["inputSchema"]["properties"]["rawInput"]["oneOf"].as_array().unwrap().len(), 2);
+    assert_eq!(tool["inputSchema"]["properties"]["maxRawBytes"]["maximum"], 8_388_608);
+    let request = json!({
+        "repository":"repo",
+        "caller":{"root":"C:/repo","repositoryId":"repo","scopeId":"scope"},
+        "operation":"ingest","path":"import.txt","sourceRef":"snapshot://one",
+        "format":"plain_text","rawInput":"hello","scopeGrantId":"grant","taskId":"task","sessionId":"session"
+    });
+    validate_arguments("membrane_ledger", &request).unwrap();
+}
+
+#[test]
 fn push_ingress_uses_eight_mib_envelope_and_one_mib_utf8_text_cap() {
     let caller = json!({"root":"C:/repo","repositoryId":"repo","scopeId":"scope"});
     let exact = json!({"repository":"repo","caller":caller,"request":{

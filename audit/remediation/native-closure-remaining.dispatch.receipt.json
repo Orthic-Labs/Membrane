@@ -1,0 +1,47 @@
+{
+  "schema_version": 4,
+  "sha256": "ca709b7d8922651edd54f48d8dbd8ff510b8113694bda69dc5ddc749bb30a555",
+  "referenced_artifacts": [
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "audit/remediation/native-closure-resume.prompt.md",
+      "sha256": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "docs/architecture/execution-lifecycle-boundary.md",
+      "sha256": "sha256:5970c44b134681ce57dfb62d63d1b46f09f661091b0c4fd6b65b0476cf2d1033"
+    },
+    {
+      "path": "docs/architecture/integrations/coderight.md",
+      "sha256": "sha256:17f7c9b1cf851d67c890df0ef18ffddf1e86405c7c0d680baedfe12e0e95bbd7"
+    },
+    {
+      "path": "audit/remediation/reconciliation/native-seam-inventory.md",
+      "sha256": "sha256:df6d559faadd90904dc16aac75889ce8eb76ff6940c9fe1d348683e53c98f875"
+    },
+    {
+      "path": "audit/remediation/reconciliation/lifecycle-provisioning-inventory.md",
+      "sha256": "sha256:97e002df5fcd7cb66912cf7d02384f013f83e7fd73f3b038fc582719f65cb750"
+    },
+    {
+      "path": "audit/remediation/reconciliation/packaging-cleanup-inventory.md",
+      "sha256": "sha256:14c555274378be764a557372fa85244d43e4814dde1ad267ed70488573c190ae"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "ca709b7d8922651edd54f48d8dbd8ff510b8113694bda69dc5ddc749bb30a555",
+    "source_revision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+    "prompt_digest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d"
+  }
+}

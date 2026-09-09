@@ -3,9 +3,7 @@
 //! Providers receive typed owner handles. They do not open Cortex, catalog
 //! storage, or Blueprint transport themselves.
 
-use membrane_federation::blueprint_client::{
-    BlueprintClient, ContextualBlueprintSource,
-};
+use membrane_federation::blueprint_client::{BlueprintClient, ContextualBlueprintSource};
 use membrane_federation::providers::rules::{
     DeliveryKey, DeliveryLedger, DeliveryMode, DeliveryReceipt, LedgerError, RuleDocument,
     RuleFuture, RuleSource, RuleSourceError, RuleSourceResponse,
@@ -17,8 +15,6 @@ use membrane_provider_sdk::{
     MemoryCandidateSource, ScopeGrantSource, SkillCatalogEntry, SkillCatalogSource, SourceQuery,
     SourceResponse, SourceResult, SourceSet, SourceWarning,
 };
-#[cfg(windows)]
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -93,9 +89,9 @@ impl NativeSourceBindings {
             Some(crate::catalog::ContextCatalog::open(&catalog_path)
                 .map_err(|error| format!("open context catalog: {error}"))?)
         };
-        let blueprint = Arc::new(BlueprintClient::new(Arc::new(crate::blueprint_one_shot::ExplicitBlueprintTransport {
-            endpoint: hub_blueprint_endpoint().ok(),
-        })));
+        let blueprint = Arc::new(BlueprintClient::from_operation(
+            membrane_blueprint::native_blueprint_operation(),
+        ));
         let cancellations = Arc::new(Mutex::new(HashMap::new()));
         let temporal_queries = Arc::new(Mutex::new(HashMap::new()));
 
@@ -136,29 +132,6 @@ impl NativeSourceBindings {
             freshness: self.freshness.clone(),
             blueprint: self.blueprint.clone(),
         }
-    }
-}
-
-fn hub_blueprint_endpoint() -> Result<PathBuf, String> {
-    if let Some(endpoint) = std::env::var_os("BLUEPRINT_DAEMON_ENDPOINT") {
-        return Ok(PathBuf::from(endpoint));
-    }
-    #[cfg(windows)]
-    {
-        let profile =
-            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE is unavailable".to_owned())?;
-        let suffix = hex::encode(Sha256::digest(profile.as_bytes()));
-        return Ok(PathBuf::from(format!(
-            r"\\.\pipe\membrane-blueprint-{}",
-            &suffix[..16]
-        )));
-    }
-    #[cfg(not(windows))]
-    {
-        let home = std::env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_owned())?;
-        Ok(PathBuf::from(home)
-            .join(".blueprint")
-            .join("blueprint.sock"))
     }
 }
 

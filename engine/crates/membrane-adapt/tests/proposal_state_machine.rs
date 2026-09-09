@@ -118,6 +118,53 @@ fn expiry_is_persisted_and_stale_writers_fail_closed() {
 }
 
 #[test]
+fn exact_replay_converges_and_distinct_variant_surfaces_typed_conflict() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("plans.json");
+    let mut store = ProposalPlanStore::open(&path).unwrap();
+    let first = store
+        .propose("plan-a", payload("run focused verification"), ProposalRisk::Low, 10, 300, 3)
+        .unwrap()
+        .clone();
+    assert_eq!(store.revision(), 1);
+
+    // Exact semantic replay (same target/version/seal/risk) under a different
+    // caller-chosen plan id converges on the existing pending plan rather than
+    // creating a second mutation or bumping the store revision.
+    let replayed = store
+        .propose(
+            "plan-a",
+            payload("run focused verification"),
+            ProposalRisk::Low,
+            50,
+            300,
+            3,
+        )
+        .unwrap();
+    assert_eq!(replayed.plan_id, first.plan_id);
+    assert_eq!(replayed.created_at, first.created_at);
+    assert_eq!(store.revision(), 1, "exact replay must not mutate the store");
+
+    // A distinct variant (different wording) for the same semantic target and
+    // target version is a retained conflict, not a silently admitted second
+    // apply-eligible proposal.
+    let conflict = store.propose(
+        "plan-b",
+        payload("run full verification suite"),
+        ProposalRisk::Low,
+        60,
+        300,
+        3,
+    );
+    assert!(matches!(
+        conflict,
+        Err(ProposalStateError::TargetConflict { ref existing_plan_id, target_version: 3, .. })
+            if existing_plan_id == "plan-a"
+    ));
+    assert_eq!(store.revision(), 1, "rejected conflict must not mutate the store");
+}
+
+#[test]
 fn tampered_sealed_payload_is_rejected_on_reopen() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("plans.json");

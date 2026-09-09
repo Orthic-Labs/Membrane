@@ -1,0 +1,1108 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "git:1eb3fcbdf9aa3f86fd002c5013d07a9ecc33f605",
+  "sourceArtifact": "audit/remediation/delivery-reconciliation-membrane.prompt.md",
+  "promptArtifact": "audit/remediation/delivery-reconciliation-membrane.prompt.md",
+  "promptDigest": "sha256:717b39eedac0ab070588ee54de806bafc129cdbf022fed62aa758bd22dc14142",
+  "modelRouting": {
+    "modelTier": "MID",
+    "workerProfile": "domain-lead",
+    "routingRationale": "Five disjoint Membrane source lanes can proceed in parallel; CodeRight remains read-only external consumer."
+  },
+  "planningOnly": true,
+  "observedCandidate": {
+    "baseRevision": "git:1eb3fcbdf9aa3f86fd002c5013d07a9ecc33f605",
+    "contentAddressedSourcePin": null,
+    "status": "current dirty candidate is unpinned"
+  },
+  "writerActivation": "Before any writer starts, create immutable content-addressed source pin for current dirty candidate, replace observedCandidate.contentAddressedSourcePin, revalidate packet & receipt, then obtain required Oracle packet PASS. sourceRevision is observed primary base, not dirty-candidate provenance.",
+  "objective": "After explicit resume, implement only lifecycle, authenticated compaction, truthful watcher, semantic producer, stopped-chain repair, package-preflight, & qualification seams defined by delivery reconciliation. Preserve frozen handoffs before writes; keep CodeRight external/read-only; separate unsigned internal functionality from signed production activation.",
+  "authority": [
+    "AGENTS.md",
+    "audit/remediation/delivery-reconciliation-membrane.md",
+    "D:/Claude/coderight/docs/pending/delivery-recovery-plan-2026-09-08.md",
+    "docs/architecture/membrane.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "docs/canon/cortex.md",
+    "docs/canon/adapt.md",
+    "docs/canon/pull.md",
+    "docs/canon/push.md",
+    "docs/canon/ledger.md",
+    "docs/reference/release/windows-release-and-qualification.md",
+    "audit/remediation/native-host-embedding-amendment.dispatch.json",
+    "audit/remediation/native-host-embedding-amendment.dispatch.receipt.json",
+    "docs/architecture/integrations/coderight.md",
+    "audit/remediation/ppl-committed-residuals.dispatch.json",
+    "audit/remediation/ppl-committed-residuals.dispatch.receipt.json",
+    "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+    "audit/remediation/blueprint-native-query.dispatch.json",
+    "audit/remediation/blueprint-native-query.dispatch.receipt.json",
+    "audit/remediation/blueprint-native-engine.dispatch.json",
+    "audit/remediation/blueprint-native-engine.dispatch.receipt.json",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "ownershipTransfers": [
+    {
+      "path": "engine/crates/membrane-runtime/src/serve.rs",
+      "from": "native-host-embedding-owner",
+      "to": "lifecycle-controller",
+      "state": "preserve canonical commit or external content-addressed patch before write",
+      "frozenHash": "sha256:6667c5de7f5c8b49074ac9b94b13cab02a59592d95d4def98c236bcf4ce9c03c"
+    },
+    {
+      "path": "engine/crates/membrane-runtime/src/residency.rs",
+      "from": "resident-holder-lifecycle",
+      "to": "lifecycle-controller",
+      "state": "preserve canonical commit or external content-addressed patch before write",
+      "frozenHash": "sha256:6122df9f5f3c33707f3c9fd046f5433352281df118d1ebb8c80ca7a849f5f6e3"
+    },
+    {
+      "path": "engine/crates/membrane-runtime/tests/residency_holders.rs",
+      "from": "resident-holder-lifecycle",
+      "to": "lifecycle-controller",
+      "state": "preserve canonical commit or external content-addressed patch before write",
+      "frozenHash": "sha256:53fb095ffcb1bf5095e26cafde8fcc0b1aa65ef47fea24ba6ecbc02692e91756"
+    },
+    {
+      "path": "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+      "from": "ppl-ledger-public-format-ingestion",
+      "to": "ledger-content-repair",
+      "state": "historical packet becomes read-only/checkpoint-only; preserve canonical commit or external content-addressed patch before write",
+      "frozenHash": "unresolved-content-addressed-baseline-required"
+    },
+    {
+      "path": "engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs",
+      "from": "ppl-ledger-public-format-ingestion",
+      "to": "ledger-content-repair",
+      "state": "historical packet becomes read-only/checkpoint-only; preserve canonical commit or external content-addressed patch before write",
+      "frozenHash": "unresolved-content-addressed-baseline-required"
+    }
+  ],
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "allowUnplannedFiles": false,
+    "plannedFiles": [
+    "engine/crates/membrane-protocol/src/federation.rs",
+    "engine/crates/membrane-protocol/src/lib.rs",
+    "engine/crates/membrane-protocol/src/operations.rs",
+    "engine/crates/membrane-protocol/src/tray_daemon.rs",
+      "engine/crates/membrane-runtime/src/pull/federation.rs",
+      "engine/crates/membrane-runtime/src/catalog.rs",
+      "engine/crates/membrane-runtime/tests/pull_catalog.rs",
+      "engine/crates/membrane-client/src/provisioning.rs",
+      "engine/crates/membrane-client/src/binding.rs",
+      "engine/crates/membrane-client/src/memory_backend.rs",
+    "engine/crates/membrane-client/src/residency.rs",
+    "engine/crates/membrane-client/src/lib.rs",
+    "engine/Cargo.toml",
+    "engine/crates/membrane-client/Cargo.toml",
+    "engine/Cargo.lock",
+    "engine/crates/membrane-client/tests/residency.rs",
+      "engine/crates/membrane-runtime/src/authorization.rs",
+      "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
+    "engine/crates/membrane-runtime/src/installation_manifest.rs",
+    "apps/membrane-tray-windows/src/process.rs",
+    "apps/membrane-tray-windows/src/supervisor.rs",
+    "apps/membrane-tray-windows/src/workspace.rs",
+    "apps/membrane-tray-windows/src/main.rs",
+    "apps/membrane-tray-windows/src/snapshot.rs",
+    "apps/membrane-hub/src-tauri/src/dashboard_connection.rs",
+    "engine/crates/membrane-runtime/src/service.rs",
+    "engine/crates/membrane-runtime/src/serve.rs",
+    "engine/crates/membrane-runtime/src/residency.rs",
+    "engine/crates/membrane-runtime/src/cli.rs",
+      "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+      "engine/crates/membrane-runtime/tests/residency_holders.rs",
+      "engine/crates/membrane-runtime/tests/native_authorization.rs",
+      "engine/crates/membrane/src/serve.rs",
+      "engine/crates/membrane/src/dispatch.rs",
+      "engine/crates/membrane/src/modes.rs",
+      "engine/crates/membrane-blueprint/src/watch.rs",
+      "engine/crates/membrane-blueprint/src/service.rs",
+      "engine/crates/membrane-blueprint/src/freshness.rs",
+      "engine/crates/membrane-blueprint/src/query.rs",
+      "engine/crates/membrane-blueprint/src/engine.rs",
+      "engine/crates/membrane-blueprint/src/export.rs",
+      "engine/crates/membrane-blueprint/src/findings.rs",
+      "engine/crates/membrane-blueprint/tests/watch.rs",
+      "engine/crates/membrane-blueprint/tests/service.rs",
+      "engine/crates/membrane-blueprint/tests/query.rs",
+      "engine/crates/membrane-blueprint/tests/native_engine.rs",
+      "engine/crates/membrane-blueprint/tests/export.rs",
+      "engine/crates/membrane-blueprint/tests/findings.rs",
+      "engine/crates/membrane-runtime/src/background_review_input.rs",
+      "engine/crates/membrane-runtime/src/background_review.rs",
+      "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
+      "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+      "engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs",
+      "apps/membrane-hub/right-release.config.mjs",
+      "scripts/release/right-git-release-chain.mjs",
+      "scripts/qualification/run-cortex-installed.mjs",
+      "scripts/qualification/run.mjs"
+    ],
+    "ledger": [
+      {
+        "path": "engine/crates/membrane-protocol/src/federation.rs",
+        "owner": "federation-catalog",
+        "operation": "edit",
+        "lane": "federation-catalog",
+        "finalCheck": "typed commit extension"
+      },
+      {
+        "path": "engine/crates/membrane-protocol/src/lib.rs",
+        "owner": "federation-catalog",
+        "operation": "edit",
+        "lane": "federation-catalog",
+        "finalCheck": "public protocol export"
+      },
+      {
+        "path": "engine/crates/membrane-protocol/src/operations.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "lease incarnation/ordered-operation schema"
+      },
+      {
+        "path": "engine/crates/membrane-protocol/src/tray_daemon.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "holder-scoped launcher-detach protocol"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "owner": "federation-catalog",
+        "operation": "edit",
+        "lane": "federation-catalog",
+        "finalCheck": "bound parse & H9 exclusion"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/catalog.rs",
+        "owner": "federation-catalog",
+        "operation": "repair",
+        "lane": "federation-catalog",
+        "finalCheck": "parent-grant catalog identity"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/pull_catalog.rs",
+        "owner": "federation-catalog",
+        "operation": "repair-test",
+        "lane": "federation-catalog",
+        "finalCheck": "frozen 22-case catalog check"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/provisioning.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "signed vs internal route"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/binding.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "compatibility tuple"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/memory_backend.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "opaque SDK federation transport"
+      },
+      {
+        "path": "engine/crates/membrane-client/src/residency.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "leased controller identity"
+      },
+    {
+      "path": "engine/crates/membrane-client/src/lib.rs",
+      "owner": "lifecycle-controller",
+      "operation": "edit",
+      "lane": "lifecycle-controller",
+      "finalCheck": "public leased SDK export"
+    },
+    {
+      "path": "engine/Cargo.toml",
+      "owner": "lifecycle-controller",
+      "operation": "edit",
+      "lane": "lifecycle-controller",
+      "finalCheck": "workspace hmac dependency"
+    },
+    {
+      "path": "engine/crates/membrane-client/Cargo.toml",
+      "owner": "lifecycle-controller",
+      "operation": "edit",
+      "lane": "lifecycle-controller",
+      "finalCheck": "shared signer dependency"
+    },
+    {
+      "path": "engine/Cargo.lock",
+      "owner": "lifecycle-controller",
+      "operation": "generator-owned",
+      "lane": "lifecycle-controller",
+      "finalCheck": "RightKit-generated hmac lock resolution only"
+    },
+      {
+        "path": "engine/crates/membrane-client/tests/residency.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit-test",
+        "lane": "lifecycle-controller",
+        "finalCheck": "lease/fence continuity"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/authorization.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "manifest/grant fence"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "Windows pipe identity/readiness fence"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/installation_manifest.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "protected credential/identity envelope binding"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/process.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "shared-controller launch excludes kill-on-close job only"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/supervisor.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "holder-scoped launcher termination"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/workspace.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "canonical protected credential resolver"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/main.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "HMAC-only dashboard bootstrap"
+      },
+      {
+        "path": "apps/membrane-tray-windows/src/snapshot.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "client signer transport binding"
+      },
+      {
+        "path": "apps/membrane-hub/src-tauri/src/dashboard_connection.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "dashboard HMAC transport"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/service.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "controller readiness"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/serve.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "authenticated holder lifecycle"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/residency.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "first start/final drain"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/cli.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "resident-holder HMAC forwarder"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "parent-loss/EOF scheduler survival"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/residency_holders.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit-test",
+        "lane": "lifecycle-controller",
+        "finalCheck": "holder race matrix"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/native_authorization.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit-test",
+        "lane": "lifecycle-controller",
+        "finalCheck": "installed authorization"
+      },
+      {
+        "path": "engine/crates/membrane/src/serve.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "headless installed route"
+      },
+      {
+        "path": "engine/crates/membrane/src/dispatch.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "internal dispatcher"
+      },
+      {
+        "path": "engine/crates/membrane/src/modes.rs",
+        "owner": "lifecycle-controller",
+        "operation": "edit",
+        "lane": "lifecycle-controller",
+        "finalCheck": "headless mode"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/watch.rs",
+        "owner": "blueprint-repair",
+        "operation": "edit",
+        "lane": "blueprint-repair",
+        "finalCheck": "bounded coalescence"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/service.rs",
+        "owner": "blueprint-repair",
+        "operation": "edit",
+        "lane": "blueprint-repair",
+        "finalCheck": "truthful scheduler"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/freshness.rs",
+        "owner": "blueprint-repair",
+        "operation": "edit",
+        "lane": "blueprint-repair",
+        "finalCheck": "publish fence"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/query.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair",
+        "lane": "blueprint-repair",
+        "finalCheck": "two named query findings"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/engine.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair",
+        "lane": "blueprint-repair",
+        "finalCheck": "stopped engine route"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/export.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair",
+        "lane": "blueprint-repair",
+        "finalCheck": "export route"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/src/findings.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair",
+        "lane": "blueprint-repair",
+        "finalCheck": "findings route"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/watch.rs",
+        "owner": "blueprint-repair",
+        "operation": "edit-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "quiescent/continuous edit cases"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/service.rs",
+        "owner": "blueprint-repair",
+        "operation": "edit-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "retry/manual-refresh race"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/query.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "query recheck"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/native_engine.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "engine recheck"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/export.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "export recheck"
+      },
+      {
+        "path": "engine/crates/membrane-blueprint/tests/findings.rs",
+        "owner": "blueprint-repair",
+        "operation": "repair-test",
+        "lane": "blueprint-repair",
+        "finalCheck": "findings recheck"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/background_review_input.rs",
+        "owner": "semantic-producer",
+        "operation": "edit",
+        "lane": "semantic-producer",
+        "finalCheck": "window/cursor provenance"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/background_review.rs",
+        "owner": "semantic-producer",
+        "operation": "edit",
+        "lane": "semantic-producer",
+        "finalCheck": "semantic provider/recipe/lineage"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/background_semantic_seam.rs",
+        "owner": "semantic-producer",
+        "operation": "edit-test",
+        "lane": "semantic-producer",
+        "finalCheck": "semantic closure evidence"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/src/ledger/document_conversion.rs",
+        "owner": "ledger-content-repair",
+        "operation": "repair",
+        "lane": "ledger-content-repair",
+        "finalCheck": "fidelity of public-format conversion"
+      },
+      {
+        "path": "engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs",
+        "owner": "ledger-content-repair",
+        "operation": "repair-test",
+        "lane": "ledger-content-repair",
+        "finalCheck": "expected-content fixtures"
+      },
+      {
+        "path": "apps/membrane-hub/right-release.config.mjs",
+        "owner": "package-harness",
+        "operation": "edit",
+        "lane": "package-harness",
+        "finalCheck": "signed macOS activation route"
+      },
+      {
+        "path": "scripts/release/right-git-release-chain.mjs",
+        "owner": "package-harness",
+        "operation": "edit",
+        "lane": "package-harness",
+        "finalCheck": "candidate/sign handoff"
+      },
+      {
+        "path": "scripts/qualification/run-cortex-installed.mjs",
+        "owner": "package-harness",
+        "operation": "edit",
+        "lane": "package-harness",
+        "finalCheck": "installed identity/restart harness"
+      },
+      {
+        "path": "scripts/qualification/run.mjs",
+        "owner": "package-harness",
+        "operation": "edit",
+        "lane": "package-harness",
+        "finalCheck": "macOS dogfood harness"
+      }
+    ]
+  },
+  "sourcePortPolicy": {
+    "applicable": true,
+    "sourceImplementation": "D:/Claude/coderight/engine existing compaction/fence implementation is read-only integration reference",
+    "sourceInventory": [
+      "D:/Claude/coderight/engine/crates/coderight-memory-backend/src/context_federation.rs",
+      "D:/Claude/coderight/engine/crates/coderight-memory-backend/src/native.rs",
+      "D:/Claude/coderight/engine/crates/engine/src/engine_session_controls.rs",
+      "D:/Claude/coderight/engine/crates/engine/src/compaction_archive.rs"
+    ],
+    "directPortFirst": true,
+    "targetLanguage": "Rust",
+    "rustTargetRequiresRustPort": true,
+    "handRollReplacementWhileSourceExists": false
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": [
+      "cargo",
+      "tests",
+      "builds",
+      "generators",
+      "installs",
+      "commits",
+      "pushes",
+      "merges",
+      "expensive-checks"
+    ],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return exact defect to owning lane or redesign this packet"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": [
+        "federation-catalog",
+        "lifecycle-controller",
+        "blueprint-repair",
+        "semantic-producer",
+        "ledger-content-repair",
+        "package-harness"
+      ],
+      "completionChecks": [
+        "all source lanes preserve frozen bytes then return content-addressed patch",
+        "package harness is authored before candidate build",
+        "each coherent crate is eligible for focused integration check immediately after its lane"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "federation-catalog",
+      "dispatch": "A",
+      "task": "Implement typed Membrane compaction decision parsing/binding without H9, preserve existing federation compatibility, & resume only bounded Pull parent-grant catalog repair. One repair plus frozen 22-case recheck; any further defect returns typed blocked. CodeRight contract is read-only externalConsumer material.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-protocol",
+          "pull-authorization"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "federation-catalog-source-review"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-protocol/src/federation.rs",
+        "engine/crates/membrane-protocol/src/lib.rs",
+        "engine/crates/membrane-runtime/src/pull/federation.rs",
+        "engine/crates/membrane-runtime/src/catalog.rs",
+        "engine/crates/membrane-runtime/tests/pull_catalog.rs"
+      ],
+      "read": [
+        "audit/remediation/delivery-reconciliation-membrane.md",
+        "engine/crates/membrane-runtime/src/authorization.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock"
+      ],
+      "checks": [
+        "integration owner runs frozen pull_catalog focused check after this lane alone integrates",
+        "integration owner verifies old federation request absent extension remains compatible"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "lifecycle-controller",
+      "dispatch": "A",
+      "task": "First apply this packet's corrected ownership/input contract; then implement lifecycle-controller source plus finite regression checks. Windows: supervisor selects shared non-job launch before spawn, daemon gets bounded 30 s pre-holder startup grace, then valid holder keeps it alive; no retrofit after acquire. process.rs explicitly escapes/no-assigns kill-on-close job and fails typed when parent-job escape is denied; retain ordinary containment paths. Protocol tray_daemon.rs changes parent pipe command to advisory launcher detach. Before ready/first holder, EOF/invalid remains bounded startup cleanup; after ready daemon detaches dead signal receiver, polls background cadence independently, treats stdout receiver loss as best-effort detached output, and cannot global-fail/drain a peer-held controller. service.rs/runtime residency.rs serialize detach with holder mutations: only final holder drains. Credential: serve.rs is sole protected generated 64-hex credential authority/migration lock; workspace.rs is resolver, never publisher/replacer. Noncanonical/env installed credential returns typed migration; under lock canonical migration fingerprints/rechecks old file then atomically compare-replaces or discards candidate/rereads winner, increments startupGeneration and old client rediscovery follows. Update every relevant caller: tray supervisor/main/snapshot, Hub dashboard_connection, runtime cli resident forwarder; mcp_http/hook_diagnostics/background_review are required audited readers with no independent producer. One SDK signer in membrane-client residency.rs/lib.rs, runtime serve wrapper only; no hand-rolled/divergent crypto. Use sole canonical loopback-auth V1 BE encoding from reconciliation. Route coverage derives only from memory_backend constants + CodeRight native adapter: GET health/metrics/activity; POST delete/federate/get/list/put/recall/remember/remember_consolidated/scopes/search/use; holder permit/holder & hub snapshot. Query-free/header policy, raw body digest, identity, nonce, expiry; response proof binds nonce/status/raw response/identity; plaintext is integrity-only and payload contains no reusable credential. General replay capacity 3712, renew/release reserve 384, no live eviction. Deadline: no construction-time controller options; each direct call gets fresh 30 s budget, composed call retains one absolute budget; transport receives options and bounds connect/write/read by remaining time. Lease protocol operations.rs v2 adds server-MACed ≤10 s generation/holder/incarnation acquire permit plus `LeaseHandleV2` with 128-bit incarnation/operation id/monotonic sequence and server-computed ≤60 s TTL/monotonic expiry/nondecreasing authoritative wall time. First accepted logical operation stores bounded canonical-body-digest/outcome/deadline; fresh nonce only retransmits identical bytes before fixed stored deadline, changed body conflicts, expired record returns outcome-unknown and requires reconcile/new permit/incarnation. Retain tombstone per closed incarnation through permit/logical deadline capped 60 s, never overwrite unexpired A with B, with global 64-cap reject-on-new-acquire & active-acquire tombstone reservation so release never fails for capacity; delayed old acquire/permit, renew, or release is stale/expired and cannot resurrect/touch reacquired lease. CodeRight binding.rs consumes returned SDK lease handle; native.rs is transport adapter only. Add hmac/workspace sha2/getrandom through owned manifests; generator owns locks. Exercise tray/daemon/concurrent credential paths, same-client deadline/stalled transport, exact HMAC vectors/negative each adapter route, PID+creation/startup-generation abrupt-launcher continuity, receiver-gone/EOF, rapid A acquire/release B acquire/release then delayed A, reordered renew/lost-response/reacquire/generation changes, replay pressure renewal/release/recovery/bounded teardown. Apply discovery table: verified stopped starts canonical current; absent provisions configured package; repairable updates; corrupt/denied/unverifiable refuse; unavailable package returns typed unavailable. Keep unsigned internal distinct from signed production.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-lifecycle",
+          "installed-runtime"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "lifecycle-controller-source-review"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-client/src/provisioning.rs",
+        "engine/crates/membrane-client/src/binding.rs",
+        "engine/crates/membrane-client/src/memory_backend.rs",
+        "engine/crates/membrane-client/src/residency.rs",
+        "engine/crates/membrane-client/src/lib.rs",
+        "engine/Cargo.toml",
+        "engine/crates/membrane-client/Cargo.toml",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-client/tests/residency.rs",
+        "engine/crates/membrane-runtime/src/authorization.rs",
+        "engine/crates/membrane-runtime/src/native_diagnostics_pipe.rs",
+        "engine/crates/membrane-runtime/src/installation_manifest.rs",
+        "engine/crates/membrane-protocol/src/operations.rs",
+        "engine/crates/membrane-protocol/src/tray_daemon.rs",
+        "apps/membrane-tray-windows/src/process.rs",
+        "apps/membrane-tray-windows/src/supervisor.rs",
+        "apps/membrane-tray-windows/src/workspace.rs",
+        "apps/membrane-tray-windows/src/main.rs",
+        "apps/membrane-tray-windows/src/snapshot.rs",
+        "apps/membrane-hub/src-tauri/src/dashboard_connection.rs",
+        "engine/crates/membrane-runtime/src/service.rs",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/residency.rs",
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs",
+        "engine/crates/membrane-runtime/tests/residency_holders.rs",
+        "engine/crates/membrane-runtime/tests/native_authorization.rs",
+        "engine/crates/membrane/src/serve.rs",
+        "engine/crates/membrane/src/dispatch.rs",
+        "engine/crates/membrane/src/modes.rs"
+      ],
+      "read": [
+        "audit/remediation/native-host-embedding-amendment.dispatch.json",
+        "docs/canon/adapt.md",
+        "apps/membrane-tray-windows/src/main.rs",
+        "engine/crates/membrane-runtime/src/mcp_http.rs",
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "engine/crates/membrane-runtime/src/hook_diagnostics.rs",
+        "engine/crates/membrane-runtime/src/background_review.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "apps/membrane-hub/right-release.config.mjs"
+      ],
+      "checks": [
+        "integration owner runs focused protocol/tray/process/supervisor/workspace/dashboard plus membrane-client residency and runtime residency_holders/native_authorization checks once this lane integrates",
+        "integration owner proves original Windows shared-controller PID survives abrupt tray launcher termination with valid CodeRight holder, then completes filesystem-change to Blueprint-refresh/query plus background work; replacement daemon is failure",
+        "integration owner verifies canonical token authority tray-first/daemon-first/concurrent/migration/rotation convergence; per-call and composed deadline transport bounds; ordered lease retry/reorder/reacquire safety; exact HMAC target/header vectors/plaintext boundary; replay saturation protects renew/release and bounded teardown"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "blueprint-repair",
+      "dispatch": "A",
+      "task": "Repair truthful watcher coalescence/publication & exactly stopped Blueprint query plus engine/export/findings routes. Before full-ready, reconcile persisted graph with fresh source observation: missing graph, controller-offline edit, graph/offline edit, and lost in-memory queue automatically converge or return typed stale; manual refresh is not required. Preserve engine packet first. One repair plus one recheck per named stopped disposition; new defect returns typed blocked.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-blueprint",
+          "watcher-lifecycle"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "blueprint-repair-source-review"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-blueprint/src/watch.rs",
+        "engine/crates/membrane-blueprint/src/service.rs",
+        "engine/crates/membrane-blueprint/src/freshness.rs",
+        "engine/crates/membrane-blueprint/src/query.rs",
+        "engine/crates/membrane-blueprint/src/engine.rs",
+        "engine/crates/membrane-blueprint/src/export.rs",
+        "engine/crates/membrane-blueprint/src/findings.rs",
+        "engine/crates/membrane-blueprint/tests/watch.rs",
+        "engine/crates/membrane-blueprint/tests/service.rs",
+        "engine/crates/membrane-blueprint/tests/query.rs",
+        "engine/crates/membrane-blueprint/tests/native_engine.rs",
+        "engine/crates/membrane-blueprint/tests/export.rs",
+        "engine/crates/membrane-blueprint/tests/findings.rs"
+      ],
+      "read": [
+        "audit/remediation/blueprint-native-query.dispatch.json",
+        "audit/remediation/blueprint-native-engine.dispatch.json",
+        "audit/remediation/delivery-reconciliation-membrane.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-runtime/src/serve.rs"
+      ],
+      "checks": [
+        "integration owner runs watcher/service focused checks immediately after coherent Blueprint integration",
+        "integration owner runs named query, native_engine, export, findings checks"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "semantic-producer",
+      "dispatch": "A",
+      "task": "Qualify existing deterministic first-party Cortex Stage-1 analyzer against contradiction/near-duplicate/supersession corpus. Repair AdaptBehavioralReview SemanticProviderNotWired with provider identity/recipe/source digest/proposal lineage. Lifecycle-controller owns daemon parent-loss/EOF handoff; this lane changes no daemon control behavior.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "rust-cortex",
+          "semantic-provenance"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "semantic-producer-source-review"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/background_review_input.rs",
+        "engine/crates/membrane-runtime/src/background_review.rs",
+        "engine/crates/membrane-runtime/tests/background_semantic_seam.rs"
+      ],
+      "read": [
+        "docs/canon/cortex.md",
+        "engine/crates/membrane-runtime/src/cortex_lifecycle.rs",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/bin/membrane-daemon.rs"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock"
+      ],
+      "checks": [
+        "integration owner runs background_semantic_seam against retained Cortex analyzer corpus after this lane integrates",
+        "integration owner verifies AdaptBehavioralReview provider receipt includes semantic recipe & lineage"
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "ledger-content-repair",
+      "dispatch": "A",
+      "task": "Resume only LDG-028 converter fidelity repair. Preserve predecessor PPL/ledger-public-format-ingestion bytes as acknowledged baseline; repair contiguous styled text runs, tables, tabs, one-pass entities, identifiers and URLs; add expected-content fixtures. Hash/repeatability alone never closes fidelity.",
+      "executorRequirement": {"semanticRequirement":"required","capabilities":["rust-ledger","document-fidelity"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"ledger-content-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
+      "allowlist": ["engine/crates/membrane-runtime/src/ledger/document_conversion.rs","engine/crates/membrane-runtime/tests/ledger_public_format_ingestion.rs"],
+      "read": ["audit/remediation/ppl-committed-residuals.dispatch.json","audit/remediation/delivery-reconciliation-membrane.md"],
+      "forbidden": [".git","engine/Cargo.lock","engine/crates/membrane-runtime/src/ledger/service.rs"],
+      "checks": ["integration owner runs ledger_public_format_ingestion with exact expected-content fixtures after this lane integrates"],
+      "dependencies": []
+    },
+    {
+      "id": "package-harness",
+      "dispatch": "A",
+      "task": "Prepare release/qualification harness early: signed macOS production activation, fixed-hash isolated unsigned internal proof, exact installed identity/restart, & dogfood matrix. Do not build, sign, install, or publish.",
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": [
+          "release-harness",
+          "qualification-contract"
+        ],
+        "effects": [
+          "source-read",
+          "artifact-write"
+        ],
+        "authorityCeiling": [
+          "workspace"
+        ],
+        "completion": [
+          {
+            "kind": "exact-check",
+            "id": "package-harness-source-review"
+          }
+        ],
+        "escalation": {
+          "permittedOn": [
+            "ambiguous"
+          ],
+          "forbiddenOn": [
+            "denied"
+          ]
+        }
+      },
+      "allowlist": [
+        "apps/membrane-hub/right-release.config.mjs",
+        "scripts/release/right-git-release-chain.mjs",
+        "scripts/qualification/run-cortex-installed.mjs",
+        "scripts/qualification/run.mjs"
+      ],
+      "read": [
+        "docs/reference/release/windows-release-and-qualification.md",
+        "docs/architecture/runtime/tray-daemon-contract.md",
+        "audit/remediation/delivery-reconciliation-membrane.md"
+      ],
+      "forbidden": [
+        ".git",
+        "engine",
+        "publish",
+        "install"
+      ],
+      "checks": [
+        "integration owner structurally checks harness before candidate build",
+        "integration owner later runs RightKit signed build, exact install, then macOS dogfood only after dependent source checks"
+      ],
+      "dependencies": []
+    }
+  ],
+  "externalConsumer": {
+    "repository": "D:/Claude/coderight",
+    "mode": "read-only dependency",
+    "requiredFiles": [
+      "engine/crates/coderight-memory-backend/src/binding.rs",
+      "engine/crates/coderight-memory-backend/src/context_federation.rs",
+      "engine/crates/coderight-memory-backend/src/native.rs",
+      "engine/bins/coderight/src/main_runtime_server.rs",
+      "engine/bins/coderight/src/main_runtime_session_host.rs",
+      "engine/crates/engine/src/engine_session_controls.rs",
+      "engine/crates/engine/src/compaction_archive.rs"
+    ],
+    "noEditEvidence": "Membrane native_diagnostics_pipe.rs is owned by lifecycle-controller. No CodeRight native_diagnostics_pipe.rs or lease.rs was found in inspected CodeRight inventory; no Membrane lane may invent or own external files.",
+    "contract": "V6 composition-context owns main_runtime_server.rs:335-345 connect_from_environment_with_identity/context_federation injection and main_runtime_session_host.rs:281-285; V7 host-producer owns memory-backend native.rs/context_federation.rs. Retained binding.rs owns only SDK LeaseHandle storage across renewal calls; it must carry returned lease incarnation/sequence and never construct lease state. native.rs injects concrete bounded transport only. All are read-only canonical SDK HMAC/native transport consumers. CodeRight owns H8 acquisition, NativeIdentityFence, one-use SessionEngine decision, final transaction; this packet assigns it no writes or crypto authority."
+  },
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": [
+      "allowlist-completeness",
+      "lane-disjointness",
+      "dependency-validity",
+      "maximum-safe-parallelization",
+      "end-to-end-lane-closure",
+      "direct-port-priority",
+      "worker-edit-only",
+      "integration-owner-checkpoints",
+      "exact-byte-review-pass"
+    ]
+  },
+  "integrationClosure": {
+    "owner": "integrationOwner",
+    "afterWorkers": [
+      "run per-coherent-crate focused checks as each lane returns",
+      "run broad checks only after relevant integrated dependencies",
+      "run signed production candidate build after package harness & source checks",
+      "run installation after exact signed artifact",
+      "run macOS dogfood after installation",
+      "obtain Oracle PASS before commit/push"
+    ]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": [
+      "unplanned changed path",
+      "preservation hash mismatch",
+      "second Oracle block",
+      "required CodeRight write",
+      "unsigned candidate attempts production promotion"
+    ],
+    "failureMatrix": [
+      {
+        "class": "path/input missing",
+        "primary": "re-read exact authority",
+        "secondary": "rediscover live path",
+        "degraded": "continue disjoint lane",
+        "stopAfter": 2,
+        "proceedWhen": "authority exists"
+      },
+      {
+        "class": "tool/dependency missing",
+        "primary": "workspace setup",
+        "secondary": "workspace doctor",
+        "degraded": "edit-only source review",
+        "stopAfter": 2,
+        "proceedWhen": "managed tool works"
+      },
+      {
+        "class": "auth/permission failure",
+        "primary": "preserve & report denial",
+        "secondary": "continue local lane",
+        "degraded": "no remote effect",
+        "stopAfter": 1,
+        "proceedWhen": "authority exists"
+      },
+      {
+        "class": "transient external failure",
+        "primary": "retry once",
+        "secondary": "continue independent lane",
+        "degraded": "record unavailable",
+        "stopAfter": 2,
+        "proceedWhen": "service responds"
+      },
+      {
+        "class": "invalid input/schema",
+        "primary": "compare canonical schema",
+        "secondary": "return to owner",
+        "degraded": "continue unrelated lane",
+        "stopAfter": 2,
+        "proceedWhen": "schema passes"
+      },
+      {
+        "class": "integrity/hash mismatch",
+        "primary": "recompute hash",
+        "secondary": "invalidate handoff",
+        "degraded": "do not integrate",
+        "stopAfter": 1,
+        "proceedWhen": "hash matches"
+      },
+      {
+        "class": "deterministic command failure",
+        "primary": "capture failure",
+        "secondary": "one repair/recheck",
+        "degraded": "continue passing lane",
+        "stopAfter": 2,
+        "proceedWhen": "focused check passes"
+      },
+      {
+        "class": "dirty/conflicting state",
+        "primary": "preserve bytes",
+        "secondary": "redesign ownership",
+        "degraded": "continue disjoint lane",
+        "stopAfter": 1,
+        "proceedWhen": "one owner"
+      },
+      {
+        "class": "wrong producer/provenance",
+        "primary": "reject output",
+        "secondary": "request bound handoff",
+        "degraded": "evidence-only",
+        "stopAfter": 1,
+        "proceedWhen": "digest binds"
+      },
+      {
+        "class": "resource/capacity failure",
+        "primary": "reduce concurrency",
+        "secondary": "run smallest check",
+        "degraded": "defer expensive qualification",
+        "stopAfter": 2,
+        "proceedWhen": "capacity returns"
+      },
+      {
+        "class": "ambiguous requirement",
+        "primary": "read canonical source",
+        "secondary": "escalate one decision",
+        "degraded": "continue unambiguous",
+        "stopAfter": 1,
+        "proceedWhen": "decision explicit"
+      },
+      {
+        "class": "unsafe/out-of-scope action",
+        "primary": "stop effect",
+        "secondary": "report scope conflict",
+        "degraded": "continue safe work",
+        "stopAfter": 1,
+        "proceedWhen": "scope includes effect"
+      },
+      {
+        "class": "unknown failure",
+        "primary": "capture raw evidence",
+        "secondary": "return owner",
+        "degraded": "continue independent",
+        "stopAfter": 2,
+        "proceedWhen": "cause bounded"
+      }
+    ],
+    "trueBlocker": {
+      "requires": [
+        "RECOVERY_EXHAUSTED",
+        "INDEPENDENT_WORK_COMPLETE",
+        "RAW_EVIDENCE",
+        "MISSING_INPUT",
+        "RESUME_COMMAND"
+      ]
+    },
+    "returnFields": [
+      "STATUS",
+      "SUMMARY",
+      "ACCEPTANCE",
+      "ARTIFACTS",
+      "CHANGES",
+      "COMMANDS",
+      "RECOVERY",
+      "DEVIATIONS",
+      "BLOCKER",
+      "NEXT",
+      "baselineRevision",
+      "patchDigest"
+    ]
+  }
+}

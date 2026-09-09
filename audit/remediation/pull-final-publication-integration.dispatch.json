@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+  "sourceArtifact": "docs/canon/pull.md",
+  "promptArtifact": "docs/canon/pull.md",
+  "promptDigest": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a",
+  "basePacketSha256": "608dc9af94a275c8b33359053f7b6d1006a58cc81bd1d5611601651af60fcf8d",
+  "modelRouting": {
+    "modelTier": "LOW",
+    "workerProfile": "gpt-5.6-luna",
+    "routingRationale": "Three bounded Rust edit lanes serialize one public Pull publication and acknowledgement seam while integration owner runs all checks."
+  },
+  "objective": "Wire existing Pull requirement journeys and existing H9/H10 acknowledgement authority through the real final Push/fence publication, host-retention acknowledgement, and next-request suppression path. Preserve protocol V1 and fail open to evidence eligibility whenever exact acknowledgement state is absent or invalid.",
+  "authority": [
+    "AGENTS.md",
+    "docs/canon/pull.md",
+    "engine/crates/membrane-protocol/src/host_observation.rs",
+    "audit/remediation/pull-final-requirements.dispatch.json"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-9f4e-7b45eb39fc28",
+  "contract": {
+    "correlationField": "pullPublication",
+    "wireShape": {"schemaVersion": 1, "publicationId": "server-issued opaque identifier"},
+    "producer": "Return correlation only after final selected representation passes fence and its exact pending publication is persisted.",
+    "consumer": "Echo correlation unchanged beside canonical PacketDeliveryAcknowledgementV1 and LoadedContextIdentitiesV1 after actual host serialization and retention.",
+    "validation": "Resolve publicationId server-side; validate persisted installation, repository, request, trace, task, session, context epoch, representation digest and packet digest against H9/H10. Client-supplied record fields or retainsDeliveredEvidence booleans grant nothing.",
+    "nextRequest": "Supply current H9 identities; only suppression_eligible for the exact persisted acknowledgement may suppress matching evidence or reuse a prior prefix.",
+    "coverage": "Recompute CandidateJourneyV1 from actual admitted, reduced, fenced, emitted and retained identities. Budget/fence drops remain dropped and required dimensions unsatisfied."
+  },
+  "ownershipTransfers": [
+    {
+      "path": "engine/crates/membrane-runtime/src/serve.rs",
+      "from": "resident-holder-lifecycle",
+      "to": "pull-ack-bridge-owner",
+      "state": "source-complete-handoff",
+      "frozenHash": "sha256:7d5dc1f33a492672a6cdf4d5f6472254dd826912cb82439b94e99b14dd278ddf"
+    }
+  ],
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/src/pull/federation.rs",
+      "engine/crates/membrane-runtime/src/adapt_observations.rs",
+      "engine/crates/membrane-runtime/src/serve.rs",
+      "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
+      "engine/crates/membrane-runtime/src/cache_prefix.rs",
+      "engine/crates/membrane-runtime/tests/pull_acknowledgement.rs",
+      "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-runtime/src/pull/federation.rs","owner":"pull-publication-owner","operation":"edit","lane":"publication","finalCheck":"post-fence pending record, response correlation and final journey recomputation"},
+      {"path":"engine/crates/membrane-runtime/src/adapt_observations.rs","owner":"pull-ack-bridge-owner","operation":"edit","lane":"ack-bridge","finalCheck":"optional correlation uses existing H9/H10 validation without requiring Adapt-only receipt"},
+      {"path":"engine/crates/membrane-runtime/src/serve.rs","owner":"pull-ack-bridge-owner","operation":"edit","lane":"ack-bridge","finalCheck":"catalog-bound acknowledgement bridge"},
+      {"path":"engine/crates/membrane-runtime/src/pull/delivery_state.rs","owner":"pull-suppression-owner","operation":"edit","lane":"suppression","finalCheck":"legacy process-local state cannot authorize suppression"},
+      {"path":"engine/crates/membrane-runtime/src/cache_prefix.rs","owner":"pull-suppression-owner","operation":"edit","lane":"suppression","finalCheck":"prefix reuse requires exact persisted acknowledgement"},
+      {"path":"engine/crates/membrane-runtime/tests/pull_acknowledgement.rs","owner":"pull-ack-bridge-owner","operation":"edit-test","lane":"ack-bridge","finalCheck":"public publication to retained H10/H9 acknowledgement"},
+      {"path":"engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs","owner":"pull-suppression-owner","operation":"edit-test","lane":"suppression","finalCheck":"retained exact target suppresses; budget drop and invalid acknowledgement do not"}
+    ]
+  },
+  "dispatches": [
+    {"id":"A","dependsOn":[],"lanes":["pull-publication-owner","pull-ack-bridge-owner","pull-suppression-owner"],"completionChecks":["pending publication persisted after final fence","final journey reflects selected representation and drops","H9/H10 exact binding","unknown or mismatched correlation rejected","persisted acknowledgement solely authorizes suppression and prefix reuse","restart, compaction, response loss and budget drop restore eligibility"]}
+  ],
+  "workers": [
+    {"id":"pull-publication-owner","dispatch":"A","allowlist":["engine/crates/membrane-runtime/src/pull/federation.rs"],"read":["docs/canon/pull.md","engine/crates/membrane-protocol/src/host_observation.rs","engine/crates/membrane-runtime/src/pull/delivery_acknowledgement.rs","engine/crates/membrane-runtime/src/catalog.rs"],"forbidden":[".git","engine/Cargo.lock","engine/crates/membrane-runtime/src/serve.rs"],"preexistingOwnedBytes":{"engine/crates/membrane-runtime/src/pull/federation.rs":"sha256:64d93f90c9275b07536c56762549ebead8fed3bdbef8022f5a04d7ebb956180f"},"executorRequirement":{"semanticRequirement":"required","capabilities":["rust-structured-edit","pull-publication"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"pull-publication-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"task":"At final public federation boundary, recompute requirement journeys from actual selected/reduced/fenced representation; persist exact pending publication after successful fence; return only opaque PullPublicationCorrelationV1. Do not trust client retention flags or mark retained before H10/H9 acknowledgement.","checks":["public generic task exact-target retained positive","required budget-drop negative"]},
+    {"id":"pull-ack-bridge-owner","dispatch":"A","allowlist":["engine/crates/membrane-runtime/src/adapt_observations.rs","engine/crates/membrane-runtime/src/serve.rs","engine/crates/membrane-runtime/tests/pull_acknowledgement.rs"],"read":["docs/canon/pull.md","engine/crates/membrane-protocol/src/host_observation.rs","engine/crates/membrane-runtime/src/pull/delivery_acknowledgement.rs","engine/crates/membrane-runtime/src/catalog.rs","engine/crates/membrane-runtime/src/pull/federation.rs"],"forbidden":[".git","engine/Cargo.lock","engine/crates/membrane-runtime/src/pull/delivery_state.rs","engine/crates/membrane-runtime/src/cache_prefix.rs"],"preexistingOwnedBytes":{"engine/crates/membrane-runtime/src/adapt_observations.rs":"sha256:0800923fa24b97a2fcb8a56ed20254abd82232cbd7dcd11ecaaa97408c35f4d7","engine/crates/membrane-runtime/src/serve.rs":"sha256:7d5dc1f33a492672a6cdf4d5f6472254dd826912cb82439b94e99b14dd278ddf","engine/crates/membrane-runtime/tests/pull_acknowledgement.rs":"sha256:606e84d8c01ce7f2fba2133e2a7f9bd2a4db7c5f15ca466994cd556d98b29176"},"executorRequirement":{"semanticRequirement":"required","capabilities":["rust-structured-edit","acknowledgement-validation"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"pull-ack-bridge-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"task":"Accept optional pullPublication correlation beside existing H10/H9 acknowledgement. Preserve existing Adapt preference acknowledgement unchanged. Resolve opaque id through ContextCatalog, validate exact pending Pull publication with existing H9/H10 validators, then call acknowledge_delivery. Reject unknown, wrong-scope, wrong-task/session, wrong-representation, stale-epoch and non-retained input.","checks":["public serialized-retained acknowledgement","unknown/rejected/mismatched correlation refusal"]},
+    {"id":"pull-suppression-owner","dispatch":"A","allowlist":["engine/crates/membrane-runtime/src/pull/delivery_state.rs","engine/crates/membrane-runtime/src/cache_prefix.rs","engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs"],"read":["docs/canon/pull.md","engine/crates/membrane-runtime/src/pull/delivery_acknowledgement.rs","engine/crates/membrane-runtime/src/catalog.rs","engine/crates/membrane-runtime/src/pull/federation.rs"],"forbidden":[".git","engine/Cargo.lock","engine/crates/membrane-runtime/src/serve.rs"],"preexistingOwnedBytes":{"engine/crates/membrane-runtime/src/pull/delivery_state.rs":"sha256:abaf0178cd194b4ebbd1011f8e10a6ff049209396553deb94bb9aef500379cc1","engine/crates/membrane-runtime/src/cache_prefix.rs":"sha256:e203b3b427ffeb3d23367e5ed58e24c576a490f431926f913e929a097c59a9ab","engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs":"sha256:2141672520b5ad269036a5bc9081aeddb029e0c26cf5644fb2dfa73c51bc8c18"},"executorRequirement":{"semanticRequirement":"required","capabilities":["rust-structured-edit","suppression-correctness"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"pull-suppression-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},"task":"Replace process-local selected-state or boolean authorization with exact suppression_eligible lookup using current H9 identities. Suppress only matching acknowledged representation; keep evidence eligible after edit, restart, compaction, missing response or budget/fence drop.","checks":["retained exact target suppresses on next request","budget drop, restart, compaction and response loss remain eligible"]}
+  ],
+  "externalConsumer": {
+    "repository": "D:/Claude/coderight",
+    "owner": "task 01a07e9f-1f88-7861-90a8-fc8ef04cb4b4 worker /root/daemon_composition_context_lane",
+    "validatedDispatch": "D:/Claude/coderight/.audit/daemon-complete-v5.dispatch.json",
+    "validatedDispatchSha256": "sha256:1e5c47785a25c9be109150b393759f5b9eda66cde08768324efad82ac8a3f28c",
+    "lane": "composition-context",
+    "ownedPaths": [
+      "engine/crates/coderight-memory-backend/src/context_federation.rs",
+      "engine/bins/coderight/src/provider_client.rs",
+      "engine/bins/coderight/src/observation.rs",
+      "engine/bins/coderight/src/api_session_context_runtime.rs",
+      "engine/bins/coderight/src/main_runtime_session_host.rs",
+      "engine/crates/engine/src/compactor.rs",
+      "engine/crates/engine/src/compactor_authoritative.rs"
+    ],
+    "requiredContract": "Echo {schemaVersion:1,publicationId} unchanged with canonical H10 acknowledgement plus H9 retained identities after actual serialization; never derive or mutate pending-publication fields.",
+    "requiredAcceptance": [
+      "real provider serialization plus retained-context acknowledgement, then next request with current H9",
+      "exact retained publication positive",
+      "unknown publication rejection",
+      "wrong task or digest rejection",
+      "compaction removes identity and restores eligibility"
+    ],
+    "activationGate": "CodeRight parent confirms frozen pullPublication contract adoption before this packet claims external worker active."
+  },
+  "workerPolicy": {"mode":"edit-only","mayInspectReadPaths":true,"mayEditAllowlistOnly":true,"forbiddenActions":["cargo","tests","builds","generators","installs","commits","pushes","merges"],"intendedChecksRecordedFor":"integration owner"},
+  "integrationPolicy": {"owner":"task 01a07e9f-8f38-7463-9f4e-7b45eb39fc28","soleMerger":true,"runsCheckpoints":true,"mayRepairLaneOwnedFiles":false,"repairAction":"return exact defect to lane owner"},
+  "integrationAcceptanceOrder": ["integrate publication correlation producer","integrate H10/H9 acknowledgement consumer","verify next-request suppression and prefix reuse"],
+  "oracleAudit": {"required":true,"mode":"adversarial","status":"required-before-execution","checks":["allowlist-completeness","lane-disjointness","active-owner-conflicts","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","existing-h9-h10-authority-reuse","end-to-end-public-acceptance","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]},
+  "recovery": {"maxRetries":2,"stopConditions":["unplanned changed path","second Oracle block","shared contract mismatch"],"returnFields":["STATUS","SUMMARY","ACCEPTANCE","ARTIFACTS","CHANGES","COMMANDS","BLOCKER","NEXT","patchDigest"]}
+}

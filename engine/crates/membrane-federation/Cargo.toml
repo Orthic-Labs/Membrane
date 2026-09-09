@@ -9,6 +9,7 @@ description = "Native Membrane federation coordinator and immutable provider reg
 membrane-core = { path = "../membrane-core" }
 membrane-protocol = { path = "../membrane-protocol" }
 membrane-provider-sdk = { path = "../membrane-provider-sdk" }
+membrane-blueprint = { path = "../membrane-blueprint" }
 async-trait = { workspace = true }
 gix = { workspace = true }
 serde = { workspace = true }

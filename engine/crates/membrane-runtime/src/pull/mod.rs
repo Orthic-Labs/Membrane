@@ -7,6 +7,7 @@
 
 pub mod admission;
 pub mod delivery_state;
+pub mod delivery_acknowledgement;
 pub mod cli;
 pub mod federation;
 pub(crate) mod federation_sources;

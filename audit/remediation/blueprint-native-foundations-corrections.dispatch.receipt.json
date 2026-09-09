@@ -1,0 +1,83 @@
+{
+  "schema_version": 4,
+  "sha256": "a7185c3a83b06d131abbf96f15a48f9697a7e984063f7bf3f951fc10a0b79598",
+  "referenced_artifacts": [
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "blueprint/AGENTS.md",
+      "sha256": "sha256:4935eb7859f2df34bf903e25fb33166c7b88b17200155985819e8788c48b7097"
+    },
+    {
+      "path": "docs/canon/blueprint.md",
+      "sha256": "sha256:af827193fefdd55aeaf288cac81edaf3f628623428c0a770b8dca44594d21514"
+    },
+    {
+      "path": "D:\\Downloads\\MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+      "sha256": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+    },
+    {
+      "path": "audit/remediation/blueprint-native-foundations.dispatch.json",
+      "sha256": "sha256:b0172d0c5f7af3e856356363e0ce3c4f0c778fdb9fc35e86046857fbd03cdab9"
+    },
+    {
+      "path": "audit/remediation/blueprint-native-foundations.dispatch.receipt.json",
+      "sha256": "sha256:5ac9202fc8e1a175a851d1f609feb7b9bbde481c80b63a68ed6e78446a99a29e"
+    },
+    {
+      "path": "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+      "sha256": "sha256:0962c87b871106e3c3775e5889bc84d9c489e99a9ed081461c3662e7e13d7069"
+    },
+    {
+      "path": "audit/remediation/reconciliation/parity-phase2-inventory.md",
+      "sha256": "sha256:18f3ef166143bd07dbe71f114bea4ecf389ab0cf5d177831049d953a9022af20"
+    },
+    {
+      "path": "blueprint/src/graph/generation-identity.mjs",
+      "sha256": "sha256:664bd07894e97ceec4915a1a64103c60dae3c5c423430e06e6a86420c1fb6efe"
+    },
+    {
+      "path": "blueprint/src/graph/static-provider.mjs",
+      "sha256": "sha256:25032783d1cb37c52d7b32b1a0098bffc6e4d3b38ebd99d3286a31e845860409"
+    },
+    {
+      "path": "blueprint/src/graph/git-source-observation.mjs",
+      "sha256": "sha256:a33369fa0fd88b7edd833b904b155c5829289d63abf04aeb37cfdccd0cc7d45a"
+    },
+    {
+      "path": "blueprint/src/graph/store-sqlite.mjs",
+      "sha256": "sha256:e67ab9fcd5dcecf6f0514616ecb627d977eb28035a25a3d01b731c0edf1c5a31"
+    },
+    {
+      "path": "blueprint/src/graph/confidence-migration.mjs",
+      "sha256": "sha256:74f5c67eb5b27e028c7df1d3aeba347335e776c2eb9788ffbdc032d6096dcf5b"
+    },
+    {
+      "path": "blueprint/src/graph/provider-identity.mjs",
+      "sha256": "sha256:b49dcd741fa975489037b26d511139048639dfd74fc119df3ccb9fe99f3fb4be"
+    },
+    {
+      "path": "blueprint/src/graph/path-order.mjs",
+      "sha256": "sha256:46ebeb7c7f108afaa8034a27924debf4ce0dac1a88a6f9475def2b0d60139cdf"
+    },
+    {
+      "path": "blueprint/tests/store-migrations.test.mjs",
+      "sha256": "sha256:12e42cffddb056b4fa4f6d118059b892b0170f40b8c6bbeb2175b0b7fe5aed17"
+    },
+    {
+      "path": "blueprint/tests/store-sqlite.test.mjs",
+      "sha256": "sha256:9067913fbbeee50345febc5b3b676cbaedfbb75f054bac4037f1d2d3374e9045"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "a7185c3a83b06d131abbf96f15a48f9697a7e984063f7bf3f951fc10a0b79598",
+    "source_revision": "936804e4ac60cba31c04d1dfd93476b0d790f827",
+    "prompt_digest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc"
+  }
+}

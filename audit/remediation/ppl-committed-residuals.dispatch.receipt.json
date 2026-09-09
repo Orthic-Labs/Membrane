@@ -1,0 +1,35 @@
+{
+  "schema_version": 4,
+  "sha256": "69eb0e0e8bc6547baa0f4b7e1c8a54514415eb4a728761ca2a43ef43930ab6df",
+  "referenced_artifacts": [
+    {
+      "path": "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+      "sha256": "sha256:64ebf77182d907255d658ded71b283afef0948fead4e6ea8dc01404cf8cb09ff"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "sha256:845f02116e074652d3d2c7b7edced715e214caa84d746a65d36f38d6df14c0e7"
+    },
+    {
+      "path": "docs/canon/pull.md",
+      "sha256": "sha256:0bbbd279796f0b6bf6bcfdde9cb8e6971bcb5c1ee4beb018c0bf336a2e54301a"
+    },
+    {
+      "path": "docs/canon/push.md",
+      "sha256": "sha256:97566d4e2710105095dcf2165b9208ae20bd07d3e3b23c8c76ca16627aba4afc"
+    },
+    {
+      "path": "docs/canon/ledger.md",
+      "sha256": "sha256:1095bbd043177dd03263f178a0715adc7923955aa879d00d2586b9dd1c7b2700"
+    },
+    {
+      "path": "audit/remediation/reconciliation/ppl-committed-residuals-inventory.md",
+      "sha256": "sha256:64ebf77182d907255d658ded71b283afef0948fead4e6ea8dc01404cf8cb09ff"
+    }
+  ],
+  "authority_binding": {
+    "packet_sha256": "69eb0e0e8bc6547baa0f4b7e1c8a54514415eb4a728761ca2a43ef43930ab6df",
+    "source_revision": "559787c9b8552a00df8251252e5ca226d5d57d4d",
+    "prompt_digest": "sha256:64ebf77182d907255d658ded71b283afef0948fead4e6ea8dc01404cf8cb09ff"
+  }
+}

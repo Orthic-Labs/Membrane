@@ -205,9 +205,9 @@ impl CommandResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum HealthObservation {
     Unavailable,
-    NotReady,
-    Ready { release_generation: String },
-    PriorGeneration { release_generation: String },
+    NotReady { installation_id: String },
+    Ready { release_generation: String, installation_id: String },
+    PriorGeneration { release_generation: String, installation_id: String },
     Foreign(String),
 }
 
@@ -268,7 +268,16 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
         Ok(observation) => observation,
         Err(error) => HealthObservation::Foreign(error),
     };
+    let initial = constrain_health_to_existing_installation(initial, &workspace_root);
     let already_running = matches!(&initial, HealthObservation::Ready { .. });
+    if start_resident && !options.dry_run && matches!(&initial, HealthObservation::Foreign(_)) {
+        return Err(match initial {
+            HealthObservation::Foreign(reason) => format!(
+                "refusing to activate against unverified service on Membrane port: {reason}"
+            ),
+            _ => unreachable!(),
+        });
+    }
     // Explicit installed access survives a failed resident startup. Bind MCP
     // clients & the CLI path before attempting any automatic Hub process.
     let clients = reconcile_clients(
@@ -279,10 +288,10 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
     }
     let (release_generation, service_state, service_reason) = if options.dry_run || !start_resident {
         match initial {
-            HealthObservation::Ready { release_generation } => {
+            HealthObservation::Ready { release_generation, .. } => {
                 (release_generation, "ready".to_string(), None)
             }
-            HealthObservation::PriorGeneration { release_generation } => (
+            HealthObservation::PriorGeneration { release_generation, .. } => (
                 release_generation,
                 "stale_generation".to_string(),
                 Some("resident release generation differs from installed current".to_string()),
@@ -292,7 +301,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
                 "unavailable".to_string(),
                 Some("installed Membrane is not running".to_string()),
             ),
-            HealthObservation::NotReady => (
+            HealthObservation::NotReady { .. } => (
                 expected_generation.clone(),
                 "not_ready".to_string(),
                 Some("installed Membrane is not healthy".to_string()),
@@ -301,7 +310,7 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
                 (expected_generation.clone(), "foreign".to_string(), Some(reason))
             }
         }
-    } else if let HealthObservation::Ready { release_generation } = &initial {
+    } else if let HealthObservation::Ready { release_generation, .. } = &initial {
         (release_generation.clone(), "ready".to_string(), None)
     } else {
         if matches!(&initial, HealthObservation::PriorGeneration { .. }) {
@@ -345,6 +354,18 @@ fn activate_with_residency(options: ActivationOptions, start_resident: bool) -> 
 }
 
 pub fn deactivate(options: ActivationOptions) -> Result<DeactivationReceiptV1, String> {
+    deactivate_with_residency(options, true)
+}
+
+/// Reconcile installed explicit entry points without touching resident services.
+pub fn deactivate_bindings(options: ActivationOptions) -> Result<DeactivationReceiptV1, String> {
+    deactivate_with_residency(options, false)
+}
+
+fn deactivate_with_residency(
+    options: ActivationOptions,
+    stop_resident: bool,
+) -> Result<DeactivationReceiptV1, String> {
     let (install_root, version_root) = validate_installed_root(&options.install_root)?;
     let product_root = install_root
         .parent()
@@ -361,26 +382,31 @@ pub fn deactivate(options: ActivationOptions) -> Result<DeactivationReceiptV1, S
     )?;
     let (workspace_root, port) = installed_runtime(product_root)?;
     let expected_generation = membrane_runtime::release_identity::release_generation();
-    let initial = match probe_health(port, &expected_generation) {
-        Ok(observation) => observation,
-        Err(error) => HealthObservation::Foreign(error),
+    let initial = if stop_resident {
+        match probe_health(port, &expected_generation) {
+            Ok(observation) => observation,
+            Err(error) => HealthObservation::Foreign(error),
+        }
+    } else {
+        HealthObservation::Unavailable
     };
+    let initial = constrain_health_to_existing_installation(initial, &workspace_root);
     let before = health_label(&initial).to_string();
-    if !options.dry_run {
+    if stop_resident && !options.dry_run {
         if let HealthObservation::Foreign(reason) = &initial {
             return Err(format!(
                 "refusing to deactivate unverified service on Membrane port: {reason}"
             ));
         }
     }
-    let would_stop = matches!(
+    let would_stop = stop_resident && matches!(
         &initial,
-        HealthObservation::NotReady
+        HealthObservation::NotReady { .. }
             | HealthObservation::Ready { .. }
             | HealthObservation::PriorGeneration { .. }
     );
 
-    let _lock = (!options.dry_run)
+    let _lock = (stop_resident && !options.dry_run)
         .then(|| acquire_lock(product_root))
         .transpose()?;
     if !options.dry_run && would_stop {
@@ -447,7 +473,7 @@ pub fn deactivate(options: ActivationOptions) -> Result<DeactivationReceiptV1, S
 fn health_label(observation: &HealthObservation) -> &'static str {
     match observation {
         HealthObservation::Unavailable => "unavailable",
-        HealthObservation::NotReady => "not_ready",
+        HealthObservation::NotReady { .. } => "not_ready",
         HealthObservation::Ready { .. } => "ready",
         HealthObservation::PriorGeneration { .. } => "stale_generation",
         HealthObservation::Foreign(_) => "foreign",
@@ -543,13 +569,13 @@ fn require_current_health(
     expected_generation: &str,
 ) -> Result<String, String> {
     match observation {
-        HealthObservation::Ready { release_generation } => Ok(release_generation),
-        HealthObservation::PriorGeneration { release_generation } => Err(format!(
+        HealthObservation::Ready { release_generation, .. } => Ok(release_generation),
+        HealthObservation::PriorGeneration { release_generation, .. } => Err(format!(
             "resident release generation {release_generation} does not match installed generation {expected_generation}"
         )),
         HealthObservation::Foreign(reason) => Err(reason),
         HealthObservation::Unavailable => Err("installed Membrane is not running".to_string()),
-        HealthObservation::NotReady => Err("installed Membrane is not healthy".to_string()),
+        HealthObservation::NotReady { .. } => Err("installed Membrane is not healthy".to_string()),
     }
 }
 
@@ -692,7 +718,7 @@ fn launch_tray_with_mode(
     command
         .spawn()
         .map(|_| ())
-        .map_err(|error| format!("launch installed tray {}: {error}", tray.display()))
+        .map_err(|error| format!("launch installed tray {} {mode}: {error}", tray.display()))
 }
 
 /// Append the tray's own output to `membrane-tray.log` under the Windows log
@@ -729,7 +755,7 @@ fn wait_for_shutdown(
         match probe_health(port, expected_generation)? {
             HealthObservation::Unavailable => return Ok(()),
             HealthObservation::Foreign(reason) => return Err(reason),
-            HealthObservation::NotReady
+            HealthObservation::NotReady { .. }
             | HealthObservation::Ready { .. }
             | HealthObservation::PriorGeneration { .. } => {}
         }
@@ -751,10 +777,10 @@ fn wait_for_health(
     let deadline = Instant::now() + timeout;
     loop {
         match probe_health(port, expected_generation)? {
-            HealthObservation::Ready { release_generation } => return Ok(release_generation),
+            HealthObservation::Ready { release_generation, .. } => return Ok(release_generation),
             HealthObservation::Foreign(reason) => return Err(reason),
             HealthObservation::Unavailable
-            | HealthObservation::NotReady
+            | HealthObservation::NotReady { .. }
             | HealthObservation::PriorGeneration { .. } => {}
         }
         if Instant::now() >= deadline {
@@ -854,6 +880,15 @@ fn parse_health_response(
             "Membrane health omitted release generation".to_string(),
         ));
     };
+    let Some(installation_id) = body
+        .get("installationId")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(HealthObservation::Foreign(
+            "Membrane health omitted installation identity".to_string(),
+        ));
+    };
     let runtime_origin = body
         .get("runtimeOrigin")
         .and_then(serde_json::Value::as_str);
@@ -865,6 +900,7 @@ fn parse_health_response(
     if release_generation != expected_generation {
         return Ok(HealthObservation::PriorGeneration {
             release_generation: release_generation.to_string(),
+            installation_id: installation_id.to_string(),
         });
     }
     if runtime_origin != Some("installed") {
@@ -873,11 +909,43 @@ fn parse_health_response(
         ));
     }
     if status != 200 || body.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
-        return Ok(HealthObservation::NotReady);
+        return Ok(HealthObservation::NotReady {
+            installation_id: installation_id.to_string(),
+        });
     }
     Ok(HealthObservation::Ready {
         release_generation: release_generation.to_string(),
+        installation_id: installation_id.to_string(),
     })
+}
+
+fn constrain_health_to_existing_installation(
+    observation: HealthObservation,
+    workspace_root: &Path,
+) -> HealthObservation {
+    let observed = match &observation {
+        HealthObservation::NotReady { installation_id }
+        | HealthObservation::Ready { installation_id, .. }
+        | HealthObservation::PriorGeneration { installation_id, .. } => installation_id,
+        HealthObservation::Unavailable | HealthObservation::Foreign(_) => return observation,
+    };
+    let paths = membrane_runtime::installation_identity::InstallationPaths::for_workspace(workspace_root);
+    let expected = match std::fs::read(&paths.identity)
+        .map_err(|error| format!("read installation identity {}: {error}", paths.identity.display()))
+        .and_then(|bytes| {
+            serde_json::from_slice::<membrane_runtime::installation_identity::InstallationIdentity>(&bytes)
+                .map_err(|error| format!("parse installation identity {}: {error}", paths.identity.display()))
+        })
+    {
+        Ok(identity) if !identity.installation_id.trim().is_empty() => identity.installation_id,
+        Ok(_) => return HealthObservation::Foreign("installed installation identity is empty".to_string()),
+        Err(error) => return HealthObservation::Foreign(error),
+    };
+    if observed == &expected {
+        observation
+    } else {
+        HealthObservation::Foreign("service installation identity does not match installed identity".to_string())
+    }
 }
 
 fn installed_runtime(product_root: &Path) -> Result<(PathBuf, u16), String> {
@@ -886,11 +954,67 @@ fn installed_runtime(product_root: &Path) -> Result<(PathBuf, u16), String> {
     }
     // Installed state is product-owned and deliberately independent from any
     // checkout, workspace config, or repository runtime manifest.
-    Ok((product_root.join("state"), INSTALLED_PORT))
+    let port = if cfg!(debug_assertions) {
+        match std::env::var("MEMBRANE_TEST_INSTALLED_PORT") {
+            Ok(value) => value
+                .parse::<u16>()
+                .ok()
+                .filter(|port| *port != 0)
+                .ok_or_else(|| "MEMBRANE_TEST_INSTALLED_PORT must be a nonzero u16".to_string())?,
+            Err(_) => INSTALLED_PORT,
+        }
+    } else {
+        INSTALLED_PORT
+    };
+    Ok((product_root.join("state"), port))
+}
+
+#[cfg(windows)]
+fn isolated_user_bindings_root() -> Option<PathBuf> {
+    cfg!(debug_assertions)
+        .then(|| std::env::var_os("MEMBRANE_TEST_USER_BINDINGS_ROOT"))
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+#[cfg(windows)]
+fn ensure_isolated_user_path(root: &Path, install_root: &Path) -> Result<(), String> {
+    let path = root.join("Environment.Path");
+    let current = match std::fs::read_to_string(&path) {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("read isolated user PATH {}: {error}", path.display())),
+    };
+    let stable = install_root.to_string_lossy().trim_end_matches(['\\', '/']).to_string();
+    let legacy = std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .map(|root| root.join("Membrane Hub").to_string_lossy().to_string());
+    let mut entries = current
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|value| !legacy.as_ref().is_some_and(|legacy| value.trim_matches('"').eq_ignore_ascii_case(legacy)))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if !entries.iter().any(|value| value.trim_matches('"').eq_ignore_ascii_case(&stable)) {
+        entries.push(stable);
+    }
+    let updated = entries.join(";");
+    if updated != current {
+        std::fs::create_dir_all(root)
+            .map_err(|error| format!("create isolated user bindings {}: {error}", root.display()))?;
+        std::fs::write(&path, updated)
+            .map_err(|error| format!("write isolated user PATH {}: {error}", path.display()))?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
 fn ensure_user_path(install_root: &Path) -> Result<(), String> {
+    if let Some(root) = isolated_user_bindings_root() {
+        return ensure_isolated_user_path(&root, install_root);
+    }
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
@@ -1010,6 +1134,20 @@ fn without_path_entry(current: &str, install_root: &Path) -> (String, bool) {
 
 #[cfg(windows)]
 fn remove_user_path(install_root: &Path, dry_run: bool) -> Result<bool, String> {
+    if let Some(root) = isolated_user_bindings_root() {
+        let path = root.join("Environment.Path");
+        let current = match std::fs::read_to_string(&path) {
+            Ok(value) => value,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("read isolated user PATH {}: {error}", path.display())),
+        };
+        let (updated, removed) = without_path_entry(&current, install_root);
+        if removed && !dry_run {
+            std::fs::write(&path, updated)
+                .map_err(|error| format!("write isolated user PATH {}: {error}", path.display()))?;
+        }
+        return Ok(removed);
+    }
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
@@ -1114,6 +1252,9 @@ fn startup_value_owned(value: &str, tray: &Path) -> bool {
 
 #[cfg(windows)]
 fn remove_startup_entries(tray: &Path, dry_run: bool) -> Result<usize, String> {
+    if isolated_user_bindings_root().is_some() {
+        return Ok(0);
+    }
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::System::Registry::{
         RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER,
@@ -1279,10 +1420,10 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
     } else {
         serde_json::json!({})
     };
-    let node = install_root.join("runtime/blueprint/lib").join(executable_name("node"));
-    let entrypoint = install_root.join("mcp/hooks/membrane-hook-entrypoint.mjs");
-    require_file(&node, "installed hook Node runtime")?;
-    require_file(&entrypoint, "installed Claude hook entrypoint")?;
+    require_file(
+        &install_root.join(executable_name("membrane")),
+        "installed native Claude hook executable",
+    )?;
     let command = installed_hook_command(install_root);
     let root = settings
         .as_object_mut()
@@ -1338,11 +1479,8 @@ fn reconcile_claude_hooks(install_root: &Path) -> Result<(), String> {
 }
 
 fn installed_hook_command(install_root: &Path) -> String {
-    let node = install_root
-        .join("runtime/blueprint/lib")
-        .join(executable_name("node"));
-    let entrypoint = install_root.join("mcp/hooks/membrane-hook-entrypoint.mjs");
-    format!("\"{}\" \"{}\"", node.display(), entrypoint.display())
+    let membrane = install_root.join(executable_name("membrane"));
+    format!("\"{}\" hook", membrane.display())
 }
 
 fn remove_exact_hook_items(settings: &mut serde_json::Value, expected: &str) -> usize {
@@ -1426,6 +1564,7 @@ fn replace_legacy_hook_commands(entries: &mut [serde_json::Value], expected: &st
             let Some(command) = item.get_mut("command") else { continue };
             let owned = command.as_str().is_some_and(|value| {
                 value.contains("membrane_host.py")
+                    || value.contains("membrane-hook-entrypoint.mjs")
                     || (value.contains(".venv-tools") && value.to_ascii_lowercase().contains("membrane"))
             });
             if owned {
@@ -2368,7 +2507,7 @@ mod tests {
 
     #[test]
     fn deactivation_hook_removal_preserves_near_matches_and_unrelated_items() {
-        let expected = r#""C:\Membrane\current\node.exe" "C:\Membrane\current\mcp\hooks\membrane-hook-entrypoint.mjs""#;
+        let expected = r#""C:\Membrane\current\membrane.exe" hook"#;
         let mut settings = serde_json::json!({
             "hooks": {
                 "SessionStart": [
@@ -2393,6 +2532,19 @@ mod tests {
             .unwrap()
             .is_empty());
         assert_eq!(settings["hooks"]["Malformed"][0]["other"], true);
+    }
+
+    #[test]
+    fn legacy_node_hook_projection_upgrades_to_native_command() {
+        let expected = r#""C:\Membrane\current\membrane.exe" hook"#;
+        let mut entries = vec![serde_json::json!({
+            "hooks": [{
+                "type": "command",
+                "command": r#""C:\Membrane\current\runtime\blueprint\lib\node.exe" "C:\Membrane\current\mcp\hooks\membrane-hook-entrypoint.mjs""#
+            }]
+        })];
+        replace_legacy_hook_commands(&mut entries, expected);
+        assert_eq!(entries[0]["hooks"][0]["command"], expected);
     }
 
     #[test]
@@ -2470,11 +2622,12 @@ mod tests {
 
     #[test]
     fn health_gate_rejects_foreign_identity_and_accepts_exact_generation() {
-        let ready = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"installed\",\"releaseGeneration\":\"g1\"}";
+        let ready = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"installed\",\"releaseGeneration\":\"g1\",\"installationId\":\"install-1\"}";
         assert_eq!(
             parse_health_response(ready, "g1").unwrap(),
             HealthObservation::Ready {
-                release_generation: "g1".to_string()
+                release_generation: "g1".to_string(),
+                installation_id: "install-1".to_string(),
             }
         );
         let foreign = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"other\",\"nativeOnly\":true,\"releaseGeneration\":\"g1\"}";
@@ -2485,21 +2638,48 @@ mod tests {
         assert_eq!(
             parse_health_response(ready, "g2").unwrap(),
             HealthObservation::PriorGeneration {
-                release_generation: "g1".to_string()
+                release_generation: "g1".to_string(),
+                installation_id: "install-1".to_string(),
             }
         );
-        let development = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"development\",\"releaseGeneration\":\"g1\"}";
+        let development = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"development\",\"releaseGeneration\":\"g1\",\"installationId\":\"install-1\"}";
         assert!(matches!(
             parse_health_response(development, "g1").unwrap(),
             HealthObservation::Foreign(reason) if reason.contains("development")
         ));
-        let legacy = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"releaseGeneration\":\"g0\"}";
-        assert_eq!(
+        let legacy = b"HTTP/1.1 200 OK\r\n\r\n{\"ok\":true,\"serviceId\":\"membrane-hub\",\"nativeOnly\":true,\"runtimeOrigin\":\"installed\",\"releaseGeneration\":\"g0\"}";
+        assert!(matches!(
             parse_health_response(legacy, "g1").unwrap(),
-            HealthObservation::PriorGeneration {
-                release_generation: "g0".to_string()
-            }
+            HealthObservation::Foreign(reason) if reason.contains("installation identity")
+        ));
+    }
+
+    #[test]
+    fn health_ownership_requires_existing_matching_installation_identity() {
+        let workspace = tempfile::tempdir().unwrap();
+        let identity = membrane_runtime::installation_identity::InstallationPaths::for_workspace(workspace.path()).identity;
+        std::fs::create_dir_all(identity.parent().unwrap()).unwrap();
+        std::fs::write(
+            &identity,
+            r#"{"schema_version":2,"installation_id":"install-1","created_at":"now","startup_generation":0,"legacy_labels":[],"lineage":[],"current_service_instance_id":null,"current_claimed_at":null}"#,
+        )
+        .unwrap();
+        let ready = || HealthObservation::Ready {
+            release_generation: "g1".to_string(),
+            installation_id: "install-1".to_string(),
+        };
+        assert_eq!(
+            constrain_health_to_existing_installation(ready(), workspace.path()),
+            ready()
         );
+        let foreign = constrain_health_to_existing_installation(
+            HealthObservation::Ready {
+                release_generation: "g1".to_string(),
+                installation_id: "other-installation".to_string(),
+            },
+            workspace.path(),
+        );
+        assert!(matches!(foreign, HealthObservation::Foreign(reason) if reason.contains("does not match")));
     }
 
     #[test]
@@ -2538,7 +2718,8 @@ mod tests {
         assert_eq!(
             require_current_health(
                 HealthObservation::Ready {
-                    release_generation: "g2".to_string()
+                    release_generation: "g2".to_string(),
+                    installation_id: "install-1".to_string(),
                 },
                 "g2"
             )
@@ -2550,7 +2731,8 @@ mod tests {
             .contains("not running"));
         assert!(require_current_health(
             HealthObservation::PriorGeneration {
-                release_generation: "g1".to_string()
+                release_generation: "g1".to_string(),
+                installation_id: "install-1".to_string(),
             },
             "g2"
         )

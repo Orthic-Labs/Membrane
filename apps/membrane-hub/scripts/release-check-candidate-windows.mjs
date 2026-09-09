@@ -22,20 +22,11 @@ if (!candidate.startedAt || Number.isNaN(Date.parse(candidate.startedAt))) throw
 for (const name of ["membrane-hub.exe", "cortex.exe", "membrane.exe", "membrane-tray.exe", "membrane-daemon.exe"]) {
   if (!candidate.files?.[name]) throw new Error(`candidate executable closure missing: ${name}`);
 }
-for (const name of [
-  "mcp/hooks/membrane-hook-entrypoint.mjs",
-  "mcp/hooks/membrane-hook-runtime.mjs",
-  "mcp/hooks/membrane-workspace-operations.mjs",
-  "mcp/lib/verification-command.mjs",
-  "mcp/lib/diagnostics-client.mjs",
-  "mcp/host/context-adapter.cjs",
-  "mcp/host/continuity.mjs",
-  "mcp/host/delivery-ledger-store.cjs",
-  "mcp/host/observable-event.cjs",
-  "mcp/host/observable-ingress.cjs",
-  "mcp/context-renderer-lib.cjs",
-]) {
-  if (!candidate.files?.[name]) throw new Error(`candidate hook projection closure missing: ${name}`);
+if (Object.keys(candidate.files ?? {}).some((name) => name === "mcp/hooks" || name.startsWith("mcp/hooks/"))) {
+  throw new Error("candidate includes obsolete mcp/hooks backend");
+}
+for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
+  if (!candidate.files?.[name]) throw new Error(`candidate enrollment projection missing: ${name}`);
 }
 for (const name of ["plugin.json", "mcp.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".antigravity-plugin/plugin.json"]) {
   if (!candidate.files?.[name]) throw new Error(`candidate client projection closure missing: ${name}`);
@@ -84,6 +75,9 @@ try {
   });
   const actual = Object.fromEntries(walk(extracted).map((path) => [relative(extracted, path).replaceAll("\\", "/"), createHash("sha256").update(readFileSync(path)).digest("hex")]));
   if (JSON.stringify(actual) !== JSON.stringify(candidate.files)) throw new Error("candidate file closure mismatch");
+  if (existsSync(join(extracted, "mcp", "hooks"))) throw new Error("candidate archive includes obsolete mcp/hooks backend");
+  const hookAuthority = spawnSync(join(extracted, "membrane.exe"), ["hook", "--help"], { cwd: extracted, encoding: "utf8", windowsHide: true, timeout: 3_000 });
+  if (hookAuthority.error || hookAuthority.status !== 0) throw new Error("candidate native hook authority unavailable");
 } finally {
   rmSync(extracted, { recursive: true, force: true });
 }

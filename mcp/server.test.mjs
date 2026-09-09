@@ -125,6 +125,10 @@ assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|
 assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", name: "Membrane protocol v1", mimeType: "text/markdown" }]);
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
+const ledgerTool = rows[1].result.tools.find((tool) => tool.name === "membrane_ledger");
+assert.ok(ledgerTool.inputSchema.properties.operation.enum.includes("ingest"));
+assert.equal(ledgerTool.inputSchema.properties.rawInput.oneOf.length, 2);
+assert.equal(ledgerTool.inputSchema.properties.maxRawBytes.maximum, 8_388_608);
 const blueprintToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint"] } } }]);
 assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), [...defaultTools].sort());
 const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint", "blueprint"] } } }]);

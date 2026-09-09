@@ -73,6 +73,17 @@ test("portable payload is signed, hashed & includes activation plus Agent Plugin
   assert.match(packager, /createPortableArchive/);
   assert.match(packager, /materializeCycloneDxSbom/);
   assert.match(packager, /materializeInTotoSlsaProvenance/);
+  for (const name of ["mcp/install.mjs", "mcp/project-registry.mjs", "mcp/installation-binding.mjs", "mcp/repository-catalog.mjs", "mcp/blueprint-readiness.mjs"]) {
+    assert.ok(packager.includes(name), `enrollment projection: ${name}`);
+  }
+  assert.match(packager, /\["hook", "--help"\]/);
+  assert.match(packager, /obsolete mcp\/hooks payload is forbidden/);
+  assert.doesNotMatch(packager, /mcp\/hooks\/membrane-hook-entrypoint\.mjs/);
+  assert.doesNotMatch(candidateBuild, /mcp\/hooks\/membrane-hook-entrypoint\.mjs/);
+  assert.match(candidateBuild, /candidate enrollment projection file missing/);
+  assert.match(candidateCheck, /candidate enrollment projection missing/);
+  assert.match(candidateCheck, /candidate native hook authority unavailable/);
+  assert.match(candidateCheck, /candidate includes obsolete mcp\/hooks backend/);
   assert.match(packager, /membrane-\$\{pkg\.version\}-windows_x86_64|membrane-\$\{pkg\.version\}-windows-x86_64/);
 });
 

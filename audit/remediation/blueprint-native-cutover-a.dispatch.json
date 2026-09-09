@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "abeec00c1b8705e7905c92bba73f867f0cea871a",
+  "promptArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptDigest": "sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc",
+  "modelRouting": {"modelTier":"MID","workerProfile":"gpt-5.6-luna","routingRationale":"Two disjoint native Rust seams can land concurrently before service composition."},
+  "objective": "Freeze native Blueprint public execution contracts plus reliable watcher/freshness reconciliation, with no Node process assumptions, for dependent in-process service cutover.",
+  "authority": [
+    "AGENTS.md",
+    "docs/architecture/subsystems/blueprint.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "audit/remediation/reconciliation/native-seam-inventory.md",
+    "audit/remediation/reconciliation/blueprint-semantic-inventory.md",
+    "blueprint/src/service/protocol.mjs",
+    "blueprint/src/service/server.mjs",
+    "blueprint/src/lib/application/service.mjs",
+    "blueprint/scripts/blueprint-one-shot.mjs",
+    "blueprint/scripts/blueprint-watch.mjs",
+    "blueprint/src/graph/watchman.mjs",
+    "blueprint/src/graph/freshness-receipt.mjs",
+    "blueprint/src/graph/git-source-observation.mjs",
+    "blueprint/src/graph/barrier.mjs",
+    "blueprint/src/graph/stable-read.mjs",
+    "blueprint/watchman/supervisor.mjs",
+    "blueprint/watchman/reconcile.mjs",
+    "blueprint/watchman/repo-actor.mjs",
+    "blueprint/watchman/adapter.mjs"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "preexistingOwnedBytes": [
+    {"path":"engine/crates/membrane-blueprint/src/lib.rs","sha256":"6a7e8ae349f6b3e3757fd48b43a2ab92f91afa04a907ed9dabeb34da5e1a391b","sourceTask":"/root","disposition":"Wave B native-service may replace after Wave A terminal"},
+    {"path":"engine/crates/membrane-blueprint/src/contracts.rs","sha256":"84f4a8cc6c1fbb22510576e579ea8c364ac10955bc327c20701ce18050df8c94","sourceTask":"/root","disposition":"workers read-only"},
+    {"path":"engine/crates/membrane-blueprint/src/store.rs","sha256":"731acc2fce969b9cde30613e5f913ab630fc09199afd7a011e92a1be5c33c89c","sourceTask":"/root/store_correction","disposition":"workers read-only"},
+    {"path":"engine/crates/membrane-blueprint/src/migrations.rs","sha256":"65e47a8d31f9316e3d185cb8ba2f642a9c825cbd65e946c6d02a10482d9c23cd","sourceTask":"/root/migration_correction","disposition":"workers read-only"},
+    {"path":"engine/crates/membrane-blueprint/Cargo.toml","sha256":"809faff3a532b83eff9f1942bb71d457cb5999a5dcb1672771714f18a6025934","sourceTask":"integrationOwner","disposition":"workers read-only; no dependency delta"},
+    {"path":"engine/Cargo.lock","sha256":"1d47a9dd1f5dbf949b1d0fc336baf692856f978762e1c4139750c828b2412224","sourceTask":"integrationOwner","disposition":"workers read-only"}
+  ],
+  "fileTouchPolicy": {
+    "mode":"once-end-to-end",
+    "plannedFiles":[
+      "engine/crates/membrane-blueprint/src/api.rs",
+      "engine/crates/membrane-blueprint/src/model.rs",
+      "engine/crates/membrane-blueprint/tests/api.rs",
+      "engine/crates/membrane-blueprint/src/watch.rs",
+      "engine/crates/membrane-blueprint/src/freshness.rs",
+      "engine/crates/membrane-blueprint/tests/watch.rs",
+      "engine/crates/membrane-blueprint/src/lib.rs",
+      "engine/crates/membrane-blueprint/src/service.rs",
+      "engine/crates/membrane-blueprint/tests/service.rs"
+    ],
+    "allowUnplannedFiles":false,
+    "ledger":[
+      {"path":"engine/crates/membrane-blueprint/src/api.rs","owner":"native-api","operation":"add","lane":"native-api"},
+      {"path":"engine/crates/membrane-blueprint/src/model.rs","owner":"native-api","operation":"add","lane":"native-api"},
+      {"path":"engine/crates/membrane-blueprint/tests/api.rs","owner":"native-api","operation":"add","lane":"native-api"},
+      {"path":"engine/crates/membrane-blueprint/src/watch.rs","owner":"native-watch","operation":"add","lane":"native-watch"},
+      {"path":"engine/crates/membrane-blueprint/src/freshness.rs","owner":"native-watch","operation":"add","lane":"native-watch"},
+      {"path":"engine/crates/membrane-blueprint/tests/watch.rs","owner":"native-watch","operation":"add","lane":"native-watch"},
+      {"path":"engine/crates/membrane-blueprint/src/lib.rs","owner":"native-service","operation":"replace-node-supervisor-with-native-module-exports","lane":"native-service"},
+      {"path":"engine/crates/membrane-blueprint/src/service.rs","owner":"native-service","operation":"add","lane":"native-service"},
+      {"path":"engine/crates/membrane-blueprint/tests/service.rs","owner":"native-service","operation":"add","lane":"native-service"}
+    ]
+  },
+  "sourcePortPolicy": {"applicable":true,"sourceImplementation":"Blueprint JavaScript service/protocol/watcher/freshness authority","directPortFirst":true,"targetLanguage":"Rust","rustTargetRequiresRustPort":true,"handRollReplacementWhileSourceExists":false},
+  "workerPolicy": {"mode":"edit-only","mayInspectReadPaths":true,"mayEditAllowlistOnly":true,"forbiddenActions":["cargo","tests","builds","generators","installs","formatters","commits","pushes","merges"],"intendedChecksRecordedFor":"integration owner"},
+  "integrationPolicy": {"owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","soleMerger":true,"runsCheckpoints":true,"mayRepairLaneOwnedFiles":false,"repairAction":"return exact compile/test failure to owning lane"},
+  "dispatches": [
+    {"id":"A","dependsOn":[],"lanes":["native-api","native-watch"],"completionChecks":["disjoint files","no Node/process assumptions","exact authority source review","interfaces source-reviewed and hash-frozen for B"]},
+    {"id":"B","dependsOn":["A"],"lanes":["native-service"],"completionChecks":["consume frozen A interfaces","export all A/B modules before focused compilation","remove all Node spawn/layout/handshake assumptions from membrane-blueprint","preserve explicit one-shot independence plus resident lifecycle"]}
+  ],
+  "workers": [
+    {"id":"native-api","dispatch":"A","allowlist":["engine/crates/membrane-blueprint/src/api.rs","engine/crates/membrane-blueprint/src/model.rs","engine/crates/membrane-blueprint/tests/api.rs"],"read":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/store.rs","audit/remediation/reconciliation/blueprint-semantic-inventory.md","blueprint/src/service/protocol.mjs","blueprint/src/service/server.mjs","blueprint/src/lib/application/service.mjs","blueprint/scripts/blueprint-one-shot.mjs"],"acceptance":["typed native request/response/error/bounds/cancellation/deadline contract","manual build/status plus graph, Phase2, DB, freshness operation vocabulary","repository/generation/scope fields preserved","trait boundary permits one-shot and resident callers without storage ownership","tests cover validation, caps, typed failures, serialization"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test api after B exports modules"]},
+    {"id":"native-watch","dispatch":"A","allowlist":["engine/crates/membrane-blueprint/src/watch.rs","engine/crates/membrane-blueprint/src/freshness.rs","engine/crates/membrane-blueprint/tests/watch.rs"],"read":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/store.rs","blueprint/scripts/blueprint-watch.mjs","blueprint/src/graph/watchman.mjs","blueprint/src/graph/freshness-receipt.mjs","blueprint/src/graph/git-source-observation.mjs","blueprint/src/graph/barrier.mjs","blueprint/src/graph/stable-read.mjs","blueprint/watchman/supervisor.mjs","blueprint/watchman/reconcile.mjs","blueprint/watchman/repo-actor.mjs","blueprint/watchman/adapter.mjs"],"acceptance":["native std polling/reconciliation owner; watcher is optimization, filesystem reconciliation is truth","bounded snapshot excludes .git/.agent plus configured exclusions","monotonic source/applied clocks, event-gap and timeout/gap-blocked/caught-up barriers","manual explicit operations work without resident watcher","typed callback interface schedules rebuild without implicit Phase2 judgment","tests cover create/modify/delete, coalesced loss reconciliation, barriers, shutdown"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test watch after B exports modules"]},
+    {"id":"native-service","dispatch":"B","allowlist":["engine/crates/membrane-blueprint/src/lib.rs","engine/crates/membrane-blueprint/src/service.rs","engine/crates/membrane-blueprint/tests/service.rs"],"read":["engine/crates/membrane-blueprint/src/api.rs","engine/crates/membrane-blueprint/src/model.rs","engine/crates/membrane-blueprint/src/watch.rs","engine/crates/membrane-blueprint/src/freshness.rs","engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/store.rs","blueprint/src/service/server.mjs"],"acceptance":["lib.rs contains no Command/node/runtime layout/CLI script/handshake/env endpoint child assumptions","native in-process owner has start/readiness/supervise/drain with typed degradation","resident owner composes watcher plus executor; bounded explicit executor remains holder-independent","structured lifecycle events are observable","tests cover start/idempotence/failure/drain/one-shot without child process"],"checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test service, then full -p membrane-blueprint"]}
+  ],
+  "oracleAudit": {"required":true,"mode":"adversarial","status":"required-before-execution","checks":["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","direct-port-priority","worker-edit-only","integration-owner-checkpoints","preexisting-byte-binding"]},
+  "recovery": {"maxRetries":1,"stopConditions":["unowned overlap","new Cargo dependency required","public A interface cannot compose without unresolved architecture decision"],"returnFields":["changedPaths","checks","blockers","baselineRevision","patchDigest"]}
+}

@@ -1,6 +1,9 @@
 use membrane_federation::blueprint_client::{
-    BlueprintBounds, BlueprintCacheKey, BlueprintQuery, DEFAULT_CANDIDATE_CAP, MAX_CANDIDATE_CAP,
+    BlueprintBounds, BlueprintCacheKey, BlueprintClient, BlueprintQuery, DEFAULT_CANDIDATE_CAP,
+    MAX_CANDIDATE_CAP,
 };
+use membrane_blueprint::{BlueprintApi, BlueprintRequest, BlueprintResponse, CancellationToken};
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn bounds_are_clamped_before_request_construction() {
@@ -79,4 +82,66 @@ fn cache_key_separates_anchor_and_symbol_queries() {
     query.anchors = vec!["src/one.rs".into()];
     query.symbol = Some("Other".into());
     assert_ne!(first, query.cache_key());
+}
+
+struct NativeApi {
+    request: Mutex<Option<BlueprintRequest>>,
+}
+
+impl BlueprintApi for NativeApi {
+    fn dispatch(&self, request: BlueprintRequest, _cancellation: CancellationToken) -> BlueprintResponse {
+        *self.request.lock().unwrap() = Some(request.clone());
+        BlueprintResponse::success(
+            request.request_id,
+            request.generation,
+            serde_json::json!({
+                "generationId": "generation-1",
+                "candidates": [{
+                    "id": "candidate-1",
+                    "layer": 1,
+                    "sourceKind": "graph",
+                    "sourceRef": "src/lib.rs",
+                    "sourceHash": "sha256:source",
+                    "trustClass": "local",
+                    "instructionPolicy": "data_only",
+                    "providerScore": 1.0,
+                    "estimatedTokens": 3,
+                    "protected": false,
+                    "exact": false,
+                    "recoverable": true,
+                    "resolver": "blueprint",
+                    "text": "native evidence",
+                    "recallCircuitId": "circuit-1",
+                    "evidencePathId": "path-1"
+                }]
+            }),
+        )
+    }
+}
+
+#[test]
+fn client_dispatches_recall_through_native_api_without_transport() {
+    let api = Arc::new(NativeApi { request: Mutex::new(None) });
+    let client = BlueprintClient::new(api.clone());
+    let query = BlueprintQuery {
+        request_id: "request-1".into(),
+        repository_id: "repo-1".into(),
+        repository_root: "/repo".into(),
+        worktree: "/repo".into(),
+        task: "find native evidence".into(),
+        anchors: vec!["src/lib.rs".into()],
+        policy_digest: "policy".into(),
+        expected_generation: None,
+        symbol: None,
+        bounds: BlueprintBounds::default(),
+        deadline: std::time::Duration::from_secs(1),
+    };
+    let result = client.query(&query).expect("native response parses");
+    let request = api.request.lock().unwrap().clone().expect("native request");
+    assert_eq!(request.method.as_str(), "recall");
+    assert_eq!(request.repo_id.as_deref(), Some("repo-1"));
+    assert_eq!(request.input["repoRoot"], "/repo");
+    assert_eq!(result.candidates.len(), 1);
+    assert_eq!(result.candidates[0].provider, None);
+    assert_eq!(result.payload.unwrap()["candidates"][0]["evidencePathId"], "path-1");
 }

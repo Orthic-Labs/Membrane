@@ -315,12 +315,7 @@ fn normalize_html(html: &str) -> (String, usize, bool) {
             output.push(character);
         }
     }
-    let output = output
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'");
+    let output = decode_entities_single_pass(&output);
     let normalized = output
         .lines()
         .map(str::trim)
@@ -738,43 +733,137 @@ fn zip_crc32(bytes: &[u8]) -> u32 {
     !crc
 }
 
+/// Walk WordprocessingML in document order, preserving contiguous styled text runs
+/// (adjacent `<w:t>` elements within one paragraph are concatenated verbatim, never
+/// joined with a synthetic space that would split a word across a formatting boundary),
+/// converting `<w:tab/>` to literal tabs, `<w:br/>`/`<w:cr/>` to line breaks, and
+/// rendering `<w:tbl>` rows/cells as `|`-delimited lines so table content and any
+/// embedded identifiers/URLs survive intact rather than being flattened into running text.
 fn wordprocessingml_text(xml: &str) -> String {
     let mut output = String::new();
     let mut cursor = 0usize;
-    while let Some(relative) = xml[cursor..].find("<w:t") {
-        let start_tag = cursor + relative;
-        let Some(open_end) = xml[start_tag..].find('>').map(|value| start_tag + value + 1) else {
+    let len = xml.len();
+    while cursor < len {
+        let Some(lt_relative) = xml[cursor..].find('<') else {
             break;
         };
-        let Some(close) = xml[open_end..]
-            .find("</w:t>")
-            .map(|value| open_end + value)
-        else {
-            break;
-        };
-        output.push_str(&decode_xml_entities(&xml[open_end..close]));
-        let after = close + "</w:t>".len();
-        if xml[after..].find("</w:p>").is_some_and(|paragraph| {
-            xml[after..]
-                .find("<w:t")
-                .is_none_or(|next_text| paragraph < next_text)
-        }) {
-            output.push_str("\n\n");
+        cursor += lt_relative;
+        let remainder = &xml[cursor..];
+        if remainder.starts_with("<w:t")
+            && !remainder[4..].starts_with(|c: char| c.is_ascii_alphabetic())
+        {
+            let Some(open_end_relative) = remainder.find('>') else {
+                break;
+            };
+            let tag_source = &remainder[..open_end_relative + 1];
+            let open_end = cursor + open_end_relative + 1;
+            if tag_source.ends_with("/>") {
+                cursor = open_end;
+                continue;
+            }
+            let Some(close_relative) = xml[open_end..].find("</w:t>") else {
+                break;
+            };
+            let close = open_end + close_relative;
+            output.push_str(&decode_entities_single_pass(&xml[open_end..close]));
+            cursor = close + "</w:t>".len();
+        } else if remainder.starts_with("<w:tab") {
+            output.push('\t');
+            let Some(end_relative) = remainder.find('>') else {
+                break;
+            };
+            cursor += end_relative + 1;
+        } else if remainder.starts_with("<w:br") || remainder.starts_with("<w:cr") {
+            output.push('\n');
+            let Some(end_relative) = remainder.find('>') else {
+                break;
+            };
+            cursor += end_relative + 1;
+        } else if remainder.starts_with("</w:p>") {
+            while output.ends_with(' ') || output.ends_with('\t') {
+                output.pop();
+            }
+            if !output.ends_with("\n\n") {
+                output.push_str("\n\n");
+            }
+            cursor += "</w:p>".len();
+        } else if remainder.starts_with("</w:tc>") {
+            while output.ends_with(' ') {
+                output.pop();
+            }
+            output.push_str(" | ");
+            cursor += "</w:tc>".len();
+        } else if remainder.starts_with("</w:tr>") {
+            while output.ends_with(" | ") {
+                let trimmed = output.len() - 3;
+                output.truncate(trimmed);
+            }
+            output.push('\n');
+            cursor += "</w:tr>".len();
         } else {
-            output.push(' ');
+            cursor += 1;
         }
-        cursor = after;
     }
     format!("{}\n", output.trim())
 }
 
-fn decode_xml_entities(value: &str) -> String {
-    value
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
+/// Decode XML/HTML character references in a single forward pass so a literal escaped
+/// entity (for example `&amp;lt;`, which must remain the two characters `&lt;`) is never
+/// re-scanned and re-decoded into `<`. Handles the five named XML entities plus decimal
+/// and hexadecimal numeric character references.
+fn decode_entities_single_pass(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut cursor = 0usize;
+    while cursor < value.len() {
+        let remainder = &value[cursor..];
+        if !remainder.starts_with('&') {
+            let next_amp = remainder.find('&').unwrap_or(remainder.len());
+            output.push_str(&remainder[..next_amp]);
+            cursor += next_amp;
+            continue;
+        }
+        if let Some(after_hash) = remainder.strip_prefix("&#") {
+            let (digits_source, is_hex) = match after_hash.strip_prefix(['x', 'X']) {
+                Some(hex_digits) => (hex_digits, true),
+                None => (after_hash, false),
+            };
+            if let Some(semicolon_relative) = digits_source.find(';') {
+                let digits = &digits_source[..semicolon_relative];
+                let parsed = if is_hex {
+                    u32::from_str_radix(digits, 16).ok()
+                } else {
+                    digits.parse::<u32>().ok()
+                };
+                if let Some(code_point) = parsed.and_then(char::from_u32) {
+                    output.push(code_point);
+                    let prefix_len = if is_hex { 3 } else { 2 };
+                    cursor += prefix_len + digits.len() + 1;
+                    continue;
+                }
+            }
+        }
+        const NAMED: [(&str, char); 5] = [
+            ("amp;", '&'),
+            ("lt;", '<'),
+            ("gt;", '>'),
+            ("quot;", '"'),
+            ("apos;", '\''),
+        ];
+        let mut matched = false;
+        for (name, replacement) in NAMED {
+            if remainder[1..].starts_with(name) {
+                output.push(replacement);
+                cursor += 1 + name.len();
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            output.push('&');
+            cursor += 1;
+        }
+    }
+    output
 }
 
 fn digest(bytes: &[u8]) -> String {

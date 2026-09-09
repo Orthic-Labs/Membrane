@@ -7,9 +7,7 @@ use crate::{
     feedback, scratchpad, DiagnosticsService, MemoryStore,
 };
 use cortex_store::{TemporalFact, TemporalFactQuery};
-use membrane_federation::blueprint_client::{
-    BlueprintBounds, BlueprintClient, BlueprintClientError,
-};
+use membrane_blueprint::{BlueprintError, BlueprintRequest, CancellationToken, Operation};
 use membrane_mcp::NativeMcpExecutor;
 use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
@@ -200,30 +198,40 @@ fn workspace_target_ids(arguments: &Value) -> Result<Vec<String>, Value> {
     Ok(targets)
 }
 
-fn blueprint_failure(operation: &str, failure: BlueprintClientError) -> Value {
-    let code = match &failure {
-        BlueprintClientError::Unavailable(_) => "blueprint_unavailable",
-        BlueprintClientError::Timeout => "provider_timeout",
-        BlueprintClientError::Cancelled => "provider_cancelled",
-        BlueprintClientError::Malformed(_) => "blueprint_malformed",
-        BlueprintClientError::Oversized(_) => "blueprint_oversized",
-        BlueprintClientError::GenerationMismatch { .. } => "blueprint_stale",
-        BlueprintClientError::Remote { code, .. }
-            if matches!(
-                code.as_str(),
-                "root_not_enrolled" | "graph_missing" | "not_configured"
-            ) =>
-        {
-            code.as_str()
-        }
-        BlueprintClientError::Remote { code, .. }
-            if matches!(code.as_str(), "stale_blocked" | "generation_mismatch") =>
-        {
-            "blueprint_stale"
-        }
-        BlueprintClientError::Remote { .. } => "blueprint_remote_error",
+fn blueprint_failure(operation: &str, failure: BlueprintError) -> Value {
+    let code = match failure.code.as_str() {
+        "request_cancelled" => "provider_cancelled",
+        "deadline_exceeded" | "deadline_invalid" => "provider_timeout",
+        "generation_mismatch" | "stale_blocked" => "blueprint_stale",
+        "blueprint_oversized" => "blueprint_oversized",
+        "blueprint_malformed" | "invalid_request" | "required_field_missing"
+        | "protocol_version_mismatch" => "blueprint_malformed",
+        "service_not_ready" | "hub_inactive" | "not_configured" => "blueprint_unavailable",
+        "root_not_enrolled" | "graph_missing" => failure.code.as_str(),
+        _ => "blueprint_remote_error",
     };
-    error(operation, code, failure.to_string())
+    error(operation, code, format!("{}: {}", failure.code, failure.message))
+}
+
+fn canonical_query_limits(arguments: &Value, input: &mut Value) {
+    if let Some(limit) = arguments.get("limit").and_then(Value::as_u64) {
+        input["maxCandidates"] = Value::from(limit);
+        input["maxSeeds"] = Value::from(limit);
+    }
+    if let Some(depth) = arguments.get("depth").and_then(Value::as_u64) {
+        input["maxDepth"] = Value::from(depth);
+    }
+    if let Some(bytes) = arguments.get("budget").and_then(Value::as_u64) {
+        input["maxBytes"] = Value::from(bytes);
+    }
+    if let Some(paths) = arguments.get("maxPaths").and_then(Value::as_u64) {
+        input["maxPaths"] = Value::from(paths);
+    }
+}
+
+fn canonical_seed_target(root: &str, arguments: &Value) -> Value {
+    let node = arguments.get("node").and_then(Value::as_str).unwrap_or("");
+    json!({"repoRoot": root, "seed": node, "target": node})
 }
 fn caller<'a>(arguments: &'a Value, operation: &str) -> Result<(&'a str, &'a str, &'a str), Value> {
     let Some(caller) = arguments.get("caller") else {
@@ -367,28 +375,6 @@ fn source_path(root: &str, source_ref: &str) -> Result<PathBuf, &'static str> {
     path.starts_with(&root)
         .then_some(path)
         .ok_or("source_read_scope_denied")
-}
-
-fn blueprint_endpoint() -> Result<PathBuf, String> {
-    if let Some(endpoint) = std::env::var_os("BLUEPRINT_DAEMON_ENDPOINT") {
-        return Ok(PathBuf::from(endpoint));
-    }
-    #[cfg(windows)]
-    {
-        use sha2::{Digest, Sha256};
-        let profile =
-            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE unavailable".to_owned())?;
-        let suffix = hex::encode(Sha256::digest(profile.as_bytes()));
-        Ok(PathBuf::from(format!(
-            r"\\.\pipe\membrane-blueprint-{}",
-            &suffix[..16]
-        )))
-    }
-    #[cfg(not(windows))]
-    {
-        let home = std::env::var_os("HOME").ok_or_else(|| "HOME unavailable".to_owned())?;
-        Ok(PathBuf::from(home).join(".blueprint/blueprint.sock"))
-    }
 }
 
 struct HubTransportExecutor {
@@ -804,15 +790,17 @@ fn execute_blueprint(arguments: &Value) -> Value {
         .and_then(Value::as_str)
         .unwrap_or("");
     let (method, mut input) = match operation {
-        "search" | "recall" => (operation, json!({"repoRoot":root,
+        "search" => (operation, json!({"repoRoot":root,
             "query":arguments.get("query").and_then(Value::as_str).unwrap_or(""),
+            "task":arguments.get("query").and_then(Value::as_str).unwrap_or("")})),
+        "recall" => (operation, json!({"repoRoot":root,
             "task":arguments.get("query").and_then(Value::as_str).unwrap_or(""),
-            "limit":arguments.get("limit").and_then(Value::as_u64).unwrap_or(20)})),
+            "query":arguments.get("query").and_then(Value::as_str).unwrap_or("")})),
         "status" | "documentTruth" | "build" | "refresh" => (operation, json!({"repoRoot":root})),
         "path" => (operation, json!({"repoRoot":root,"from":arguments.get("from"),"to":arguments.get("to")})),
         "architecture" => (
             "architecture",
-            json!({"repoRoot":root,"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+            json!({"repoRoot":root,"task":arguments.get("task").or_else(|| arguments.get("query")).and_then(Value::as_str).unwrap_or(""),"query":arguments.get("query").and_then(Value::as_str).unwrap_or("")}),
         ),
         "symbol" => (
             "resolve",
@@ -820,11 +808,15 @@ fn execute_blueprint(arguments: &Value) -> Value {
         ),
         "reference" | "references" => (
             "expand",
-            json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"direction":"both","depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(1),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+            {
+                let mut input = canonical_seed_target(root, arguments);
+                input["direction"] = Value::String("both".into());
+                input
+            },
         ),
         "impact" => (
             "impact",
-            json!({"repoRoot":root,"anchor":arguments.get("node").and_then(Value::as_str).unwrap_or(""),"depth":arguments.get("depth").and_then(Value::as_u64).unwrap_or(3),"budget":arguments.get("budget").and_then(Value::as_u64).unwrap_or(2000)}),
+            canonical_seed_target(root, arguments),
         ),
         "changes" | "snapshot_get" | "snapshot_list" | "changes_since" => {
             (if operation == "changes_since" { "changes" } else { operation }, json!({"repoRoot":root,
@@ -843,9 +835,9 @@ fn execute_blueprint(arguments: &Value) -> Value {
         input["items"] = items.clone();
     }
     if let Some(node) = arguments.get("node") {
-        input["node"] = node.clone();
+        input["nodeId"] = node.clone();
     }
-    let endpoint = if method == "build" { None } else { blueprint_endpoint().ok() };
+    canonical_query_limits(arguments, &mut input);
     let expected_generation = match arguments.get("generationId") {
         None => None,
         Some(Value::String(value)) if !value.trim().is_empty() => {
@@ -865,14 +857,32 @@ fn execute_blueprint(arguments: &Value) -> Value {
         std::process::id(),
         crate::time::now_millis()
     );
-    let deadline = Duration::from_millis(arguments.get("deadlineMs").and_then(Value::as_u64).unwrap_or(30000).clamp(10, 30000));
-    let result = BlueprintClient::new(Arc::new(crate::blueprint_one_shot::ExplicitBlueprintTransport { endpoint }))
-        .execute_wire(&request_id, repository, method, input, expected_generation.as_deref(),
-            BlueprintBounds::default(), deadline);
-    match result {
-        Ok(payload) => success(name, payload),
-        Err(failure) => blueprint_failure(name, failure),
+    let Some(method) = Operation::parse(method) else {
+        return error(name, "blueprint_envelope_invalid", "unsupported Blueprint operation");
+    };
+    let mut request = BlueprintRequest::new(request_id, method, root);
+    request.repo_id = Some(repository.to_owned());
+    request.generation = expected_generation;
+    request.deadline_ms = arguments
+        .get("deadlineMs")
+        .and_then(Value::as_u64)
+        .unwrap_or(30_000)
+        .clamp(10, 30_000);
+    input["repoId"] = Value::String(repository.to_owned());
+    if let Some(generation) = request.generation.clone() {
+        input["generation"] = Value::String(generation);
     }
+    request.input = input;
+    let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
+    if response.ok {
+        return success(name, response.result.unwrap_or(Value::Null));
+    }
+    blueprint_failure(
+        name,
+        response
+            .error
+            .unwrap_or_else(|| BlueprintError::new("blueprint_unavailable", "native Blueprint returned no error")),
+    )
 }
 
 impl NativeMcpExecutor for RuntimeMcpExecutor {
@@ -1572,6 +1582,18 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
                             else if reason.contains("relocated") { "source_read_anchor_missing" }
                             else if reason.contains("required") || reason.contains("invalid") || reason.contains("mismatch") { "source_read_envelope_invalid" }
                             else { "source_read_unavailable" }
+                        } else if reason.starts_with("conversion_input_too_large") || reason.contains("conversion_output_too_large") {
+                            "ledger_conversion_oversized"
+                        } else if reason.contains("conversion_not_granted") || reason.contains("scope_grant") || reason.contains("scope_path") || reason.contains("source_ref_denied") || reason.contains("snapshot_immutable") || reason.contains("conflicts_live") || reason.contains("live_source_requires_freshness") {
+                            "ledger_conversion_denied"
+                        } else if reason.contains("snapshot_drift") {
+                            "ledger_conversion_stale"
+                        } else if reason.contains("media_excluded") {
+                            "ledger_conversion_media_excluded"
+                        } else if reason.contains("unsupported_format") {
+                            "ledger_conversion_unsupported"
+                        } else if reason.contains("invalid_input") || reason.contains("raw_input_invalid") || reason.contains("format_required") {
+                            "ledger_conversion_malformed"
                         } else { "ledger_operation_failed" };
                         error(name, code, reason)
                     }
@@ -1818,6 +1840,31 @@ impl NativeMcpExecutor for RuntimeMcpExecutor {
             }
             _ => error(name, "unknown_tool", "unknown native MCP operation"),
         }
+    }
+}
+
+#[cfg(test)]
+mod blueprint_input_tests {
+    use super::*;
+
+    #[test]
+    fn native_query_limits_preserve_public_units() {
+        let arguments = json!({"limit": 7, "depth": 2, "budget": 4096, "maxPaths": 9});
+        let mut input = json!({"repoRoot": "fixture"});
+        canonical_query_limits(&arguments, &mut input);
+        assert_eq!(input["maxCandidates"], 7);
+        assert_eq!(input["maxSeeds"], 7);
+        assert_eq!(input["maxDepth"], 2);
+        assert_eq!(input["maxBytes"], 4096);
+        assert_eq!(input["maxPaths"], 9);
+    }
+
+    #[test]
+    fn reference_and_impact_use_exact_native_seed_and_target() {
+        let input = canonical_seed_target("fixture", &json!({"node": "exact-symbol"}));
+        assert_eq!(input["repoRoot"], "fixture");
+        assert_eq!(input["seed"], "exact-symbol");
+        assert_eq!(input["target"], "exact-symbol");
     }
 }
 

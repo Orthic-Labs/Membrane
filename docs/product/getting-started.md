@@ -2,11 +2,11 @@
 
 This path ends only with a receipt-backed packet. A packet without a receipt is a failed run.
 
-Use Windows installer; unsigned internal builds follow same execution boundary.
-Visible native tray owns automatic resident lifecycle; its child daemon hosts
-watchers & background work. Hub dashboard is on demand.
+Use installed Windows package; every runtime call remains bound to stable
+`current`. Visible native tray owns full resident lifecycle through its daemon,
+including Blueprint watchers & background work. Hub dashboard is on demand.
 MCP client launches only installed native `membrane` binary.
-Blueprint uses installer-owned packaged Node; no agent-supplied Node or Python is required.
+Blueprint is a native installed service; no agent-supplied Node or Python is required.
 
 ## 1. Install & launch (0:00)
 
@@ -65,6 +65,8 @@ Exit Membrane tray, then repeat explicit context, memory & graph requests. Reque
 execute through installed subsystem owners, preserving grants, receipts & freshness
 checks. No watcher, scheduler or Hub process should start. All six subsystems follow
 [this execution boundary](../architecture/execution-lifecycle-boundary.md).
+Typed lifecycle states such as `not_configured`, `degraded`, & `blueprint_unavailable`
+remain explicit in status responses.
 
 ## Source-checkout verification
 

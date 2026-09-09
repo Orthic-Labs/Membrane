@@ -27,8 +27,9 @@ pub use activation::{
 pub use cli::{run_cli, run_cli_from};
 pub use cli_parity::{check_parity, generate_cli_subcommands, CliParityReport};
 pub use install_tx::{
-    commit, execute_plan, InstallError, InstallOutcome, InstallPlan, InstallReceiptV1,
-    InstallStage, InstallStep, INSTALL_RECEIPT_SCHEMA_VERSION,
+    commit, decide_provisioning, execute_plan, DiscoveredInstallState, InstallError,
+    InstallOutcome, InstallPlan, InstallReceiptV1, InstallStage, InstallStep,
+    ProvisioningDecision, INSTALL_RECEIPT_SCHEMA_VERSION,
 };
 pub use migration::{
     migrate, MigrationReceiptV1, MIGRATION_RECEIPT_FILE_NAME, MIGRATION_RECEIPT_SCHEMA_VERSION,

@@ -4,7 +4,7 @@
  "enforcementMode": "sealed",
  "modeSemantics": {
   "migration": "Rust is the only allowed installed-production language alongside declarative data. Python/Node/shell may remain production-reachable ONLY through an explicit time-bounded exception below; every exception names an owner packet, an expiry date, and a cutover gate. Passing in migration mode therefore still reports honest migration gaps.",
-  "sealed": "Zero Membrane-owned interpreter-backed production rows; only exact packaged Blueprint external-component rows listed by this policy may remain. Every cutover flag is complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
+  "sealed": "Zero interpreter-backed production rows or bounded external interpreter rows are permitted. Every cutover flag is complete, every dev-only/migration-oracle row carries a deletion-or-exclusion proof, no deleted selector reappears, and every production row has a resolved packaged value. The checker never issues a native-only seal itself; it only enumerates blockers."
  },
  "allowedProductionLanguages": [
   "rust",
@@ -15,12 +15,7 @@
   "node",
   "shell"
  ],
- "sealedExternalInterpreterRows": [
-  "blueprint-bundled-runtime-blueprint/scripts",
-  "blueprint-bundled-runtime-blueprint/src",
-  "blueprint-bundled-runtime-blueprint/watchman",
-  "blueprint-bundled-launchers-blueprint/release"
- ],
+ "sealedExternalInterpreterRows": [],
  "scan": {
   "trackedOnly": true,
   "executableExtensions": [
@@ -41,8 +36,17 @@
   ]
  },
  "exceptions": [],
- "deletedSelectors": [],
- "deletedSelectorsNote": "No legacy path is deleted at this HEAD; populate with exact paths/prefixes as N-packet deletion receipts land. The checker fails if any listed path reappears on disk.",
+ "deletedSelectors": [
+  "blueprint/scripts/",
+  "blueprint/src/",
+  "blueprint/watchman/",
+  "blueprint/release/launchers/",
+  "blueprint/release/linux/blueprint-archive.json",
+  "blueprint/release/macos/distribution.xml",
+  "blueprint/release/macos/postinstall",
+  "blueprint/release/macos/uninstall.sh"
+ ],
+ "deletedSelectorsNote": "Retired Blueprint interpreter payload, launchers, and standalone archive metadata must remain absent from installed inputs; the checker fails if any listed path reappears on disk.",
  "cutoverFlags": [
   {
    "id": "adapt-native-cutover",

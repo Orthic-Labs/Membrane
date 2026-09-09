@@ -346,26 +346,7 @@ pub struct ExplicitFindingsClient;
 impl BlueprintFindingsClient for ExplicitFindingsClient {
     fn fetch(&mut self, repo_root: &Path, timeout_ms: u64, paths: &[String])
         -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
-        use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintTransport, BlueprintWireRequest, BlueprintClientError};
-        let request = BlueprintWireRequest {
-            protocol_version: 1,
-            request_id: format!("explicit-findings-{}-{}", std::process::id(), crate::time::now_millis()),
-            repo_id: None, generation: None, method: "findings.get".into(),
-            deadline_ms: timeout_ms.max(1),
-            input: serde_json::json!({"repoRoot":repo_root.to_string_lossy(),"paths":paths}),
-        };
-        let response = crate::blueprint_one_shot::OneShotTransport.exchange(
-            &request, BlueprintBounds { max_response_bytes: 64 * 1024, ..BlueprintBounds::default() },
-            std::time::Duration::from_millis(timeout_ms.max(1)), tokio_util::sync::CancellationToken::new())
-            .map_err(|error| match error {
-                BlueprintClientError::Timeout | BlueprintClientError::Cancelled => BlueprintFindingsError::DeadlineExceeded,
-                BlueprintClientError::Unavailable(detail) => BlueprintFindingsError::Unavailable(detail),
-                other => BlueprintFindingsError::Protocol(other.to_string()),
-            })?;
-        if response.request_id.as_deref() != Some(request.request_id.as_str()) || response.protocol_version != Some(1) {
-            return Err(BlueprintFindingsError::Protocol("response identity mismatch".into()));
-        }
-        parse_envelope(&serde_json::to_string(&response).map_err(|error| BlueprintFindingsError::Protocol(error.to_string()))?)
+        fetch_native(repo_root, timeout_ms, paths)
     }
 }
 
@@ -386,136 +367,42 @@ impl BlueprintFindingsClient for DaemonFindingsClient {
         timeout_ms: u64,
         paths: &[String],
     ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
-        fetch_over_socket(&self.endpoint, repo_root, timeout_ms, paths)
+        let _ = &self.endpoint;
+        fetch_native(repo_root, timeout_ms, paths)
     }
 }
 
-fn fetch_over_socket(
-    endpoint: &Path,
+fn fetch_native(
     repo_root: &Path,
     timeout_ms: u64,
     paths: &[String],
 ) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {
-    #[cfg(unix)]
-    {
-        use std::io::{BufRead, BufReader, Write};
-        use std::os::unix::net::UnixStream;
-        if !endpoint.exists() {
-            return Err(BlueprintFindingsError::Unavailable(format!(
-                "daemon endpoint {} does not exist",
-                endpoint.display()
-            )));
-        }
-        let stream = UnixStream::connect(endpoint).map_err(|error| {
-            BlueprintFindingsError::Unavailable(format!(
-                "connect to {} failed: {error}",
-                endpoint.display()
-            ))
-        })?;
-        let timeout = std::time::Duration::from_millis(timeout_ms.max(1));
-        let _ = stream.set_read_timeout(Some(timeout));
-        let _ = stream.set_write_timeout(Some(timeout));
-        let mut stream = stream;
-        let request_id = format!(
-            "membrane-diag-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_millis())
-                .unwrap_or(0)
-        );
-        let mut input = serde_json::json!({ "repoRoot": repo_root.to_string_lossy() });
-        if !paths.is_empty() {
-            input["paths"] = serde_json::json!(paths);
-        }
-        let request = serde_json::json!({
-            "protocolVersion": PROTOCOL_VERSION,
-            "requestId": request_id,
-            "repoId": null,
-            "generation": null,
-            "method": "findings.get",
-            "deadlineMs": timeout_ms.min(30_000).max(10),
-            "input": input,
+    use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
+    let request_id = format!(
+        "native-findings-{}-{}",
+        std::process::id(),
+        crate::time::now_millis()
+    );
+    let mut request = BlueprintRequest::new(request_id.clone(), Operation::FindingsGet, repo_root.to_string_lossy());
+    request.deadline_ms = timeout_ms.clamp(10, DEFAULT_FETCH_TIMEOUT_MS);
+    request.input = serde_json::json!({"repoRoot": repo_root.to_string_lossy(), "paths": paths});
+    let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
+    if response.request_id.as_deref() != Some(request_id.as_str()) || response.protocol_version != PROTOCOL_VERSION as u32 {
+        return Err(BlueprintFindingsError::Protocol("native response identity mismatch".into()));
+    }
+    if !response.ok {
+        let error = response.error.ok_or_else(|| BlueprintFindingsError::Protocol("native response omitted error".into()))?;
+        return Err(match error.code.as_str() {
+            "request_cancelled" | "deadline_exceeded" => BlueprintFindingsError::DeadlineExceeded,
+            "generation_mismatch" | "stale_generation" => BlueprintFindingsError::Stale(error.message),
+            "blueprint_store_missing" => BlueprintFindingsError::GraphMissing(error.message),
+            "root_escape" => BlueprintFindingsError::RootNotEnrolled(error.message),
+            "unsupported_operation" | "blueprint_store_corrupt" => BlueprintFindingsError::Unavailable(error.message),
+            _ => BlueprintFindingsError::Protocol(format!("{}: {}", error.code, error.message)),
         });
-        let mut line = request.to_string();
-        line.push('\n');
-        stream.write_all(line.as_bytes()).map_err(|error| {
-            BlueprintFindingsError::Unavailable(format!("write failed: {error}"))
-        })?;
-        stream.flush().map_err(|error| {
-            BlueprintFindingsError::Unavailable(format!("flush failed: {error}"))
-        })?;
-        let mut reader = BufReader::new(stream);
-        let mut response = String::new();
-        match reader.read_line(&mut response) {
-            Ok(0) => Err(BlueprintFindingsError::Unavailable(
-                "daemon closed the socket without responding".into(),
-            )),
-            Ok(_) => parse_envelope(&response),
-            Err(error)
-                if error.kind() == std::io::ErrorKind::WouldBlock
-                    || error.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                Err(BlueprintFindingsError::DeadlineExceeded)
-            }
-            Err(error) => Err(BlueprintFindingsError::Unavailable(format!(
-                "read failed: {error}"
-            ))),
-        }
     }
-    #[cfg(not(unix))]
-    {
-        #[cfg(windows)]
-        {
-            let timeout = std::time::Duration::from_millis(timeout_ms.clamp(10, 30_000));
-            let request_id = format!(
-                "membrane-diag-{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|elapsed| elapsed.as_millis())
-                    .unwrap_or(0)
-            );
-            let mut input = serde_json::json!({ "repoRoot": repo_root.to_string_lossy() });
-            if !paths.is_empty() {
-                input["paths"] = serde_json::json!(paths);
-            }
-            let mut request = serde_json::json!({
-                "protocolVersion": PROTOCOL_VERSION,
-                "requestId": request_id,
-                "repoId": null,
-                "generation": null,
-                "method": "findings.get",
-                "deadlineMs": timeout_ms.clamp(10, 30_000),
-                "input": input,
-            })
-            .to_string()
-            .into_bytes();
-            request.push(b'\n');
-            let response = membrane_federation::blueprint_client::exchange_windows_named_pipe(
-                endpoint,
-                &request,
-                16 * 1024,
-                timeout,
-            )
-            .map_err(|error| {
-                if error == "__blueprint_pipe_timeout__" {
-                    BlueprintFindingsError::DeadlineExceeded
-                } else {
-                    BlueprintFindingsError::Unavailable(error)
-                }
-            })?;
-            let line = std::str::from_utf8(&response).map_err(|error| {
-                BlueprintFindingsError::Protocol(format!("response is not UTF-8: {error}"))
-            })?;
-            return parse_envelope(line);
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = (endpoint, repo_root, timeout_ms, paths);
-            Err(BlueprintFindingsError::Unavailable(
-                "Blueprint daemon IPC is unavailable on this host".into(),
-            ))
-        }
-    }
+    let result = response.result.ok_or_else(|| BlueprintFindingsError::Protocol("native response omitted result".into()))?;
+    parse_envelope(&serde_json::json!({"ok": true, "result": result}).to_string())
 }
 
 fn parse_envelope(line: &str) -> Result<BlueprintFindingsResult, BlueprintFindingsError> {

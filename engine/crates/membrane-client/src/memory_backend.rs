@@ -11,6 +11,7 @@ pub const ACTIVITY: &str = "/activity";
 pub const DELETE: &str = "/delete";
 pub const FEDERATE: &str = "/federate";
 pub const GET: &str = "/get";
+pub const HEALTH: &str = "/health";
 pub const LIST: &str = "/list";
 pub const METRICS: &str = "/metrics";
 pub const PUT: &str = "/put";
@@ -317,7 +318,7 @@ impl<T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError> + S
     }
     pub fn embedder_dim(&self) -> Result<usize, ClientError> {
         if let Some(explicit) = &self.explicit { self.options.check()?; return Ok(explicit.binding().embedder_dim); }
-        let row = self.object("/health", Map::new())?;
+        let row = self.object(HEALTH, Map::new())?;
         row.get("embedder_dim")
             .or_else(|| row.get("embedderDim"))
             .and_then(Value::as_u64)
@@ -664,7 +665,7 @@ impl<'a, T: ?Sized + Fn(&str, &Map<String, Value>) -> Result<Value, ClientError>
         if let Some(explicit) = &self.client.explicit { self.options.check()?; return Ok(explicit.binding().embedder_dim); }
         let row = self
             .client
-            .object_with_options(&self.options, "/health", Map::new())?;
+            .object_with_options(&self.options, HEALTH, Map::new())?;
         row.get("embedder_dim")
             .or_else(|| row.get("embedderDim"))
             .and_then(Value::as_u64)

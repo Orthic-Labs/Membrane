@@ -1,7 +1,7 @@
 //! Bounded host observation adapter and deterministic verification detector.
 //! Reuses host H4/H6/H9/H10 types and Cortex's existing append-only event store.
 //! Input receipts attest host submissions; they are not user-preference authority.
-use crate::{adapt_efficiency, adapt_service, MemoryStore};
+use crate::{adapt_efficiency, adapt_service, catalog, MemoryStore};
 use membrane_protocol::host_observation::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -15,6 +15,24 @@ const DETECTOR_VERSION: u32 = 1;
 pub struct SequencedObservationV1 {
     pub sequence: u64,
     pub observation: ExecutionObservationV1,
+}
+
+/// Opaque Pull publication handle echoed unchanged after host serialization.
+/// All binding fields remain server-side in the pending-publication catalog.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PullPublicationCorrelationV1 {
+    pub schema_version: u32,
+    pub publication_id: String,
+}
+
+impl PullPublicationCorrelationV1 {
+    fn validate(&self) -> Result<(), String> {
+        if self.schema_version != 1 || !valid_id(&self.publication_id) {
+            return Err("invalid Pull publication correlation".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,9 +51,12 @@ pub enum AdaptObservationRequestV1 {
     },
     Acknowledge {
         scope: String,
-        emission_receipt_id: String,
+        #[serde(default)]
+        emission_receipt_id: Option<String>,
         acknowledgement: PacketDeliveryAcknowledgementV1,
         loaded: LoadedContextIdentitiesV1,
+        #[serde(default, rename = "pullPublication", alias = "pull_publication")]
+        pull_publication: Option<PullPublicationCorrelationV1>,
     },
     Outcome {
         scope: String,
@@ -93,6 +114,14 @@ fn receipt(
 }
 
 pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Result<Value, String> {
+    execute_with_catalog(store, None, request)
+}
+
+pub fn execute_with_catalog(
+    store: &MemoryStore,
+    catalog: Option<&catalog::ContextCatalog>,
+    request: AdaptObservationRequestV1,
+) -> Result<Value, String> {
     match request {
         AdaptObservationRequestV1::Analyze {
             scope,
@@ -324,9 +353,33 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
             emission_receipt_id,
             acknowledgement: ack,
             loaded,
+            pull_publication,
         } => {
             ack.validate().map_err(|e| e.to_string())?;
             loaded.validate().map_err(|e| e.to_string())?;
+            if let Some(correlation) = pull_publication {
+                correlation.validate()?;
+                let catalog = catalog.ok_or("Pull acknowledgement catalog unavailable")?;
+                let publication = catalog::pending_pull_publication(catalog, &correlation.publication_id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or("unknown Pull publication correlation")?;
+                if scope != publication.repository_id {
+                    return Err("Pull publication scope mismatch".into());
+                }
+                let acknowledged = crate::pull::delivery_acknowledgement::acknowledge_delivery(
+                    catalog,
+                    &publication,
+                    &ack,
+                    &loaded,
+                )
+                .map_err(|_| "Pull acknowledgement binding mismatch")?;
+                crate::pull::delivery_state::record_acknowledged_publication(publication);
+                if emission_receipt_id.is_none() {
+                    return Ok(json!({"pullAcknowledged": acknowledged}));
+                }
+            }
+            let emission_receipt_id = emission_receipt_id
+                .ok_or("acknowledgement requires an Adapt receipt or Pull publication correlation")?;
             let emitted = receipt(store, &emission_receipt_id, &scope, "adapt.packet_emitted")?;
             let emission = &emitted.payload;
             let task = exact(&ack.task_id).ok_or("acknowledgement task unavailable")?;
@@ -438,12 +491,20 @@ pub fn execute(store: &MemoryStore, request: AdaptObservationRequestV1) -> Resul
 }
 
 pub fn response(store: &MemoryStore, body: &str) -> (u16, String) {
+    response_with_catalog(store, None, body)
+}
+
+pub fn response_with_catalog(
+    store: &MemoryStore,
+    catalog: Option<&catalog::ContextCatalog>,
+    body: &str,
+) -> (u16, String) {
     let result = if body.len() > adapt_service::MAX_INPUT_BYTES {
         Err("observation request too large".into())
     } else {
         serde_json::from_str(body)
             .map_err(|e| format!("invalid observation request: {e}"))
-            .and_then(|r| execute(store, r))
+            .and_then(|r| execute_with_catalog(store, catalog, r))
     };
     match result {
         Ok(v) => (200, v.to_string()),

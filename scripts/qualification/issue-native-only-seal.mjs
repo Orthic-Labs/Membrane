@@ -15,7 +15,8 @@ const REQUIRED_LIFECYCLE = [
   "install", "startup", "hubHealth", "tray", "popup", "renderer", "mcp17",
   "nativeHostCutover", "blueprintHubHosted", "blueprintHubOffOneShot", "downgrade",
   "upgrade", "stateContinuity", "uninstall", "residue", "nativeOnlyProcessTree",
-  "runtimeInventory",
+  "runtimeInventory", "currentRootActivation", "doctor", "hubOffManualBlueprint",
+  "residentFileChangeRefresh", "zeroInterpreterProcessTree",
 ];
 
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
@@ -171,7 +172,17 @@ function qualificationArtifact(value) {
   if (environment.developmentCheckoutRequired !== false || environment.networkInterpreterFetch !== false) {
     fail("qualification environment is not isolated from checkout/interpreter fetch");
   }
-  if (value.runtime?.blueprint?.hubOwned !== true) fail("qualification does not prove Hub-owned Blueprint lifecycle");
+  if (value.runtime?.blueprint?.hubOwned !== true && value.runtime?.blueprint?.nativeOnly !== true) {
+    fail("qualification does not prove installed Blueprint lifecycle");
+  }
+  const processTrees = [downgrade.processTree, upgrade.ProcessTree, value.processTree, value.runtime?.processTree]
+    .filter(Array.isArray).flat();
+  for (const entry of processTrees) {
+    const text = `${entry.name ?? ""} ${entry.executablePath ?? ""}`.toLowerCase();
+    if (/node(?:\.exe)?|python(?:\.exe)?|(?:^|[\\/])(?:sh|bash)(?:\.exe)?$|blueprint[\\/]?(?:scripts|src|watchman|release)/i.test(text)) {
+      fail("qualification process tree contains Blueprint interpreter runtime");
+    }
+  }
   return artifactHash;
 }
 
@@ -179,20 +190,9 @@ function verifyRuntimeLanguage(value) {
   if (value.schemaVersion !== 1 || value.artifact !== "membrane.runtime-language-manifest") fail("runtime-language manifest schema/artifact invalid");
   if (value.enforcementMode !== "sealed") fail("runtime-language enforcement is not sealed");
   if (value.totals?.productionInterpreterRows !== 0) fail("runtime-language manifest has production interpreter rows");
-  const expectedBlueprintRows = new Map([
-    ["blueprint-bundled-runtime-blueprint/scripts", "node"],
-    ["blueprint-bundled-runtime-blueprint/src", "node"],
-    ["blueprint-bundled-runtime-blueprint/watchman", "node"],
-    ["blueprint-bundled-launchers-blueprint/release", "shell"],
-  ]);
-  if (value.totals?.boundedExternalInterpreterRows !== expectedBlueprintRows.size) {
-    fail("runtime-language manifest lacks exact bounded Blueprint interpreter surface");
-  }
-  const blueprint = (value.rows ?? []).filter((row) => expectedBlueprintRows.has(row.id));
-  if (blueprint.length !== expectedBlueprintRows.size
-    || blueprint.some((row) => row.runtime !== expectedBlueprintRows.get(row.id) || row.production_reachable !== true
-      || row.packaged !== true || row.target_disposition !== "external-typed-service")) {
-    fail("runtime-language manifest Blueprint interpreter boundary is invalid");
+  if (value.totals?.boundedExternalInterpreterRows !== 0) fail("runtime-language manifest has bounded external interpreter rows");
+  if ((value.rows ?? []).some((row) => row.production_reachable && ["node", "python", "shell"].includes(row.runtime))) {
+    fail("runtime-language manifest has a production interpreter row");
   }
   for (const field of ["errors", "blockers", "sealBlockers"]) {
     if (Array.isArray(value[field]) && value[field].length > 0) fail(`runtime-language manifest has ${field}`);

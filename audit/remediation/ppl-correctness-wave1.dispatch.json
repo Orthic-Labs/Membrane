@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "kind": "legion-authority-dispatch",
+  "packetType": "direct",
+  "repositoryRoot": "D:/Claude/membrane",
+  "sourceRevision": "936804e4ac60cba31c04d1dfd93476b0d790f827",
+  "sourceArtifact": "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptArtifact": "audit/remediation/native-closure-resume.prompt.md",
+  "promptDigest": "sha256:f425dd1a492e75167e68d68a0982181b89731ff85b3e675bb9cdeb8d16ca8b4d",
+  "modelRouting": {
+    "modelTier": "MID",
+    "workerProfile": "domain-lead",
+    "routingRationale": "One bounded Pull/Push/Ledger correctness lane owns disjoint source and test files while integration owner retains checks and repository state."
+  },
+  "objective": "Close bounded Pull restart/expiry/required-coverage, prefix-compatibility, and eligibility-order defects; Push task/session recovery identity defects; and Ledger typed diagnostics persistence/integrity defects.",
+  "authority": [
+    "AGENTS.md",
+    "audit/remediation/native-closure-resume.prompt.md",
+    "D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+    "docs/canon/pull.md",
+    "docs/canon/push.md",
+    "docs/canon/ledger.md",
+    "docs/architecture/subsystems/ledger.md",
+    "audit/remediation/reconciliation/audit-closure-inventory.md"
+  ],
+  "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "fileTouchPolicy": {
+    "mode": "once-end-to-end",
+    "plannedFiles": [
+      "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
+      "engine/crates/membrane-runtime/src/cache_prefix.rs",
+      "engine/crates/membrane-runtime/src/pull/placement.rs",
+      "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs",
+      "engine/crates/membrane-runtime/src/push/recovery.rs",
+      "engine/crates/membrane-runtime/tests/push_hardening.rs",
+      "engine/crates/membrane-runtime/tests/push_end_to_end.rs",
+      "engine/crates/membrane-runtime/src/ledger/diagnostics.rs",
+      "engine/crates/membrane-runtime/src/ledger/service.rs",
+      "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
+      "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
+      "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs",
+      "engine/crates/membrane-runtime/tests/ledger_integrity.rs",
+      "engine/crates/membrane-runtime/tests/live_diagnostics_audit_persistence.rs"
+    ],
+    "allowUnplannedFiles": false,
+    "ledger": [
+      {"path":"engine/crates/membrane-runtime/src/pull/delivery_state.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"Pull restart, expiry, required coverage"},
+      {"path":"engine/crates/membrane-runtime/src/cache_prefix.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"byte-stable prefix compatibility"},
+      {"path":"engine/crates/membrane-runtime/src/pull/placement.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"eligibility before placement"},
+      {"path":"engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Pull post-merge acceptance"},
+      {"path":"engine/crates/membrane-runtime/src/push/recovery.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"task and session-bound recovery"},
+      {"path":"engine/crates/membrane-runtime/tests/push_hardening.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"wrong-identity denial"},
+      {"path":"engine/crates/membrane-runtime/tests/push_end_to_end.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Push recovery end-to-end"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/diagnostics.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"typed unavailable diagnostics"},
+      {"path":"engine/crates/membrane-runtime/src/ledger/service.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"diagnostics persistence integrity"},
+      {"path":"engine/crates/membrane-runtime/src/live_diagnostics_service.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"caller-visible audit persistence disposition"},
+      {"path":"engine/crates/membrane-runtime/src/diagnostic_bundle.rs","owner":"ppl-lead","operation":"repair","lane":"ppl-lead","finalCheck":"stable audit_persistence_unavailable response"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Ledger owner acceptance"},
+      {"path":"engine/crates/membrane-runtime/tests/ledger_integrity.rs","owner":"ppl-lead","operation":"repair-test","lane":"ppl-lead","finalCheck":"Ledger integrity"},
+      {"path":"engine/crates/membrane-runtime/tests/live_diagnostics_audit_persistence.rs","owner":"ppl-lead","operation":"add-test","lane":"ppl-lead","finalCheck":"unwritable sink returns audit_persistence_unavailable"}
+    ]
+  },
+  "workerPolicy": {
+    "mode": "edit-only",
+    "mayInspectReadPaths": true,
+    "mayEditAllowlistOnly": true,
+    "forbiddenActions": ["cargo","tests","builds","generators","installs","commits","pushes","merges","expensive-checks"],
+    "intendedChecksRecordedFor": "integration owner"
+  },
+  "integrationPolicy": {
+    "owner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+    "soleMerger": true,
+    "runsCheckpoints": true,
+    "mayRepairLaneOwnedFiles": false,
+    "repairAction": "return exact defect to PPL lead"
+  },
+  "dispatches": [
+    {
+      "id": "A",
+      "dependsOn": [],
+      "lanes": ["ppl-lead"],
+      "completionChecks": [
+        "changed paths reconcile exactly to allowlist",
+        "worker returns content-addressed patch digest and source review",
+        "integration owner runs every named RightKit suite after bytes stabilize"
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "ppl-lead",
+      "dispatch": "A",
+      "task": "Close Pull restart/expiry/required-coverage suppression, byte-stable prefix compatibility, and eligibility-before-placement; bind Push recovery to exact task plus session and deny wrong identity; surface Ledger diagnostics persistence failures as caller-visible typed audit_persistence_unavailable while retaining otherwise-correct results and preserve owner/integrity invariants. Add an unwritable-sink acceptance test. Do not edit canon or generated status.",
+      "preexistingOwnedBytes": {
+        "engine/crates/membrane-runtime/src/pull/delivery_state.rs": "sha256:abaf0178cd194b4ebbd1011f8e10a6ff049209396553deb94bb9aef500379cc1",
+        "engine/crates/membrane-runtime/src/cache_prefix.rs": "sha256:e203b3b427ffeb3d23367e5ed58e24c576a490f431926f913e929a097c59a9ab",
+        "engine/crates/membrane-runtime/src/pull/placement.rs": "sha256:6e353bb43697a052eac37c85993ca5625183783e21c38818717c9c0a75e61503",
+        "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs": "sha256:de10cc1243fc48d063019c08951a74c04a2bde56ae920b68a529a4c3e1dfe0de",
+        "engine/crates/membrane-runtime/src/push/recovery.rs": "sha256:3a3bb7f57a910b1a3a4983c52a2037c41c25b8c84b815485f11d0b5cf8d43033",
+        "engine/crates/membrane-runtime/tests/push_hardening.rs": "sha256:a13dbec68fbe607fccb93211a96a48434b453d872c7a50bcb90daccd584ea249",
+        "engine/crates/membrane-runtime/tests/push_end_to_end.rs": "sha256:ac5359935f5ea66a0ce33c8a36edabafe6e1995d64008808a8079fc9fe89980e",
+        "engine/crates/membrane-runtime/src/ledger/diagnostics.rs": "sha256:ab1f8f443f6eb7e65f45446c930dc489f9beac67b48bab8208d0381b2ac8f9ea",
+        "engine/crates/membrane-runtime/src/ledger/service.rs": "sha256:13237016a5f5021cbc26a154e81eb48e4c0e2745b91aa31a08540b0db265f30d",
+        "engine/crates/membrane-runtime/src/live_diagnostics_service.rs": "sha256:9c327393a577cd58e9d3deab03130d9cef68992e9065bc5ca53e12b9f7b6112b",
+        "engine/crates/membrane-runtime/src/diagnostic_bundle.rs": "sha256:e57fe5f18494d4de0a5dc10ba0d16064759b3b8fa2b2ba5cf7596301eba909a6",
+        "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs": "sha256:20affd49b8cd325ce5050cef703c0b5b4ee4e12c8040ccee731bc8122747047a",
+        "engine/crates/membrane-runtime/tests/ledger_integrity.rs": "sha256:0b9ae88ed9d896289ffca9ac5c619be5fce3923ea1e32d9322bee276c36c62ec"
+      },
+      "executorRequirement": {
+        "semanticRequirement": "required",
+        "capabilities": ["pull-admission","push-recovery","ledger-integrity"],
+        "effects": ["source-read","artifact-write"],
+        "authorityCeiling": ["workspace"],
+        "completion": [{"kind":"exact-check","id":"ppl-wave1-source-review"}],
+        "escalation": {"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}
+      },
+      "allowlist": [
+        "engine/crates/membrane-runtime/src/pull/delivery_state.rs",
+        "engine/crates/membrane-runtime/src/cache_prefix.rs",
+        "engine/crates/membrane-runtime/src/pull/placement.rs",
+        "engine/crates/membrane-runtime/tests/pull_post_merge_acceptance.rs",
+        "engine/crates/membrane-runtime/src/push/recovery.rs",
+        "engine/crates/membrane-runtime/tests/push_hardening.rs",
+        "engine/crates/membrane-runtime/tests/push_end_to_end.rs",
+        "engine/crates/membrane-runtime/src/ledger/diagnostics.rs",
+        "engine/crates/membrane-runtime/src/ledger/service.rs",
+        "engine/crates/membrane-runtime/src/live_diagnostics_service.rs",
+        "engine/crates/membrane-runtime/src/diagnostic_bundle.rs",
+        "engine/crates/membrane-runtime/tests/ledger_owner_acceptance.rs",
+        "engine/crates/membrane-runtime/tests/ledger_integrity.rs",
+        "engine/crates/membrane-runtime/tests/live_diagnostics_audit_persistence.rs"
+      ],
+      "read": [
+        "docs/canon/pull.md",
+        "docs/canon/push.md",
+        "docs/canon/ledger.md",
+        "docs/architecture/subsystems/ledger.md",
+        "audit/remediation/reconciliation/audit-closure-inventory.md",
+        "engine/crates/membrane-runtime/src/pull",
+        "engine/crates/membrane-runtime/src/push",
+        "engine/crates/membrane-runtime/src/ledger"
+      ],
+      "forbidden": [
+        ".git",
+        "engine/Cargo.lock",
+        "engine/crates/membrane-blueprint/Cargo.toml",
+        "apps/membrane-tray-windows/Cargo.lock",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/store.rs",
+        "engine/crates/membrane-runtime/src/mcp_executor.rs",
+        "docs/canon",
+        "docs/pending/README.md",
+        "migration/native-rust",
+        "apps/membrane-hub/src-tauri/runtime"
+      ],
+      "checks": [
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test pull_post_merge_acceptance",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test push_hardening --test push_end_to_end",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test ledger_owner_acceptance --test ledger_integrity",
+        "integration owner runs rightkit cargo test --manifest-path engine/Cargo.toml --locked --target x86_64-pc-windows-msvc -p membrane-runtime --test live_diagnostics_audit_persistence"
+      ],
+      "dependencies": []
+    }
+  ],
+  "oracleAudit": {
+    "required": true,
+    "mode": "adversarial",
+    "status": "required-before-execution",
+    "checks": ["allowlist-completeness","lane-disjointness","dependency-validity","maximum-safe-parallelization","end-to-end-lane-closure","direct-port-priority","worker-edit-only","integration-owner-checkpoints","exact-byte-review-pass"]
+  },
+  "recovery": {
+    "maxRetries": 2,
+    "stopConditions": ["unplanned changed path","preexisting hash mismatch","private input required","second Oracle block"],
+    "failureMatrix": [
+      {"class":"integrity/hash mismatch","primary":"reject output and recompute exact byte hashes","secondary":"request fresh content-addressed handoff","degraded":"do not integrate mismatched lane","stopAfter":1,"proceedWhen":"hashes match"},
+      {"class":"deterministic command failure","primary":"capture exact failure and return to PPL owner","secondary":"one repair plus rerun","degraded":"continue passing suites","stopAfter":2,"proceedWhen":"focused check passes"},
+      {"class":"dirty/conflicting state","primary":"preserve unrelated bytes and compare exact ownership","secondary":"redesign packet before edit","degraded":"continue disjoint work","stopAfter":1,"proceedWhen":"one owner is established"},
+      {"class":"ambiguous requirement","primary":"read canonical subsystem sources","secondary":"escalate one exact decision to coordinator","degraded":"continue unambiguous work","stopAfter":1,"proceedWhen":"decision is explicit"}
+    ],
+    "returnFields": ["STATUS","SUMMARY","ACCEPTANCE","ARTIFACTS","CHANGES","COMMANDS","RECOVERY","DEVIATIONS","BLOCKER","NEXT","baselineRevision","patchDigest"]
+  }
+}

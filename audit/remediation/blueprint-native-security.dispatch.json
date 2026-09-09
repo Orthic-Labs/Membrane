@@ -1,0 +1,34 @@
+{
+  "schemaVersion":1,
+  "kind":"legion-authority-dispatch",
+  "packetType":"direct",
+  "repositoryRoot":"D:/Claude/membrane",
+  "sourceRevision":"abeec00c1b8705e7905c92bba73f867f0cea871a",
+  "promptArtifact":"D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md",
+  "promptDigest":"sha256:030f24925602b59dd7b4557f6f4d1e2dffc94b246c281177b8c24f74e1086bcc",
+  "modelRouting":{"modelTier":"MID","workerProfile":"gpt-5.6-luna","reasoningEffort":"medium","routingRationale":"Settled direct-port security mechanics over frozen contracts."},
+  "objective":"Land native Blueprint confinement, scope-grant verification, constant-time token verification, & egress redaction without Node or process fallback.",
+  "authority":["AGENTS.md","D:/Downloads/MEMBRANE-BLUEPRINT-NATIVE-RUST-CLOSURE.md","D:/Claude/coderight/.audit/final-packet-2026-09-08/02_MEMBRANE_FINAL_SHAPE.md","docs/canon/blueprint.md","audit/remediation/reconciliation/blueprint-semantic-inventory.md","blueprint/src/lib/path-confinement.mjs","blueprint/src/lib/receipt-store.mjs","blueprint/src/lib/session-token.mjs","blueprint/src/lib/redaction.mjs","blueprint/tests/scope-grant.test.mjs","blueprint/tests/root-confinement.test.mjs","blueprint/tests/cross-platform-paths.test.mjs","blueprint/tests/security/hostile-indexing.test.mjs","blueprint/tests/security/secret-egress.test.mjs","engine/crates/membrane-runtime/Cargo.toml"],
+  "integrationOwner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
+  "preexistingOwnedBytes":[
+    {"path":"engine/crates/membrane-blueprint/src/contracts.rs","sha256":"84f4a8cc6c1fbb22510576e579ea8c364ac10955bc327c20701ce18050df8c94","sourceTask":"foundation","disposition":"worker read-only ScopeGrantV1 contract"},
+    {"path":"engine/crates/membrane-blueprint/src/model.rs","sha256":"44abf15afe6d14339e46028e9aa2548d733f95d1ce4942d80d59861ff1731757","sourceTask":"/root/cutover_a_enforcement_repair","disposition":"worker read-only request scope model"},
+    {"path":"engine/crates/membrane-blueprint/Cargo.toml","sha256":"809faff3a532b83eff9f1942bb71d457cb5999a5dcb1672771714f18a6025934","sourceTask":"integrationOwner","disposition":"integrator adds getrandom 0.4; worker read-only"},
+    {"path":"engine/Cargo.lock","sha256":"1d47a9dd1f5dbf949b1d0fc336baf692856f978762e1c4139750c828b2412224","sourceTask":"integrationOwner","disposition":"integrator-owned managed lock"}
+  ],
+  "dependencyDelta":{"owner":"integrationOwner","requiredBeforeCompile":["getrandom = 0.4"],"workersMayEdit":false},
+  "fileTouchPolicy":{"mode":"once-end-to-end","plannedFiles":["engine/crates/membrane-blueprint/src/security.rs","engine/crates/membrane-blueprint/tests/security.rs","engine/crates/membrane-blueprint/Cargo.toml","engine/Cargo.lock"],"allowUnplannedFiles":false,"ledger":[
+    {"path":"engine/crates/membrane-blueprint/src/security.rs","owner":"native-security","operation":"add","lane":"native-security"},
+    {"path":"engine/crates/membrane-blueprint/tests/security.rs","owner":"native-security","operation":"add","lane":"native-security"},
+    {"path":"engine/crates/membrane-blueprint/Cargo.toml","owner":"integrationOwner","operation":"getrandom-dependency-only","lane":"integrator-dependencies"},
+    {"path":"engine/Cargo.lock","owner":"integrationOwner","operation":"managed-lock-update-only","lane":"integrator-dependencies"}
+  ]},
+  "sourcePortPolicy":{"applicable":true,"directPortFirst":true,"targetLanguage":"Rust","rustTargetRequiresRustPort":true,"handRollReplacementWhileSourceExists":false,"atomOwnership":"BPT-001 confinement; BPT-012 bounded read-only providers; BPT-060 egress redaction; no effect authority"},
+  "workerPolicy":{"mode":"edit-only","mayInspectReadPaths":true,"mayEditAllowlistOnly":true,"forbiddenActions":["cargo","tests","builds","generators","installs","formatters","commits","pushes","merges"]},
+  "workers":[
+    {"id":"native-security","allowlist":["engine/crates/membrane-blueprint/src/security.rs","engine/crates/membrane-blueprint/tests/security.rs"],"read":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/model.rs","blueprint/src/lib/path-confinement.mjs","blueprint/src/lib/receipt-store.mjs","blueprint/src/lib/session-token.mjs","blueprint/src/lib/redaction.mjs","blueprint/tests/scope-grant.test.mjs","blueprint/tests/root-confinement.test.mjs","blueprint/tests/cross-platform-paths.test.mjs","blueprint/tests/security/hostile-indexing.test.mjs","blueprint/tests/security/secret-egress.test.mjs"],"acceptance":["canonicalize physical root & nearest existing ancestor; reject traversal, prefix, case, dangling-link, & symlink escape","validate ScopeGrant task/root/generation/path/TTL/signature through injected trusted verifier; malformed/tampered/expired/mismatched grants fail closed","normalize grant paths deterministically without widening glob scope","generate unguessable 32-byte token & verify equal-length bytes in constant time","recursively redact secret keys, token patterns, URL passwords, private keys, & raw base64 secrets while preserving content-addressed identifiers only under named digest fields","bounded input/output; typed denial reasons reveal no denied path names or counts","tests cover cross-platform roots, symlink escape, one-byte grant tamper, expiry, task/generation mismatch, token mismatch, & secret corpus"]}
+  ],
+  "integrationPolicy":{"owner":"task 01a07e9f-8f38-7463-b35e-f6b6013bb23e","soleMerger":true,"runsCheckpoints":true,"exportsAfterWorkerFreeze":true},
+  "oracleAudit":{"required":true,"mode":"adversarial","status":"required-before-execution","checks":["authority completeness","dirty-byte binding","allowlist","security fail-closed semantics","worker edit-only"]},
+  "recovery":{"maxRetries":1,"stopConditions":["unowned overlap","contract drift","missing cryptographic dependency"],"returnFields":["changedPaths","checks","blockers","patchDigest"]}
+}

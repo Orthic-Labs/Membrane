@@ -845,4 +845,61 @@ mod tests {
                 && receipt.applicability_reason == "shadowed_by_precedence"
         }));
     }
+
+    /// Two contradictory candidates tied at the same authority tier and
+    /// specificity have no ordering to break the tie. Retained conflicts must
+    /// still be surfaced with a typed reason on both receipts, never resolved
+    /// by silent retrieval order and never simply dropped from the plan.
+    #[test]
+    fn tied_authority_conflict_is_retained_and_surfaced_not_dropped() {
+        let context = PreferenceDeliveryContextV1 {
+            allowed_scopes: vec!["repo".into()],
+            dimensions: ScopeDimensions::default(),
+            machine: None,
+            max_core_records: 4,
+            max_scoped_records: 4,
+            max_total_records: 4,
+            max_rendered_chars: 400,
+            timestamp: "2026-08-26T00:00:00Z".into(),
+            session_id: "session-1".into(),
+            trace_id: "trace-1".into(),
+            request_id: "request-1".into(),
+            client: "codex".into(),
+            model: None,
+        };
+        let candidate = |id: &str, rule: &str| PreferenceDeliveryCandidateV1 {
+            record_id: id.into(),
+            rule: rule.into(),
+            class: RecordClass::ScopedPreference,
+            scope: "repo".into(),
+            scope_dimensions: ScopeDimensions::default(),
+            machine_binding: None,
+            authority_tier: PrecedenceTier::ExplicitScopedUserPreference,
+            lifecycle_state: LifecycleState::Active,
+            lifecycle_eligible: true,
+            influence_class: InfluenceClass::BehavioralDirective,
+            semantic_verified: true,
+            counterfactual: None,
+        };
+        let plan = select_delivery_candidates(
+            &[
+                candidate("tied-allow", "Always squash commits"),
+                candidate("tied-deny", "Never squash commits"),
+            ],
+            &context,
+        );
+        // Neither side of an unresolved tie is silently dropped or delivered:
+        // both must carry the typed conflict reason on a retained receipt.
+        assert!(plan.delivered.is_empty());
+        assert_eq!(plan.receipts.len(), 2);
+        for id in ["tied-allow", "tied-deny"] {
+            let receipt = plan
+                .receipts
+                .iter()
+                .find(|receipt| receipt.record_id == id)
+                .expect("every candidate keeps a receipt even when unresolved");
+            assert!(!receipt.selected);
+            assert_eq!(receipt.applicability_reason, "unresolved_conflict");
+        }
+    }
 }

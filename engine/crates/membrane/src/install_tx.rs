@@ -328,9 +328,134 @@ fn compute_commit_digest(plan: &InstallPlan) -> String {
     format!("sha256:{}", hex::encode(sha2::Digest::finalize(hasher)))
 }
 
+/// LC-04 discovery table: the state of the canonical installed package as observed by a
+/// provisioning entry point (CLI provisioning, CodeRight adoption) before any lifecycle
+/// action runs. The unsigned internal profile and signed production profile share this
+/// enum; the distinction between them lives in which canonical root/manifest was verified
+/// to produce a given state, never in a special-cased variant here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscoveredInstallState {
+    /// A canonical installation exists, was verified against its manifest, and its
+    /// supervisor process is not currently running.
+    VerifiedStopped,
+    /// No canonical installation exists at the expected root.
+    Absent,
+    /// A canonical installation exists, is verified, but is behind the configured package
+    /// version and can be updated in place.
+    Repairable,
+    /// A canonical installation exists but fails integrity verification.
+    Corrupt,
+    /// A canonical installation exists but the caller lacks permission to read or act on it.
+    Denied,
+    /// A canonical installation exists but its integrity cannot be determined (the
+    /// verification channel itself failed rather than the artifact).
+    Unverifiable,
+    /// The configured package required to provision is itself unavailable from the
+    /// canonical distribution channel.
+    PackageUnavailable,
+}
+
+/// The action a provisioning entry point takes for a given [`DiscoveredInstallState`]. This
+/// is the LC-04 discovery table, applied exactly: verified stopped starts the canonical
+/// `current`; absent provisions the configured package; repairable updates in place;
+/// corrupt, denied, or unverifiable refuse; an unavailable package returns a typed
+/// `PackageUnavailable` rather than being folded into `Refuse`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum ProvisioningDecision {
+    /// Start the already-installed canonical `current`. Never a development checkout and
+    /// never a PATH fallback — the unsigned internal profile uses the installer-owned
+    /// internal stable `current` exactly like the signed production profile does.
+    StartCanonicalCurrent,
+    /// Provision (install) the configured package because no canonical install exists.
+    ProvisionConfiguredPackage,
+    /// Update the existing canonical installation in place. The supervisor is not started
+    /// until the update transaction (see [`execute_plan`]/[`commit`]) has committed.
+    UpdateInPlace,
+    /// Refuse. `reason` is one of `"corrupt"`, `"denied"`, or `"unverifiable"` so a caller
+    /// can distinguish the three without re-deriving state from the discovery inputs.
+    Refuse { reason: &'static str },
+    /// The configured package itself is unavailable; typed distinctly so callers never
+    /// conflate this with a corrupt or denied local installation.
+    PackageUnavailable,
+}
+
+/// Apply the LC-04 discovery table exactly. Pure and total: every [`DiscoveredInstallState`]
+/// maps to exactly one [`ProvisioningDecision`]. Callers must not special-case the unsigned
+/// internal profile inside this function — that distinction lives in which canonical
+/// root/manifest verification produced the input state.
+pub fn decide_provisioning(state: DiscoveredInstallState) -> ProvisioningDecision {
+    match state {
+        DiscoveredInstallState::VerifiedStopped => ProvisioningDecision::StartCanonicalCurrent,
+        DiscoveredInstallState::Absent => ProvisioningDecision::ProvisionConfiguredPackage,
+        DiscoveredInstallState::Repairable => ProvisioningDecision::UpdateInPlace,
+        DiscoveredInstallState::Corrupt => ProvisioningDecision::Refuse { reason: "corrupt" },
+        DiscoveredInstallState::Denied => ProvisioningDecision::Refuse { reason: "denied" },
+        DiscoveredInstallState::Unverifiable => {
+            ProvisioningDecision::Refuse {
+                reason: "unverifiable",
+            }
+        }
+        DiscoveredInstallState::PackageUnavailable => ProvisioningDecision::PackageUnavailable,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_table_verified_stopped_starts_canonical_current() {
+        assert_eq!(
+            decide_provisioning(DiscoveredInstallState::VerifiedStopped),
+            ProvisioningDecision::StartCanonicalCurrent
+        );
+    }
+
+    #[test]
+    fn discovery_table_absent_provisions_configured_package() {
+        assert_eq!(
+            decide_provisioning(DiscoveredInstallState::Absent),
+            ProvisioningDecision::ProvisionConfiguredPackage
+        );
+    }
+
+    #[test]
+    fn discovery_table_repairable_updates_in_place() {
+        assert_eq!(
+            decide_provisioning(DiscoveredInstallState::Repairable),
+            ProvisioningDecision::UpdateInPlace
+        );
+    }
+
+    /// Negative control: a corrupt install must never be silently started or treated as
+    /// repairable. Injected fault: a corrupt state fed to the table; it fails (as in,
+    /// produces `Refuse`, never `StartCanonicalCurrent`/`UpdateInPlace`) every time.
+    #[test]
+    fn discovery_table_corrupt_denied_unverifiable_all_refuse() {
+        for (state, reason) in [
+            (DiscoveredInstallState::Corrupt, "corrupt"),
+            (DiscoveredInstallState::Denied, "denied"),
+            (DiscoveredInstallState::Unverifiable, "unverifiable"),
+        ] {
+            match decide_provisioning(state) {
+                ProvisioningDecision::Refuse { reason: got } => assert_eq!(got, reason),
+                other => panic!("expected Refuse({reason}) for {state:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// Negative control: an unavailable configured package must return the typed
+    /// `PackageUnavailable` outcome, never be folded into a generic `Refuse`. Injected
+    /// fault: `PackageUnavailable` fed to the table; asserting it is NOT a `Refuse`
+    /// variant is what makes this control fail if someone collapses the two branches.
+    #[test]
+    fn discovery_table_unavailable_package_is_typed_not_generic_refuse() {
+        let decision = decide_provisioning(DiscoveredInstallState::PackageUnavailable);
+        assert_eq!(decision, ProvisioningDecision::PackageUnavailable);
+        assert!(!matches!(decision, ProvisioningDecision::Refuse { .. }));
+    }
 
     fn mk_step(stage: InstallStage, action: &str, rollback: &str) -> InstallStep {
         InstallStep {

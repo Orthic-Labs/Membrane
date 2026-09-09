@@ -833,21 +833,12 @@ fn read_blueprint_status_at(
     endpoint: &Path,
     repo_root: &Path,
 ) -> Result<serde_json::Value, String> {
-    let request = blueprint_status_request(repo_root)?;
-    let frame = membrane_federation::blueprint_client::exchange_windows_named_pipe(
-        endpoint,
-        &request,
-        BLUEPRINT_FRAME_BYTES,
-        BLUEPRINT_REQUEST_TIMEOUT,
-    )
-    .map_err(|error| {
-        if error == "__blueprint_pipe_timeout__" {
-            "Blueprint status request timed out".to_string()
-        } else {
-            error
-        }
-    })?;
-    parse_blueprint_status_frame(&frame)
+    let mut stream = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(endpoint)
+        .map_err(|error| error.to_string())?;
+    exchange_blueprint_status(&mut stream, repo_root)
 }
 
 pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
@@ -855,24 +846,49 @@ pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Valu
 }
 
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {
-    use membrane_federation::blueprint_client::{BlueprintBounds, BlueprintClient};
-    // Explicit context & diagnostics read the same Blueprint owner with or
-    // without a resident. Only automatic refresh needs the Hub-owned pipe.
+    use membrane_blueprint::{BlueprintRequest, CancellationToken, Operation};
     let request_id = format!("membrane-freshness-{}-{}", std::process::id(), crate::time::now_millis());
-    let client = BlueprintClient::new(std::sync::Arc::new(
-        crate::blueprint_one_shot::ExplicitBlueprintTransport {
-            endpoint: hub_blueprint_endpoint().ok(),
-        },
-    ));
     let remaining = deadline.map(|deadline| deadline.remaining_at(Instant::now()))
         .unwrap_or(Duration::from_secs(30)).min(Duration::from_secs(30));
     if remaining.is_zero() {
         return Err("federation deadline exhausted during owner binding".to_owned());
     }
-    let result = client.execute_wire(&request_id, "", "status",
-        serde_json::json!({"repoRoot":repo_root}), None, BlueprintBounds::default(),
-        remaining).map_err(|error| error.to_string())?;
-    Ok(serde_json::json!({"protocolVersion":1,"ok":true,"result":result}))
+    let mut request = BlueprintRequest::new(request_id, Operation::Status, repo_root.to_string_lossy());
+    request.deadline_ms = remaining.as_millis().clamp(10, 30_000) as u64;
+    let response = crate::blueprint_one_shot::dispatch_native(request, CancellationToken::new());
+    let result = response.result.ok_or_else(|| response.error
+        .map(|error| format!("{}: {}", error.code, error.message))
+        .unwrap_or_else(|| "native Blueprint status returned no result".to_owned()))?;
+    let state = result.get("state").and_then(serde_json::Value::as_str).unwrap_or("corrupt");
+    let generation = result.get("generationId").and_then(serde_json::Value::as_str);
+    let source_hash = result.get("sourceHash").and_then(serde_json::Value::as_str);
+    let current = state == "fresh";
+    let snapshot_available = generation.is_some() && source_hash.is_some();
+    let head_revision = if current {
+        source_hash.map(str::to_owned)
+    } else {
+        generation.map(|value| format!("stale:{value}"))
+    };
+    Ok(serde_json::json!({
+        "protocolVersion": 1,
+        "ok": true,
+        "generation": generation,
+        "result": {
+            "repository": {"revision": head_revision},
+            "manifest": {
+                "generationId": generation,
+                "baseCommit": source_hash,
+                "manifestDigest": source_hash,
+            },
+            "overlay": {
+                "available": snapshot_available,
+                "stable": true,
+                "entries": [],
+                "commitDistance": if current { 0 } else { 2 },
+            },
+            "state": state,
+        },
+    }))
 }
 
 pub fn evaluate_repository_freshness(store: &MemoryStore, repo_root: PathBuf) -> FreshnessVerdict {

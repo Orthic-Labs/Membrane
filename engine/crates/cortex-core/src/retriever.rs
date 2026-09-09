@@ -14,6 +14,83 @@ pub use lexical::LexicalHit;
 /// Ranks entries in a [`MemoryRegistry`] against a textual query.
 pub struct MemoryRetriever;
 
+/// Semantic kind assigned to a bounded, query-independent projection row.
+///
+/// `Preference` is the only authoritative/standing kind: an unrelated query
+/// must still surface an applicable `Preference` row (BM06). Classification
+/// never infers `Preference` from free-form `content` text — only an explicit
+/// `preference` (or `constraint`) marker set by the admitting authority at
+/// write time can produce it. This guards the invariant that arbitrary memory
+/// text cannot become an authoritative preference by merely being retrieved;
+/// final admission into a context packet remains owned by Pull, not by this
+/// crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectedKind {
+    /// Long-lived, promoted (`Semantic`-tier) fact with no explicit marker.
+    Stable,
+    /// Everything else (`Working`/`Episodic`, or unmarked) — informational only.
+    Current,
+    /// Explicitly marked as a durable constraint (`Semantic` tier required).
+    Constraint,
+    /// Explicitly marked, `Semantic`-tier standing preference. The only kind
+    /// eligible for query-independent surfacing regardless of relevance.
+    Preference,
+}
+
+impl ProjectedKind {
+    /// Whether this kind is eligible to be offered to Pull as an
+    /// authoritative, query-independent admission candidate. Only an
+    /// explicitly marked, promoted `Preference` qualifies; Pull still owns
+    /// the final admission decision.
+    pub fn eligible_for_admission(self) -> bool {
+        matches!(self, ProjectedKind::Preference)
+    }
+}
+
+/// One row of a [`CortexProjection`]: a projected entry plus the governance
+/// metadata (`generation`/`source_id`/`freshness`) BM06 requires callers be
+/// able to inspect and cite in receipts.
+#[derive(Debug, Clone)]
+pub struct ProjectedEntry<'a> {
+    pub entry: &'a MemoryEntry,
+    pub kind: ProjectedKind,
+    /// Access-count-derived generation counter — increases monotonically as
+    /// the entry is re-admitted/re-used, never decreases or resets silently.
+    pub generation: u32,
+    /// Stable identity of the originating record, for receipt linkage.
+    pub source_id: &'a str,
+    /// Creation timestamp used as the freshness signal for this projection.
+    pub freshness: &'a str,
+}
+
+/// A bounded, query-independent projection over one scope's admitted Cortex
+/// records (BM06): `stable`/`current`/`constraints`/`preferences` buckets,
+/// each capped, plus `coverage`/`omitted` accounting so a caller (Pull) can
+/// see what was left out rather than silently truncating.
+#[derive(Debug, Clone)]
+pub struct CortexProjection<'a> {
+    pub scope_id: String,
+    pub stable: Vec<ProjectedEntry<'a>>,
+    pub current: Vec<ProjectedEntry<'a>>,
+    pub constraints: Vec<ProjectedEntry<'a>>,
+    pub preferences: Vec<ProjectedEntry<'a>>,
+    /// Number of scope-eligible entries considered before bucket truncation.
+    pub coverage: usize,
+    /// Number of scope-eligible entries dropped by the per-bucket bound.
+    pub omitted: usize,
+}
+
+impl<'a> CortexProjection<'a> {
+    /// All admission-eligible standing preference rows across the projection.
+    /// Used to guarantee an unrelated query still receives an applicable
+    /// standing preference (BM06 negative control).
+    pub fn applicable_preferences(&self) -> impl Iterator<Item = &ProjectedEntry<'a>> {
+        self.preferences
+            .iter()
+            .filter(|row| row.kind.eligible_for_admission())
+    }
+}
+
 /// Reciprocal-rank-fusion constant. Larger = flatter weighting across ranks.
 const RRF_K: f64 = 60.0;
 
@@ -21,6 +98,117 @@ impl MemoryRetriever {
     /// Tokenize a query into lowercased whitespace-separated terms.
     fn query_terms(query: &str) -> Vec<String> {
         lexical::query_terms(query)
+    }
+
+    /// Classify one entry for the bounded projection. `Preference`/`Constraint`
+    /// require BOTH the promoted `Semantic` tier AND an explicit marker
+    /// keyword — content alone, however preference-shaped it reads, never
+    /// qualifies. This is the enforcement point for "arbitrary memory text
+    /// cannot become an authoritative preference".
+    fn classify(entry: &MemoryEntry) -> ProjectedKind {
+        use crate::types::MemoryTier;
+        let has_marker = |marker: &str| {
+            entry
+                .keywords
+                .iter()
+                .any(|keyword| keyword.eq_ignore_ascii_case(marker))
+        };
+        match entry.tier {
+            MemoryTier::Semantic if has_marker("preference") => ProjectedKind::Preference,
+            MemoryTier::Semantic if has_marker("constraint") => ProjectedKind::Constraint,
+            MemoryTier::Semantic => ProjectedKind::Stable,
+            _ => ProjectedKind::Current,
+        }
+    }
+
+    /// Build the bounded, query-independent projection for one scope (BM06).
+    ///
+    /// Selection is query-independent by construction — it reuses the same
+    /// scope-membership test as [`retrieve_hybrid_with_lexical_hits`]'s
+    /// `eligible_scopes` mask rather than any relevance ranking, so the
+    /// projection reflects standing/scoped admission, not a search result.
+    /// `global`-scoped entries are always included alongside the caller's
+    /// scope so a scope-wide standing preference remains applicable.
+    /// Each bucket is capped at `limit_per_bucket`; entries beyond the cap are
+    /// counted in `omitted`, never silently dropped from the receipt.
+    pub fn bounded_projection<'a>(
+        registry: &'a MemoryRegistry,
+        scope_id: &str,
+        limit_per_bucket: usize,
+    ) -> CortexProjection<'a> {
+        let mut scoped: Vec<&MemoryEntry> = registry
+            .all()
+            .into_iter()
+            .filter(|entry| entry.scope_id == scope_id || entry.scope_id == crate::default_scope())
+            .collect();
+        // Deterministic ordering: higher stored score first, then id, so
+        // truncation/omission accounting is stable across calls.
+        scoped.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+
+        let coverage = scoped.len();
+        let mut projection = CortexProjection {
+            scope_id: scope_id.to_string(),
+            stable: Vec::new(),
+            current: Vec::new(),
+            constraints: Vec::new(),
+            preferences: Vec::new(),
+            coverage,
+            omitted: 0,
+        };
+
+        for entry in scoped {
+            let kind = Self::classify(entry);
+            let row = ProjectedEntry {
+                entry,
+                kind,
+                generation: entry.access_count,
+                source_id: entry.id.as_str(),
+                freshness: entry.created_at.as_str(),
+            };
+            let bucket = match kind {
+                ProjectedKind::Stable => &mut projection.stable,
+                ProjectedKind::Current => &mut projection.current,
+                ProjectedKind::Constraint => &mut projection.constraints,
+                ProjectedKind::Preference => &mut projection.preferences,
+            };
+            if bucket.len() < limit_per_bucket {
+                bucket.push(row);
+            } else {
+                projection.omitted += 1;
+            }
+        }
+
+        projection
+    }
+
+    /// Query-driven retrieval, extended so an unrelated query still surfaces
+    /// applicable standing preferences (BM06). Query results and the scope's
+    /// admission-eligible preference rows are unioned (deduped by id, query
+    /// hits ranked first); this never promotes a non-preference row — the
+    /// classification boundary lives in [`Self::classify`], not here. Pull
+    /// retains final admission over whatever this returns.
+    pub fn retrieve_with_standing_preferences<'a>(
+        registry: &'a MemoryRegistry,
+        query: &str,
+        limit: usize,
+        scope_id: &str,
+        preference_limit: usize,
+    ) -> Vec<&'a MemoryEntry> {
+        let mut results = Self::retrieve(registry, query, limit);
+        let seen: std::collections::HashSet<&str> =
+            results.iter().map(|entry| entry.id.as_str()).collect();
+        let projection = Self::bounded_projection(registry, scope_id, preference_limit);
+        for row in projection.applicable_preferences() {
+            if !seen.contains(row.entry.id.as_str()) {
+                results.push(row.entry);
+            }
+        }
+        results
     }
 
     /// Compute the rank score for a single entry against pre-tokenized query terms.
@@ -514,6 +702,96 @@ mod tests {
 
         assert_eq!(indexed[0].id, reference[0].id);
         assert_eq!(indexed[0].id, "semantic");
+    }
+
+    fn semantic_entry(id: &str, keywords: &[&str], scope: &str) -> MemoryEntry {
+        let mut e = entry(id, "some memory content", keywords, 0.5, None);
+        e.tier = MemoryTier::Semantic;
+        e.scope_id = scope.to_string();
+        e
+    }
+
+    #[test]
+    fn bounded_projection_classifies_marker_only_as_preference() {
+        let mut reg = MemoryRegistry::new();
+        reg.insert(semantic_entry("marked", &["preference"], "proj"));
+        reg.insert(semantic_entry("unmarked", &[], "proj"));
+
+        let projection = MemoryRetriever::bounded_projection(&reg, "proj", 10);
+
+        assert_eq!(projection.preferences.len(), 1);
+        assert_eq!(projection.preferences[0].entry.id, "marked");
+        assert_eq!(projection.stable.len(), 1);
+        assert_eq!(projection.stable[0].entry.id, "unmarked");
+        assert_eq!(projection.coverage, 2);
+    }
+
+    /// Negative control: arbitrary memory text — even preference-shaped
+    /// content, without the explicit marker keyword — must NOT become an
+    /// authoritative preference. It stays `Stable`, which is never eligible
+    /// for query-independent admission.
+    #[test]
+    fn bounded_projection_never_promotes_unmarked_text_to_preference() {
+        let mut reg = MemoryRegistry::new();
+        let mut arbitrary = entry(
+            "arbitrary",
+            "I always prefer tabs over spaces, this is my standing preference",
+            &[],
+            0.9,
+            None,
+        );
+        arbitrary.tier = MemoryTier::Semantic;
+        arbitrary.scope_id = "proj".into();
+        reg.insert(arbitrary);
+
+        let projection = MemoryRetriever::bounded_projection(&reg, "proj", 10);
+
+        assert!(projection.preferences.is_empty());
+        assert_eq!(projection.stable.len(), 1);
+        assert!(projection.applicable_preferences().next().is_none());
+    }
+
+    /// Negative control: an unrelated query (no lexical/semantic overlap)
+    /// must still surface an applicable standing preference (BM06).
+    #[test]
+    fn unrelated_query_still_receives_applicable_standing_preference() {
+        let mut reg = MemoryRegistry::new();
+        reg.insert(semantic_entry("standing", &["preference"], "proj"));
+
+        let results = MemoryRetriever::retrieve_with_standing_preferences(
+            &reg,
+            "totally unrelated query terms",
+            10,
+            "proj",
+            10,
+        );
+
+        assert!(results.iter().any(|e| e.id == "standing"));
+    }
+
+    #[test]
+    fn bounded_projection_includes_global_scope_alongside_caller_scope() {
+        let mut reg = MemoryRegistry::new();
+        reg.insert(semantic_entry("global-pref", &["preference"], "global"));
+
+        let projection = MemoryRetriever::bounded_projection(&reg, "proj", 10);
+
+        assert_eq!(projection.preferences.len(), 1);
+        assert_eq!(projection.preferences[0].entry.id, "global-pref");
+    }
+
+    #[test]
+    fn bounded_projection_omits_beyond_bucket_limit_without_dropping_count() {
+        let mut reg = MemoryRegistry::new();
+        for i in 0..5 {
+            reg.insert(semantic_entry(&format!("pref{i}"), &["preference"], "proj"));
+        }
+
+        let projection = MemoryRetriever::bounded_projection(&reg, "proj", 2);
+
+        assert_eq!(projection.preferences.len(), 2);
+        assert_eq!(projection.coverage, 5);
+        assert_eq!(projection.omitted, 3);
     }
 
     #[test]

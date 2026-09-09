@@ -5,6 +5,7 @@
 //! on a Hub-owned thread and drains that thread during Hub shutdown.
 
 use membrane_runtime::service::{run_hub_runtime, LifecycleControl};
+use membrane_runtime::residency::{Holder, Identity, ResidentController};
 use std::{
     collections::VecDeque,
     path::PathBuf,
@@ -43,6 +44,7 @@ enum DrainKind {
 #[derive(Default)]
 struct State {
     runtime: Option<ManagedRuntime>,
+    residency: ResidentController,
     crashes: VecDeque<Instant>,
     crash_loop: bool,
     last_error: Option<String>,
@@ -132,6 +134,81 @@ impl Supervisor {
         }
     }
 
+    /// Join the installed controller as an authenticated Hub holder.  The
+    /// caller supplies identity obtained from verified stable `current`; this
+    /// supervisor never derives it from CWD, PATH, or a development checkout.
+    pub fn acquire_holder(
+        &self,
+        identity: Identity,
+        holder: Holder,
+        now_ms: u64,
+        expires_at_ms: u64,
+    ) -> Result<ServiceStatus, String> {
+        let start_controller = {
+            let mut state = self.lock_state()?;
+            state
+                .residency
+                .acquire(identity, holder.clone(), now_ms, expires_at_ms)
+                .map_err(|error| error.to_string())?
+                .start_controller
+        };
+        if !start_controller {
+            return Ok(self.supervise());
+        }
+        match self.start() {
+            Ok(status) => Ok(status),
+            Err(error) => {
+                // Failed startup must not leave a phantom holder that blocks
+                // later CodeRight or Hub acquisition.
+                let mut state = self.lock_state()?;
+                let _ = state.residency.release(&holder);
+                Err(error)
+            }
+        }
+    }
+
+    pub fn renew_holder(
+        &self,
+        holder: &Holder,
+        now_ms: u64,
+        expires_at_ms: u64,
+    ) -> Result<(), String> {
+        let mut state = self.lock_state()?;
+        state
+            .residency
+            .renew(holder, now_ms, expires_at_ms)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }
+
+    /// A peer holder keeps runtime alive after Hub exit.  Draining remains
+    /// reserved for final authenticated release.
+    pub fn release_holder(&self, holder: &Holder) -> Result<ServiceStatus, String> {
+        let drain = {
+            let mut state = self.lock_state()?;
+            state
+                .residency
+                .release(holder)
+                .map_err(|error| error.to_string())?
+                .drain_controller
+        };
+        if drain {
+            self.stop();
+        }
+        Ok(self.supervise())
+    }
+
+    pub fn expire_holders(&self, now_ms: u64) -> ServiceStatus {
+        let drain = match self.lock_state() {
+            Ok(mut state) => state.residency.reconcile_expired(now_ms).drain_controller,
+            Err(_) => return ServiceStatus::Unavailable,
+        };
+        if drain {
+            self.stop();
+        }
+        self.supervise()
+    }
+
     pub fn supervise(&self) -> ServiceStatus {
         let mut state = match self.lock_state() {
             Ok(state) => state,
@@ -153,6 +230,14 @@ impl Supervisor {
     }
 
     pub fn stop(&self) {
+        if self
+            .state
+            .lock()
+            .ok()
+            .is_some_and(|state| state.residency.snapshot().residents_required())
+        {
+            return;
+        }
         let runtime = self
             .state
             .lock()

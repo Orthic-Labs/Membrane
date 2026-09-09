@@ -14,6 +14,8 @@ cortex-store = { path = "../cortex-store" }
 cortex-core = { package = "cortex-core", path = "../cortex-core" }
 cortex-format = { package = "cortex-format", path = "../cortex-format" }
 membrane-protocol = { path = "../membrane-protocol" }
+membrane-client = { path = "../membrane-client" }
+membrane-blueprint = { path = "../membrane-blueprint" }
 membrane-core = { path = "../membrane-core" }
 membrane-mcp = { path = "../membrane-mcp" }
 membrane-federation = { path = "../membrane-federation" }

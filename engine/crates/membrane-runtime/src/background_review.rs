@@ -2856,6 +2856,65 @@ mod tests {
         );
     }
 
+    /// r5 semantic-producer repair: a refused `AdaptBehavioralReview` job must
+    /// not degrade into a bare enum. The Stage-1 analyzer correctly declines
+    /// to impersonate a behavioral learner (see the test above), but the
+    /// refusal itself must still carry full provenance — truthful provider
+    /// identity, the analyzer "recipe" (id@version) that produced the
+    /// refusal, a source digest binding the refusal to the exact request
+    /// bytes considered, and a job-id lineage anchor a caller can correlate
+    /// against the scheduler's own attempt — so Adapt/Cortex consumers never
+    /// have to treat "not wired" as evidence-free.
+    #[test]
+    fn adapt_behavioral_review_refusal_carries_provider_identity_source_digest_and_job_lineage() {
+        let request = deterministic_request(
+            BackgroundReviewJobKindV1::AdaptBehavioralReview,
+            BackgroundReviewForegroundMemoryStateV1::AvailableNoEmission,
+            100_000,
+            100_000,
+        );
+        let result = deterministic_provider().execute(&request).expect("runs");
+        assert_eq!(
+            result.status,
+            BackgroundSemanticReviewStatusV1::Blocked {
+                reason: BackgroundReviewReasonV1::SemanticProviderNotWired
+            }
+        );
+        // Proposal lineage anchor: the refusal is bound to the exact job that
+        // requested it, so a caller can correlate this refusal against the
+        // scheduler attempt that produced the request.
+        assert_eq!(result.job_id, request.job_id);
+        assert_eq!(result.job_kind, request.job_kind);
+        // Provider identity: truthful analyzer recipe (id@version), never a
+        // model name, and never absent on a refusal.
+        let recipe = DeterministicFirstPartySemanticReviewProvider::provider_label();
+        assert_eq!(result.provider.as_deref(), Some(recipe.as_str()));
+        assert!(recipe.contains('@'), "recipe must carry an analyzer version: {recipe}");
+        assert!(result.model.is_none(), "no model ran; claiming one would be a fabrication");
+        // Source digest: the receipt binds this refusal to the exact request
+        // bytes the analyzer considered, not a generic placeholder.
+        result
+            .provenance_receipt
+            .validate()
+            .expect("refusal still carries a well-formed provenance receipt");
+        assert!(
+            result.provenance_receipt.receipt_digest.starts_with("sha256:"),
+            "source digest must be a real content hash: {}",
+            result.provenance_receipt.receipt_digest
+        );
+        assert_eq!(
+            result.provenance_receipt.receipt_digest,
+            digest_str(&canonical_json_of(&request)),
+            "digest must bind to the exact request this refusal analyzed"
+        );
+        assert!(result.provenance_receipt.source.contains(&request.job_id));
+        // A refusal never smuggles proposals through the back door.
+        assert!(result.curation_proposals.is_empty());
+        assert!(result.memory_candidates.is_empty());
+        assert!(result.next_cursor.is_none());
+        result.validate_against(&request).expect("refusal validates against its own request");
+    }
+
     #[test]
     fn ctx_024_extraction_runs_only_when_foreground_memory_does_not_cover_the_range() {
         // Foreground memory already covers seq 1..6: background extraction must

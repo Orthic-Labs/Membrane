@@ -117,16 +117,21 @@ fn schema(name: &str) -> Value {
         "membrane_ledger" => (
             vec!["repository", "caller", "operation"],
             json!({"repository":{"type":"string"},"caller":caller(),"sessionId":{"type":"string","minLength":1},
-                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","backlinks","related","manifests","drift"]},
+                "operation":{"enum":["recall","literal","outline","sync","status","activate","erase","ingest","backlinks","related","manifests","drift"]},
                 "query":{"type":"string","minLength":1,"maxLength":4096},
                 "k":{"type":"integer","minimum":1,"maximum":32},
-                "path":{"type":"string"},"docId":{"type":"string"},"nodeId":{"type":"string"},
+                "docId":{"type":"string"},"nodeId":{"type":"string"},
 "scopeGrantId":{"type":"string"},"taskId":{"type":"string","minLength":1},
                 "expectedContentHash":{"type":"string"},"continuationCursor":{"type":"string"},
                 "maxSections":{"type":"integer","minimum":1,"maximum":256},
                 "limit":{"type":"integer","minimum":1,"maximum":256},
                 "mode":{"enum":["legacy_scan","shadow","ledger_fts"]},
                 "fromManifest":{"type":"string"},"toManifest":{"type":"string"},
+                "path":{"type":"string","minLength":1,"maxLength":4096},"sourceRef":{"type":"string","minLength":1,"maxLength":8192},
+                "sourceRevision":{"type":"string","minLength":1,"maxLength":8192},"title":{"type":"string","maxLength":1024},
+                "format":{"type":"string","minLength":1,"maxLength":128},
+                "rawInput":{"oneOf":[{"type":"string","maxLength":8388608},{"type":"array","maxItems":8388608,"items":{"type":"integer","minimum":0,"maximum":255}}]},
+                "maxRawBytes":{"type":"integer","minimum":1,"maximum":8388608},
                 "deadlineMs":{"type":"integer","minimum":1,"maximum":30000},
                 "taskGrantLevel":{"type":"string"}}),
         ),
@@ -477,6 +482,13 @@ pub fn validate_arguments(name: &str, arguments: &Value) -> Result<(), String> {
                 arguments.get(*field).and_then(Value::as_str).is_none_or(str::is_empty)) =>
                 return Err("temporal query requires subject, predicate and asOf".into()),
             _ => {}
+        }
+    }
+    if name == "membrane_ledger" && arguments.get("operation").and_then(Value::as_str) == Some("ingest") {
+        for field in ["path", "sourceRef", "format", "rawInput", "scopeGrantId", "taskId", "sessionId"] {
+            if arguments.get(field).is_none_or(Value::is_null) {
+                return Err(format!("ledger ingest requires {field}"));
+            }
         }
     }
     Ok(())

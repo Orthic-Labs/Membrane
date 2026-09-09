@@ -48,11 +48,52 @@ pub struct MemoryEdge {
 /// Dangling, unresolved, or raw wikilink relations stay diagnostic and
 /// non-traversable. This set must not be widened to enable CTX-039 style
 /// multi-hop evidence traversal without explicit promotion.
-pub const CANONICAL_RELATIONS: &[&str] = &["supports", "contradicts", "supersedes", "derived_from"];
+pub const CANONICAL_RELATIONS: &[&str] =
+    &["supports", "contradicts", "supersedes", "derived_from", "enriches"];
 
 /// True when `relation` is a member of the closed CTX-017 vocabulary.
 pub fn is_canonical_relation(relation: &str) -> bool {
     CANONICAL_RELATIONS.contains(&relation)
+}
+
+/// BM07: the durable-semantics bucket a canonical relation belongs to.
+/// Distinguishing these prevents `enriches` from silently behaving like
+/// `supersedes` (an enrichment must never retire a still-valid fact) and
+/// prevents a `derived_from` edge from being read back as a direct
+/// observation (`supports`/`contradicts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelationCategory {
+    /// `supersedes` — the target replaces/retires the source's validity.
+    Replacement,
+    /// `enriches` — adds detail to a still-live fact; MUST NOT change the
+    /// target's validity window or retire it.
+    Enrichment,
+    /// `derived_from` — the source was computed/inferred from the target; it
+    /// is not itself a direct observation and must be labeled as derived
+    /// wherever it is surfaced.
+    Derivation,
+    /// `supports`/`contradicts` — direct observational corroboration or
+    /// conflict between two nodes.
+    Observation,
+}
+
+/// Classify a canonical relation into its durable-semantics bucket. Returns
+/// `None` for a non-canonical relation (diagnostic-only, never traversable).
+pub fn relation_category(relation: &str) -> Option<RelationCategory> {
+    match relation {
+        "supersedes" => Some(RelationCategory::Replacement),
+        "enriches" => Some(RelationCategory::Enrichment),
+        "derived_from" => Some(RelationCategory::Derivation),
+        "supports" | "contradicts" => Some(RelationCategory::Observation),
+        _ => None,
+    }
+}
+
+/// True only for relations that assert a direct observation. A `derived_from`
+/// edge is never an observation — callers must not present a derived fact as
+/// if it had been directly observed (BM07 negative control).
+pub fn is_observation_relation(relation: &str) -> bool {
+    matches!(relation_category(relation), Some(RelationCategory::Observation))
 }
 
 /// Rejection reason for a governed edge admission attempt.
@@ -158,6 +199,12 @@ impl MemoryGraph {
     /// Admit a provenance-bound evidence relation (CTX-017). The relation must
     /// be in the closed vocabulary, carry non-empty provenance, and have a
     /// resolved source and target. Dangling or unknown endpoints are rejected.
+    ///
+    /// BM07: admission NEVER mutates either endpoint's validity window,
+    /// regardless of relation kind. This is the structural guarantee that an
+    /// `enriches` edge cannot retire a still-valid fact — only an explicit
+    /// lifecycle operation (owned by the durable store, outside this
+    /// in-memory graph) can change `valid_to`.
     pub fn add_evidence_relation(
         &mut self,
         relation: EvidenceRelation,
@@ -232,6 +279,17 @@ impl MemoryGraph {
     /// All stored evidence relations, regardless of disposition.
     pub fn all_evidence_relations(&self) -> &[EvidenceRelation] {
         &self.relations
+    }
+
+    /// Outgoing `derived_from` relations for `id`: facts this node was
+    /// computed/inferred from. BM07: callers surfacing `id` must label it as
+    /// derived (never as a direct observation) whenever this is non-empty —
+    /// see [`is_observation_relation`].
+    pub fn derivation_sources(&self, id: &str) -> Vec<&EvidenceRelation> {
+        self.relations
+            .iter()
+            .filter(|relation| relation.edge.from == id && relation.edge.relation == "derived_from")
+            .collect()
     }
 
     /// True when an edge is traversable evidence: closed-vocabulary relation
@@ -658,6 +716,62 @@ mod tests {
             Some(RelationDiagnostic::LifecycleIneligible)
         );
         assert!(graph.evidence_neighbors("a", NOW).is_empty());
+    }
+
+    #[test]
+    fn relation_category_distinguishes_replacement_enrichment_derivation() {
+        assert_eq!(
+            relation_category("supersedes"),
+            Some(RelationCategory::Replacement)
+        );
+        assert_eq!(
+            relation_category("enriches"),
+            Some(RelationCategory::Enrichment)
+        );
+        assert_eq!(
+            relation_category("derived_from"),
+            Some(RelationCategory::Derivation)
+        );
+        assert_eq!(
+            relation_category("supports"),
+            Some(RelationCategory::Observation)
+        );
+        assert_eq!(relation_category("mentions"), None);
+    }
+
+    /// Negative control (BM07/Z07): enrichment must never retire a still-valid
+    /// fact. Admitting an `enriches` edge leaves the target's validity window
+    /// untouched.
+    #[test]
+    fn enrichment_never_retires_a_valid_fact() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("fact", "still valid"));
+        graph.add_node(make_node("detail", "extra context"));
+        graph
+            .add_evidence_relation(evidence("detail", "fact", "enriches"))
+            .expect("enrichment admitted");
+
+        let nodes = graph.all_nodes();
+        let target = nodes.iter().find(|n| n.id == "fact").unwrap();
+        assert!(target.valid_to.is_none(), "enrichment must not invalidate the enriched fact");
+        assert!(!graph.evidence_neighbors("detail", NOW).is_empty());
+    }
+
+    /// Negative control (BM07/Z07): a `derived_from` edge must never be
+    /// classified as a direct observation — a derived fact stays
+    /// distinguishable from `supports`/`contradicts` corroboration.
+    #[test]
+    fn derivation_is_never_presented_as_observation() {
+        let mut graph = MemoryGraph::new();
+        graph.add_node(make_node("computed", "inferred value"));
+        graph.add_node(make_node("origin", "raw source"));
+        graph
+            .add_evidence_relation(evidence("computed", "origin", "derived_from"))
+            .expect("derivation admitted");
+
+        assert!(!is_observation_relation("derived_from"));
+        assert_eq!(graph.derivation_sources("computed").len(), 1);
+        assert!(graph.derivation_sources("origin").is_empty());
     }
 
     #[test]

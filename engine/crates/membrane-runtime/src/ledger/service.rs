@@ -213,6 +213,96 @@ impl LedgerService {
                 }
                 Ok(value)
             }
+            "ingest" => self.run(&caller, "context", budget, |db| {
+                let grant_id = required_string(arguments, "scopeGrantId")?;
+                let task_id = required_string(arguments, "taskId")?;
+                let session_id = required_string(arguments, "sessionId")?;
+                validate_task_grant(Some(&grant_id), &caller, Some(&task_id), Some(&session_id))?;
+                let grant = crate::catalog::lookup_grant(&self.catalog, &grant_id)
+                    .map_err(|error| error.to_string())?
+                    .ok_or("ledger_scope_grant_missing")?;
+                let path = required_string(arguments, "path")?.replace('\\', "/");
+                if grant.read_paths.is_empty()
+                    || !grant.read_paths.iter().any(|range| range.path == path)
+                {
+                    return Err("ledger_scope_path_denied".into());
+                }
+                let format = parse_document_format(arguments.get("format"))?;
+                let raw_input = parse_raw_input(arguments.get("rawInput"))?;
+                let maximum = arguments
+                    .get("maxRawBytes")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(8 * 1024 * 1024)
+                    .clamp(1, 8 * 1024 * 1024) as usize;
+                if raw_input.len() > maximum {
+                    return Err(format!("conversion_input_too_large:{}:{}", raw_input.len(), maximum));
+                }
+                let source_ref = required_string(arguments, "sourceRef")?;
+                if source_ref.starts_with("live:") || source_ref.starts_with("live://") {
+                    return Err("ledger_live_source_requires_freshness".into());
+                }
+                if !(source_ref.starts_with("snapshot:")
+                    || source_ref.starts_with("source://")
+                    || source_ref.starts_with("doc://"))
+                    || source_ref.contains("..")
+                {
+                    return Err("ledger_source_ref_denied".into());
+                }
+                let revision = arguments
+                    .get("sourceRevision")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("snapshot:{}", resolve::digest(&raw_input)));
+                let title = arguments
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or(&path)
+                    .to_owned();
+                let conversion_grant = crate::ledger::document_conversion::DocumentConversionGrantV1::new(
+                    [format.clone()], maximum,
+                );
+                let artifact = doc_spine::ingest_granted_document(
+                    db,
+                    &conversion_grant,
+                    doc_spine::GrantedDocumentIngestV1 {
+                        repository_root: caller.root.clone(),
+                        repository_id: caller.repository_id.clone(),
+                        revision,
+                        path,
+                        title,
+                        document: crate::ledger::document_conversion::DocumentConversionInputV1 {
+                            source_ref,
+                            format,
+                            raw_input,
+                        },
+                    },
+                )?;
+                validate_task_grant(Some(&grant_id), &caller, Some(&task_id), Some(&session_id))?;
+                let conversion: Value = db.lock().query_row(
+                    "SELECT source_ref,input_format,raw_sha256,markdown_sha256,converter,converter_version,config_digest,losses_json,omissions_json FROM ledger_document_conversions WHERE doc_id=?1",
+                    [&artifact.doc_id],
+                    |row| {
+                        let losses: String = row.get(7)?;
+                        let omissions: String = row.get(8)?;
+                        Ok(json!({
+                            "schemaVersion":"ledger.converted-document.v2",
+                            "sourceRef":row.get::<_,String>(0)?,
+                            "inputFormat":row.get::<_,String>(1)?,
+                            "rawSha256":row.get::<_,String>(2)?,
+                            "normalizedSha256":row.get::<_,String>(3)?,
+                            "converter":row.get::<_,String>(4)?,
+                            "converterVersion":row.get::<_,String>(5)?,
+                            "configDigest":row.get::<_,String>(6)?,
+                            "losses":serde_json::from_str::<Value>(&losses).unwrap_or_else(|_| json!([])),
+                            "omissions":serde_json::from_str::<Value>(&omissions).unwrap_or_else(|_| json!([])),
+                            "sourceKind":if row.get::<_,String>(0)?.starts_with("live:") || row.get::<_,String>(0)?.starts_with("live://") {"live"} else {"snapshot"}
+                        }))
+                    },
+                ).map_err(|error| error.to_string())?;
+                Ok(json!({"artifact":artifact,"conversion":conversion}))
+            }),
             "sync" => self.run(&caller, "context", budget, |db| {
                 serde_json::to_value(Self::sync_locked(db, &caller, budget)?).map_err(|e| e.to_string())
             }),
@@ -339,6 +429,31 @@ fn required_string(value: &Value, field: &str) -> Result<String, String> {
     optional_string(value,field).filter(|s| !s.trim().is_empty()).ok_or_else(|| format!("ledger_{field}_required"))
 }
 fn optional_string(value: &Value, field: &str) -> Option<String> { value.get(field).and_then(Value::as_str).map(str::to_owned) }
+
+fn parse_document_format(value: Option<&Value>) -> Result<crate::ledger::document_conversion::DocumentInputFormatV1, String> {
+    let value = value.and_then(Value::as_str).ok_or("ledger_format_required")?;
+    Ok(match value {
+        "plain_text" | "plaintext" | "text" => crate::ledger::document_conversion::DocumentInputFormatV1::PlainText,
+        "json" => crate::ledger::document_conversion::DocumentInputFormatV1::Json,
+        "html" | "htm" => crate::ledger::document_conversion::DocumentInputFormatV1::Html,
+        "pdf" => crate::ledger::document_conversion::DocumentInputFormatV1::Pdf,
+        "docx" => crate::ledger::document_conversion::DocumentInputFormatV1::Docx,
+        value if value.starts_with("media:") => crate::ledger::document_conversion::DocumentInputFormatV1::Media(value[6..].to_owned()),
+        value => crate::ledger::document_conversion::DocumentInputFormatV1::Other(value.to_owned()),
+    })
+}
+
+fn parse_raw_input(value: Option<&Value>) -> Result<Vec<u8>, String> {
+    let value = value.ok_or("ledger_raw_input_required")?;
+    match value {
+        Value::String(value) => Ok(value.as_bytes().to_vec()),
+        Value::Array(values) => values
+            .iter()
+            .map(|value| value.as_u64().filter(|byte| *byte <= 255).ok_or_else(|| "ledger_raw_input_invalid".to_owned()).map(|byte| byte as u8))
+            .collect(),
+        _ => Err("ledger_raw_input_invalid".into()),
+    }
+}
 
 pub(crate) fn validate_task_grant(id: Option<&str>, caller: &Caller, task: Option<&str>, session: Option<&str>) -> Result<(), String> {
     let Some(id) = id else { return Ok(()); };

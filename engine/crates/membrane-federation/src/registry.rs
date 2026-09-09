@@ -1,6 +1,7 @@
 //! Frozen registry for the ten canonical federation lanes.
 
 use crate::error::RegistryError;
+use crate::requirements::{EvidenceDimensionV1, ProviderCapabilityV1};
 use membrane_protocol::ProviderId;
 use membrane_provider_sdk::{Provider, ProviderRegistration};
 use std::sync::Arc;
@@ -104,5 +105,26 @@ impl ProviderRegistry {
                     .map(|registration| (id, Arc::clone(&registration.provider)))
             })
             .collect()
+    }
+
+    /// Content-free provider capabilities used for deterministic requirement
+    /// planning. Registration remains source of provider authority; this
+    /// catalog never grants access or changes provider execution order.
+    pub fn capability_catalog(&self) -> Vec<ProviderCapabilityV1> {
+        self.ids().into_iter().map(|provider| ProviderCapabilityV1 {
+            provider,
+            dimensions: match provider {
+                ProviderId::Anchors | ProviderId::Blueprint | ProviderId::Architect => vec![EvidenceDimensionV1::RepositoryTruth],
+                ProviderId::LiveFiles => vec![EvidenceDimensionV1::CurrentState],
+                ProviderId::Rules => vec![EvidenceDimensionV1::Policy],
+                ProviderId::Git | ProviderId::Audit => vec![EvidenceDimensionV1::History, EvidenceDimensionV1::Diagnostics],
+                ProviderId::Skills | ProviderId::Cortex | ProviderId::Ledger => vec![EvidenceDimensionV1::DurableKnowledge],
+            },
+            authoritative: true,
+            fresh: true,
+            ready: true,
+            cost_rank: provider.rank() as u32,
+            omission: None,
+        }).collect()
     }
 }

@@ -28,7 +28,9 @@
     "blueprint/schemas/repository-manifest-v1.schema.json",
     "blueprint/schemas/freshness-receipt-v1.schema.json",
     "blueprint/src/graph/store-sqlite.mjs",
-    "blueprint/src/graph/generation-identity.mjs"
+    "blueprint/src/graph/generation-identity.mjs",
+    "blueprint/src/graph/static-provider.mjs",
+    "blueprint/src/graph/git-source-observation.mjs"
   ],
   "integrationOwner": "task 01a07e9f-8f38-7463-b35e-f6b6013bb23e",
   "fileTouchPolicy": {
@@ -66,6 +68,8 @@
       "blueprint/schemas/catalog.json",
       "blueprint/schemas/*.schema.json",
       "blueprint/src/graph/generation-identity.mjs",
+      "blueprint/src/graph/static-provider.mjs",
+      "blueprint/src/graph/git-source-observation.mjs",
       "blueprint/src/graph/store-sqlite.mjs",
       "blueprint/tests/store-migrations.test.mjs",
       "blueprint/tests/store-sqlite.test.mjs",
@@ -101,7 +105,7 @@
       "dispatch":"A",
       "executorRequirement":{"semanticRequirement":"required","capabilities":["rust-direct-port","contract-preservation"],"effects":["source-read","artifact-write"],"authorityCeiling":["workspace"],"completion":[{"kind":"exact-check","id":"contracts-identity-source-review"}],"escalation":{"permittedOn":["ambiguous"],"forbiddenOn":["denied"]}},
       "allowlist":["engine/crates/membrane-blueprint/src/contracts.rs","engine/crates/membrane-blueprint/src/identity.rs","engine/crates/membrane-blueprint/tests/contracts.rs","engine/crates/membrane-blueprint/tests/identity.rs"],
-      "read":["blueprint/schemas/catalog.json","blueprint/schemas/scope-grant-v1.schema.json","blueprint/schemas/repository-manifest-v1.schema.json","blueprint/schemas/repository-status-v1.schema.json","blueprint/schemas/freshness-receipt-v1.schema.json","blueprint/src/graph/generation-identity.mjs","blueprint/tests/repo-identity.test.mjs"],
+      "read":["blueprint/schemas/catalog.json","blueprint/schemas/scope-grant-v1.schema.json","blueprint/schemas/repository-manifest-v1.schema.json","blueprint/schemas/repository-status-v1.schema.json","blueprint/schemas/freshness-receipt-v1.schema.json","blueprint/src/graph/generation-identity.mjs","blueprint/src/graph/static-provider.mjs","blueprint/src/graph/git-source-observation.mjs","blueprint/tests/repo-identity.test.mjs"],
       "forbidden":[".git","engine/crates/membrane-blueprint/Cargo.toml","engine/Cargo.lock","engine/crates/membrane-blueprint/src/lib.rs"],
       "checks":["integration owner runs rightkit cargo test --manifest-path D:/Claude/membrane/engine/Cargo.toml -p membrane-blueprint --test contracts --test identity; contracts suite includes RepositoryStatusV1 required fields and typed state behavior"],
       "dependencies":[]

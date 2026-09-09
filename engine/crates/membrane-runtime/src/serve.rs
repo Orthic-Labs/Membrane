@@ -463,6 +463,8 @@ struct AppState {
     workers: Arc<WorkerAdmission>,
     diagnostics_executor: Arc<DiagnosticsExecutor>,
     idempotency: Arc<IdempotencyRegistry>,
+    resident_controller: Arc<std::sync::Mutex<crate::residency::ResidentController>>,
+    resident_identity: Option<membrane_protocol::ResidentControllerIdentityV1>,
     #[cfg(test)]
     test_control: Arc<TestControl>,
 }
@@ -1712,6 +1714,7 @@ enum HttpWorkClass {
 type HttpRouteSpec = (&'static str, &'static str, HttpWorkClass);
 
 const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
+    ("POST", "/resident-holder", HttpWorkClass::General),
     (
         "POST",
         crate::adapt_service::OPERATOR_PATH,
@@ -2073,6 +2076,55 @@ async fn dispatch(
             );
         }
         return reject(StatusCode::BAD_REQUEST, "invalid JSON body");
+    }
+    if method == Method::POST && path == "/resident-holder" {
+        let request = match serde_json::from_str::<membrane_protocol::ResidentHolderRequestV1>(&body) {
+            Ok(request) => request,
+            Err(_) => return reject(StatusCode::BAD_REQUEST, "resident holder request invalid"),
+        };
+        let final_release = request.operation == membrane_protocol::ResidentHolderOperationV1::Release;
+        let Some(identity) = state.resident_identity.clone() else {
+            return reject(StatusCode::CONFLICT, "resident holder requires installed stable current");
+        };
+        if request.operation == membrane_protocol::ResidentHolderOperationV1::Acquire
+            && !crate::service::lifecycle_control().admission_open()
+        {
+            return reject(StatusCode::CONFLICT, "resident holder controller draining");
+        }
+        let now_unix_ms = now_unix_ms();
+        let lifecycle = crate::service::lifecycle_control();
+        let response = state
+            .resident_controller
+            .lock()
+            .map_err(|_| "resident holder controller unavailable".to_string())
+            .and_then(|mut controller| {
+                // This is authoritative: final release/expiry closes
+                // admission while retaining this same controller mutex.
+                if request.operation == membrane_protocol::ResidentHolderOperationV1::Acquire
+                    && !lifecycle.admission_open()
+                {
+                    return Err("resident holder controller draining".to_string());
+                }
+                let response = controller
+                    .dispatch_authoritative(identity, now_unix_ms, request, resident_services_ready(&state))
+                    .map_err(|error| error.to_string())?;
+                // Keep controller lock through admission closure. A later
+                // acquire cannot observe an empty registry then revive a
+                // runtime that this final release already drained.
+                if final_release && !response.status.controller_active {
+                    lifecycle.request_drain(Some("final_holder_release"));
+                }
+                Ok(response)
+            });
+        return match response {
+            Ok(response) => match serde_json::to_string(&response) {
+                Ok(payload) => {
+                    json_response(StatusCode::OK, payload)
+                }
+                Err(_) => reject(StatusCode::INTERNAL_SERVER_ERROR, "resident holder serialization failed"),
+            },
+            Err(error) => reject(StatusCode::CONFLICT, &error),
+        };
     }
     if method == Method::POST && path == "/freshness" {
         let value: Value = match serde_json::from_str(&body) {
@@ -2522,6 +2574,31 @@ fn build_router_inner(
     max_concurrent_requests: usize,
     #[cfg(test)] test_control: Arc<TestControl>,
 ) -> Router {
+    let resident_controller = Arc::new(std::sync::Mutex::new(crate::residency::ResidentController::new()));
+    let resident_identity = installed_resident_identity(&store);
+    #[cfg(not(test))]
+    {
+        let controller = Arc::clone(&resident_controller);
+        let lifecycle = crate::service::lifecycle_control();
+        let _ = std::thread::Builder::new()
+            .name("membrane-holder-expiry".into())
+            .spawn(move || {
+                while !lifecycle.shutdown_requested() {
+                    if controller.lock().map(|mut controller| {
+                        let drain = controller.reconcile_expired(now_unix_ms()).drain_controller;
+                        if drain {
+                            // Keep mutual exclusion until admission closes so
+                            // no concurrent acquire can revive this controller.
+                            lifecycle.request_drain(Some("final_holder_expired"));
+                        }
+                        drain
+                    }).unwrap_or(false) {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+            });
+    }
     let state = AppState {
         store: Arc::new(store),
         context_ingest_lease: context_ingest_lease.map(Arc::new),
@@ -2541,6 +2618,8 @@ fn build_router_inner(
         )),
         diagnostics_executor: Arc::new(DiagnosticsExecutor::new()),
         idempotency: Arc::new(IdempotencyRegistry::new(IDEMPOTENCY_REGISTRY_CAPACITY)),
+        resident_controller,
+        resident_identity,
         #[cfg(test)]
         test_control,
     };
@@ -2565,7 +2644,9 @@ fn build_router_inner(
         "serviceGeneration": crate::release_identity::service_generation(),
         "protocolVersion": 1,
         "schemaVersion": 1,
-        "nativeOnly": true,
+        // Blueprint is still served by the bundled Node runtime. Do not claim
+        // native-only until that production path and its package are removed.
+        "nativeOnly": false,
         "subsystems": ["pull", "push", "cortex", "blueprint", "ledger", "adapt"],
         "capabilities": ["memory", "diagnostics"],
     });
@@ -2667,7 +2748,7 @@ pub fn route_for_tests_with_startup_claim(
     body: &str,
 ) -> (u16, String) {
     match crate::context_telemetry::ContextIngestLease::from_startup(identity, claim) {
-        Ok(lease) => route_with_context_ingest_lease(store, Some(&lease), method, url, body, None),
+        Ok(lease) => route_with_context_ingest_lease(store, None, Some(&lease), method, url, body, None),
         Err(_) => (
             503,
             serde_json::json!({ "error": "active telemetry lease unavailable" }).to_string(),
@@ -2905,7 +2986,7 @@ fn record_external_or_500(
 }
 
 fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, String) {
-    route_with_context_ingest_lease(store, None, method, url, body, None)
+    route_with_context_ingest_lease(store, None, None, method, url, body, None)
 }
 
 /// Closed SDK operation selection delegates to the same canonical handlers as HTTP.
@@ -3090,10 +3171,14 @@ static OBSERVATION_WINDOWS_IN_FLIGHT: std::sync::atomic::AtomicUsize =
 ///
 /// Publication never changes the host's response: a producer refusal is a
 /// stderr diagnostic, not an HTTP failure.
-fn observation_response_and_publish(store: &MemoryStore, body: &str) -> (u16, String) {
+fn observation_response_and_publish(
+    store: &MemoryStore,
+    catalog: Option<&ContextCatalog>,
+    body: &str,
+) -> (u16, String) {
     use std::sync::atomic::Ordering;
     OBSERVATION_WINDOWS_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
-    let response = crate::adapt_observations::response(store, body);
+    let response = crate::adapt_observations::response_with_catalog(store, catalog, body);
     let concurrent = OBSERVATION_WINDOWS_IN_FLIGHT
         .fetch_sub(1, Ordering::SeqCst)
         .saturating_sub(1);
@@ -3139,6 +3224,7 @@ fn publish_background_review_input(store: &MemoryStore, body: &str, foreground_a
 
 fn route_with_context_ingest_lease(
     store: &MemoryStore,
+    catalog: Option<&ContextCatalog>,
     context_ingest_lease: Option<&crate::context_telemetry::ContextIngestLease>,
     method: &str,
     url: &str,
@@ -3160,7 +3246,7 @@ fn route_with_context_ingest_lease(
         return crate::adapt_service::operator_response(store, body);
     }
     if method == "POST" && path == crate::adapt_service::OBSERVATION_PATH {
-        return observation_response_and_publish(store, body);
+        return observation_response_and_publish(store, catalog, body);
     }
     if method == "GET" && (path == "/" || path == "/index.html") {
         return (200, DASHBOARD_HTML.to_string());
@@ -5096,7 +5182,7 @@ fn route_full(
             body,
         );
     }
-    route_with_context_ingest_lease(store, context_ingest_lease, method, url, body, push_control)
+    route_with_context_ingest_lease(store, catalog, context_ingest_lease, method, url, body, push_control)
 }
 
 fn health_response(
@@ -5136,7 +5222,9 @@ fn health_response_with_workers(
     payload["cortexStoreId"] = json!(store.cortex_store_id());
     payload["protocolVersion"] = json!(1);
     payload["schemaVersion"] = json!(1);
-    payload["nativeOnly"] = json!(true);
+    // Blueprint is still served by the bundled Node runtime. Do not claim
+    // native-only until that production path and its package are removed.
+    payload["nativeOnly"] = json!(false);
     payload["runtimeOrigin"] = json!(runtime_origin());
     payload["subsystems"] = json!(["pull", "push", "cortex", "blueprint", "ledger", "adapt"]);
     payload["capabilities"] = json!(["memory", "diagnostics"]);
@@ -5196,6 +5284,30 @@ fn health_response_with_workers(
 
 fn runtime_origin() -> &'static str {
     runtime_origin_from(std::env::var("MEMBRANE_RUNTIME_ORIGIN").ok().as_deref())
+}
+
+fn installed_resident_identity(
+    store: &MemoryStore,
+) -> Option<membrane_protocol::ResidentControllerIdentityV1> {
+    let receipt = crate::runtime_receipt::current_snapshot()?;
+    let stable_current = receipt.stable_install_root?.to_string_lossy().into_owned();
+    (receipt.runtime_origin == "installed" && !stable_current.trim().is_empty()).then(|| {
+        membrane_protocol::ResidentControllerIdentityV1 {
+            installation_id: store.installation_id().to_string(),
+            cortex_store_id: store.cortex_store_id(),
+            release_generation: crate::release_identity::release_generation(),
+            startup_generation: receipt.startup_generation,
+            stable_current,
+        }
+    })
+}
+
+fn resident_services_ready(state: &AppState) -> bool {
+    // Store/catalog health is insufficient: Blueprint remains an external
+    // bundled Node service & exposes no runtime-owned watcher handle here.
+    // Do not certify resident readiness until factory injects that handle.
+    let _ = state;
+    false
 }
 
 fn runtime_origin_from(value: Option<&str>) -> &'static str {
@@ -6596,7 +6708,7 @@ mod tests {
         assert!(payload["cortexStoreId"]
             .as_str()
             .is_some_and(|value| value.starts_with("sha256:")));
-        assert_eq!(payload["nativeOnly"], true);
+        assert_eq!(payload["nativeOnly"], false);
         assert_eq!(payload["subsystems"].as_array().map(Vec::len), Some(6));
         assert_eq!(payload["capabilities"], json!(["memory", "diagnostics"]));
     }

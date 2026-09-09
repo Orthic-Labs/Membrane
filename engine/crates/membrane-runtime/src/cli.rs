@@ -728,6 +728,12 @@ pub(crate) enum AdaptCmd {
 enum Cmd {
     /// Execute one identity-fenced installed SDK request from stdin, independently of Hub.
     ExplicitCall,
+    /// Forward one authenticated resident-holder request to installed controller.
+    ResidentHolder {
+        /// Read request JSON from this file; stdin when omitted.
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
     /// Run an explicit Blueprint command from installed runtime, independently of Hub.
     Blueprint {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -2716,6 +2722,37 @@ fn try_idempotent_put(db: &str, body: &str) -> Result<IdempotentPutOutcome, Stri
     )
 }
 
+/// Forward a typed holder mutation through installed loopback authority.  This
+/// command never opens a database or starts a resident; its bearer comes from
+/// the installation-owned token path used by every other CLI service call.
+fn run_resident_holder(input: Option<&Path>) -> Result<(), String> {
+    let body = match input {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|error| format!("read resident-holder input {}: {error}", path.display()))?,
+        None => {
+            let mut body = String::new();
+            std::io::stdin()
+                .read_to_string(&mut body)
+                .map_err(|error| format!("read resident-holder stdin: {error}"))?;
+            body
+        }
+    };
+    let request: membrane_protocol::ResidentHolderRequestV1 =
+        serde_json::from_str(&body).map_err(|error| format!("resident-holder request: {error}"))?;
+    if request.schema_version != membrane_protocol::RESIDENT_HOLDER_SCHEMA_VERSION {
+        return Err("resident-holder schema unsupported".into());
+    }
+    match try_service_post("/resident-holder", &body)? {
+        Some(response) => {
+            let _: membrane_protocol::ResidentHolderResponseV1 = serde_json::from_str(&response)
+                .map_err(|error| format!("resident-holder response: {error}"))?;
+            println!("{response}");
+            Ok(())
+        }
+        None => Err("resident_controller_unavailable".into()),
+    }
+}
+
 /// POST to the resident service if it's listening; Ok(None) means "not up — go direct".
 /// Once a TCP connection succeeds, every failure is returned as Err so mutating verbs never
 /// silently split-brain the resident registry with a direct DB write.
@@ -2961,6 +2998,7 @@ fn command_requires_db(command: &Cmd) -> bool {
         command,
         Cmd::BuildInfo
             | Cmd::ExplicitCall
+            | Cmd::ResidentHolder { .. }
             | Cmd::Blueprint { .. }
             | Cmd::Installation { .. }
             | Cmd::Ledger { .. }
@@ -4041,6 +4079,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if matches!(cli.cmd, Cmd::ExplicitCall) {
         return crate::explicit_client::run();
     }
+    if let Cmd::ResidentHolder { input } = &cli.cmd {
+        return run_resident_holder(input.as_deref());
+    }
     if let Cmd::Blueprint { args } = &cli.cmd {
         return crate::blueprint_one_shot::run_cli(args);
     }
@@ -4087,7 +4128,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::ExplicitCall | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
+        Cmd::BuildInfo | Cmd::ExplicitCall | Cmd::ResidentHolder { .. } | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {

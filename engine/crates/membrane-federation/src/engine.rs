@@ -18,6 +18,7 @@ use crate::omission::{generation_omission, missing_lane, warning_from_omission};
 use crate::registry::ProviderRegistry;
 use crate::release::{ReleaseBinding, ReleaseError, ReleaseIdentity, ReleaseSource};
 use crate::request::{NormalizedFederationRequest, RequestValidationError};
+use crate::requirements::{coverage_map, plan_acquisition, CandidateJourneyV1};
 use crate::root::{FilesystemRootSource, RootPathSource};
 use crate::scheduler::{schedule_providers, ProviderTask, ScheduleResult, SchedulerPolicy};
 use membrane_protocol::{
@@ -252,6 +253,8 @@ impl FederationEngine {
         // state at the packet-emission boundary (§17.2).
         let publication_fence = validated_fence_for_request(request)?;
         let query = source_query(&normalized);
+        let capability_catalog = self.registry.capability_catalog();
+        let acquisition_plan = plan_acquisition(&normalized.requirements, &capability_catalog);
 
         // Owner bindings happen before any provider task is created.
         let release = self.bind_release(normalized.release_generation.as_deref())?;
@@ -308,7 +311,8 @@ impl FederationEngine {
         let active: Vec<ProviderId> = self
             .config
             .expected_providers()
-            .filter(|provider| self.config.is_enabled(*provider))
+            .filter(|provider| self.config.is_enabled(*provider)
+                && acquisition_plan.providers.contains(provider))
             .collect();
         let fatal = CancellationToken::new();
         let tasks = self.provider_tasks(&active, fatal.clone());
@@ -484,6 +488,47 @@ impl FederationEngine {
         response.extensions.insert(
             "correctiveRetrieval".to_owned(),
             serde_json::to_value(corrective_receipt).unwrap_or(serde_json::Value::Null),
+        );
+        response.extensions.insert(
+            "acquisitionPlan".to_owned(),
+            serde_json::to_value(&acquisition_plan).unwrap_or(serde_json::Value::Null),
+        );
+        let mut journeys = Vec::new();
+        for candidate in &response.candidates {
+            let Some(provider) = candidate.provider.as_deref().and_then(ProviderId::parse) else {
+                continue;
+            };
+            let dimensions = capability_catalog.iter()
+                .find(|capability| capability.provider == provider)
+                .map(|capability| capability.dimensions.as_slice())
+                .unwrap_or_default();
+            for fact in normalized.requirements.facts.iter()
+                .filter(|fact| dimensions.contains(&fact.dimension)) {
+                journeys.push(CandidateJourneyV1 {
+                    evidence_id: candidate.id.clone(),
+                    requirement_binding_digest: fact.binding_digest.clone(),
+                    dimension: fact.dimension.clone(),
+                    provider,
+                    source_hash: candidate.source_hash.clone(),
+                    // Final Push representation is owned by runtime pipeline;
+                    // source identity cannot impersonate its representation.
+                    representation_digest: String::new(),
+                    target_ref: Some(candidate.source_ref.clone()),
+                    acquired: true,
+                    eligible: true,
+                    admitted: true,
+                    represented: false,
+                    fenced: publication_fence.as_ref().map_or(true, |fence| matches!(fence.status, membrane_protocol::PublicationFenceStatusV1::Held)),
+                    emitted: false,
+                    retained: false,
+                    dropped: false,
+                });
+            }
+        }
+        let coverage = coverage_map(&normalized.requirements, journeys, &capability_catalog);
+        response.extensions.insert(
+            "requirementEvidenceMap".to_owned(),
+            serde_json::to_value(coverage).unwrap_or(serde_json::Value::Null),
         );
         if let Some(fence) = publication_fence {
             response.extensions.insert(

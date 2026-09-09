@@ -44,8 +44,9 @@ pub use embed::{cosine, Embedder, HashEmbedder, EMBEDDING_MAX_SEQUENCE_TOKENS};
 pub use eval_gate::{EvalGateConfig, MemoryRetrievalEvalGate};
 pub use fingerprint::PipelineFingerprint;
 pub use graph::{
-    is_canonical_relation, EdgeRejection, EvidenceRelation, MemoryEdge, MemoryGraph, MemoryNode,
-    RelationDiagnostic, RelationProvenance, CANONICAL_RELATIONS,
+    is_canonical_relation, is_observation_relation, relation_category, EdgeRejection,
+    EvidenceRelation, MemoryEdge, MemoryGraph, MemoryNode, RelationCategory, RelationDiagnostic,
+    RelationProvenance, CANONICAL_RELATIONS,
 };
 pub use markdown::{parse_markdown, wikilinks, ParsedDoc};
 pub use planner::{
@@ -55,7 +56,7 @@ pub use planner::{
 };
 pub use quant::{quantized_cosine, QuantizedVector};
 pub use registry::{MemoryRegistry, RegistryError};
-pub use retriever::{LexicalHit, MemoryRetriever};
+pub use retriever::{CortexProjection, LexicalHit, MemoryRetriever, ProjectedEntry, ProjectedKind};
 pub use review::{
     bound_memory_candidate_extraction_window, ExtractionWindowV1, ForegroundMemoryEmissionV1,
     MemoryCandidateExtractionBlockerV1, MemoryCandidateExtractionDecisionV1,
