@@ -127,7 +127,7 @@ test("qualification proves installed native Adapt selected-transcript lifecycle"
   assert.doesNotMatch(lower, /adapt-installed-qualification/);
   assert.match(lower, /qualificationworkspace[\s\S]*tools\\.cache\\memory\\cortex-engine.db/);
   assert.match(lower, /adapt\s*=\s*\$script:adaptevidence/);
-  assert.match(lower, /lifecycle[\s\S]*adapt\s*=\s*'pass'/);
+  assert.match(lower, /lifecycle[\s\S]*adapt\s*=\s*\$certification/);
   assert.match(lower, /caller-selected/);
   assert.match(lower, /source.*bindings/);
 });
