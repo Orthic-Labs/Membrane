@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "sourceProvenance": "engine/crates/membrane-blueprint/src/api.rs BlueprintError::generation_mismatch (code, retryable default) and engine/crates/membrane-blueprint/src/engine.rs ensure_generation (details.expected/details.observed) and BlueprintResponse::failure (ok=false, result=None) -- authored from contract, not captured from a run",
+  "generationMismatch": {
+    "ok": false,
+    "resultIsNull": true,
+    "errorCode": "generation_mismatch",
+    "errorRetryable": false,
+    "errorMessage": "request generation does not match served generation",
+    "errorDetailsKeys": ["expected", "observed"]
+  },
+  "matchedGeneration": {
+    "ok": true,
+    "errorIsNull": true
+  }
+}
