@@ -48,6 +48,7 @@ pub use membrane_protocol::host_observation::{
     HostObservationProvenanceV1, LoadedContextIdentitiesV1, LoadedContextIdentityV1,
     ObservationCoverageV1, ObservationUnavailableReasonV1, ObservedFieldV1,
     PacketDeliveryAcknowledgementStatusV1, PacketDeliveryAcknowledgementV1,
+    RepresentationClassV1, RepresentationHandleV1,
     HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION, LOADED_CONTEXT_IDENTITIES_SCHEMA_VERSION,
     PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION,
 };

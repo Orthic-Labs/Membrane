@@ -21,6 +21,41 @@ pub const PACKET_DELIVERY_ACKNOWLEDGMENT_SCHEMA_VERSION: u32 =
     PACKET_DELIVERY_ACKNOWLEDGEMENT_SCHEMA_VERSION;
 pub const HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION: u32 = HOST_OBSERVATION_SCHEMA_VERSION;
 
+/// Representation lane selected by Membrane for one delivered item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RepresentationClassV1 {
+    Native,
+    RenderedFull,
+    RenderedExcerpt,
+    ResolverBacked,
+    MetadataOnly,
+}
+
+/// Opaque Membrane-issued identity carried by a host publication.
+/// CodeRight may transport this value, but cannot mint or reinterpret it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepresentationHandleV1 {
+    pub schema_version: u32,
+    pub handle: String,
+    pub class: RepresentationClassV1,
+    pub installation_id: String,
+    pub context_epoch: u64,
+    pub source_ref: String,
+    pub source_digest: String,
+}
+
+impl RepresentationHandleV1 {
+    pub fn validate(&self) -> Result<(), HostObservationValidationError> {
+        validate_schema("RepresentationHandleV1", self.schema_version, HOST_OBSERVATION_SCHEMA_VERSION)?;
+        require_nonempty("handle", &self.handle)?;
+        require_nonempty("installationId", &self.installation_id)?;
+        require_nonempty("sourceRef", &self.source_ref)?;
+        validate_sha256("sourceDigest", &self.source_digest)
+    }
+}
+
 /// Closed reasons for a value that the producing host could not observe.
 ///
 /// This enum intentionally does not contain a generic `unknown` or a numeric

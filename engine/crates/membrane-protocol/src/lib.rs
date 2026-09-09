@@ -114,6 +114,7 @@ pub use host_observation::{
     LoadedContextIdentityV1, ObservationCoverage, ObservationCoverageV1,
     ObservationUnavailableReason, ObservationUnavailableReasonV1, ObservedFieldV1,
     PacketDeliveryAcknowledgementStatusV1, PacketDeliveryAcknowledgementV1,
+    RepresentationClassV1, RepresentationHandleV1,
     PacketDeliveryAcknowledgmentV1, RemainingContextCeilingV1, TokenEstimateV1,
     EVALUATION_OUTCOME_SCHEMA_VERSION, EXECUTION_OBSERVATION_SCHEMA_VERSION,
     HOST_OBSERVATION_PROVENANCE_SCHEMA_VERSION, HOST_OBSERVATION_SCHEMA_VERSION,
