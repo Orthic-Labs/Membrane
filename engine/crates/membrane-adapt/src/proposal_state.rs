@@ -189,12 +189,34 @@ impl ProposalPlanStore {
         if ttl_seconds == 0 || ttl_seconds > MAX_PROPOSAL_TTL_SECONDS {
             return Err(ProposalStateError::InvalidTtl);
         }
-        if self.state.plans.contains_key(plan_id) {
+        let target_sha256 = semantic_target_sha256(&semantic_payload);
+        let seal_digest = semantic_payload.seal_digest();
+
+        if let Some(existing_plan) = self.state.plans.get(plan_id) {
+            // Exact replay under the SAME caller-chosen plan id: if the
+            // pending plan is semantically identical (same target, seal,
+            // risk, target version, and still active/unexpired), this call
+            // converges on it rather than erroring — a genuine retry must
+            // not be indistinguishable from an id collision. Any other
+            // difference is a real id collision.
+            let same_semantics = matches!(
+                existing_plan.state,
+                ProposalPlanState::Proposed | ProposalPlanState::Approved
+            ) && existing_plan.expires_at > now
+                && existing_plan.expected_target_version == expected_target_version
+                && existing_plan.seal_digest == seal_digest
+                && existing_plan.risk == risk
+                && semantic_target_sha256(&existing_plan.semantic_payload) == target_sha256;
+            if same_semantics {
+                return Ok(self
+                    .state
+                    .plans
+                    .get(plan_id)
+                    .expect("existing plan was selected from this store"));
+            }
             return Err(ProposalStateError::PlanExists(plan_id.into()));
         }
 
-        let target_sha256 = semantic_target_sha256(&semantic_payload);
-        let seal_digest = semantic_payload.seal_digest();
         let existing = self
             .state
             .plans

@@ -376,7 +376,15 @@ pub fn compress_to_budget_with_options(
         let line_budget = if remaining_tokens == 0 {
             0
         } else {
-            (remaining_budget * line_tokens + remaining_tokens - 1) / remaining_tokens
+            // Ceiling division of `remaining_budget * line_tokens / remaining_tokens`.
+            // The product can exceed `usize::MAX` for large budgets/token counts, so
+            // compute it in `u128` and saturate back into `usize` rather than risk a
+            // silent wrap (which would corrupt the delivered budget accounting).
+            let numerator = (remaining_budget as u128)
+                .saturating_mul(line_tokens as u128)
+                .saturating_add(remaining_tokens as u128 - 1);
+            let divided = numerator / (remaining_tokens as u128);
+            usize::try_from(divided).unwrap_or(usize::MAX)
         };
         if line_budget >= line_tokens {
             out.push_str(line);

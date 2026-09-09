@@ -18,7 +18,7 @@ fn stored_zip(name: &str, data: &[u8]) -> Vec<u8> {
     out.extend_from_slice(&(name.len() as u16).to_le_bytes()); out.extend_from_slice(&0u16.to_le_bytes()); out.extend_from_slice(name.as_bytes()); out.extend_from_slice(data);
     let central_offset = out.len() as u32; out.extend_from_slice(&0x0201_4b50u32.to_le_bytes());
     out.extend_from_slice(&20u16.to_le_bytes()); out.extend_from_slice(&20u16.to_le_bytes()); out.extend_from_slice(&[0; 8]); out.extend_from_slice(&crc.to_le_bytes());
-    out.extend_from_slice(&(data.len() as u32).to_le_bytes()); out.extend_from_slice(&(data.len() as u32).to_le_bytes()); out.extend_from_slice(&(name.len() as u16).to_le_bytes()); out.extend_from_slice(&[0; 10]); out.extend_from_slice(&central_offset.saturating_sub(central_offset).to_le_bytes()); out.extend_from_slice(name.as_bytes());
+    out.extend_from_slice(&(data.len() as u32).to_le_bytes()); out.extend_from_slice(&(data.len() as u32).to_le_bytes()); out.extend_from_slice(&(name.len() as u16).to_le_bytes()); out.extend_from_slice(&[0; 12]); out.extend_from_slice(&central_offset.saturating_sub(central_offset).to_le_bytes()); out.extend_from_slice(name.as_bytes());
     let central_size = (out.len() as u32).saturating_sub(central_offset); out.extend_from_slice(&0x0605_4b50u32.to_le_bytes()); out.extend_from_slice(&[0; 4]); out.extend_from_slice(&1u16.to_le_bytes()); out.extend_from_slice(&1u16.to_le_bytes()); out.extend_from_slice(&central_size.to_le_bytes()); out.extend_from_slice(&central_offset.to_le_bytes()); out.extend_from_slice(&0u16.to_le_bytes()); out
 }
 

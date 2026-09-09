@@ -80,9 +80,15 @@ fn offline_edits_reconcile_on_activation_via_explicit_refresh() {
     refresh.input["paths"] = Value::Array(vec![Value::String("second.rs".into())]);
     let refresh_response = service.dispatch_request(refresh, CancellationToken::new());
     assert!(refresh_response.ok, "offline edit reconciliation must succeed: {:?}", refresh_response.error);
+    // Reconciling the offline edit publishes a new content-addressed
+    // generation (the source hash changed with `second.rs` added); the
+    // reconciled state is queryable under that new generation id, not the
+    // pre-refresh one captured above.
+    let refreshed_generation = refresh_response.result.as_ref().unwrap()["generationId"].as_str().unwrap().to_owned();
+    assert_ne!(refreshed_generation, generation, "reconciling a real content change must publish a new generation");
 
     let mut query = request("activation-query", Operation::Search, root.path());
-    query.generation = Some(generation);
+    query.generation = Some(refreshed_generation);
     query.input["query"] = Value::String("offline".into());
     let query_response = service.dispatch_request(query, CancellationToken::new());
     assert!(query_response.ok);

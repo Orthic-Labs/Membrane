@@ -209,7 +209,11 @@ fn graph_expansion_is_bounded_and_follows_current_active_lifecycle() {
         "# Source\n\nkey rotation procedure [details](target.md)\n",
     )
     .unwrap();
-    fs::write(root.path().join("target.md"), "# Target\n\nlinked evidence for rotation\n").unwrap();
+    // Deliberately avoids the seed query terms ("key", "rotation") so this document is
+    // reachable only through bounded graph expansion, not directly via base term recall —
+    // otherwise it would appear as an ordinary (non "ledger_graph") hit and mask the
+    // assertion this test exists to make.
+    fs::write(root.path().join("target.md"), "# Target\n\nsupplementary linked evidence\n").unwrap();
     let db = LedgerDb::open_in_memory();
     doc_spine::sync(&db, root.path()).unwrap();
     let receipt = doc_spine::recall_with_graph(

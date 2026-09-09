@@ -61,7 +61,7 @@ pub fn now_ms() -> u64 { crate::time::now_millis().min(u64::MAX as u128) as u64 
 /// Construct only after the transport's normal repository authorization gate.
 /// Canonical root and session are both part of the storage namespace.
 #[derive(Debug, Clone)]
-pub struct RecoveryScope { id: String, task_id: String, session_id: String }
+pub struct RecoveryScope { id: String, task_id: String, session_id: String, session_scope_id: String }
 impl RecoveryScope {
     pub fn new(root: &Path, session: &str) -> Result<Self, RecoveryError> {
         Self::new_bound(root, "", session)
@@ -78,9 +78,26 @@ impl RecoveryScope {
         if !root.is_dir() { return Err(RecoveryError::Denied); }
         let identity = serde_json::to_vec(&(root.to_string_lossy(), task, session))
             .map_err(|_| RecoveryError::Denied)?;
-        Ok(Self { id: digest(&identity), task_id: task.into(), session_id: session.into() })
+        // Independent of `task`: the resolver-consumer-proof namespace. A
+        // proof is minted through the `probe` operation before the caller
+        // necessarily has task context (it just needs an authorized
+        // root+session), and must still authorize the same caller's later
+        // task-bound `prepare`/`resolve` calls within that session. Content
+        // storage stays keyed by the full (root, task, session) `id` above;
+        // only the resolver-proof handshake uses this coarser identity.
+        let session_identity = serde_json::to_vec(&(root.to_string_lossy(), session))
+            .map_err(|_| RecoveryError::Denied)?;
+        Ok(Self {
+            id: digest(&identity),
+            task_id: task.into(),
+            session_id: session.into(),
+            session_scope_id: digest(&session_identity),
+        })
     }
     pub fn binding(&self) -> &str { &self.id }
+    /// The coarser root+session identity used to authorize resolver
+    /// consumer proofs regardless of task binding. See `new_bound`.
+    pub fn consumer_proof_scope(&self) -> &str { &self.session_scope_id }
     pub fn task_id(&self) -> Option<&str> { (!self.task_id.is_empty()).then_some(self.task_id.as_str()) }
     pub fn session_id(&self) -> &str { &self.session_id }
     pub fn local() -> Result<Self, RecoveryError> {
@@ -227,12 +244,20 @@ impl RecoveryStore {
     pub fn identity(&self) -> Result<String, RecoveryError> {
         self.connection()?.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)
     }
-    fn reference(connection: &Connection, handle_hash: &str, source_hash: &str, size: usize, expires: u64, now: u64) -> Result<RecoveryReference, RecoveryError> {
+    fn reference(connection: &Connection, handle_hash: &str, source_hash: &str, size: usize, expires: u64, now: u64, created: u64) -> Result<RecoveryReference, RecoveryError> {
         let store_id = connection.query_row("SELECT identity FROM push_store WHERE id=1", [], |r| r.get(0)).map_err(db_error)?;
+        let remaining = expires.saturating_sub(now);
+        // "Near expiry" means inside the final tenth of the lease's own
+        // lifetime, capped at 60s absolute so long-lived leases still warn
+        // with a sane lead time. A freshly published/renewed handle (remaining
+        // == full lease length) must never be reported near_expiry merely
+        // because its total TTL happens to be short.
+        let lease_length = expires.saturating_sub(created);
+        let near_expiry_window = (lease_length / 10).min(60_000);
         Ok(RecoveryReference { schema_version: 1, handle: format!("mr://anchor/{handle_hash}"),
             source_digest: format!("sha256:{source_hash}"), size_bytes: size, store_id,
             expires_at: expires, observed_at: now,
-            lease_state: if expires.saturating_sub(now) <= 60_000 { "near_expiry" } else { "active" }.into() })
+            lease_state: if remaining <= near_expiry_window && remaining < lease_length { "near_expiry" } else { "active" }.into() })
     }
     fn prune_tombstones(connection: &Connection, now: u64) -> Result<(), RecoveryError> {
         let now_i64 = i64::try_from(now).map_err(|_| RecoveryError::Limit)?;
@@ -310,13 +335,13 @@ impl RecoveryStore {
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(db_error)?;
         Self::compact(&tx, now)?;
         check_control(deadline, cancellation)?;
-        let existing: Option<(String, Vec<u8>, usize, u64)> = tx.query_row(
-            "SELECT handle_digest,content,size,expires FROM push_originals WHERE scope=?1 AND digest=?2 AND invalidated=0",
-            params![scope.id, source_hash], |r| Ok((r.get(0)?, r.get(1)?, sql_size(r,2)?, sql_u64(r,3)?)),
+        let existing: Option<(String, Vec<u8>, usize, u64, u64)> = tx.query_row(
+            "SELECT handle_digest,content,size,expires,created FROM push_originals WHERE scope=?1 AND digest=?2 AND invalidated=0",
+            params![scope.id, source_hash], |r| Ok((r.get(0)?, r.get(1)?, sql_size(r,2)?, sql_u64(r,3)?, sql_u64(r,4)?)),
         ).optional().map_err(db_error)?;
-        let (handle_hash, expires) = if let Some((handle_hash, retained, size, expires)) = existing {
+        let (handle_hash, expires, created) = if let Some((handle_hash, retained, size, expires, created)) = existing {
             if retained.len() != size || retained != bytes || digest(&retained) != source_hash { return Err(RecoveryError::Corrupt); }
-            (handle_hash, expires)
+            (handle_hash, expires, created)
         } else {
             let (total, scoped, count): (u64, u64, u64) = tx.query_row(
                 "SELECT COALESCE(SUM(size),0), COALESCE(SUM(CASE WHEN scope=?1 THEN size ELSE 0 END),0), COUNT(*) FROM push_originals",
@@ -331,14 +356,14 @@ impl RecoveryStore {
                 "INSERT INTO push_originals(scope,digest,handle_digest,content,size,created,expires) VALUES(?1,?2,?3,?4,?5,?6,?7)",
                 params![scope.id, source_hash, handle_hash, bytes, bytes.len() as i64, now as i64, expires as i64],
             ).map_err(db_error)?;
-            (handle_hash, expires)
+            (handle_hash, expires, now)
         };
         let retained: Vec<u8> = tx.query_row(
             "SELECT content FROM push_originals WHERE scope=?1 AND handle_digest=?2",
             params![scope.id, handle_hash], |r| r.get(0),
         ).map_err(db_error)?;
         if retained != bytes || digest(&retained) != source_hash { return Err(RecoveryError::Corrupt); }
-        let reference = Self::reference(&tx, &handle_hash, &source_hash, bytes.len(), expires, now)?;
+        let reference = Self::reference(&tx, &handle_hash, &source_hash, bytes.len(), expires, now, created)?;
         check_control(deadline, cancellation)?;
         tx.commit().map_err(db_error)?;
         Ok(reference)
@@ -353,11 +378,11 @@ impl RecoveryStore {
         let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();
         if max_bytes == 0 || max_bytes > MAX_RESTORE_BYTES { return Err(RecoveryError::Limit); }
         let connection = self.connection()?;
-        let metadata: Option<(String, usize, usize, u64, bool)> = connection.query_row(
-            "SELECT digest,size,length(content),expires,invalidated FROM push_originals WHERE scope=?1 AND handle_digest=?2",
-            params![scope.id, handle_hash], |r| Ok((r.get(0)?, sql_size(r,1)?, sql_size(r,2)?, sql_u64(r,3)?, r.get(4)?)),
+        let metadata: Option<(String, usize, usize, u64, bool, u64)> = connection.query_row(
+            "SELECT digest,size,length(content),expires,invalidated,created FROM push_originals WHERE scope=?1 AND handle_digest=?2",
+            params![scope.id, handle_hash], |r| Ok((r.get(0)?, sql_size(r,1)?, sql_size(r,2)?, sql_u64(r,3)?, r.get(4)?, sql_u64(r,5)?)),
         ).optional().map_err(db_error)?;
-        let Some((source_hash, size, stored_size, expires, invalidated)) = metadata else {
+        let Some((source_hash, size, stored_size, expires, invalidated, created)) = metadata else {
             return Err(Self::terminal_error(&connection, &scope.id, &handle_hash)?.unwrap_or(RecoveryError::NotFound));
         };
         if invalidated { return Err(RecoveryError::Invalidated); }
@@ -377,7 +402,7 @@ impl RecoveryStore {
             Ok(text) => ("utf-8", text.to_owned()), Err(_) => ("hex", hex::encode(selected)),
         };
         super::telemetry::record("restore", size, selected.len(), Some("status=verified"), Some(&source_hash));
-        Ok(ResolvedArtifact { reference: Self::reference(&connection, &handle_hash, &source_hash, size, expires, now)?,
+        Ok(ResolvedArtifact { reference: Self::reference(&connection, &handle_hash, &source_hash, size, expires, now, created)?,
             start_byte: start, end_byte: end, selected_digest: format!("sha256:{}", digest(selected)),
             content_encoding, content, disposition: "exact", fidelity: "exact_bytes" })
     }
@@ -396,7 +421,9 @@ impl RecoveryStore {
             params![expires as i64, scope.id, handle_hash, expected_expiry as i64],
         ).map_err(db_error)?;
         if changed != 1 { return Err(RecoveryError::Denied); }
-        Self::reference(&connection, &handle_hash, source_hash, resolved.reference.size_bytes, expires, now)
+        // A successful renewal restarts the lease clock: `now` is the new
+        // creation point for near-expiry purposes, matching a fresh publish.
+        Self::reference(&connection, &handle_hash, source_hash, resolved.reference.size_bytes, expires, now, now)
     }
     pub fn invalidate(&self, scope: &RecoveryScope, handle: &str) -> Result<(), RecoveryError> {
         let handle_hash = crate::ledger::identifier::AnchorRef::parse(handle).map_err(|_| RecoveryError::InvalidAnchor)?.digest();

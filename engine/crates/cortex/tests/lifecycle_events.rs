@@ -10,7 +10,7 @@ fn insert_memory(store: &MemoryStore, id: &str, scope: &str) {
         .lock()
         .execute(
             "INSERT INTO memories (id, tier, content, keywords, score, created_at, updated_at, access_count, scope_id)\
-             VALUES (?1, 'Semantic', 'fixture', 'fixture', 0.5, '2026-07-27T00:00:00Z', '2026-07-27T00:00:00Z', 0, ?2)",
+             VALUES (?1, '\"Semantic\"', 'fixture', '[]', 0.5, '2026-07-27T00:00:00Z', '2026-07-27T00:00:00Z', 0, ?2)",
             rusqlite::params![id, scope],
         )
         .unwrap();

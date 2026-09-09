@@ -754,7 +754,11 @@ impl DeterministicFirstPartySemanticReviewProvider {
         let receipt_digest = digest_str(&canonical_json_of(request));
         let provenance_receipt = membrane_protocol::HostObservationProvenanceV1::new(
             format!("{DETERMINISTIC_REVIEW_ANALYZER_ID}-{}", request.job_id),
-            Self::provider_label(),
+            // The producer label alone loses job lineage; a caller correlating
+            // this refusal against the scheduler attempt that produced it
+            // needs the exact job id inside the provenance source, not just
+            // the analyzer identity.
+            format!("{}/{}", Self::provider_label(), request.job_id),
             observed_at_unix_ms,
             receipt_digest,
         );

@@ -207,11 +207,23 @@ fn contains_secret(content: &str) -> bool {
 }
 
 fn sensitive_assignment(content: &str, name: &str) -> bool {
-    content.match_indices(name).any(|(start, _)| {
-        let remainder = &content[start + name.len()..];
-        let remainder = remainder.trim_start_matches([' ', '\t']);
-        matches!(remainder.as_bytes().first(), Some(b'=') | Some(b':'))
-            && credential_shaped_value(name, remainder[1..].trim())
+    // Match the sensitive name anywhere inside the key token that precedes
+    // an assignment operator, not only when it directly abuts `=`/`:`. A
+    // real-world credential var such as `AWS_SECRET_ACCESS_KEY=...` has
+    // `secret` as a substring of a longer key, not its whole key — requiring
+    // exact adjacency to the operator silently let compound key names like
+    // that through undetected.
+    content.match_indices(['=', ':']).any(|(operator_index, _)| {
+        let key_start = content[..operator_index]
+            .rfind(|character: char| character.is_whitespace())
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let key = content[key_start..operator_index].trim();
+        if key.is_empty() || !key.contains(name) {
+            return false;
+        }
+        let remainder = content[operator_index + 1..].trim_start();
+        credential_shaped_value(name, remainder)
     })
 }
 

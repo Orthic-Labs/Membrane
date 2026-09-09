@@ -368,3 +368,132 @@ fn unique_categories(categories: &[String]) -> Vec<String> {
 fn saturating_u32(value: usize) -> u32 {
     value.min(u32::MAX as usize) as u32
 }
+
+// ---------------------------------------------------------------------------
+// CRA-09 joint wire contract `compaction-federation-v1` — Membrane consumer.
+//
+// Membrane consumes federation decisions issued by the CodeRight producer.
+// This is a wire-format consumer only: it does not become a second planner,
+// and it does not duplicate the compaction decision contract above. Liveness
+// is judged exclusively against monotonic elapsed time and restart epoch —
+// never wall clock (no `SystemTime`, no `Utc::now()`).
+// ---------------------------------------------------------------------------
+
+/// Selection receipt nested inside a federation decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FederationSelectionReceipt {
+    pub selected_item_ids: Vec<String>,
+    pub selection_hash: String,
+}
+
+/// A `compaction-federation-v1` decision as published by the CodeRight
+/// producer and consumed here by Membrane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompactionFederationDecision {
+    #[serde(rename = "$schema")]
+    pub schema: String,
+    pub identity: String,
+    pub fence: String,
+    pub scope: String,
+    pub decision: String,
+    pub selection_receipt: FederationSelectionReceipt,
+    pub issued_monotonic_elapsed_ms: u64,
+    pub expires_after_elapsed_ms: u64,
+    pub restart_epoch: u64,
+}
+
+pub const COMPACTION_FEDERATION_V1_SCHEMA: &str = "compaction-federation-v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FederationLivenessError {
+    #[error("federation decision restart epoch {decision_epoch} does not match current epoch {current_epoch}")]
+    RestartEpochStale {
+        decision_epoch: u64,
+        current_epoch: u64,
+    },
+    #[error("federation decision monotonic elapsed underflow: current elapsed precedes issued elapsed")]
+    MonotonicUnderflow,
+    #[error("federation decision expired: {elapsed_ms}ms elapsed exceeds {allowed_ms}ms allowance")]
+    Expired { elapsed_ms: u64, allowed_ms: u64 },
+    #[error("federation decision {0} was already committed")]
+    AlreadyCommitted(String),
+}
+
+/// Judge whether `decision` is still live.
+///
+/// Restart epoch is checked FIRST: a decision issued under a prior restart
+/// epoch is unconditionally invalid, regardless of elapsed time. Only then is
+/// elapsed time judged via `checked_sub` against the caller-supplied
+/// monotonic elapsed clock — never wall clock.
+pub fn check_federation_liveness(
+    decision: &CompactionFederationDecision,
+    current_restart_epoch: u64,
+    current_monotonic_elapsed_ms: u64,
+) -> Result<(), FederationLivenessError> {
+    if decision.restart_epoch != current_restart_epoch {
+        return Err(FederationLivenessError::RestartEpochStale {
+            decision_epoch: decision.restart_epoch,
+            current_epoch: current_restart_epoch,
+        });
+    }
+    let elapsed_ms = current_monotonic_elapsed_ms
+        .checked_sub(decision.issued_monotonic_elapsed_ms)
+        .ok_or(FederationLivenessError::MonotonicUnderflow)?;
+    if elapsed_ms > decision.expires_after_elapsed_ms {
+        return Err(FederationLivenessError::Expired {
+            elapsed_ms,
+            allowed_ms: decision.expires_after_elapsed_ms,
+        });
+    }
+    Ok(())
+}
+
+/// A one-use local commit ledger for federation decisions.
+///
+/// Every decision may be committed at most once. A restart clears local
+/// commit state but also advances the local restart epoch, so any decision
+/// still pending from before the restart is invalidated by
+/// [`check_federation_liveness`] rather than by ledger membership.
+#[derive(Debug, Default)]
+pub struct FederationCommitLedger {
+    restart_epoch: u64,
+    committed: BTreeSet<String>,
+}
+
+impl FederationCommitLedger {
+    pub fn new(restart_epoch: u64) -> Self {
+        Self {
+            restart_epoch,
+            committed: BTreeSet::new(),
+        }
+    }
+
+    pub fn restart_epoch(&self) -> u64 {
+        self.restart_epoch
+    }
+
+    /// Advance the local restart epoch and drop all local commit state.
+    /// Any decision issued under the prior epoch becomes unliveable.
+    pub fn restart(&mut self, new_restart_epoch: u64) {
+        self.restart_epoch = new_restart_epoch;
+        self.committed.clear();
+    }
+
+    /// Commit `decision` exactly once. Fails closed on stale restart epoch,
+    /// monotonic underflow, expiry, or replayed commit.
+    pub fn commit(
+        &mut self,
+        decision: &CompactionFederationDecision,
+        current_monotonic_elapsed_ms: u64,
+    ) -> Result<(), FederationLivenessError> {
+        check_federation_liveness(decision, self.restart_epoch, current_monotonic_elapsed_ms)?;
+        if !self.committed.insert(decision.identity.clone()) {
+            return Err(FederationLivenessError::AlreadyCommitted(
+                decision.identity.clone(),
+            ));
+        }
+        Ok(())
+    }
+}

@@ -88,7 +88,7 @@ fn response_schema_operation_and_controller_are_fenced() {
         let client = InstalledResidentController::new(binding(), Arc::new(move |request: membrane_protocol::ResidentHolderRequestV1| {
             let mut result = response(&request);
             if kind == 0 { result.schema_version += 1; }
-            if kind == 1 { result.operation = ResidentHolderOperationV1::Status; }
+            if kind == 1 { result.operation = ResidentHolderOperationV1::Acquire; }
             if kind == 2 { result.controller.installation_id = "other".into(); }
             Ok::<_, ClientError>(result)
         })).unwrap();

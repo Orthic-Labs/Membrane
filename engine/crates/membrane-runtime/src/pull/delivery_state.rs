@@ -246,7 +246,7 @@ mod tests {
     fn packet() -> Value {
         json!({
             "schemaVersion": 1, "traceId": "trace-1", "task": "task-1", "mode": "normal",
-            "budget": {}, "allocations": {}, "providerAccounting": {}, "omissions": [],
+            "budget": {"maxTokens": 100, "admittedTokens": 1}, "allocations": {}, "providerAccounting": {}, "omissions": [],
             "blocks": [{
                 "id": "evidence-1", "layer": 3, "provider": "blueprint", "sourceKind": "repo_code",
                 "sourceRef": "repo:evidence-1", "sourceHash": digest('d'),

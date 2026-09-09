@@ -743,13 +743,25 @@ fn wordprocessingml_text(xml: &str) -> String {
     let mut output = String::new();
     let mut cursor = 0usize;
     let len = xml.len();
+    // Table cells contain their own <w:p> paragraphs; nesting depth prevents the
+    // paragraph-close handling from injecting a blank-line break inside a cell,
+    // which would otherwise split the "cell | cell" delimiter across lines.
+    let mut table_cell_depth = 0usize;
     while cursor < len {
         let Some(lt_relative) = xml[cursor..].find('<') else {
             break;
         };
         cursor += lt_relative;
         let remainder = &xml[cursor..];
-        if remainder.starts_with("<w:t")
+        if remainder.starts_with("<w:tc")
+            && !remainder[5..].starts_with(|c: char| c.is_ascii_alphabetic())
+        {
+            table_cell_depth += 1;
+            let Some(end_relative) = remainder.find('>') else {
+                break;
+            };
+            cursor += end_relative + 1;
+        } else if remainder.starts_with("<w:t")
             && !remainder[4..].starts_with(|c: char| c.is_ascii_alphabetic())
         {
             let Some(open_end_relative) = remainder.find('>') else {
@@ -783,11 +795,12 @@ fn wordprocessingml_text(xml: &str) -> String {
             while output.ends_with(' ') || output.ends_with('\t') {
                 output.pop();
             }
-            if !output.ends_with("\n\n") {
+            if table_cell_depth == 0 && !output.ends_with("\n\n") {
                 output.push_str("\n\n");
             }
             cursor += "</w:p>".len();
         } else if remainder.starts_with("</w:tc>") {
+            table_cell_depth = table_cell_depth.saturating_sub(1);
             while output.ends_with(' ') {
                 output.pop();
             }

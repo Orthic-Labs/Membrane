@@ -256,7 +256,8 @@ fn standing_preference_is_delivered_regardless_of_query_shape() {
     // still receive the applicable standing preference: standing selection is
     // query-independent, not keyed to the caller's specific ask.
     let unrelated_query_context =
-        ScopeDimensions::normalize(&[("task".into(), "unrelated-topic".into())].into()).unwrap();
+        ScopeDimensions::normalize(&[("task_family".into(), "unrelated-topic".into())].into())
+            .unwrap();
     let result = select_preferences(&[standing.clone()], &unrelated_query_context, 8, "t");
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].id, standing.id);

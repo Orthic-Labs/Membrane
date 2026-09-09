@@ -569,6 +569,32 @@ mod tests {
             ("cortex-store/src/memdb.rs", "backout_v26_to_v25", 1, "migration-ladder backout"),
             ("cortex-store/src/memdb.rs", "backout_v27_to_v26", 1, "migration-ladder backout"),
             (
+                "membrane-blueprint/src/store.rs",
+                "open_store",
+                2,
+                "two raw opens of Blueprint's own graph.db (evidenced by \
+                 migration_backup_path naming graph.db.before-migrate-vN): a \
+                 probe Connection::open used only to read the pre-migration \
+                 schema version and stage the backup copy (dropped before the \
+                 real connection is made), then the real Connection::open that \
+                 becomes the returned, migrated handle; Blueprint owning its \
+                 own store twice in one function is not a Membrane->Blueprint \
+                 crossing",
+            ),
+            (
+                "membrane-blueprint/src/store.rs",
+                "open_store_read_only",
+                1,
+                "read-only open of the same Blueprint-owned graph.db",
+            ),
+            (
+                "membrane-blueprint/src/store.rs",
+                "repair_interrupted_migration",
+                1,
+                "reopens the same Blueprint-owned graph.db after restoring \
+                 its own pre-migration backup",
+            ),
+            (
                 "membrane-runtime/src/catalog.rs",
                 "open",
                 1,
@@ -579,6 +605,14 @@ mod tests {
                 "inventory_catalog_alternates",
                 1,
                 "alternate-candidate inventory probe",
+            ),
+            (
+                "membrane-runtime/src/catalog.rs",
+                "lookup_grant_until",
+                1,
+                "read-only sibling of Catalog::open: opens runtime's own \
+                 catalog.db (the G3B storage lane), never the Cortex durable \
+                 DB, for a deadline-bounded grant lookup",
             ),
             (
                 "membrane-runtime/src/cli.rs",

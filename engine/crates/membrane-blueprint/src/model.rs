@@ -170,8 +170,11 @@ pub struct RequestScope {
 pub struct GraphNode {
     pub id: String,
     pub kind: String,
+    #[serde(default)]
     pub path: Option<String>,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
     pub generation_id: String,
     #[serde(default)]
     pub evidence: Vec<Value>,

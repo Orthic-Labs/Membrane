@@ -841,8 +841,15 @@ fn read_blueprint_status_at(
     exchange_blueprint_status(&mut stream, repo_root)
 }
 
+/// Public Hub-snapshot seam: this must go through the real Blueprint daemon
+/// IPC endpoint, not the native in-process dispatch used by freshness
+/// evaluation. An absent/unreachable daemon must surface as an error here
+/// (mapped to `transport_unavailable` by callers) rather than silently
+/// succeeding via local one-shot execution — otherwise the Hub snapshot
+/// would report Blueprint as Available even when no daemon is running.
 pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
-    read_blueprint_status_until(repo_root, None)
+    let endpoint = hub_blueprint_endpoint()?;
+    read_blueprint_status_at(&endpoint, repo_root)
 }
 
 fn read_blueprint_status_until(repo_root: &Path, deadline: Option<membrane_federation::deadline::Deadline>) -> Result<serde_json::Value, String> {

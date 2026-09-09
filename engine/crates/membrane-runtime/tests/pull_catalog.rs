@@ -843,9 +843,23 @@ fn memory_read_resolves_exact_hash_and_scope_through_public_mcp_owner() {
     let task_id = "task-workspace";
     let session_id = "session-workspace";
     let child_repository_id = membrane_federation::root::canonical_repository_id(&child);
+    // The inner federation engine (membrane-federation's `root.rs`) has no
+    // knowledge of the project registry's logical repository ids; it always
+    // derives `repository_id` from the canonicalized filesystem root
+    // (`canonical_repository_id`). `RuntimeScopeGrantSource::grant` checks
+    // the sub-request's canonical id against this grant's `repository_ids`,
+    // a different space than the logical ids `authorized_workspace_targets`
+    // validates against. Both spaces must be present for every workspace
+    // target the grant is meant to cover, exactly as already done for the
+    // child target below — the primary root target needs its own canonical
+    // id here too, or its own sub-federation call fails scope-grant binding
+    // with `scope_grant_repository_mismatch` even though the logical grant
+    // is otherwise valid for it.
+    let root_repository_id = membrane_federation::root::canonical_repository_id(&root);
     let repositories = vec![
         "repo-memory-read".to_owned(),
         "repo-child".to_owned(),
+        root_repository_id,
         child_repository_id,
     ];
     let issue = |id: &str, repository_ids: &[String]| {

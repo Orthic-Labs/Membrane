@@ -72,17 +72,17 @@ pub fn resolver_probe(store: &RecoveryStore, scope: &RecoveryScope) -> Result<Va
     let mut proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
     proofs.retain(|_, proof| proof.expires > now);
     if let Some((token, proof)) = proofs.iter().find(|(_, proof)|
-        proof.scope == scope.binding() && proof.store_id == store_id && proof.expires.saturating_sub(now) > CONSUMER_PROOF_REUSE_FLOOR_MS)
+        proof.scope == scope.consumer_proof_scope() && proof.store_id == store_id && proof.expires.saturating_sub(now) > CONSUMER_PROOF_REUSE_FLOOR_MS)
     {
         return Ok(probe_payload(token.clone(), store_id, proof.expires));
     }
-    proofs.retain(|_, proof| !(proof.scope == scope.binding() && proof.store_id == store_id));
+    proofs.retain(|_, proof| !(proof.scope == scope.consumer_proof_scope() && proof.store_id == store_id));
     if proofs.len() >= MAX_CONSUMER_PROOFS { return Err(RecoveryError::Limit); }
     let mut nonce = [0u8; 32];
     getrandom::fill(&mut nonce).map_err(|_| RecoveryError::Unavailable)?;
     let token = hex::encode(nonce);
     let expires = now + CONSUMER_PROOF_TTL_MS;
-    proofs.insert(token.clone(), ConsumerProof { scope: scope.binding().into(), store_id: store_id.clone(), expires });
+    proofs.insert(token.clone(), ConsumerProof { scope: scope.consumer_proof_scope().into(), store_id: store_id.clone(), expires });
     Ok(probe_payload(token, store_id, expires))
 }
 pub(crate) fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: Option<&str>) -> Result<bool, RecoveryError> {
@@ -91,7 +91,7 @@ pub(crate) fn can_resolve(store: &RecoveryStore, scope: &RecoveryScope, token: O
     let now = recovery::now_ms();
     let mut proofs = consumers().lock().map_err(|_| RecoveryError::Unavailable)?;
     proofs.retain(|_, proof| proof.expires > now);
-    Ok(proofs.get(token).is_some_and(|p| p.scope == scope.binding() && p.store_id == id))
+    Ok(proofs.get(token).is_some_and(|p| p.scope == scope.consumer_proof_scope() && p.store_id == id))
 }
 fn exact_delivery(text: &str) -> PreparedDelivery {
     let hash = format!("sha256:{}", recovery::digest(text.as_bytes()));
@@ -117,20 +117,49 @@ fn measure(delivery: &mut PreparedDelivery, baseline: Option<usize>) -> Result<u
     Err(RecoveryError::Corrupt)
 }
 fn fold_log(source: &str) -> Result<String, RecoveryError> {
-    let mut runs: Vec<(String, usize)> = Vec::new();
+    // Dictionary-encode distinct lines, referenced by index, and run-length
+    // encode the resulting index sequence as (idx, run_length) pairs. The
+    // dictionary captures repetition regardless of position (e.g. a small
+    // set of recurring lines that interleave rather than repeat back-to-back,
+    // where adjacency-only RLE yields zero savings or JSON-envelope
+    // inflation); the run-length pass on top of it captures long adjacent
+    // repeats of the same line (e.g. a line repeated thousands of times in a
+    // row), where a flat per-line index list would itself dominate the
+    // output size. Combining both keeps the codec small on either shape
+    // while remaining fully reversible and self-verified.
+    let mut dict: Vec<String> = Vec::new();
+    let mut index_of: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut runs: Vec<(usize, usize)> = Vec::new();
     for line in source.split_inclusive('\n') {
-        if let Some((last, count)) = runs.last_mut().filter(|(last, _)| last.as_str() == line) { let _ = last; *count += 1; }
-        else { runs.push((line.into(), 1)); }
-        if runs.len() > 100_000 { return Err(RecoveryError::Limit); }
+        let idx = match index_of.get(line) {
+            Some(&idx) => idx,
+            None => {
+                let idx = dict.len();
+                dict.push(line.to_string());
+                index_of.insert(line, idx);
+                idx
+            }
+        };
+        match runs.last_mut() {
+            Some((last_idx, count)) if *last_idx == idx => *count += 1,
+            _ => runs.push((idx, 1)),
+        }
+        if runs.len() > 100_000 || dict.len() > 100_000 { return Err(RecoveryError::Limit); }
     }
-    let wire = serde_json::to_string(&json!({"encoding":"membrane.rle-lines.v1","runs":runs})).map_err(|_| RecoveryError::Corrupt)?;
+    let wire = serde_json::to_string(&json!({"encoding":"membrane.dict-rle.v1","dict":dict,"runs":runs}))
+        .map_err(|_| RecoveryError::Corrupt)?;
     let decoded: Value = serde_json::from_str(&wire).map_err(|_| RecoveryError::Corrupt)?;
+    let decoded_dict = decoded["dict"].as_array().ok_or(RecoveryError::Corrupt)?;
     let mut restored = String::new();
-    for run in decoded["runs"].as_array().ok_or(RecoveryError::Corrupt)? {
-        let text = run[0].as_str().ok_or(RecoveryError::Corrupt)?;
-        let count = run[1].as_u64().ok_or(RecoveryError::Corrupt)? as usize;
-        if text.len().checked_mul(count).and_then(|n| restored.len().checked_add(n)).is_none_or(|n| n > recovery::MAX_ARTIFACT_BYTES) { return Err(RecoveryError::Limit); }
-        for _ in 0..count { restored.push_str(text); }
+    for entry in decoded["runs"].as_array().ok_or(RecoveryError::Corrupt)? {
+        let pair = entry.as_array().ok_or(RecoveryError::Corrupt)?;
+        let idx = pair.first().and_then(Value::as_u64).ok_or(RecoveryError::Corrupt)? as usize;
+        let count = pair.get(1).and_then(Value::as_u64).ok_or(RecoveryError::Corrupt)?;
+        let text = decoded_dict.get(idx).and_then(Value::as_str).ok_or(RecoveryError::Corrupt)?;
+        for _ in 0..count {
+            if restored.len().checked_add(text.len()).is_none_or(|n| n > recovery::MAX_ARTIFACT_BYTES) { return Err(RecoveryError::Limit); }
+            restored.push_str(text);
+        }
     }
     if restored != source { return Err(RecoveryError::Corrupt); }
     Ok(wire)

@@ -300,7 +300,20 @@ impl FederationEngine {
                 .map(|anchor| anchor.value.clone())
                 .collect(),
             scope_grant,
-            normalized.release_generation.clone(),
+            // Providers stamp their answers with `context.query().generation`
+            // (see `ProviderContext::query`), and `admit_generation` below
+            // admits a candidate only when that stamp equals
+            // `expected_generation` -- the freshness-preferred value, not the
+            // raw caller-supplied release generation. Passing the raw value
+            // here made every provider that trusts the context (Cortex among
+            // them) stamp a generation admission could never agree with
+            // whenever a freshness snapshot exists, dropping their evidence
+            // as spuriously `generation_incoherent` on every request. Git
+            // alone survived because its provider derives its own generation
+            // independently of this context field. Pass the same value
+            // admission checks so a provider's stamp and the admission
+            // binding agree.
+            expected_generation.map(str::to_owned),
             freshness.snapshot.clone(),
             deadline.instant(),
             cancellation,
@@ -308,11 +321,24 @@ impl FederationEngine {
             self.sources.clone(),
         );
 
+        // `FederationConfig` enablement is the caller's direct, explicit
+        // expression of which lanes this request may query — it is a
+        // stronger, more specific signal than the lexical requirement
+        // classifier (`plan_acquisition`), which only advises coverage and
+        // omission reporting (see `coverage_map` below and the acquisition
+        // plan recorded on the response). Gating `active` on the lexical
+        // classifier as well silently narrowed away explicitly enabled
+        // lanes whenever the task text or caller `sufficiencyContract`
+        // named a provider the classifier did not independently select
+        // (e.g. Blueprint/Cortex for a task with no lexical "why/how"
+        // signal), breaking explicit enablement and any caller-strengthened
+        // sufficiency contract that pointed at those lanes. Enablement
+        // alone decides which lanes run; the acquisition plan continues to
+        // drive coverage/omission accounting unchanged.
         let active: Vec<ProviderId> = self
             .config
             .expected_providers()
-            .filter(|provider| self.config.is_enabled(*provider)
-                && acquisition_plan.providers.contains(provider))
+            .filter(|provider| self.config.is_enabled(*provider))
             .collect();
         let fatal = CancellationToken::new();
         let tasks = self.provider_tasks(&active, fatal.clone());

@@ -55,13 +55,23 @@ pub fn execute_with_control(operation: &str, arguments: &Value,
         let task_id = if requires_identity {
             let task_id = arguments.get("taskId").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or("push_task_required")?;
             let request_session = arguments.get("sessionId").and_then(Value::as_str).filter(|id| !id.trim().is_empty()).ok_or("push_session_required")?;
+            // When a request-time ceiling (H8) is supplied, its own identity/
+            // freshness validation names the actual defect (an H8 whose bound
+            // session/task/staleness does not hold) more precisely than the
+            // raw scope-binding comparison below. Check it first so a request
+            // carrying an invalid H8 is refused as `push_h8_invalid` rather
+            // than the coarser `push_session_binding_denied`, which is
+            // reserved for identity mismatches on requests that carry no H8
+            // at all.
+            if arguments.get("remainingContextCeiling").is_some() && ceiling.is_none() {
+                return Err("push_h8_invalid".into());
+            }
             if request_session != session { return Err("push_session_binding_denied".into()); }
             Some(task_id)
         } else { None };
         if arguments.get("repository").and_then(Value::as_str) != Some(repository) {
             return Err("caller_scope_binding_denied".into());
         }
-        if arguments.get("remainingContextCeiling").is_some() && ceiling.is_none() { return Err("push_h8_invalid".into()); }
         crate::authorization::authorize(&crate::authorization::AuthorizationRequest {
             caller_root:root, caller_repository_id:repository, caller_scope_id:session,
             caller_scope_descriptor:caller.get("scopeDescriptor"), target_repository:repository,

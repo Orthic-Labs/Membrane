@@ -285,10 +285,39 @@ fn run_skill_read(
     ))
 }
 
-/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `CORTEX_DB`, else an error with the
-/// exact fix. The old implicit `~/.cortex/memory.db` fallback silently forked the corpus — a
-/// bare CLI call talked to a stale ghost DB while serve wrote the canonical one (`metrics`
-/// reported 0 recalls against 774 real). Same treatment as the embedder's fail-loud precedent.
+/// Last-resort dev-only fallback: the workspace root implied by where this crate's own source
+/// was compiled from (`CARGO_MANIFEST_DIR`, baked in at build time), walked up to the repo root
+/// and joined with the SAME workspace-canonical db path `serve` writes. This is distinct from
+/// the removed `~/.cortex/memory.db` fallback below: that one silently resolved to a divergent
+/// per-user ghost DB, while this one only ever resolves to the one canonical location — and only
+/// when that location's directory already exists in this checkout, so it never fires against an
+/// unrelated build. It exists so a locally built binary run straight out of a repo checkout
+/// (tests, ad hoc `cargo run`) still finds the canonical dev DB without exporting `CORTEX_DB`,
+/// while a genuinely installed product still resolves through `current_deployed_runtime()` first.
+fn dev_workspace_db_path() -> Option<PathBuf> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir.parent()?.parent()?.parent()?;
+    let db = workspace_root.join("tools/.cache/memory/cortex-engine.db");
+    if !db.parent()?.is_dir() {
+        return None;
+    }
+    // The directory existing is not enough: several explicit CLI paths (e.g. `cli doctor`,
+    // which reads through `doctor::run_with_policy` with `SQLITE_OPEN_READ_ONLY`) open this
+    // path read-only and cannot create it themselves. A fresh checkout only has the directory,
+    // not the file, so create-and-migrate it once here (via the same `MemDb::open` every
+    // write path already uses) so every explicit operation — not just write-capable ones —
+    // finds a real, schema-migrated database with no Hub/holder/interpreter involved.
+    if !db.is_file() {
+        MemDb::open(&db).ok()?;
+    }
+    Some(db)
+}
+
+/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `CORTEX_DB`, else the deployed
+/// runtime's db, else the dev-workspace fallback above, else an error with the exact fix. The
+/// old implicit `~/.cortex/memory.db` fallback silently forked the corpus — a bare CLI call
+/// talked to a stale ghost DB while serve wrote the canonical one (`metrics` reported 0 recalls
+/// against 774 real). Same treatment as the embedder's fail-loud precedent.
 fn resolve_db(
     flag: Option<String>,
     env: Option<String>,
@@ -4122,10 +4151,14 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         println!("{}", build_info());
         return Ok(());
     }
+    let dev_fallback_db = dev_workspace_db_path();
     let db = resolve_db(
         cli.db,
         std::env::var("CORTEX_DB").ok(),
-        deployed.as_ref().map(|runtime| runtime.db.as_path()),
+        deployed
+            .as_ref()
+            .map(|runtime| runtime.db.as_path())
+            .or(dev_fallback_db.as_deref()),
     )?;
     match cli.cmd {
         Cmd::BuildInfo | Cmd::ExplicitCall | Cmd::ResidentHolder { .. } | Cmd::Blueprint { .. } | Cmd::Installation { .. } | Cmd::Ledger { .. } | Cmd::Adapt { .. } => {

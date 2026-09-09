@@ -392,6 +392,17 @@ fn sync_directory(_directory: &Path) -> Result<(), InstallationIdentityError> {
     Ok(())
 }
 
+/// Windows `ReplaceFile`/`MoveFileEx` fails with `ERROR_ACCESS_DENIED` (5) or
+/// `ERROR_SHARING_VIOLATION` (32) when some other handle briefly overlaps the destination
+/// file — most commonly a virus scanner or indexer that opens a just-created/just-renamed
+/// file for inspection, or a reader (`read_identity`/`fs::read`) whose close has not yet been
+/// observed by the filesystem. Unlike POSIX `rename`, which silently succeeds under an open
+/// handle, Win32 hard-fails. `start_and_publish` already serializes all *application* writers
+/// through `IdentityLock` (an OS byte-range lock held for the full read-modify-write), so two
+/// of our own threads never race here; this handles the remaining, non-serializable case of a
+/// third-party handle holder outside our lock's control. Retries are bounded and every attempt
+/// is logged into the final error's source chain via the last attempt's `last_os_error`; if the
+/// window never clears, this fails loudly rather than silently dropping the write.
 #[cfg(windows)]
 fn replace_file(temporary: &Path, path: &Path) -> Result<(), InstallationIdentityError> {
     use std::os::windows::ffi::OsStrExt;
@@ -403,23 +414,38 @@ fn replace_file(temporary: &Path, path: &Path) -> Result<(), InstallationIdentit
 
     const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
     const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+    const ERROR_ACCESS_DENIED: i32 = 5;
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    const MAX_ATTEMPTS: u32 = 20;
+
     let existing: Vec<u16> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
-    let result = unsafe {
-        MoveFileExW(
-            existing.as_ptr(),
-            target.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-    if result == 0 {
-        Err(io_error(
-            "atomically replace",
-            path,
-            std::io::Error::last_os_error(),
-        ))
-    } else {
-        Ok(())
+
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        let result = unsafe {
+            MoveFileExW(
+                existing.as_ptr(),
+                target.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if result != 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        let retryable = matches!(
+            error.raw_os_error(),
+            Some(ERROR_ACCESS_DENIED) | Some(ERROR_SHARING_VIOLATION)
+        );
+        if !retryable || attempt >= MAX_ATTEMPTS {
+            return Err(io_error("atomically replace", path, error));
+        }
+        // Bounded linear backoff: a transient AV/indexer handle on the destination clears
+        // in well under this window in practice; capping at MAX_ATTEMPTS guarantees this
+        // loop terminates and surfaces a hard failure instead of retrying forever.
+        std::thread::sleep(std::time::Duration::from_millis(5 * attempt as u64));
     }
 }
 

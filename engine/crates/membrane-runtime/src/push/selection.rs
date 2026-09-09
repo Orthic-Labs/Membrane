@@ -101,6 +101,30 @@ pub fn parse_request_time_h8(
         .ok_or(RequestTimeH8Error::Missing)?;
     let ceiling: RemainingContextCeilingV1 = serde_json::from_value(raw.clone())
         .map_err(|error| RequestTimeH8Error::Invalid(error.to_string()))?;
+
+    // An imprecise/inexact observation (e.g. `Complete` coverage claimed
+    // without a value, or genuinely `Partial`/`Unavailable` coverage) must be
+    // refused as typed `Inexact` rather than surfacing as a generic `Invalid`
+    // schema error. Check these coverage/value obligations directly, before
+    // the general structural `validate()` pass below, so a malformed-but-
+    // inexact ceiling is never misreported as merely `Invalid`: a fake or
+    // imprecise H8 must never be accepted under either error shape.
+    if ceiling.task_id.coverage != ObservationCoverageV1::Complete
+        || ceiling.task_id.value.is_none()
+    {
+        return Err(RequestTimeH8Error::Inexact {
+            coverage: ceiling.task_id.coverage,
+            reason: ceiling.task_id.unavailable_reason,
+        });
+    }
+    let estimate = &ceiling.remaining_tokens.estimate;
+    if estimate.coverage != ObservationCoverageV1::Complete || estimate.value.is_none() {
+        return Err(RequestTimeH8Error::Inexact {
+            coverage: estimate.coverage,
+            reason: estimate.unavailable_reason,
+        });
+    }
+
     ceiling
         .validate()
         .map_err(|error| RequestTimeH8Error::Invalid(error.to_string()))?;
@@ -119,18 +143,9 @@ pub fn parse_request_time_h8(
         ));
     }
 
-    if ceiling.task_id.coverage != ObservationCoverageV1::Complete {
-        return Err(RequestTimeH8Error::Inexact {
-            coverage: ceiling.task_id.coverage,
-            reason: ceiling.task_id.unavailable_reason,
-        });
-    }
-    let observed_task = ceiling.task_id.value.as_deref().ok_or_else(|| {
-        RequestTimeH8Error::Inexact {
-            coverage: ceiling.task_id.coverage,
-            reason: ceiling.task_id.unavailable_reason,
-        }
-    })?;
+    let observed_task = ceiling.task_id.value.as_deref().expect(
+        "task_id value presence already checked above for Complete coverage",
+    );
     if observed_task.trim().is_empty() {
         return Err(RequestTimeH8Error::Invalid(
             "taskId value must not be empty".to_owned(),
@@ -141,14 +156,6 @@ pub fn parse_request_time_h8(
             field: "taskId",
             expected: expected_task_id.to_owned(),
             observed: observed_task.to_owned(),
-        });
-    }
-
-    let estimate = &ceiling.remaining_tokens.estimate;
-    if estimate.coverage != ObservationCoverageV1::Complete || estimate.value.is_none() {
-        return Err(RequestTimeH8Error::Inexact {
-            coverage: estimate.coverage,
-            reason: estimate.unavailable_reason,
         });
     }
 

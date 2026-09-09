@@ -807,7 +807,7 @@ fn arbitrary_batch_text_claiming_standing_preference_authority_is_refused() {
         &body,
     );
     assert_eq!(
-        status, 400,
+        status, 403,
         "an ordinary batch item cannot mint itself a standing preference: got {payload}"
     );
 
@@ -849,7 +849,7 @@ fn arbitrary_batch_text_claiming_adapt_artifact_family_is_refused() {
         "/v1/memories:batch",
         &body,
     );
-    assert_eq!(status, 400, "borrowing the adapt artifact_family must not bypass admission");
+    assert_eq!(status, 403, "borrowing the adapt artifact_family must not bypass admission");
 }
 
 #[test]
@@ -869,7 +869,7 @@ fn ordinary_batch_text_without_reserved_claims_is_admitted_as_unprivileged() {
         "/v1/memories:batch",
         &body,
     );
-    assert_eq!(status, 200, "an unprivileged batch item must still be admitted: {payload}");
+    assert_eq!(status, 201, "an unprivileged batch item must still be admitted: {payload}");
 }
 
 // --- BM07: bounded coherent episode proposals must not promote scratch
@@ -898,7 +898,7 @@ fn working_tier_scratch_item_is_not_promoted_to_semantic_by_plain_admission() {
         "/v1/memories:batch",
         &body,
     );
-    assert_eq!(status, 200, "plain admission of a scratch item should still succeed: {payload}");
+    assert_eq!(status, 201, "plain admission of a scratch item should still succeed: {payload}");
 
     let tier: String = store
         .db()

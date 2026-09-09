@@ -221,7 +221,8 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 /// cortex-core, so the two lists are kept in lockstep by an equality test in
 /// membrane-runtime (which depends on both) and by the `CHECK` constraint in
 /// [`MEMORY_RELATION_SCHEMA`].
-pub const CANONICAL_RELATIONS: &[&str] = &["supports", "contradicts", "supersedes", "derived_from"];
+pub const CANONICAL_RELATIONS: &[&str] =
+    &["supports", "contradicts", "supersedes", "derived_from", "enriches"];
 
 /// True when `relation` is a member of the closed CTX-017 vocabulary.
 pub fn is_canonical_relation(relation: &str) -> bool {
@@ -402,7 +403,7 @@ CREATE TABLE IF NOT EXISTS memory_relation (
     relation_id         TEXT PRIMARY KEY,
     source_id           TEXT NOT NULL,
     target_id           TEXT NOT NULL,
-    relation            TEXT NOT NULL CHECK(relation IN ('supports','contradicts','supersedes','derived_from')),
+    relation            TEXT NOT NULL CHECK(relation IN ('supports','contradicts','supersedes','derived_from','enriches')),
     provenance_producer TEXT NOT NULL CHECK(trim(provenance_producer) <> ''),
     provenance_ref      TEXT NOT NULL CHECK(trim(provenance_ref) <> ''),
     created_at          TEXT NOT NULL,

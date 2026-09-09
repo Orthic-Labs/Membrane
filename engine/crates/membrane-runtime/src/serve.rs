@@ -6597,6 +6597,15 @@ mod tests {
         implemented.insert(("GET", "/livez"));
         implemented.insert(("POST", "/scratchpad"));
         implemented.insert(("POST", "/scratchpad/session-close"));
+        // resident-holder is dispatched inline in `dispatch()` ahead of
+        // `route_with_context_ingest_lease` (using `Method::POST`, not the
+        // string-literal form the parser above scans for), the same way
+        // snapshot/livez/scratchpad are handled before dispatch.
+        assert!(
+            source.contains("method == Method::POST && path == \"/resident-holder\""),
+            "resident-holder handler condition changed; update this explicit registration"
+        );
+        implemented.insert(("POST", "/resident-holder"));
 
         let registered: std::collections::HashSet<_> = HTTP_ROUTE_SPECS
             .iter()

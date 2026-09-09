@@ -128,5 +128,14 @@ fn ranking_negative_control_confidence_and_hop_factors_must_move_order_independe
 fn impact_reports_uncertainty_class() {
     let mut request = BlueprintRequest::new("q", Operation::Impact, "/repo"); request.generation = Some("generation-query".into()); request.input["nodeId"] = json!("symbol:src/a.rs::run");
     let result = execute_query(&generation(), &request, &context(&request)).unwrap();
-    assert_eq!(result["impact"][0]["class"], "known");
+    // BM04 supersedes the old two-value known/unknown impact classification
+    // with the four-value frontier taxonomy (known_structural_dependency,
+    // possible_impact, unresolved_dynamic_surface, not_observed) so that an
+    // unresolved/targetless frontier edge is carried through traversal and
+    // classified rather than filtered before classification. This fixture's
+    // edge is a resolved CALLS edge with EXACT_RESOLUTION provenance, which
+    // BM04's taxonomy classifies as a known structural dependency (not proof
+    // of behavioral impact) -- see ImpactFrontierClass::classify in
+    // engine/crates/membrane-blueprint/src/model.rs.
+    assert_eq!(result["impact"][0]["class"], "known_structural_dependency");
 }
