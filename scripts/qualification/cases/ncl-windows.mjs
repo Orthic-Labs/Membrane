@@ -112,10 +112,16 @@ export function NCL_01(context) {
   const missingFields = rows.filter((r) => !r.path || !r.action || !r.owner || !r.requiredProof);
   const inventoryPaths = new Set(rows.map((r) => r.path));
   const live = listLiveInterpretedFiles(root);
-  const liveSet = new Set(live);
 
   const unclassified = live.filter((p) => !inventoryPaths.has(p));
-  const deadEntries = rows.filter((r) => r.path && !liveSet.has(r.path)).map((r) => r.path);
+  // A "dead" entry is an inventory path absent from disk -- a plain filesystem existence
+  // check, independent of the interpreted-extension filter used for liveSet. liveSet is
+  // extension-filtered (INTERPRETED_EXTENSIONS), so it wrongly excludes extensionless
+  // launchers (blueprint, blueprint-mcp) and non-listed extensions (.bash, .rb), making
+  // every such inventory row look "dead" even though the file exists on disk. The
+  // unclassified check above is correctly extension-filtered (it only cares about live
+  // interpreted files missing from the inventory); the dead check below must not be.
+  const deadEntries = rows.filter((r) => r.path && !existsSync(join(root, r.path))).map((r) => r.path);
   const windowsLaunchers = live.filter((p) => p.endsWith(".ps1") || p.endsWith(".cmd"));
   const missingLaunchers = windowsLaunchers.filter((p) => !inventoryPaths.has(p));
 
