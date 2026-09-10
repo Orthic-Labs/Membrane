@@ -787,7 +787,11 @@ pub(crate) fn native_route_response_with_deadline(
             .to_string(),
         ),
         Err(NativeRouteError::Internal(error)) => {
-            (502, serde_json::json!({"error": error}).to_string())
+            if error.to_ascii_lowercase().contains("deadline") {
+                federation_timeout_refusal(error, started.elapsed().as_millis() as u64)
+            } else {
+                (502, serde_json::json!({"error": error}).to_string())
+            }
         }
     }
 }
@@ -1022,7 +1026,23 @@ fn final_requirement_evidence_map(
                 journey.state = membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredAccepted;
             }
         } else if matches!(journey.state, membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredAccepted) {
-            journey.state = membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredBudgetDropped;
+            let rejection = selected
+                .get("omissions")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|omission| {
+                    omission.get("id").and_then(Value::as_str)
+                        == Some(journey.evidence_id.as_str())
+                })
+                .and_then(|omission| omission.get("reason"))
+                .and_then(Value::as_str)
+                .is_some_and(|reason| reason != "budget_exhausted");
+            journey.state = if rejection {
+                membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredRejected
+            } else {
+                membrane_federation::requirements::CandidateJourneyStateV1::DiscoveredBudgetDropped
+            };
         }
     }
     let satisfied_dimensions = coverage.journeys.iter().filter(|journey| {
@@ -1043,6 +1063,51 @@ fn request_time_refusal(
             "error": "request_time_selection_refused",
             "kind": error.kind(),
             "reason": error.to_string(),
+        })
+        .to_string(),
+    )
+}
+
+fn federation_timeout_refusal(error: String, elapsed_ms: u64) -> (u16, String) {
+    let omission = serde_json::json!({
+        "id": "federation:timeout",
+        "layer": Value::Null,
+        "reason": "provider_timeout",
+        "detailId": error,
+        "stage": "federation",
+    });
+    (
+        504,
+        serde_json::json!({
+            "transport": "native",
+            "sourceResponse": {
+                "schemaVersion": 1,
+                "provider": "federation",
+                "complete": false,
+                "warnings": [{"code": "provider_timeout", "detailId": "deadline_exceeded"}],
+                "value": {"candidates": [], "omissions": [omission.clone()]},
+            },
+            "finalAdmission": {
+                "status": "blocked",
+                "candidateCount": 0,
+                "omissions": [omission.clone()],
+            },
+            "packet": {
+                "schemaVersion": 1,
+                "blocks": [],
+                "omissions": [omission],
+            },
+            "providerDiagnostics": [{
+                "provider": "federation",
+                "status": "timeout",
+                "generation": "unknown",
+                "freshness": "unknown",
+                "elapsedMs": elapsed_ms,
+                "cancellation": false,
+                "errors": ["provider_timeout"],
+                "fallback": "none",
+                "candidateCount": 0,
+            }],
         })
         .to_string(),
     )
