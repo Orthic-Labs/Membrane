@@ -58,13 +58,14 @@ test('BM12 is exported as a registry-callable function (run.mjs requires moduleE
   assert.equal(typeof BM12, 'function', 'BM12 export must be a function for run.mjs runOneRegistryCase');
 });
 
-test('BM12(context) returns a run.mjs-compatible outcome and reports passed with an accurate reason against the live source tree', () => {
+test('BM12(context) returns a run.mjs-compatible outcome and reports passed with installed Ledger evidence', () => {
   const outcome = BM12({ row: { id: 'BM12', caseFile: 'scripts/qualification/cases/ldg-windows.mjs', caseExport: 'BM12' } });
   assert.ok(outcome && typeof outcome === 'object', 'BM12(context) must return an object');
-  assert.equal(outcome.evidenceKind, 'source');
+  assert.equal(outcome.evidenceKind, 'installed');
   assert.ok(['passed', 'failed'].includes(outcome.status), 'status must be a run.mjs-recognized terminal status');
   assert.equal(outcome.status, 'passed', `BM12(context) did not pass against the live source tree: ${outcome.reason}`);
   assert.ok(typeof outcome.reason === 'string' && outcome.reason.length > 0, 'BM12(context) must record an accurate reason');
+  assert.equal(outcome.detail.installed.detail.staleRefused, true, 'BM12 must prove stale source evidence is refused');
 });
 
 test('every installed LDG case currently passes against the live source tree', () => {

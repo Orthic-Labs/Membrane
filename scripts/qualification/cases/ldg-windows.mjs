@@ -63,6 +63,54 @@ function enrolledRepo(cli, context) {
   return { repo, status };
 }
 
+function probeBm12Installed(cli, context) {
+  const root = context.enrolledRoot || context.workspaceRoot || context.repoRoot || REPO_ROOT;
+  if (!path.isAbsolute(root) || !existsSync(root)) {
+    return { status: 'failed', evidenceKind: 'installed', detail: { id: 'BM12', root }, reason: 'enrolled qualification workspace root is unavailable' };
+  }
+  const fixtureName = `.bm12-${process.pid}-${Date.now()}.md`;
+  const fixturePath = path.join(root, fixtureName);
+  const original = '# BM12 source authority\n\nsource-owned bytes\n\n## Exact section\n';
+  const changed = '# BM12 source authority\n\nchanged source-owned bytes\n\n## Exact section\n';
+  try {
+    writeFileSync(fixturePath, original, 'utf8');
+    const { status } = enrolledRepo(cli, { ...context, workspaceRoot: root });
+    const outline = ledgerCommand(cli, ['outline', '--repo', root, '--path', fixtureName, '--json']);
+    const section = outline.sections?.[0];
+    if (outline.schemaVersion !== 'DocOutlineV1' || !outline.sourceRef || !outline.contentHash || !section?.anchorId || !section.spanHash) {
+      throw new Error('installed Ledger outline lacked source-bound hash and anchor evidence');
+    }
+    const exact = ledgerCommand(cli, [
+      'read', '--repo', root, '--source-ref', outline.sourceRef, '--anchor', section.anchorId,
+      '--expected-hash', outline.contentHash, '--expected-span-hash', section.spanHash, '--max-bytes', '2000',
+    ]);
+    const rendered = exact.section?.content || exact.content || '';
+    if (exact.ok !== true || exact.sourceKind !== 'worktree' || exact.sourceRef !== outline.sourceRef || !rendered.includes('source-owned bytes')) {
+      throw new Error('installed Ledger exact read did not return source-bound current bytes');
+    }
+    writeFileSync(fixturePath, changed, 'utf8');
+    let staleRefused = false;
+    try {
+      ledgerCommand(cli, [
+        'read', '--repo', root, '--source-ref', outline.sourceRef, '--anchor', section.anchorId,
+        '--expected-hash', outline.contentHash, '--expected-span-hash', section.spanHash, '--max-bytes', '2000',
+      ]);
+    } catch (error) {
+      staleRefused = /stale|changed|hash|revision/i.test(error.message);
+    }
+    if (!staleRefused) throw new Error('installed Ledger accepted an index-bound read after source bytes changed');
+    return {
+      status: 'passed', evidenceKind: 'installed',
+      detail: { id: 'BM12', root, repositoryId: status.repositoryId, sourceRef: outline.sourceRef, rawContentHash: outline.contentHash, exactSourceKind: exact.sourceKind, staleRefused },
+      reason: 'installed Ledger resolved source-owned bytes with hash-bound provenance & refused stale index evidence',
+    };
+  } catch (error) {
+    return { status: 'failed', evidenceKind: 'installed', detail: { id: 'BM12', root }, reason: `BM12 installed probe failed: ${error.message}` };
+  } finally {
+    try { rmSync(fixturePath, { force: true }); } catch {}
+  }
+}
+
 function registryOutcome(id, requirement, context = {}) {
   const cli = context.cliPath || process.env.MEMBRANE_CLI_PATH || 'membrane';
   if (id === 'LDG-002') {
@@ -665,19 +713,24 @@ export function BM12(context) {
       .filter((control) => control.status !== 'pass')
       .map((control) => `${control.id}: ${control.error ?? 'did not pass'}`),
   ];
+  const installed = allPassed ? probeBm12Installed(context?.cliPath || process.env.MEMBRANE_CLI_PATH || 'membrane', context || {}) : null;
+  const installedPassed = installed?.status === 'passed';
   return {
-    status: allPassed ? 'passed' : 'failed',
-    evidenceKind: 'source',
+    status: installedPassed ? 'passed' : 'failed',
+    evidenceKind: installed?.evidenceKind || 'installed',
     detail: {
       id: 'BM12',
       requirement: result.requirement,
       positive: result.positive,
       negativeControls,
+      installed,
       rowId: context && typeof context === 'object' ? context.row?.id ?? null : null,
     },
-    reason: allPassed
-      ? `BM12: source-authority contract holds -- ${result.positive?.evidence}; negative controls BM12-NC-M10 and BM12-NC-R56 both correctly reject their injected faults`
-      : `BM12: not proven -- ${failingParts.join('; ')}`,
+    reason: installedPassed
+      ? `BM12: ${installed.reason}; source check & negative controls also pass`
+      : allPassed
+        ? installed?.reason || 'BM12: installed probe did not pass'
+        : `BM12: not proven -- ${failingParts.join('; ')}`,
   };
 }
 
