@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T21:44:41.062Z",
+ "generatedAt": "2026-09-10T21:56:23.351Z",
  "enforcementMode": "sealed",
  "policyDigest": "7547c188550e51aa529e96a3b173e30765aa70566baa0b19955445b601e53a14",
  "totals": {
-  "files": 1084,
+  "files": 1085,
   "rows": 39,
   "byRuntime": {
    "python": 7,
@@ -1645,6 +1645,7 @@
     "scripts/qualification/cases/mem-windows.mjs",
     "scripts/qualification/cases/mem-windows.test.mjs",
     "scripts/qualification/cases/ncl-windows.mjs",
+    "scripts/qualification/cases/ncl-windows.test.mjs",
     "scripts/qualification/cases/pkg-windows.mjs",
     "scripts/qualification/cases/pkg-windows.test.mjs",
     "scripts/qualification/cases/psh-windows.mjs",
@@ -1702,7 +1703,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "7a0d7230b1bc79678bb692562a9d39389c4474ab9b366daabaaf3c8066b7e368"
+   "content_digest": "d5505ea80d8512a9b47ba66318eeaffc9bdb5b322937dae143f5d16655a2eb5b"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
