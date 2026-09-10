@@ -2,8 +2,8 @@
  "schemaVersion": 2,
  "artifact": "membrane.invocation-graph",
  "repository": "Orthic-Labs/Membrane",
- "baselineCommit": "3a4f0a7730fa8e2d5c13035b0e378bdcf2926be3",
- "generatedAt": "2026-09-10T03:32:45.524Z",
+ "baselineCommit": "1f8d9f0fc8d694eb79139f67d133f202000fc2e9",
+ "generatedAt": "2026-09-10T03:48:56.699Z",
  "method": {
   "staticScan": {
    "nodeImportScan": true,
@@ -7231,7 +7231,7 @@
   },
   {
    "id": "engine/crates/membrane-runtime/src/http_server.rs",
-   "kind": "referenced-file",
+   "kind": "tracked-executable",
    "runtime": "rust",
    "production_reachable": true,
    "reachability_evidence": {
@@ -7281,7 +7281,7 @@
   },
   {
    "id": "engine/crates/membrane-runtime/src/installed_health.rs",
-   "kind": "referenced-file",
+   "kind": "tracked-executable",
    "runtime": "rust",
    "production_reachable": true,
    "reachability_evidence": {
@@ -8649,7 +8649,7 @@
   },
   {
    "id": "engine/crates/membrane/src/native_init.rs",
-   "kind": "referenced-file",
+   "kind": "tracked-executable",
    "runtime": "rust",
    "production_reachable": true,
    "reachability_evidence": {
@@ -44459,10 +44459,12 @@
   "engine/crates/membrane-runtime/src/hook_memory.rs",
   "engine/crates/membrane-runtime/src/hook.rs",
   "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+  "engine/crates/membrane-runtime/src/http_server.rs",
   "engine/crates/membrane-runtime/src/hub_inputs.rs",
   "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
   "engine/crates/membrane-runtime/src/hub.rs",
   "engine/crates/membrane-runtime/src/installation_manifest.rs",
+  "engine/crates/membrane-runtime/src/installed_health.rs",
   "engine/crates/membrane-runtime/src/ledger/db.rs",
   "engine/crates/membrane-runtime/src/ledger/doc_candidate_provider.rs",
   "engine/crates/membrane-runtime/src/ledger/doc_projection.rs",
@@ -44556,6 +44558,7 @@
   "engine/crates/membrane/src/main.rs",
   "engine/crates/membrane/src/migration.rs",
   "engine/crates/membrane/src/modes.rs",
+  "engine/crates/membrane/src/native_init.rs",
   "engine/crates/membrane/src/serve.rs",
   "engine/crates/membrane/src/uninstall.rs",
   "engine/crates/membrane/src/update.rs"

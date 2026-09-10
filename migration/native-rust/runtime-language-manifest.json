@@ -1,11 +1,11 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T03:35:30.748Z",
+ "generatedAt": "2026-09-10T03:48:57.733Z",
  "enforcementMode": "migration",
  "policyDigest": "9ed83eea1679be03597df16a7f32bec1c2bfa56fd9005851c7d87a4da845d377",
  "totals": {
-  "files": 1399,
+  "files": 1402,
   "rows": 56,
   "byRuntime": {
    "python": 7,
@@ -1253,6 +1253,7 @@
     "engine/crates/membrane/src/main.rs",
     "engine/crates/membrane/src/migration.rs",
     "engine/crates/membrane/src/modes.rs",
+    "engine/crates/membrane/src/native_init.rs",
     "engine/crates/membrane/src/serve.rs",
     "engine/crates/membrane/src/uninstall.rs",
     "engine/crates/membrane/src/update.rs",
@@ -1262,7 +1263,7 @@
     "engine/crates/membrane/tests/hook_containment.rs",
     "engine/crates/membrane/tests/identifier_contracts.rs"
    ],
-   "content_digest": "e95cdb89b5d5d6d455377b462b5f6d2536e5af608876994e2f389cac766d72a1"
+   "content_digest": "9f1e3e079a8f10a2c8feddcc0fd55cee655c381a878da802dc7553019f29f356"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-adapt",
@@ -1596,10 +1597,12 @@
     "engine/crates/membrane-runtime/src/hook_diagnostics.rs",
     "engine/crates/membrane-runtime/src/hook_memory.rs",
     "engine/crates/membrane-runtime/src/host_observation_ingress.rs",
+    "engine/crates/membrane-runtime/src/http_server.rs",
     "engine/crates/membrane-runtime/src/hub.rs",
     "engine/crates/membrane-runtime/src/hub_inputs.rs",
     "engine/crates/membrane-runtime/src/hub_readonly_db.rs",
     "engine/crates/membrane-runtime/src/installation_manifest.rs",
+    "engine/crates/membrane-runtime/src/installed_health.rs",
     "engine/crates/membrane-runtime/src/ledger/cli.rs",
     "engine/crates/membrane-runtime/src/ledger/db.rs",
     "engine/crates/membrane-runtime/src/ledger/diagnostics.rs",
@@ -1736,7 +1739,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "dfcd98bace457221e3e94b4b4f773e833b30fbc0074f9aee4b0a3f2e3dd78cac"
+   "content_digest": "9109c2e17eb5cbf0f686400e5c17a179a53fc002e73752dafcaab1fffbe1aea8"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1890,7 +1893,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "0f05bc8c5cc4e201345158a589c504dd3c1adaab56504b8bd5a793e0a3bb8ea0"
+   "content_digest": "c0269a113b9918d0713e5a49d9bb5242a3254f4e5f40ce7140baa1c83da4d7ae"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -2335,7 +2338,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "fad2023a2d4d3b9650081c6c867368a873f3cd4064f54303618614098d9db8c5"
+   "content_digest": "1ed928bf35256834461cb549019bd885b63c6e32290adea0409ec21d13542b50"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",
