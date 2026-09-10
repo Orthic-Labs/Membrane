@@ -1157,8 +1157,9 @@ function Get-InstalledResidentAuthPaths {
   Require ($null -ne $script:ActiveHubHealth) 'Hub MCP authentication requires health identity'
   $stableCurrent = [string]$script:ActiveHubHealth.stableInstallRoot
   Require (-not [string]::IsNullOrWhiteSpace($stableCurrent)) 'Hub health omitted stable install root'
-  $stableCurrent = [IO.Path]::GetFullPath($stableCurrent)
-  Require ($stableCurrent -ieq ([IO.Path]::GetFullPath($InstallRoot))) 'Hub health stable install root is not the active installed current'
+  $stableCurrent = Normalize-ComparablePath $stableCurrent
+  $activeCurrent = Normalize-ComparablePath $InstallRoot
+  Require ($stableCurrent -ieq $activeCurrent) 'Hub health stable install root is not the active installed current'
   $stateRoot = Join-Path (Split-Path -Parent $stableCurrent) 'state'
   [pscustomobject]@{
     TokenPath = Join-Path $stateRoot 'tools\.cache\memory\api-token'
