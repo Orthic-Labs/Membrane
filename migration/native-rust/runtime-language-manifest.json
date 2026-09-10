@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T16:41:40.128Z",
+ "generatedAt": "2026-09-10T17:12:26.368Z",
  "enforcementMode": "sealed",
  "policyDigest": "9d70956ed53ce0f1e6a71be5d4649f5ea86153f295402e5a81347e8f2817eeca",
  "totals": {
@@ -1105,7 +1105,7 @@
     "engine/crates/membrane-protocol/tests/resident_holder_contract.rs",
     "engine/crates/membrane-protocol/tests/roundtrip.rs"
    ],
-   "content_digest": "a90da1fd42afdc9841890618867f91d468045703cc216e624adb32599e4d535b"
+   "content_digest": "9c050de70e87803e332f2ae46856e382e1f8bac272b6becbeb32d9059817f470"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-provider-sdk",
@@ -1332,7 +1332,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "f284ba333d8e48b1054bdfe46ae301568b2994bfae9f2bb2c2e1700155b44291"
+   "content_digest": "e58c5a268691723a0d1a7f1c86305cb20d3fd3615451c9d9f0cb6c5aeedfe52d"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1852,7 +1852,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "1ce446d457b614d1532bcad05ba5d288971bb2faf8aa4f9cb3f3ab0499fe500e"
+   "content_digest": "168a14d6441841263dd5bf235f9b50061ab9d8592ea8aef2a8e80350313d7b62"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",

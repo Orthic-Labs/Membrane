@@ -22,7 +22,10 @@ fn valid_source_path(value: &str) -> bool {
         })
 }
 
-#[rustfmt::skip] fn valid_hash(value: &str) -> bool { value.len() == 71 && value.starts_with("sha256:") && value[7..].bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')) }
+#[rustfmt::skip] fn valid_hash(value: &str) -> bool {
+    let (prefix, hex_len) = if value.starts_with("sha256:") { ("sha256:", 64) } else if value.starts_with("xxh128:") { ("xxh128:", 32) } else { return false; };
+    value.len() == prefix.len() + hex_len && value[prefix.len()..].bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+}
 #[rustfmt::skip] fn missing_status(candidate: &Value, provider: &str, generation: &str) -> SourceResolutionStatusV1 {
     let text = |key| candidate.get(key).and_then(Value::as_str).unwrap_or_default();
     if text("id").is_empty() { SourceResolutionStatusV1::MissingIdentity } else if text("provider").is_empty() && provider.is_empty() { SourceResolutionStatusV1::MissingProvider } else if !valid_hash(text("sourceHash")) { SourceResolutionStatusV1::MissingHash } else if generation.is_empty() { SourceResolutionStatusV1::MissingGeneration } else if !valid_source_path(text("sourceRef")) { SourceResolutionStatusV1::MissingPath } else if text("resolver").is_empty() { SourceResolutionStatusV1::ResolverUnavailable } else { SourceResolutionStatusV1::Unresolved }
@@ -195,6 +198,7 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
 mod tests {
     use super::*;
     #[rustfmt::skip] fn hash() -> String { format!("sha256:{}", "a".repeat(64)) }
+    #[rustfmt::skip] fn xxh128_hash() -> String { format!("xxh128:{}", "b".repeat(32)) }
     fn set(receipt: Value) -> Value {
         json!({"provider":"blueprint","generationId":"gen-2","candidates":[{"id":"node-1","layer":3,
             "sourceKind":"graph","sourceRef":"src/lib.rs","sourceHash":hash(),
@@ -212,6 +216,7 @@ mod tests {
         );
         assert_eq!(admitted["candidates"].as_array().unwrap().len(), 1);
         assert!(admitted["candidates"][0].get("sourceResolution").is_none());
+        let mut xxh_exact = exact.clone(); xxh_exact["expectedHash"] = json!(xxh128_hash()); xxh_exact["resolvedHash"] = json!(xxh128_hash()); let mut xxh_admitted = set(xxh_exact); xxh_admitted["candidates"][0]["sourceHash"] = json!(xxh128_hash()); assert_eq!(gate_source_resolutions(&mut xxh_admitted)[0].status, SourceResolutionStatusV1::Resolved); assert_eq!(xxh_admitted["candidates"].as_array().unwrap().len(), 1);
         let mut wrong_resolver = exact.clone(); wrong_resolver["resolver"] = json!("other resolver"); let mut resolver_rejected = set(wrong_resolver); assert_eq!(gate_source_resolutions(&mut resolver_rejected)[0].status, SourceResolutionStatusV1::Unresolved); assert!(resolver_rejected["candidates"].as_array().unwrap().is_empty());
         let mut stale = exact;
         stale["resolvedGeneration"] = json!("gen-1");

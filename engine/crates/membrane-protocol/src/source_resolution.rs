@@ -59,7 +59,7 @@ impl SourceResolutionReceiptV1 {
             && self.status == SourceResolutionStatusV1::Resolved
             && !self.candidate_id.is_empty()
             && !self.provider.is_empty()
-            && valid_sha256(&self.expected_hash)
+            && valid_source_digest(&self.expected_hash)
             && self.resolved_hash.as_deref() == Some(self.expected_hash.as_str())
             && !self.expected_generation.is_empty()
             && self.resolved_generation.as_deref() == Some(self.expected_generation.as_str())
@@ -68,7 +68,10 @@ impl SourceResolutionReceiptV1 {
             && !self.resolver.is_empty()
     }
 }
-#[rustfmt::skip] fn valid_sha256(value: &str) -> bool { value.len() == 71 && value.starts_with("sha256:") && value[7..].bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')) }
+#[rustfmt::skip] fn valid_source_digest(value: &str) -> bool {
+    let (prefix, hex_len) = if value.starts_with("sha256:") { ("sha256:", 64) } else if value.starts_with("xxh128:") { ("xxh128:", 32) } else { return false; };
+    value.len() == prefix.len() + hex_len && value[prefix.len()..].bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +93,7 @@ mod tests {
     }
     #[test] #[rustfmt::skip] fn exact_identity_is_required() {
         assert!(receipt().is_exact_current_source());
+        let mut xxh = receipt(); xxh.expected_hash = format!("xxh128:{}", "b".repeat(32)); xxh.resolved_hash = Some(xxh.expected_hash.clone()); assert!(xxh.is_exact_current_source());
         let mut wrong_hash = receipt();
         wrong_hash.resolved_hash = Some("sha256:other".into());
         assert!(!wrong_hash.is_exact_current_source());

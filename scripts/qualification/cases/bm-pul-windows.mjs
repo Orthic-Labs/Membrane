@@ -226,7 +226,8 @@ export function BM10() { return actual("BM10", (path) => {
     { id: "unsupported", task: "exact_probe", request: { consumerCapabilities: { resolvers: ["bm10-unsupported-resolver"] } } },
     { id: "timeout", task: "exact_probe", request: { maxWaitMs: 1 } },
     { id: "unresolved_dynamic", task: "exact_probe", request: { anchors: ["dynamic://bm10/unresolved"] } },
-    { id: "rejected", task: "same_name", request: {} },
+    { id: "budget_dropped", task: "exact_probe", request: { packetCharBudget: 1, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_budgeted_source", exactTarget: "lib.rs" }] } },
+    { id: "rejected", task: "exact_probe", request: { consumerCapabilities: { resolvers: ["bm10-unsupported-resolver"] }, requirementFacts: [{ dimension: "repository_truth", required: true, ruleId: "bm10_rejected_source", exactTarget: "lib.rs" }] } },
     { id: "not_discovered", task: "exact_probe", request: { requirementFacts: [{ dimension: "current_state", required: true, ruleId: "bm10_missing_target", exactTarget: "does_not_exist.rs" }] } },
   ];
   const outputs = [path.packet];
