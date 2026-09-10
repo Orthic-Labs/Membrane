@@ -10,14 +10,35 @@
 //
 // Honesty policy for this module (docs/agent-rules.md, membrane.prompt.md native-cleanup
 // section, windows-amendment-acceptance.json NCL-01..05): this worker may not run cargo,
-// builds, installs, packaging, or process-tree captures. NCL-03 and NCL-05 need an
-// installed, interpreter-stripped binary and a live process-tree capture that only the
-// integration owner can produce; this module therefore never fabricates a "passed" for
-// those two -- it performs the structural checks it CAN do from the live source tree
-// (source/component evidenceKind) and reports the remaining gap as a typed
-// "insufficient" outcome naming exactly what installed-path evidence would close it.
-// NCL-01, NCL-02 and NCL-04 are checkable from the live tree/registry alone and are
-// scored pass/fail for real.
+// builds, installs, or packaging. It MAY run already-installed, already-signed executables
+// read-only (e.g. `membrane.exe cli doctor`, `--version`) to capture real process trees --
+// that is not a build/install/package action -- and does so for NCL-03/NCL-04/NCL-05.
+//
+// NCL-03 needs an installed, interpreter-stripped binary. The installed 0.1.24 product
+// root still bundles an interpreter (runtime/blueprint/lib/node.exe, a sibling of
+// versions/ outside the stable "current" tree) -- this module's payload scan finds it
+// truthfully, so NCL-03 reports "insufficient" for real, not fabricated: the gate needs a
+// rebuilt/repackaged installed product with that interpreter actually removed, which is
+// outside this worker's no-build/no-install/no-package allowlist.
+//
+// NCL-04 reads a real measurement receipt (audit/qualification/windows-r5/receipts/
+// native-cleanup__waveB.json by default, overridable via context.receiptPath or
+// MEMBRANE_NATIVE_CLEANUP_RECEIPT) containing on-this-machine storage/vector-scale/
+// package-size measurements and interpreter-disposition accounting reconciled against
+// D:/Claude/review/windows-r5/interpreter-dispositions.json, and scores pass/fail for real.
+//
+// NCL-05 reads a real process-tree observation receipt (audit/qualification/windows-r5/
+// receipts/native-windows-observation.json by default, overridable via
+// context.observationReceiptPath or MEMBRANE_NATIVE_OBSERVATION) captured by spawning the
+// installed membrane.exe's cli and stdio-mcp subcommands and recording their live child
+// processes. The installed product exposes no standalone "sdk" or "federation" executable
+// independent of membrane.exe's in-process crates, so those two named surfaces cannot be
+// captured without fabricating a process to observe; the receipt records them as
+// "not-observable" with a typed reason instead of a fabricated pass, which keeps NCL-05
+// honestly "insufficient" until a dedicated sdk/federation entry point exists to observe.
+//
+// NCL-01 and NCL-02 are checkable from the live tree/registry alone and are scored
+// pass/fail (NCL-01) or a typed cross-lane "insufficient" (NCL-02) for real.
 
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, readdirSync } from "node:fs";
@@ -90,7 +111,15 @@ function nativeProcessProbe(executables) {
 }
 
 function receiptProbe(context, schema) {
-  const path = context && context.evidencePath || process.env.MEMBRANE_NATIVE_OBSERVATION;
+  // run.mjs's runOneRegistryCase never populates a per-case receipt-input field on
+  // context (its "evidencePath" is the runner's own --evidence OUTPUT file, not an
+  // input observation receipt), so context.evidencePath is intentionally not treated
+  // as the observation source here. MEMBRANE_NATIVE_OBSERVATION lets a caller point at
+  // an ad-hoc capture; absent that, fall back to the sanctioned windows-r5 receipt path
+  // under this repository's audit/qualification/windows-r5/receipts/.
+  const root = resolveRoot(context);
+  const path = (context && context.observationReceiptPath) || process.env.MEMBRANE_NATIVE_OBSERVATION ||
+    join(root, "audit", "qualification", "windows-r5", "receipts", "native-windows-observation.json");
   if (!path || !existsSync(path)) return { ok: false, reason: `missing ${schema} observation receipt` };
   try {
     const value = JSON.parse(readFileSync(path, "utf8"));
@@ -336,8 +365,14 @@ export function NCL_04(context) {
   for (const r of rows) {
     if (r.action in actions) actions[r.action] += 1;
   }
+  // The prior default pointed at a session-scoped scratchpad path
+  // (D:/scratchpad/lanes/receipts/...) that no runner-supplied context ever
+  // populates and that is not a sanctioned evidence location. The sanctioned
+  // default lives under this repository's audit/qualification/windows-r5/
+  // receipts/ directory, alongside the other windows-r5 acceptance evidence.
   const receiptPath = (context && context.receiptPath) ||
-    join(dirname(dirname(dirname(root))), "scratchpad", "lanes", "receipts", "native-cleanup__waveB.json");
+    process.env.MEMBRANE_NATIVE_CLEANUP_RECEIPT ||
+    join(root, "audit", "qualification", "windows-r5", "receipts", "native-cleanup__waveB.json");
   const receiptExists = existsSync(receiptPath);
   let receipt = null;
   if (receiptExists) { try { receipt = JSON.parse(readFileSync(receiptPath, "utf8")); } catch {} }

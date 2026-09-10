@@ -1,10 +1,56 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveTargetRoot } from "@rightkit/release/cargo-target.mjs";
 
+// The local unsigned route (MEMBRANE_UNSIGNED_INSTALLER=1) never runs on
+// GitHub Actions, so it can never produce the CI-only candidate that
+// release-build-candidate-windows.mjs emits under RIGHT_GIT_ARTIFACT_ROOT.
+// It still needs a comparable, non-fabricated candidate.json next to the
+// installer it built, so a local qualification run can bind package
+// identity against the installed manifest (PKG-02) without waiting on CI.
+// This reuses the exact release-identity input the sidecars were compiled
+// against (dist/release-identity.json, written by build-frontend.mjs via
+// writeEngineReleaseIdentity) rather than recomputing it, so the reported
+// generation always matches the bytes that were actually built.
+export function writeUnsignedCandidateManifest({ hubRoot, installerPath, version, outputPath }) {
+  const identityPath = join(hubRoot, "dist", "release-identity.json");
+  if (!existsSync(identityPath)) throw new Error(`release identity missing: ${identityPath}; run pnpm run build first`);
+  const identity = JSON.parse(readFileSync(identityPath, "utf8"));
+  if (!/^[0-9a-f]{64}$/.test(identity.sourceTreeSha256) || identity.releaseGeneration !== `sha256:${identity.sourceTreeSha256}`) {
+    throw new Error("release identity is not hash-bound");
+  }
+  if (!existsSync(installerPath)) throw new Error(`installer artifact missing: ${installerPath}`);
+  const artifactSha256 = createHash("sha256").update(readFileSync(installerPath)).digest("hex");
+  const candidate = {
+    schema: "membrane.release-evidence.v1",
+    product: "Membrane Hub",
+    profile: "internal-unsigned",
+    sourceCommit: identity.commit,
+    dirty: identity.dirty,
+    release: {
+      version,
+      commit: identity.commit,
+      tree: identity.sourceTreeSha256,
+      generation: identity.sourceTreeSha256,
+      target: "windows-x86_64",
+      artifact_sha256: artifactSha256,
+    },
+    artifact: { path: installerPath, sha256: artifactSha256, size: statSync(installerPath).size },
+    signing: { status: "unsigned", reason: "internal_local_unsigned_route" },
+  };
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, `${JSON.stringify(candidate, null, 2)}\n`);
+  return candidate;
+}
+
+const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (invokedDirectly) runCli();
+
+function runCli() {
 if (process.platform !== "win32") throw new Error("Windows package must run on Windows");
 
 const phase = process.argv.slice(2).find((argument) => argument !== "--");
@@ -110,4 +156,18 @@ if (phase === "raw") {
   }
   mirror(join(managedRelease, generatedInstallerRelative), join(managedRelease, installerRelative), "generated NSIS installer");
   mirror(join(managedRelease, installerRelative), join(sealedRelease, installerRelative), "managed NSIS installer");
+  if (process.env.MEMBRANE_UNSIGNED_INSTALLER === "1") {
+    // Emit the local-route candidate next to each mirrored copy of the
+    // installer so a qualification run pointed at either location (managed
+    // RightKit workspace or the sealed src-tauri target) finds it.
+    for (const installerPath of [join(managedRelease, installerRelative), join(sealedRelease, installerRelative)]) {
+      writeUnsignedCandidateManifest({
+        hubRoot,
+        installerPath,
+        version: packageJson.version,
+        outputPath: join(dirname(installerPath), "candidate.json"),
+      });
+    }
+  }
+}
 }

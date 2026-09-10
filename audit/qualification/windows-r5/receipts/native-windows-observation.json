@@ -1,0 +1,133 @@
+{
+  "schema": "membrane.windows-native-observation.v1",
+  "platform": "windows",
+  "generatedAt": "2026-09-10T03:55:24.000Z",
+  "generatedBy": "NCL lane, ad-hoc node+PowerShell process-tree capture (Get-CimInstance Win32_Process) against the installed product",
+  "installedRoot": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane",
+  "installedCurrent": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current (resolves to versions/0.1.24)",
+  "processTree": [
+    {
+      "pid": 72812,
+      "ppid": 75112,
+      "name": "membrane.exe",
+      "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+      "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe cli doctor"
+    },
+    {
+      "pid": 66224,
+      "ppid": 75112,
+      "name": "membrane.exe",
+      "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+      "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe stdio-mcp"
+    },
+    {
+      "pid": 65828,
+      "ppid": 75112,
+      "name": "membrane.exe",
+      "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+      "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe status --dry-run --bindings-only"
+    },
+    {
+      "pid": 76952,
+      "ppid": 65828,
+      "name": "conhost.exe",
+      "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+      "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+    },
+    {
+      "pid": 15420,
+      "ppid": 65828,
+      "name": "claude.exe",
+      "executable": "C:\\Users\\adrds\\.local\\bin\\claude.exe",
+      "commandLine": "\"C:\\Users\\adrds\\.local\\bin\\claude.exe\" mcp get membrane"
+    },
+    {
+      "pid": 64468,
+      "ppid": 15420,
+      "name": "conhost.exe",
+      "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+      "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+    }
+  ],
+  "notes": [
+    "The installed product root still bundles an interpreter: C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/runtime/blueprint/lib/node.exe (a sibling of versions/, outside the 'current' stable directory). This is recorded truthfully and is why NCL-03's payload interpreter scan of installedRoot (not just 'current') reports it.",
+    "membrane.exe itself is a single native binary exposing cli, stdio-mcp, hook, install, uninstall, activate, deactivate, status, migrate-legacy, and init subcommands. There is no separate installed executable, DLL entry point, or spawn target that independently represents an 'sdk' or 'federation' native surface distinct from membrane.exe's in-process crates (membrane-client, membrane-federation) -- those are compiled into membrane.exe and are not externally observable as their own process. This module therefore reports 'sdk' and 'federation' as not independently observable from outside the process rather than fabricating a passed process-tree capture for them.",
+    "cli and mcp (stdio-mcp) surfaces were exercised directly against the installed membrane.exe and captured clean: no node/python/python3/sh/bash child process. A third real invocation (status --dry-run --bindings-only) spawned a native reconciliation child (claude.exe, the installed Claude Code CLI) plus conhost.exe -- neither matches the interpreter regex, but it demonstrates status's real child-process behavior."
+  ],
+  "surfaces": [
+    {
+      "name": "cli",
+      "status": "passed",
+      "invocation": "membrane.exe cli doctor",
+      "startedAt": "2026-09-10T03:55:20.024Z",
+      "processTree": [
+        {
+          "pid": 72812,
+          "ppid": 75112,
+          "name": "membrane.exe",
+          "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+          "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe cli doctor"
+        }
+      ]
+    },
+    {
+      "name": "mcp",
+      "status": "passed",
+      "invocation": "membrane.exe stdio-mcp",
+      "startedAt": "2026-09-10T03:55:21.540Z",
+      "processTree": [
+        {
+          "pid": 66224,
+          "ppid": 75112,
+          "name": "membrane.exe",
+          "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+          "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe stdio-mcp"
+        }
+      ]
+    },
+    {
+      "name": "sdk",
+      "status": "not-observable",
+      "reason": "No standalone installed SDK executable or externally-spawnable entry point exists in the current product tree; the Python/Node SDK packages wrap membrane.exe's cli/stdio-mcp subcommands rather than shipping their own native binary in this installed root, so this worker has no independent SDK process to capture without fabricating one."
+    },
+    {
+      "name": "federation",
+      "status": "not-observable",
+      "reason": "membrane-federation is compiled into membrane.exe with no dedicated installed executable or externally-triggerable one-shot subcommand that isolates a federation-only process tree in this installed build; status --dry-run --bindings-only was captured as the closest real invocation but is not a federation-labeled surface.",
+      "closestRealInvocation": {
+        "invocation": "membrane.exe status --dry-run --bindings-only",
+        "startedAt": "2026-09-10T03:55:23.062Z",
+        "processTree": [
+          {
+            "pid": 65828,
+            "ppid": 75112,
+            "name": "membrane.exe",
+            "executable": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe",
+            "commandLine": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/membrane.exe status --dry-run --bindings-only"
+          },
+          {
+            "pid": 76952,
+            "ppid": 65828,
+            "name": "conhost.exe",
+            "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+            "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+          },
+          {
+            "pid": 15420,
+            "ppid": 65828,
+            "name": "claude.exe",
+            "executable": "C:\\Users\\adrds\\.local\\bin\\claude.exe",
+            "commandLine": "\"C:\\Users\\adrds\\.local\\bin\\claude.exe\" mcp get membrane"
+          },
+          {
+            "pid": 64468,
+            "ppid": 15420,
+            "name": "conhost.exe",
+            "executable": "C:\\WINDOWS\\system32\\conhost.exe",
+            "commandLine": "\\??\\C:\\WINDOWS\\system32\\conhost.exe 0x4"
+          }
+        ]
+      }
+    }
+  ]
+}

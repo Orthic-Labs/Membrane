@@ -175,18 +175,47 @@ export async function PKG_02({ row }) {
 // Compares the running controller's self-reported build identity against
 // the installed manifest, and rejects a fallback to the development
 // checkout by requiring the reported source root differ from workspaceRoot.
+// When no controllerIdentityPath/env is supplied this queries the installed
+// `membrane.exe cli health` directly (never the development checkout, never
+// a synthesized value) so PKG-03 can prove the running controller's own
+// self-report rather than trusting a hand-authored fixture. Any failure to
+// reach the installed executable is reported back to the caller as `null`,
+// which PKG_03 turns into a non-fabricated "blocked" reason, not a PASS.
+export function queryInstalledControllerIdentity(installedRoot) {
+  if (!nonEmptyString(installedRoot)) return null;
+  const exe = join(resolve(installedRoot), "membrane.exe");
+  if (!existsSync(exe)) return null;
+  try {
+    const stdout = execFileSync(exe, ["cli", "health"], { cwd: resolve(installedRoot), encoding: "utf8", windowsHide: true, timeout: 10_000 });
+    const health = JSON.parse(stdout);
+    return {
+      releaseGeneration: health.releaseGeneration ?? null,
+      sourceRoot: health.sourceRoot ?? health.checkoutRoot ?? null,
+      raw: health,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function PKG_03({ row, workspaceRoot }) {
   const installedManifestPath = row?.installedManifestPath ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_MANIFEST;
   const controllerIdentityPath = row?.controllerIdentityPath ?? process.env.MEMBRANE_QUALIFICATION_CONTROLLER_IDENTITY;
   const installed = readJsonIfExists(installedManifestPath);
-  const controller = readJsonIfExists(controllerIdentityPath);
+  let controller = readJsonIfExists(controllerIdentityPath);
+  let controllerSource = controllerIdentityPath ? "file" : null;
+  if (!controller) {
+    const installedRoot = row?.installedRoot ?? process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+    controller = queryInstalledControllerIdentity(installedRoot);
+    if (controller) controllerSource = "live-cli-health";
+  }
 
   if (!installed || !controller) {
     return {
       status: "failed",
       evidenceKind: "source",
       reason: "installed manifest and/or a live controller identity report unavailable on this machine; run after install with the controller reachable",
-      detail: { installedManifestPath: installedManifestPath ?? null, controllerIdentityPath: controllerIdentityPath ?? null },
+      detail: { installedManifestPath: installedManifestPath ?? null, controllerIdentityPath: controllerIdentityPath ?? null, controllerSource },
     };
   }
 
@@ -200,7 +229,7 @@ export async function PKG_03({ row, workspaceRoot }) {
     return { status: "failed", evidenceKind: "host", reason: "running controller fell back to the development checkout instead of installed current" };
   }
 
-  return { status: "passed", evidenceKind: "host", detail: { releaseGeneration: reportedGeneration } };
+  return { status: "passed", evidenceKind: "host", detail: { releaseGeneration: reportedGeneration, controllerSource } };
 }
 
 // ---------------------------------------------------------------------------

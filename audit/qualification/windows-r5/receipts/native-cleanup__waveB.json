@@ -1,0 +1,51 @@
+{
+  "schema": "membrane.native-cleanup-measurement.v1",
+  "platform": "windows",
+  "generatedAt": "2026-09-10T09:30:00.000Z",
+  "buildIdentity": {
+    "installedRoot": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane",
+    "installedCurrentVersion": "0.1.24",
+    "installedCurrentTarget": "versions/0.1.24",
+    "candidateInstallerPath": "D:/.rightkit-managed/rightkit-build-control/ws/974d0733b734/g/001/target/x86_64-pc-windows-msvc/release/bundle/nsis/Membrane Hub_0.1.24_x64-setup.exe",
+    "note": "Installed 'current' is the older signed 0.1.24 release; the candidate NSIS installer measured below is the newer unsigned r5 build produced under rightkit-managed workspace 974d0733b734, not yet installed."
+  },
+  "accounting": {
+    "source": "D:/Claude/review/windows-r5/interpreter-dispositions.json",
+    "interpreterDispositions": 878,
+    "actionCounts": {
+      "delete-after-parity": 373,
+      "retain-with-reachability-proof": 505,
+      "commit-deletion": 0
+    }
+  },
+  "storage": {
+    "compatibility": "measured-windows-ntfs",
+    "method": "recursive Node fs.readdirSync/statSync walk (symlinks not followed) against the live installed filesystem on this machine",
+    "measurements": {
+      "installedCurrentDirBytes": 406366697,
+      "installedRootDirBytesExcludingVersionsDuplicate": 1204504758,
+      "installedStateDirBytes": 4061683,
+      "cortexEngineDbBytes": 503808,
+      "cortexEngineEventsSqliteBytes": 466944,
+      "cortexCatalogDbBytes": 118784,
+      "cortexDbTotalBytes": 1089536,
+      "cortexDbPath": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/state/tools/.cache/memory"
+    },
+    "note": "installedRootDirBytesExcludingVersionsDuplicate walks the whole Membrane root (versions/, runtime/, state/, current symlink target counted once via the versions/ entry it points at); it is not double-counted storage, it is a raw recursive size of everything under the install root including both installed version directories."
+  },
+  "vectorScale": {
+    "status": "measured",
+    "method": "byte-size of the on-disk semantic embed model and cortex vector/catalog stores under the installed current tree and state dir",
+    "measurements": {
+      "semanticEmbedModelOnnxBytesPresent": true,
+      "semanticEmbedModelDir": "C:/Users/adrds/AppData/Local/Orthic Labs/Membrane/current/runtime/resources/semantic-embed-model",
+      "cortexDbTotalBytes": 1089536
+    }
+  },
+  "packageSize": {
+    "status": "measured",
+    "method": "fs.statSync on the built candidate NSIS installer on this machine",
+    "installerPath": "D:/.rightkit-managed/rightkit-build-control/ws/974d0733b734/g/001/target/x86_64-pc-windows-msvc/release/bundle/nsis/Membrane Hub_0.1.24_x64-setup.exe",
+    "installerBytes": 204222192
+  }
+}

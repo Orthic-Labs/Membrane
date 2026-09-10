@@ -1,7 +1,7 @@
 {
  "schemaVersion": 1,
  "artifact": "membrane.runtime-language-manifest",
- "generatedAt": "2026-09-10T03:48:57.733Z",
+ "generatedAt": "2026-09-10T04:02:23.828Z",
  "enforcementMode": "migration",
  "policyDigest": "9ed83eea1679be03597df16a7f32bec1c2bfa56fd9005851c7d87a4da845d377",
  "totals": {
@@ -1067,7 +1067,7 @@
     "engine/crates/membrane-blueprint/tests/service.rs",
     "engine/crates/membrane-blueprint/tests/watch.rs"
    ],
-   "content_digest": "dcc46ee322a8a14c849853c02abf160edb35a4026924d6a6f9d82f4b3806436b"
+   "content_digest": "6cd146d9764125b4c9046ab6031822c215d6e3fce2f9af3583ead8fc0991534b"
   },
   {
    "id": "engine-membrane-client-engine/crates/membrane-client",
@@ -1164,7 +1164,7 @@
     "engine/crates/cortex-core/tests/absorbed_records.rs",
     "engine/crates/cortex-core/tests/fts5_hybrid.rs"
    ],
-   "content_digest": "82e74605d749765f06364fe5734513d38b03f1aca3ad4b92ac07e5dfa3bf3038"
+   "content_digest": "fe3ff2c502c0da5872d9bca353005f926c968273ef6fd5c6219c7c908e919835"
   },
   {
    "id": "engine-production-crates-engine/crates/cortex-format",
@@ -1739,7 +1739,7 @@
     "engine/crates/membrane-runtime/tests/session_projection.rs",
     "engine/crates/membrane-runtime/tests/windows_acl_isolation.rs"
    ],
-   "content_digest": "9109c2e17eb5cbf0f686400e5c17a179a53fc002e73752dafcaab1fffbe1aea8"
+   "content_digest": "0c85e2bc04c61ecbd47c2bd8fdbf00ba4bd543d6892e16b307684e2578a62344"
   },
   {
    "id": "engine-production-crates-engine/crates/membrane-transcript",
@@ -1893,7 +1893,7 @@
     "apps/membrane-hub/tests/windows-release-evidence.test.mjs",
     "apps/membrane-hub/tests/windows-release.test.mjs"
    ],
-   "content_digest": "c0269a113b9918d0713e5a49d9bb5242a3254f4e5f40ce7140baa1c83da4d7ae"
+   "content_digest": "76e4385a92e4b984a78866a0033fad5531c7ac2c2bd535fe2ac4b20becf31fdd"
   },
   {
    "id": "hub-scripts-hub-scripts",
@@ -1939,7 +1939,7 @@
     "apps/membrane-hub/scripts/write-release-manifest.mjs",
     "apps/membrane-hub/scripts/write-windows-release-evidence.mjs"
    ],
-   "content_digest": "9c3b90d32b7d6c324bc97f058d7c1a45bd5a6046fc250273c8aa4b76266f225e"
+   "content_digest": "d88e762585a0ecb41931026d8200ba770b05c27eacd69ba6ba1a0a5cfa75da84"
   },
   {
    "id": "mcp-decision-points-lib-mcp/decision-points-lib.cjs",
@@ -2338,7 +2338,7 @@
     "scripts/tools/productization/generate-support-matrix.test.mjs",
     "scripts/tools/productization/render-docs.mjs"
    ],
-   "content_digest": "1ed928bf35256834461cb549019bd885b63c6e32290adea0409ec21d13542b50"
+   "content_digest": "b9dfd38cb925e91198026abb567b5de703e0901ee1d5de5bf95a1af55b31b3e6"
   },
   {
    "id": "surface-extraction-tool-surface-extraction-tool",

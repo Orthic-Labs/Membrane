@@ -145,9 +145,269 @@ function collectScanFiles(root) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Installed-candidate runtime half.
+//
+// The static half above proves the source tree, crate manifests, operation
+// registry, and receipts carry no forbidden pattern. The runtime half proves
+// the same absence against the actual INSTALLED product named by
+// MEMBRANE_QUALIFICATION_INSTALLED_ROOT: its shipped executables (binary
+// string scan — the exact bytes a user runs, not source), its shipped
+// mcp/*.mjs|.cjs surface and JSON registries (mcp.json, plugin.json,
+// release.json), and — for the two acceptance rows that name a concrete
+// observable surface (EX-01: no second registered/listening service; EX-09:
+// no automatic paid-network egress) — a live probe of the installed
+// candidate's declared service identity, running processes, and scheduled
+// tasks. It never starts, stops, installs, or mutates the installed product;
+// every probe is read-only (`membrane.exe status --dry-run --bindings-only`,
+// `tasklist`, `schtasks /query`). When a required probe cannot be completed
+// (root not configured, executable missing, host tool unavailable) this
+// reports a typed insufficient reason naming exactly what is missing — it
+// never fabricates a pass.
+
+const CANONICAL_EXECUTABLES = ["cortex.exe", "membrane.exe", "membrane-daemon.exe", "membrane-hub.exe", "membrane-tray.exe"];
+const CANONICAL_SERVICE_ID = "membrane-hub";
+
+// Literal ASCII byte sequences to search for directly inside the shipped
+// executables. Regexes cannot run against compiled binaries; a plain
+// substring search over the raw bytes is the real analogue of the source
+// pattern scan for a compiled artifact (a debug/panic/log string or a
+// non-stripped symbol name for a forbidden construct would appear this way).
+const BINARY_LITERALS_BY_ID = {
+  "EX-01": ["DreamService", "DreamEngine", "DreamPlanner", "GraphService", "SearchService", "ImpactService", "VectorService"],
+  "EX-02": ["ClientSemanticAuthority", "per_client_semantic_authority"],
+  "EX-03": ["GraphMutationAuthority", "mutate_graph"],
+  "EX-04": ["MarkdownGraphStore", "markdown_graph_store"],
+  "EX-05": ["admit_unverified_llm", "AdmitUnverifiedLlmTruth"],
+  "EX-06": ["ScalarTrustScore", "scalar_trust_score"],
+  "EX-07": ["expire_truth_after", "ArbitraryTruthExpiration"],
+  "EX-08": ["SpeculativeBranch", "speculative_merge"],
+  "EX-09": ["auto_paid_refresh", "AutomaticPaidFreshness"],
+};
+
+function resolveInstalledRoot(context) {
+  const fromContext = context && (context.installedRoot || context.installedInventoryRoot);
+  if (fromContext) return resolve(fromContext);
+  const envRoot = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
+  return envRoot ? resolve(envRoot) : null;
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function collectInstalledInventory(root) {
+  let topLevel = [];
+  try {
+    topLevel = readdirSync(root);
+  } catch {
+    topLevel = [];
+  }
+  const executables = topLevel.filter((f) => /\.exe$/i.test(f));
+  const mcpJsonText = readFileSafe(root, "mcp.json");
+  const pluginJsonText = readFileSafe(root, "plugin.json");
+  const releaseJsonText = readFileSafe(root, "release.json");
+  const mcpDirFiles = walk(root, "mcp", /\.(mjs|cjs|js|json)$/, []);
+  return {
+    root,
+    topLevel,
+    executables,
+    mcpJson: mcpJsonText ? safeJsonParse(mcpJsonText) : null,
+    hasPluginJson: pluginJsonText !== null,
+    hasReleaseJson: releaseJsonText !== null,
+    mcpDirFiles,
+  };
+}
+
+function summarizeInventory(inventory) {
+  return {
+    root: inventory.root,
+    executables: inventory.executables,
+    mcpServerKeys: inventory.mcpJson && inventory.mcpJson.mcpServers ? Object.keys(inventory.mcpJson.mcpServers) : null,
+    hasPluginJson: inventory.hasPluginJson,
+    hasReleaseJson: inventory.hasReleaseJson,
+    mcpDirFileCount: inventory.mcpDirFiles.length,
+  };
+}
+
+// Scans the installed candidate's own shipped JS/JSON surface (not the
+// source tree) for the same textual patterns as the static half.
+function scanInstalledText(root, inventory, patterns) {
+  const files = [...inventory.mcpDirFiles, "mcp.json", "plugin.json", "release.json"];
+  const hits = [];
+  for (const relPath of files) {
+    const content = readFileSafe(root, relPath);
+    if (!content) continue;
+    for (const pattern of patterns) {
+      if (pattern.test(content)) hits.push({ file: relPath, pattern: String(pattern) });
+    }
+  }
+  return hits;
+}
+
+// Scans the raw bytes of every shipped executable for literal forbidden
+// identifiers. Read-only: opens each file for reading only.
+function scanInstalledBinaries(root, executables, literals) {
+  const hits = [];
+  if (!literals || literals.length === 0) return hits;
+  for (const exe of executables) {
+    let buf;
+    try {
+      buf = readFileSync(join(root, exe));
+    } catch {
+      continue;
+    }
+    for (const literal of literals) {
+      if (buf.includes(Buffer.from(literal, "utf8"))) hits.push({ file: exe, pattern: `binary:${literal}` });
+    }
+  }
+  return hits;
+}
+
+// Read-only probe of the installed candidate's declared service identity.
+// `status --dry-run --bindings-only` inspects and reconciles client bindings
+// without launching, stopping, or mutating anything (per its own --help
+// text); it never starts Hub or a background service.
+function probeServiceIdentity(root) {
+  const exePath = join(root, "membrane.exe");
+  if (!existsSync(exePath)) {
+    return { status: "unavailable", reason: "membrane.exe not found at installed root" };
+  }
+  try {
+    const out = execFileSync(exePath, ["status", "--dry-run", "--bindings-only"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+    const parsed = safeJsonParse(out);
+    if (!parsed) return { status: "failed", reason: "membrane.exe status did not return parseable JSON" };
+    return {
+      status: "observed",
+      serviceId: parsed.service?.serviceId ?? null,
+      port: parsed.service?.port ?? null,
+      state: parsed.service?.state ?? null,
+    };
+  } catch (error) {
+    return { status: "failed", reason: error.message };
+  }
+}
+
+function parseTasklistCsv(csvText) {
+  return csvText
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => line.split('","').map((cell) => cell.replace(/^"|"$/g, "")));
+}
+
+// Read-only process enumeration: proves no non-canonical membrane/graph/
+// search/memory-shaped executable is running alongside the canonical set.
+function probeRunningProcesses() {
+  try {
+    const out = execFileSync("tasklist", ["/FO", "CSV", "/NH"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+    const rows = parseTasklistCsv(out);
+    const relevant = rows.filter((cols) => /membrane|cortex|dream|graphservice|searchservice|impactservice|vectorservice/i.test(cols[0] || ""));
+    const nonCanonicalNamedProcesses = relevant
+      .map((cols) => cols[0])
+      .filter((name) => !CANONICAL_EXECUTABLES.some((exe) => exe.toLowerCase() === (name || "").toLowerCase()));
+    return { status: "observed", nonCanonicalNamedProcesses: [...new Set(nonCanonicalNamedProcesses)] };
+  } catch (error) {
+    return { status: "failed", reason: error.message };
+  }
+}
+
+// Read-only scheduled-task enumeration: EX-09's acceptance is "no automatic
+// paid freshness or recomputation calls" — a standing scheduled task is the
+// concrete Windows-observable surface for an "automatic" call the product
+// itself did not just make interactively.
+function probeScheduledTasks() {
+  try {
+    const out = execFileSync("schtasks", ["/query", "/fo", "CSV", "/nh"], { encoding: "utf8", windowsHide: true, timeout: 15000 });
+    const rows = parseTasklistCsv(out);
+    const membraneTasks = rows.map((cols) => cols[0]).filter((name) => /membrane|cortex/i.test(name || ""));
+    return { status: "observed", membraneTasks: [...new Set(membraneTasks)] };
+  } catch (error) {
+    return { status: "failed", reason: error.message };
+  }
+}
+
+// Combines the installed-candidate probes into one verdict per EX case.
+// Returns { available:false, reason } when the installed root itself is
+// absent; otherwise { available:true, insufficient, passed, reason, detail }.
+function computeInstalledRuntime(id, patterns, context) {
+  const installedRoot = resolveInstalledRoot(context);
+  if (!installedRoot || !existsSync(installedRoot)) {
+    return { available: false, reason: `MEMBRANE_QUALIFICATION_INSTALLED_ROOT is not configured or does not exist (got ${installedRoot ?? "unset"})` };
+  }
+  const inventory = collectInstalledInventory(installedRoot);
+  if (inventory.executables.length === 0) {
+    return { available: false, reason: `installed root ${installedRoot} has no executables; cannot probe the installed candidate` };
+  }
+
+  const hits = [
+    ...scanInstalledText(installedRoot, inventory, patterns),
+    ...scanInstalledBinaries(installedRoot, inventory.executables, BINARY_LITERALS_BY_ID[id]),
+  ];
+  const extra = {};
+  let missing = null;
+
+  if (id === "EX-01") {
+    // Cheap, file-only structural checks first: these are deterministic from
+    // the installed root's own shipped files and never require a live probe
+    // to catch a second-service condition.
+    const extraExecutables = inventory.executables.filter((exe) => !CANONICAL_EXECUTABLES.some((c) => c.toLowerCase() === exe.toLowerCase()));
+    const mcpServerKeys = inventory.mcpJson && inventory.mcpJson.mcpServers ? Object.keys(inventory.mcpJson.mcpServers) : null;
+    extra.extraExecutables = extraExecutables;
+    extra.mcpServerKeys = mcpServerKeys;
+    if (mcpServerKeys === null) {
+      missing = "installed mcp.json is missing or has no mcpServers map";
+    } else {
+      if (extraExecutables.length > 0) hits.push({ file: extraExecutables.join(","), pattern: "non-canonical installed executable" });
+      if (mcpServerKeys.length !== 1 || mcpServerKeys[0] !== "membrane") {
+        hits.push({ file: "mcp.json", pattern: `non-canonical mcpServers entry set [${mcpServerKeys.join(",")}]` });
+      }
+      // Only reach for the live, host-dependent probes once the cheap
+      // structural checks are clean — a structural hit above is already a
+      // conclusive failure and does not need a live probe to confirm it.
+      if (hits.length === 0) {
+        const serviceProbe = probeServiceIdentity(installedRoot);
+        const processProbe = probeRunningProcesses();
+        extra.serviceProbe = serviceProbe;
+        extra.processProbe = processProbe;
+        if (serviceProbe.status !== "observed") {
+          missing = `installed service-identity probe (membrane.exe status --dry-run) unavailable: ${serviceProbe.reason}`;
+        } else if (processProbe.status !== "observed") {
+          missing = `installed process enumeration (tasklist) unavailable: ${processProbe.reason}`;
+        } else {
+          if (serviceProbe.serviceId !== CANONICAL_SERVICE_ID) {
+            hits.push({ file: "membrane.exe status", pattern: `unexpected serviceId ${serviceProbe.serviceId}` });
+          }
+          if (processProbe.nonCanonicalNamedProcesses.length > 0) {
+            hits.push({ file: "tasklist", pattern: `non-canonical running process(es): ${processProbe.nonCanonicalNamedProcesses.join(",")}` });
+          }
+        }
+      }
+    }
+  }
+
+  if (id === "EX-09") {
+    const scheduledProbe = probeScheduledTasks();
+    extra.scheduledProbe = scheduledProbe;
+    if (scheduledProbe.status !== "observed") {
+      missing = `installed scheduled-task enumeration (schtasks) unavailable: ${scheduledProbe.reason}`;
+    } else if (scheduledProbe.membraneTasks.length > 0) {
+      hits.push({ file: "schtasks", pattern: `unexpected standing scheduled task(s): ${scheduledProbe.membraneTasks.join(" | ")}` });
+    }
+  }
+
+  const detail = { installedRoot, inventory: summarizeInventory(inventory), hits, extra };
+  if (missing) return { available: true, insufficient: true, reason: missing, detail };
+  return { available: true, insufficient: false, passed: hits.length === 0, detail };
+}
+
 // Real, executable static exclusion check across source + crate/dependency
 // inventory + route/operation registry + receipts, per the shared EX-01..
-// EX-09 acceptance text in windows-amendment-acceptance.json.
+// EX-09 acceptance text in windows-amendment-acceptance.json, combined with
+// the installed-candidate runtime half above.
 function exclusionCheck(id, title, patterns, context) {
   const root = resolveRoot(context);
   const { sourceFiles, manifestFiles, registryFiles, receiptFiles, all } = collectScanFiles(root);
@@ -168,31 +428,62 @@ function exclusionCheck(id, title, patterns, context) {
   };
   const staticPass = hits.length === 0;
   let installedInventory = { status: "unavailable", reason: "MEMBRANE_QUALIFICATION_INSTALLED_ROOT is not configured" };
-  const installedRoot = process.env.MEMBRANE_QUALIFICATION_INSTALLED_ROOT;
-  const installedExe = installedRoot && join(resolve(installedRoot), "membrane.exe");
+  const installedRootForBuildInfo = resolveInstalledRoot(context);
+  const installedExe = installedRootForBuildInfo && join(installedRootForBuildInfo, "membrane.exe");
   if (installedExe && existsSync(installedExe)) {
     try {
       const buildInfo = JSON.parse(execFileSync(installedExe, ["cli", "build-info"], { cwd: root, encoding: "utf8", windowsHide: true }));
       installedInventory = { status: "observed", runtimeOrigin: buildInfo.runtimeOrigin ?? buildInfo.runtime_origin, generation: buildInfo.releaseGeneration ?? buildInfo.release_generation ?? buildInfo.generation };
     } catch (error) { installedInventory = { status: "failed", reason: error.message }; }
   }
+
+  // A forbidden static pattern is always a hard failure — the runtime half
+  // is never consulted to override it, and every existing negative control
+  // that injects a static-source fixture hit keeps failing exactly as before.
+  if (!staticPass) {
+    return {
+      status: "failed",
+      evidenceKind: "source",
+      detail: { id, title, scanned, hits, installedInventory },
+      reason: `${id}: ${title} — forbidden pattern present at ${hits.map((h) => h.file).join(", ")}; this is a failure regardless of test success elsewhere.`,
+    };
+  }
+
+  const runtime = computeInstalledRuntime(id, patterns, context);
+  const staticPassedNote = `${id}: ${title} — no forbidden pattern found across ${all.length} scanned file(s) (source + crate/dependency inventory + route/operation registry + receipts).`;
+
+  if (!runtime.available) {
+    return {
+      status: "insufficient",
+      evidenceKind: "source",
+      detail: { id, title, scanned, hits, installedInventory, installedRuntime: { available: false, reason: runtime.reason } },
+      reason: `${staticPassedNote} Static half only: the installed-candidate runtime half remains unclaimed — ${runtime.reason}.`,
+    };
+  }
+
+  if (runtime.insufficient) {
+    return {
+      status: "insufficient",
+      evidenceKind: "source",
+      detail: { id, title, scanned, hits, installedInventory, installedRuntime: runtime.detail },
+      reason: `${staticPassedNote} Runtime half insufficient: ${runtime.reason}.`,
+    };
+  }
+
+  if (!runtime.passed) {
+    return {
+      status: "failed",
+      evidenceKind: "installed",
+      detail: { id, title, scanned, hits, installedInventory, installedRuntime: runtime.detail },
+      reason: `${id}: ${title} — installed-candidate runtime evidence found a forbidden condition: ${runtime.detail.hits.map((h) => `${h.file} (${h.pattern})`).join("; ")}; this is a failure regardless of test success elsewhere.`,
+    };
+  }
+
   return {
-    status: staticPass ? "insufficient" : "failed",
-    evidenceKind: "source",
-    detail: { id, title, scanned, hits, installedInventory },
-    reason: staticPass
-      ? id +
-        ": " +
-        title +
-        " — no forbidden pattern found across " +
-        all.length +
-        " scanned file(s) (source + crate/dependency inventory + route/operation registry + receipts). Static half only: the installed-candidate runtime half of this check remains unclaimed (executionOwner: Membrane integration owner only; implementationStatus: IMPLEMENT_THEN_RUN, no runtime result claimed here)."
-      : id +
-        ": " +
-        title +
-        " — forbidden pattern present at " +
-        hits.map((h) => h.file).join(", ") +
-        "; this is a failure regardless of test success elsewhere.",
+    status: "passed",
+    evidenceKind: "installed",
+    detail: { id, title, scanned, hits, installedInventory, installedRuntime: runtime.detail },
+    reason: `${staticPassedNote} Runtime half also passed: the installed candidate at ${runtime.detail.installedRoot} was probed directly (shipped executables/JS surface scanned for the forbidden pattern, plus the case-specific installed-service/process/schedule probe) and shows no occurrence.`,
   };
 }
 

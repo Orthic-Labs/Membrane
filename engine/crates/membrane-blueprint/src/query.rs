@@ -218,13 +218,41 @@ pub fn execute_query(generation: &GraphGeneration, request: &BlueprintRequest, c
             // as an alias makes the native producer backward-compatible while
             // target remains the canonical Resolve field.
             let raw = request.input.get("target").or_else(|| request.input.get("symbol")).or_else(|| request.input.get("seed")).or_else(|| request.input.get("nodeId")).or_else(|| request.input.get("query")).and_then(Value::as_str).unwrap_or("");
-            let (_id, resolution) = resolve(generation, raw, limits, context)?;
+            let (_id, mut resolution) = resolve(generation, raw, limits, context)?;
             let state = resolution.get("state").and_then(Value::as_str).unwrap_or("unresolved").to_owned();
             let resolved = resolution.get("candidates").and_then(Value::as_array).into_iter().flatten()
                 .filter_map(|value| serde_json::from_value::<GraphNode>(value.clone()).ok()).collect::<Vec<_>>();
             let total = resolution.get("candidateCount").and_then(Value::as_u64).map(|count| count as usize);
             let resolution_omissions = resolution.get("omissions").and_then(Value::as_array).cloned().unwrap_or_default();
             let set = candidate_set(&state, resolved.iter(), total, state != "resolved", resolution_omissions);
+            // Resolve's own `resolution.resolved`/`resolution.candidates` are raw graph-node
+            // projections (id/kind/name/path/evidence) and never carried sourceRef/sourceHash,
+            // while the sibling `candidateSet` derived just above always does (via
+            // `source_bound_candidate`). Recall and Resolve must agree on those provenance
+            // fields for the same node, so backfill them onto the outer envelope's resolution
+            // view from the already-computed, source-bound `set` -- after the GraphNode reparse
+            // above, so the strict `deny_unknown_fields` reparse of `candidates` is untouched.
+            if let Some(by_id) = set.get("candidates").and_then(Value::as_array).map(|candidates| {
+                candidates.iter().filter_map(|candidate| {
+                    let id = candidate.get("id").and_then(Value::as_str)?;
+                    let source_ref = candidate.get("sourceRef").cloned()?;
+                    let source_hash = candidate.get("sourceHash").cloned()?;
+                    Some((id.to_owned(), (source_ref, source_hash)))
+                }).collect::<std::collections::BTreeMap<_, _>>()
+            }) {
+                let backfill = |node: &mut Value| {
+                    let Some(id) = node.get("id").and_then(Value::as_str).map(str::to_owned) else { return };
+                    let Some((source_ref, source_hash)) = by_id.get(&id) else { return };
+                    if let Some(object) = node.as_object_mut() {
+                        object.insert("sourceRef".into(), source_ref.clone());
+                        object.insert("sourceHash".into(), source_hash.clone());
+                    }
+                };
+                if let Some(resolved_node) = resolution.get_mut("resolved") { backfill(resolved_node); }
+                if let Some(candidates) = resolution.get_mut("candidates").and_then(Value::as_array_mut) {
+                    for candidate in candidates.iter_mut() { backfill(candidate); }
+                }
+            }
             Ok(envelope(request, &generation.generation_id, &state, Map::from_iter([("requestedTarget".into(),json!(raw)),("resolution".into(),resolution),("candidateSet".into(),set)])))
         }
         Operation::Expand | Operation::Recall | Operation::Impact => {

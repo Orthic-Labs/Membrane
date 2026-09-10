@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { runRegistryQualification } from '../run.mjs';
-import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05 } from './pkg-windows.mjs';
+import { PKG_01, PKG_02, PKG_03, PKG_04, PKG_05, queryInstalledControllerIdentity } from './pkg-windows.mjs';
 
 const workspaceRoot = resolve(new URL('../../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 
@@ -115,6 +115,37 @@ test('PKG_04: fails when HEAD does not include the qualified sourceRevision', as
   const result = await PKG_04({ row: { qualifiedSourceRevision: '0'.repeat(40) }, workspaceRoot });
   assert.equal(result.status, 'failed');
   assert.match(result.reason, /does not include qualified sourceRevision/);
+});
+
+test('queryInstalledControllerIdentity: never fabricates a value when no root is configured', () => {
+  assert.equal(queryInstalledControllerIdentity(undefined), null);
+  assert.equal(queryInstalledControllerIdentity(''), null);
+});
+
+test('queryInstalledControllerIdentity: never fabricates a value when membrane.exe is absent at the given root', () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg03-no-exe-'));
+  try {
+    assert.equal(queryInstalledControllerIdentity(scratch), null);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test('PKG_03: falls back to a live installed CLI health query only when no controllerIdentityPath is supplied, and still never fabricates', async () => {
+  const scratch = mkdtempSync(join(tmpdir(), 'pkg03-live-'));
+  try {
+    const installedPath = join(scratch, 'installed.json');
+    writeFileSync(installedPath, JSON.stringify({ release: { generation: 'sha256:2222' } }));
+    // No membrane.exe at installedRoot -> queryInstalledControllerIdentity returns
+    // null -> PKG_03 must report the same non-fabricated blocked reason as when
+    // no controller source is configured at all, never a fabricated PASS.
+    const result = await PKG_03({ row: { installedManifestPath: installedPath, installedRoot: scratch }, workspaceRoot });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.evidenceKind, 'source');
+    assert.equal(result.detail.controllerSource, null);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test('PKG_05: reports each sampled case evidenceKind and never lets PKG-02/PKG-03 pass on source-only evidence', async () => {

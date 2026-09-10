@@ -26,6 +26,10 @@ test("BM01 hostile omission/mutation controls fail", () => {
     (v) => { v.unknown.resolution.omissions = []; },
     (v) => { v.cancellationCode = "unknown"; },
     (v) => { delete v.exact.candidateSet.candidates[0].sourceRef; },
+    // BM01 exact Resolve/Recall sourceRef disagreement: resolution.resolved must carry
+    // the same sourceRef as candidateSet.candidates[0], never a bare graph-node projection.
+    (v) => { v.exact.resolution.resolved = { ...v.exact.resolution.resolved }; delete v.exact.resolution.resolved.sourceRef; },
+    (v) => { v.exact.resolution.resolved = { ...v.exact.resolution.resolved, sourceRef: "different-src.rs" }; },
   ]) { const bad = clone(good); mutate(bad); assert.throws(() => validateBM01Observations(bad)); }
 });
 

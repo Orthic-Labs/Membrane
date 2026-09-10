@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { assertNsisInPlaceUpgradeContract } from "@rightkit/release/nsis-upgrade-contract.mjs";
+import { writeUnsignedCandidateManifest } from "../scripts/build-windows-release.mjs";
 
 const hub = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -166,4 +169,51 @@ test("installed Windows qualification binds package evidence & exercises native 
   assert.doesNotMatch(buildInputsJson, /\.\.\/\.\.\/blueprint\//);
   assert.match(buildInputsJson, /\.\.\/\.\.\/schemas\/\*\*/);
   assert.match(buildInputsJson, /src-tauri\/binaries\/\*\*/);
+});
+
+test("local unsigned route emits a non-fabricated release-evidence candidate next to its installer", () => {
+  assert.match(windowsBuild, /export function writeUnsignedCandidateManifest/);
+  assert.match(windowsBuild, /if \(process\.env\.MEMBRANE_UNSIGNED_INSTALLER === "1"\)/);
+  assert.match(windowsBuild, /candidate\.json/);
+  const scratch = mkdtempSync(join(tmpdir(), "membrane-hub-candidate-test-"));
+  try {
+    const fakeHubRoot = join(scratch, "hub");
+    mkdirSync(join(fakeHubRoot, "dist"), { recursive: true });
+    const identity = {
+      commit: "a".repeat(40),
+      dirty: true,
+      fileCount: 3,
+      sourceTreePath: "engine",
+      sourceTreeSha256: "b".repeat(64),
+      releaseGeneration: `sha256:${"b".repeat(64)}`,
+    };
+    writeFileSync(join(fakeHubRoot, "dist", "release-identity.json"), JSON.stringify(identity));
+    const installerPath = join(scratch, "Membrane_Hub_9.9.9_x64-setup.exe");
+    writeFileSync(installerPath, "not-a-real-installer-but-deterministic-bytes");
+    const outputPath = join(scratch, "bundle", "nsis", "candidate.json");
+    const candidate = writeUnsignedCandidateManifest({ hubRoot: fakeHubRoot, installerPath, version: "9.9.9", outputPath });
+
+    assert.equal(candidate.schema, "membrane.release-evidence.v1");
+    assert.equal(candidate.profile, "internal-unsigned");
+    assert.equal(candidate.sourceCommit, identity.commit);
+    assert.equal(candidate.dirty, true);
+    assert.equal(candidate.release.target, "windows-x86_64");
+    assert.equal(candidate.release.generation, identity.sourceTreeSha256);
+    assert.equal(candidate.signing.status, "unsigned");
+    const expectedArtifactSha256 = createHash("sha256").update(readFileSync(installerPath)).digest("hex");
+    assert.equal(candidate.release.artifact_sha256, expectedArtifactSha256);
+    assert.ok(existsSync(outputPath));
+    assert.deepEqual(JSON.parse(readFileSync(outputPath, "utf8")), candidate);
+
+    assert.throws(
+      () => writeUnsignedCandidateManifest({ hubRoot: join(scratch, "no-such-hub"), installerPath, version: "9.9.9", outputPath }),
+      /release identity missing/,
+    );
+    assert.throws(
+      () => writeUnsignedCandidateManifest({ hubRoot: fakeHubRoot, installerPath: join(scratch, "no-such.exe"), version: "9.9.9", outputPath }),
+      /installer artifact missing/,
+    );
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 });
